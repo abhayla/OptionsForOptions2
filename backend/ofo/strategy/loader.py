@@ -172,9 +172,10 @@ def load_templates(path: Path | str = DEFAULT_CATALOGUE_PATH) -> tuple[Template,
         raise TemplateError(f"{path}: not valid YAML: {exc}") from exc
     errors = sorted(jsonschema.Draft202012Validator(_schema()).iter_errors(data), key=lambda e: list(e.path))
     if errors:
-        first = errors[0]
-        where = "/".join(str(p) for p in first.path) or "<root>"
-        raise TemplateError(f"{path}: schema error at {where}: {first.message}")
+        details = "; ".join(
+            f"at {'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in errors[:5]
+        )
+        raise TemplateError(f"{path}: {len(errors)} schema error(s): {details}")
     templates = tuple(_build(raw) for raw in data["templates"])
     for template in templates:
         check_wording(template)
