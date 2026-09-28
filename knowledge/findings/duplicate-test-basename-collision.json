@@ -1,0 +1,22 @@
+{
+  "id": "duplicate-test-basename-collision",
+  "class": "Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time.",
+  "mechanism": "pytest's default import mode inserts each test file's folder into sys.path and imports it by its bare module name; tests/rules/test_model.py and tests/strategy/test_model.py both import as 'test_model'.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-005 branch build/W-005-round3 after merging main (W-013 had added tests/rules/test_model.py)",
+    "evidence": "python -m pytest -q -p no:cacheprovider -> 'import file mismatch: imported module test_model has this __file__ attribute: tests\\rules\\test_model.py'; 1 error during collection. Each file passes alone (tests/strategy/test_model.py: 7 passed)."
+  },
+  "fix": "Renamed W-005's file to tests/strategy/test_strategy_model.py; a spec-integrity test fails whenever two test files anywhere under tests/ share a name, so the collision is caught in the PR that introduces it.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/test_spec_integrity.py::test_test_file_names_are_unique_across_test_folders",
+      "tests/test_spec_integrity.py::test_duplicate_test_basename_detector_flags_a_collision"
+    ],
+    "note": "Only catches the collision once the colliding file is on the same branch as the other; a PR branched before the other merged still passes alone, but CI runs on the merge result, so the PR's own CI turns red before merge."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ]
+}
