@@ -5,13 +5,13 @@ https://api.kite.trade/instruments captured 2026-09-29 (see that folder's README
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_csv
@@ -37,23 +37,23 @@ def catalogue(contracts: list[Contract]) -> Catalogue:
 
 
 def test_core_nifty_strike_gap_and_lot_size(catalogue: Catalogue) -> None:
-    """AC-2 (core proof): the real fixture yields NIFTY strike gap 50 and lot size 65."""
+    """AC-2 (core proof): the real fixture yields NIFTY strike gap 50 and option lot size 65."""
     assert catalogue.strike_gap("NIFTY", NIFTY_NEAR_EXPIRY) == Decimal("50")
-    assert catalogue.lot_size("NIFTY", NIFTY_NEAR_EXPIRY) == 65
+    assert catalogue.lot_size("NIFTY", NIFTY_NEAR_EXPIRY, ContractKind.OPTION) == 65
 
 
 def test_core_sensex_strike_gap_and_lot_size(catalogue: Catalogue) -> None:
-    """AC-2 (core proof): the real fixture yields SENSEX strike gap 100 and lot size 20."""
+    """AC-2 (core proof): the real fixture yields SENSEX strike gap 100 and option lot size 20."""
     assert catalogue.strike_gap("SENSEX", SENSEX_NEAR_EXPIRY) == Decimal("100")
-    assert catalogue.lot_size("SENSEX", SENSEX_NEAR_EXPIRY) == 20
+    assert catalogue.lot_size("SENSEX", SENSEX_NEAR_EXPIRY, ContractKind.OPTION) == 20
 
 
 def test_strike_gap_and_lot_size_hold_for_second_expiry(catalogue: Catalogue) -> None:
     """AC-2: the derived values are not a fluke of one expiry — the second nearest expiry agrees."""
     assert catalogue.strike_gap("NIFTY", NIFTY_FAR_EXPIRY) == Decimal("50")
-    assert catalogue.lot_size("NIFTY", NIFTY_FAR_EXPIRY) == 65
+    assert catalogue.lot_size("NIFTY", NIFTY_FAR_EXPIRY, ContractKind.OPTION) == 65
     assert catalogue.strike_gap("SENSEX", SENSEX_FAR_EXPIRY) == Decimal("100")
-    assert catalogue.lot_size("SENSEX", SENSEX_FAR_EXPIRY) == 20
+    assert catalogue.lot_size("SENSEX", SENSEX_FAR_EXPIRY, ContractKind.OPTION) == 20
 
 
 def test_catalogue_filters_out_unrelated_instruments(catalogue: Catalogue, contracts: list[Contract]) -> None:
@@ -72,6 +72,43 @@ def test_catalogue_includes_futures(catalogue: Catalogue) -> None:
     names = {c.name for c in futures}
     assert "NIFTY" in names
     assert "SENSEX" in names
+
+
+# --- Fix round 1, defect 1: tick/lot size must never aggregate across option + future rows ---
+
+
+def test_tick_size_differs_by_kind_on_real_fixture(catalogue: Catalogue) -> None:
+    """AC-2 (real-data proof): NIFTY 2026-09-29 options tick 0.05, futures tick 0.1 — no exception,
+    and the two kinds are NOT merged into one (inconsistent) aggregate."""
+    option_tick = catalogue.tick_size("NIFTY", NIFTY_NEAR_EXPIRY, ContractKind.OPTION)
+    future_tick = catalogue.tick_size("NIFTY", NIFTY_NEAR_EXPIRY, ContractKind.FUTURE)
+    assert option_tick == Decimal("0.05")
+    assert future_tick == Decimal("0.1")
+    assert option_tick != future_tick
+
+
+def test_tick_size_and_lot_size_hold_for_every_expiry_and_kind_in_fixture(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2 (real-data proof, class-level): loop every underlying+expiry+kind combination present
+    in the real fixture — tick_size/lot_size must resolve without exception for each, proving the
+    fix covers the whole class, not just the one NIFTY 2026-09-29 instance."""
+    combos: set[tuple[str, date, ContractKind]] = set()
+    for c in contracts:
+        if c.name not in ("NIFTY", "SENSEX") or c.expiry is None:
+            continue
+        if c.is_option():
+            combos.add((c.name, c.expiry, ContractKind.OPTION))
+        elif c.is_future():
+            combos.add((c.name, c.expiry, ContractKind.FUTURE))
+
+    assert combos, "fixture must contain at least one NIFTY/SENSEX option or future row"
+
+    for name, expiry, kind in combos:
+        tick = catalogue.tick_size(name, expiry, kind)
+        lot = catalogue.lot_size(name, expiry, kind)
+        assert tick > 0
+        assert lot > 0
 
 
 def test_update_marks_missing_contract_not_listed_never_deletes(catalogue: Catalogue, contracts: list[Contract]) -> None:
@@ -112,6 +149,53 @@ def test_update_relists_a_contract_that_reappears(catalogue: Catalogue, contract
     assert entry.currently_listed is True
 
 
+# --- Fix round 1, defect 3: update() must refuse an empty or drastically incomplete source list ---
+
+
+def _listedness_snapshot(catalogue: Catalogue) -> dict[int, bool]:
+    return {e.contract.instrument_token: e.currently_listed for e in catalogue.all_entries()}
+
+
+def test_update_refuses_empty_list(catalogue: Catalogue) -> None:
+    """update() refuses an empty new list (would unlist everything); catalogue unchanged."""
+    before = _listedness_snapshot(catalogue)
+    with pytest.raises(ValueError):
+        catalogue.update([])
+    after = _listedness_snapshot(catalogue)
+    assert after == before, "a refused update must change nothing"
+
+
+def test_update_refuses_when_it_would_unlist_more_than_default_share(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """update() refuses a source list that would unlist more than 50% of currently listed
+    contracts (an incomplete/truncated feed), and leaves the catalogue unchanged."""
+    before = _listedness_snapshot(catalogue)
+    # Keep only NIFTY near-expiry rows: far below half of everything currently listed.
+    truncated = [c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY]
+    assert truncated and len(truncated) < len(contracts) * 0.5
+
+    with pytest.raises(ValueError):
+        catalogue.update(truncated)
+
+    after = _listedness_snapshot(catalogue)
+    assert after == before, "a refused update must change nothing"
+
+
+def test_update_force_overrides_the_unlist_share_guard(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """force=True lets a legitimately drastic update (e.g. a real broker delisting wave) through."""
+    truncated = [c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY]
+    result = catalogue.update(truncated, force=True)
+    assert result.newly_unlisted > 0
+
+
+def test_update_normal_refresh_still_works(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """A normal update (same list, or dropping a small minority) still succeeds without force."""
+    result = catalogue.update(contracts)
+    assert result.newly_unlisted == 0
+    assert result.added == 0
+
+
 def test_catalogue_and_eligibility_are_separate_structures(catalogue: Catalogue) -> None:
     """AC-2: the catalogue never merges current eligibility into a contract record."""
     registry = EligibilityRegistry()
@@ -119,8 +203,6 @@ def test_catalogue_and_eligibility_are_separate_structures(catalogue: Catalogue)
     token = some_entry.contract.instrument_token
 
     # Recording eligibility must not be reachable from, or reflected on, the catalogue entry.
-    from datetime import datetime
-
     registry.record(
         EligibilityStatus(instrument_token=token, tradable=False, checked_at=datetime(2026, 9, 29))
     )
@@ -135,7 +217,7 @@ def test_catalogue_and_eligibility_are_separate_structures(catalogue: Catalogue)
 def test_lot_size_raises_for_underlying_with_no_contracts(catalogue: Catalogue) -> None:
     """AC-2 negative case: deriving a lot size for an underlying/expiry with no data fails closed."""
     with pytest.raises(ValueError):
-        catalogue.lot_size("NIFTY", date(2099, 1, 1))
+        catalogue.lot_size("NIFTY", date(2099, 1, 1), ContractKind.OPTION)
 
 
 def test_strike_gap_raises_for_fewer_than_two_strikes() -> None:

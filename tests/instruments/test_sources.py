@@ -1,23 +1,31 @@
 """AC-5 tests: every Zerodha rule encoded in code cites a source URL and a capture date."""
 from __future__ import annotations
 
-import re
+from datetime import date
 
 import pytest
 
-from ofo.instruments.sources import SOURCES, get
+from ofo.instruments.sources import SOURCES, SourceRef, get
 
 
 def test_every_source_entry_has_url_and_date() -> None:
     """AC-5: any Zerodha rule encoded in code cites a current Zerodha source and date."""
     assert SOURCES, "the source registry must not be empty"
-    date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     for rule_name, ref in SOURCES.items():
         assert ref.url, f"{rule_name} has no source url"
         assert ref.url.startswith("https://"), f"{rule_name} url must be a real https source"
         assert ref.captured_on, f"{rule_name} has no captured_on date"
-        assert date_pattern.match(ref.captured_on), f"{rule_name} captured_on is not an ISO date"
+        # A real ISO date, not just a string shaped like one: date.fromisoformat rejects
+        # out-of-range values like "2026-99-99" that a regex ^\d{4}-\d{2}-\d{2}$ would accept.
+        date.fromisoformat(ref.captured_on)
         assert ref.rule == rule_name, f"{rule_name} key/rule mismatch: {ref.rule}"
+
+
+def test_invalid_captured_on_date_is_rejected() -> None:
+    """AC-5 negative case: a captured_on that is not a real calendar date must fail validation."""
+    bad_ref = SourceRef(rule="bad_rule", url="https://example.com", captured_on="2026-99-99")
+    with pytest.raises(ValueError):
+        date.fromisoformat(bad_ref.captured_on)
 
 
 def test_get_returns_registered_source() -> None:

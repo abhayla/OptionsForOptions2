@@ -1,9 +1,10 @@
 """Parse Zerodha's public instrument list (CSV) into `Contract` records.
 
 Adapted in structure (never-delete-on-refresh, underlying extraction) from
-abhayla/algochanakya@<checkout HEAD> backend/app/services/instrument_master.py — that module is
-SQLAlchemy/Redis/DB-backed and downloads from a broker adapter; this module is a stdlib-only,
-pure parser (no DB, no network) matching this project's stack rules (CLAUDE.md, ADR-043).
+abhayla/algochanakya@2a868db (origin/main surveyed 2026-09-29)
+backend/app/services/instrument_master.py — that module is SQLAlchemy/Redis/DB-backed and
+downloads from a broker adapter; this module is a stdlib-only, pure parser (no DB, no network)
+matching this project's stack rules (CLAUDE.md, ADR-043).
 
 Zerodha publishes this list without authentication at https://api.kite.trade/instruments — see
 `ofo.instruments.sources` for the cited source + capture date of any rule derived from it.
