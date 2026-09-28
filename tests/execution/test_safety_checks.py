@@ -340,32 +340,80 @@ def _replace_leg(index: int, **changes: object) -> tuple[Leg, ...]:
     return tuple(legs)
 
 
-@pytest.mark.parametrize("proposed", [
-    pytest.param(condor_legs(quantity=65), id="reduce-every-leg-2-lots-to-1"),
-])
-def test_limited_user_may_reduce_legs_when_worst_case_does_not_worsen(proposed, catalogue, eligibility):
-    """AC-1 (ADR-037): reduce-only AND worst case not worse (-14,170 -> -7,085) is allowed for a Limited user."""
-    strategy, ctx = _limited_adjustment(proposed)
-    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
-    assert result.failures == ()
-    assert CheckCode.ENTITLEMENT_REQUIRED not in result.passed  # not applicable, not "passed"
-    pro_strategy, pro_ctx = _limited_adjustment(proposed, pro=True)
-    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+NEAR = datetime.date(2026, 9, 29)  # real NIFTY options AND futures expiry in the fixture
 
 
-def test_closing_only_the_bought_wing_is_risk_adding_and_needs_pro(catalogue, eligibility):
-    """AC-1 (ADR-037): closing only the bought 22,800 PE wing leaves the sold 23,000 PE unprotected; the engine's
-    worst case goes from -14,170.00 to -29,72,645.00, so a Limited user is blocked and the reason says so."""
-    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[1:])
+def _l(action: Action, kind: Instrument, strike: str | None, qty: int = 65, price: str = "50.00",
+       expiry: datetime.date = EXPIRY) -> Leg:
+    return Leg(action, kind, None if strike is None else D(strike), expiry, qty, D(price))
+
+
+B, S, CE, PE, FUT = Action.BUY, Action.SELL, Instrument.CE, Instrument.PE, Instrument.FUT
+IC = ACTIVE_TWO_LOTS
+IC_PUT_2_TO_1 = (IC[0], dataclasses.replace(IC[1], quantity=65), IC[2], IC[3])
+COVERED_CALL = (_l(B, FUT, None, price="23250.00", expiry=NEAR), _l(S, CE, "23400", expiry=NEAR))
+PROTECTIVE_PUT = (_l(B, FUT, None, price="23250.00", expiry=NEAR), _l(B, PE, "23200", expiry=NEAR))
+RATIO = (_l(B, CE, "23400"), _l(S, CE, "23600", qty=130))
+TWO_BULL_PUTS = (_l(S, PE, "23000"), _l(B, PE, "22800"), _l(S, PE, "22600"), _l(B, PE, "22400"))
+STRADDLE = (_l(B, CE, "23200", expiry=NEAR), _l(B, PE, "23200", expiry=NEAR))
+CALENDAR = (_l(S, CE, "23400", expiry=NEAR), _l(B, CE, "23400"))
+
+# (case, active legs, proposed legs, allowed for a Limited user) - the independent reviewer's rule-5 table.
+RULE5_TABLE = [
+    ("ic-close-bought-22800-pe-only", IC, IC[1:], False),  # premium-free -26,000 -> -2,990,000
+    ("ic-close-whole-put-spread", IC, IC[2:], True),  # -26,000 -> -26,000
+    ("ic-sell-23000-pe-2-to-1", IC, IC_PUT_2_TO_1, True),
+    ("ic-every-leg-2-to-1", IC, condor_legs(quantity=65), True),  # -26,000 -> -13,000
+    ("covered-call-close-short-ce", COVERED_CALL, COVERED_CALL[:1], True),
+    ("covered-call-close-long-fut", COVERED_CALL, COVERED_CALL[1:], False),  # -> UNLIMITED
+    ("ratio-1x2-close-long-ce", RATIO, RATIO[1:], False),  # upper slope -65 -> -130 (per unit: -1 -> -2 lots)
+    ("ratio-1x2-short-2-to-1", RATIO, (RATIO[0], dataclasses.replace(RATIO[1], quantity=65)), True),  # UNLIMITED -> 0
+    ("two-bull-puts-close-l22800-and-s22600", TWO_BULL_PUTS, (TWO_BULL_PUTS[0], TWO_BULL_PUTS[3]), False),
+    ("protective-put-close-the-put", PROTECTIVE_PUT, PROTECTIVE_PUT[:1], False),
+    ("long-straddle-close-the-ce", STRADDLE, STRADDLE[1:], True),
+    ("calendar-close-far-long-only", CALENDAR, CALENDAR[:1], False),
+    ("calendar-close-near-short-only", CALENDAR, CALENDAR[1:], True),
+    # Rule 5c isolated: closing the long would fail 5d, but every leg halves by the same share.
+    ("calendar-every-leg-2-to-1", tuple(dataclasses.replace(x, quantity=130) for x in CALENDAR), CALENDAR, True),
+]
+
+
+@pytest.mark.parametrize("case,active,proposed,allowed", RULE5_TABLE, ids=[r[0] for r in RULE5_TABLE])
+def test_rule5_limited_adjustment_table(case, active, proposed, allowed, catalogue, eligibility):
+    """AC-1 (ADR-037, REQ-059 Gate decisions rule 5): a Limited user may adjust only if no position grows AND the
+    premium-free worst case at expiry is no worse (same-share reduction always; calendars only close shorts)."""
+    strategy, ctx = _limited_adjustment(proposed, active=active)
     result = check_pre_execution(strategy, ctx, catalogue, eligibility)
-    assert [(f.code, f.reason) for f in result.failures] == [(
-        CheckCode.ENTITLEMENT_REQUIRED,
-        "This adjustment makes the strategy's worst case larger: from a loss of ₹14,170.00 to a loss of "
-        "₹2,972,645.00. Adjustments that add risk need Pro. Exiting, or closing or reducing legs without a larger "
-        "worst case, stays available on every plan.",
-    )]
-    pro_strategy, pro_ctx = _limited_adjustment(ACTIVE_TWO_LOTS[1:], pro=True)
-    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+    if allowed:
+        assert result.failures == (), [f.reason for f in result.failures]
+    else:
+        assert result.failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}, [f.reason for f in result.failures]
+
+
+@pytest.mark.parametrize("case,active,proposed,allowed", RULE5_TABLE, ids=[r[0] for r in RULE5_TABLE])
+def test_rule5_pro_user_passes_every_case(case, active, proposed, allowed, catalogue, eligibility):
+    """AC-1: a Pro user passes every rule-5 case."""
+    strategy, ctx = _limited_adjustment(proposed, pro=True, active=active)
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
+
+
+def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, eligibility):
+    """AC-1: the Pro reason for a larger worst case states both premium-free numbers (reviewer: -26,000 ->
+    -2,990,000 when only the bought 22,800 PE wing of the 2-lot condor is closed)."""
+    strategy, ctx = _limited_adjustment(IC[1:])
+    (failure,) = check_pre_execution(strategy, ctx, catalogue, eligibility).failures
+    assert failure.reason == (
+        "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from a loss "
+        "of ₹26,000.00 to a loss of ₹2,990,000.00. Adjustments that add risk need Pro. Exiting, or closing or "
+        "reducing legs without a larger worst case, stays available on every plan."
+    )
+
+
+def test_rule5_unlimited_after_finite_before_says_unlimited(catalogue, eligibility):
+    """AC-1: closing the long future of a covered call leaves a naked short call: 'to an unlimited loss'."""
+    strategy, ctx = _limited_adjustment(COVERED_CALL[1:], active=COVERED_CALL)
+    (failure,) = check_pre_execution(strategy, ctx, catalogue, eligibility).failures
+    assert "to an unlimited loss" in failure.reason
 
 
 def test_closing_all_four_legs_is_an_exit_open_to_limited_user(condor, catalogue, eligibility):
@@ -374,33 +422,19 @@ def test_closing_all_four_legs_is_an_exit_open_to_limited_user(condor, catalogue
     assert check_pre_execution(condor, ctx, catalogue, eligibility).failures == ()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Brief expectation conflicts with rule (b): the engine's at-expiry min_pnl of the remaining 23,400/23,600 call "
-    "spread is -19,825.00 vs -14,170.00 for the 2-lot condor (the closed put spread's 43.50/unit credit is no longer "
-    "counted), so rule (b) blocks it. Reported to the coordinator; not decided by the builder."))
-def test_closing_sold_put_with_its_wing_allowed_per_brief(catalogue, eligibility):
-    """AC-1 (ADR-037): brief says closing the sold 23,000 PE with its 22,800 PE wing is allowed for Limited."""
-    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[2:])
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
-
-
-def test_unlimited_worst_case_is_always_worse_than_finite(catalogue, eligibility):
-    """AC-1: closing the bought 23,600 CE wing turns a finite worst case into UNLIMITED -> needs Pro; reducing a
-    naked short call from 2 lots to 1 (UNLIMITED -> UNLIMITED) does not get worse and is allowed."""
-    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[:3])
-    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
-    assert result.failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
-    assert "to an unlimited loss" in result.failures[0].reason
-    naked = (Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 130, D("91.50")),)
-    strategy, ctx = _limited_adjustment((dataclasses.replace(naked[0], quantity=65),), active=naked)
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
-
-
-def test_multi_expiry_adjustment_needs_pro(catalogue, eligibility):
-    """AC-1 (fail closed): exact metrics raise MultiExpiryError for a multi-expiry strategy, so it needs Pro."""
-    active = ACTIVE_TWO_LOTS + (Leg(Action.BUY, Instrument.CE, D("23400"), datetime.date(2026, 9, 29), 65,
-                                    D("30.00")),)
+def test_multi_expiry_adjustment_closing_a_long_needs_pro(catalogue, eligibility):
+    """AC-1 (rule 5d): a multi-expiry adjustment that closes a long leg (not same-share, not shorts only) needs Pro."""
+    active = IC + (_l(B, CE, "23400", expiry=NEAR),)
     strategy, ctx = _limited_adjustment(active[1:], active=active)
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+
+
+def test_both_unlimited_but_worse_downside_needs_pro(catalogue, eligibility):
+    """AC-1 (rule 5b, 'worst case at level 0, at every strike'): short call + short put with a bought put wing;
+    closing the wing keeps the same UNLIMITED upper slope but the premium-free worst case at level 0 falls from
+    -13,000 to -1,495,000 -> needs Pro (the slope comparison alone would allow it)."""
+    active = (_l(S, CE, "23400"), _l(S, PE, "23000"), _l(B, PE, "22800"))
+    strategy, ctx = _limited_adjustment(active[:2], active=active)
     assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
 
 

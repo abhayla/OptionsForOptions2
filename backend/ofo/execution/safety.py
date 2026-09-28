@@ -8,14 +8,16 @@ the user's explicit choice (AC-5, ADR-016 Q44). Reason texts are decision-suppor
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from fractions import Fraction
 
-from ofo.engine import UNLIMITED, Instrument, Leg, Strategy, strategy_metrics
-from ofo.engine.metrics import MultiExpiryError, _Unlimited
+from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.metrics import _Unlimited, _upper_tail_slope
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
@@ -205,39 +207,96 @@ def _worst_case_text(min_pnl: Decimal | _Unlimited) -> str:
     return f"a loss of {_rupees(-min_pnl)}" if min_pnl < 0 else f"a gain of {_rupees(min_pnl)}"
 
 
-def _worse(after: Decimal | _Unlimited, before: Decimal | _Unlimited) -> bool:
-    """True when ``after`` is a worse worst case than ``before``; UNLIMITED is worse than any finite value."""
-    if after is UNLIMITED:
-        return before is not UNLIMITED
-    return before is not UNLIMITED and after < before
+_ZERO_PREMIUM = Decimal("0.00")
+
+
+def _premium_free(legs: tuple[Leg, ...]) -> Strategy:
+    """The same legs with every option's entry price set to 0 (intrinsic value only); futures keep their entry."""
+    return Strategy(tuple(
+        dataclasses.replace(leg, entry_price=_ZERO_PREMIUM, ltp=None) if leg.is_option else leg for leg in legs
+    ))
+
+
+def _tail_slope(strategy: Strategy) -> int:
+    """Upper-tail payoff slope (rupees per point) from the engine's own tail logic."""
+    return sum(_upper_tail_slope(leg) for leg in strategy.legs)
+
+
+def _worst_at_points(strategy: Strategy, points: set[Decimal]) -> Decimal:
+    """Lowest engine payoff at the given levels (level 0 and every strike)."""
+    return min(strategy.expiry_pnl_at(p) for p in points)
+
+
+def _same_share(before: dict[tuple[_Key, str], int], after: dict[tuple[_Key, str], int]) -> bool:
+    """Every active position reduced (or kept) by one common share (rule 5c)."""
+    shares = {Fraction(after.get(k, 0), units) for k, units in before.items()}
+    return len(shares) == 1 and set(after) <= set(before)
+
+
+def _closes_only_short_options(before: dict[tuple[_Key, str], int], after: dict[tuple[_Key, str], int]) -> bool:
+    """Only short option positions shrink; every long and every future is untouched (rule 5d)."""
+    for k, units in before.items():
+        if after.get(k, 0) < units:
+            (_, instrument_type, _), side = k
+            if side != Action.SELL.value or instrument_type == Instrument.FUT.value:
+                return False
+    return True
+
+
+def _worse_worst_case(active: tuple[Leg, ...], proposed: tuple[Leg, ...]) -> str | None:
+    """Rule 5b: the premium-free worst case at expiry after the change must be no worse than before.
+
+    Worst case = level 0, every strike and the upper tail (engine metrics on premium-free legs). An UNLIMITED after
+    is allowed only when before was UNLIMITED too, the after upper-tail slope is not steeper, and the worst case at
+    level 0 and every strike is not lower.
+    """
+    before, after = _premium_free(active), _premium_free(proposed)
+    b, a = strategy_metrics(before).min_pnl, strategy_metrics(after).min_pnl
+    if a is UNLIMITED:
+        points = {Decimal(0)} | {leg.strike for leg in active + proposed if leg.is_option}
+        if (
+            b is UNLIMITED
+            and _tail_slope(after) >= _tail_slope(before)
+            and _worst_at_points(after, points) >= _worst_at_points(before, points)
+        ):
+            return None
+    elif b is UNLIMITED or a >= b:
+        return None
+    return (
+        "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from "
+        f"{_worst_case_text(b)} to {_worst_case_text(a)}. Adjustments that add risk need Pro. Exiting, or closing "
+        "or reducing legs without a larger worst case, stays available on every plan."
+    )
+
+
+MULTI_EXPIRY_PRO_REASON = (
+    "This strategy has legs on more than one expiry. Without Pro it can be exited, reduced by the same share on every "
+    "leg, or have only its sold options closed; other adjustments may add risk and need Pro."
+)
 
 
 def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> str | None:
-    """The reason this action needs Pro, or None when it is open to every plan (ADR-037, by actor intent).
+    """The reason this action needs Pro, or None when it is open to every plan (ADR-037, REQ-059 Gate decisions
+    rule 5, by actor intent).
 
     An EXIT is open to every plan. An ADJUSTMENT is open only if (a) no position grows (no new contract, no quantity
-    increase, no side flip) AND (b) the engine's worst case does not get worse: ``strategy_metrics(after).min_pnl >=
-    strategy_metrics(before).min_pnl``. Fail closed: no active legs to compare, or a multi-expiry strategy whose
-    exact metrics raise ``MultiExpiryError``, needs Pro.
+    increase, no side flip) AND one of: (c) every leg is reduced by the same share; (d) for a multi-expiry strategy,
+    only short options are closed or reduced; (b) for a single-expiry strategy, the premium-free worst case at expiry
+    does not get worse. Fail closed: no active legs to compare needs Pro.
     """
     if ctx.action is ExecutionAction.EXIT:
         return None
     if ctx.action is not ExecutionAction.ADJUSTMENT or ctx.active_legs is None:
         return PRO_REASON
-    if not _reduces_only(ctx.active_legs, strategy.legs):
+    active, proposed = ctx.active_legs, strategy.legs
+    if not _reduces_only(active, proposed):
         return PRO_REASON
-    try:
-        before = strategy_metrics(Strategy(ctx.active_legs)).min_pnl
-        after = strategy_metrics(strategy).min_pnl
-    except MultiExpiryError:
-        return PRO_REASON
-    if _worse(after, before):
-        return (
-            f"This adjustment makes the strategy's worst case larger: from {_worst_case_text(before)} to "
-            f"{_worst_case_text(after)}. Adjustments that add risk need Pro. Exiting, or closing or reducing legs "
-            "without a larger worst case, stays available on every plan."
-        )
-    return None
+    before_pos, after_pos = _positions(active), _positions(proposed)
+    if _same_share(before_pos, after_pos):
+        return None
+    if len({leg.expiry for leg in active + proposed}) > 1:
+        return None if _closes_only_short_options(before_pos, after_pos) else MULTI_EXPIRY_PRO_REASON
+    return _worse_worst_case(active, proposed)
 
 
 def _context_failures(ctx: ExecutionContext, pro_reason: str | None) -> list[CheckFailure]:

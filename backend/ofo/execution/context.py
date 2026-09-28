@@ -9,14 +9,18 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
 - **Versions.** A NEW_ENTRY or EXIT executes the strategy's ACTIVE version (its current configuration); an ADJUSTMENT
   executes the PROPOSED version (ADR-019 Q191: a proposed version becomes active only after execution +
   reconciliation). A SUPERSEDED version is never executed.
-- **Entitlement by actor intent (ADR-037 "risk-adding adjustments stay behind Pro"; REQ-059 Gate decisions,
-  fix round 2).** A Limited user may exit. A Limited user may run an adjustment only if (a) no position grows (no new
-  contract, no quantity increase, no side flip) AND (b) the engine's worst case does not get worse:
-  ``strategy_metrics(after).min_pnl >= strategy_metrics(before).min_pnl``, an UNLIMITED loss being worse than any
-  finite one; a multi-expiry strategy (exact metrics raise ``MultiExpiryError``) needs Pro, fail closed. Anything
-  else needs Pro. Classified from the legs, before (``active_legs``) vs after (the proposed strategy), never from a
-  user flag. Known gap: the at-expiry metric does not count P&L realised by the legs being closed, so closing a whole
-  credit spread can read as a larger worst case (see the strict xfail in tests/execution/test_safety_checks.py).
+- **Entitlement by actor intent (ADR-037 "risk-adding adjustments stay behind Pro"; REQ-059 Gate decisions rule 5,
+  a SPEC CHANGE recorded by the orchestrator, fix round 3).** A Limited user may exit. A Limited user may run an
+  adjustment only if (a) no position grows (no new contract, no quantity increase, no side flip) AND one of:
+  (c) every leg is reduced by the same share; (d) for a multi-expiry strategy (calendar), only short options are
+  closed or reduced; (b) for a single-expiry strategy, the worst case AT EXPIRY with OPTION PREMIUMS EXCLUDED
+  (options at intrinsic value, entry price 0; futures level - entry) is no worse after than before, taken at level
+  0, every strike and the upper tail via the engine's ``strategy_metrics``. An UNLIMITED after is allowed only if
+  before was UNLIMITED, the upper-tail slope is not steeper, and the worst case at level 0 and every strike is not
+  lower. Why premium-free: the entry-price worst case adds each open leg's entry credit, so closing any credit piece
+  looked riskier even when real risk fell (2-lot condor put-spread close: -14,170 -> -19,825 with premiums,
+  -26,000 -> -26,000 without). Classified from the legs, before (``active_legs``) vs after (the proposed strategy),
+  never from a user flag; no active legs to compare needs Pro (fail closed).
   ``pro_entitled`` is the entitlement layer's answer, passed in as a boolean; this module does not import that layer.
 - **Unknown eligibility blocks.** A contract with no recorded Zerodha eligibility read is not executable (fail closed,
   matching ``EligibilityRegistry.is_tradable``).
