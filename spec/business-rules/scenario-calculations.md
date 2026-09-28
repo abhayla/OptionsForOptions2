@@ -36,6 +36,11 @@ calculation engine.
 
 - Net premium, max profit, max loss and breakevens are **strategy-level** (T1 #98); legs carry no breakeven.
 - Max profit/loss and breakevens are computed from the payoff, never typed or hard-coded.
+- **Net premium (definition, 2026-09-29, delegated overnight, ADR-045; W-013 fix round).** Signed rupee total, credit
+  positive: each SELL option leg adds `price × Quantity`, each BUY option leg subtracts it; futures legs have no
+  premium and add 0. `price` is the entry price or the LTP, named by the caller. Example: BUY 75 × 23,000 CE @ 100,
+  SELL 150 × 23,200 CE @ 60 → 9,000 − 7,500 = **+₹1,500**; the §6 Iron Condor at entry → 91 × 75 = **+₹6,825**
+  (equal to its max profit). Every consumer (rules, screens) reads it from the engine, never re-computes it.
 - Payoff graph and scenario table use the same engine (§22).
 - **Tails (clarification, 2026-09-29, delegated overnight, ADR-045).** An index cannot fall below 0, so the lower tail
   is evaluated at level 0 and is always finite; only the upper tail can be UNLIMITED (non-zero slope above the highest
