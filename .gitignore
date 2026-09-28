@@ -18,3 +18,9 @@ views/*
 # kit-tools-leave-untracked-caches: every kit tool run leaves compiled bytecode behind.
 __pycache__/
 *.pyc
+
+# Python / Node local environments
+.venv/
+venv/
+node_modules/
+.pytest_cache/
