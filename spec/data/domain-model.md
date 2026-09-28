@@ -63,7 +63,7 @@ not a decision; it follows the locked rules (explicit transitions, submitted ≠
 | Partially Executed | Execution in Progress / Reconciliation Required / Exited | user chooses complete or retry / review / close partial |
 | Active | Adjustment Proposed | user starts a modification, or accepts a detected opportunity to review |
 | Adjustment Proposed | Execution in Progress / Active | user confirms / discards the proposal |
-| Active | Monitoring Paused / Active | data or broker session unavailable / restored |
+| Active | Monitoring Paused / Active | trigger **not yet defined** (part of the owner review of this table). A lost data feed or an expired Zerodha session does **not** change the strategy state: the strategy stays Active and its monitoring status shows paused ("Monitoring paused — reconnect Zerodha", Q182). Reason: REQ-043 AC-4 keeps monitoring status separate from this state machine, §5 allows Active + expired session, and the Zerodha session expires every morning (T1 #265), which would otherwise flip every Active strategy daily. Clarification recorded 2026-09-29 (audit item C-8). |
 | any live state | Reconciliation Required | broker state differs from platform state |
 | Reconciliation Required | previous live state | mismatch resolved (auto or explicit manual reconciliation) |
 | Active | Exited | exit orders confirmed executed |

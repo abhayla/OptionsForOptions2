@@ -113,3 +113,23 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q215 — DECIDED → ADR-035 — Expiry P&L: entry price or current price? (audit item X-T1#95)
 - Owner, 2026-09-29: **A** — expiry columns use the entry price; the LTP only in the live P&L column (Q33A = C).
 - Spec basis: ADR-008; `spec/business-rules/scenario-calculations.md` §1–§2; T1 #95–#97.
+
+## Q216 — DECIDED → ADR-036 — Beta first, or public launch? (audit item Q13)
+- Owner, 2026-09-29: **A** — public SaaS as chosen at Q13 = B; invite-only switch exists, off by default.
+- Spec basis: ADR-001 (Q13 = B, T1 #27), REQ-003.
+
+## Q217 — DECIDED → ADR-037 — Can a Limited user exit an active strategy? (audit item C-5)
+- Owner, 2026-09-29: **A** — yes; exit and closing orders for active strategies are allowed; new trades stay Pro.
+- Spec basis: ADR-023 (Q67/Q89/Q91), REQ-018, ADR-018.
+
+## Q218 — DECIDED → ADR-038 — Referral reward: calendar month or 30 days? (audit item C-3)
+- Owner, 2026-09-29: **A** — 30 days per referral, day count in Admin, exact end date shown.
+- Spec basis: ADR-025 (Q63), REQ-021, ADR-026 (T1 #189).
+
+## Q219 — DECIDED → ADR-039 — A running trial meets an already-trialled Client ID (audit item C-4)
+- Owner, 2026-09-29: **A** — the running trial ends; offer the verified transfer or Pro.
+- Spec basis: ADR-023 (Q88), ADR-022 (Q82/Q83), REQ-014.
+
+## Q220 — DECIDED → ADR-040 — Which system sends the WhatsApp OTP? (audit item C-19)
+- Owner, 2026-09-29: **A** — shared Notifier gateway, Wati AUTHENTICATION template, stand-in sender in dev/test.
+- Spec basis: ADR-021 (Q72), REQ-012 AC-2/AC-4.
