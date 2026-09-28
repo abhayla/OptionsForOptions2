@@ -1,0 +1,33 @@
+{
+  "id": "verifier-writes-outside-sandbox",
+  "class": "Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it.",
+  "mechanism": "The verifier agent has a shell; told it cannot edit, it still wrote evidence/<W-id>/AC-*.md into the main checkout with its own frontmatter, bypassing the orchestrator step that records evidence from the verifier's returned block.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-024 re-verification @ 78c5257",
+    "evidence": "main checkout `git status` showed `?? evidence/W-024/` (AC-1.md, AC-2.md, verified_by 'independent verifier (fresh context, Claude Sonnet 5)'); removed untracked, never committed"
+  },
+  "fix": "Verifier brief now says in bold never to create/edit/delete any file outside its verify folder, evidence included. CI guard: every committed evidence/*.md must carry the orchestrator's recording footer, so a verifier-written file fails the PR (tests/test_spec_integrity.py::test_evidence_files_are_recorded_by_the_orchestrator, red-then-green with a footer-less sample).",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/test_spec_integrity.py::test_evidence_files_are_recorded_by_the_orchestrator"
+    ],
+    "note": "Guards the committed state only; an untracked stray file in the main checkout is caught by reading `git status` after each verifier (orchestrator habit, not automated). Root fix (a verifier with no write-capable shell, or a sandboxed working folder) is a kit change: harvest issue."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-024 re-verification @ 78c5257",
+      "evidence": "evidence/W-024/AC-1.md, AC-2.md written into main checkout"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-018 re-verification @ 9def9f4",
+      "evidence": "evidence/W-018/AC-1,2,3,5,6.md written into main checkout; removed untracked"
+    }
+  ]
+}
