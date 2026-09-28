@@ -63,8 +63,10 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
 - The kit guard hook (`kit_file_guard.py`) blocks any Bash command whose text names a kit path, even a
   read-only `grep`/`cat`, and a `tools/*.py` run with a redirect or pipe (`2>&1 | tail`). Read kit files
   with the Read/Grep/Glob tools; run each tool as its own plain command.
-- Legacy repo `abhayla/OptionsForOptions` (ASP.NET WebForms + MySQL) is read-only reference; anything reused
-  is rewritten here under the spec, naming the legacy file it came from.
+- Stack (ADR-043): Python 3.12+ / FastAPI, PostgreSQL, Redis; Vue 3 + Vite. Legacy repos (`abhayla/algochanakya`
+  main source; `OFO`, `NewOFO`, `OptionsForOptions` reference) are never edited from here. Code may be copied or
+  adapted per `spec/technical-design/legacy-reuse.md`: the file names its source repo, commit and path, is changed
+  to meet every hard rule, and gets this project's own tests. The calculation engine and order execution are built new.
 - Every PR body carries the Spec-deviation block (`Class: none` is valid); CI fails without it.
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
