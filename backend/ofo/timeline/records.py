@@ -99,14 +99,16 @@ class RuleTriggerRecord:
         for name in evaluation.missing:
             if name not in rule.inputs:
                 raise ValueError(f"missing input {name!r} is not read by rule {rule.rule_id!r}")
-        if not isinstance(strategy, StrategyRecord):
-            raise ValueError(f"strategy must be the StrategyRecord that owns the active version, got {strategy!r}")
-        active, planned = strategy.active_version, None
+        # Exact type, and the versions read through StrategyRecord's own accessors at class level, so a subclass that
+        # overrides a property cannot supply the version recorded.
+        if type(strategy) is not StrategyRecord:
+            raise ValueError(f"strategy must be exactly the StrategyRecord that owns the active version, got {strategy!r}")
+        active, planned = StrategyRecord.active_version.fget(strategy), None
         if active is None:
             if rule.kind is not RuleKind.ENTRY:
                 raise ValueError(f"a {rule.kind.value} rule acts on an executed position; the strategy has no active "
                                  "version")
-            planned = strategy.proposed_version
+            planned = StrategyRecord.proposed_version.fget(strategy)
             if planned is None:
                 raise ValueError("the strategy has no active version and no planned (proposed) version to record")
         return cls(

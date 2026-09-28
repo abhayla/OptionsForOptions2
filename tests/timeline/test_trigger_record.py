@@ -257,3 +257,18 @@ def test_entry_rule_on_a_never_executed_strategy_records_the_planned_version():
             in why_did_this_trigger(r))
     with pytest.raises(ValueError, match="executed position"):
         RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=fresh)
+
+
+def test_a_strategy_record_subclass_cannot_supply_the_version():
+    """AC-3 negative: a StrategyRecord subclass whose active_version / proposed_version lie (9999 on a strategy that
+    never executed) is refused; only an exact StrategyRecord is read."""
+    class Evil(StrategyRecord):
+        __slots__ = ()
+
+        @property
+        def active_version(self):  # type: ignore[override]
+            return dataclasses.replace(executed_record().active_version, number=9999)
+
+    evil = Evil(executed_record().definition, at=T0, clock=clock)
+    with pytest.raises(ValueError, match="StrategyRecord"):
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=evil)
