@@ -8,7 +8,8 @@ Updated 2026-09-28 (spec import from the owner's ChatGPT handoffs).
   turned into the spec: 31 decision records (`spec/decisions/ADR-001`–`ADR-031`), `spec/vision/vision.md`,
   `spec/business-rules/scenario-calculations.md` (Iron Condor example recomputed: 0 mismatches),
   `spec/data/domain-model.md`, `spec/testing/core-invariants.md`, `spec/open-questions.md`,
-  `spec/traceability/source-map.md`.
+  `spec/traceability/source-map.md`, `spec/traceability/question-register.md` (Q1–Q203, 44 missing), and 67
+  requirements (`spec/requirements/REQ-001`–`REQ-067`, 322 acceptance criteria, status Specified).
 
 ## PENDING (owner)
 Open questions in `spec/open-questions.md`, asked one per turn, most important first:
