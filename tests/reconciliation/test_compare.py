@@ -56,6 +56,36 @@ def test_ac3_mismatch_records_time_broker_platform_difference_and_next_action():
     assert "you should" not in m.next_action.lower()
 
 
+def test_ac3_mismatches_that_block_nothing_are_still_recorded_in_the_audit_log():
+    """AC-3 (mutant M11): an unexpected position on an unheld contract and a changed standalone block no strategy,
+    but each is recorded with time, broker state, platform state, difference and next action."""
+    from ofo.audit.catalogue import EventType
+    from ofo.reconciliation.resolution import record_report
+    from recon_fixtures import audit_log
+    extra, alone = c(Instrument.CE, "24000"), c(Instrument.PE, "22000")
+    rec = executed()
+    report = run(dict(CONDOR_UNITS) | {extra: 75, alone: 25}, {"IC-1": rec}, {alone: 50})
+    assert report.blocked_strategy_ids == frozenset()
+    audit = audit_log()
+    record_report(report, {"IC-1": rec}, audit=audit, run_id="run-1")
+    assert not rec.reconciliation_required
+    by_kind = {e.payload["kind"]: e for e in audit.events}
+    assert set(by_kind) == {"unexpected broker position", "standalone position changed"}
+    unexpected = by_kind["unexpected broker position"]
+    assert unexpected.event_type is EventType.RECONCILIATION_RECORDED and unexpected.timestamp == at(10)
+    assert unexpected.payload["strategy_ids"] == ()
+    assert unexpected.payload["broker_state"] == (("NIFTY 24000 CE 2026-10-27", 75),)
+    assert unexpected.payload["platform_state"] == (("NIFTY 24000 CE 2026-10-27", 0),)
+    assert unexpected.payload["difference"] == (("NIFTY 24000 CE 2026-10-27", 75),)
+    assert unexpected.payload["next_action"].startswith("Choose how to group it")
+    changed = by_kind["standalone position changed"]
+    assert changed.payload["strategy_ids"] == ()
+    assert changed.payload["broker_state"] == (("NIFTY 22000 PE 2026-10-27", 25),)
+    assert changed.payload["platform_state"] == (("NIFTY 22000 PE 2026-10-27", 50),)
+    assert changed.payload["difference"] == (("NIFTY 22000 PE 2026-10-27", -25),)       # 25 - 50
+    assert changed.payload["next_action"].startswith("Review the standalone position")
+
+
 def test_ac2_agreement_is_no_mismatch():
     """AC-2 (negative): broker equals strategy + standalone on every contract -> nothing reported, nothing blocked."""
     broker = dict(CONDOR_UNITS)

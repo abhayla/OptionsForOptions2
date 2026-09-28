@@ -13,9 +13,11 @@ recorded standalone quantity"; "a mismatch blocks only the strategy whose contra
 - expected[c] = recorded standalone units on c + the sum of every non-exited strategy's ACTIVE-version units on c.
 - difference[c] = broker[c] - expected[c]. A contract with difference 0 is no mismatch, whoever holds it.
 - A non-zero difference on a contract is attributed to EVERY strategy holding that contract (in its active version
-  or its pending proposed version), and blocks each of them. Fail closed: the broker reports one net number per
-  contract, so it cannot say which holder (or the standalone) moved; blocking only one holder could leave the real
-  one executing on a wrong picture. Example (AC-7): strategy SELL 25,000 CE x 50 plus standalone x 25 -> expected
+  or its pending proposed version), and blocks each of them. ORCHESTRATOR DEFAULT (W-021 fix round, 2026-09-29;
+  not an owner decision): AC-7 says "a mismatch blocks only the strategy whose contract quantity disagrees", but
+  when two strategies share a contract the broker's single net number cannot show which one's quantity moved, so
+  both are treated as disagreeing and both are blocked (fail closed): blocking only one could leave the real one
+  executing on a wrong picture. Example (AC-7): strategy SELL 25,000 CE x 50 plus standalone x 25 -> expected
   -75; Zerodha -75: no mismatch; Zerodha -50: that strategy is blocked.
 - A non-zero difference on a contract NO strategy holds blocks no strategy: it is an unexpected broker position
   (offer the grouping choice, Q24) or a change to a recorded standalone.
@@ -105,17 +107,23 @@ class ReconciliationReport:
     at: datetime.datetime
     broker: tuple[tuple[Contract, int], ...]  # the broker's whole net-position map as compared
     mismatches: tuple[Mismatch, ...]
-    shares: tuple[tuple[str, Position], ...]  # each blocked strategy's broker share (what adopting would adopt)
+    shares: tuple[tuple[str, Position], ...]  # EVERY covered strategy's broker share, blocked or not
 
     @property
     def blocked_strategy_ids(self) -> frozenset[str]:
         return frozenset(sid for m in self.mismatches for sid in m.strategy_ids)
 
+    @property
+    def covered_strategy_ids(self) -> frozenset[str]:
+        """Every (non-exited) strategy this run compared; each one's broker picture is refreshed from it."""
+        return frozenset(sid for sid, _ in self.shares)
+
     def share(self, strategy_id: str) -> Position:
+        """The strategy's broker position according to THIS run (what a resolution's premise is checked against)."""
         for sid, position in self.shares:
             if sid == strategy_id:
                 return position
-        raise ReconciliationError(f"strategy {strategy_id!r} has no mismatch in this report")
+        raise ReconciliationError(f"strategy {strategy_id!r} was not covered by this reconciliation run")
 
 
 # ---- input validation ----------------------------------------------------------------------------------------
@@ -274,8 +282,8 @@ def compare(
             next_action=_NEXT_ACTION[kind],
         ))
 
-    blocked = sorted({sid for m in mismatches for sid in m.strategy_ids})
-    shares = tuple((sid, broker_share(sid, broker, alone, actives, proposals, mismatches)) for sid in blocked)
+    covered = sorted(sid for sid, record in records.items() if not record.exited)
+    shares = tuple((sid, broker_share(sid, broker, alone, actives, proposals, mismatches)) for sid in covered)
     broker_lines = tuple(sorted(broker.items(), key=lambda item: contract_sort_key(item[0])))
     return ReconciliationReport(at, broker_lines, tuple(mismatches), shares)
 

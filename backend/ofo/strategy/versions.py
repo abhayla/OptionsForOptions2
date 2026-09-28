@@ -252,6 +252,7 @@ class StrategyRecord:
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
         "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
+        "_observed_at",
     )
 
     def __init__(
@@ -278,6 +279,7 @@ class StrategyRecord:
         self._set("_references", set())
         self._set("_reconcile", False)
         self._set("_exited", False)
+        self._set("_observed_at", None)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"StrategyRecord is changed only through its methods; cannot set {name!r}")
@@ -304,6 +306,12 @@ class StrategyRecord:
     def reconciliation_required(self) -> bool:
         """Sticky: the broker's position differs from the active version with no proposal pending (ADR-018)."""
         return self._reconcile
+
+    @property
+    def last_observed_at(self) -> datetime.datetime | None:
+        """Time of the reconciliation run that last set ``actual_position``; None if anything else set it since
+        (an execution result), so a resolution must wait for a fresh run (W-021 fix round)."""
+        return self._observed_at
 
     @property
     def exited(self) -> bool:
@@ -440,6 +448,7 @@ class StrategyRecord:
         kind = self._classify(result.status, proposal.baseline, intended, actual)
         self._references.add(result.reference)
         self._set("_actual", actual)
+        self._set("_observed_at", None)
         if actual.lines:
             self._set("_executed", True)
         if self._reconcile:
@@ -504,8 +513,9 @@ class StrategyRecord:
 
         The broker wins: the recorded actual position is replaced. With no proposal pending, a position that
         differs from the active version sets the sticky ``reconciliation_required`` flag (the same invariant
-        ``apply_result`` keeps) and logs an OBSERVED outcome. A position that agrees changes nothing and returns
-        None: agreement never clears the flag; only an explicit resolution does.
+        ``apply_result`` keeps) and logs an OBSERVED outcome when the picture or the flag changed. EVERY run is
+        recorded, agreeing or not, so the stored broker picture is never older than the latest run (W-021 fix
+        round: resolutions acted on a stale copy). Agreement never clears the flag; only an explicit resolution does.
         """
         self._refuse_if_exited("record a broker position")
         if not isinstance(position, Position):
@@ -513,15 +523,15 @@ class StrategyRecord:
         _require_text(reference, "observation reference")
         if reference in self._references:
             raise VersionError(f"observation {reference!r} was already recorded")
-        if position == self._actual and (self._reconcile or position == self._active_intended()):
-            return None
         if len(self._outcomes) >= MAX_OUTCOMES:
             raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
         self._stamp(at)
         self._references.add(reference)
+        was_flagged, before = self._reconcile, self._actual
         self._set("_actual", position)
+        self._set("_observed_at", at)
         self._recheck_invariant()
-        if not self._reconcile:
+        if not self._reconcile or (was_flagged and before == position):
             return None
         active = self.active_version
         outcome = ExecutionOutcome(
