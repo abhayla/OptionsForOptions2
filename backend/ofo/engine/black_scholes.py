@@ -51,6 +51,12 @@ class Greeks:
     theta: Decimal
     vega: Decimal
 
+    def __post_init__(self) -> None:
+        for name in ("delta", "gamma", "theta", "vega"):
+            value = getattr(self, name)
+            if not isinstance(value, Decimal) or not value.is_finite():
+                raise ValueError(f"greek {name} must be a finite decimal.Decimal, got {value!r}")
+
 
 def _positive(value: object, name: str) -> float:
     if not isinstance(value, Decimal):
@@ -131,6 +137,12 @@ def bs_price(
     s, k = _positive(spot, "spot"), _positive(strike, "strike")
     t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
     return _to_decimal(_price(_kind(option), s, k, t, r, v), PRICE_STEP)
+
+
+def forward_price(spot: Decimal, years: Decimal, rate: Decimal) -> Decimal:
+    """Cost-of-carry fair value of an index future, ``S e^(rT)`` (same no-dividend assumption), to 0.01."""
+    s, t, r = _positive(spot, "spot"), _positive(years, "years"), _rate(rate)
+    return _to_decimal(s * math.exp(r * t), PRICE_STEP)
 
 
 def implied_volatility(
