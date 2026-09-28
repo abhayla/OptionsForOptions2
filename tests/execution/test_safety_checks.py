@@ -15,7 +15,7 @@ from typing import Callable
 
 import pytest
 
-from execution_inputs import AS_OF, EXPIRY, all_true_context, condor_legs, find_token
+from execution_inputs import check, closing_orders, AS_OF, EXPIRY, all_true_context, condor_legs, find_token
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import (
     CheckCode,
@@ -23,8 +23,8 @@ from ofo.execution import (
     DataInput,
     ExecutionAction,
     ExecutionContext,
+    FlagCode,
     VersionState,
-    check_pre_execution,
 )
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
 from execution_inputs import FIXTURE
@@ -82,6 +82,30 @@ def _expired(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
 def _duplicate(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
     return Strategy(s.legs + (s.legs[0],)), all_true_context(), c, e
 
+
+def _exit_ctx(**overrides: object) -> ExecutionContext:
+    """An EXIT of the 1-lot golden condor (its active legs)."""
+    return all_true_context(**({"action": ExecutionAction.EXIT, "active_legs": condor_legs()} | overrides))
+
+
+def _exit_opens_position(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+    return s, _exit_ctx(), c, e  # the condor's own legs (same sides as held) labelled EXIT
+
+
+class _BrokenEligibility(EligibilityRegistry):
+    def get(self, instrument_token: int) -> EligibilityStatus | None:
+        raise RuntimeError("eligibility store unavailable")
+
+
+def _internal_error(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+    return s, all_true_context(), c, _BrokenEligibility()
+
+
+INTERNAL_REASON = "An internal error stopped the safety checks. Execution is blocked and no order has been submitted."
+EXIT_REASON = (
+    "This exit includes an order that would open or add to a position instead of closing one. An exit can only close "
+    "or reduce positions this strategy holds."
+)
 
 _stale = {d: DataHealth.HEALTHY for d in DataInput} | {DataInput.LEG_PRICES: DataHealth.STALE}
 _missing = {d: DataHealth.HEALTHY for d in DataInput if d is not DataInput.UNDERLYING_PRICE}
@@ -142,6 +166,10 @@ MUTATIONS = [
      "Leg 4 (BUY NIFTY 23,600 CE, expiry 06 Oct 2026) has not been confirmed as available on Zerodha yet. "
      "Refresh availability to continue. Strikes you could consider instead: 23,550 or 23,650. Your strategy has "
      "not been changed."),
+    ("exit-opens-position", _exit_opens_position, CheckCode.EXIT_NOT_REDUCE_ONLY, EXIT_REASON),
+    ("internal-error", _internal_error, CheckCode.INTERNAL_ERROR, INTERNAL_REASON),
+    ("context-for-another-strategy", _ctx(strategy_id="S-2"), CheckCode.STRATEGY_MISMATCH,
+     "This check was prepared for a different strategy. Execution is blocked; reopen the strategy to continue."),
     ("quantity", _bad_quantity, CheckCode.QUANTITY_INVALID, None),  # 4 legs; reason checked in test_validation
     ("expired", _expired, CheckCode.EXPIRY_PASSED, None),
     ("duplicate", _duplicate, CheckCode.DUPLICATE_LEG,
@@ -153,10 +181,10 @@ MUTATIONS = [
 def test_core_all_checks_true_golden_condor_passes(condor, catalogue, eligibility):
     """AC-1: with every context check true, the golden Iron Condor on the real instrument list is not blocked."""
     before = copy.deepcopy(condor)
-    result = check_pre_execution(condor, all_true_context(), catalogue, eligibility)
+    result = check(condor, all_true_context(), catalogue, eligibility)
     assert result.failures == ()
     assert result.blocked is False
-    assert set(result.passed) == set(CheckCode)
+    assert set(result.passed) == set(CheckCode) - {CheckCode.INTERNAL_ERROR}  # INTERNAL_ERROR is never 'passed'
     assert result.not_checked == ()
     assert result.max_loss == D("7085.00")  # (200 - 91) x 65: the §6 condor (8175 at 75 units) at one lot of 65
     assert condor == before
@@ -173,7 +201,7 @@ def test_flipping_one_check_blocks_with_exactly_that_code(case, mutate, code, re
     strategy, ctx, cat, elig = mutate(condor, catalogue, eligibility)
     before = copy.deepcopy(strategy)
     legs_before = strategy.legs
-    result = check_pre_execution(strategy, ctx, cat, elig)
+    result = check(strategy, ctx, cat, elig)
     assert result.blocked is True
     assert result.failed_codes == {code}, [f.reason for f in result.failures]
     assert code not in result.passed
@@ -185,7 +213,7 @@ def test_flipping_one_check_blocks_with_exactly_that_code(case, mutate, code, re
 def test_multiple_failures_are_all_reported_in_order(condor, catalogue, eligibility):
     """AC-2: several failures at once are ALL reported (not just the first), each with its own reason."""
     ctx = all_true_context(market_open=False, session_valid=False, margin_available=D("100"))
-    result = check_pre_execution(Strategy(condor_legs(quantity=130 + 1)), ctx, catalogue, eligibility)
+    result = check(Strategy(condor_legs(quantity=130 + 1)), ctx, catalogue, eligibility)
     assert [f.code for f in result.failures] == [
         CheckCode.MARKET_CLOSED,
         CheckCode.SESSION_INVALID,
@@ -204,7 +232,7 @@ def test_blocked_event_is_logged_with_every_code(condor, catalogue, eligibility,
     """AC-2: a blocked check is logged with the strategy, the action and every failed code."""
     ctx = all_true_context(broker_connected=False, reconciliation_blocked_strategy_ids=frozenset({"S-1"}))
     with caplog.at_level(logging.INFO, logger="ofo.execution.safety"):
-        check_pre_execution(condor, ctx, catalogue, eligibility)
+        check(condor, ctx, catalogue, eligibility)
     (record,) = caplog.records
     assert record.levelno == logging.WARNING
     assert record.getMessage() == (
@@ -221,7 +249,7 @@ def test_every_reason_is_plain_decision_support_wording(condor, catalogue, eligi
         elig = EligibilityRegistry()
         for entry in cat.all_entries():
             elig.record(EligibilityStatus(entry.contract.instrument_token, True, AS_OF))
-        result = check_pre_execution(*mutate(Strategy(condor_legs()), cat, elig))
+        result = check(*mutate(Strategy(condor_legs()), cat, elig))
         for failure in result.failures:
             assert failure.reason.strip() and not FORBIDDEN.search(failure.reason), failure.reason
             seen += 1
@@ -230,14 +258,12 @@ def test_every_reason_is_plain_decision_support_wording(condor, catalogue, eligi
 
 def test_exit_allowed_for_limited_user_new_entry_blocked(condor, catalogue, eligibility):
     """AC-1 (ADR-037): a Limited user (no Pro) may exit an active strategy; a new entry or adjustment is blocked."""
-    exit_result = check_pre_execution(
-        condor, all_true_context(pro_entitled=False, action=ExecutionAction.EXIT), catalogue, eligibility
-    )
+    exit_result = check(Strategy(closing_orders(condor.legs)), _exit_ctx(pro_entitled=False), catalogue, eligibility)
     assert exit_result.failures == ()
     assert CheckCode.ENTITLEMENT_REQUIRED not in exit_result.passed  # not applicable to an exit
-    entry = check_pre_execution(condor, all_true_context(pro_entitled=False), catalogue, eligibility)
+    entry = check(condor, all_true_context(pro_entitled=False), catalogue, eligibility)
     assert entry.failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
-    adjust = check_pre_execution(
+    adjust = check(
         condor,
         all_true_context(pro_entitled=False, action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED),
         catalogue,
@@ -249,29 +275,31 @@ def test_exit_allowed_for_limited_user_new_entry_blocked(condor, catalogue, elig
 def test_adjustment_executes_only_a_proposed_version(condor, catalogue, eligibility):
     """AC-1: 'version active/proposed as appropriate' - an adjustment of an ACTIVE version is refused."""
     ok = all_true_context(action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED)
-    assert check_pre_execution(condor, ok, catalogue, eligibility).failures == ()
+    assert check(condor, ok, catalogue, eligibility).failures == ()
     bad = all_true_context(action=ExecutionAction.ADJUSTMENT, version_state=VersionState.ACTIVE)
-    assert check_pre_execution(condor, bad, catalogue, eligibility).failed_codes == {CheckCode.VERSION_NOT_EXECUTABLE}
+    assert check(condor, bad, catalogue, eligibility).failed_codes == {CheckCode.VERSION_NOT_EXECUTABLE}
 
 
 def test_reconciliation_block_on_another_strategy_does_not_block_this_one(condor, catalogue, eligibility):
     """AC-1 (REQ-060 AC-7): a mismatch blocks only its own strategy."""
     other = all_true_context(reconciliation_blocked_strategy_ids=frozenset({"S-2", "S-3"}))
-    assert check_pre_execution(condor, other, catalogue, eligibility).blocked is False
+    assert check(condor, other, catalogue, eligibility).blocked is False
     mine = all_true_context(strategy_id="S-2", reconciliation_blocked_strategy_ids=frozenset({"S-2", "S-3"}))
-    assert check_pre_execution(condor, mine, catalogue, eligibility).failed_codes == {CheckCode.RECONCILIATION_MISMATCH}
+    result = check(condor, mine, catalogue, eligibility, strategy_id="S-2")
+    assert result.failed_codes == {CheckCode.RECONCILIATION_MISMATCH}
 
 
 def test_reconciliation_mismatch_blocks_an_exit_too(condor, catalogue, eligibility):
     """AC-1 (ADR-019 Q200: Reconciliation Required -> execute no): exits are blocked by this strategy's mismatch."""
-    ctx = all_true_context(action=ExecutionAction.EXIT, reconciliation_blocked_strategy_ids=frozenset({"S-1"}))
-    assert check_pre_execution(condor, ctx, catalogue, eligibility).failed_codes == {CheckCode.RECONCILIATION_MISMATCH}
+    ctx = _exit_ctx(reconciliation_blocked_strategy_ids=frozenset({"S-1"}))
+    result = check(Strategy(closing_orders(condor.legs)), ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.RECONCILIATION_MISMATCH}
 
 
 def test_margin_exactly_equal_passes(condor, catalogue, eligibility):
     """AC-1: margin sufficient means available >= required; equal passes, one paisa short blocks (above)."""
     ctx = all_true_context(margin_available=D("48210.75"))
-    assert check_pre_execution(condor, ctx, catalogue, eligibility).blocked is False
+    assert check(condor, ctx, catalogue, eligibility).blocked is False
 
 
 @pytest.mark.parametrize(
@@ -310,9 +338,9 @@ def test_futures_leg_is_checked_against_the_real_futures_contract(catalogue, eli
     import datetime
 
     fut = Leg(Action.BUY, Instrument.FUT, None, datetime.date(2026, 10, 27), 65, D("23250"))
-    assert check_pre_execution(Strategy((fut,)), all_true_context(), catalogue, eligibility).failures == ()
+    assert check(Strategy((fut,)), all_true_context(), catalogue, eligibility).failures == ()
     wrong = dataclasses.replace(fut, expiry=EXPIRY)
-    result = check_pre_execution(Strategy((wrong,)), all_true_context(), catalogue, eligibility)
+    result = check(Strategy((wrong,)), all_true_context(), catalogue, eligibility)
     assert result.failed_codes == {CheckCode.CONTRACT_NOT_FOUND, CheckCode.QUANTITY_INVALID}
     assert all(f.alternatives == () for f in result.failures)
 
@@ -383,7 +411,7 @@ def test_rule5_limited_adjustment_table(case, active, proposed, allowed, catalog
     """AC-1 (ADR-037, REQ-059 Gate decisions rule 5): a Limited user may adjust only if no position grows AND the
     premium-free worst case at expiry is no worse (same-share reduction always; calendars only close shorts)."""
     strategy, ctx = _limited_adjustment(proposed, active=active)
-    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    result = check(strategy, ctx, catalogue, eligibility)
     if allowed:
         assert result.failures == (), [f.reason for f in result.failures]
     else:
@@ -394,14 +422,14 @@ def test_rule5_limited_adjustment_table(case, active, proposed, allowed, catalog
 def test_rule5_pro_user_passes_every_case(case, active, proposed, allowed, catalogue, eligibility):
     """AC-1: a Pro user passes every rule-5 case."""
     strategy, ctx = _limited_adjustment(proposed, pro=True, active=active)
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
+    assert check(strategy, ctx, catalogue, eligibility).failures == ()
 
 
 def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, eligibility):
     """AC-1: the Pro reason for a larger worst case states both premium-free numbers (reviewer: -26,000 ->
     -2,990,000 when only the bought 22,800 PE wing of the 2-lot condor is closed)."""
     strategy, ctx = _limited_adjustment(IC[1:])
-    (failure,) = check_pre_execution(strategy, ctx, catalogue, eligibility).failures
+    (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert failure.reason == (
         "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from a loss "
         "of ₹26,000.00 to a loss of ₹2,990,000.00. Adjustments that add risk need Pro. Exiting, or closing or "
@@ -412,21 +440,21 @@ def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, elig
 def test_rule5_unlimited_after_finite_before_says_unlimited(catalogue, eligibility):
     """AC-1: closing the long future of a covered call leaves a naked short call: 'to an unlimited loss'."""
     strategy, ctx = _limited_adjustment(COVERED_CALL[1:], active=COVERED_CALL)
-    (failure,) = check_pre_execution(strategy, ctx, catalogue, eligibility).failures
+    (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert "to an unlimited loss" in failure.reason
 
 
 def test_closing_all_four_legs_is_an_exit_open_to_limited_user(condor, catalogue, eligibility):
     """AC-1 (ADR-037): closing every leg is an EXIT (a strategy cannot have zero legs), allowed without Pro."""
-    ctx = all_true_context(action=ExecutionAction.EXIT, pro_entitled=False)
-    assert check_pre_execution(condor, ctx, catalogue, eligibility).failures == ()
+    result = check(Strategy(closing_orders(condor.legs)), _exit_ctx(pro_entitled=False), catalogue, eligibility)
+    assert result.failures == ()
 
 
 def test_multi_expiry_adjustment_closing_a_long_needs_pro(catalogue, eligibility):
     """AC-1 (rule 5d): a multi-expiry adjustment that closes a long leg (not same-share, not shorts only) needs Pro."""
     active = IC + (_l(B, CE, "23400", expiry=NEAR),)
     strategy, ctx = _limited_adjustment(active[1:], active=active)
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+    assert check(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
 
 
 def test_both_unlimited_but_worse_downside_needs_pro(catalogue, eligibility):
@@ -435,7 +463,7 @@ def test_both_unlimited_but_worse_downside_needs_pro(catalogue, eligibility):
     -13,000 to -1,495,000 -> needs Pro (the slope comparison alone would allow it)."""
     active = (_l(S, CE, "23400"), _l(S, PE, "23000"), _l(B, PE, "22800"))
     strategy, ctx = _limited_adjustment(active[:2], active=active)
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+    assert check(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
 
 
 @pytest.mark.parametrize("proposed", [
@@ -448,16 +476,16 @@ def test_both_unlimited_but_worse_downside_needs_pro(catalogue, eligibility):
 def test_limited_user_is_blocked_from_risk_adding_or_rolling_adjustments(proposed, catalogue, eligibility):
     """AC-1 (ADR-037): a new contract, a side flip or a quantity increase needs Pro; the Pro reason is shown."""
     strategy, ctx = _limited_adjustment(proposed)
-    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    result = check(strategy, ctx, catalogue, eligibility)
     assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.ENTITLEMENT_REQUIRED, PRO_REASON)]
     pro_strategy, pro_ctx = _limited_adjustment(proposed, pro=True)
-    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+    assert check(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
 
 
 def test_adjustment_without_active_legs_needs_pro(catalogue, eligibility):
     """AC-1 (fail closed): without the active legs the adjustment cannot be shown to reduce only, so it needs Pro."""
     strategy, ctx = _limited_adjustment(_replace_leg(1, quantity=65), active=None)
-    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+    assert check(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
 
 
 # ---------------------------------------------------------------- AC-2 structured audit record (fix round 1)
@@ -468,11 +496,11 @@ def test_every_blocked_result_carries_a_blocked_execution_record(case, mutate, c
                                                                  eligibility):
     """AC-2: every blocked result carries the audit record: strategy, version, action, codes, reasons, time, actor."""
     strategy, ctx, cat, elig = mutate(condor, catalogue, eligibility)
-    result = check_pre_execution(strategy, ctx, cat, elig)
+    result = check(strategy, ctx, cat, elig)
     record = result.blocked_execution
     assert record is not None
     assert (record.strategy_id, record.version_id, record.action, record.actor) == (
-        "S-1", "V-3", "NEW_ENTRY", "user:U-42")
+        "S-1", "V-3", ctx.action.value, "user:U-42")
     assert record.failed_codes == tuple(f.code for f in result.failures)
     assert record.reasons == tuple(f.reason for f in result.failures)
     assert record.at == ctx.as_of and record.at.utcoffset() is not None
@@ -480,7 +508,7 @@ def test_every_blocked_result_carries_a_blocked_execution_record(case, mutate, c
 
 def test_passed_result_carries_no_blocked_record(condor, catalogue, eligibility):
     """AC-2: a result that is not blocked carries no blocked-execution record."""
-    assert check_pre_execution(condor, all_true_context(), catalogue, eligibility).blocked_execution is None
+    assert check(condor, all_true_context(), catalogue, eligibility).blocked_execution is None
 
 
 @pytest.mark.parametrize("overrides", [{"version_id": ""}, {"actor": None}, {"active_legs": ["leg"]}],
@@ -489,3 +517,144 @@ def test_malformed_record_inputs_are_refused(overrides):
     """AC-2 (fail closed): the record's identity inputs are required and typed."""
     with pytest.raises(ValueError):
         all_true_context(**overrides)
+
+
+# ---------------------------------------------------------------- Tier A review round (MAJOR 1, MAJOR 2, MINOR)
+
+EXIT_ALL = closing_orders(condor_legs())
+NAKED_CALL_650 = (Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 650, D("91.50")),)
+
+
+@pytest.mark.parametrize("pro", [False, True], ids=["limited", "pro"])
+@pytest.mark.parametrize("active", [None, condor_legs()], ids=["no-active-legs", "active-condor"])
+def test_exit_that_opens_a_position_is_blocked(pro, active, catalogue, eligibility):
+    """AC-1 (review MAJOR 1): a naked SELL 23,400 CE x 650 labelled EXIT is not an exit - blocked on every plan,
+    with or without the active legs, and the blocked record is carried."""
+    ctx = all_true_context(action=ExecutionAction.EXIT, pro_entitled=pro, active_legs=active)
+    result = check(Strategy(NAKED_CALL_650), ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.EXIT_NOT_REDUCE_ONLY}
+    assert result.blocked_execution is not None
+    expected = EXIT_REASON if active else (
+        "We could not compare this exit with the strategy's open positions. Execution is blocked and no order has "
+        "been submitted.")
+    assert [f.reason for f in result.failures] == [expected]
+
+
+def test_exit_may_close_part_but_never_more_than_held(catalogue, eligibility):
+    """AC-1 (review MAJOR 1): buying back the held SELL 23,400 CE x 65 is an exit; buying back 130 is not."""
+    part = (Leg(Action.BUY, Instrument.CE, D("23400"), EXPIRY, 65, D("80.00")),)
+    assert check(Strategy(part), _exit_ctx(pro_entitled=False), catalogue, eligibility).failures == ()
+    over = (dataclasses.replace(part[0], quantity=130),)
+    assert check(Strategy(over), _exit_ctx(), catalogue, eligibility).failed_codes == {CheckCode.EXIT_NOT_REDUCE_ONLY}
+
+
+def _stale_leg_prices(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
+    return {"data_health": _stale}
+
+
+def _not_accepting_fresh_orders(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
+    elig.record(EligibilityStatus(find_token(cat, "CE", "23400"), False, AS_OF, "OI limit reached"))
+    return {}
+
+
+def _eligibility_never_read(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
+    fresh = EligibilityRegistry()
+    skip = find_token(cat, "PE", "23000")
+    for entry in cat.all_entries():
+        token = entry.contract.instrument_token
+        if token != skip:
+            fresh.record(EligibilityStatus(token, True, AS_OF))
+    elig.__dict__.update(fresh.__dict__)
+    return {}
+
+
+EXIT_SKIPPED = [
+    ("margin-short", lambda c, e: {"margin_available": D("0.00")}, CheckCode.MARGIN_INSUFFICIENT),
+    ("margin-unknown", lambda c, e: {"margin_available": None}, CheckCode.MARGIN_INSUFFICIENT),
+    ("not-accepting-fresh-orders", _not_accepting_fresh_orders, CheckCode.CONTRACT_NOT_ELIGIBLE),
+    ("eligibility-never-read", _eligibility_never_read, CheckCode.CONTRACT_NOT_ELIGIBLE),
+    ("rules-invalid", lambda c, e: {"rules_valid": False}, CheckCode.RULES_INVALID),
+    ("data-stale", _stale_leg_prices, CheckCode.DATA_UNHEALTHY),
+]
+
+
+@pytest.mark.parametrize("case,flip,code", EXIT_SKIPPED, ids=[x[0] for x in EXIT_SKIPPED])
+def test_checks_not_required_for_an_exit_do_not_block_it(case, flip, code, catalogue, eligibility):
+    """AC-1 (SPEC CHANGE, review MAJOR 2): margin, 'not accepting fresh orders' eligibility, rule validity and data
+    health do not block an exit; stale data is carried as a warning."""
+    result = check(Strategy(EXIT_ALL), _exit_ctx(**flip(catalogue, eligibility)), catalogue, eligibility)
+    assert result.failures == ()
+    assert code not in result.passed and code in result.not_applicable
+    stale_flags = [f.message for f in result.flags if f.code is FlagCode.DATA_STALE_ON_EXIT]
+    assert stale_flags == (["Prices shown may be stale — confirm to continue."] if case == "data-stale" else [])
+
+
+@pytest.mark.parametrize("case,flip,code", EXIT_SKIPPED, ids=[x[0] for x in EXIT_SKIPPED])
+def test_the_same_flips_block_a_new_entry(case, flip, code, condor, catalogue, eligibility):
+    """AC-1: entries keep every check - each flip above blocks a NEW_ENTRY with its own code."""
+    result = check(condor, all_true_context(**flip(catalogue, eligibility)), catalogue, eligibility)
+    assert result.failed_codes == {code}
+
+
+TWO_LOTS = condor_legs(quantity=130)
+LATER = datetime.date(2026, 10, 13)  # no real contracts on this expiry
+EXIT_REQUIRED = [
+    ("market-closed", {"market_open": False}, EXIT_ALL, CheckCode.MARKET_CLOSED),
+    ("broker", {"broker_connected": False}, EXIT_ALL, CheckCode.BROKER_NOT_CONNECTED),
+    ("session", {"session_valid": False}, EXIT_ALL, CheckCode.SESSION_INVALID),
+    ("reconciliation", {"reconciliation_blocked_strategy_ids": frozenset({"S-1"})}, EXIT_ALL,
+     CheckCode.RECONCILIATION_MISMATCH),
+    ("dependencies", {"dependencies_satisfied": False}, EXIT_ALL, CheckCode.DEPENDENCIES_UNSATISFIED),
+    ("quantity-not-whole-lots", {"active_legs": TWO_LOTS},
+     (dataclasses.replace(closing_orders(TWO_LOTS)[0], quantity=100),), CheckCode.QUANTITY_INVALID),
+    ("contract-missing", {"active_legs": (dataclasses.replace(condor_legs()[0], expiry=LATER),)},
+     (dataclasses.replace(EXIT_ALL[0], expiry=LATER),), CheckCode.CONTRACT_NOT_FOUND),
+]
+
+
+@pytest.mark.parametrize("case,overrides,orders,code", EXIT_REQUIRED, ids=[x[0] for x in EXIT_REQUIRED])
+def test_checks_required_for_an_exit_still_block_it(case, overrides, orders, code, catalogue, eligibility):
+    """AC-1 (SPEC CHANGE, review MAJOR 2): market open, broker, session, contract exists, valid quantity,
+    reconciliation and dependencies are still required for an exit."""
+    result = check(Strategy(orders), _exit_ctx(**overrides), catalogue, eligibility)
+    assert result.blocked and code in result.failed_codes
+
+
+def test_internal_error_blocks_with_a_record_and_never_passes(condor, catalogue, caplog):
+    """AC-2 (review P10): an exception inside the checks blocks with INTERNAL_ERROR, a record, nothing passed."""
+    with caplog.at_level(logging.ERROR, logger="ofo.execution.safety"):
+        result = check(condor, all_true_context(), catalogue, _BrokenEligibility())
+    assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.INTERNAL_ERROR, INTERNAL_REASON)]
+    assert result.passed == ()
+    assert result.blocked_execution.failed_codes == (CheckCode.INTERNAL_ERROR,)
+    assert any(r.exc_info for r in caplog.records)
+
+
+def test_context_mappings_cannot_be_changed_after_construction():
+    """AC-1 (review P9b): data_health is read-only and detached from the caller's dict."""
+    health = {d: DataHealth.HEALTHY for d in DataInput}
+    ctx = all_true_context(data_health=health)
+    with pytest.raises(TypeError):
+        ctx.data_health[DataInput.LEG_PRICES] = DataHealth.STALE  # type: ignore[index]
+    health[DataInput.LEG_PRICES] = DataHealth.STALE
+    assert ctx.data_health[DataInput.LEG_PRICES] is DataHealth.HEALTHY
+
+
+def test_context_for_the_right_strategy_passes(condor, catalogue, eligibility):
+    """AC-1 (review Q4): the context and the strategy must name the same strategy id."""
+    ctx = all_true_context(strategy_id="S-7")
+    assert check(condor, ctx, catalogue, eligibility, strategy_id="S-7").failures == ()
+    assert check(condor, ctx, catalogue, eligibility, strategy_id="S-1").failed_codes == {CheckCode.STRATEGY_MISMATCH}
+
+
+def test_engine_upper_tail_slope_contract():
+    """AC-1 (review): rule 5 relies on the engine's _upper_tail_slope returning rupees per point, signed by side:
+    calls and futures carry their unit count, puts are flat."""
+    from ofo.engine.metrics import _upper_tail_slope
+
+    def leg(action: Action, kind: Instrument) -> Leg:
+        return Leg(action, kind, None if kind is Instrument.FUT else D("23400"), EXPIRY, 65, D("10.00"))
+
+    pairs = [(Action.BUY, Instrument.CE), (Action.SELL, Instrument.CE), (Action.BUY, Instrument.PE),
+             (Action.SELL, Instrument.PE), (Action.BUY, Instrument.FUT), (Action.SELL, Instrument.FUT)]
+    assert [_upper_tail_slope(leg(a, k)) for a, k in pairs] == [65, -65, 0, 0, 65, -65]

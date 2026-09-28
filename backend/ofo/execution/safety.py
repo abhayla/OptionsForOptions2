@@ -51,6 +51,9 @@ class CheckCode(str, Enum):
     QUANTITY_INVALID = "QUANTITY_INVALID"
     DUPLICATE_LEG = "DUPLICATE_LEG"
     MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
+    EXIT_NOT_REDUCE_ONLY = "EXIT_NOT_REDUCE_ONLY"
+    STRATEGY_MISMATCH = "STRATEGY_MISMATCH"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
     DEPENDENCIES_UNSATISFIED = "DEPENDENCIES_UNSATISFIED"
     RECONCILIATION_MISMATCH = "RECONCILIATION_MISMATCH"
 
@@ -72,6 +75,7 @@ class FlagCode(str, Enum):
     MULTI_EXPIRY = "MULTI_EXPIRY"
     UNLIMITED_LOSS = "UNLIMITED_LOSS"
     CHARGES_UNAVAILABLE = "CHARGES_UNAVAILABLE"
+    DATA_STALE_ON_EXIT = "DATA_STALE_ON_EXIT"
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,7 @@ class SafetyResult:
     failures: tuple[CheckFailure, ...]
     passed: tuple[CheckCode, ...]
     not_checked: tuple[CheckCode, ...]
+    not_applicable: tuple[CheckCode, ...]
     flags: tuple[Flag, ...]
     max_loss: Decimal | _Unlimited | None
     margin_required: Decimal | None
@@ -299,7 +304,7 @@ def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> str | None:
     return _worse_worst_case(active, proposed)
 
 
-def _context_failures(ctx: ExecutionContext, pro_reason: str | None) -> list[CheckFailure]:
+def _context_failures(ctx: ExecutionContext, pro_reason: str | None, strategy_id: str) -> list[CheckFailure]:
     out: list[CheckFailure] = []
 
     def unknown_or(value: bool | None, code: CheckCode, unknown: str, false: str) -> None:
@@ -352,7 +357,7 @@ def _context_failures(ctx: ExecutionContext, pro_reason: str | None) -> list[Che
             f"{_rupees(ctx.margin_required)} this strategy needs. Zerodha's figure is final. No order has been "
             "submitted.",
         ))
-    if ctx.strategy_id in ctx.reconciliation_blocked_strategy_ids:
+    if strategy_id in ctx.reconciliation_blocked_strategy_ids:
         out.append(CheckFailure(
             CheckCode.RECONCILIATION_MISMATCH,
             "Your Zerodha positions for this strategy do not match what we recorded. Resolve the mismatch to "
@@ -438,7 +443,9 @@ def _leg_failures(
 def _risk_flags(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Flag], Decimal | _Unlimited | None]:
     flags: list[Flag] = []
     max_loss: Decimal | _Unlimited | None = None
-    if strategy.is_single_expiry:
+    if ctx.action is ExecutionAction.EXIT:
+        pass  # closing orders are not a strategy; their payoff says nothing about the risk left behind
+    elif strategy.is_single_expiry:
         max_loss = strategy_metrics(strategy).max_loss
         if max_loss is UNLIMITED:
             flags.append(Flag(FlagCode.UNLIMITED_LOSS,
@@ -452,50 +459,127 @@ def _risk_flags(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Flag], 
     return flags, max_loss
 
 
+# REQ-059 Gate decisions (SPEC CHANGE to AC-1, review MAJOR 2): an exit frees margin, closing orders are not fresh
+# positions, and a user must never be stopped from getting out of risk by a rule-definition or data problem.
+EXIT_NOT_REQUIRED: frozenset[CheckCode] = frozenset({
+    CheckCode.MARGIN_INSUFFICIENT,
+    CheckCode.CONTRACT_NOT_ELIGIBLE,
+    CheckCode.RULES_INVALID,
+    CheckCode.DATA_UNHEALTHY,
+    CheckCode.ENTITLEMENT_REQUIRED,
+})
+STALE_ON_EXIT = "Prices shown may be stale — confirm to continue."
+
+
+def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
+    """Review MAJOR 1: every exit order closes or reduces a held position of the same contract, opposite side."""
+    if ctx.active_legs is None:
+        return CheckFailure(
+            CheckCode.EXIT_NOT_REDUCE_ONLY,
+            "We could not compare this exit with the strategy's open positions. Execution is blocked and no order "
+            "has been submitted.",
+        )
+    held = _positions(ctx.active_legs)
+    opposite = {Action.BUY.value: Action.SELL.value, Action.SELL.value: Action.BUY.value}
+    for (key, side), units in _positions(strategy.legs).items():
+        if held.get((key, opposite[side]), 0) < units:
+            return CheckFailure(
+                CheckCode.EXIT_NOT_REDUCE_ONLY,
+                "This exit includes an order that would open or add to a position instead of closing one. An exit "
+                "can only close or reduce positions this strategy holds.",
+            )
+    return None
+
+
+def _run_checks(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    strategy_id: str,
+) -> tuple[
+    list[CheckFailure], tuple[CheckCode, ...], tuple[CheckCode, ...], frozenset[CheckCode], list[Flag],
+    Decimal | _Unlimited | None,
+]:
+    pro_reason = pro_requirement(strategy, ctx)
+    failures = _context_failures(ctx, pro_reason, strategy_id)
+    if strategy_id != ctx.strategy_id:
+        failures.insert(0, CheckFailure(
+            CheckCode.STRATEGY_MISMATCH,
+            "This check was prepared for a different strategy. Execution is blocked; reopen the strategy to continue.",
+        ))
+    not_checked: tuple[CheckCode, ...] = ()
+    if ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        failures.insert(0, CheckFailure(
+            CheckCode.UNDERLYING_UNSUPPORTED,
+            f"{ctx.underlying} is not supported. Supported underlyings: {', '.join(SUPPORTED_UNDERLYINGS)}.",
+        ))
+        not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
+    else:
+        failures.extend(_leg_failures(strategy, ctx, catalogue, eligibility))
+    flags, max_loss = _risk_flags(strategy, ctx)
+
+    not_applicable: frozenset[CheckCode] = frozenset()
+    if ctx.action is ExecutionAction.EXIT:
+        not_applicable = EXIT_NOT_REQUIRED
+        if any(f.code is CheckCode.DATA_UNHEALTHY for f in failures):
+            flags.append(Flag(FlagCode.DATA_STALE_ON_EXIT, STALE_ON_EXIT))
+        failures = [f for f in failures if f.code not in not_applicable]
+        exit_failure = _exit_failure(strategy, ctx)
+        if exit_failure is not None:
+            failures.append(exit_failure)
+    elif pro_reason is None:
+        not_applicable = frozenset({CheckCode.ENTITLEMENT_REQUIRED})
+    not_applicable |= {CheckCode.INTERNAL_ERROR}
+    failed = {f.code for f in failures}
+    passed = tuple(c for c in CheckCode if c not in failed and c not in not_checked and c not in not_applicable)
+    return failures, passed, not_checked, not_applicable - {CheckCode.INTERNAL_ERROR}, flags, max_loss
+
+
 def check_pre_execution(
-    strategy: Strategy, context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry
+    strategy: Strategy, context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    *, strategy_id: str,
 ) -> SafetyResult:
-    """Run every pre-execution check (REQ-059 AC-1, AC-3); block if any fails; never change ``strategy``."""
+    """Run every pre-execution check (REQ-059 AC-1, AC-3); block if any fails; never change ``strategy``.
+
+    ``strategy_id`` is the id of the strategy being executed; a context built for another strategy is blocked.
+    Any internal exception blocks with ``INTERNAL_ERROR`` (never a pass) and still carries the audit record.
+    """
     if not isinstance(strategy, Strategy):
         raise ValueError(f"strategy must be a Strategy, got {strategy!r}")
     if not isinstance(context, ExecutionContext):
         raise ValueError(f"context must be an ExecutionContext, got {context!r}")
     if not isinstance(catalogue, Catalogue) or not isinstance(eligibility, EligibilityRegistry):
         raise ValueError("catalogue and eligibility must be a Catalogue and an EligibilityRegistry")
+    if not isinstance(strategy_id, str) or not strategy_id.strip():
+        raise ValueError(f"strategy_id must be a non-empty string, got {strategy_id!r}")
 
-    pro_reason = pro_requirement(strategy, context)
-    failures = _context_failures(context, pro_reason)
-    not_checked: tuple[CheckCode, ...] = ()
-    if context.underlying not in SUPPORTED_UNDERLYINGS:
-        failures.insert(0, CheckFailure(
-            CheckCode.UNDERLYING_UNSUPPORTED,
-            f"{context.underlying} is not supported. Supported underlyings: {', '.join(SUPPORTED_UNDERLYINGS)}.",
-        ))
-        not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
-    else:
-        failures.extend(_leg_failures(strategy, context, catalogue, eligibility))
-    flags, max_loss = _risk_flags(strategy, context)
+    try:
+        failures, passed, not_checked, not_applicable, flags, max_loss = _run_checks(
+            strategy, context, catalogue, eligibility, strategy_id
+        )
+    except Exception:
+        logger.exception("pre-execution checks raised strategy=%s action=%s", strategy_id, context.action.value)
+        failures = [CheckFailure(
+            CheckCode.INTERNAL_ERROR,
+            "An internal error stopped the safety checks. Execution is blocked and no order has been submitted.",
+        )]
+        passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
-    failed = {f.code for f in failures}
-    applicable = [c for c in CheckCode if pro_reason is not None or c is not CheckCode.ENTITLEMENT_REQUIRED]
-    passed = tuple(c for c in applicable if c not in failed and c not in not_checked)
     record = None
     if failures:
         record = BlockedExecution(
-            strategy_id=context.strategy_id, version_id=context.version_id, action=context.action.value,
+            strategy_id=strategy_id, version_id=context.version_id, action=context.action.value,
             failed_codes=tuple(f.code for f in failures), reasons=tuple(f.reason for f in failures),
             at=context.as_of, actor=context.actor,
         )
     result = SafetyResult(
-        failures=tuple(failures), passed=passed, not_checked=not_checked, flags=tuple(flags), max_loss=max_loss,
+        failures=tuple(failures), passed=passed, not_checked=not_checked,
+        not_applicable=tuple(c for c in CheckCode if c in not_applicable), flags=tuple(flags), max_loss=max_loss,
         margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
     )
     if result.blocked:
         logger.warning(
-            "pre-execution blocked strategy=%s action=%s codes=%s", context.strategy_id, context.action.value,
+            "pre-execution blocked strategy=%s action=%s codes=%s", strategy_id, context.action.value,
             ",".join(f.code.value for f in result.failures),
         )
     else:
-        logger.info("pre-execution passed strategy=%s action=%s", context.strategy_id, context.action.value)
+        logger.info("pre-execution passed strategy=%s action=%s", strategy_id, context.action.value)
     return result
-

@@ -15,7 +15,15 @@ from typing import Any, Callable
 import pytest
 
 from ofo.engine import Action, Instrument, Leg, Strategy
-from ofo.execution import DataHealth, DataInput, ExecutionAction, ExecutionContext, VersionState
+from ofo.execution import (
+    DataHealth,
+    DataInput,
+    ExecutionAction,
+    ExecutionContext,
+    SafetyResult,
+    VersionState,
+    check_pre_execution,
+)
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
@@ -82,6 +90,23 @@ def all_true_context(**overrides: Any) -> ExecutionContext:
 @pytest.fixture()
 def make_context() -> Callable[..., ExecutionContext]:
     return all_true_context
+
+
+STRATEGY_ID = "S-1"
+
+
+def check(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    strategy_id: str = STRATEGY_ID,
+) -> SafetyResult:
+    """Run the gate for a strategy whose own id is ``strategy_id`` (every test strategy is S-1 unless stated)."""
+    return check_pre_execution(strategy, ctx, catalogue, eligibility, strategy_id=strategy_id)
+
+
+def closing_orders(legs: tuple[Leg, ...]) -> tuple[Leg, ...]:
+    """The orders that close ``legs``: same contract and quantity, opposite side."""
+    flip = {Action.BUY: Action.SELL, Action.SELL: Action.BUY}
+    return tuple(dataclasses.replace(leg, action=flip[leg.action]) for leg in legs)
 
 
 def find_token(catalogue: Catalogue, instrument_type: str, strike: str, expiry: datetime.date = EXPIRY) -> int:

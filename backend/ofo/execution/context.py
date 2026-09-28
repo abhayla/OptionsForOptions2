@@ -22,6 +22,20 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
   -26,000 -> -26,000 without). Classified from the legs, before (``active_legs``) vs after (the proposed strategy),
   never from a user flag; no active legs to compare needs Pro (fail closed).
   ``pro_entitled`` is the entitlement layer's answer, passed in as a boolean; this module does not import that layer.
+- **An EXIT must really be an exit (Tier A review MAJOR 1).** Every exit order closes or reduces a position the
+  strategy holds (``active_legs``): same contract, opposite side, never more than held. No active legs, or any order
+  that would open or add to a position, blocks with ``EXIT_NOT_REDUCE_ONLY`` on every plan, Pro included.
+- **What an EXIT needs (SPEC CHANGE to REQ-059 AC-1, review MAJOR 2, ADR-045).** Required: market open, broker
+  connected, session valid, every contract exists in the catalogue, quantities valid (reduce-only, positive, whole
+  lots), no unresolved reconciliation mismatch for this strategy, dependencies satisfied. Not required: margin (an
+  exit frees margin), eligibility (closing orders are not fresh positions), rule validity, entitlement. Unhealthy
+  data is a warning ("Prices shown may be stale — confirm to continue."), never a block. Entries and adjustments keep
+  every check. Checks still applied to an exit and not named in that decision: version state, supported
+  underlying, expiry not passed, contract still listed, no duplicate legs.
+- **The context belongs to one strategy (review Q4).** ``check_pre_execution`` takes the executed strategy's id and
+  blocks with ``STRATEGY_MISMATCH`` when the context names another. Mappings in the context are read-only.
+- **An internal error never passes (review P10).** Any exception inside the checks blocks with ``INTERNAL_ERROR``
+  and still carries the blocked-execution record.
 - **Unknown eligibility blocks.** A contract with no recorded Zerodha eligibility read is not executable (fail closed,
   matching ``EligibilityRegistry.is_tradable``).
 - **Duplicate legs block, never merged.** The same contract twice is reported; the user edits the strategy.
@@ -38,6 +52,7 @@ import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Mapping, Protocol
 
 from ofo.engine import Leg, Strategy
@@ -151,7 +166,7 @@ class ExecutionContext:
                 raise ValueError(f"unknown data_health input {key!r}; expected one of {[d.value for d in DataInput]}")
             if not isinstance(value, DataHealth):
                 raise ValueError(f"data_health[{key.value}] must be a DataHealth, got {value!r}")
-        object.__setattr__(self, "data_health", dict(self.data_health))
+        object.__setattr__(self, "data_health", MappingProxyType(dict(self.data_health)))
         for name in ("margin_available", "margin_required", "charges_estimate"):
             _optional_decimal(getattr(self, name), name)
         blocked = self.reconciliation_blocked_strategy_ids
