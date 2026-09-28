@@ -82,6 +82,21 @@ sessions; this repo's kit rules govern).
 system" → ADR-021 · §12 Q81 not confirmed → ADR-027, spec/open-questions.md Q81 · §15 "explicit exit plan" →
 superseded (ADR-009) · §26 Q72–Q77 map → ADR-021.
 
+## Chat1 (owner's own replies, excerpts)
+Q8 = Yes, public SaaS = B, Q14 = B → ADR-001 · Q29 = A → ADR-002 · template list, beginner/advanced paths →
+ADR-006 · chain as supporting tool + multi-select import, Q35 = A, Q55 = A → ADR-007 · unavailable legs cannot be
+added → ADR-016 · Q66 → ADR-026 · Q67 = A, Q90 = A, Q91 = A, active-strategy monitoring exception → ADR-023 ·
+simple action-oriented home = B → ADR-027 · never ask for Zerodha password/PIN/OTP → ADR-020 · "Suggested action:
+Move Call Spread" mock-up → **not carried** (ADR-003) · handoff-creation and continuation-prompt text → process, not
+carried (kit rules govern).
+
+## Chat2 (process)
+Operating model (known decision → implement … production → wait) and solo-founder maintainability → ADR-030 ·
+confirms the provenance limits recorded in `docs/reference/chatgpt/README.md` · the rest is the continuation prompt
+(already in Chat1) and file-delivery chatter → not carried.
+
 ## Question numbers with no record in any file
-Q1–Q32 (wording not retained; outcomes live in H1's unnumbered sections), Q33–Q42 (except Q33A), Q60, Q62, Q65,
-Q67–Q69, Q71. Answer letters exist for Q58–Q97 in H2 (e.g. Q82 = C, Q83 = D, Q63 = C); none exist for Q72–Q77, Q81.
+Q1–Q7, Q9–Q13, Q15–Q28, Q30–Q34, Q36–Q42 (except Q33A) — outcomes survive only in H1's unnumbered sections — and
+Q60, Q62, Q65, Q68, Q69, Q71. Chat1 shows three answers ("B") whose question numbers are cut off: the simple home
+screen, public SaaS, and the Option Chain role. Answer letters exist for Q58–Q97 in H2 (e.g. Q82 = C, Q83 = D,
+Q63 = C); none for Q72–Q77, Q81.

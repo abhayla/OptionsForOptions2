@@ -89,7 +89,8 @@ needs the current estimate, but the estimate needs pricing assumptions (IV, time
 
 ### Q81 — OPEN (confirm) — Home dashboard layout
 Every handoff calls the Home layout in ADR-027 *proposed*; the Latest handoff says to confirm it; no answer is
-recorded. **Recommended:** accept it as written.
+recorded. The direction is already locked (Chat1: "simple, action-oriented home screen, not a trading terminal"
+= B); only the exact layout is unconfirmed. **Recommended:** accept it as written.
 
 ## Open areas listed by the handoff (§95) — to become Q-numbers only when work needs them
 Exact production market-data vendor and licensing · Zerodha commercial approval for SaaS data use · historical

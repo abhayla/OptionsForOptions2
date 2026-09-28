@@ -1,2 +1,2 @@
 # Owner source documents are kept byte-for-byte (docs/reference/chatgpt/README.md): never convert line endings.
-docs/reference/chatgpt/*.md -text
+docs/reference/chatgpt/* -text

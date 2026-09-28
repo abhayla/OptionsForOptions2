@@ -4,7 +4,7 @@ Updated 2026-09-28 (spec import from the owner's ChatGPT handoffs).
 
 ## DONE
 - Project created from Factory kit 1.2.0 with the production seatbelt; CI green on the first push.
-- 2026-09-28: five ChatGPT handoff files imported unchanged into `docs/reference/chatgpt/` (SHA-256 verified), and
+- 2026-09-28: five ChatGPT handoff files and two chat transcripts (Chat1, Chat2) imported unchanged into `docs/reference/chatgpt/` (SHA-256 verified), and
   turned into the spec: 31 decision records (`spec/decisions/ADR-001`–`ADR-031`), `spec/vision/vision.md`,
   `spec/business-rules/scenario-calculations.md` (Iron Condor example recomputed: 0 mismatches),
   `spec/data/domain-model.md`, `spec/testing/core-invariants.md`, `spec/open-questions.md`,

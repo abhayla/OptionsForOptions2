@@ -1,0 +1,930 @@
+Excellent. B is locked.
+
+The product will start with a simple, action-oriented home screen, not a trading terminal.
+
+The philosophy is becoming very clear:
+
+Don't make the user learn our software. Make the software understand the user's trading intent.
+
+Question 8 — What instruments should V1 actually support?
+
+You originally mentioned:
+
+Call Buy
+Call Sell
+Put Buy
+Put Sell
+Futures Buy
+Futures Sell
+Multiple legs / combinations
+NIFTY
+SENSEX
+
+There's an important distinction here.
+
+I recommend that the underlying universe remain extremely small in V1:
+
+NIFTY + SENSEX only
+
+But within those, the strategy builder should support individual legs, so users can construct virtually any combination:
+
+Options
+Buy CE
+Sell CE
+Buy PE
+Sell PE
+Futures
+Buy Future
+Sell Future
+Multi-leg
+
+For example:
+
+Bull Put Spread
+
+Sell PE
+Buy lower-strike PE
+
+Iron Condor
+
+Sell CE
+Buy higher CE
+Sell PE
+Buy lower PE
+
+Covered/hedged futures strategy
+
+Future + options
+
+And eventually users can combine options + futures into more sophisticated structures.
+
+My recommendation
+
+Don't create a separate menu containing 30 named strategies.
+
+Instead, have:
+
+Strategy Templates
+
+and
+
+Manual Builder
+
+The templates make things easy for beginners, while the builder gives experienced users freedom.
+
+For example:
+
+Popular strategies
+
+🟢 Bull Put Spread
+🟢 Bear Call Spread
+🟢 Iron Condor
+🟢 Iron Fly
+🟢 Calendar Spread
+🟢 Straddle
+🟢 Strangle
+🟢 Covered strategies
+🟢 Custom Strategy
+
+But underneath, everything is built from the same six basic instruments/actions.
+
+That will make the system much more scalable.
+
+One subtle decision
+
+Should users be allowed to create unlimited custom combinations?
+
+For example:
+
+NIFTY Future Buy
+
+NIFTY 25,000 PE Buy
+NIFTY 26,000 CE Sell
+another option leg...
+My recommendation: Yes.
+
+The system should not artificially restrict strategy construction.
+
+However, we can distinguish:
+
+Beginner mode
+
+Choose a strategy → answer simple questions → system builds it.
+
+Advanced mode
+
+Add legs manually → configure every parameter.
+
+Same underlying engine.
+
+Question 8
+
+Do you agree with:
+
+NIFTY + SENSEX only in V1, but support all six basic leg types and unlimited multi-leg combinations through the strategy engine?
+
+Yes / No
+
+If No, tell me what you want changed.
+
+Yes 
+
+Excellent. B is locked: this will be a public SaaS product, not merely an internal tool for your existing customers.
+
+That changes one important architectural principle:
+
+We should build it as a multi-tenant product from the beginning, but launch progressively—small beta first, public later.
+
+We now have enough clarity on the product philosophy, but we're not yet at the 95% confidence threshold. There are still several important decisions around execution, user experience, market data, risk, pricing, and compliance.
+
+Question 14 — Desktop, mobile, or both?
+
+This matters more than it initially appears.
+
+Option strategy construction involves things like:
+
+payoff graphs
+option chains
+multiple legs
+P&L
+margin
+adjustment scenarios
+live positions
+order review
+
+A phone can become cramped very quickly.
+
+I see three approaches:
+
+A — Desktop-first web application
+
+Optimized for laptop/desktop.
+
+Mobile can be supported later.
+
+Pros: Best experience for strategy construction and analysis.
+
+Cons: Users can't conveniently monitor strategies from their phones.
+
+B — Fully responsive from Day 1 — my recommendation
+
+One web application, but deliberately designed for two experiences:
+
+Desktop
+
+Strategy building + analysis + option chain + detailed monitoring
+
+Mobile
+
+Alerts + strategy status + P&L + adjustment notifications + order review
+
+For example, on mobile:
+
+🔴 NIFTY Iron Condor needs attention
+
+NIFTY has crossed your adjustment level.
+
+Current P&L: −₹3,240
+
+Suggested action:
+Move Call Spread
+
+[View Impact]
+[Prepare Orders]
+
+That's a much better mobile experience than trying to squeeze a desktop trading terminal onto a phone.
+
+C — Mobile-first
+
+Everything designed primarily for mobile.
+
+I don't recommend this for this particular product because strategy construction and analysis benefit significantly from a larger screen.
+
+My recommendation
+
+B — Responsive web application from Day 1, with different priorities by screen size.
+
+And importantly, I would not build native Android/iOS apps initially.
+
+Let's first make the web product excellent. A good responsive PWA/web experience can cover the majority of the initial requirement. Native apps can come later if actual usage justifies them.
+
+Question 14
+
+Which do you want?
+
+A — Desktop-first
+B — Responsive web: desktop + mobile — recommended
+C — Mobile-first
+
+B
+
+Perfect. B is locked: responsive web application from Day 1, with desktop optimized for strategy construction/analysis and mobile optimized for monitoring, alerts, review and execution.
+
+We are getting close to the product definition.
+
+Yes — I agree with the direction, and I would simplify our architecture accordingly.
+
+But I would make one important distinction:
+
+Let Zerodha be the final authority on whether a particular order can actually be placed. Don't try to recreate Zerodha's entire RMS/risk-filtering system ourselves.
+
+Zerodha's restrictions can change dynamically. For example, fresh F&O orders can be blocked based on real-time OI, and some contracts can be hard-blocked; Zerodha also applies theoretical-price checks.
+
+So I'd change the strategy-builder flow
+
+When the user selects:
+
+NIFTY → Expiry → Strike → CE/PE → Buy/Sell
+
+our system should first ask Zerodha, in effect:
+
+"Can this user place this intended order for this contract under the current conditions?"
+
+If Zerodha says yes:
+
+✅ Available for this strategy
+
+The contract can be added.
+
+If Zerodha says no:
+
+❌ This contract cannot currently be used for this order.
+
+And don't allow the user to add that leg to the strategy.
+
+This is much cleaner than us maintaining dozens of rules ourselves.
+
+However, one technical caveat
+
+We shouldn't assume Zerodha provides a single API like:
+
+is_contract_allowed = true/false
+
+for every possible restriction.
+
+Their restrictions include things like OI-based blocks and order-type-specific restrictions, and some restrictions are surfaced through Kite's UI/nudge mechanisms rather than necessarily through a simple pre-validation endpoint.
+
+So our implementation should be:
+
+Zerodha data/API → determine what we can validate before strategy creation → Zerodha order submission remains the final authority.
+
+We don't need to build a parallel Zerodha RMS engine.
+
+And this fits our product philosophy perfectly
+
+The user doesn't need to know:
+
+"Why is this strike outside Zerodha's OI threshold?"
+
+They should simply see:
+
+25,000 CE — Available ✅
+
+or
+
+27,000 CE — Currently unavailable on Zerodha ⚠️
+Zerodha isn't accepting fresh orders for this contract right now.
+
+And if the situation changes, we can refresh availability.
+
+One thing I would not do
+
+I wouldn't permanently remove a contract from our database because Zerodha rejects it today.
+
+The contract itself still exists. Its current tradability status can change. Zerodha explicitly says some OI restrictions are checked in real time and can become available again when conditions change.
+
+So:
+
+Contract catalogue ≠ current availability.
+
+That's the only distinction we need to maintain.
+
+Locked decision
+
+Our platform will not attempt to duplicate Zerodha's complete contract/RMS eligibility logic.
+
+Instead:
+
+Zerodha determines whether the contract/order is currently eligible. Our strategy builder respects that result and prevents unavailable legs from being added.
+
+Then, immediately before execution, we still perform the broker-side validation and let Zerodha's actual order response remain authoritative.
+
+I think this is simpler, safer, and much more maintainable.
+
+Question 29
+
+Now let's settle the other side of the execution experience:
+
+Should the platform allow users to place individual Zerodha orders, or should every trade through our platform belong to a strategy?
+
+My recommendation:
+
+A. Strategy-first — no standalone manual orders in V1.
+
+That keeps the product differentiated from Kite. We're building a strategy execution and management platform, not another Zerodha trading terminal.
+
+A — Strategy-only
+B — Strategies + individual orders
+C — Full Zerodha-style terminal
+
+A
+
+Excellent. Q29 = A is locked.
+
+V1 execution principle
+
+Every trade executed through our platform belongs to a strategy.
+
+We are not building another Zerodha Kite clone.
+
+That means no standalone:
+
+Buy NIFTY CE
+
+button as a primary trading function.
+
+Instead:
+
+Create Strategy → Configure → Validate → Execute → Monitor → Adjust → Exit
+
+This keeps the product focused and makes the strategy the central object throughout its entire lifecycle.
+
+Yes — I understand the interaction you mean, and I think it is a better UX than forcing users to manually create every leg.
+
+I’ll lock this as an extension of Option B:
+
+Locked: Option Chain = supporting tool + multi-select leg import
+
+The Strategy Builder remains the primary workflow, but users can jump from the builder to the Option Chain to select contracts.
+
+Example:
+
+Strategy Builder → Select from Option Chain
+
+The Option Chain would have the familiar layout:
+
+Calls	Strike	Puts
+☐ Call data	22,800	☐ Put data
+☐ Call data	22,900	☐ Put data
+☐ Call data	23,000	☐ Put data
+☐ Call data	23,100	☐ Put data
+☐ Call data	23,200	☐ Put data
+Checkbox on the Call side → selects that Call contract.
+Checkbox on the Put side → selects that Put contract.
+User can select multiple Calls and/or Puts.
+User clicks Add Selected.
+All selected contracts are brought back into the Strategy Builder as strategy legs/rows.
+The user then chooses/configures the action (Buy/Sell), quantity, etc., where appropriate.
+No need to manually create each row.
+
+So, for example, a user could select:
+
+☑ 22,800 Put
+☑ 23,000 Put
+☑ 23,400 Call
+☑ 23,600 Call
+
+→ Add Selected
+
+→ Strategy Builder automatically contains those four legs.
+
+This also fits our earlier requirement that Zerodha's available/eligible contracts should be the source of truth rather than making the user manually type arbitrary strikes.
+
+One small UX recommendation: instead of a generic “Add”, I'd use “Add Selected (4)”. It gives the user immediate confirmation of what will happen.
+
+Question 35 — Where should the user choose Buy/Sell?
+
+Once contracts are selected from the Option Chain, we need to decide how the Action is determined.
+
+A. Choose Buy/Sell in the Option Chain itself
+For each selected Call/Put, user chooses Buy or Sell before clicking Add.
+
+B. Always import the contract first, then choose Buy/Sell in Strategy Builder ⭐ My recommendation
+
+Example:
+
+Option Chain:
+
+☑ 22,800 PE
+☑ 23,000 PE
+☑ 23,400 CE
+☑ 23,600 CE
+Add Selected (4)
+
+Strategy Builder then shows:
+
+Action	Instrument	Strike
+Select	PE	22,800
+Select	PE	23,000
+Select	CE	23,400
+Select	CE	23,600
+
+The user chooses Buy/Sell there.
+
+C. Support both
+Users can specify Buy/Sell in the Option Chain, but can also change it in Strategy Builder.
+
+I recommend C, with B as the default workflow. This makes the Option Chain excellent for contract selection while the Strategy Builder remains the place where the actual strategy is constructed.
+
+Which do you choose: A, B, or C?
+
+A
+
+Locked: A — +/- lot stepper directly in the Option Chain.
+
+The primary UX will use lots, with the stepper respecting the current valid contract lot size. Exact quantity remains an Advanced-mode concept.
+
+Question 55 — Should the Option Chain show a payoff preview for the selected legs?
+
+Imagine the user has selected 4 legs but hasn't yet clicked Add to Strategy.
+
+Should the persistent selection area also show a small live preview such as:
+
+Net premium/credit/debit
+Max profit
+Max loss
+Breakeven(s)
+Mini payoff graph
+
+A. Yes — show a compact live strategy preview — Recommended ⭐
+
+B. Show only net premium; calculate full risk after importing
+
+C. Show the full strategy outcome table immediately
+
+D. No calculations until the user clicks “Add to Strategy”
+
+My recommendation: A
+
+This is a strong usability feature because the user gets immediate feedback:
+
+4 legs selected
+Net Credit: ₹91
+Max Profit: ₹6,825
+Max Loss: ₹8,175
+Breakevens: 22,909 / 23,491
+[View Payoff]
+
+But it should remain compact. The full scenario table, Greeks and detailed analysis belong in Strategy Builder.
+
+Which do you choose: A, B, C, or D?
+
+A
+
+Locked: A — Compact live strategy preview in the Option Chain.
+
+The preview will update as legs are added/removed or quantities change, while the detailed analysis remains in Strategy Builder.
+
+Locked. ✅
+
+Q66 — Payment provider
+
+Razorpay will be the V1 payment provider.
+
+We'll design the payment layer so that Razorpay is replaceable later, but we won't build multiple payment integrations in V1.
+
+Current commercial model
+Situation	Pro access
+New user	7-day full Pro trial
+Direct qualifying Zerodha customer	Full Pro free indefinitely
+Existing Zerodha user + successful referral	Free Pro period, initially 1 month
+Further successful referrals	Reward stacking controlled by Admin
+Other user	₹600/month or Admin-configured annual price
+Payment provider	Razorpay
+
+And the Admin should control the commercial rules.
+
+Q67 — What happens after the 7-day trial?
+
+I recommend not immediately deleting or blocking the user's account.
+
+Instead:
+
+Trial expires → user enters Limited/Read-Only mode.
+
+They can:
+
+Log in
+View their existing strategies
+View historical information
+Manage account/settings
+See their eligibility
+Refer someone
+Subscribe to Pro
+Connect/manage Zerodha
+
+But they cannot create/execute new trades or use Pro-only functionality until they become eligible or subscribe.
+
+This is better than a hard lock because their existing work remains accessible and gives them a strong reason to return.
+
+Do you want to lock:
+
+A. Limited/Read-Only mode after trial — Recommended
+
+or
+
+B. Completely block access until they pay/qualify?
+
+A
+
+Locked. ✅
+
+A
+
+Locked: Q90 = A — paid Pro expiry follows the same Limited/Read-Only model.
+
+So we won't introduce a special paid-user grace period in V1. The Admin can still have configurable commercial settings later if we decide to add one.
+
+Our entitlement behavior is now consistent:
+
+Active Pro
+→ Full Pro functionality
+
+Pro expires
+→ Limited/Read-Only
+→ Existing active strategies remain monitored
+→ Important alerts continue
+→ No new strategy creation/preparation/execution
+
+Pro restored
+→ Full functionality resumes
+
+Q91 — What about a user who has no active strategy when Pro expires?
+
+Should Limited/Read-Only users still be able to view the live Option Chain?
+
+A. No — recommended.
+Live/detailed market data remains a Pro feature. They can see the public/sample experience and their historical information, but not the authenticated live Option Chain.
+
+B. Yes — allow live Option Chain in read-only mode, but prohibit strategy creation/execution.
+
+C. Give them a limited Option Chain, e.g. delayed data or restricted fields.
+
+I recommend A, particularly because we've already decided that detailed real-time market data is behind login and is part of the commercial product. It also keeps the Pro boundary very clear.
+
+A
+
+Locked: Q91 = A — live/detailed Option Chain is unavailable in Limited/Read-Only mode.
+
+This gives us a clean entitlement boundary:
+
+Active Pro
+→ Live market data + strategy creation + analysis + execution + monitoring
+
+Limited/Read-Only
+→ Existing strategies/history + account/eligibility/referrals/billing + safety monitoring of active strategies
+→ No live Option Chain
+→ No new strategy creation
+→ No new execution
+
+One nuance we'll capture in the final PRD: active-strategy monitoring is an exception to the general live-data restriction, because removing risk visibility from an already-active strategy would be unsafe.
+
+Yes — this can absolutely be done, and your understanding is correct based on the project history available to me.
+
+The previous handoff was created before Q33A. Since then, we continued the project through many additional questions and decisions, including the later sequence through Q81 and beyond in the documented project state.
+
+However, I want to be precise about one thing: I cannot recover the exact wording of every earlier Q1–Q32 question from the available context. I do have the resulting decisions and requirements from those discussions, but I don't want to fabricate the original question wording.
+
+What I propose for the new handoff
+
+I'll create a “Handoff v2 / Latest Continuation” document that:
+
+Identifies the previous handoff as the baseline.
+States that this document is the delta + consolidated continuation state after that handoff.
+Records every question number I can reliably establish, including:
+Q33A onward
+Q43–Q57
+Q58–Q59
+Q61, Q63–Q64, Q66
+Q70
+Q72–Q81
+Q82–Q97 where those later decisions are already established
+For each question, records:
+Question
+Options considered, where reliably known
+User's answer
+Final decision
+Recommendation, where applicable
+Clearly marks anything whose exact historical question wording isn't available, rather than inventing it.
+Includes all the major locked architecture/product decisions so the next session doesn't have to reconstruct them.
+Ends with an explicit “CURRENT CONTINUATION POINT”, so a new session knows exactly where to resume.
+Includes the project rules:
+One question at a time
+Give a recommendation with each question
+Don't proceed until approximately 95% confidence
+Don't reopen locked decisions unless the user explicitly asks
+Continue chronologically from the latest unanswered question.
+One important correction from my previous response
+
+I also want to avoid repeating the mistake I just made. The current project state contains decisions through Q97, while Q81 was the latest question in the chronological conversational flow you were referring to. So the handoff should preserve both the chronology and the later decisions, rather than treating an old “next question = Q33A” marker as authoritative.
+
+I'll therefore make the handoff explicitly distinguish:
+
+Historical question sequence / decisions already captured
+from
+Latest conversational continuation point
+
+That should make it much safer to start a fresh session.
+
+I can create the document now.
+
+Go ahead 
+
+Done. I created the latest handoff document, specifically as a continuation of the previous handoff.
+
+It records the later decisions and question history available to me, explicitly identifies Q81 as the current conversational continuation point, and warns the next session not to jump back to Q33A.
+
+Download the latest handoff document
+
+One important safeguard I included: where the exact wording of older questions (particularly Q1–Q32) isn't reliably available, I did not invent it. The document tells the next session to use the previous handoff for that historical detail while using this document for the subsequent decisions.
+
+Indian_Index_Options_Platform_Latest_Handoff_Post_Previous_Handoff.md
+Document
+Wed, Sep 16 at 1:37 PM
+Give me a easy copy paste prompt which I will post in new chatgpt window or some other model along with 2 handover documents as attachment. New model or session should get all background and all discussion details and continue from where we left 
+
+Yes. The safest approach is to give the new model a clear role + document hierarchy + continuation rules, so it reads both handoffs as one continuous project rather than starting over.
+
+Copy-paste this prompt along with both handoff documents attached:
+
+Project Continuation Prompt
+
+I am continuing an ongoing product-design project in a new ChatGPT/model session.
+
+I have attached two handoff/continuation documents from previous sessions. Please read BOTH documents completely before responding.
+
+YOUR ROLE
+
+Act as the same senior product architect / principal engineer / product strategist who has been helping me design this product.
+
+Your job is to continue the project from exactly where the previous session ended, not restart it.
+
+I am a non-technical founder, so explain technical/product decisions in clear, practical language.
+
+PROJECT
+
+We are designing a public SaaS web platform for Indian index options/F&O trading.
+
+The product is strategy-first and is intended to help users:
+
+Create and configure trading strategies
+Understand potential P&L and risk before execution
+Analyse option-chain data
+Monitor active strategies
+Identify adjustment opportunities based on predefined rules
+Prepare and execute strategy orders through Zerodha
+Eventually support controlled automation based on predefined conditions
+
+The detailed product decisions, architecture, commercial model, authentication, Zerodha integration, Option Chain, P&L, adjustment engine, monitoring, etc. are contained in the attached documents.
+
+VERY IMPORTANT — READ THE DOCUMENTS FIRST
+
+Treat the two attached documents as the authoritative project history.
+
+The documents together contain:
+
+Previous decisions
+Questions already asked
+My answers
+Locked requirements
+Product principles
+Architecture decisions
+Open questions
+Current continuation point
+
+Do not assume that a decision is open merely because you personally would design it differently.
+
+DOCUMENT ORDER
+
+Use the documents together as one continuous history.
+
+The older handoff provides the earlier project context.
+
+The newer handoff provides the continuation after the older handoff.
+
+If the newer handoff contains a later decision that changes or supersedes an earlier decision, use the newer decision.
+
+Do NOT go backwards to an old question simply because it appears in the older document.
+
+MOST IMPORTANT RULE: CONTINUE, DON'T RESTART
+
+Before asking me anything:
+
+Read both documents.
+Understand the complete product context.
+Identify the latest question/decision reached in the project.
+Identify what has already been decided.
+Identify what remains unresolved.
+Continue from the latest unresolved point.
+
+Do NOT:
+
+Restart from Question 1.
+Re-ask questions already answered.
+Revisit locked decisions.
+Jump back to Q33A or another old continuation marker.
+Invent missing historical details.
+Ask me to repeat information already contained in the documents.
+
+The latest handoff specifically explains the previous confusion around Q33A and the later progress. Pay attention to that.
+
+QUESTION-BY-QUESTION PROCESS
+
+We are deliberately designing the product through questions.
+
+Follow this process strictly:
+
+One question at a time
+
+Ask me ONLY ONE question in each response.
+
+Do not give me a list of 5–10 questions.
+
+After I answer:
+
+Analyse my answer.
+Update your understanding.
+If necessary, explain the implication.
+Then ask the NEXT single question.
+Recommendation with every question
+
+For every question, give me your recommended option.
+
+For example:
+
+Q82 — [question]
+
+A. ...
+B. ...
+C. ...
+
+My recommendation: B
+
+Why: short practical explanation.
+
+Then wait for my answer.
+
+95% confidence rule
+
+Do not proceed with implementation-level decisions until you have approximately 95% confidence that we are aligned.
+
+If something important is ambiguous, ask a clarification question.
+
+Do not silently make assumptions.
+
+LOCKED VS OPEN DECISIONS
+
+Treat decisions explicitly marked as locked/confirmed in the handoff documents as locked.
+
+Do not reopen them unless:
+
+I explicitly ask to reconsider them, OR
+a later decision creates a genuine contradiction that needs clarification.
+
+If you notice a contradiction, point it out clearly instead of silently changing something.
+
+IMPORTANT PRODUCT PRINCIPLES
+
+Preserve these principles from the previous discussions:
+
+Strategy-first
+
+The product is not intended to be an unrestricted trading terminal.
+
+The user creates/follows a strategy.
+
+The platform helps analyse, monitor, adjust and execute that strategy.
+
+User remains in control
+
+The platform should inform and structure decisions rather than make discretionary investment decisions for the user.
+
+Use language such as:
+
+“Strategies you could consider”
+“Suggested setup”
+“Adjustment opportunity detected”
+“Possible adjustment”
+“Review adjustment”
+“Your rule was triggered”
+
+Avoid language such as:
+
+“You should take this trade”
+“This is the best trade”
+Guaranteed profit/outcome claims
+Zerodha
+
+Zerodha is the V1 broker.
+
+The user's Zerodha credentials/PIN/OTP must never be requested by the platform.
+
+Zerodha authentication is separate from platform login.
+
+A Zerodha Client ID is a persistent identity relationship, while a Zerodha authorization/session is temporary.
+
+Do not confuse session expiry with identity deletion.
+
+Commercial model
+
+The product uses an entitlement model rather than a simple free/paid boolean.
+
+Important established commercial states include:
+
+7-day Pro trial
+Direct qualifying Zerodha customer → Pro free indefinitely
+Referral-earned Pro
+Paid Monthly Pro
+Paid Annual Pro
+Limited/Read-Only after Pro expiry
+Data architecture
+
+Do not design the browser as a direct connection to the market-data vendor.
+
+The architecture uses a market-data gateway/normalization/cache/event architecture.
+
+Market-data licensing for commercial multi-user SaaS must be considered.
+
+Risk / adjustment
+
+The platform can identify opportunities based on the user's predefined rules.
+
+It should not present one universally “correct” adjustment.
+
+Adjustments can increase risk, so do not describe them automatically as risk-reducing.
+
+Execution
+
+Zerodha is the final authority for broker validity, margin and execution.
+
+Execution must account for:
+
+Margin
+Multi-leg dependencies
+Partial failures
+Failed orders
+Retry
+Strategy completion
+Position reconciliation
+
+Do not automatically unwind successful legs unless that behavior has been explicitly decided.
+
+IF SOMETHING IS NOT IN THE DOCUMENTS
+
+If a piece of information is genuinely missing:
+
+Do not invent it.
+Do not assume it was decided.
+Ask me a single clarification question if it is necessary.
+If it is not yet necessary, leave it open.
+WHEN MAKING RECOMMENDATIONS
+
+Think like a pragmatic principal product architect designing for:
+
+Solo-founder maintainability
+Build velocity
+Reliability
+Performance
+Security
+Scalability to a multi-tenant SaaS
+Indian market/broker realities
+Good UX for beginners and advanced users
+Compliance considerations
+
+Do not choose technology merely because it is trendy.
+
+Explain trade-offs briefly and clearly.
+
+MAINTAIN PROJECT MEMORY
+
+As we continue, maintain a mental/project record of:
+
+Question number
+Question
+My answer
+Final decision
+Whether it is locked
+Important reasoning
+Remaining dependencies
+
+When a major milestone is reached, be prepared to create an updated handoff document so this project can be continued safely in another session.
+
+FIRST RESPONSE
+
+After reading both attached documents, do NOT immediately ask a new question.
+
+First give me a very short confirmation in this format:
+
+“Read both handoff documents. I understand the project history and current state. The previous decisions will be treated as locked, and I will continue from the latest unresolved question rather than restarting.”
+
+Then state:
+
+Current continuation point: Q__ — [short description]
+
+If the current continuation point is already clear from the documents, do not ask me to confirm it.
+
+Then ask only the next single question.
+
+Do not summarize the entire project again unless I ask you to.
+
+The goal is a seamless continuation of the previous product-design conversation.
