@@ -22,6 +22,11 @@
       "date": "2026-09-29",
       "where": "W-004 round 2 @ 16bb7d9",
       "evidence": "position Greeks built from 4-dp-rounded per-unit values x quantity (gamma ~10% wrong: 0.0300 vs 0.0335); the test pinned POSITION_GREEKS[3].gamma == 0.0300, taken from the code's output"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-018 tests/marketdata/test_rule_health.py @ adc0b2e",
+      "evidence": "test set the snapshot's data_health=quote.health by hand, hiding that the record-level health is caller-supplied; with a stale deciding input the record said AVAILABLE"
     }
   ],
   "fix": "Builder brief rule (every future brief): expected values come from the spec or an independent hand computation, never from the code's own output; add consistency tests (leg rows sum to totals; restore-by-label returns the labelled state). Independent verifiers recompute expected values from the spec (already their brief).",

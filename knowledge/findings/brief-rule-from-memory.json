@@ -32,9 +32,19 @@
       "date": "2026-09-29",
       "where": "W-004 health label",
       "evidence": "'Near adjustment' vs ADR-010 'Adjustment opportunity', corrected before the build"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-013 and W-020 core lines",
+      "evidence": "brief said a 'max loss 5,000' rule fires on the golden Iron Condor; at the golden LTPs the condor is +1,365 in profit, so no max-loss rule can fire (W-020 builder flagged it and built a separate loss scenario, hand-computed -3,450.00)"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-020 fix-round brief (AC-3)",
+      "evidence": "brief said 'refuse the call if there is no active version'; ADR-009 Q17 / REQ-041 entry conditions and ADR-019 Q202 'entry triggered' fire before any execution, so the refusal dropped a spec-required record; builder applied it, orchestrator caught it on reading the side-effect note and reversed it (7717c98)"
     }
   ],
-  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) \u2014 not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
+  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
   "detection": {
     "status": "unguarded",
     "checks": [],

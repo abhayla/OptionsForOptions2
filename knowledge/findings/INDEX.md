@@ -2,10 +2,11 @@
 
 # Findings index
 
-9 finding(s), generated from `knowledge/findings/*.json`.
+11 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
+| advice-wording-denylist-per-module | Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another. | unguarded | occurrences, spec_ref |
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | spec_ref |
 | brief-rule-from-memory | Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it. | unguarded | occurrences, spec_ref |
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | spec_ref |
@@ -15,3 +16,4 @@
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | spec_ref |
 | test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, spec_ref |
 | trust-broker-status-word | Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position. | unguarded | occurrences, spec_ref |
+| verifier-writes-outside-sandbox | Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it. | guarded | occurrences, spec_ref |
