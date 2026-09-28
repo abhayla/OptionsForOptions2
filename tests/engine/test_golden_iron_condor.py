@@ -33,6 +33,7 @@ def test_golden_iron_condor_reproduced_exactly():
     metrics = strategy_metrics(CONDOR)
     assert metrics.max_profit == D("6825")
     assert metrics.max_loss == D("8175")
+    assert metrics.min_pnl == D("-8175")
     assert metrics.breakevens == (D("22909"), D("23491"))
     assert all(CONDOR.expiry_pnl_at(be) == 0 for be in metrics.breakevens)
 

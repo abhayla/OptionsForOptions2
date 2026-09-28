@@ -39,12 +39,37 @@ def test_straddle_has_two_tail_breakevens():
     assert m.max_profit is UNLIMITED
 
 
-def test_lower_tail_slope_is_unlimited_by_convention():
-    """AC-6: a non-zero lower-tail slope is UNLIMITED (documented convention; the zero floor is not used)."""
-    m = strategy_metrics(Strategy((leg(SELL, PE, "23000", "80"),)))
-    assert m.max_profit == D("6000")
-    assert m.max_loss is UNLIMITED
-    assert m.breakevens == (D("22920"),)
+def test_downside_is_finite_because_the_index_cannot_go_below_zero():
+    """AC-6: the payoff is evaluated at Market = 0, so puts have a finite downside, never UNLIMITED."""
+    short_put = strategy_metrics(Strategy((leg(SELL, PE, "23000", "80"),)))
+    assert short_put.max_profit == D("6000")
+    assert short_put.min_pnl == D("-1719000")  # (80 - 23,000) x 75 at Market 0
+    assert short_put.max_loss == D("1719000")
+    assert short_put.breakevens == (D("22920"),)
+
+    long_put = strategy_metrics(Strategy((leg(BUY, PE, "23000", "80"),)))
+    assert long_put.max_profit == D("1719000")
+    assert long_put.max_loss == D("6000")
+
+
+def test_upper_tail_slope_is_unlimited():
+    """AC-6: beyond the highest strike a non-zero slope is UNLIMITED: short call loss, short futures loss."""
+    short_call = strategy_metrics(Strategy((leg(SELL, CE, "23000", "100"),)))
+    assert (short_call.max_loss, short_call.min_pnl) == (UNLIMITED, UNLIMITED)
+    short_fut = strategy_metrics(Strategy((leg(SELL, FUT, None, "24000"),)))
+    assert (short_fut.max_profit, short_fut.max_loss) == (D("1800000"), UNLIMITED)
+
+
+def test_strategy_that_cannot_lose_reports_min_pnl_and_zero_max_loss():
+    """AC-6: min payoff +3,750 everywhere -> min_pnl 3750 (signed), max_loss 0, no breakevens."""
+    m = strategy_metrics(Strategy((leg(SELL, PE, "23000", "100"), leg(BUY, PE, "23000", "50"))))
+    assert m.min_pnl == D("3750")
+    assert m.max_loss == D("0")
+    assert m.max_profit == D("3750")
+    assert m.breakevens == ()
+    # Contrast: a strategy that can lose has max_loss = -min_pnl.
+    loses = strategy_metrics(Strategy((leg(BUY, CE, "23000", "100"),)))
+    assert (loses.min_pnl, loses.max_loss) == (D("-7500"), D("7500"))
 
 
 def test_zero_exactly_at_a_kink_and_flat_zero_tail():
@@ -78,10 +103,10 @@ def test_non_terminating_breakeven_is_rounded_to_paise_of_a_point():
 
 
 def test_futures_only_strategy():
-    """AC-6: a BUY future breaks even at its entry; both tails are unbounded."""
+    """AC-6: a BUY future at 24,000 x 75 breaks even at entry; loss bottoms at Market 0, profit is UNLIMITED."""
     m = strategy_metrics(Strategy((leg(BUY, FUT, None, "24000"),)))
     assert m.breakevens == (D("24000"),)
-    assert (m.max_profit, m.max_loss) == (UNLIMITED, UNLIMITED)
+    assert (m.max_profit, m.max_loss, m.min_pnl) == (UNLIMITED, D("1800000"), D("-1800000"))
 
 
 def test_multi_expiry_strategy_refuses_exact_metrics():

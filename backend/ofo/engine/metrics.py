@@ -5,16 +5,19 @@ none (§3, T1 #98). For a single-expiry strategy the at-expiry payoff is piecewi
 with kinks only at the option strikes, so it is fully determined by its exact value at each strike plus the slope
 of the two tails. Nothing is sampled on a grid.
 
-Conventions (documented, because the spec does not fix them):
+Conventions (orchestrator decision under ADR-045, spec basis REQ-033 AC-6 "computed from the payoff"):
 
-- **Tails.** A tail whose slope is non-zero is reported as ``UNLIMITED`` in that direction, for the lower tail
-  as well as the upper one (the payoff is treated as unbounded; the index-cannot-go-below-zero floor is not used).
-- **Max loss** is the magnitude of the lowest payoff (the §6 Iron Condor's lowest payoff −₹8,175 is reported as
-  ``8175``). A strategy whose lowest payoff is a profit reports a negative max loss.
-- **Breakevens** are every level > 0 where the payoff is zero: a sign change between kinks (interpolated
-  exactly), a zero exactly at a kink, and a zero on a tail. A flat zero segment between kinks reports its two
-  end points; a flat zero tail reports only its kink end point. A crossing whose exact value does not terminate
-  in decimal (e.g. a third of a point) is rounded half-even to 0.01 points; all others are exact.
+- **Lower bound.** An index level cannot go below 0, so the payoff is evaluated at Market = 0 as well as at
+  every strike; the downside is always finite and never reported as ``UNLIMITED`` (a SELL 23,000 PE at 80 x 75
+  loses at most 1,719,000). Only the **upper tail** (beyond the highest strike) can be ``UNLIMITED``: max profit
+  when its slope is positive, max loss when negative.
+- **min_pnl / max_loss.** ``min_pnl`` is the signed lowest payoff (``UNLIMITED`` when unbounded below).
+  ``max_loss`` is its positive magnitude when it is a loss, and 0 when the strategy cannot lose (then ``min_pnl``
+  shows the guaranteed result). The §6 Iron Condor has ``min_pnl`` -8175 and ``max_loss`` 8175.
+- **Breakevens** are every level > 0 where the payoff is zero: a sign change between points (interpolated
+  exactly), a zero exactly at a strike, and a zero on the upper tail. A flat zero segment between strikes reports
+  its two end points; a flat zero upper tail reports only its strike end point. A crossing whose exact value does
+  not terminate in decimal (e.g. a third of a point) is rounded half-even to 0.01 points; all others are exact.
 - **Multi-expiry** strategies have no exact at-expiry payoff and raise ``MultiExpiryError``.
 """
 from __future__ import annotations
@@ -52,24 +55,20 @@ class MultiExpiryError(ValueError):
 @dataclass(frozen=True)
 class StrategyMetrics:
     max_profit: Decimal | _Unlimited
+    min_pnl: Decimal | _Unlimited
     max_loss: Decimal | _Unlimited
     breakevens: tuple[Decimal, ...]
 
 
-def _tail_slope(leg: Leg, upper: bool) -> int:
-    """Payoff slope (rupees per point) of one leg beyond all strikes: above them if ``upper``, else below."""
-    if leg.instrument is Instrument.FUT:
-        long_slope = 1
-    elif leg.instrument is Instrument.CE:
-        long_slope = 1 if upper else 0
-    else:
-        long_slope = 0 if upper else -1
+def _upper_tail_slope(leg: Leg) -> int:
+    """Payoff slope (rupees per point) of one leg above every strike: calls and futures move, puts are flat."""
+    long_slope = 0 if leg.instrument is Instrument.PE else 1
     sign = 1 if leg.action is Action.BUY else -1
     return sign * long_slope * leg.quantity
 
 
 def _to_decimal(value: Fraction) -> Decimal:
-    """Exact Decimal when ``value`` terminates in base 10, else rounded half-even to 0.01."""
+    """Exact Decimal when ``value`` terminates in base 10, else rounded half-even to 0.01 points."""
     with localcontext() as ctx:
         ctx.prec = 60
         result = Decimal(value.numerator) / Decimal(value.denominator)
@@ -78,44 +77,44 @@ def _to_decimal(value: Fraction) -> Decimal:
     return result.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
 
 
-def _breakevens(kinks: list[Decimal], values: list[Decimal], low_slope: int, high_slope: int) -> list[Fraction]:
+def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) -> list[Fraction]:
+    """Zeros of the payoff over [0, inf): at a point, between two points, or on the upper tail; levels > 0 only."""
     found: set[Fraction] = set()
-    first, last = Fraction(kinks[0]), Fraction(kinks[-1])
-    if low_slope != 0:
-        x = first - Fraction(values[0]) / low_slope
-        if x < first:
-            found.add(x)
-    for i, (kink, value) in enumerate(zip(kinks, values)):
+    for i, (point, value) in enumerate(zip(points, values)):
         if value == 0:
-            found.add(Fraction(kink))
-        if i + 1 < len(kinks):
+            found.add(Fraction(point))
+        if i + 1 < len(points):
             nxt = values[i + 1]
             if (value < 0 < nxt) or (nxt < 0 < value):
-                k0, k1 = Fraction(kink), Fraction(kinks[i + 1])
+                k0, k1 = Fraction(point), Fraction(points[i + 1])
                 v0, v1 = Fraction(value), Fraction(nxt)
                 found.add(k0 + (0 - v0) * (k1 - k0) / (v1 - v0))
-    if high_slope != 0:
-        x = last - Fraction(values[-1]) / high_slope
+    last = Fraction(points[-1])
+    if upper_slope != 0:
+        x = last - Fraction(values[-1]) / upper_slope
         if x > last:
             found.add(x)
     return sorted(x for x in found if x > 0)
 
 
 def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
-    """Exact max profit, max loss and breakevens of a single-expiry strategy's at-expiry payoff."""
+    """Exact max profit, min P&L, max loss and breakevens of a single-expiry strategy's at-expiry payoff."""
     if not strategy.is_single_expiry:
         raise MultiExpiryError(
             "exact at-expiry metrics need every leg on one expiry; this strategy has "
             f"{len({leg.expiry for leg in strategy.legs})} expiries (estimated metrics are a separate item)"
         )
-    strikes = sorted({leg.strike for leg in strategy.legs if leg.is_option})
-    # A futures-only payoff is one straight line: any single anchor point defines it.
-    kinks = strikes or [Decimal(0)]
-    values = [strategy.expiry_pnl_at(k) for k in kinks]
-    low_slope = sum(_tail_slope(leg, upper=False) for leg in strategy.legs)
-    high_slope = sum(_tail_slope(leg, upper=True) for leg in strategy.legs)
+    # The payoff on [0, inf) is linear between 0 and the strikes; its extremes lie at these points or on the
+    # upper tail. Strikes are validated > 0, so 0 is always the first point.
+    points = [Decimal(0)] + sorted({leg.strike for leg in strategy.legs if leg.is_option})
+    values = [strategy.expiry_pnl_at(p) for p in points]
+    upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
 
-    max_profit: Decimal | _Unlimited = UNLIMITED if (high_slope > 0 or low_slope < 0) else max(values)
-    max_loss: Decimal | _Unlimited = UNLIMITED if (high_slope < 0 or low_slope > 0) else -min(values)
-    breakevens = tuple(_to_decimal(x) for x in _breakevens(kinks, values, low_slope, high_slope))
-    return StrategyMetrics(max_profit=max_profit, max_loss=max_loss, breakevens=breakevens)
+    max_profit: Decimal | _Unlimited = UNLIMITED if upper_slope > 0 else max(values)
+    min_pnl: Decimal | _Unlimited = UNLIMITED if upper_slope < 0 else min(values)
+    if min_pnl is UNLIMITED:
+        max_loss: Decimal | _Unlimited = UNLIMITED
+    else:
+        max_loss = -min_pnl if min_pnl < 0 else Decimal(0)
+    breakevens = tuple(_to_decimal(x) for x in _breakevens(points, values, upper_slope))
+    return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens)
