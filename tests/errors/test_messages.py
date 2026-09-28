@@ -133,8 +133,113 @@ def test_catalogue_example_text_carries_no_pan_shaped_identifiers() -> None:
 
 def test_scan_for_banned_phrases_is_case_insensitive() -> None:
     """AC-2/ADR-003: the scan is case-insensitive, since a UI string may be re-cased."""
-    assert scan_for_banned_phrases("GUARANTEED returns") == ["guaranteed"]
-    assert scan_for_banned_phrases("You Should proceed") == ["you should"]
+    assert scan_for_banned_phrases("GUARANTEED returns") == ["guarantee*"]
+    assert scan_for_banned_phrases("You Should proceed") == ["should"]
+
+
+# --- W-024 fix round: verifier's accepted-but-banned cases (red tests first) --------------------
+#
+# Class: decision-support wording (ADR-003) guarded by exact-substring denylists written separately
+# per module missed word-stem variants. Every case the independent verifier found accepted-but-banned
+# is reproduced here on the real UserFacingError constructor; each must now raise ValueError.
+
+VERIFIER_BANNED_CASES: tuple[tuple[str, str], ...] = (
+    ("guarantee stem", "We guarantee returns on this strategy."),
+    ("recommend stem", "We recommend buying calls here."),
+    ("risk free with space", "Risk free setup for this trade."),
+    ("sure-shot", "A sure-shot trade if you proceed."),
+    ("should, different sentence shape", "Traders should hedge now."),
+    ("should with double space (NBSP-style)", "You  should buy."),
+    ("promise of reduced losses", "This will reduce your losses."),
+)
+
+
+@pytest.mark.parametrize("label,banned_text", VERIFIER_BANNED_CASES, ids=[c[0] for c in VERIFIER_BANNED_CASES])
+def test_verifier_red_cases_are_rejected_at_construction(label: str, banned_text: str) -> None:
+    """W-024 fix round: every case the verifier found accepted-but-banned now raises ValueError."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.STRATEGY_VALIDATION,
+            code="STRATEGY_VALIDATION_003",
+            what_happened=banned_text,
+            impact="This strategy cannot be saved as configured.",
+            what_is_blocked="Saving this strategy version.",
+            next_action="Adjust the strategy and save again.",
+        )
+
+
+def test_verifier_red_case_zero_width_space_part_is_rejected_as_blank() -> None:
+    """W-024 fix round: a part containing only a zero-width space is blank, not real text."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.STRATEGY_VALIDATION,
+            code="STRATEGY_VALIDATION_004",
+            what_happened="​",
+            impact="This strategy cannot be saved as configured.",
+            what_is_blocked="Saving this strategy version.",
+            next_action="Adjust the strategy and save again.",
+        )
+
+
+def test_verifier_red_case_banned_wording_in_code_field_is_rejected() -> None:
+    """W-024 fix round: the code field is scanned too, not only the four text parts."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.STRATEGY_VALIDATION,
+            code="best trade",
+            what_happened="This strategy has a duplicate leg.",
+            impact="This strategy cannot be saved as configured.",
+            what_is_blocked="Saving this strategy version.",
+            next_action="Adjust the strategy and save again.",
+        )
+
+
+def test_verifier_red_case_four_identical_parts_is_rejected() -> None:
+    """W-024 fix round: four identical parts are not a real four-part explanation."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.INTERNAL_SYSTEM,
+            code="INTERNAL_SYSTEM_002",
+            what_happened="Same.",
+            impact="Same.",
+            what_is_blocked="Same.",
+            next_action="Same.",
+        )
+
+
+def test_two_identical_parts_out_of_four_is_rejected() -> None:
+    """W-024 fix round: even two (not all four) identical parts fail closed."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.INTERNAL_SYSTEM,
+            code="INTERNAL_SYSTEM_003",
+            what_happened="An unexpected error occurred while saving.",
+            impact="An unexpected error occurred while saving.",
+            what_is_blocked="Saving this strategy.",
+            next_action="Try again in a few minutes.",
+        )
+
+
+# --- Legitimate text passes (must NOT be rejected) -----------------------------------------------
+
+def test_legitimate_market_commentary_is_not_flagged() -> None:
+    """W-024 fix round: ordinary decision-support text is not advice wording."""
+    error = UserFacingError(
+        error_class=ErrorClass.MARKET_DATA,
+        code="MARKET_DATA_002",
+        what_happened="This strategy loses money if NIFTY falls below 22,909.",
+        impact="Your rule was triggered.",
+        what_is_blocked="Automatic execution until you confirm.",
+        next_action="Review the level on the payoff chart before deciding.",
+    )
+    assert error.what_happened.endswith("22,909.")
+
+
+def test_should_inside_a_longer_word_is_not_flagged() -> None:
+    """W-024 fix round: '\\bshould\\b' must not match a word-stem prefix like 'shoulder'."""
+    from ofo.wording import find_advice_wording
+
+    assert find_advice_wording("Adjust the shoulder strikes of this butterfly.") == []
 
 
 # --- CheckCode -> ErrorClass mapping -----------------------------------------------------------

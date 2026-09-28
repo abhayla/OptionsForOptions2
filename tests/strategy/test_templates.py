@@ -126,7 +126,10 @@ BAD_FILES = [
     ("boolean where an int belongs", NAKED_CALL.replace("default: 2", "default: true"), "is not of type 'integer'"),
     ("default outside bounds", NAKED_CALL.replace("default: 2", "default: 30"), "min <= default <= max"),
     ("futures leg with a strike", NAKED_CALL.replace("instrument: CE", "instrument: FUT"), "should not be valid"),
-    ("banned advice wording", NAKED_CALL.replace('"Sell a call."', '"The best way to sell a call."'),
+    # W-024 fix round: the shared ofo.wording checker narrowed bare "best" to "best <trade/strategy/
+    # option/choice>" (bare "best" alone false-positived on ordinary words like "best way"); this
+    # fixture is updated to trip the narrower pattern instead ("best trade").
+    ("banned advice wording", NAKED_CALL.replace('"Sell a call."', '"The best trade: sell a call."'),
      "banned wording"),
     ("misspelled leg key", NAKED_CALL.replace("quantity_multiplier", "qty_multiplier"), "qty_multiplier"),
     ("YAML merge key", NAKED_CALL.replace("    constraints: []", "    constraints: []\n    <<: {x: 1}"),
