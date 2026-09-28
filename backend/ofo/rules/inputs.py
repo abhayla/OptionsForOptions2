@@ -15,7 +15,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
-from ofo.engine import UNLIMITED, Action, MultiExpiryError, Strategy, strategy_metrics
+from ofo.engine import UNLIMITED, Action, MultiExpiryError, PriceBasis, Strategy, net_premium, strategy_metrics
 
 # India has no daylight saving; market hours and time windows are in IST.
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30), "IST")
@@ -29,7 +29,7 @@ class InputName(Enum):
     UNDERLYING_MOVE_PCT = "underlying_move_pct"
     DISTANCE_TO_SHORT_STRIKE = "distance_to_short_strike"  # points to the nearest short option strike
     DISTANCE_TO_BREAKEVEN = "distance_to_breakeven"  # points to the nearest at-expiry breakeven
-    PREMIUM = "premium"  # net premium of the strategy per unit (credit positive)
+    NET_PREMIUM = "net_premium"  # rupees total at LTP, credit positive, from engine.net_premium only (ADR-008)
     LIVE_PNL = "live_pnl"  # rupees, from the engine only (ADR-008)
     PNL_PCT_OF_MAX_PROFIT = "pnl_pct_of_max_profit"  # strategy-level threshold
     PNL_PCT_OF_MAX_LOSS = "pnl_pct_of_max_loss"  # strategy-level threshold (loss as a positive percent)
@@ -71,12 +71,19 @@ def minutes_of_day(moment: datetime.time) -> Decimal:
 
 @dataclass(frozen=True)
 class Snapshot:
-    """Market and strategy values at one moment. TIME_OF_DAY is derived from ``as_of``, never supplied."""
+    """Market and strategy values at one moment. TIME_OF_DAY is derived from ``as_of``, never supplied.
+
+    Health: ``data_health`` applies to every supplied input; ``input_health`` can mark single inputs differently
+    (e.g. IV stale while LTPs are live). An input whose health is not ``available`` is unusable, exactly like a
+    missing one (ADR-015: never use stale data as live). TIME_OF_DAY comes from the timestamp, not from market
+    data, so it is always usable.
+    """
 
     values: Mapping[InputName, Decimal]
     as_of: datetime.datetime
     data_health: DataHealth
     source: str = "unspecified"
+    input_health: Mapping[InputName, DataHealth] = field(default_factory=dict)
     _all: Mapping[InputName, Decimal] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -84,6 +91,13 @@ class Snapshot:
             raise ValueError(f"as_of must be a timezone-aware datetime, got {self.as_of!r}")
         if not isinstance(self.data_health, DataHealth):
             raise ValueError(f"data_health must be a DataHealth, got {self.data_health!r}")
+        health = dict(self.input_health)
+        for name, state in health.items():
+            if not isinstance(name, InputName) or name is InputName.TIME_OF_DAY:
+                raise ValueError(f"input_health keys must be market-data InputNames, got {name!r}")
+            if not isinstance(state, DataHealth):
+                raise ValueError(f"input_health values must be DataHealth, got {state!r}")
+        object.__setattr__(self, "input_health", MappingProxyType(health))
         checked: dict[InputName, Decimal] = {}
         for name, value in dict(self.values).items():
             if not isinstance(name, InputName):
@@ -100,6 +114,18 @@ class Snapshot:
         """The input's value, or ``None`` when the snapshot does not carry it (missing, never zero)."""
         return self._all.get(name)
 
+    def health_of(self, name: InputName) -> DataHealth:
+        """The health of one input: its own override, else the snapshot's (TIME_OF_DAY is always available)."""
+        if name is InputName.TIME_OF_DAY:
+            return DataHealth.AVAILABLE
+        return self.input_health.get(name, self.data_health)
+
+    def usable(self, name: InputName) -> Decimal | None:
+        """The value a rule may use: ``None`` when the input is missing or its data is not ``available``."""
+        if self.health_of(name) is not DataHealth.AVAILABLE:
+            return None
+        return self.get(name)
+
 
 def snapshot_from_strategy(
     strategy: Strategy,
@@ -109,6 +135,7 @@ def snapshot_from_strategy(
     data_health: DataHealth,
     source: str = "unspecified",
     extra: Mapping[InputName, Decimal] | None = None,
+    input_health: Mapping[InputName, DataHealth] | None = None,
 ) -> Snapshot:
     """Build a Snapshot whose P&L, premium, distances and DTE come from the engine (ADR-008), never re-derived.
 
@@ -124,10 +151,9 @@ def snapshot_from_strategy(
     has_all_ltps = all(leg.ltp is not None for leg in strategy.legs)
     if has_all_ltps:
         values[InputName.LIVE_PNL] = strategy.live_pnl()
-        values[InputName.PREMIUM] = sum(
-            ((leg.ltp if leg.action is Action.SELL else -leg.ltp) for leg in strategy.legs if leg.is_option),
-            Decimal(0),
-        )
+    if all(leg.ltp is not None for leg in strategy.legs if leg.is_option):
+        # Futures carry no premium, so a futures-only strategy's net premium is 0 by the engine's definition.
+        values[InputName.NET_PREMIUM] = net_premium(strategy, PriceBasis.LTP)
 
     shorts = [leg.strike for leg in strategy.legs if leg.is_option and leg.action is Action.SELL]
     if shorts:
@@ -152,4 +178,5 @@ def snapshot_from_strategy(
         if name in values:
             raise ValueError(f"{name.value} is computed by the engine and cannot be supplied in extra")
         values[name] = value
-    return Snapshot(values=values, as_of=as_of, data_health=data_health, source=source)
+    return Snapshot(values=values, as_of=as_of, data_health=data_health, source=source,
+                    input_health=dict(input_health or {}))

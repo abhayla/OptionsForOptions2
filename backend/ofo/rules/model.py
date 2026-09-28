@@ -1,12 +1,11 @@
 """The one rule model for entry, adjustment and exit rules, and its evaluation (REQ-041 AC-1; ADR-009).
 
-Evaluation fails closed (ADR-015, REQ-049 "important rules are never triggered silently from stale data"):
-
-- the snapshot's data health is not ``available`` and the rule reads any input -> ``CANNOT_EVALUATE``;
-- any input the rule reads is missing from the snapshot -> ``CANNOT_EVALUATE`` naming every missing input.
-
-A rule is never reported ``NOT_TRIGGERED`` from missing or unhealthy data, even when the inputs that are present
-would already decide an AND/OR: the whole rule is only decided on complete, healthy data.
+Evaluation uses three-valued (Kleene) logic (decided under owner delegation ADR-045 and recorded in REQ-041; spec
+basis ADR-015 "never claim a trigger without the data that proves it"). An input that is missing, or whose data
+health is not ``available``, is unknown; a comparison on it is unknown. The rule is TRIGGERED or NOT_TRIGGERED only
+when the proven values decide it (an OR with one proven-true branch triggers; an AND with one proven-false branch
+does not), otherwise CANNOT_EVALUATE naming the inputs it needs. ``Evaluation.missing`` always lists every input the
+rule reads that was unusable, whatever the outcome, so a trigger record shows what was not known.
 """
 from __future__ import annotations
 
@@ -20,6 +19,7 @@ from ofo.rules.conditions import (
     ComplexityLimits,
     Condition,
     Observation,
+    Truth,
     check_complexity,
     decide,
     leaves,
@@ -117,19 +117,19 @@ def evaluate(rule: Rule, snapshot: Snapshot) -> Evaluation:
             reason=reason,
         )
 
-    inputs = rule.inputs
-    if inputs and snapshot.data_health is not DataHealth.AVAILABLE:
-        return result(
-            Outcome.CANNOT_EVALUATE,
-            reason=f"market data is {snapshot.data_health.value}; the rule is not evaluated on it",
-        )
-    missing = tuple(name for name in inputs if snapshot.get(name) is None)
-    if missing:
-        names = ", ".join(name.value for name in missing)
-        return result(Outcome.CANNOT_EVALUATE, missing=missing, reason=f"missing input(s): {names}")
-    holds, observations = decide(rule.condition, snapshot)
-    outcome = Outcome.TRIGGERED if holds else Outcome.NOT_TRIGGERED
-    return result(outcome, observations=observations, reason=describe(observations))
+    missing = tuple(name for name in rule.inputs if snapshot.usable(name) is None)
+    decision = decide(rule.condition, snapshot)
+    if decision.truth is Truth.UNKNOWN:
+        return result(Outcome.CANNOT_EVALUATE, missing=missing,
+                      reason="cannot be decided without: " + ", ".join(_why(snapshot, n) for n in decision.unknown))
+    outcome = Outcome.TRIGGERED if decision.truth is Truth.TRUE else Outcome.NOT_TRIGGERED
+    return result(outcome, observations=decision.observations, missing=missing,
+                  reason=describe(decision.observations))
+
+
+def _why(snapshot: Snapshot, name: InputName) -> str:
+    health = snapshot.health_of(name)
+    return f"{name.value} ({'missing' if health is DataHealth.AVAILABLE else health.value})"
 
 
 def describe(observations: tuple[Observation, ...]) -> str:

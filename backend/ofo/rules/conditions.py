@@ -140,24 +140,43 @@ class Observation:
     held: bool
 
 
-def decide(condition: Condition, snapshot: Snapshot) -> tuple[bool, tuple[Observation, ...]]:
-    """Evaluate a condition whose inputs are ALL present; return (holds, the observations that decided it).
+class Truth(Enum):
+    """Three-valued (Kleene) truth: UNKNOWN when an input the branch needs is missing or not healthy."""
 
-    AND true: every child. AND false: the failing children. OR true: the holding children. OR false: every child.
+    TRUE = "true"
+    FALSE = "false"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class Decision:
+    truth: Truth
+    observations: tuple[Observation, ...]  # the proven values that decided it; empty when UNKNOWN
+    unknown: tuple[InputName, ...]  # inputs that left it UNKNOWN; empty when decided
+
+
+def decide(condition: Condition, snapshot: Snapshot) -> Decision:
+    """Kleene evaluation (decision recorded in REQ-041, owner delegation ADR-045; spec basis ADR-015).
+
+    A comparison whose input is missing or unhealthy is UNKNOWN. OR is TRUE if any branch is proven TRUE (reporting
+    only the TRUE branches), FALSE only if every branch is proven FALSE, else UNKNOWN. AND is FALSE if any branch is
+    proven FALSE (reporting only the FALSE branches), TRUE only if every branch is TRUE, else UNKNOWN.
     """
     if isinstance(condition, Always):
-        return True, ()
+        return Decision(Truth.TRUE, (), ())
     if isinstance(condition, Compare):
-        value = snapshot.get(condition.input)
+        value = snapshot.usable(condition.input)
         if value is None:
-            raise ValueError(f"{condition.input.value} is missing; check missing inputs before deciding")
+            return Decision(Truth.UNKNOWN, (), (condition.input,))
         held = condition.op.holds(value, condition.threshold)
-        return held, (Observation(condition.input, condition.op, condition.threshold, value, held),)
+        observation = Observation(condition.input, condition.op, condition.threshold, value, held)
+        return Decision(Truth.TRUE if held else Truth.FALSE, (observation,), ())
     results = [decide(child, snapshot) for child in condition.children]
-    if isinstance(condition, AllOf):
-        holds = all(r[0] for r in results)
-        chosen = results if holds else [r for r in results if not r[0]]
-    else:
-        holds = any(r[0] for r in results)
-        chosen = [r for r in results if r[0]] if holds else results
-    return holds, tuple(obs for r in chosen for obs in r[1])
+    deciding, other = (Truth.FALSE, Truth.TRUE) if isinstance(condition, AllOf) else (Truth.TRUE, Truth.FALSE)
+    if any(r.truth is deciding for r in results):
+        chosen = [r for r in results if r.truth is deciding]
+        return Decision(deciding, tuple(o for r in chosen for o in r.observations), ())
+    if all(r.truth is other for r in results):
+        return Decision(other, tuple(o for r in results for o in r.observations), ())
+    unknown = tuple(dict.fromkeys(name for r in results if r.truth is Truth.UNKNOWN for name in r.unknown))
+    return Decision(Truth.UNKNOWN, (), unknown)

@@ -5,7 +5,10 @@ from decimal import Decimal as D
 
 import pytest
 
-from ofo.engine import Action, Instrument, Leg, Strategy
+import ast
+import pathlib
+
+from ofo.engine import Action, Instrument, Leg, PriceBasis, Strategy, net_premium
 from ofo.rules import (
     NO_ADJUSTMENT_RULE,
     NO_EXIT_RULE,
@@ -90,7 +93,7 @@ def test_every_named_input_can_drive_a_rule():
     """AC-4: each input (level, move, distances, premium, P&L, DTE, IV, IV percentile, Greeks, thresholds) is usable."""
     expected = {
         "UNDERLYING_LEVEL", "UNDERLYING_MOVE_POINTS", "UNDERLYING_MOVE_PCT", "DISTANCE_TO_SHORT_STRIKE",
-        "DISTANCE_TO_BREAKEVEN", "PREMIUM", "LIVE_PNL", "PNL_PCT_OF_MAX_PROFIT", "PNL_PCT_OF_MAX_LOSS", "DTE",
+        "DISTANCE_TO_BREAKEVEN", "NET_PREMIUM", "LIVE_PNL", "PNL_PCT_OF_MAX_PROFIT", "PNL_PCT_OF_MAX_LOSS", "DTE",
         "TIME_OF_DAY", "IV", "IV_PERCENTILE", "DELTA", "GAMMA", "THETA", "VEGA",
     }
     assert {n.name for n in InputName} == expected
@@ -112,7 +115,8 @@ def test_engine_snapshot_inputs_on_golden_condor():
     s = snapshot_from_strategy(GOLDEN, underlying_level=D("23200"), as_of=AS_OF, data_health=DataHealth.AVAILABLE,
                                extra={InputName.IV: D("13.4"), InputName.DELTA: D("-0.12")})
     assert s.get(InputName.LIVE_PNL) == D("1365.00")
-    assert s.get(InputName.PREMIUM) == D("72.80")  # 72.50 + 78.00 - 38.20 - 39.50 per unit
+    assert s.get(InputName.NET_PREMIUM) == D("5460.00")  # (72.50 + 78.00 - 38.20 - 39.50) x 75, engine value
+    assert s.get(InputName.NET_PREMIUM) == net_premium(GOLDEN, PriceBasis.LTP)
     assert s.get(InputName.DISTANCE_TO_SHORT_STRIKE) == D("200")
     assert s.get(InputName.DISTANCE_TO_BREAKEVEN) == D("291")  # breakevens 22,909 and 23,491
     assert s.get(InputName.PNL_PCT_OF_MAX_PROFIT) == D("20")  # 1,365 / 6,825
@@ -136,6 +140,49 @@ def test_snapshot_rejects_bad_values():
     with pytest.raises(ValueError, match="engine"):
         snapshot_from_strategy(GOLDEN, underlying_level=D("23200"), as_of=AS_OF, data_health=DataHealth.AVAILABLE,
                                extra={InputName.LIVE_PNL: D("0")})
+
+
+def test_futures_only_strategy_has_zero_net_premium_not_missing():
+    """AC-4: futures carry no premium, so a futures-only strategy's NET_PREMIUM is 0 (engine definition)."""
+    fut = Strategy((Leg(Action.BUY, Instrument.FUT, None, EXPIRY, 75, D("23100"), D("23150")),))
+    s = snapshot_from_strategy(fut, underlying_level=D("23150"), as_of=AS_OF, data_health=DataHealth.AVAILABLE)
+    assert s.get(InputName.NET_PREMIUM) == D("0")
+    assert s.get(InputName.LIVE_PNL) == D("3750")
+
+
+PRICE_FIELDS = {"ltp", "entry_price"}
+
+
+def price_math(source: str) -> list[int]:
+    """Line numbers where rules code touches a leg price other than an ``is None`` / ``is not None`` check."""
+    tree = ast.parse(source)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    bad = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in PRICE_FIELDS:
+            parent = parents.get(node)
+            is_none_check = (isinstance(parent, ast.Compare) and len(parent.ops) == 1
+                             and isinstance(parent.ops[0], (ast.Is, ast.IsNot))
+                             and isinstance(parent.comparators[0], ast.Constant)
+                             and parent.comparators[0].value is None)
+            if not is_none_check:
+                bad.append(node.lineno)
+    return bad
+
+
+def test_no_money_arithmetic_on_leg_prices_in_rules():
+    """AC-4: rules/ never computes from ltp/entry_price (ADR-008: the engine owns every money number)."""
+    # Self-test: the re-implemented premium sum this guard exists for is caught (UnaryOp inside sum(), no BinOp).
+    old = "x = sum(((leg.ltp if leg.action is Action.SELL else -leg.ltp) for leg in legs), Decimal(0))"
+    assert price_math(old) == [1, 1]
+    assert price_math("y = (leg.ltp - leg.entry_price) * leg.quantity") == [1, 1]
+    assert price_math("ok = all(leg.ltp is not None for leg in legs)") == []
+
+    rules_dir = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo" / "rules"
+    files = sorted(rules_dir.glob("*.py"))
+    assert len(files) >= 8
+    offenders = {f.name: price_math(f.read_text(encoding="utf-8")) for f in files}
+    assert {name: lines for name, lines in offenders.items() if lines} == {}
 
 
 # ---- AC-5 -----------------------------------------------------------------------------------------------------
@@ -202,13 +249,61 @@ def test_strict_and_inclusive_operators_at_the_threshold():
                     Op.GT: Outcome.NOT_TRIGGERED, Op.LT: Outcome.NOT_TRIGGERED}
 
 
-def test_missing_input_is_cannot_evaluate_even_when_or_would_hold():
-    """AC-8: an OR with one true branch and one missing input is CANNOT_EVALUATE, naming the missing input."""
-    rule = Rule("r", RuleKind.EXIT, AnyOf((gt("underlying_level", "23400"), gt("iv", "20"))), RuleAction.ALERT_ONLY)
-    result = evaluate(rule, snap(underlying_level="23500"))
+MAX_LOSS_OR_LEVEL = Rule("x-or", RuleKind.EXIT,
+                         AnyOf((lt("live_pnl", "-5000"), lt("underlying_level", "22800"))), RuleAction.ALERT_ONLY)
+
+
+def test_kleene_or_triggers_on_a_proven_branch_with_the_other_missing():
+    """AC-8: 'max loss 5000 OR level <= 22,800', live_pnl missing, level 22,700 -> TRIGGERED on the level only."""
+    result = evaluate(MAX_LOSS_OR_LEVEL, snap(underlying_level="22700"))
+    assert result.outcome is Outcome.TRIGGERED
+    assert [(o.input, o.value, o.threshold) for o in result.observations] == [
+        (InputName.UNDERLYING_LEVEL, D("22700"), D("22800"))]
+    assert result.missing == (InputName.LIVE_PNL,)
+    assert result.reason == "underlying_level 22700 <= 22800"
+
+
+def test_kleene_or_cannot_evaluate_when_no_branch_is_proven():
+    """AC-8: same rule, level 22,900 (proven false) and live_pnl missing -> CANNOT_EVALUATE, never NOT_TRIGGERED."""
+    result = evaluate(MAX_LOSS_OR_LEVEL, snap(underlying_level="22900"))
     assert result.outcome is Outcome.CANNOT_EVALUATE
+    assert result.observations == ()
+    assert result.missing == (InputName.LIVE_PNL,)
+    assert result.reason == "cannot be decided without: live_pnl (missing)"
+    # With every branch proven false it is NOT_TRIGGERED, reporting both values.
+    both = evaluate(MAX_LOSS_OR_LEVEL, snap(underlying_level="22900", live_pnl="-4999.99"))
+    assert both.outcome is Outcome.NOT_TRIGGERED
+    assert [o.value for o in both.observations] == [D("-4999.99"), D("22900")]
+
+
+def test_kleene_and_not_triggered_on_a_proven_false_branch_with_the_other_missing():
+    """AC-8: 'level >= 23,400 AND IV >= 20', level 23,300 (false), IV missing -> NOT_TRIGGERED on the level."""
+    rule = Rule("adj", RuleKind.ADJUSTMENT, AllOf((gt("underlying_level", "23400"), gt("iv", "20"))),
+                RuleAction.ALERT_ONLY)
+    result = evaluate(rule, snap(underlying_level="23300"))
+    assert result.outcome is Outcome.NOT_TRIGGERED
+    assert [(o.input, o.held) for o in result.observations] == [(InputName.UNDERLYING_LEVEL, False)]
     assert result.missing == (InputName.IV,)
-    assert result.reason == "missing input(s): iv"
+    # Level true, IV missing: an AND cannot be proven true.
+    unknown = evaluate(rule, snap(underlying_level="23500"))
+    assert unknown.outcome is Outcome.CANNOT_EVALUATE and unknown.missing == (InputName.IV,)
+
+
+def test_stale_input_counts_as_missing():
+    """AC-8: a stale input is unusable like a missing one: IV stale -> the IV branch is unknown, the level decides."""
+    s = Snapshot({InputName.UNDERLYING_LEVEL: D("22700"), InputName.IV: D("25")}, AS_OF, DataHealth.AVAILABLE,
+                 input_health={InputName.IV: DataHealth.STALE})
+    rule = Rule("x", RuleKind.EXIT, AnyOf((gt("iv", "20"), lt("underlying_level", "22800"))), RuleAction.ALERT_ONLY)
+    result = evaluate(rule, s)
+    assert result.outcome is Outcome.TRIGGERED
+    assert [o.input for o in result.observations] == [InputName.UNDERLYING_LEVEL]  # the stale 25 is not used
+    only_iv = Rule("x-iv", RuleKind.EXIT, gt("iv", "20"), RuleAction.ALERT_ONLY)
+    stale = evaluate(only_iv, s)
+    assert stale.outcome is Outcome.CANNOT_EVALUATE
+    assert stale.reason == "cannot be decided without: iv (stale)"
+    # Snapshot-wide stale data: every market input is unusable, so the OR cannot be decided.
+    all_stale = Snapshot(dict(s.values), AS_OF, DataHealth.STALE)
+    assert evaluate(rule, all_stale).outcome is Outcome.CANNOT_EVALUATE
 
 
 def test_v1_complexity_limits():

@@ -4,6 +4,7 @@ from decimal import Decimal as D
 
 import pytest
 
+from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.rules import (
     DataHealth,
     Direction,
@@ -19,6 +20,7 @@ from ofo.rules import (
     entry_time_window,
     entry_volatility,
     evaluate,
+    snapshot_from_strategy,
 )
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -66,14 +68,33 @@ def test_range_includes_both_ends():
 
 
 def test_premium_target_credit_and_debit():
-    """AC-2: credit target 90 triggers at net credit 90, not 89.95; debit target 50 triggers at a debit of 50."""
-    credit = entry_premium_target("e-cr", D("90"), receive=True, action=ACT)
-    debit = entry_premium_target("e-db", D("50"), receive=False, action=ACT)
-    assert outcome(credit, premium="90") is Outcome.TRIGGERED
-    assert outcome(credit, premium="89.95") is Outcome.NOT_TRIGGERED
-    assert outcome(debit, premium="-50") is Outcome.TRIGGERED
-    assert outcome(debit, premium="-49.95") is Outcome.TRIGGERED  # paying less than 50
-    assert outcome(debit, premium="-50.05") is Outcome.NOT_TRIGGERED  # paying more than 50
+    """AC-2: rupee totals - credit 6,750 triggers at +6,750 not +6,746.25; debit 3,750 at -3,750, not -3,753.75."""
+    credit = entry_premium_target("e-cr", D("6750"), receive=True, action=ACT)
+    debit = entry_premium_target("e-db", D("3750"), receive=False, action=ACT)
+    assert outcome(credit, net_premium="6750") is Outcome.TRIGGERED
+    assert outcome(credit, net_premium="6746.25") is Outcome.NOT_TRIGGERED
+    assert outcome(debit, net_premium="-3750") is Outcome.TRIGGERED
+    assert outcome(debit, net_premium="-3746.25") is Outcome.TRIGGERED  # paying less than 3,750
+    assert outcome(debit, net_premium="-3753.75") is Outcome.NOT_TRIGGERED  # paying more than 3,750
+
+
+def test_premium_target_on_ratio_spread_uses_engine_net_premium():
+    """AC-2: BUY 75x23000CE@100 / SELL 150x23200CE@60 is a +1,500 credit (engine), so 'credit at least 1,500'
+    triggers and 'at least 1,500.01' does not; before the fix the rules saw an unweighted -40 and never triggered."""
+    legs = (
+        Leg(Action.BUY, Instrument.CE, D("23000"), datetime.date(2026, 10, 27), 75, D("100"), D("100")),
+        Leg(Action.SELL, Instrument.CE, D("23200"), datetime.date(2026, 10, 27), 150, D("60"), D("60")),
+    )
+    snapshot = snapshot_from_strategy(Strategy(legs), underlying_level=D("23100"),
+                                      as_of=datetime.datetime(2026, 10, 20, 10, 0, tzinfo=IST),
+                                      data_health=DataHealth.AVAILABLE)
+    assert snapshot.get(InputName.NET_PREMIUM) == D("1500")
+    at = entry_premium_target("e-cr", D("1500"), receive=True, action=ACT)
+    above = entry_premium_target("e-cr2", D("1500.01"), receive=True, action=ACT)
+    result = evaluate(at, snapshot)
+    assert result.outcome is Outcome.TRIGGERED
+    assert result.observations[0].value == D("1500")
+    assert evaluate(above, snapshot).outcome is Outcome.NOT_TRIGGERED
 
 
 def test_volatility_condition():
