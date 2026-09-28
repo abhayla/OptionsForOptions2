@@ -1,11 +1,12 @@
-"""Strategy aggregation and the scenario grid (spec/business-rules/scenario-calculations.md §1, §4)."""
+"""Strategy aggregation, net premium and the scenario grid (spec/business-rules/scenario-calculations.md §1, §3, §4)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 from typing import Sequence
 
-from ofo.engine.legs import Leg, expiry_pnl, live_pnl, require_decimal
+from ofo.engine.legs import Action, Leg, expiry_pnl, live_pnl, require_decimal
 
 
 @dataclass(frozen=True)
@@ -56,3 +57,33 @@ def scenario_grid(strategy: Strategy, levels: Sequence[Decimal]) -> ScenarioGrid
     leg_rows = tuple(tuple(expiry_pnl(leg, level) for level in checked) for leg in strategy.legs)
     totals = tuple(sum((row[i] for row in leg_rows), Decimal(0)) for i in range(len(checked)))
     return ScenarioGrid(levels=checked, leg_rows=leg_rows, totals=totals)
+
+
+class PriceBasis(Enum):
+    """Which per-unit price a net premium uses: the entry price, or the current LTP."""
+
+    ENTRY = "entry"
+    LTP = "ltp"
+
+
+def net_premium(strategy: Strategy, price: PriceBasis) -> Decimal:
+    """Strategy net premium in rupees, credit positive (§3: net premium is strategy-level).
+
+    Each SELL option leg adds ``price x quantity`` and each BUY option leg subtracts it. Futures legs have no
+    premium and add 0, with or without an LTP. With ``PriceBasis.LTP`` an option leg without an LTP raises.
+    Example: BUY 75 x 23000 CE @ 100, SELL 150 x 23200 CE @ 60 -> 9,000 - 7,500 = +1,500.
+    """
+    if not isinstance(price, PriceBasis):
+        raise ValueError(f"price must be a PriceBasis, got {price!r}")
+    total = Decimal(0)
+    for leg in strategy.legs:
+        if not leg.is_option:
+            continue
+        if price is PriceBasis.LTP:
+            if leg.ltp is None:
+                raise ValueError("an LTP net premium needs an LTP on every option leg; this leg has none")
+            unit = leg.ltp
+        else:
+            unit = leg.entry_price
+        total += (unit if leg.action is Action.SELL else -unit) * leg.quantity
+    return total
