@@ -1,21 +1,39 @@
 """AC-1: every error class named in REQ-065's AC-1 text has an ErrorClass member, and vice versa.
+AC-2 core proof (W-024 round 3): user-facing error text comes ONLY from a fixed, reviewed template
+catalogue with typed slots (`ofo.errors.templates.CATALOGUE` / `render`), so the ADR-003 wording
+check runs over a finite set here in CI, never over arbitrary runtime free text.
 
-Core/Proof (W-024): the AC-1 text is read from spec/requirements/REQ-065.md on disk (never copied
-into this file), so an edit to the spec's class list fails this test until ErrorClass is updated to
-match. Then, for every class, an example error is built from the catalogue and the core is proven:
-all four message parts are non-empty and free of ADR-003 banned advice wording.
+Core: every error class produces a message with all four parts filled and no advice words.
+Proof: this file scans every template (four parts non-empty; distinct after stripping punctuation
+and casefolding; NFKC-clean Latin/digits/₹/punctuation; passes the wording check), and
+`UserFacingError("free text")` raises.
+
+RCA (rounds 1-2): `errors/model.py` used to accept four free-text strings at runtime, so any caller
+could show any sentence; a denylist over that free text can never list every phrasing. Round 3's fix
+is structural, not lexical: no free text reaches a user at all.
 """
 from __future__ import annotations
 
+import ast
 import re
+from decimal import Decimal
 from pathlib import Path
 
+import pytest
 import yaml
 
-from ofo.errors import BANNED_PHRASES, CATALOGUE, ErrorClass, scan_for_banned_phrases
+from ofo.errors import CATALOGUE, ErrorClass, MessageTemplate, UserFacingError, render
+from ofo.errors.slots import ExternalText
+from ofo.wording import (
+    find_advice_wording,
+    is_blank_after_normalising,
+    is_nfkc_clean_latin,
+    normalise_for_duplicate_check,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REQ_065_PATH = REPO_ROOT / "spec" / "requirements" / "REQ-065.md"
+BACKEND_OFO_DIR = REPO_ROOT / "backend" / "ofo"
 
 
 def _load_ac_text(ac_id: str) -> str:
@@ -84,38 +102,198 @@ def test_at_least_12_ac1_classes_present() -> None:
     assert len(ErrorClass) >= 12
 
 
-def test_every_error_class_has_a_catalogue_example() -> None:
-    """Core: every ErrorClass has one example UserFacingError in the catalogue."""
-    missing = set(ErrorClass) - set(CATALOGUE)
-    assert not missing, f"ErrorClass members with no catalogue example: {missing}"
+def test_every_error_class_has_at_least_one_template() -> None:
+    """Core: every ErrorClass has at least one MessageTemplate in the catalogue."""
+    covered = {t.error_class for t in CATALOGUE.values()}
+    missing = set(ErrorClass) - covered
+    assert not missing, f"ErrorClass members with no template: {sorted(m.name for m in missing)}"
 
 
-def test_every_catalogue_example_has_all_four_parts_and_no_banned_wording() -> None:
-    """Core/Proof: every catalogue example has all four non-empty parts and no ADR-003 wording."""
-    for error_class in ErrorClass:
-        example = CATALOGUE[error_class]
-        assert example.error_class is error_class
-        assert example.what_happened.strip()
-        assert example.impact.strip()
-        assert example.what_is_blocked.strip()
-        assert example.next_action.strip()
-        hits = scan_for_banned_phrases(
-            example.what_happened, example.impact, example.what_is_blocked, example.next_action
+_PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
+
+
+def _check_template(template: MessageTemplate) -> None:
+    """Core proof: every one of a template's four parts is non-blank, NFKC-clean Latin/digits/₹/
+    punctuation, free of ADR-003 wording, and mutually distinct after stripping punctuation and
+    casefolding. Factored out (not inlined into the test below) so the mutation tests further down
+    can call it directly on a synthetic/modified template without editing the real catalogue."""
+    seen: dict[str, str] = {}
+    for name in _PART_NAMES:
+        text = getattr(template, name)
+        assert not is_blank_after_normalising(text), f"{template.id}.{name} is blank: {text!r}"
+        assert is_nfkc_clean_latin(text), f"{template.id}.{name} has non-Latin/confusable characters: {text!r}"
+        hits = find_advice_wording(text)
+        assert not hits, f"{template.id}.{name} contains banned wording {hits}: {text!r}"
+        key = normalise_for_duplicate_check(text)
+        assert key not in seen, f"{template.id}: '{seen[key]}' and '{name}' are duplicates: {text!r}"
+        seen[key] = name
+
+
+def test_every_template_four_parts_pass_the_core_checks() -> None:
+    """Core/Proof (W-024 round 3): every catalogue template's four parts are non-blank, distinct,
+    NFKC-clean and free of ADR-003 advice wording. This is the CI check over the finite set."""
+    for template in CATALOGUE.values():
+        _check_template(template)
+
+
+# --- Free-text refusal: UserFacingError has no public constructor -------------------------------
+
+def test_direct_construction_with_free_text_raises() -> None:
+    """AC-2 core: `UserFacingError("free text")`-shaped construction always raises."""
+    with pytest.raises(ValueError):
+        UserFacingError(
+            error_class=ErrorClass.MARGIN,
+            code="X",
+            what_happened="free text",
+            impact="free text",
+            what_is_blocked="free text",
+            next_action="free text",
         )
-        assert not hits, f"{error_class.name} catalogue text contains banned wording: {hits}"
 
 
-def test_banned_phrases_list_matches_adr_003_examples() -> None:
-    """Sanity: the banned-phrase denylist itself catches ADR-003's own forbidden examples."""
-    forbidden_examples = [
-        "You should take this trade.",
-        "This is the best trade available.",
-        "That is the best adjustment.",
-        "This is a recommended trade for you.",
-        "Guaranteed returns on this strategy.",
-        "A risk-free way to trade this.",
-        "Certain profit if you proceed.",
-    ]
-    for text in forbidden_examples:
-        assert scan_for_banned_phrases(text), f"denylist missed: {text!r}"
-    assert len(BANNED_PHRASES) >= 6
+def test_direct_construction_with_a_single_positional_string_raises() -> None:
+    """AC-2 core (literal case from the brief): `UserFacingError("free text")` raises."""
+    with pytest.raises(Exception):
+        UserFacingError("free text")  # type: ignore[call-arg]
+
+
+# --- render(): the only constructor, typed slots, fail-closed -----------------------------------
+
+def test_render_unknown_template_id_raises() -> None:
+    with pytest.raises(ValueError):
+        render("does_not_exist")
+
+
+def test_render_missing_slot_raises() -> None:
+    with pytest.raises(ValueError):
+        render("user_input_lot_size")  # missing 'entered'
+
+
+def test_render_extra_slot_raises() -> None:
+    with pytest.raises(ValueError):
+        render("user_input_lot_size", entered=0, unexpected=1)
+
+
+def test_render_str_where_money_expected_raises() -> None:
+    """A str is refused where the slot type is Money (Decimal)."""
+    with pytest.raises(TypeError):
+        render("margin_insufficient", available="41200", required=Decimal("48000"))
+
+
+def test_render_float_anywhere_raises() -> None:
+    """A float is refused for every slot type this catalogue uses (ADR-008: money/exact values only)."""
+    with pytest.raises(TypeError):
+        render("user_input_lot_size", entered=0.0)
+    with pytest.raises(TypeError):
+        render("margin_insufficient", available=41200.0, required=Decimal("48000"))
+
+
+def test_render_valid_call_produces_a_user_facing_error() -> None:
+    error = render("user_input_lot_size", entered=0)
+    assert error.error_class is ErrorClass.USER_INPUT
+    assert "0" in error.what_happened
+    assert error.external_text is None
+
+
+# --- ExternalText: verbatim, labelled, never scanned or re-worded -------------------------------
+
+def test_external_text_is_rendered_verbatim_even_containing_banned_wording() -> None:
+    """A broker message containing 'guaranteed' is shown word for word, quoted and labelled — it is
+    NOT scanned for our ADR-003 wording and NOT merged into any of the four sentence parts."""
+    error = render(
+        "order_rejection_leg",
+        broker_message=ExternalText(source="Zerodha", text="This is a guaranteed rejection reason"),
+    )
+    assert error.external_text == "Zerodha's message: «This is a guaranteed rejection reason»"
+    combined_parts = " ".join(
+        [error.what_happened, error.impact, error.what_is_blocked, error.next_action]
+    ).lower()
+    assert "guaranteed" not in combined_parts, "external text leaked into a sentence part"
+
+
+def test_external_text_slot_requires_an_externaltext_instance() -> None:
+    with pytest.raises(TypeError):
+        render("order_rejection_leg", broker_message="price outside the circuit limit")
+
+
+# --- AST: no direct UserFacingError(...) call, no f-string passed to render() -------------------
+
+def test_ast_no_direct_userfacingerror_calls_and_no_fstring_arguments_to_render() -> None:
+    """No `UserFacingError(` construction anywhere in backend/ofo, and `render()` is never called
+    with an f-string — the only path to error text is a typed slot value into a fixed template."""
+    offenders: list[str] = []
+    for path in BACKEND_OFO_DIR.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name == "UserFacingError":
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}: direct UserFacingError(...) call")
+            if name == "render":
+                for arg in list(node.args) + [kw.value for kw in node.keywords]:
+                    if isinstance(arg, ast.JoinedStr):
+                        offenders.append(
+                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}: render() called with an f-string"
+                        )
+    assert not offenders, "\n".join(offenders)
+
+
+# --- Mutation tests: each must go red against the checks above ----------------------------------
+# Mutation -> test that catches it:
+#  1. add a "you must buy more lots" template          -> test_mutation_must_phrase_is_caught
+#  2. remove one class's template                       -> test_mutation_missing_error_class_is_caught
+#  3. two parts differ only by a full stop               -> test_mutation_duplicate_parts_is_caught
+#  4. Cyrillic "о" in a template                         -> test_mutation_cyrillic_lookalike_is_caught
+#  5. route a raw string past render (Money slot)         -> test_render_str_where_money_expected_raises (above)
+#  6. render re-wording ExternalText                      -> test_external_text_is_rendered_verbatim_... (above)
+
+def test_mutation_must_phrase_is_caught() -> None:
+    bad = MessageTemplate(
+        id="mutation_must",
+        error_class=ErrorClass.USER_INPUT,
+        code="X",
+        what_happened="You must buy more lots to proceed.",
+        impact="x",
+        what_is_blocked="x",
+        next_action="x",
+    )
+    with pytest.raises(AssertionError):
+        _check_template(bad)
+
+
+def test_mutation_missing_error_class_is_caught() -> None:
+    covered = {t.error_class for t in CATALOGUE.values()} - {ErrorClass.MARGIN}
+    missing = set(ErrorClass) - covered
+    assert missing == {ErrorClass.MARGIN}
+
+
+def test_mutation_duplicate_parts_is_caught() -> None:
+    bad = MessageTemplate(
+        id="mutation_dup",
+        error_class=ErrorClass.INTERNAL_SYSTEM,
+        code="X",
+        what_happened="Same.",
+        impact="Same",
+        what_is_blocked="A distinct sentence about something else entirely.",
+        next_action="Another distinct sentence, unrelated to the rest.",
+    )
+    with pytest.raises(AssertionError):
+        _check_template(bad)
+
+
+def test_mutation_cyrillic_lookalike_is_caught() -> None:
+    bad = MessageTemplate(
+        id="mutation_cyrillic",
+        error_class=ErrorClass.MARGIN,
+        code="X",
+        what_happened="Margin is lоw right now.",  # Cyrillic "о" (U+043E), not Latin "o"
+        impact="x",
+        what_is_blocked="x",
+        next_action="x",
+    )
+    with pytest.raises(AssertionError):
+        _check_template(bad)

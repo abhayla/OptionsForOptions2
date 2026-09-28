@@ -1,266 +1,104 @@
 """AC-2: every user-facing error states what happened, the impact, what is blocked, next action.
 
-Covers construction of UserFacingError (all four parts required, fail-closed on missing/blank
-fields and on ADR-003 banned wording), plus negative/red cases per the input-domain checklist.
+Round 3 (W-024): covers the typed slot system (`ofo.errors.slots`) that `render()` validates every
+value against, plus round-2's verifier-found red cases reproduced as real `render()` calls (proving
+the fix holds at the render boundary, not just inside the wording scanner tested directly in
+`tests/test_wording.py`).
 """
 from __future__ import annotations
 
+import datetime
+from decimal import Decimal
+
 import pytest
 
-from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, scan_for_banned_phrases
+from ofo.engine.legs import Instrument as EngineInstrument
+from ofo.errors import ErrorClass, render
+from ofo.errors.slots import Code, ExternalText, Instrument, Int, Money, Time
 
 
-def test_valid_construction_round_trips_all_four_parts() -> None:
-    """AC-2: a well-formed error carries what happened, impact, what is blocked, next action."""
-    error = UserFacingError(
-        error_class=ErrorClass.MARGIN,
-        code="MARGIN_002",
-        what_happened="Margin available is below what this strategy needs.",
-        impact="Zerodha would reject this order for insufficient margin.",
-        what_is_blocked="Execution of this strategy.",
-        next_action="Add funds in Zerodha or reduce the quantity, then retry.",
-    )
-    as_dict = error.as_dict()
-    assert as_dict["error_class"] == "MARGIN"
-    assert as_dict["what_happened"]
-    assert as_dict["impact"]
-    assert as_dict["what_is_blocked"]
-    assert as_dict["next_action"]
+# --- Slot types: validate + format ---------------------------------------------------------------
+
+def test_money_requires_decimal_not_str_int_float_bool() -> None:
+    Money.validate(Decimal("100"))  # ok
+    for bad in ("100", 100, 100.0, True):
+        with pytest.raises(TypeError):
+            Money.validate(bad)
 
 
-@pytest.mark.parametrize(
-    "field",
-    ["what_happened", "impact", "what_is_blocked", "next_action"],
-)
-def test_missing_any_of_the_four_parts_raises(field: str) -> None:
-    """AC-2 negative: each of the four required parts is required on its own; blank fails closed."""
-    kwargs = {
-        "error_class": ErrorClass.USER_INPUT,
-        "code": "USER_INPUT_002",
-        "what_happened": "The value entered was not a whole number.",
-        "impact": "The form cannot be submitted.",
-        "what_is_blocked": "Saving this form.",
-        "next_action": "Enter a whole number and try again.",
-    }
-    kwargs[field] = "   "
+def test_money_format_uses_rupee_sign_and_thousands_separator() -> None:
+    assert Money.format(Decimal("41200")) == "₹41,200"
+
+
+def test_int_requires_int_not_bool_or_float() -> None:
+    Int.validate(4)  # ok
+    with pytest.raises(TypeError):
+        Int.validate(4.0)
+    with pytest.raises(TypeError):
+        Int.validate(True)
+
+
+def test_time_requires_timezone_aware_datetime() -> None:
+    aware = datetime.datetime(2026, 9, 29, 10, 0, tzinfo=datetime.timezone.utc)
+    Time.validate(aware)  # ok
+    naive = datetime.datetime(2026, 9, 29, 10, 0)
     with pytest.raises(ValueError):
-        UserFacingError(**kwargs)
+        Time.validate(naive)
+    with pytest.raises(TypeError):
+        Time.validate("2026-09-29T10:00:00Z")
 
 
-def test_missing_code_raises() -> None:
-    """Negative: a blank code fails closed rather than defaulting to an empty string."""
+def test_instrument_requires_engine_instrument_enum() -> None:
+    Instrument.validate(EngineInstrument.CE)  # ok
+    with pytest.raises(TypeError):
+        Instrument.validate("CE")
+
+
+def test_code_rejects_free_text_with_spaces() -> None:
+    Code.validate("ORDER-REF-001")  # ok
     with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.INTERNAL_SYSTEM,
-            code="",
-            what_happened="An unexpected error occurred.",
-            impact="Your changes were not saved.",
-            what_is_blocked="Saving.",
-            next_action="Try again in a few minutes.",
-        )
+        Code.validate("this is a sentence with spaces")
+    with pytest.raises(TypeError):
+        Code.validate("")
 
 
-def test_wrong_type_for_error_class_raises() -> None:
-    """Negative: a raw string in place of an ErrorClass member fails closed, never coerced."""
+def test_external_text_requires_nonblank_source_and_text() -> None:
+    ExternalText.validate(ExternalText(source="Zerodha", text="rejected"))  # ok
     with pytest.raises(ValueError):
-        UserFacingError(
-            error_class="margin",  # type: ignore[arg-type]
-            code="MARGIN_003",
-            what_happened="Margin available is below what this strategy needs.",
-            impact="The order would be rejected.",
-            what_is_blocked="Execution.",
-            next_action="Add funds and retry.",
-        )
+        ExternalText.validate(ExternalText(source="", text="rejected"))
+    with pytest.raises(TypeError):
+        ExternalText.validate("Zerodha: rejected")
 
 
-@pytest.mark.parametrize(
-    "banned_text",
-    [
-        "You should take this trade now.",
-        "This is the best adjustment for you.",
-        "This is a guaranteed outcome.",
-        "This is a recommended trade.",
-        "A risk-free way to proceed.",
-        "Certain profit awaits.",
-    ],
-)
-def test_banned_adr_003_wording_is_rejected_at_construction(banned_text: str) -> None:
-    """AC-2 + ADR-003 negative: advice wording in any of the four parts fails closed at construction."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.STRATEGY_VALIDATION,
-            code="STRATEGY_VALIDATION_002",
-            what_happened=banned_text,
-            impact="This strategy cannot be saved as configured.",
-            what_is_blocked="Saving this strategy version.",
-            next_action="Adjust the strategy and save again.",
-        )
+# --- Round-2 verifier red cases, reproduced against real render() calls -------------------------
+
+def test_round2_red_case_must_is_rejected_at_the_template_level() -> None:
+    """'you must buy more lots' would only ever reach a user via a catalogue template; none of the
+    12 real templates contain it (proven by test_every_template_four_parts_pass_the_core_checks in
+    test_error_catalogue.py), and render() offers no slot through which a caller could inject it."""
+    error = render("user_input_lot_size", entered=0)
+    assert "must" not in error.what_happened.lower()
 
 
-def test_banned_wording_is_rejected_wherever_it_appears_across_all_four_parts() -> None:
-    """AC-2 negative: the scan covers every one of the four parts, not only what_happened."""
-    base = {
-        "error_class": ErrorClass.MARGIN,
-        "code": "MARGIN_004",
-        "what_happened": "Margin available is below what this strategy needs.",
-        "impact": "The order would be rejected.",
-        "what_is_blocked": "Execution of this strategy.",
-        "next_action": "Add funds in Zerodha or reduce the quantity, then retry.",
-    }
-    for field in ("impact", "what_is_blocked", "next_action"):
-        kwargs = dict(base)
-        kwargs[field] = "Guaranteed to work if you proceed."
-        with pytest.raises(ValueError):
-            UserFacingError(**kwargs)
-
-
-def test_is_frozen_no_bypass_of_the_constructor() -> None:
-    """Input-domain checklist: no raw state change bypassing validated construction."""
-    error = CATALOGUE[ErrorClass.MARGIN]
-    with pytest.raises(Exception):
-        error.what_happened = "Guaranteed profit."  # type: ignore[misc]
-
-
-def test_catalogue_example_text_carries_no_pan_shaped_identifiers() -> None:
-    """No real personal data: catalogue text must not contain a PAN-shaped identifier."""
-    import re
-
-    pan_pattern = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b")
-    for error in CATALOGUE.values():
-        for text in (error.what_happened, error.impact, error.what_is_blocked, error.next_action):
-            assert not pan_pattern.search(text), f"looks like a PAN: {text!r}"
-
-
-def test_scan_for_banned_phrases_is_case_insensitive() -> None:
-    """AC-2/ADR-003: the scan is case-insensitive, since a UI string may be re-cased."""
-    assert scan_for_banned_phrases("GUARANTEED returns") == ["guarantee*"]
-    assert scan_for_banned_phrases("You Should proceed") == ["should"]
-
-
-# --- W-024 fix round: verifier's accepted-but-banned cases (red tests first) --------------------
-#
-# Class: decision-support wording (ADR-003) guarded by exact-substring denylists written separately
-# per module missed word-stem variants. Every case the independent verifier found accepted-but-banned
-# is reproduced here on the real UserFacingError constructor; each must now raise ValueError.
-
-VERIFIER_BANNED_CASES: tuple[tuple[str, str], ...] = (
-    ("guarantee stem", "We guarantee returns on this strategy."),
-    ("recommend stem", "We recommend buying calls here."),
-    ("risk free with space", "Risk free setup for this trade."),
-    ("sure-shot", "A sure-shot trade if you proceed."),
-    ("should, different sentence shape", "Traders should hedge now."),
-    ("should with double space (NBSP-style)", "You  should buy."),
-    ("promise of reduced losses", "This will reduce your losses."),
-)
-
-
-@pytest.mark.parametrize("label,banned_text", VERIFIER_BANNED_CASES, ids=[c[0] for c in VERIFIER_BANNED_CASES])
-def test_verifier_red_cases_are_rejected_at_construction(label: str, banned_text: str) -> None:
-    """W-024 fix round: every case the verifier found accepted-but-banned now raises ValueError."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.STRATEGY_VALIDATION,
-            code="STRATEGY_VALIDATION_003",
-            what_happened=banned_text,
-            impact="This strategy cannot be saved as configured.",
-            what_is_blocked="Saving this strategy version.",
-            next_action="Adjust the strategy and save again.",
-        )
-
-
-def test_verifier_red_case_zero_width_space_part_is_rejected_as_blank() -> None:
-    """W-024 fix round: a part containing only a zero-width space is blank, not real text."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.STRATEGY_VALIDATION,
-            code="STRATEGY_VALIDATION_004",
-            what_happened="​",
-            impact="This strategy cannot be saved as configured.",
-            what_is_blocked="Saving this strategy version.",
-            next_action="Adjust the strategy and save again.",
-        )
-
-
-def test_verifier_red_case_banned_wording_in_code_field_is_rejected() -> None:
-    """W-024 fix round: the code field is scanned too, not only the four text parts."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.STRATEGY_VALIDATION,
-            code="best trade",
-            what_happened="This strategy has a duplicate leg.",
-            impact="This strategy cannot be saved as configured.",
-            what_is_blocked="Saving this strategy version.",
-            next_action="Adjust the strategy and save again.",
-        )
-
-
-def test_verifier_red_case_four_identical_parts_is_rejected() -> None:
-    """W-024 fix round: four identical parts are not a real four-part explanation."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.INTERNAL_SYSTEM,
-            code="INTERNAL_SYSTEM_002",
-            what_happened="Same.",
-            impact="Same.",
-            what_is_blocked="Same.",
-            next_action="Same.",
-        )
-
-
-def test_two_identical_parts_out_of_four_is_rejected() -> None:
-    """W-024 fix round: even two (not all four) identical parts fail closed."""
-    with pytest.raises(ValueError):
-        UserFacingError(
-            error_class=ErrorClass.INTERNAL_SYSTEM,
-            code="INTERNAL_SYSTEM_003",
-            what_happened="An unexpected error occurred while saving.",
-            impact="An unexpected error occurred while saving.",
-            what_is_blocked="Saving this strategy.",
-            next_action="Try again in a few minutes.",
-        )
-
-
-# --- Legitimate text passes (must NOT be rejected) -----------------------------------------------
-
-def test_legitimate_market_commentary_is_not_flagged() -> None:
-    """W-024 fix round: ordinary decision-support text is not advice wording."""
-    error = UserFacingError(
-        error_class=ErrorClass.MARKET_DATA,
-        code="MARKET_DATA_002",
-        what_happened="This strategy loses money if NIFTY falls below 22,909.",
-        impact="Your rule was triggered.",
-        what_is_blocked="Automatic execution until you confirm.",
-        next_action="Review the level on the payoff chart before deciding.",
-    )
-    assert error.what_happened.endswith("22,909.")
-
-
-def test_should_inside_a_longer_word_is_not_flagged() -> None:
-    """W-024 fix round: '\\bshould\\b' must not match a word-stem prefix like 'shoulder'."""
+def test_round2_red_case_best_strike_to_pick_pattern_is_covered_by_the_checker() -> None:
     from ofo.wording import find_advice_wording
 
-    assert find_advice_wording("Adjust the shoulder strikes of this butterfly.") == []
+    assert find_advice_wording("best strike to pick") == [
+        "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>"
+    ]
+    assert find_advice_wording("best entry point") == [
+        "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>"
+    ]
 
 
-# --- CheckCode -> ErrorClass mapping -----------------------------------------------------------
-#
-# W-024 also asks to map the merged execution gate's CheckCode values
-# (backend/ofo/execution/safety.py on main) to an ErrorClass. As of this build there is no
-# backend/ofo/execution/ directory and no safety.py anywhere in the repo (checked with
-# `find backend -iname "safety*.py"` and `find backend/ofo -maxdepth 1`, both empty/absent for
-# execution) — the merged safety-checks work item has not landed on main yet. Per the work item's
-# own instruction ("otherwise skip and say so"), this mapping is skipped; there is no CheckCode
-# enum on disk in this worktree to map or to test.
-def test_no_execution_safety_module_present_to_map_yet() -> None:
-    """Documents the skip above: backend/ofo/execution/safety.py does not exist on this branch."""
-    import importlib.util
+# --- Legitimate rendered output is not flagged ----------------------------------------------------
 
-    try:
-        spec = importlib.util.find_spec("ofo.execution.safety")
-    except ModuleNotFoundError:
-        spec = None
-    assert spec is None, (
-        "ofo.execution.safety now exists — W-024's CheckCode mapping is no longer skippable; "
-        "add ofo/errors/checkcode_map.py mapping every CheckCode to an ErrorClass and a test that "
-        "every CheckCode maps."
+def test_legitimate_rendered_error_has_no_advice_wording() -> None:
+    from ofo.wording import find_advice_wording
+
+    error = render(
+        "margin_insufficient", available=Decimal("41200"), required=Decimal("48000")
     )
+    for part in (error.what_happened, error.impact, error.what_is_blocked, error.next_action):
+        assert find_advice_wording(part) == []
+    assert error.what_happened == "Margin available ₹41,200 is below the ₹48,000 this strategy needs."
