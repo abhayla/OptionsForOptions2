@@ -25,6 +25,8 @@ from ofo.rules import (
     Snapshot,
     evaluate,
 )
+from ofo.strategy.versions import StrategyRecord
+from ofo.timeline import why_did_this_trigger
 from ofo.timeline import FOLLOW_UP_SPEC_PHRASES, EntryType, FollowUp, FollowUpKind, RuleTriggerRecord, Timeline
 
 from timeline_fixtures import (
@@ -36,6 +38,7 @@ from timeline_fixtures import (
     MAX_LOSS_RULE,
     SOURCE,
     STRESSED,
+    T0,
     clock,
     executed_record,
     loss_evaluation,
@@ -43,12 +46,8 @@ from timeline_fixtures import (
 )
 
 
-def active():
-    return executed_record().active_version
-
-
 def record() -> RuleTriggerRecord:
-    return RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), active_version=active())
+    return RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=executed_record())
 
 
 # ---- AC-3 ----------------------------------------------------------------------------------------------------
@@ -75,7 +74,7 @@ def test_or_rule_records_the_deciding_values_and_the_unavailable_inputs():
                 RuleAction.ALERT_ONLY, "Loss 3000 or IV 25")
     evaluation = evaluate(rule, snapshot(STRESSED))
     assert evaluation.outcome is Outcome.TRIGGERED
-    r = RuleTriggerRecord.from_evaluation(rule, evaluation, active_version=active())
+    r = RuleTriggerRecord.from_evaluation(rule, evaluation, strategy=executed_record())
     assert r.observations == (Observation(InputName.LIVE_PNL, Op.LTE, D("-3000"), D("-3450.00"), True),)
     assert r.missing == (InputName.IV,)
 
@@ -83,15 +82,15 @@ def test_or_rule_records_the_deciding_values_and_the_unavailable_inputs():
 def test_only_a_real_triggered_evaluation_becomes_a_record():
     """AC-3 negative: the golden LTPs (+1365.00, spec §6) do not trigger a max loss of 3000, so no record; a record
     cannot be constructed directly or copied with changed values; source 'unspecified', a mismatched rule, an exit
-    rule without an active version, and a forged observation are all refused."""
+    rule without a StrategyRecord, and a forged observation are all refused."""
     not_triggered = evaluate(MAX_LOSS_RULE, snapshot(GOLDEN))
     assert not_triggered.outcome is Outcome.NOT_TRIGGERED
     with pytest.raises(ValueError, match="only a triggered evaluation"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, not_triggered, active_version=active())
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, not_triggered, strategy=executed_record())
     stale = loss_evaluation(health=DataHealth.STALE)
     assert stale.outcome is Outcome.CANNOT_EVALUATE
     with pytest.raises(ValueError, match="only a triggered evaluation"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, stale, active_version=active())
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, stale, strategy=executed_record())
 
     with pytest.raises(ValueError, match="from_evaluation"):
         RuleTriggerRecord("ml-3000", "Max loss 3000", RuleKind.EXIT, RuleAction.ALERT_ONLY, (), (), CHECKED_AT,
@@ -99,27 +98,26 @@ def test_only_a_real_triggered_evaluation_becomes_a_record():
     with pytest.raises(ValueError, match="from_evaluation"):
         dataclasses.replace(record(), active_version=2)
     with pytest.raises(ValueError, match="unspecified"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(source="unspecified"), active_version=active())
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(source="unspecified"),
+                                          strategy=executed_record())
     other = Rule("ml-3000", RuleKind.EXIT, Compare(InputName.LIVE_PNL, Op.LTE, D("-3000")), RuleAction.ALERT_ONLY,
                  "Max loss 3000")
     with pytest.raises(ValueError, match="does not belong"):
-        RuleTriggerRecord.from_evaluation(other, loss_evaluation(), active_version=active())
-    with pytest.raises(ValueError, match="active strategy version"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), active_version=None)
-    with pytest.raises(ValueError, match="Version or None"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), active_version=1)  # type: ignore[arg-type]
+        RuleTriggerRecord.from_evaluation(other, loss_evaluation(), strategy=executed_record())
+    with pytest.raises(ValueError, match="StrategyRecord"):
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=None)  # type: ignore[arg-type]
     undescribed = Rule("u-1", RuleKind.EXIT, Compare(InputName.LIVE_PNL, Op.LTE, D("-3000")), RuleAction.ALERT_ONLY)
     with pytest.raises(ValueError, match="rule text"):
         RuleTriggerRecord.from_evaluation(undescribed, evaluate(undescribed, snapshot(STRESSED)),
-                                          active_version=active())
+                                          strategy=executed_record())
     forged_value = dataclasses.replace(loss_evaluation(), observations=(
         Observation(InputName.LIVE_PNL, Op.LTE, D("-3000"), D("-2000"), True),))  # -2000 is not <= -3000
     with pytest.raises(ValueError, match="does not hold"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, forged_value, active_version=active())
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, forged_value, strategy=executed_record())
     forged_threshold = dataclasses.replace(loss_evaluation(), observations=(
         Observation(InputName.LIVE_PNL, Op.LTE, D("-1000"), D("-3450.00"), True),))
     with pytest.raises(ValueError, match="not a comparison of this rule"):
-        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, forged_threshold, active_version=active())
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, forged_threshold, strategy=executed_record())
 
 
 def test_the_same_trigger_cannot_be_recorded_twice():
@@ -129,7 +127,7 @@ def test_the_same_trigger_cannot_be_recorded_twice():
     with pytest.raises(ValueError, match="already recorded"):
         tl.record_trigger(record())
     later = RuleTriggerRecord.from_evaluation(
-        MAX_LOSS_RULE, loss_evaluation(at=CHECKED_AT + datetime.timedelta(minutes=1)), active_version=active())
+        MAX_LOSS_RULE, loss_evaluation(at=CHECKED_AT + datetime.timedelta(minutes=1)), strategy=executed_record())
     assert tl.record_trigger(later).seq == 1  # a new evaluation a minute later is a new trigger
 
 
@@ -160,7 +158,7 @@ def test_follow_ups_are_linked_to_their_trigger_on_the_timeline():
     tl = Timeline("strat-ic-1", clock=clock)
     first = tl.record_trigger(record()).seq
     later = RuleTriggerRecord.from_evaluation(
-        MAX_LOSS_RULE, loss_evaluation(at=CHECKED_AT + datetime.timedelta(minutes=10)), active_version=active())
+        MAX_LOSS_RULE, loss_evaluation(at=CHECKED_AT + datetime.timedelta(minutes=10)), strategy=executed_record())
     minute = CHECKED_AT + datetime.timedelta(minutes=1)
     answers = [(FollowUpKind.ALERT_GENERATED, True), (FollowUpKind.ORDER_PREPARED, True),
                (FollowUpKind.CONFIRMATION_REQUIRED, True), (FollowUpKind.EXECUTED, True),
@@ -214,5 +212,28 @@ def test_snapshot_health_override_is_what_the_record_shows():
                     {InputName.LIVE_PNL: DataHealth.AVAILABLE})
     evaluation = evaluate(MAX_LOSS_RULE, snap)
     assert evaluation.outcome is Outcome.TRIGGERED
-    r = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, evaluation, active_version=active())
+    r = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, evaluation, strategy=executed_record())
     assert r.data_health is DataHealth.DELAYED
+
+
+def test_active_version_is_read_from_the_strategy_record_never_passed_in():
+    """AC-3: with v1 active and v2 only proposed (golden condor edited to 2 lots after execution), the trigger records
+    active version 1, read from the StrategyRecord; a bare Version (the proposed v2) cannot be passed in, and a
+    strategy with no active version is refused."""
+    rec = executed_record()
+    doubled = dataclasses.replace(rec.definition, legs=tuple(
+        dataclasses.replace(leg, quantity=150) for leg in rec.definition.legs))
+    rec.edit(doubled, at=CHECKED_AT - datetime.timedelta(hours=1))
+    assert rec.active_version.number == 1 and rec.proposed_version.number == 2
+    r = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=rec)
+    assert r.active_version == 1
+    assert "Active strategy version: 1." in why_did_this_trigger(r)
+    with pytest.raises(TypeError):
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),  # type: ignore[call-arg]
+                                          active_version=rec.proposed_version)
+    with pytest.raises(ValueError, match="StrategyRecord"):
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),
+                                          strategy=rec.proposed_version)  # type: ignore[arg-type]
+    fresh = StrategyRecord(rec.definition, at=T0, clock=clock)
+    with pytest.raises(ValueError, match="no active version"):
+        RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=fresh)

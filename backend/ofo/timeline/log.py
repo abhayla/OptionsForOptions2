@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping, Union
 
 from ofo.audit import GENESIS_HASH, AuditChainError, HeadAnchor, VerificationResult
-from ofo.audit.models import _canonical_json, _check_payload_safe, _deep_freeze
+from ofo.audit.models import canonical_json, check_payload_safe, deep_freeze
 from ofo.timeline.catalogue import EntryType, FollowUpKind
 from ofo.timeline.records import FollowUp, RuleTriggerRecord
 from ofo.timeline.why import why_did_this_trigger
@@ -52,7 +52,7 @@ def _content_payload(content: Content) -> Any:
 
 
 def _entry_hash(entry: "TimelineEntry") -> str:
-    canonical = _canonical_json({
+    canonical = canonical_json({
         "strategy_id": entry.strategy_id,
         "seq": entry.seq,
         "kind": f"{type(entry.kind).__name__}.{entry.kind.value}",
@@ -95,11 +95,11 @@ class TimelineEntry:
         elif isinstance(self.content, Mapping):
             if not isinstance(self.kind, EntryType) or self.kind is EntryType.RULE_TRIGGERED:
                 raise ValueError(f"{self.kind!r} cannot carry a plain detail mapping")
-            _check_payload_safe(self.content)
-            size = len(_canonical_json({"detail": self.content}))
+            check_payload_safe(self.content)
+            size = len(canonical_json({"detail": self.content}))
             if size > MAX_DETAIL_CHARS:
                 raise ValueError(f"entry detail is {size} characters; the limit is {MAX_DETAIL_CHARS}")
-            object.__setattr__(self, "content", _deep_freeze(self.content))
+            object.__setattr__(self, "content", deep_freeze(self.content))
         else:
             raise ValueError(f"unsupported entry content {self.content!r}")
         object.__setattr__(self, "hash", _entry_hash(self))

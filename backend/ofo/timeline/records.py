@@ -18,7 +18,7 @@ from typing import Any
 from ofo.rules.conditions import Compare, Observation, leaves
 from ofo.rules.inputs import DataHealth, InputName
 from ofo.rules.model import Evaluation, Outcome, Rule, RuleAction, RuleKind
-from ofo.strategy.versions import Version
+from ofo.strategy.versions import StrategyRecord
 from ofo.timeline.catalogue import FollowUpKind
 
 MAX_TEXT = 2_000
@@ -55,7 +55,7 @@ class RuleTriggerRecord:
     timestamp: datetime.datetime
     source: str
     data_health: DataHealth
-    active_version: int | None
+    active_version: int
     _token: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -66,10 +66,13 @@ class RuleTriggerRecord:
 
     @classmethod
     def from_evaluation(
-        cls, rule: Rule, evaluation: Evaluation, *, active_version: Version | None
+        cls, rule: Rule, evaluation: Evaluation, *, strategy: StrategyRecord
     ) -> "RuleTriggerRecord":
-        """Record a TRIGGERED evaluation of ``rule``. ``active_version`` is the strategy's active version, or None
-        only for an entry rule (nothing has executed yet, so no version exists: ADR-019 Q135/Q190)."""
+        """Record a TRIGGERED evaluation of ``rule`` on ``strategy``.
+
+        The active version is read from ``strategy.active_version`` (the StrategyRecord owns the active pointer),
+        never taken from a caller-supplied Version: a proposed version is not active until confirmed, executed and
+        reconciled (ADR-019 Q191). A strategy with no active version is refused (AC-3 needs one)."""
         if not isinstance(rule, Rule):
             raise ValueError(f"expected a Rule, got {rule!r}")
         if not isinstance(evaluation, Evaluation):
@@ -91,14 +94,12 @@ class RuleTriggerRecord:
         for name in evaluation.missing:
             if name not in rule.inputs:
                 raise ValueError(f"missing input {name!r} is not read by rule {rule.rule_id!r}")
-        if active_version is None:
-            if rule.kind is not RuleKind.ENTRY:
-                raise ValueError(f"a {rule.kind.value} rule trigger needs the active strategy version")
-            version_number = None
-        elif isinstance(active_version, Version):
-            version_number = active_version.number
-        else:
-            raise ValueError(f"active_version must be a Version or None, got {active_version!r}")
+        if not isinstance(strategy, StrategyRecord):
+            raise ValueError(f"strategy must be the StrategyRecord that owns the active version, got {strategy!r}")
+        active = strategy.active_version
+        if active is None:
+            raise ValueError("the strategy has no active version; a trigger record needs the active strategy version")
+        version_number = active.number
         return cls(
             rule_id=rule.rule_id,
             rule_text=rule.description,

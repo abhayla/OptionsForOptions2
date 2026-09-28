@@ -48,7 +48,7 @@ def test_every_entry_type_is_recorded_in_chronological_order():
     """AC-1: one timeline holds every AC-1 entry type in time order; a rule trigger enters with its record."""
     tl = timeline()
     record = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),
-                                               active_version=executed_record().active_version)
+                                               strategy=executed_record())
     minute = 0
     for entry_type in EntryType:
         if entry_type is EntryType.RULE_TRIGGERED:
@@ -134,7 +134,7 @@ def test_entries_and_their_content_are_immutable():
     with pytest.raises(TypeError):
         entry.content["note"] = "edited"  # type: ignore[index]
     record = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),
-                                               active_version=executed_record().active_version)
+                                               strategy=executed_record())
     stored = tl.record_trigger(record).content
     with pytest.raises(dataclasses.FrozenInstanceError):
         stored.source = "other"  # type: ignore[misc]
@@ -151,7 +151,7 @@ def test_edit_or_delete_by_reaching_into_storage_is_detected():
         for i, kind in enumerate((EntryType.CREATED, EntryType.VALIDATED, EntryType.ACTIVATED)):
             tl.append(kind, at=at(i), actor="user-1", detail={"i": i})
         record = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),
-                                                   active_version=executed_record().active_version)
+                                                   strategy=executed_record())
         seq = tl.record_trigger(record).seq
         tl.record_follow_up(FollowUp(FollowUpKind.EXECUTED, seq, CHECKED_AT, False))
         return tl

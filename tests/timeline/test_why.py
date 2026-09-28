@@ -30,7 +30,7 @@ def _recorded_trigger():
     evaluation = loss_evaluation()
     assert evaluation.outcome is Outcome.TRIGGERED
     record = RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, evaluation,
-                                               active_version=executed_record().active_version)
+                                               strategy=executed_record())
     timeline = Timeline("strat-ic-1", clock=clock)
     entry = timeline.record_trigger(record)
     return timeline, entry.seq, record
@@ -47,7 +47,7 @@ def test_core_max_loss_trigger_answer_quotes_the_recorded_values():
     assert lines[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'
     assert lines[1] == "Condition met: live P&L (Rs) was -3450.00, at or below the threshold -3000."
     assert f"Checked at: {CHECKED_AT.isoformat()}." in lines
-    assert f"Market data: source {SOURCE}, health available." in lines
+    assert f'Market data: source "{SOURCE}", health available.' in lines
     assert "Active strategy version: 1." in lines
     assert "The rule's chosen action: alert and prepare orders for your review." in lines
     # No follow-up recorded yet: said so, never assumed.
@@ -56,8 +56,7 @@ def test_core_max_loss_trigger_answer_quotes_the_recorded_values():
 
 def _record_numbers(record: RuleTriggerRecord) -> set[str]:
     numbers = {str(o.value) for o in record.observations} | {str(o.threshold) for o in record.observations}
-    if record.active_version is not None:
-        numbers.add(str(record.active_version))
+    numbers.add(str(record.active_version))
     return numbers
 
 
@@ -97,17 +96,18 @@ def test_answer_has_no_advice_words():
 
 
 def test_answer_reports_missing_inputs_and_unhealthy_data_honestly():
-    """AC-5: an entry trigger with no version yet says so; the data health printed is the recorded one (stale)."""
+    """AC-5: an unconditional entry trigger says it has no market condition; the data health printed is the recorded
+    one (stale), never upgraded."""
     rule = entry_immediate("enter-now", action=RuleAction.ALERT_ONLY)
     from ofo.rules import evaluate
     from timeline_fixtures import GOLDEN, snapshot
 
     evaluation = evaluate(rule, snapshot(GOLDEN, health=DataHealth.STALE))
     assert evaluation.outcome is Outcome.TRIGGERED
-    record = RuleTriggerRecord.from_evaluation(rule, evaluation, active_version=None)
+    record = RuleTriggerRecord.from_evaluation(rule, evaluation, strategy=executed_record())
     text = why_did_this_trigger(record)
-    assert "Market data: source zerodha-kite-quote, health stale." in text
-    assert "Active strategy version: none (nothing had executed yet)." in text
+    assert 'Market data: source "zerodha-kite-quote", health stale.' in text
+    assert "Active strategy version: 1." in text
     assert "Condition met: this rule has no market condition; it applies as soon as it is checked." in text
 
 
@@ -124,3 +124,17 @@ def test_why_refuses_non_records_and_duplicate_follow_ups():
     twice = [FollowUp(FollowUpKind.EXECUTED, seq, CHECKED_AT, True)] * 2
     with pytest.raises(ValueError, match="given twice"):
         why_did_this_trigger(record, twice)
+
+
+def test_platform_wording_is_checked_at_runtime_but_recorded_text_is_quoted_not_rewritten(monkeypatch):
+    """AC-5 with ADR-003: if the platform's own answer wording contains an advice phrase, building the answer raises;
+    a user's rule text or a broker report that contains one is printed as recorded, in quotes, and does not raise."""
+    timeline, seq, record = _recorded_trigger()
+    monkeypatch.setitem(OP_WORDS, record.observations[0].op, "at or below, you should exit at")
+    with pytest.raises(ValueError, match="advice phrases"):
+        timeline.why(seq)
+    monkeypatch.undo()
+    timeline.record_follow_up(FollowUp(FollowUpKind.BROKER_REPORTED, seq, CHECKED_AT, "best price filled"))
+    text = timeline.why(seq)
+    assert 'Broker reported: "best price filled".' in text
+    assert text.splitlines()[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'

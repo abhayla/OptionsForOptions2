@@ -79,29 +79,42 @@ def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowU
             raise ValueError(f"{follow_up.kind.value} is given twice")
         recorded[follow_up.kind] = follow_up
 
-    lines = [f'Your rule was triggered: "{record.rule_text}" ({record.rule_kind.value} rule {record.rule_id}).']
+    lines = [
+        _own("Your rule was triggered: {} ({} rule {}).", _quoted(record.rule_text), record.rule_kind.value,
+             record.rule_id),
+    ]
     if record.observations:
         for o in record.observations:
-            lines.append(f"Condition met: {INPUT_LABELS[o.input]} was {o.value}, "
-                         f"{OP_WORDS[o.op]} the threshold {o.threshold}.")
+            lines.append(_own(f"Condition met: {INPUT_LABELS[o.input]} was {{}}, {OP_WORDS[o.op]} the threshold {{}}.",
+                              o.value, o.threshold))
     else:
-        lines.append("Condition met: this rule has no market condition; it applies as soon as it is checked.")
+        lines.append(_own("Condition met: this rule has no market condition; it applies as soon as it is checked."))
     if record.missing:
-        lines.append("Not available when checked: " + ", ".join(INPUT_LABELS[n] for n in record.missing) + ".")
-    lines.append(f"Checked at: {record.timestamp.isoformat()}.")
-    lines.append(f"Market data: source {record.source}, health {record.data_health.value}.")
-    if record.active_version is None:
-        lines.append("Active strategy version: none (nothing had executed yet).")
-    else:
-        lines.append(f"Active strategy version: {record.active_version}.")
-    lines.append(f"The rule's chosen action: {ACTION_WORDS[record.action]}.")
+        lines.append(_own("Not available when checked: " + ", ".join(INPUT_LABELS[n] for n in record.missing) + "."))
+    lines.append(_own("Checked at: {}.", record.timestamp.isoformat()))
+    lines.append(_own("Market data: source {}, health {}.", _quoted(record.source), record.data_health.value))
+    lines.append(_own("Active strategy version: {}.", record.active_version))
+    lines.append(_own(f"The rule's chosen action: {ACTION_WORDS[record.action]}."))
     for kind in FollowUpKind:
         follow_up = recorded.get(kind)
         if follow_up is None:
-            text = "not recorded"
+            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: not recorded."))
         elif kind.is_yes_no:
-            text = "yes" if follow_up.answer else "no"
+            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: {'yes' if follow_up.answer else 'no'}."))
         else:
-            text = f'"{follow_up.answer}"'
-        lines.append(f"{FOLLOW_UP_LABELS[kind]}: {text}.")
+            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: {{}}.", _quoted(str(follow_up.answer))))
     return "\n".join(lines)
+
+
+def _quoted(data: str) -> str:
+    """Recorded text (the user's rule text, the source name, what the broker reported) printed as quoted data."""
+    return f'"{data}"'
+
+
+def _own(template: str, *data: object) -> str:
+    """Fill ``template`` with recorded ``data``. The platform's own words (the template with every data slot empty)
+    must pass the ADR-003 wording check, else ValueError; the data is printed as recorded and never rewritten."""
+    found = advice_words_in(template.format(*("" for _ in data)))
+    if found:
+        raise ValueError(f"the platform's own answer wording contains advice phrases {found}: {template!r}")
+    return template.format(*data)
