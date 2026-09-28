@@ -117,6 +117,8 @@ class NormalizedQuote:
                 require_price(value, name)
         if self.bid is not None and self.ask is not None and self.bid > self.ask:
             errors.append(f"crossed_quote: bid {self.bid} > ask {self.ask}")
+        if self.ltp is None and self.bid is None and self.ask is None:
+            errors.append("no_price_data: ltp, bid and ask are all missing")
 
         if self.volume is not None:
             _require_count(self.volume, "volume")

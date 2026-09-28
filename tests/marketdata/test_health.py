@@ -76,6 +76,20 @@ def test_ac2_stale_outranks_a_declared_delay():
     assert q.health is DataHealth.STALE
 
 
+def test_ac2_no_price_at_all_is_unhealthy_not_available_and_pauses_its_strategy():
+    """AC-2 fix: a quote with no LTP, bid or ask is not AVAILABLE (UNHEALTHY, documented), and its strategy pauses."""
+    q = build_quote(
+        instrument_id="NIFTY-INDEX", underlying="NIFTY", exchange="NSE", segment="INDEX",
+        instrument_type=None, expiry=None, strike=None,
+        ltp=None, bid=None, ask=None, volume=None, oi=None, oi_change=None,
+        iv=None, delta=None, gamma=None, theta=None, vega=None,
+        timestamp=NOW, source=SOURCE, now=NOW, feed_connected=True, thresholds=THRESHOLDS,
+    )
+    assert q.health is DataHealth.UNHEALTHY
+    assert any("no_price_data" in e for e in q.validation_errors)
+    assert strategy_monitoring_status({"NIFTY-INDEX": q}) is MonitoringStatus.PAUSED
+
+
 def test_evaluate_health_rejects_naive_datetimes():
     with pytest.raises(ValueError, match="timezone-aware"):
         evaluate_health(
@@ -84,12 +98,42 @@ def test_evaluate_health_rejects_naive_datetimes():
         )
 
 
-def test_evaluate_health_rejects_timestamp_after_now():
-    with pytest.raises(ValueError, match="after now"):
-        evaluate_health(
-            timestamp=NOW + datetime.timedelta(seconds=10), now=NOW, feed_connected=True,
-            declared_delay_seconds=D("0"), validation_failed=False, thresholds=THRESHOLDS,
-        )
+def test_ac2_future_timestamp_within_clock_skew_tolerance_is_treated_as_fresh():
+    """AC-2 fix: default 2s clock-skew tolerance (orchestrator default); within it, age 0 (fresh, AVAILABLE);
+    building the quote must never raise."""
+    slightly_future = NOW + datetime.timedelta(seconds=1)
+    q = build_quote(
+        instrument_id="NIFTY-INDEX", underlying="NIFTY", exchange="NSE", segment="INDEX",
+        instrument_type=None, expiry=None, strike=None,
+        ltp=D("23500.00"), bid=None, ask=None, volume=None, oi=None, oi_change=None,
+        iv=None, delta=None, gamma=None, theta=None, vega=None,
+        timestamp=slightly_future, source=SOURCE, now=NOW, feed_connected=True, thresholds=THRESHOLDS,
+    )
+    assert q.health is DataHealth.AVAILABLE
+    assert q.validation_errors == ()
+
+
+def test_ac2_future_timestamp_beyond_clock_skew_tolerance_is_unhealthy_with_a_reason():
+    """AC-2 fix: beyond the tolerance -> UNHEALTHY with a reason recorded, never a raised exception."""
+    far_future = NOW + datetime.timedelta(seconds=10)
+    q = build_quote(
+        instrument_id="NIFTY-INDEX", underlying="NIFTY", exchange="NSE", segment="INDEX",
+        instrument_type=None, expiry=None, strike=None,
+        ltp=D("23500.00"), bid=None, ask=None, volume=None, oi=None, oi_change=None,
+        iv=None, delta=None, gamma=None, theta=None, vega=None,
+        timestamp=far_future, source=SOURCE, now=NOW, feed_connected=True, thresholds=THRESHOLDS,
+    )
+    assert q.health is DataHealth.UNHEALTHY
+    assert any("clock-skew" in e for e in q.validation_errors)
+
+
+def test_evaluate_health_result_carries_health_and_reason():
+    result = evaluate_health(
+        timestamp=NOW + datetime.timedelta(seconds=10), now=NOW, feed_connected=True,
+        declared_delay_seconds=D("0"), validation_failed=False, thresholds=THRESHOLDS,
+    )
+    assert result.health is DataHealth.UNHEALTHY
+    assert "clock-skew" in result.reason
 
 
 def test_ac6_strategy_needing_multiple_quotes_pauses_if_any_one_is_unhealthy():

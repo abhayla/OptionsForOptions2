@@ -81,20 +81,23 @@ def test_rejects_naive_timestamp():
         option_quote(timestamp=datetime.datetime(2026, 9, 29, 10, 0, 0))
 
 
-def test_rejects_timestamp_after_now_at_health_evaluation():
-    """Input-domain checklist: a quote timestamped after 'now' is rejected when its health is derived
-    (NormalizedQuote itself has no clock dependency; build_quote takes 'now' explicitly, never the wall clock)."""
+def test_future_timestamp_never_raises_but_is_unhealthy_beyond_clock_skew():
+    """Input-domain checklist: a quote timestamped well after 'now' never raises when built (NormalizedQuote has
+    no clock dependency; build_quote takes 'now' explicitly, never the wall clock) - it becomes UNHEALTHY with a
+    reason instead (REQ-049 AC-2 fix)."""
+    from ofo.marketdata.health import DataHealth as _DataHealth
     from ofo.marketdata.health import build_quote
 
     future = NOW + datetime.timedelta(hours=1)
-    with pytest.raises(ValueError, match="after now"):
-        build_quote(
-            instrument_id="NIFTY26O2823500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
-            instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 28), strike=D("23500"),
-            ltp=D("120.50"), bid=D("120.00"), ask=D("121.00"), volume=1000, oi=1000, oi_change=10,
-            iv=D("14"), delta=D("0.4"), gamma=D("0.001"), theta=D("-1"), vega=D("1"),
-            timestamp=future, source=SOURCE, now=NOW,
-        )
+    q = build_quote(
+        instrument_id="NIFTY26O2823500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
+        instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 28), strike=D("23500"),
+        ltp=D("120.50"), bid=D("120.00"), ask=D("121.00"), volume=1000, oi=1000, oi_change=10,
+        iv=D("14"), delta=D("0.4"), gamma=D("0.001"), theta=D("-1"), vega=D("1"),
+        timestamp=future, source=SOURCE, now=NOW,
+    )
+    assert q.health is _DataHealth.UNHEALTHY
+    assert any("clock-skew" in e for e in q.validation_errors)
 
 
 def test_rejects_negative_price_and_absurd_volume():

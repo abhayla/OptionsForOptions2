@@ -4,9 +4,11 @@
 implementation setting"); the defaults below are labelled orchestrator defaults so nobody mistakes them for an
 owner decision.
 
-Priority when more than one condition applies (worst first): no feed / no quote -> unavailable; a validation
-failure -> unhealthy (we do not trust what we have, whatever its age); older than the freshness limit -> stale;
-a source-declared delay beyond the tolerance -> delayed; otherwise -> available.
+Priority when more than one condition applies (worst first): no feed -> unavailable; a timestamp more than the
+clock-skew tolerance ahead of ``now`` -> unhealthy (the source clock cannot be trusted); a validation failure
+(including "no price at all": AC-2) -> unhealthy; older than the freshness limit -> stale; a source-declared delay
+beyond the tolerance -> delayed; otherwise -> available. A timestamp within the clock-skew tolerance of the future
+is treated as age 0 (fresh), never as an error: building a quote never raises for a future timestamp.
 """
 from __future__ import annotations
 
@@ -25,9 +27,10 @@ class HealthThresholds:
 
     stale_after: datetime.timedelta = datetime.timedelta(seconds=60)
     delayed_after: datetime.timedelta = datetime.timedelta(seconds=0)
+    clock_skew_tolerance: datetime.timedelta = datetime.timedelta(seconds=2)
 
     def __post_init__(self) -> None:
-        for name in ("stale_after", "delayed_after"):
+        for name in ("stale_after", "delayed_after", "clock_skew_tolerance"):
             value = getattr(self, name)
             if not isinstance(value, datetime.timedelta):
                 raise ValueError(f"{name} must be a datetime.timedelta, got {value!r}")
@@ -38,6 +41,14 @@ class HealthThresholds:
 ORCHESTRATOR_DEFAULT_THRESHOLDS = HealthThresholds()
 
 
+@dataclass(frozen=True)
+class HealthResult:
+    """The derived health plus, when it is not obvious from the quote's own validation_errors, why."""
+
+    health: DataHealth
+    reason: str = ""
+
+
 def evaluate_health(
     *,
     timestamp: datetime.datetime,
@@ -46,8 +57,9 @@ def evaluate_health(
     declared_delay_seconds: Decimal,
     validation_failed: bool,
     thresholds: HealthThresholds = ORCHESTRATOR_DEFAULT_THRESHOLDS,
-) -> DataHealth:
-    """Derive a quote's :class:`DataHealth` from explicit inputs only (REQ-049 AC-2)."""
+) -> HealthResult:
+    """Derive a quote's :class:`DataHealth` from explicit inputs only (REQ-049 AC-2). Never raises on a future
+    timestamp: within ``thresholds.clock_skew_tolerance`` it is treated as fresh; beyond it, unhealthy."""
     if not isinstance(feed_connected, bool):
         raise ValueError(f"feed_connected must be a bool, got {feed_connected!r}")
     if not isinstance(timestamp, datetime.datetime) or timestamp.tzinfo is None:
@@ -60,19 +72,27 @@ def evaluate_health(
         raise ValueError(f"declared_delay_seconds must be a decimal.Decimal, got {declared_delay_seconds!r}")
 
     if not feed_connected:
-        return DataHealth.UNAVAILABLE
+        return HealthResult(DataHealth.UNAVAILABLE)
 
-    age = now - timestamp
-    if age < datetime.timedelta(0):
-        raise ValueError(f"timestamp {timestamp} is after now {now}")
+    raw_age = now - timestamp
+    if raw_age < -thresholds.clock_skew_tolerance:
+        ahead_by = timestamp - now
+        return HealthResult(
+            DataHealth.UNHEALTHY,
+            reason=(
+                f"timestamp is {ahead_by} ahead of now, beyond the "
+                f"{thresholds.clock_skew_tolerance} clock-skew tolerance (orchestrator default)"
+            ),
+        )
+    age = max(raw_age, datetime.timedelta(0))  # within tolerance: treated as age 0 (fresh)
 
     if validation_failed:
-        return DataHealth.UNHEALTHY
+        return HealthResult(DataHealth.UNHEALTHY)
     if age > thresholds.stale_after:
-        return DataHealth.STALE
+        return HealthResult(DataHealth.STALE)
     if declared_delay_seconds > Decimal(str(thresholds.delayed_after.total_seconds())):
-        return DataHealth.DELAYED
-    return DataHealth.AVAILABLE
+        return HealthResult(DataHealth.DELAYED)
+    return HealthResult(DataHealth.AVAILABLE)
 
 
 def build_quote(
@@ -103,9 +123,11 @@ def build_quote(
 ) -> NormalizedQuote:
     """Build a :class:`NormalizedQuote` with its ``health`` derived by :func:`evaluate_health`.
 
-    Field validation runs first (raises on hard-invalid input); the health that comes out then reflects
-    ``validation_errors`` (soft anomalies like a crossed quote), the quote's own age against ``now``, and whether
-    the feed itself is connected.
+    Field validation runs first (raises on hard-invalid input, never on a future timestamp); the health that comes
+    out then reflects ``validation_errors`` (soft anomalies like a crossed quote or no price at all), the quote's
+    own age against ``now`` (with clock-skew tolerance), a source-declared delay, and whether the feed is
+    connected. A health-evaluation reason (e.g. a future timestamp beyond tolerance) is appended to the returned
+    quote's ``validation_errors`` alongside any static ones, so both are visible in one place.
     """
     provisional = NormalizedQuote(
         instrument_id=instrument_id,
@@ -130,7 +152,7 @@ def build_quote(
         source=source,
         health=DataHealth.AVAILABLE,  # placeholder; replaced below once validation_errors is known
     )
-    health = evaluate_health(
+    result = evaluate_health(
         timestamp=provisional.timestamp,
         now=now,
         feed_connected=feed_connected,
@@ -138,4 +160,7 @@ def build_quote(
         validation_failed=bool(provisional.validation_errors),
         thresholds=thresholds,
     )
-    return dataclasses.replace(provisional, health=health)
+    final = dataclasses.replace(provisional, health=result.health)
+    if result.reason:
+        object.__setattr__(final, "validation_errors", final.validation_errors + (result.reason,))
+    return final
