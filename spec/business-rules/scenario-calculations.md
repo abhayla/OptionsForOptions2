@@ -70,7 +70,24 @@ calculation engine.
   where one exists); a futures leg at a what-if level is valued at level x e^(rT). Model prices are rounded to ₹0.01 and
   Greeks to 4 dp at the boundary; money stays Decimal. Core check: Hull reference S=42, K=40, r=10%, sigma=20%, T=0.5 →
   call 4.76, put 0.81.
-- Open: SENSEX step (Q208); whether Lower/Upper BE summary columns stay after the grid as well (Q213).
+- Decided: SENSEX step 300 per index in Admin (Q208, ADR-042); Lower/Upper BE summary columns stay after the grid as well as the inserted 0-P&L columns (Q213, delegated overnight, ADR-045).
+- **Level-set rules (implementation of Q33B–Q33D, 2026-09-29, delegated overnight under ADR-045, W-003; the spec
+  was silent on these details — open for owner review, no decision row changed).** Code: `backend/ofo/scenario/`.
+  - Admin config per index (points): step, anchor, minimum half-width, margin steps, maximum columns. Defaults NIFTY
+    100 / 100 / 1,000 / 2 / 200 and SENSEX 300 / 300 / 3,000 / 2 / 200. Step and anchor must be multiples of the
+    strike gap listed in the instrument catalogue for that expiry, else the config is refused.
+  - Default range: covers spot, every strike, every breakeven, every risk boundary (strike where the payoff reaches
+    max loss) and, when IV and days are given, spot ± spot × IV × √(days/365); plus the margin steps beyond the
+    outermost of these; and at least the minimum half-width each side of spot rounded to the anchor. Example: the
+    §6 Iron Condor at spot 23,047 → 22,000 … 24,000 (21 grid columns + 22,909, 23,047 CURRENT, 23,491 = 24 columns).
+  - A user range must start and end on anchor multiples a whole number of steps apart. The CURRENT column is always
+    present, even outside a user range (at its price position); a breakeven outside the range is not inserted but
+    still shows in Lower BE / Upper BE.
+  - Lower BE / Upper BE: with two or more breakevens, the lowest and highest; with exactly one, it is the Lower BE
+    when the payoff is a profit above it (long call, short put) and the Upper BE when the profit lies below it;
+    the other shows "—".
+  - Estimated Now at a breakeven with more than two decimals is taken at that level rounded half-even to 0.01; a
+    strategy with an option leg lacking IV has no Estimated Now view (shown unavailable with the reason).
 
 ## 5. Money precision
 
