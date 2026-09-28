@@ -62,10 +62,11 @@ def entry_range(rule_id: str, low: Decimal, high: Decimal, *, action: RuleAction
 def entry_premium_target(rule_id: str, target: Decimal, *, receive: bool, action: RuleAction) -> Rule:
     """Wait for better premium: net credit at least ``target`` (``receive``), or net debit at most ``target``.
 
-    PREMIUM is signed per unit, credit positive, so a debit target of 50 is ``premium <= -50``.
+    PREMIUM is signed per unit, credit positive, so "pay at most 50" is ``premium >= -50`` (a debit of 49 is -49,
+    a debit of 51 is -51).
     """
     target = _positive(target, "target")
-    condition = Compare(InputName.PREMIUM, Op.GTE, target) if receive else Compare(InputName.PREMIUM, Op.LTE, -target)
+    condition = Compare(InputName.PREMIUM, Op.GTE, target if receive else -target)
     label = f"Net credit at least {target}" if receive else f"Net debit at most {target}"
     return Rule(rule_id, RuleKind.ENTRY, condition, action, label)
 
