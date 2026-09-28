@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/hook_presence_check.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/evidence_claim_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/recorder.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Agent|Task",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_budget_required.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_model_required.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
+      { "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_hook_bypass_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_discard_uncommitted_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_stash_worktree_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/kit_file_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
+      { "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|SendMessage|RemoteTrigger|Monitor|Workflow|Agent|Task|Skill|mcp__.*|CronCreate|ScheduleWakeup",
+        "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ]
+  }
+}

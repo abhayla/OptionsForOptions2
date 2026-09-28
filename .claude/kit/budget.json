@@ -1,0 +1,4 @@
+{
+  "always_loaded_max_bytes": 30000,
+  "why": "OD-23 item 3: keeps every always-loaded rule under the context-budget rule's ~45k-token prelude target; path-scoped rules are excluded."
+}

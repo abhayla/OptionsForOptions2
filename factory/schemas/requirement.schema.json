@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://startup-factory/schemas/requirement.schema.json",
+  "title": "Requirement",
+  "description": "spec/requirements/REQ-###.md frontmatter",
+  "type": "object",
+  "required": ["id", "title", "statement", "source", "owner", "status", "acceptance_criteria"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^REQ-\\d{3,}$" },
+    "title": { "type": "string", "minLength": 1 },
+    "statement": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "origin": { "type": "string" },
+    "owner": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["Draft", "Specified", "Approved", "Planned", "Implementing", "Implemented", "Testing", "Verified", "Reviewed", "Released"]
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^AC-\\d+$" },
+          "text": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "business_rules": { "type": "array", "items": { "type": "string" } },
+    "depends_on": { "type": "array", "items": { "type": "string" } },
+    "priority": { "type": "string" },
+    "spec_refs": { "type": "array", "items": { "type": "string" } },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "tests": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "verified_by": { "type": "string" },
+        "reviewed_by": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "release": { "type": "string" }
+  },
+  "additionalProperties": true
+}

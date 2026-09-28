@@ -1,0 +1,20 @@
+# A user-level git ignore may exclude the kit's dotfolder project-wide; this project's kit lives
+# there, so re-include it here (repo .gitignore wins over core.excludesFile). Keep the personal
+# local-only file in that folder ignored.
+!.claude/
+!**/.claude/
+.claude/*.local.json
+
+# views/ is generated output — regenerate it, do not hand-edit or commit stale copies.
+# .factory/authorizations/ holds owner-only single-use records — never commit real ones.
+views/*
+!views/README.md
+.factory/authorizations/*
+!.factory/authorizations/README.md
+
+# evidence_claim_guard.py's log-only default writes here; never commit a session's misses.
+.factory/logs/*
+
+# kit-tools-leave-untracked-caches: every kit tool run leaves compiled bytecode behind.
+__pycache__/
+*.pyc

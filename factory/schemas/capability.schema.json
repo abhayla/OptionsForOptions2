@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://startup-factory/schemas/capability.schema.json",
+  "title": "Capability",
+  "description": "capabilities/**/capability.json",
+  "type": "object",
+  "required": ["id", "name", "type", "version", "status", "purpose", "inputs", "outputs", "dependencies", "provenance", "evidence", "limitations", "validation", "security"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "type": { "type": "string", "enum": ["hook", "rule", "skill", "agent", "workflow", "template", "script"] },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "status": { "type": "string", "enum": ["candidate", "evaluated", "promoted", "deprecated", "retired"] },
+    "purpose": { "type": "string", "minLength": 1 },
+    "inputs": { "type": "array", "items": { "type": "string" } },
+    "outputs": { "type": "array", "items": { "type": "string" } },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "provenance": {
+      "type": "object",
+      "required": ["origin"],
+      "properties": {
+        "origin": { "type": "string", "minLength": 1 },
+        "origin_path": { "type": ["string", "null"] },
+        "origin_commit": { "type": ["string", "null"] },
+        "adapted": { "type": "boolean" },
+        "changes": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "references": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "validation": {
+      "type": "object",
+      "required": ["method", "tests"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "tests": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "security": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

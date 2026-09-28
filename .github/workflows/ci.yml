@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema pytest
+
+      - name: Check the generated Claude settings file is current (kit wiring + project addendum)
+        run: python tools/kit_settings.py . --check
+
+      - name: Lint project artifacts
+        run: python tools/factory_lint.py .
+
+      - name: Check requirement trace is not broken
+        run: python tools/trace_check.py .
+
+      - name: Check findings index is current
+        run: |
+          if compgen -G "knowledge/findings/*.json" > /dev/null; then
+            python tools/build_findings_index.py . --check
+          else
+            echo "0 findings: nothing to index"
+          fi
+
+      - name: Check every finding's spec_ref resolves
+        run: python tools/check_spec_refs.py .
+
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            python -m pytest -q -p no:cacheprovider
+          else
+            echo "no tests/ folder yet — skipping"
+          fi
+
+      - name: Run the kit self-test (wired scripts, folder purity, context budget, guards, release notes)
+        run: python tools/kit_selftest.py .
+
+      - name: Check no kit file was edited, removed, or the lock changed outside an upgrade
+        if: github.event_name != 'pull_request'
+        run: python tools/kit_drift.py . --ci
+
+      - name: Check no kit file was edited, removed, or the lock changed outside an upgrade (PR)
+        if: github.event_name == 'pull_request'
+        run: python tools/kit_drift.py . --ci --base "${{ github.event.pull_request.base.sha }}"
+
+      - name: Check the PR body has a valid Spec-deviation block
+        if: github.event_name == 'pull_request'
+        run: python tools/check_pr_spec_block.py

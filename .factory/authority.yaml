@@ -1,0 +1,13 @@
+# This project's authority overrides / additions to factory/core/authority.yaml.
+#
+# The decision_classes and autonomous_classes in Core apply as-is unless
+# overridden here. The production: block below is a copy of the Core shape —
+# fill in deploy_patterns for this project's real production-deploy command(s).
+
+production:
+  authorize_phrase: "AUTHORIZE PROD"
+  deploy_patterns: []        # TODO: fill in this project's deploy command regex(es),
+                              # each with a named group (?P<release>R-\d{3,})
+  max_deploys_per_day: 1
+  records_dir: ".factory/authorizations"
+  ledger: ".factory/deploy-ledger.jsonl"
