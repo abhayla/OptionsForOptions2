@@ -86,7 +86,11 @@ class Template:
 
 
 def atm_strike(spot: Decimal, strike_gap: Decimal) -> Decimal:
-    """Round ``spot`` to the nearest multiple of ``strike_gap``; a tie rounds up (half-up), per REQ-028."""
+    """Round ``spot`` to the nearest multiple of ``strike_gap``; a tie rounds up (half-up).
+
+    The half-up tie rule is this orchestrator's own default (ADR-045), not a REQ-028 requirement --
+    REQ-028 and ADR-042 are silent on which way a tie rounds.
+    """
     require_decimal(spot, "spot", allow_zero=False)
     require_decimal(strike_gap, "strike_gap", allow_zero=False)
     steps = (spot / strike_gap).quantize(Decimal(1), rounding=ROUND_HALF_UP)

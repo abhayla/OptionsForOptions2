@@ -6,8 +6,8 @@
 # - Only `display_name` (-> name) and `description` are carried; the legacy file's promotional/educational
 #   fields (pros, cons, when_to_use, common_mistakes, adjustments, ...) are not part of this platform's
 #   template data (REQ-028 scope) and are dropped.
-# - Descriptions were scanned for ADR-003 banned wording ("best", "you should", "guaranteed", "sure",
-#   "risk-free") on 2026-09-29 and needed no rewording; they were already decision-support/neutral.
+# - Descriptions were scanned for ADR-003 banned wording (ofo/strategy/wording.py's BANNED_PHRASES,
+#   enforced at load time) on 2026-09-29 and needed no rewording beyond the two fix-round items below.
 # - `legs_config[].strike_offset` (legacy: raw index points, implicitly NIFTY's 50-point gap) is converted
 #   to `offset_steps` (points / 50) so a template resolves at ANY index's strike gap (ADR-042). All legacy
 #   offsets (0, +/-100, +/-200) are exact multiples of 50, so every conversion is an exact integer.
@@ -19,6 +19,18 @@
 # - `quantity_multiplier` is 1 for every leg here: the legacy file expresses a 1:2 ratio (e.g. the ratio
 #   backspreads) as two separate identical legs, which this data preserves leg-for-leg rather than folding
 #   into a multiplier; the field exists for a future template that needs it.
+#
+# Fix round (2026-09-29, verifier findings on AC-3/AC-4/AC-5, this session):
+# - Dropped `wheel_strategy`: it is a stock-assignment cycle (sell a put, get assigned shares, sell a
+#   covered call against them) that cannot happen on NIFTY/SENSEX index options, which are CASH-SETTLED
+#   (no shares are ever delivered). The catalogue is now **21** templates, not 22; the dropped legacy
+#   template's own `cash_secured_put` leg set is still covered by the `cash_secured_put` template below.
+# - `cash_secured_put`'s description no longer says "take assignment" for the same cash-settlement
+#   reason; reworded to describe the position honestly (a short put, cash/margin held against the full
+#   exposure, cash-settled at expiry -- no shares are ever bought).
+# - `butterfly_spread`'s description no longer says "three consecutive strikes" (true for a 1-step wing,
+#   false in general); reworded to "N strike steps" since a butterfly's wing distance is this template's
+#   own `offset_steps` (2 in this data), not a fixed count of adjacent strikes.
 templates:
   - id: bull_call_spread
     name: "Bull Call Spread"
@@ -158,15 +170,8 @@ templates:
   - id: cash_secured_put
     name: "Cash-Secured Put"
     description: >-
-      Sell an out-of-the-money put, reserving the cash to take assignment.
-    legs:
-      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
-
-  - id: wheel_strategy
-    name: "Wheel (Put Leg)"
-    description: >-
-      Sell an out-of-the-money put as the first leg of a put-then-call income cycle; the same
-      Cash-Secured Put leg set, entered on a repeating schedule.
+      Sell an out-of-the-money put, holding cash or margin against the full exposure; cash-settled at
+      expiry (no shares are bought or delivered on NIFTY/SENSEX index options).
     legs:
       - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
 
@@ -189,8 +194,8 @@ templates:
   - id: butterfly_spread
     name: "Butterfly Spread"
     description: >-
-      Buy a call, sell two calls at the next strike up, and buy a call one strike further, all the
-      same expiry: three consecutive strikes with the middle sold twice.
+      Buy a call, sell two calls a fixed number of strike steps above it, and buy a call the same
+      number of steps further out again, all the same expiry: the middle strike sold twice.
     legs:
       - {action: BUY, instrument: CE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
       - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
