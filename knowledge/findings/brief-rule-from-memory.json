@@ -1,0 +1,46 @@
+{
+  "id": "brief-rule-from-memory",
+  "class": "Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it.",
+  "mechanism": "The brief states the rule as settled; the builder has no reason to doubt it; the spec's actual words (or the owner-reviewed source) say something else.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "night build, orchestrator briefs for W-001, W-015, W-014, W-004",
+    "evidence": "W-001 brief: 'UNLIMITED when the tail slope is non-zero in that direction' (wrong: an index can't go below 0; builder flagged it). W-015 brief invented a key-name secret guard no AC defines (two failed rounds). W-014 brief rule (b) entry-price worst case blocked hedged partial exits (builder flagged it). W-004 brief: header 'NIFTY at expiry | You make/lose' on every Guided column, while the owner-reviewed T1 table uses it as a pair of headings (verifier failed AC-7; item parked). Also caught before harm: 'Near adjustment' instead of ADR-010's 'Adjustment opportunity'."
+  },
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-001 tail rule",
+      "evidence": "builder report"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-015 secret guard",
+      "evidence": "independent review: no AC defines it"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-014 rule (b)",
+      "evidence": "builder measurement -14,170 -> -19,825 on a hedged close"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-004 Guided header",
+      "evidence": "verifier: 24 columns, 1 distinct header"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-004 health label",
+      "evidence": "'Near adjustment' vs ADR-010 'Adjustment opportunity', corrected before the build"
+    }
+  ],
+  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) \u2014 not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Process mechanism, not automatable today: a possible check would scan work items and briefs for rule sentences without a spec citation. Measured tonight: all 5 occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-045.md"
+  ]
+}

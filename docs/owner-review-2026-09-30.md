@@ -53,7 +53,10 @@ Every item: builder in its own worktree → independent verifier (fresh context)
 | W-007 (REQ-017) | Entitlement engine | **PARKED** — issue #12 (3rd red of one defect class; recommendation inside) |
 | W-008, W-009, W-011 | Trial/Limited access, referrals, complimentary Pro | Blocked by W-007 |
 | W-017 (REQ-063) | Audit payload allowlist | Blocked: needs real Kite responses |
-| W-014, W-004, W-012, W-016 | Pre-execution gate, strategy table, versions, builder history | In progress at time of writing (see the final update below) |
+| W-016 (REQ-070) | Builder activity history, undo, restore | **Merged** PR #18 — 3 rounds |
+| W-012 (REQ-038) | Strategy definition vs live state, versions, reconciliation flag | **Merged** PR #20 — 3 rounds + independent review; 26,051-step random test, invariant never broke. Gap filed: deferred #19 (a broker position that goes flat is stuck until REQ-060 adds "Exited") |
+| W-004 (REQ-035) | One strategy table (columns, Greeks, UX levels) | **PARKED** — issue #21. AC-1/2/6 pass; AC-7 failed because MY brief put one heading on every Guided column. One short round with your OK |
+| W-014 (REQ-059) | Pre-execution safety gate (Tier A) | In progress — 2 adversarial rounds done; AC-5 wiring to W-012 next |
 
 Issues filed: deferred #10 (small verifier findings), parked #12; kit harvest Startup-Factory #39, #40.
 
@@ -63,3 +66,7 @@ Issues filed: deferred #10 (small verifier findings), parked #12; kit harvest St
 - Q212 — the YouTube adjustment video transcript (you said you'd provide it).
 - W-007 (entitlement engine) is parked, issue #12 — decide the recommended fix (separate "validate a new event" from "load stored history"; bound future-dated status changes).
 - The state-machine transition table in `spec/data/domain-model.md` §6 is still a proposal for your review.
+- **Which UX level shows Greeks?** REQ-006 says Standard shows Greeks; REQ-035 AC-7 says Advanced adds them. The table model follows REQ-035 (Guided: none, Standard: % return + breakevens, Advanced: IV + Greeks). Recommendation: keep REQ-035 (beginners in Standard don't need Greeks by default) and correct REQ-006.
+- **TOTAL row P&L % and Entry Value.** The table shows the TOTAL P&L % as "—" (your reviewed T1 table left it blank; % of gross premium misleads for credit strategies). The TOTAL Entry Value adds option premiums and futures notional together. Recommendation: TOTAL P&L % = unrealized P&L ÷ max loss (risk-based), and TOTAL Entry Value shown only for options-only strategies.
+- **Extra checks still applied to exits** (W-014): version state, supported index, expiry not passed, contract still listed, no duplicate legs — kept because an order on an expired or delisted contract can't be placed anyway. Say if any should be dropped.
+- **Moneyness column?** The builder first used Status for ITM/ATM/OTM; Status now follows your T1 tables (leg "Open", total "Healthy"). If you want moneyness shown, it would be a new column (spec change).
