@@ -33,9 +33,9 @@ def make_order(**overrides: object) -> Order:
     return Order(**fields)  # type: ignore[arg-type]
 
 
-def make_fill(event_id: str, quantity: int, *, broker_order_id: str = "BRK-1") -> FillEvent:
+def make_fill(trade_id: str, quantity: int, *, broker_order_id: str = "BRK-1") -> FillEvent:
     return FillEvent(
-        event_id, broker_order_id, CONTRACT, Action.BUY, quantity, D("120.50"),
+        trade_id, broker_order_id, CONTRACT, Action.BUY, quantity, D("120.50"),
         datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC),
     )
 
@@ -60,35 +60,34 @@ def test_transition_table_covers_every_state_and_terminals_have_no_exits() -> No
 def test_full_happy_path_submitted_to_executed_via_partial_fills() -> None:
     """AC-1 + Core: drive one order through every allowed transition via the OrderBook; positions
     move only on confirmed fills, and only by the confirmed quantity, never by the order's own
-    state change.
+    state change. filled_quantity/state are always the ledger-computed OrderView values.
     """
     book = OrderBook()
-    order = make_order(quantity=100)
-    book.add(order)
+    book.add(make_order(quantity=100))
 
-    order = book.transition("BRK-1", OrderState.SUBMITTED)
-    assert order.state is OrderState.SUBMITTED
+    view = book.transition("BRK-1", OrderState.SUBMITTED)
+    assert view.state is OrderState.SUBMITTED
     assert book.position("STRAT-1", CONTRACT) == 0  # Core: submission changes nothing
 
-    order = book.transition("BRK-1", OrderState.PENDING)
-    assert order.state is OrderState.PENDING
+    view = book.transition("BRK-1", OrderState.PENDING)
+    assert view.state is OrderState.PENDING
     assert book.position("STRAT-1", CONTRACT) == 0
 
     # First confirmed fill: broker confirms 40 of 100.
-    order = book.apply_fill(make_fill("EVT-1", 40))
-    assert order.state is OrderState.PARTIALLY_EXECUTED
-    assert order.filled_quantity == 40
+    view = book.apply_fill(make_fill("T-1", 40))
+    assert view.state is OrderState.PARTIALLY_EXECUTED
+    assert view.filled_quantity == 40
     assert book.position("STRAT-1", CONTRACT) == 40  # Core: only the confirmed quantity changes
 
     # Second partial fill accumulates.
-    order = book.apply_fill(make_fill("EVT-2", 35))
-    assert order.filled_quantity == 75
+    view = book.apply_fill(make_fill("T-2", 35))
+    assert view.filled_quantity == 75
     assert book.position("STRAT-1", CONTRACT) == 75
 
     # Final fill completes the order: state moves to Executed automatically.
-    order = book.apply_fill(make_fill("EVT-3", 25))
-    assert order.state is OrderState.EXECUTED
-    assert order.filled_quantity == 100
+    view = book.apply_fill(make_fill("T-3", 25))
+    assert view.state is OrderState.EXECUTED
+    assert view.filled_quantity == 100
     assert book.position("STRAT-1", CONTRACT) == 100
 
 
@@ -96,21 +95,27 @@ def test_full_happy_path_submitted_to_executed_via_partial_fills() -> None:
     "start,target",
     [
         (OrderState.PREPARED, OrderState.PENDING),
-        (OrderState.PREPARED, OrderState.EXECUTED),
         (OrderState.SUBMITTED, OrderState.PREPARED),
         (OrderState.PENDING, OrderState.PREPARED),
-        (OrderState.EXECUTED, OrderState.SUBMITTED),
         (OrderState.REJECTED, OrderState.SUBMITTED),  # ADR-017: no automatic/manual resubmission
         (OrderState.CANCELLED, OrderState.SUBMITTED),
     ],
 )
-def test_disallowed_transitions_are_refused(start: OrderState, target: OrderState) -> None:
+def test_disallowed_base_transitions_are_refused(start: OrderState, target: OrderState) -> None:
     """AC-1: any transition not in the table is refused, including Rejected -> Submitted."""
-    order = make_order()
-    seeded = order._copy_with(state=start, filled_quantity=0)  # test-only seed, not a public path
+    order = make_order()._copy_with(state=start)  # test-only seed, not a public path
     with pytest.raises(ValueError):
-        seeded.transition(target)
-    assert seeded.state is start  # refused transition leaves the (already-returned) state unchanged
+        order.transition(target)
+
+
+@pytest.mark.parametrize("target", [OrderState.PARTIALLY_EXECUTED, OrderState.EXECUTED])
+def test_transition_refuses_fill_implying_states(target: OrderState) -> None:
+    """Round-3 item 2: transition() refuses any target state that implies a fill; those are
+    reached only via OrderBook.apply_fill."""
+    order = make_order()
+    submitted = order.transition(OrderState.SUBMITTED)
+    with pytest.raises(ValueError):
+        submitted.transition(target)
 
 
 def test_partial_fill_cannot_exceed_ordered_quantity() -> None:
@@ -118,30 +123,23 @@ def test_partial_fill_cannot_exceed_ordered_quantity() -> None:
     book = OrderBook()
     book.add(make_order(quantity=50))
     book.transition("BRK-1", OrderState.SUBMITTED)
-    order = book.apply_fill(make_fill("EVT-1", 40))
-    assert order.filled_quantity == 40
+    view = book.apply_fill(make_fill("T-1", 40))
+    assert view.filled_quantity == 40
     with pytest.raises(ValueError):
-        book.apply_fill(make_fill("EVT-2", 20))  # 40 + 20 > 50
+        book.apply_fill(make_fill("T-2", 20))  # 40 + 20 > 50
     assert book.order_for("BRK-1").filled_quantity == 40  # rejected fill changed nothing
 
 
-def test_executed_requires_full_fill() -> None:
-    """AC-1: an order's own transition() cannot be marked Executed while units remain unfilled."""
-    order = make_order(quantity=50)
-    submitted = order.transition(OrderState.SUBMITTED)
-    with pytest.raises(ValueError):
-        submitted.transition(OrderState.EXECUTED, filled_delta=30)  # only 30 of 50
-
-
 def test_a_fully_filled_order_cannot_be_cancelled() -> None:
-    """AC-1 fix-round negative case: an order fully filled via a confirmed fill is Executed, and
-    Executed is terminal -- it can never be recorded as Cancelled.
+    """AC-1 negative case: an order fully filled via a confirmed fill is (effectively) Executed,
+    and Executed is terminal -- it can never be recorded as Cancelled, even though the order's own
+    base state is still Submitted.
     """
     book = OrderBook()
     book.add(make_order(quantity=25))
     book.transition("BRK-1", OrderState.SUBMITTED)
-    order = book.apply_fill(make_fill("EVT-1", 25))
-    assert order.state is OrderState.EXECUTED
+    view = book.apply_fill(make_fill("T-1", 25))
+    assert view.state is OrderState.EXECUTED
     with pytest.raises(ValueError):
         book.transition("BRK-1", OrderState.CANCELLED)
 
@@ -163,15 +161,12 @@ def test_price_goes_through_the_engine_money_guard() -> None:
 
 
 def test_order_fields_have_no_public_setter() -> None:
-    """Input-domain checklist / W-019 fix round: a raw state change that bypasses transition()
-    (including quantity, state or filled_quantity) is rejected -- Order is frozen.
-    """
+    """Input-domain checklist: a raw state change that bypasses transition() (including
+    quantity/state) is rejected -- Order is frozen."""
     order = make_order()
     with pytest.raises(AttributeError):
         order.state = OrderState.EXECUTED  # type: ignore[misc]
     with pytest.raises(AttributeError):
         order._state = OrderState.EXECUTED  # type: ignore[misc]
-    with pytest.raises(AttributeError):
-        order._filled_quantity = 999  # type: ignore[misc]
     with pytest.raises(AttributeError):
         order.quantity = 999  # type: ignore[misc]
