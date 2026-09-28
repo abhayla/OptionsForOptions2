@@ -26,11 +26,20 @@ class Source(Enum):
 
 
 class Status(Enum):
-    """Recorded status of an entitlement. Natural expiry is derived by the engine, not recorded."""
+    """Status of an entitlement at a query time.
+
+    REVOKED and ENDED are recorded by a status-change event (ENDED only for a trial, ADR-039);
+    EXPIRED is never recorded: it is derived when the query time reaches the resolved expiry.
+    """
 
     ACTIVE = "active"
     REVOKED = "revoked"
     ENDED = "ended"
+    EXPIRED = "expired"
+
+
+MAX_DAYS = 3650
+MAX_DURATION = timedelta(days=MAX_DAYS)
 
 
 class AccessLevel(Enum):
@@ -116,6 +125,8 @@ class EntitlementGrant:
             raise ValueError("a direct customer entitlement is open-ended; it takes no duration")
         if not isinstance(self.duration, timedelta) or self.duration <= timedelta(0):
             raise ValueError(f"duration must be a positive timedelta, got {self.duration!r}")
+        if self.duration > MAX_DURATION:
+            raise ValueError(f"duration {self.duration} is over the {MAX_DAYS}-day maximum")
 
 
 @dataclass(frozen=True)

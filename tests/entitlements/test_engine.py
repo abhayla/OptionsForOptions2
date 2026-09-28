@@ -266,7 +266,7 @@ def test_revocation_is_a_new_audited_event_and_cuts_access_at_its_instant():
     assert _level(led, ist(2026, 10, 1) - TICK) is PRO
     assert _level(led, ist(2026, 10, 1)) is LIMITED
     resolved = _resolved(led, "paid-1")
-    assert (resolved.status, resolved.expiry) == (Status.REVOKED, ist(2026, 10, 1))
+    assert (resolved.status_at(ist(2026, 10, 1)), resolved.expiry) == (Status.REVOKED, ist(2026, 10, 1))
     change = led.status_change("paid-1")
     assert (change.audit.actor, change.audit.reason) == ("admin:ops", "payment reversed")
     with pytest.raises(ValueError, match="already revoked or ended"):
@@ -285,7 +285,7 @@ def test_trial_is_ended_early_when_an_already_trialled_client_id_is_connected():
     assert _level(led, connected - TICK) is PRO
     assert _level(led, connected) is LIMITED
     resolved = _resolved(led, "trial-1")
-    assert (resolved.status, resolved.expiry) == (Status.ENDED, connected)
+    assert (resolved.status_at(connected), resolved.expiry) == (Status.ENDED, connected)
 
 
 def test_trial_early_end_rejects_non_trials_and_trials_not_running():

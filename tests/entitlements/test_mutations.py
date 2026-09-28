@@ -7,22 +7,113 @@ already broken".
 """
 
 from collections.abc import Callable
+from datetime import timedelta
 
 import pytest
 
-from ofo.entitlements import engine
+from ofo.entitlements import engine, events, ledger as ledger_module
 from ofo.entitlements.events import Placement, Status
 
+from . import test_boundary as boundary
 from . import test_engine as suite
 
 
-def _passes_then_fails_under(monkeypatch: pytest.MonkeyPatch, name: str, mutant, tests: list[Callable[[], None]]):
+# A mutant is "caught" when the protecting test fails: an assertion, a pytest.raises that did not
+# raise, an engine refusal the test did not expect (ValueError), or (for the overflow guard) the
+# crash the guard exists to prevent. Each case first runs un-mutated and passes, so any of these
+# under the mutant is the mutant's doing.
+CAUGHT = (AssertionError, pytest.fail.Exception, OverflowError, ValueError)
+
+
+def _passes_then_fails_under(
+    monkeypatch: pytest.MonkeyPatch, name: str, mutant, tests: list[Callable[[], None]], module=engine
+):
     for test in tests:
         test()  # baseline: the guard is intact, the test passes
-    monkeypatch.setattr(engine, name, mutant)
+    monkeypatch.setattr(module, name, mutant)
     for test in tests:
-        with pytest.raises(AssertionError):
+        with pytest.raises(CAUGHT):
             test()
+
+
+def _no_op(*args):
+    return None
+
+
+# ---------------------------------------------------------------- round 3: input-boundary guards
+
+
+@pytest.mark.parametrize(
+    "guard, tests",
+    [
+        ("_check_unique_id", [boundary.test_duplicate_entitlement_id_is_refused]),
+        ("_check_unique_source_reference", [boundary.test_second_grant_with_same_source_and_reference_is_refused]),
+        ("_check_single_trial", [boundary.test_second_trial_in_one_ledger_is_refused]),
+        ("_check_not_future", [
+            boundary.test_grant_time_far_after_its_recording_is_refused,
+            boundary.test_grant_time_skew_is_five_minutes_by_default_and_configurable,
+        ]),
+        ("_check_not_backdated", [boundary.test_backdated_revocation_is_refused]),
+        ("_check_ended_only_for_trial", [boundary.test_ended_is_only_for_a_trial]),
+    ],
+)
+def test_removing_a_ledger_guard_is_caught(monkeypatch, guard, tests):
+    """AC-4: each ledger input guard is load-bearing: turning it into a no-op fails its red test."""
+    _passes_then_fails_under(monkeypatch, guard, _no_op, tests, module=ledger_module)
+
+
+def test_removing_the_duration_cap_is_caught(monkeypatch):
+    """AC-3: without the 3650-day cap in the grant constructor, an absurd duration is accepted."""
+    _passes_then_fails_under(
+        monkeypatch, "MAX_DURATION", timedelta.max, [boundary.test_durations_above_ten_years_are_refused],
+        module=events,
+    )
+
+
+def test_removing_the_overflow_clamp_is_caught(monkeypatch):
+    """AC-1: without the END_OF_TIME clamp, an accepted ledger crashes access evaluation with OverflowError."""
+    _passes_then_fails_under(
+        monkeypatch, "_add", lambda at, duration: at + duration,
+        [boundary.test_access_never_crashes_on_an_accepted_ledger_at_the_cap_near_the_end_of_time],
+    )
+
+
+def test_truncate_keeping_banked_time_is_caught(monkeypatch):
+    """AC-4: a revocation that leaves banked days in place (still "30 days saved") must fail."""
+    original = engine._truncate
+
+    def keeps_banked(segments, banked, change):
+        return original(segments, banked, change)[0], banked
+
+    _passes_then_fails_under(monkeypatch, "_truncate", keeps_banked, [
+        boundary.test_revoking_a_banked_referral_cancels_its_saved_days,
+        boundary.test_ending_a_banked_trial_cancels_its_remaining_days,
+    ])
+
+
+def test_ending_only_a_running_trial_is_caught(monkeypatch):
+    """AC-4: refusing to end a banked trial (the pre-round-3 rule) must fail caveat 9's test."""
+    def running_only(resolved, at):
+        return any(engine._covers(s, e, at) for s, e in resolved.segments)
+
+    _passes_then_fails_under(monkeypatch, "_owes_pro", running_only, [
+        boundary.test_ending_a_banked_trial_cancels_its_remaining_days,
+    ])
+
+
+def test_status_expiring_one_tick_late_is_caught(monkeypatch):
+    """AC-3: a status that stays ACTIVE at exactly the expiry instant must fail (half-open, like access)."""
+    original = engine.ResolvedEntitlement.status_at
+
+    def late(self, at):
+        return original(self, at - boundary.TICK)
+
+    monkeypatch.setattr(engine.ResolvedEntitlement, "status_at", late)
+    with pytest.raises(CAUGHT):
+        boundary.test_status_is_evaluated_at_the_query_time()
+
+
+# ---------------------------------------------------------------- engine guards
 
 
 def test_interval_end_made_inclusive_is_caught(monkeypatch):

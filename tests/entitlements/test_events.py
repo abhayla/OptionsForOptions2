@@ -51,7 +51,7 @@ def test_entitlement_stores_source_start_expiry_status_reference_and_audit():
         grant.duration = timedelta(days=1)
 
     (resolved,) = resolve(EntitlementLedger("u-1").append(grant))
-    assert (resolved.start, resolved.expiry, resolved.status) == (ist(2026, 10, 1), ist(2027, 10, 1), Status.ACTIVE)
+    assert (resolved.start, resolved.expiry, resolved.status_at(ist(2026, 10, 1))) == (ist(2026, 10, 1), ist(2027, 10, 1), Status.ACTIVE)
 
 
 def test_status_change_stores_status_effective_time_and_audit():

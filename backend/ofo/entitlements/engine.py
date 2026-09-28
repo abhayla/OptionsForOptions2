@@ -21,12 +21,13 @@ time on its own and may overlap other Pro (ADR-025 Q63 admin setting).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ofo.entitlements.events import (
     AccessLevel,
     Audit,
     EntitlementGrant,
+    MAX_DAYS,
     EntitlementStatusChange,
     Placement,
     Source,
@@ -37,6 +38,9 @@ from ofo.entitlements.ledger import EntitlementLedger
 TRIAL_DAYS_DEFAULT = 7
 REFERRAL_DAYS_DEFAULT = 30
 _ZERO = timedelta(0)
+# The last representable instant. Days that would run past it are cut there (year 9999; every
+# accepted duration is at most MAX_DAYS, but a long chain of them can reach it), never an OverflowError.
+END_OF_TIME = datetime.max.replace(tzinfo=timezone.utc)
 
 Segment = tuple[datetime, datetime | None]  # [start, end); end None = open-ended
 
@@ -50,9 +54,18 @@ class ResolvedEntitlement:
     """
 
     grant: EntitlementGrant
-    status: Status
+    change: EntitlementStatusChange | None
     segments: tuple[Segment, ...]
     banked: timedelta
+
+    def status_at(self, at: datetime) -> Status:
+        """REVOKED/ENDED from the change's effective instant; EXPIRED once all its Pro is used; else ACTIVE."""
+        _require_aware("at", at)
+        if self.change is not None and at >= self.change.effective_at:
+            return self.change.status
+        if self.banked == _ZERO and self.segments and self.segments[-1][1] is not None and at >= self.segments[-1][1]:
+            return Status.EXPIRED
+        return Status.ACTIVE
 
     @property
     def start(self) -> datetime | None:
@@ -99,6 +112,14 @@ def _placement(stacking: bool) -> Placement:
     return Placement.STACKED if stacking else Placement.FROM_GRANT_TIME
 
 
+def _add(at: datetime, duration: timedelta) -> datetime:
+    """``at + duration``, cut at END_OF_TIME instead of raising OverflowError."""
+    try:
+        return min(at + duration, END_OF_TIME)
+    except OverflowError:
+        return END_OF_TIME
+
+
 def _consume(start: datetime, duration: timedelta, open_ended: list[Segment]) -> tuple[tuple[Segment, ...], timedelta]:
     """Rule 3: lay ``duration`` from ``start`` on time NOT covered by open-ended Pro.
 
@@ -108,14 +129,15 @@ def _consume(start: datetime, duration: timedelta, open_ended: list[Segment]) ->
     segments: list[Segment] = []
     remaining, cursor = duration, start
     while remaining > _ZERO:
-        # Loop-termination guard: only an interval that ends strictly after the cursor may move it.
+        # With the half-open _covers every blocking end is already > cursor, so the "end > cursor" test
+        # is defensive only (it keeps the loop finite if _covers were ever made inclusive); nothing relies on it.
         blocking = [end for s, end in open_ended if _covers(s, end, cursor) and (end is None or end > cursor)]
         if blocking:
             if None in blocking:
                 return tuple(segments), remaining
             cursor = max(e for e in blocking if e is not None)
             continue
-        natural_end = cursor + remaining
+        natural_end = _add(cursor, remaining)
         upcoming = [s for s, _ in open_ended if cursor < s < natural_end]
         if upcoming:
             cut = min(upcoming)
@@ -139,6 +161,11 @@ def _truncate(
     return kept, _ZERO
 
 
+def _owes_pro(resolved: ResolvedEntitlement, at: datetime) -> bool:
+    """Caveat 9: an entitlement still owes Pro at ``at`` if it is running, queued later, or banked."""
+    return resolved.banked > _ZERO or any(e is None or at < e for _, e in resolved.segments)
+
+
 def _next_cursor(previous: datetime | None, natural: tuple[Segment, ...], kept: tuple[Segment, ...]) -> datetime | None:
     """Rule 5: the chain continues from where this period ACTUALLY ends (``kept``, after any revocation),
     never from where it would have ended (``natural``); continuing from ``natural`` would leave a Limited gap."""
@@ -156,12 +183,8 @@ def _require_aware(name: str, value: datetime) -> None:
 
 
 def _require_days(days: int) -> None:
-    if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
-        raise ValueError(f"days must be a positive whole number, got {days!r}")
-
-
-def _status(change: EntitlementStatusChange | None) -> Status:
-    return Status.ACTIVE if change is None else change.status
+    if isinstance(days, bool) or not isinstance(days, int) or not 1 <= days <= MAX_DAYS:
+        raise ValueError(f"days must be a whole number from 1 to {MAX_DAYS}, got {days!r}")
 
 
 def _open_ended_segments(ledger: EntitlementLedger) -> list[Segment]:
@@ -184,7 +207,7 @@ def resolve(ledger: EntitlementLedger) -> tuple[ResolvedEntitlement, ...]:
         if grant.duration is None:
             segments, banked = _truncate(((grant.granted_at, None),), _ZERO, change)
         elif grant.placement is Placement.FROM_GRANT_TIME:
-            segments, banked = _truncate(((grant.granted_at, grant.granted_at + grant.duration),), _ZERO, change)
+            segments, banked = _truncate(((grant.granted_at, _add(grant.granted_at, grant.duration)),), _ZERO, change)
         else:
             if chain_banked:
                 natural, banked = (), grant.duration
@@ -193,7 +216,7 @@ def resolve(ledger: EntitlementLedger) -> tuple[ResolvedEntitlement, ...]:
             segments, banked = _truncate(natural, banked, change)
             cursor = _next_cursor(cursor, natural, segments)
             chain_banked = chain_banked or banked > _ZERO
-        resolved.append(ResolvedEntitlement(grant, _status(change), segments, banked))
+        resolved.append(ResolvedEntitlement(grant, change, segments, banked))
     return tuple(resolved)
 
 
@@ -224,7 +247,8 @@ def pro_end(ledger: EntitlementLedger, at: datetime) -> datetime | None:
         if None in ends:
             return None
         finite = [e for e in ends if e is not None]
-        if not finite or max(finite) <= cursor:  # loop-termination guard
+        # "max(finite) <= cursor" cannot happen with the half-open _covers; defensive only, nothing relies on it.
+        if not finite or max(finite) <= cursor:
             return cursor
         cursor = max(finite)
 
@@ -263,12 +287,16 @@ def revoke(ledger: EntitlementLedger, entitlement_id: str, effective_at: datetim
 
 
 def end_trial_early(ledger: EntitlementLedger, trial_id: str, at: datetime, audit: Audit) -> EntitlementLedger:
-    """End a RUNNING trial at ``at`` (ADR-039: an already-trialled Client ID was connected)."""
+    """End a trial that still owes Pro at ``at`` (ADR-039: an already-trialled Client ID was connected).
+
+    Covers a running trial and one whose days are banked behind open-ended Pro: either way its
+    remaining days are cancelled, because ADR-039's intent is "no second trial".
+    """
     _require_aware("at", at)
     grant = ledger.grant(trial_id)
     if grant.source is not Source.TRIAL:
         raise ValueError(f"{trial_id!r} is a {grant.source.value} entitlement, not a trial")
     (trial,) = [r for r in resolve(ledger) if r.grant.entitlement_id == trial_id]
-    if not any(_covers(s, e, at) for s, e in trial.segments):
+    if at < grant.granted_at or not _owes_pro(trial, at):
         raise ValueError(f"trial {trial_id!r} is not running at {at.isoformat()}")
     return ledger.append(EntitlementStatusChange(trial_id, Status.ENDED, at, audit))
