@@ -6,6 +6,7 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import (
+    READ_AT,
     CONTRACTS,
     LOT,
     FakeBroker,
@@ -61,7 +62,7 @@ def test_ac4_uses_the_fresh_read_not_the_earlier_state(catalogue, eligibility) -
     """AC-4: the earlier assessment saw the 23,600 CE missing; by the time the user presses Complete, Zerodha shows it
     filled (a late fill). The fresh read wins: the strategy is complete and NOTHING is prepared."""
     book = book_with_three_filled(fourth=OrderState.SUBMITTED)
-    before = assess(plan(), three_positions(), statuses(OrderState.SUBMITTED, None), book, FakePlanner())
+    before = assess(plan(), three_positions(), statuses(OrderState.SUBMITTED, None), book, FakePlanner(), read_at=READ_AT)
     assert before.status is ExecutionStatus.IN_PROGRESS
     book.apply_fill(FillEvent("T-4", "BRK-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), FILL_AT))
     positions = three_positions() + [BrokerPositionLine(CONTRACTS[3], LOT, D("44.00"))]
@@ -146,10 +147,8 @@ def test_ac5_all_orders_submitted_is_not_complete(catalogue, eligibility) -> Non
     assert result.submitted == (("leg-4", "NEW-1"),)
     sts = statuses()[:3] + [BrokerOrderStatus("BRK-4", CONTRACTS[3], OrderState.REJECTED, 0, "x"),
                             BrokerOrderStatus("NEW-1", CONTRACTS[3], OrderState.SUBMITTED, 0)]
-    book.add(prep.orders[0].__class__("S-1", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"),
-                                      broker_order_id="NEW-1"))
-    book.transition("NEW-1", OrderState.SUBMITTED)
-    after = assess(plan(), three_positions(), sts, book, FakePlanner())
+    assert book.order_for("NEW-1").state is OrderState.SUBMITTED  # registered by submit_confirmed (fix (a))
+    after = assess(plan(), three_positions(), sts, book, FakePlanner(), read_at=READ_AT)
     assert after.status is not ExecutionStatus.COMPLETE
     assert after.status is ExecutionStatus.IN_PROGRESS
 
@@ -158,7 +157,7 @@ def test_ac5_broker_says_executed_but_positions_disagree_is_not_complete() -> No
     """AC-5: all four order statuses read Executed, but the broker's positions show only three legs -> the ledger
     and broker disagree; the result is RECONCILIATION_REQUIRED, never COMPLETE."""
     sts = statuses()[:3] + [BrokerOrderStatus("BRK-4", CONTRACTS[3], OrderState.EXECUTED, LOT)]
-    a = assess(plan(), three_positions(), sts, book_with_three_filled(fourth=OrderState.SUBMITTED), FakePlanner())
+    a = assess(plan(), three_positions(), sts, book_with_three_filled(fourth=OrderState.SUBMITTED), FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
 
 
@@ -168,5 +167,5 @@ def test_ac5_complete_only_when_positions_equal_plan() -> None:
     book.apply_fill(FillEvent("T-4", "BRK-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), FILL_AT))
     positions = three_positions() + [BrokerPositionLine(CONTRACTS[3], LOT, D("44.00"))]
     sts = statuses()[:3] + [BrokerOrderStatus("BRK-4", CONTRACTS[3], OrderState.EXECUTED, LOT)]
-    a = assess(plan(), positions, sts, book, FakePlanner())
+    a = assess(plan(), positions, sts, book, FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.COMPLETE and a.choices == () and a.remaining == ()

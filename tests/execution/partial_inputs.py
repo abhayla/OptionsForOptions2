@@ -23,6 +23,7 @@ REFS = ("leg-1", "leg-2", "leg-3", "leg-4")
 BROKER_IDS = ("BRK-1", "BRK-2", "BRK-3", "BRK-4")
 REJECT_TEXT = "RMS:Margin Exceeds, Required:4400.00, Available:1200.00 for entity account-XX"
 FILL_AT = datetime.datetime(2026, 9, 29, 4, 31, tzinfo=datetime.timezone.utc)
+READ_AT = datetime.datetime(2026, 9, 29, 4, 32, tzinfo=datetime.timezone.utc)
 
 
 def plan() -> ExecutionPlan:
@@ -63,8 +64,10 @@ class FakeBroker:
     """Counts every read; ``fail`` names a read that raises. Returns the lists it is given."""
 
     def __init__(self, positions: list[BrokerPositionLine], order_statuses: list[BrokerOrderStatus],
-                 margin: D = D("150000.00"), fail: str | None = None) -> None:
+                 margin: D = D("150000.00"), fail: str | None = None,
+                 read_at: datetime.datetime = READ_AT) -> None:
         self.positions, self.order_statuses, self.margin, self.fail = positions, order_statuses, margin, fail
+        self.read_at = read_at
         self.calls: list[str] = []
 
     def _read(self, name: str) -> None:
@@ -72,13 +75,13 @@ class FakeBroker:
         if self.fail == name:
             raise ConnectionError(f"{name} timed out")
 
-    def fetch_positions(self, strategy_id: str) -> list[BrokerPositionLine]:
+    def fetch_positions(self, strategy_id: str) -> tuple[list[BrokerPositionLine], datetime.datetime]:
         self._read("positions")
-        return self.positions
+        return self.positions, self.read_at
 
-    def fetch_order_statuses(self, strategy_id: str) -> list[BrokerOrderStatus]:
+    def fetch_order_statuses(self, strategy_id: str) -> tuple[list[BrokerOrderStatus], datetime.datetime]:
         self._read("order_statuses")
-        return self.order_statuses
+        return self.order_statuses, self.read_at
 
     def fetch_available_margin(self) -> D:
         self._read("margin")

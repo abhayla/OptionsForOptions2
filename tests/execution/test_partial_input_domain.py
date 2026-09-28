@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal as D
 
 import pytest
-from partial_inputs import CONTRACTS, LOT, FakePlanner, book_with_three_filled, plan, statuses, three_positions
+from partial_inputs import READ_AT, CONTRACTS, LOT, FakePlanner, book_with_three_filled, plan, statuses, three_positions
 
 from execution_inputs import condor_legs
 from ofo.execution.partial import (
@@ -57,15 +57,15 @@ def test_float_price_and_bool_quantity_refused() -> None:
 def test_duplicate_broker_lines_refused() -> None:
     positions = three_positions() + [three_positions()[0]]
     with pytest.raises(ValueError, match="duplicate position contract"):
-        assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner())
+        assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     with pytest.raises(ValueError, match="duplicate broker order id"):
-        assess(plan(), three_positions(), statuses() + [statuses()[0]], book_with_three_filled(), FakePlanner())
+        assess(plan(), three_positions(), statuses() + [statuses()[0]], book_with_three_filled(), FakePlanner(), read_at=READ_AT)
 
 
 def test_too_many_position_lines_refused() -> None:
     lines = [BrokerPositionLine(f"X{i}", 65, D("1.00")) for i in range(MAX_POSITION_LINES + 1)]
     with pytest.raises(ValueError, match="too many"):
-        assess(plan(), lines, statuses(), book_with_three_filled(), FakePlanner())
+        assess(plan(), lines, statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
 
 
 @pytest.mark.parametrize("line", [
@@ -76,13 +76,13 @@ def test_too_many_position_lines_refused() -> None:
 def test_positions_the_plan_cannot_explain_block(line: BrokerPositionLine) -> None:
     """Orchestrator default OD-f: never an exception with choices, always a reconciliation block."""
     positions = [p for p in three_positions() if p.contract != line.contract] + [line]
-    a = assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED and a.choices == ()
 
 
 def test_status_for_an_order_the_book_does_not_know_blocks() -> None:
     sts = statuses() + [BrokerOrderStatus("BRK-GHOST", CONTRACTS[3], OrderState.REJECTED, 0)]
-    a = assess(plan(), three_positions(), sts, book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), sts, book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
 
 
@@ -96,5 +96,5 @@ def test_nothing_filled_is_not_a_partial_exception() -> None:
         book.transition(f"B{i}", OrderState.SUBMITTED)
         book.transition(f"B{i}", OrderState.REJECTED)
     sts = [BrokerOrderStatus(f"B{i}", c, OrderState.REJECTED, 0, "rejected") for i, c in enumerate(CONTRACTS)]
-    a = assess(plan(), [], sts, book, FakePlanner())
+    a = assess(plan(), [], sts, book, FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.NOT_EXECUTED and a.choices == () and len(a.failures) == 4

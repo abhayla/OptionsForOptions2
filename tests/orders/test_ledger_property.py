@@ -19,6 +19,7 @@ from ofo.engine.legs import Action
 from ofo.orders.model import FillEvent, Order, OrderBook, OrderState
 
 UTC = datetime.timezone.utc
+READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 STRATEGIES = ("STRAT-1", "STRAT-2")
 CONTRACTS = ("NIFTY26OCT23000CE", "NIFTY26OCT23000PE")
 BROKER_ORDER_IDS = ("BRK-1", "BRK-2", "BRK-3", "BRK-4")
@@ -103,7 +104,7 @@ def test_ledger_is_the_only_source_of_truth_under_random_misuse(seed: int) -> No
 
             elif action == "reconcile" and registered:
                 broker_order_id = rng.choice(list(registered))
-                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]))
+                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]), read_at=READ_AT)
 
         except ValueError:
             pass  # a refused call must change nothing; checked by the invariant below regardless

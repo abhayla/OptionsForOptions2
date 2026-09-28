@@ -18,6 +18,7 @@ from ofo.orders.model import FillConflictError, FillEvent, Order, OrderBook, Ord
 
 UTC = datetime.timezone.utc
 CONTRACT = "NIFTY26OCT23000PE"
+READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 
 
 def make_order(**overrides: object) -> Order:
@@ -225,7 +226,7 @@ def test_reconcile_cumulative_equal_passes() -> None:
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))
-    assert book.reconcile_cumulative("BRK-9", 10) == "ok"
+    assert book.reconcile_cumulative("BRK-9", 10, read_at=READ_AT) == "ok"
     assert not book.is_submit_blocked("STRAT-9")
 
 
@@ -236,7 +237,7 @@ def test_reconcile_cumulative_higher_blocks_next_submit() -> None:
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))
-    assert book.reconcile_cumulative("BRK-9", 25) == "missing_trades"
+    assert book.reconcile_cumulative("BRK-9", 25, read_at=READ_AT) == "missing_trades"
     assert book.is_submit_blocked("STRAT-9")
 
     book.add(make_order(leg_ref="leg-1", broker_order_id="BRK-9C", quantity=5))
@@ -251,4 +252,4 @@ def test_reconcile_cumulative_lower_is_a_conflict() -> None:
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))
     with pytest.raises(FillConflictError):
-        book.reconcile_cumulative("BRK-9", 5)
+        book.reconcile_cumulative("BRK-9", 5, read_at=READ_AT)

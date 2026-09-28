@@ -15,6 +15,7 @@ from __future__ import annotations
 from decimal import Decimal as D
 
 from partial_inputs import (
+    READ_AT,
     CONTRACTS,
     LOT,
     REJECT_TEXT,
@@ -47,7 +48,7 @@ def test_core_golden_condor_three_filled_fourth_rejected(catalogue, eligibility)
     broker = FakeBroker(three_positions(), statuses())
     book, planner = book_with_three_filled(), FakePlanner()
 
-    a = assess(plan(), broker.positions, broker.order_statuses, book, planner)
+    a = assess(plan(), broker.positions, broker.order_statuses, book, planner, read_at=READ_AT)
     assert a.status is ExecutionStatus.PARTIAL_EXCEPTION
     assert a.metrics.max_loss is UNLIMITED and a.metrics.min_pnl is UNLIMITED
     assert a.metrics.max_profit == D("8775.00")
@@ -74,7 +75,7 @@ def test_ac1_margin_and_live_pnl_recomputed_from_broker_legs() -> None:
     the planner for exactly those three real legs, not the four intended ones."""
     planner = FakePlanner(D("61234.50"))
     positions = three_positions((D("40.00"), D("80.00"), D("120.00")))
-    a = assess(plan(), positions, statuses(), book_with_three_filled(), planner)
+    a = assess(plan(), positions, statuses(), book_with_three_filled(), planner, read_at=READ_AT)
     assert a.live_pnl == D("-1625.00")
     assert a.margin_required == D("61234.50")
     (asked,) = planner.asked
@@ -87,7 +88,7 @@ def test_ac1_broker_average_price_not_plan_price_drives_metrics() -> None:
     credit to 145.00/unit: max profit 145*65 = 9,425.00; upper breakeven 23,400+145 = 23,545."""
     positions = three_positions()
     positions[2] = type(positions[2])(CONTRACTS[2], -LOT, D("101.50"))
-    a = assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), positions, statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert a.metrics.max_profit == D("9425.00")
     assert a.metrics.breakevens[-1] == D("23545")
 
@@ -99,7 +100,7 @@ def test_ac1_ledger_disagreeing_with_broker_is_not_an_exception_but_a_block() ->
     sts = statuses()
     sts[2] = type(sts[2])("BRK-3", CONTRACTS[2], OrderState.EXECUTED, 60)  # broker says 60 filled, ledger 65
     book = book_with_three_filled()
-    a = assess(plan(), positions, sts, book, FakePlanner())
+    a = assess(plan(), positions, sts, book, FakePlanner(), read_at=READ_AT)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
     assert a.choices == ()
     assert book.is_submit_blocked("S-1")
@@ -110,7 +111,7 @@ def test_ac2_choices_in_spec_order_only_in_the_exception() -> None:
     spec's words; offered only in the exception state (not when complete)."""
     assert [c.value for c in CHOICE_ORDER] == [
         "Complete Strategy", "Retry Failed Leg", "Review Manually", "Close Partial Strategy"]
-    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert a.choices == CHOICE_ORDER
     assert review_manually(a).orders == ()
     assert review_manually(a).choice is PartialChoice.REVIEW_MANUALLY
@@ -120,7 +121,7 @@ def test_ac3_filled_legs_never_unwound_automatically(catalogue, eligibility) -> 
     """AC-3: assessing, completing, retrying and reviewing never prepare an order in a filled leg's contract; only the
     user's own Close Partial Strategy prepares exits -- reduce-only, exactly the three filled legs, through the gate."""
     filled = set(CONTRACTS[:3])
-    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     preps = [
         complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book_with_three_filled(), FakePlanner(),
                           entry_context(), catalogue, eligibility),
@@ -153,6 +154,6 @@ def test_ac3_close_without_ltp_prepares_nothing(catalogue, eligibility) -> None:
 
 def test_reject_reason_is_the_brokers_text() -> None:
     """AC-1/AC-6 support: the failure names the leg and carries the broker's text verbatim."""
-    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     (failure,) = a.failures
     assert (failure.leg_ref, failure.contract, failure.reason) == ("leg-4", CONTRACTS[3], REJECT_TEXT)
