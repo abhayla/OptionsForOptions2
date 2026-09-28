@@ -1,23 +1,32 @@
-"""AC-1: every event named in REQ-064's AC-1 text has one catalogue member, and vice versa."""
+"""AC-1: every event named in REQ-064's AC-1 text has one catalogue member, and vice versa.
+
+The AC-1 text is read from spec/requirements/REQ-064.md on disk (never copied into this file), so
+an edit to the spec's event list fails this test until the catalogue is updated to match.
+"""
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+import yaml
 
 from ofo.audit.catalogue import EVENT_SPEC_PHRASES, EventType
 
-# Copied verbatim from spec/requirements/REQ-064.md AC-1. If the spec text changes, this constant
-# must be updated to match — the point of this test is that the catalogue cannot silently drop (or
-# gain) an event relative to whatever this text says.
-AC1_TEXT = (
-    "Audited: strategy changes, version creation, rule evaluation, trigger values, user approvals, "
-    "order preparation, order submission, broker responses, execution, reconciliation, external "
-    "broker changes, entitlement changes, admin changes, security events; and the identity events "
-    "of ADR-029 (T1 #272 s27): platform account created, Google identity added/changed, mobile "
-    "verified, Zerodha Client ID associated, Zerodha session authenticated/expired, trial "
-    "started/expired, direct-customer eligibility granted/revoked, referral reward granted, "
-    "subscription started/expired, email changed, Zerodha association transferred, transfer sent "
-    "to Admin review, account deleted, anti-abuse restriction triggered."
-)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REQ_064_PATH = REPO_ROOT / "spec" / "requirements" / "REQ-064.md"
+
+
+def _load_ac1_text() -> str:
+    """Read REQ-064's AC-1 acceptance-criterion text straight from its YAML frontmatter."""
+    raw = REQ_064_PATH.read_text(encoding="utf-8")
+    assert raw.startswith("---\n"), f"{REQ_064_PATH} must start with a YAML frontmatter block"
+    _, frontmatter, _rest = raw.split("---\n", 2)
+    data = yaml.safe_load(frontmatter)
+    criteria = {ac["id"]: ac["text"] for ac in data["acceptance_criteria"]}
+    return criteria["AC-1"]
+
+
+AC1_TEXT = _load_ac1_text()
 
 
 def _expand_slash_phrase(phrase: str) -> list[str]:

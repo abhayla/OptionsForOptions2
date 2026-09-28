@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from types import MappingProxyType
 
 import pytest
 
@@ -216,3 +218,193 @@ def test_own_hash_matches_manual_recomputation() -> None:
         previous_hash=GENESIS_HASH,
     )
     assert event.hash == expected
+
+
+# --- Immutability: caller mutation after append must not change the stored event -----------
+
+
+def test_caller_mutating_nested_dict_after_append_does_not_change_stored_event() -> None:
+    """AC-2 fix round: the caller's own dict is frozen into a new structure on append; mutating
+    the caller's original object afterwards must not reach the stored payload."""
+    log = AuditLog()
+    nested = {"inner": {"x": 1}, "items": [1, 2, 3]}
+    event = log.append(
+        EventType.STRATEGY_CHANGED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload=nested,
+    )
+    nested["inner"]["x"] = 999
+    nested["items"].append(4)
+    nested["new_key"] = "surprise"
+
+    assert event.payload["inner"]["x"] == 1
+    assert event.payload["items"] == (1, 2, 3)
+    assert "new_key" not in event.payload
+
+
+def test_stored_payload_cannot_be_mutated_via_log_events() -> None:
+    """AC-2 fix round: reaching into the stored event through log.events cannot mutate it either
+    — the payload is a read-only mapping with tuples, not a dict with lists."""
+    log = AuditLog()
+    log.append(
+        EventType.STRATEGY_CHANGED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"inner": {"x": 1}, "items": [1, 2, 3]},
+    )
+    stored_payload = log.events[0].payload
+    assert isinstance(stored_payload, MappingProxyType)
+    with pytest.raises(TypeError):
+        stored_payload["inner"] = "tampered"  # type: ignore[index]
+    assert isinstance(stored_payload["items"], tuple)
+    with pytest.raises(AttributeError):
+        stored_payload["items"].append(4)  # type: ignore[union-attr]
+    with pytest.raises(TypeError):
+        stored_payload["inner"]["x"] = 999  # type: ignore[index]
+
+
+# --- Decimal payloads (ADR-008: money is exact Decimal, never float) ------------------------
+
+
+def test_decimal_payload_is_accepted_and_round_trips() -> None:
+    log = AuditLog()
+    event = log.append(
+        EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"premium": Decimal("1365.00")},
+    )
+    assert event.payload["premium"] == Decimal("1365.00")
+    assert isinstance(event.payload["premium"], Decimal)
+
+
+def test_decimal_hash_reflects_exact_stated_precision() -> None:
+    """Documented choice: Decimal('1365.00') and Decimal('1365.0') hash DIFFERENTLY, because the
+    hash is computed from str(value), which preserves the exact scale/precision the caller
+    constructed — the hash must not silently treat two differently-precise values as the same
+    audit fact, even though they are numerically equal."""
+    hash_a = _compute_hash(
+        event_type=EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"premium": Decimal("1365.00")},
+        previous_hash=GENESIS_HASH,
+    )
+    hash_b = _compute_hash(
+        event_type=EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"premium": Decimal("1365.0")},
+        previous_hash=GENESIS_HASH,
+    )
+    assert hash_a != hash_b
+    assert Decimal("1365.00") == Decimal("1365.0")  # numerically equal, precision differs
+
+
+def test_decimal_payload_verifies_through_append_and_verify() -> None:
+    """A Decimal in a payload does not break the chain: append then verify() must still pass."""
+    log = AuditLog()
+    log.append(
+        EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"premium": Decimal("1365.00"), "lots": 5},
+    )
+    assert log.verify().ok is True
+
+
+# --- Naive datetimes inside a payload (not just the top-level timestamp) --------------------
+
+
+def test_naive_datetime_nested_in_payload_is_rejected() -> None:
+    log = AuditLog()
+    with pytest.raises(PayloadValidationError):
+        log.append(
+            EventType.ORDER_PREPARED,
+            actor="user-1",
+            timestamp=BASE_TIME,
+            correlation_id="corr-1",
+            payload={"submitted_at": datetime(2026, 1, 1, 9, 15)},  # no tzinfo
+        )
+
+
+def test_aware_datetime_nested_in_payload_is_accepted_and_hashed_as_utc() -> None:
+    log = AuditLog()
+    ist = timezone(timedelta(hours=5, minutes=30))
+    aware = datetime(2026, 1, 1, 14, 45, tzinfo=ist)
+    event = log.append(
+        EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"submitted_at": aware},
+    )
+    assert event.payload["submitted_at"] == aware
+
+    hash_with_aware = _compute_hash(
+        event_type=EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"submitted_at": aware},
+        previous_hash=GENESIS_HASH,
+    )
+    hash_with_utc_equivalent = _compute_hash(
+        event_type=EventType.ORDER_PREPARED,
+        actor="user-1",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload={"submitted_at": aware.astimezone(timezone.utc)},
+        previous_hash=GENESIS_HASH,
+    )
+    assert hash_with_aware == hash_with_utc_equivalent  # same instant -> same UTC ISO string
+
+
+# --- Expanded secret-key guard ---------------------------------------------------------------
+
+
+def test_expanded_secret_key_markers_are_rejected() -> None:
+    bad_keys = (
+        "passwd",
+        "pwd",
+        "credential",
+        "credentials",
+        "PIN",
+        "pin_code",
+        "otp",
+        "otp_code",
+        "private_key",
+        "PrivateKey",
+        "session",
+        "session_id",
+        "session-token",
+    )
+    for bad_key in bad_keys:
+        log = AuditLog()
+        with pytest.raises(PayloadValidationError):
+            log.append(
+                EventType.SECURITY_EVENT_RECORDED,
+                actor="user-1",
+                timestamp=BASE_TIME,
+                correlation_id="corr-1",
+                payload={bad_key: "value"},
+            )
+
+
+def test_expanded_secret_key_markers_rejected_when_nested() -> None:
+    log = AuditLog()
+    with pytest.raises(PayloadValidationError):
+        log.append(
+            EventType.SECURITY_EVENT_RECORDED,
+            actor="user-1",
+            timestamp=BASE_TIME,
+            correlation_id="corr-1",
+            payload={"auth": {"otp_code": "123456"}},
+        )
