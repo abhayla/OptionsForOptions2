@@ -109,7 +109,7 @@ def finite_pro_end(ledger: EntitlementLedger, at: datetime) -> datetime:
     cursor = at
     while True:
         ends = [r.end for r in finite if _covers(r.grant.start, r.end, cursor)]
-        if not ends:
+        if not ends or max(ends) <= cursor:
             return cursor
         cursor = max(ends)
 
