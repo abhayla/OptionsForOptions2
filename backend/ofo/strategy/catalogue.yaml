@@ -1,0 +1,216 @@
+# Adapted from abhayla/algochanakya@2a868db backend/scripts/seed_strategies.py (22 templates,
+# spec/technical-design/legacy-reuse.md row 7). Content verified identical at HEAD (bf9faf7) as of
+# 2026-09-29 (`git diff` empty between the two revisions of that file).
+#
+# Translation from the legacy shape to ours:
+# - Only `display_name` (-> name) and `description` are carried; the legacy file's promotional/educational
+#   fields (pros, cons, when_to_use, common_mistakes, adjustments, ...) are not part of this platform's
+#   template data (REQ-028 scope) and are dropped.
+# - Descriptions were scanned for ADR-003 banned wording ("best", "you should", "guaranteed", "sure",
+#   "risk-free") on 2026-09-29 and needed no rewording; they were already decision-support/neutral.
+# - `legs_config[].strike_offset` (legacy: raw index points, implicitly NIFTY's 50-point gap) is converted
+#   to `offset_steps` (points / 50) so a template resolves at ANY index's strike gap (ADR-042). All legacy
+#   offsets (0, +/-100, +/-200) are exact multiples of 50, so every conversion is an exact integer.
+# - `legs_config[].expiry_offset` (legacy: 0 = current, 1 = next month) maps to `expiry_slot`: 0 -> near,
+#   1 -> next.
+# - The legacy "EQ" leg (own the underlying stock) has no equivalent single-stock instrument on this
+#   index-options platform; it is mapped to FUT (ADR-041 gives futures legs a payoff formula), so
+#   `covered_call` is a synthetic-covered-call built on a futures leg, noted in its description.
+# - `quantity_multiplier` is 1 for every leg here: the legacy file expresses a 1:2 ratio (e.g. the ratio
+#   backspreads) as two separate identical legs, which this data preserves leg-for-leg rather than folding
+#   into a multiplier; the field exists for a future template that needs it.
+templates:
+  - id: bull_call_spread
+    name: "Bull Call Spread"
+    description: >-
+      Buy a call option at a lower strike and sell a call at a higher strike with the same expiry.
+    legs:
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: bull_put_spread
+    name: "Bull Put Spread"
+    description: >-
+      Sell a put at a higher strike and buy a put at a lower strike, both the same expiry.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: synthetic_long
+    name: "Synthetic Long"
+    description: >-
+      Buy a call and sell a put at the same strike and expiry; the combined payoff moves like the
+      underlying.
+    legs:
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: bear_put_spread
+    name: "Bear Put Spread"
+    description: >-
+      Buy a put at a higher strike and sell a put at a lower strike, both the same expiry.
+    legs:
+      - {action: BUY, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: bear_call_spread
+    name: "Bear Call Spread"
+    description: >-
+      Sell a call at a lower strike and buy a call at a higher strike, both the same expiry.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: synthetic_short
+    name: "Synthetic Short"
+    description: >-
+      Buy a put and sell a call at the same strike and expiry; the combined payoff moves opposite the
+      underlying.
+    legs:
+      - {action: BUY, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: iron_condor
+    name: "Iron Condor"
+    description: >-
+      A bull put spread combined with a bear call spread on the same expiry: a defined-risk position
+      built from four strikes around the underlying.
+    legs:
+      - {action: BUY, instrument: PE, offset_steps: -4, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 4, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: iron_butterfly
+    name: "Iron Fly"
+    description: >-
+      Sell an at-the-money call and put and buy protective wings on each side, all the same expiry.
+    legs:
+      - {action: BUY, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: short_straddle
+    name: "Straddle (Short)"
+    description: >-
+      Sell an at-the-money call and put at the same strike and expiry.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: short_strangle
+    name: "Strangle (Short)"
+    description: >-
+      Sell an out-of-the-money call and an out-of-the-money put, both the same expiry, at different
+      strikes.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: jade_lizard
+    name: "Jade Lizard"
+    description: >-
+      A short put combined with a bear call spread, all the same expiry: three strikes, no upside
+      breakeven when the combined credit exceeds the call spread's width.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 4, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: long_straddle
+    name: "Straddle (Long)"
+    description: >-
+      Buy an at-the-money call and put at the same strike and expiry.
+    legs:
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: long_strangle
+    name: "Strangle (Long)"
+    description: >-
+      Buy an out-of-the-money call and an out-of-the-money put, both the same expiry, at different
+      strikes.
+    legs:
+      - {action: BUY, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: reverse_iron_condor
+    name: "Reverse Iron Condor"
+    description: >-
+      The bought side of an iron condor's four strikes: a long strangle with protective wings sold
+      further out, all the same expiry.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: -4, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 4, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: covered_call
+    name: "Covered Call"
+    description: >-
+      Hold a futures position and sell an out-of-the-money call against it, the same expiry (this
+      platform models "own the underlying" as a futures leg, ADR-041; no single-stock leg exists here).
+    legs:
+      - {action: BUY, instrument: FUT, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: cash_secured_put
+    name: "Cash-Secured Put"
+    description: >-
+      Sell an out-of-the-money put, reserving the cash to take assignment.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: wheel_strategy
+    name: "Wheel (Put Leg)"
+    description: >-
+      Sell an out-of-the-money put as the first leg of a put-then-call income cycle; the same
+      Cash-Secured Put leg set, entered on a repeating schedule.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: calendar_spread
+    name: "Calendar Spread"
+    description: >-
+      Sell a near-expiry call and buy the same strike call on a later expiry.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: next, quantity_multiplier: 1}
+
+  - id: diagonal_spread
+    name: "Diagonal Spread"
+    description: >-
+      Sell a near-expiry, out-of-the-money call and buy an at-the-money call on a later expiry.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: next, quantity_multiplier: 1}
+
+  - id: butterfly_spread
+    name: "Butterfly Spread"
+    description: >-
+      Buy a call, sell two calls at the next strike up, and buy a call one strike further, all the
+      same expiry: three consecutive strikes with the middle sold twice.
+    legs:
+      - {action: BUY, instrument: CE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: SELL, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: ratio_backspread_call
+    name: "Call Ratio Backspread"
+    description: >-
+      Sell one in-the-money call and buy two calls at a higher strike, all the same expiry.
+    legs:
+      - {action: SELL, instrument: CE, offset_steps: -2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: CE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+
+  - id: ratio_backspread_put
+    name: "Put Ratio Backspread"
+    description: >-
+      Sell one in-the-money put and buy two puts at a lower strike, all the same expiry.
+    legs:
+      - {action: SELL, instrument: PE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
+      - {action: BUY, instrument: PE, offset_steps: 0, expiry_slot: near, quantity_multiplier: 1}
