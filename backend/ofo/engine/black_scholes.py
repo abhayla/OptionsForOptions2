@@ -7,6 +7,11 @@ standard library only; nothing is copied from a legacy repo. The model assumes n
 Boundary policy (ADR-008, REQ-032 AC-4):
 
 - Every public input and output is a ``Decimal``; binary floats exist only inside this module's arithmetic.
+  An option ``price``, a ``spot`` level and a ``strike`` must be finite, > 0 and have at most 2 decimal places
+  (:func:`~ofo.engine.legs.require_price`, the same guard a leg's prices get), so a Decimal built from a float
+  (``Decimal(4.76)``) or a sub-paisa value (``4.765``) is refused. Spot and strike are index points, not rupees; they
+  share the 2-decimal rule because NSE/BSE quote index levels and strikes to 0.01. ``rate``, ``vol`` and ``years``
+  are model parameters, only required to be finite (and > 0 for ``vol`` and ``years``).
 - ``rate`` is the annual risk-free rate with **continuous compounding** (``0.10`` = 10 %), ``vol`` the annualised
   volatility as a fraction (``0.20`` = 20 %), ``years`` the time to expiry in years. None has a default: the caller
   always states them. Turning a clock time into ``years`` is :func:`year_fraction`, whose day count
@@ -24,7 +29,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final
 
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Instrument, require_price
 
 PRICE_STEP: Final = Decimal("0.01")
 IV_STEP: Final = Decimal("0.000001")
@@ -64,6 +69,10 @@ def _positive(value: object, name: str) -> float:
     if not value.is_finite() or value <= 0:
         raise ValueError(f"{name} must be a finite number > 0, got {value}")
     return float(value)
+
+
+def _paise(value: object, name: str) -> float:
+    return float(require_price(value, name, allow_zero=False))
 
 
 def _rate(value: object) -> float:
@@ -134,14 +143,14 @@ def bs_price(
     option: Instrument, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal, vol: Decimal
 ) -> Decimal:
     """Black-Scholes price per unit of a European CE/PE, rounded half-even to 0.01 rupee."""
-    s, k = _positive(spot, "spot"), _positive(strike, "strike")
+    s, k = _paise(spot, "spot"), _paise(strike, "strike")
     t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
     return _to_decimal(_price(_kind(option), s, k, t, r, v), PRICE_STEP)
 
 
 def forward_price(spot: Decimal, years: Decimal, rate: Decimal) -> Decimal:
     """Cost-of-carry fair value of an index future, ``S e^(rT)`` (same no-dividend assumption), to 0.01."""
-    s, t, r = _positive(spot, "spot"), _positive(years, "years"), _rate(rate)
+    s, t, r = _paise(spot, "spot"), _positive(years, "years"), _rate(rate)
     return _to_decimal(s * math.exp(r * t), PRICE_STEP)
 
 
@@ -155,16 +164,21 @@ def implied_volatility(
     :class:`NoImpliedVolatilityError`; it never returns a clipped bound.
     """
     kind = _kind(option)
-    target = _positive(price, "price")
-    s, k, t, r = _positive(spot, "spot"), _positive(strike, "strike"), _positive(years, "years"), _rate(rate)
+    target = _paise(price, "price")
+    s, k, t, r = _paise(spot, "spot"), _paise(strike, "strike"), _positive(years, "years"), _rate(rate)
+    return _to_decimal(_solve_iv(kind, target, s, k, t, r), IV_STEP)
+
+
+def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: float) -> float:
+    """Bisection on [IV_LOWER, IV_UPPER] for the volatility whose model price is ``target`` (float, internal)."""
     lo, hi = IV_LOWER, IV_UPPER
     p_lo, p_hi = _price(kind, s, k, t, r, lo), _price(kind, s, k, t, r, hi)
     if target < p_lo:
         raise NoImpliedVolatilityError(
-            f"price {price} is below the lowest model price {p_lo:.4f} (at or under intrinsic value); no IV"
+            f"price {target} is below the lowest model price {p_lo:.4f} (at or under intrinsic value); no IV"
         )
     if target > p_hi:
-        raise NoImpliedVolatilityError(f"price {price} is above the model price at vol {IV_UPPER} ({p_hi:.4f}); no IV")
+        raise NoImpliedVolatilityError(f"price {target} is above the model price at vol {IV_UPPER} ({p_hi:.4f}); no IV")
     for _ in range(_IV_MAX_ITERATIONS):
         mid = 0.5 * (lo + hi)
         if _price(kind, s, k, t, r, mid) < target:
@@ -173,7 +187,7 @@ def implied_volatility(
             hi = mid
         if hi - lo < _IV_TOLERANCE:
             break
-    return _to_decimal(0.5 * (lo + hi), IV_STEP)
+    return 0.5 * (lo + hi)
 
 
 def bs_greeks(
@@ -188,7 +202,7 @@ def bs_greeks(
 ) -> Greeks:
     """Delta, gamma, theta (per calendar day) and vega (per 1 vol point) per unit, each rounded to 4 dp."""
     kind = _kind(option)
-    s, k = _positive(spot, "spot"), _positive(strike, "strike")
+    s, k = _paise(spot, "spot"), _paise(strike, "strike")
     t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
     if isinstance(days_in_year, bool) or not isinstance(days_in_year, int) or days_in_year <= 0:
         raise ValueError(f"days_in_year must be a positive integer, got {days_in_year!r}")

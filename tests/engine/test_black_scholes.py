@@ -15,6 +15,7 @@ from ofo.engine.black_scholes import (
     Greeks,
     NoImpliedVolatilityError,
     _price,
+    _solve_iv,
     bs_greeks,
     bs_price,
     implied_volatility,
@@ -30,11 +31,13 @@ def test_core_hull_price_iv_price_round_trip():
     """AC-3: Hull 15.6 reproduced to the paisa, and IV recovered from the model price within 1e-6 (core proof)."""
     assert bs_price(CE, vol=D("0.20"), **HULL) == D("4.76")
     assert bs_price(PE, vol=D("0.20"), **HULL) == D("0.81")
+    # The public API only accepts 2-decimal prices (AC-4), so the 1e-6 recovery of the unrounded model price is
+    # proved on the solver it wraps.
     for kind in (CE, PE):
-        exact = D(repr(_price(kind, 42.0, 40.0, 0.5, 0.10, 0.20)))
-        iv = implied_volatility(kind, exact, **HULL)
-        assert abs(iv - D("0.20")) <= D("0.000001")
-        assert bs_price(kind, vol=iv, **HULL) == bs_price(kind, vol=D("0.20"), **HULL)
+        exact = _price(kind, 42.0, 40.0, 0.5, 0.10, 0.20)
+        assert abs(_solve_iv(kind, exact, 42.0, 40.0, 0.5, 0.10) - 0.20) <= 1e-6
+    for kind, quoted in ((CE, D("4.76")), (PE, D("0.81"))):
+        assert bs_price(kind, vol=implied_volatility(kind, quoted, **HULL), **HULL) == quoted
     # Round trip from the quoted two-decimal price: the IV re-prices to the same paisa.
     quoted_iv = implied_volatility(CE, D("4.76"), **HULL)
     assert quoted_iv == D("0.200066")

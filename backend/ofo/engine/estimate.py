@@ -16,7 +16,7 @@ from typing import Final, Literal, Sequence
 from ofo.engine import legs as _legs
 from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
 from ofo.engine.inputs import StrategyInput
-from ofo.engine.legs import Instrument, require_decimal
+from ofo.engine.legs import Instrument, require_price
 
 MODEL: Final = "Black-Scholes (European, no dividends)"
 
@@ -44,10 +44,15 @@ class EstimatedNow:
 
 
 def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
-    """Estimated Now P&L of the whole strategy if the underlying were at ``level`` at the valuation time."""
+    """Estimated Now P&L of the whole strategy if the underlying were at ``level`` at the valuation time.
+
+    ``level`` is index points, not money, but it must be finite, > 0 and have at most 2 decimal places (the
+    exchange quotes index levels to 0.01), so a float-built level cannot enter. An exact breakeven with more
+    decimals (see metrics) is rounded to 0.01 by the caller before it is estimated.
+    """
     if not isinstance(inputs, StrategyInput):
         raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
-    require_decimal(level, "level", allow_zero=False)
+    require_price(level, "level", allow_zero=False)
     marks: list[Decimal] = []
     years_list: list[Decimal] = []
     for leg_input in inputs.legs:

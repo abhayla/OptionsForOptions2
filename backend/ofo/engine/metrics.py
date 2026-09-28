@@ -27,7 +27,8 @@ from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from typing import Final
 
-from ofo.engine.legs import Action, Instrument, Leg
+from ofo.engine import legs
+from ofo.engine.legs import Instrument, Leg
 from ofo.engine.strategy import Strategy
 
 
@@ -61,10 +62,14 @@ class StrategyMetrics:
 
 
 def _upper_tail_slope(leg: Leg) -> int:
-    """Payoff slope (rupees per point) of one leg above every strike: calls and futures move, puts are flat."""
-    long_slope = 0 if leg.instrument is Instrument.PE else 1
-    sign = 1 if leg.action is Action.BUY else -1
-    return sign * long_slope * leg.quantity
+    """Payoff slope (rupees per point) of one leg above every strike: calls and futures move, puts are flat.
+
+    The sign comes from the engine's one P&L convention: the leg's P&L change when its long value rises by the
+    long slope (1 for CE/FUT, 0 for PE), i.e. ``position_pnl(leg, slope) - position_pnl(leg, 0)``.
+    """
+    long_slope = Decimal(0) if leg.instrument is Instrument.PE else Decimal(1)
+    change = legs.position_pnl(leg, long_slope) - legs.position_pnl(leg, Decimal(0))
+    return int(change)
 
 
 def _to_decimal(value: Fraction) -> Decimal:

@@ -4,7 +4,7 @@ from decimal import Decimal as D
 import pytest
 from conftest import leg_input
 
-from ofo.engine import Action, Instrument, legs, scenario_grid
+from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, legs, scenario_grid, strategy_metrics
 from ofo.engine.estimate import EstimatedNow, estimate_now, estimate_now_grid
 
 
@@ -77,3 +77,19 @@ def test_estimate_without_iv_or_after_expiry_fails_closed(condor_inputs):
         estimate_now(late, D("23200"))
     with pytest.raises(ValueError, match="level"):
         estimate_now(condor_inputs, D("0"))
+
+
+def test_flipping_the_one_convention_flips_metrics(condor_inputs, monkeypatch):
+    """AC-1: strategy metrics (values at strikes AND the upper-tail slope) come from legs.position_pnl; negating
+    that one function swaps max profit and max loss, including an unlimited upside becoming an unlimited loss."""
+    condor = condor_inputs.strategy
+    long_call = Strategy((Leg(Action.BUY, Instrument.CE, D("23000"), condor.legs[0].expiry, 75, D("100.00")),))
+    before_condor, before_call = strategy_metrics(condor), strategy_metrics(long_call)
+    assert (before_condor.max_profit, before_condor.max_loss) == (D("6825.00"), D("8175.00"))
+    assert (before_call.max_profit, before_call.max_loss) == (UNLIMITED, D("7500.00"))
+
+    original = legs.position_pnl
+    monkeypatch.setattr(legs, "position_pnl", lambda leg, value: -original(leg, value))
+    after_condor, after_call = strategy_metrics(condor), strategy_metrics(long_call)
+    assert (after_condor.max_profit, after_condor.max_loss) == (D("8175.00"), D("6825.00"))
+    assert (after_call.max_profit, after_call.max_loss) == (D("7500.00"), UNLIMITED)

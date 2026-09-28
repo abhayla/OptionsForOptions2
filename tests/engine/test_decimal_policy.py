@@ -76,3 +76,31 @@ def test_model_outputs_cross_the_boundary_as_rounded_decimals():
     greeks = bs_greeks(*args, D("0.20"))
     for value in (greeks.delta, greeks.gamma, greeks.theta, greeks.vega):
         assert isinstance(value, D) and value.as_tuple().exponent == -4
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: implied_volatility(Instrument.CE, D(4.76), D("42"), D("40"), D("0.5"), D("0.10")),
+        lambda: implied_volatility(Instrument.CE, D("4.765"), D("42"), D("40"), D("0.5"), D("0.10")),
+        lambda: implied_volatility(Instrument.CE, D("4.76"), D(42.1), D("40"), D("0.5"), D("0.10")),
+        lambda: implied_volatility(Instrument.CE, D("4.76"), D("42"), D("40.001"), D("0.5"), D("0.10")),
+        lambda: bs_price(Instrument.CE, D(42.1), D("40"), D("0.5"), D("0.10"), D("0.20")),
+        lambda: bs_price(Instrument.CE, D("42"), D(40.1), D("0.5"), D("0.10"), D("0.20")),
+        lambda: bs_greeks(Instrument.PE, D("42.005"), D("40"), D("0.5"), D("0.10"), D("0.20")),
+    ],
+)
+def test_black_scholes_money_and_level_inputs_are_whole_paise(call):
+    """AC-4: option price, spot and strike entering the model must be finite with at most 2 decimal places, so a
+    float-built Decimal (Decimal(4.76)) or a sub-paisa value (4.765) is refused, same as a leg's prices."""
+    with pytest.raises(ValueError, match="at most 2 decimal places"):
+        call()
+
+
+@pytest.mark.parametrize("level", [D(23500.1), D("23500.005")])
+def test_estimate_level_is_finite_two_decimal_points(condor_inputs, level):
+    """AC-4: an Estimated Now level (index points) must be finite with at most 2 decimal places."""
+    from ofo.engine.estimate import estimate_now
+
+    with pytest.raises(ValueError, match="at most 2 decimal places"):
+        estimate_now(condor_inputs, level)
