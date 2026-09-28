@@ -32,6 +32,17 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
   data is a warning ("Prices shown may be stale — confirm to continue."), never a block. Entries and adjustments keep
   every check. Checks still applied to an exit and not named in that decision: version state, supported
   underlying, expiry not passed, contract still listed, no duplicate legs.
+- **Active legs are verified, never trusted (adversarial round 2 MAJOR A).** The CALLER MUST read ``active_legs``
+  from the stored active version (W-012's ``Version`` intended position) together with that version's id and its
+  ``active_legs_hash(strategy_id, active_version_id, legs)``; the integration work item wires this. The gate
+  recomputes the hash from the supplied legs and the executed strategy's id and blocks with
+  ``ACTIVE_LEGS_UNVERIFIED`` on a mismatch or when the version id or hash is missing. Unverified legs are never
+  used for the exit reduce-only check or the Limited-user entitlement decision.
+- **Reconciliation status is required (round 2 MAJOR B).** ``reconciliation_blocked_strategy_ids`` has no
+  default; ``None`` means unknown and blocks with ``RECONCILIATION_MISMATCH`` ("Reconciliation status unknown").
+- **An exit on unhealthy data needs confirmation (round 2 MINOR).** The result carries
+  ``requires_confirmation=True`` and the warning text; checks that do not apply to the action are listed as
+  not applicable, never as passed.
 - **The context belongs to one strategy (review Q4).** ``check_pre_execution`` takes the executed strategy's id and
   blocks with ``STRATEGY_MISMATCH`` when the context names another. Mappings in the context are read-only.
 - **An internal error never passes (review P10).** Any exception inside the checks blocks with ``INTERNAL_ERROR``
@@ -49,7 +60,9 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass, field
+import hashlib
+import json
+from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
@@ -136,9 +149,14 @@ class ExecutionContext:
     data_health: Mapping[DataInput, DataHealth]
     margin_available: Decimal | None
     margin_required: Decimal | None
-    reconciliation_blocked_strategy_ids: frozenset[str] = field(default_factory=frozenset)
+    # Required, no default (round 2 MAJOR B): None means the reconciliation status is unknown and blocks.
+    reconciliation_blocked_strategy_ids: frozenset[str] | None
     charges_estimate: Decimal | None = None
-    active_legs: tuple[Leg, ...] | None = None  # the active version's legs; needed to classify an ADJUSTMENT
+    # The active version's intended position, read by the caller from the stored active version; trusted only
+    # when ``active_legs_hash(strategy_id, active_version_id, active_legs)`` equals ``active_legs_hash``.
+    active_legs: tuple[Leg, ...] | None = None
+    active_version_id: str | None = None
+    active_legs_hash: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -170,6 +188,34 @@ class ExecutionContext:
         for name in ("margin_available", "margin_required", "charges_estimate"):
             _optional_decimal(getattr(self, name), name)
         blocked = self.reconciliation_blocked_strategy_ids
-        if isinstance(blocked, str) or not all(isinstance(s, str) for s in blocked):
-            raise ValueError("reconciliation_blocked_strategy_ids must be a collection of strategy id strings")
-        object.__setattr__(self, "reconciliation_blocked_strategy_ids", frozenset(blocked))
+        if blocked is not None:
+            if isinstance(blocked, str) or not all(isinstance(s, str) for s in blocked):
+                raise ValueError("reconciliation_blocked_strategy_ids must be a collection of strategy id strings")
+            object.__setattr__(self, "reconciliation_blocked_strategy_ids", frozenset(blocked))
+        for name in ("active_version_id", "active_legs_hash"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string or None, got {value!r}")
+
+
+def _canonical_decimal(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
+def active_legs_hash(strategy_id: str, active_version_id: str, legs: tuple[Leg, ...]) -> str:
+    """Canonical SHA-256 of a stored active version's intended position (round 2 MAJOR A).
+
+    The one function that both the version store's reader and the gate use. It covers the strategy id, the version
+    id and the net units per (contract, side); leg order and a position split across legs do not change it.
+    """
+    units: dict[tuple[str, str, str, str], int] = {}
+    for leg in legs:
+        strike = "" if leg.strike is None else _canonical_decimal(leg.strike)
+        key = (leg.expiry.isoformat(), leg.instrument.value, strike, leg.action.value)
+        units[key] = units.get(key, 0) + leg.quantity
+    payload = {
+        "strategy_id": strategy_id,
+        "active_version_id": active_version_id,
+        "positions": [[*key, units[key]] for key in sorted(units)],
+    }
+    return hashlib.sha256(json.dumps(payload, separators=(",", ":")).encode("utf-8")).hexdigest()

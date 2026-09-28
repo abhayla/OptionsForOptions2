@@ -15,7 +15,7 @@ from typing import Callable
 
 import pytest
 
-from execution_inputs import check, closing_orders, AS_OF, EXPIRY, all_true_context, condor_legs, find_token
+from execution_inputs import ACTIVE_VERSION_ID, check, closing_orders, AS_OF, EXPIRY, all_true_context, condor_legs, find_token
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import (
     CheckCode,
@@ -25,6 +25,7 @@ from ofo.execution import (
     ExecutionContext,
     FlagCode,
     VersionState,
+    active_legs_hash,
 )
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
 from execution_inputs import FIXTURE
@@ -167,6 +168,10 @@ MUTATIONS = [
      "Refresh availability to continue. Strikes you could consider instead: 23,550 or 23,650. Your strategy has "
      "not been changed."),
     ("exit-opens-position", _exit_opens_position, CheckCode.EXIT_NOT_REDUCE_ONLY, EXIT_REASON),
+    ("active-legs-unverified", _ctx(action=ExecutionAction.EXIT, active_legs=condor_legs(),
+                                    active_legs_hash="0" * 64), CheckCode.ACTIVE_LEGS_UNVERIFIED,
+     "This strategy's open positions could not be verified against its stored active version. Execution is "
+     "blocked and no order has been submitted."),
     ("internal-error", _internal_error, CheckCode.INTERNAL_ERROR, INTERNAL_REASON),
     ("context-for-another-strategy", _ctx(strategy_id="S-2"), CheckCode.STRATEGY_MISMATCH,
      "This check was prepared for a different strategy. Execution is blocked; reopen the strategy to continue."),
@@ -184,7 +189,9 @@ def test_core_all_checks_true_golden_condor_passes(condor, catalogue, eligibilit
     result = check(condor, all_true_context(), catalogue, eligibility)
     assert result.failures == ()
     assert result.blocked is False
-    assert set(result.passed) == set(CheckCode) - {CheckCode.INTERNAL_ERROR}  # INTERNAL_ERROR is never 'passed'
+    # INTERNAL_ERROR is never 'passed'; exit and active-leg checks do not apply to a new entry
+    assert set(result.passed) == set(CheckCode) - {
+        CheckCode.INTERNAL_ERROR, CheckCode.EXIT_NOT_REDUCE_ONLY, CheckCode.ACTIVE_LEGS_UNVERIFIED}
     assert result.not_checked == ()
     assert result.max_loss == D("7085.00")  # (200 - 91) x 65: the §6 condor (8175 at 75 units) at one lot of 65
     assert condor == before
@@ -658,3 +665,118 @@ def test_engine_upper_tail_slope_contract():
     pairs = [(Action.BUY, Instrument.CE), (Action.SELL, Instrument.CE), (Action.BUY, Instrument.PE),
              (Action.SELL, Instrument.PE), (Action.BUY, Instrument.FUT), (Action.SELL, Instrument.FUT)]
     assert [_upper_tail_slope(leg(a, k)) for a, k in pairs] == [65, -65, 0, 0, 65, -65]
+
+
+# ---------------------------------------------------------------- adversarial round 2 (MAJOR A, MAJOR B, MINOR)
+
+REAL_ACTIVE = condor_legs()
+REAL_HASH = active_legs_hash("S-1", ACTIVE_VERSION_ID, REAL_ACTIVE)
+UNVERIFIED_REASON = (
+    "This strategy's open positions could not be verified against its stored active version. Execution is blocked "
+    "and no order has been submitted."
+)
+INFLATED = (REAL_ACTIVE[0], REAL_ACTIVE[1], dataclasses.replace(REAL_ACTIVE[2], quantity=650), REAL_ACTIVE[3])
+FAKE_EXTRA = REAL_ACTIVE + (Leg(Action.SELL, Instrument.CE, D("23500"), EXPIRY, 65, D("60.00")),)
+OTHER_STRATEGY = (Leg(Action.SELL, Instrument.PE, D("22500"), EXPIRY, 650, D("30.00")),)
+PROBES = [
+    # (case, supplied active legs, supplied hash, exit orders)
+    ("inflated-sell-650-exit-buy-650", INFLATED, REAL_HASH,
+     (Leg(Action.BUY, Instrument.CE, D("23400"), EXPIRY, 650, D("80.00")),)),
+    ("fake-extra-leg-naked-buy-23500-ce", FAKE_EXTRA, REAL_HASH,
+     (Leg(Action.BUY, Instrument.CE, D("23500"), EXPIRY, 65, D("55.00")),)),
+    ("another-strategys-legs-same-id", OTHER_STRATEGY, active_legs_hash("S-9", "V-1", OTHER_STRATEGY),
+     (Leg(Action.BUY, Instrument.PE, D("22500"), EXPIRY, 650, D("25.00")),)),
+]
+
+
+@pytest.mark.parametrize("case,active,supplied_hash,orders", PROBES, ids=[p[0] for p in PROBES])
+def test_unverified_active_legs_are_blocked(case, active, supplied_hash, orders, catalogue, eligibility):
+    """AC-1 (round 2 MAJOR A): active legs that do not match the stored active version's hash are refused."""
+    ctx = _exit_ctx(active_legs=active, active_legs_hash=supplied_hash)
+    result = check(Strategy(orders), ctx, catalogue, eligibility)
+    assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.ACTIVE_LEGS_UNVERIFIED, UNVERIFIED_REASON)]
+    assert result.blocked_execution is not None
+
+
+def test_unverified_active_legs_block_an_adjustment_too(catalogue, eligibility):
+    """AC-1 (round 2 MAJOR A): the same tie is required for an adjustment, Pro user included."""
+    strategy, ctx = _limited_adjustment(IC[1:], pro=True)
+    bad = dataclasses.replace(ctx, active_legs_hash=REAL_HASH)  # hash of the 1-lot condor, legs are 2 lots
+    assert check(strategy, bad, catalogue, eligibility).failed_codes == {CheckCode.ACTIVE_LEGS_UNVERIFIED}
+    # Unverified legs are never used to decide entitlement: a Limited user's 2 -> 1 reduction (allowed when the
+    # legs are verified) needs Pro when they are not.
+    limited, ctx = _limited_adjustment(condor_legs(quantity=65))
+    unverified = dataclasses.replace(ctx, active_legs_hash=REAL_HASH)
+    assert check(limited, unverified, catalogue, eligibility).failed_codes == {
+        CheckCode.ACTIVE_LEGS_UNVERIFIED, CheckCode.ENTITLEMENT_REQUIRED}
+
+
+def test_correct_active_legs_hash_passes(catalogue, eligibility):
+    """AC-1 (round 2 MAJOR A): the real active legs with their stored hash pass."""
+    ctx = _exit_ctx(active_legs=REAL_ACTIVE, active_legs_hash=REAL_HASH)
+    assert check(Strategy(closing_orders(REAL_ACTIVE)), ctx, catalogue, eligibility).failures == ()
+
+
+@pytest.mark.parametrize("missing", ["active_version_id", "active_legs_hash"])
+def test_missing_version_tie_blocks(missing, catalogue, eligibility):
+    """AC-1 (round 2 MAJOR A): no active version id, or no hash, means the active legs cannot be verified."""
+    ctx = dataclasses.replace(_exit_ctx(), **{missing: None})
+    result = check(Strategy(closing_orders(REAL_ACTIVE)), ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.ACTIVE_LEGS_UNVERIFIED}
+
+
+def test_hash_is_canonical_over_leg_order_and_splits():
+    """AC-1: the hash is of the intended position - leg order and a position split in two legs do not change it;
+    a different strategy id, version id, quantity or side does."""
+    base = active_legs_hash("S-1", "V-2", REAL_ACTIVE)
+    assert active_legs_hash("S-1", "V-2", tuple(reversed(REAL_ACTIVE))) == base
+    split = (dataclasses.replace(REAL_ACTIVE[0], quantity=65),) + REAL_ACTIVE[1:]
+    assert active_legs_hash("S-1", "V-2", split) == base
+    assert len({base, active_legs_hash("S-2", "V-2", REAL_ACTIVE), active_legs_hash("S-1", "V-3", REAL_ACTIVE),
+                active_legs_hash("S-1", "V-2", INFLATED), active_legs_hash("S-1", "V-2", closing_orders(REAL_ACTIVE))
+                }) == 5
+
+
+def test_reconciliation_status_is_required_and_unknown_blocks(condor, catalogue, eligibility):
+    """AC-1 (round 2 MAJOR B): omitting the reconciliation input is refused; None (unknown) blocks."""
+    fields = {f.name: getattr(all_true_context(), f.name) for f in dataclasses.fields(ExecutionContext)}
+    del fields["reconciliation_blocked_strategy_ids"]
+    with pytest.raises(TypeError):
+        ExecutionContext(**fields)
+    result = check(condor, all_true_context(reconciliation_blocked_strategy_ids=None), catalogue, eligibility)
+    assert [(f.code, f.reason) for f in result.failures] == [(
+        CheckCode.RECONCILIATION_MISMATCH,
+        "Reconciliation status unknown. Execution is blocked until your Zerodha positions have been reconciled.",
+    )]
+    exit_result = check(Strategy(EXIT_ALL), _exit_ctx(reconciliation_blocked_strategy_ids=None), catalogue,
+                        eligibility)
+    assert exit_result.failed_codes == {CheckCode.RECONCILIATION_MISMATCH}
+
+
+def test_exit_with_unhealthy_data_requires_confirmation(catalogue, eligibility):
+    """AC-2 (round 2 MINOR): an exit that passes with unhealthy data carries requires_confirmation and the text."""
+    stale = check(Strategy(EXIT_ALL), _exit_ctx(data_health=_stale), catalogue, eligibility)
+    assert (stale.blocked, stale.requires_confirmation, stale.confirmation_text) == (
+        False, True, "Prices shown may be stale — confirm to continue.")
+    fresh = check(Strategy(EXIT_ALL), _exit_ctx(), catalogue, eligibility)
+    assert (fresh.requires_confirmation, fresh.confirmation_text) == (False, None)
+    blocked = check(Strategy(EXIT_ALL), _exit_ctx(data_health=_stale, market_open=False), catalogue, eligibility)
+    assert blocked.blocked and blocked.requires_confirmation is False
+
+
+@pytest.mark.parametrize("action,inputs,not_applicable", [
+    ("NEW_ENTRY", lambda: (Strategy(condor_legs()), all_true_context()),
+     {CheckCode.EXIT_NOT_REDUCE_ONLY, CheckCode.ACTIVE_LEGS_UNVERIFIED}),
+    ("ADJUSTMENT", lambda: _limited_adjustment(condor_legs(quantity=65)),
+     {CheckCode.EXIT_NOT_REDUCE_ONLY, CheckCode.ENTITLEMENT_REQUIRED}),
+    ("EXIT", lambda: (Strategy(EXIT_ALL), _exit_ctx()),
+     {CheckCode.MARGIN_INSUFFICIENT, CheckCode.CONTRACT_NOT_ELIGIBLE, CheckCode.RULES_INVALID,
+      CheckCode.DATA_UNHEALTHY, CheckCode.ENTITLEMENT_REQUIRED}),
+])
+def test_passed_lists_only_checks_that_apply_to_the_action(action, inputs, not_applicable, catalogue, eligibility):
+    """AC-1 (round 2 MINOR): checks that do not apply to the action are not_applicable, never passed."""
+    strategy, ctx = inputs()
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert ctx.action.value == action and result.failures == ()
+    assert set(result.not_applicable) == not_applicable
+    assert set(result.passed) == set(CheckCode) - not_applicable - {CheckCode.INTERNAL_ERROR}

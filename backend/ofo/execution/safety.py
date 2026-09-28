@@ -24,6 +24,7 @@ from ofo.execution.context import (
     DataHealth,
     ExecutionAction,
     ExecutionContext,
+    active_legs_hash,
 )
 from ofo.instruments import Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
@@ -52,6 +53,7 @@ class CheckCode(str, Enum):
     DUPLICATE_LEG = "DUPLICATE_LEG"
     MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
     EXIT_NOT_REDUCE_ONLY = "EXIT_NOT_REDUCE_ONLY"
+    ACTIVE_LEGS_UNVERIFIED = "ACTIVE_LEGS_UNVERIFIED"
     STRATEGY_MISMATCH = "STRATEGY_MISMATCH"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DEPENDENCIES_UNSATISFIED = "DEPENDENCIES_UNSATISFIED"
@@ -120,6 +122,8 @@ class SafetyResult:
     margin_required: Decimal | None
     charges_estimate: Decimal | None
     blocked_execution: BlockedExecution | None
+    requires_confirmation: bool = False  # an exit that passes on unhealthy data needs the user's confirmation
+    confirmation_text: str | None = None
 
     @property
     def blocked(self) -> bool:
@@ -357,7 +361,12 @@ def _context_failures(ctx: ExecutionContext, pro_reason: str | None, strategy_id
             f"{_rupees(ctx.margin_required)} this strategy needs. Zerodha's figure is final. No order has been "
             "submitted.",
         ))
-    if strategy_id in ctx.reconciliation_blocked_strategy_ids:
+    if ctx.reconciliation_blocked_strategy_ids is None:
+        out.append(CheckFailure(
+            CheckCode.RECONCILIATION_MISMATCH,
+            "Reconciliation status unknown. Execution is blocked until your Zerodha positions have been reconciled.",
+        ))
+    elif strategy_id in ctx.reconciliation_blocked_strategy_ids:
         out.append(CheckFailure(
             CheckCode.RECONCILIATION_MISMATCH,
             "Your Zerodha positions for this strategy do not match what we recorded. Resolve the mismatch to "
@@ -491,6 +500,22 @@ def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | N
     return None
 
 
+def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailure | None:
+    """Round 2 MAJOR A: supplied active legs are trusted only when their canonical hash, with this strategy's id
+    and the active version id, equals the hash stored with that version."""
+    if ctx.active_legs is None:
+        return None
+    if ctx.active_version_id is None or ctx.active_legs_hash is None or (
+        active_legs_hash(strategy_id, ctx.active_version_id, ctx.active_legs) != ctx.active_legs_hash
+    ):
+        return CheckFailure(
+            CheckCode.ACTIVE_LEGS_UNVERIFIED,
+            "This strategy's open positions could not be verified against its stored active version. Execution is "
+            "blocked and no order has been submitted.",
+        )
+    return None
+
+
 def _run_checks(
     strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
     strategy_id: str,
@@ -498,8 +523,13 @@ def _run_checks(
     list[CheckFailure], tuple[CheckCode, ...], tuple[CheckCode, ...], frozenset[CheckCode], list[Flag],
     Decimal | _Unlimited | None,
 ]:
-    pro_reason = pro_requirement(strategy, ctx)
+    uses_active_legs = ctx.action is not ExecutionAction.NEW_ENTRY
+    unverified = _active_legs_failure(ctx, strategy_id) if uses_active_legs else None
+    trusted = dataclasses.replace(ctx, active_legs=None) if unverified else ctx  # never reason from unverified legs
+    pro_reason = pro_requirement(strategy, trusted)
     failures = _context_failures(ctx, pro_reason, strategy_id)
+    if unverified is not None:
+        failures.append(unverified)
     if strategy_id != ctx.strategy_id:
         failures.insert(0, CheckFailure(
             CheckCode.STRATEGY_MISMATCH,
@@ -522,11 +552,18 @@ def _run_checks(
         if any(f.code is CheckCode.DATA_UNHEALTHY for f in failures):
             flags.append(Flag(FlagCode.DATA_STALE_ON_EXIT, STALE_ON_EXIT))
         failures = [f for f in failures if f.code not in not_applicable]
-        exit_failure = _exit_failure(strategy, ctx)
-        if exit_failure is not None:
-            failures.append(exit_failure)
-    elif pro_reason is None:
-        not_applicable = frozenset({CheckCode.ENTITLEMENT_REQUIRED})
+        if unverified is None:
+            exit_failure = _exit_failure(strategy, ctx)
+            if exit_failure is not None:
+                failures.append(exit_failure)
+        else:
+            not_checked = not_checked + (CheckCode.EXIT_NOT_REDUCE_ONLY,)
+    elif ctx.action is ExecutionAction.ADJUSTMENT:
+        not_applicable = frozenset({CheckCode.EXIT_NOT_REDUCE_ONLY})
+        if pro_reason is None:
+            not_applicable |= {CheckCode.ENTITLEMENT_REQUIRED}
+    else:
+        not_applicable = frozenset({CheckCode.EXIT_NOT_REDUCE_ONLY, CheckCode.ACTIVE_LEGS_UNVERIFIED})
     not_applicable |= {CheckCode.INTERNAL_ERROR}
     failed = {f.code for f in failures}
     passed = tuple(c for c in CheckCode if c not in failed and c not in not_checked and c not in not_applicable)
@@ -563,6 +600,7 @@ def check_pre_execution(
         )]
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
+    needs_confirmation = not failures and any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
     record = None
     if failures:
         record = BlockedExecution(
@@ -574,6 +612,7 @@ def check_pre_execution(
         failures=tuple(failures), passed=passed, not_checked=not_checked,
         not_applicable=tuple(c for c in CheckCode if c in not_applicable), flags=tuple(flags), max_loss=max_loss,
         margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
+        requires_confirmation=needs_confirmation, confirmation_text=STALE_ON_EXIT if needs_confirmation else None,
     )
     if result.blocked:
         logger.warning(

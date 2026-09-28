@@ -22,6 +22,7 @@ from ofo.execution import (
     ExecutionContext,
     SafetyResult,
     VersionState,
+    active_legs_hash,
     check_pre_execution,
 )
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
@@ -84,7 +85,17 @@ def all_true_context(**overrides: Any) -> ExecutionContext:
         reconciliation_blocked_strategy_ids=frozenset({"S-OTHER"}),
         charges_estimate=D("236.40"),
     )
+    active = overrides.get("active_legs")
+    # The active version as the store would give it, unless a test overrides the tie; malformed legs pass straight
+    # through so the context's own validation refuses them.
+    if active is not None and all(isinstance(leg, Leg) for leg in active):
+        overrides.setdefault("active_version_id", ACTIVE_VERSION_ID)
+        overrides.setdefault("active_legs_hash", active_legs_hash(
+            overrides.get("strategy_id", STRATEGY_ID), overrides["active_version_id"], active))
     return dataclasses.replace(base, **overrides)
+
+
+ACTIVE_VERSION_ID = "V-2"
 
 
 @pytest.fixture()
