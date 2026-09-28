@@ -33,7 +33,7 @@ class PayloadValidationError(ValueError):
     """Raised when an audit payload contains a reserved key or is not JSON-serialisable."""
 
 
-def _check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
+def check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
     """Recursively reject non-string keys and keys starting with the reserved "$" prefix (nested
     dicts and lists too).
 
@@ -92,7 +92,7 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"not JSON-serialisable: {value!r}")
 
 
-def _canonical_json(data: Mapping[str, Any]) -> str:
+def canonical_json(data: Mapping[str, Any]) -> str:
     """Canonical JSON: sorted keys, no extra whitespace, deterministic regardless of key order."""
     try:
         return json.dumps(data, sort_keys=True, separators=(",", ":"), default=_json_default)
@@ -100,7 +100,7 @@ def _canonical_json(data: Mapping[str, Any]) -> str:
         raise PayloadValidationError(f"payload is not JSON-serialisable: {exc}") from exc
 
 
-def _deep_freeze(value: Any) -> Any:
+def deep_freeze(value: Any) -> Any:
     """Recursively freeze a payload into immutable structures.
 
     Dicts become a read-only ``MappingProxyType`` over a freshly built dict (never the caller's
@@ -137,6 +137,13 @@ def _compute_hash(
         }
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# Private aliases kept so existing callers of the underscore names keep working (W-020 made these public for reuse
+# by ofo.timeline, which hashes and freezes its entries with the same mechanism).
+_check_payload_safe = check_payload_safe
+_canonical_json = canonical_json
+_deep_freeze = deep_freeze
 
 
 @dataclass(frozen=True)
