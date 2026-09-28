@@ -38,6 +38,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import Final, Literal, NoReturn
 
 from ofo.engine.legs import Action, require_price
@@ -63,7 +64,8 @@ TERMINAL_STATES: Final[frozenset[OrderState]] = frozenset(
 #: ``OrderBook`` evaluates this against the computed (ledger-derived) state, never the order's raw
 #: base state alone -- that is what makes "cancel a fully filled order" impossible even though the
 #: order's own base state (Submitted) would otherwise still show an open Cancel transition.
-ALLOWED_TRANSITIONS: Final[dict[OrderState, frozenset[OrderState]]] = {
+#: Read-only (issue #29 item 3): a MappingProxyType over frozensets, so no caller can widen a row at runtime.
+ALLOWED_TRANSITIONS: Final[Mapping[OrderState, frozenset[OrderState]]] = MappingProxyType({
     OrderState.PREPARED: frozenset({OrderState.SUBMITTED, OrderState.CANCELLED}),
     OrderState.SUBMITTED: frozenset({
         OrderState.PENDING,
@@ -86,7 +88,7 @@ ALLOWED_TRANSITIONS: Final[dict[OrderState, frozenset[OrderState]]] = {
     OrderState.EXECUTED: frozenset(),
     OrderState.REJECTED: frozenset(),
     OrderState.CANCELLED: frozenset(),
-}
+})
 
 #: Effective states in which a fill may still legally arrive.
 _OPEN_STATES: Final[frozenset[OrderState]] = frozenset(
@@ -99,9 +101,31 @@ _FILL_IMPLIED_STATES: Final[frozenset[OrderState]] = frozenset(
 
 
 def _non_empty_str(value: object, field_name: str) -> str:
+    """A non-empty identifier with no surrounding whitespace (issue #29 item 2): ``"T1 "`` is refused, never
+    normalised, so a padded copy of an id can never become a second ledger key."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string, got {value!r}")
+    if value != value.strip():
+        raise ValueError(f"{field_name} must not have surrounding whitespace, got {value!r}")
     return value
+
+
+@dataclass(frozen=True)
+class ReconciliationEvent:
+    """One audited change to a strategy's reconciliation block (ADR-018; issue #29 item 1).
+
+    ``kind`` is ``"blocked"`` (a reconcile found the broker's cumulative filled quantity differs from the ledger) or
+    ``"cleared"`` (an explicit call, after a fresh reconcile of every order of the strategy agreed).
+    """
+
+    strategy_id: str
+    kind: Literal["blocked", "cleared"]
+    broker_order_id: str | None
+    broker_filled: int | None
+    local_filled: int | None
+    actor: str | None
+    reason: str | None
+    at: datetime.datetime | None
 
 
 def _positive_int(value: object, field_name: str) -> int:
@@ -309,6 +333,7 @@ class OrderBook:
         self._orders: dict[str, Order] = {}
         self._ledger = FillLedger()
         self._blocked_strategies: set[str] = set()
+        self._reconciliation_events: list[ReconciliationEvent] = []
 
     # -- registration & views -------------------------------------------------------------
 
@@ -436,14 +461,19 @@ class OrderBook:
         - Broker HIGHER: trades are missing locally -- records a mismatch that blocks the next
           ``Submitted`` transition for this order's strategy, and returns ``"missing_trades"``
           (never silently passes an unequal cumulative).
-        - Broker LOWER: irreconcilable -- raises :class:`FillConflictError`.
+        - Broker LOWER: irreconcilable -- blocks the strategy exactly as HIGHER does (issue #29 item 1,
+          core invariant 6), THEN raises :class:`FillConflictError`.
+
+        Either block stays until :meth:`clear_reconciliation_block` succeeds.
         """
         view = self.order_for(broker_order_id)
         _non_negative_int(broker_filled_qty, "broker_filled_qty")
         if broker_filled_qty == view.filled_quantity:
             return "ok"
+        self._blocked_strategies.add(view.strategy_id)
+        self._reconciliation_events.append(ReconciliationEvent(
+            view.strategy_id, "blocked", broker_order_id, broker_filled_qty, view.filled_quantity, None, None, None))
         if broker_filled_qty > view.filled_quantity:
-            self._blocked_strategies.add(view.strategy_id)
             return "missing_trades"
         raise FillConflictError(
             f"broker reports {broker_filled_qty} filled for order {broker_order_id}, but "
@@ -452,6 +482,48 @@ class OrderBook:
 
     def is_submit_blocked(self, strategy_id: str) -> bool:
         return strategy_id in self._blocked_strategies
+
+    def clear_reconciliation_block(
+        self, strategy_id: str, broker_filled: Mapping[str, int], *, actor: str, reason: str, at: datetime.datetime,
+    ) -> ReconciliationEvent:
+        """The one way to lift a reconciliation block (issue #29 item 1; ADR-018 "until it is resolved").
+
+        ``broker_filled`` is a FRESH broker read: the cumulative filled quantity of EVERY order of this strategy in
+        the book, keyed by broker order id. Refused (block kept) when the strategy is not blocked, when any order of
+        the strategy is missing from the read, when the read names an order that is not this strategy's, or when any
+        count differs from the ledger (a lower count raises :class:`FillConflictError`). Only then is the block
+        lifted, with an audit event naming the actor, reason and time.
+        """
+        _non_empty_str(strategy_id, "strategy_id")
+        _non_empty_str(actor, "actor")
+        _non_empty_str(reason, "reason")
+        if not isinstance(at, datetime.datetime) or at.utcoffset() is None:
+            raise ValueError(f"at must be a timezone-aware datetime, got {at!r}")
+        if strategy_id not in self._blocked_strategies:
+            raise ValueError(f"strategy {strategy_id!r} is not blocked; there is nothing to clear")
+        if not isinstance(broker_filled, Mapping):
+            raise ValueError("broker_filled must be a mapping of broker order id to filled quantity")
+        mine = {boid for boid, o in self._orders.items() if o.strategy_id == strategy_id}
+        unknown = sorted(set(broker_filled) - mine)
+        if unknown:
+            raise ValueError(f"broker read names orders that are not this strategy's: {unknown}")
+        missing = sorted(mine - set(broker_filled))
+        if missing:
+            raise ValueError(f"a fresh broker read must cover every order of the strategy; missing {missing}")
+        disagreeing = []
+        for boid in sorted(mine):
+            if self.reconcile_cumulative(boid, broker_filled[boid]) != "ok":  # a lower count raises here
+                disagreeing.append(boid)
+        if disagreeing:
+            raise FillConflictError(f"broker read still disagrees with the ledger for {disagreeing}; block kept")
+        self._blocked_strategies.discard(strategy_id)
+        event = ReconciliationEvent(strategy_id, "cleared", None, None, None, actor, reason, at)
+        self._reconciliation_events.append(event)
+        return event
+
+    def reconciliation_events(self, strategy_id: str) -> tuple[ReconciliationEvent, ...]:
+        """Every block/clear event for one strategy, oldest first (append-only audit trail)."""
+        return tuple(e for e in self._reconciliation_events if e.strategy_id == strategy_id)
 
 
 def derive_strategy_position(book: OrderBook, strategy_id: str) -> Mapping[str, int]:
