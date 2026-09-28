@@ -11,6 +11,7 @@ from ofo.orders.model import (
     OrderBook,
     OrderState,
     OrderView,
+    ReconciliationEvent,
     derive_strategy_position,
     refuse_position_from_orders,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "OrderBook",
     "OrderState",
     "OrderView",
+    "ReconciliationEvent",
     "derive_strategy_position",
     "refuse_position_from_orders",
 ]
