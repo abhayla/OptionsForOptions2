@@ -35,6 +35,10 @@ Everything decided or built while you were away (ADR-045). Each delegated decisi
 | Limited-user adjustments (SPEC CHANGE) | A Limited user may adjust only if no position grows AND the worst case at expiry, **with option premiums excluded**, does not get worse. Closing only the bought wing of a spread needs Pro (−26,000 → −2,990,000); closing the whole put spread or reducing a short leg is allowed; calendars only full exit / same-share reduction / closing shorts. Replaces the entry-price rule written earlier the same night, which blocked hedged partial exits (REQ-059, ADR-037) | builder found the flaw; independent reviewer's rule 5; joint |
 | Scenario level-set defaults | Minimum default range half-width 1,000 NIFTY / 3,000 SENSEX, plus 2 steps beyond the outermost strike or breakeven; user-range limits; a breakeven outside a user-chosen range still shows in Lower/Upper BE (scenario-calculations §4 "Level-set rules", marked open for your review) | W-003 builder default |
 | Execution gate | Entry/exit run the active version; unknown eligibility blocks; duplicate legs block; a reconciliation mismatch blocks exits too (acting on a wrong position picture could open a naked position; Kite still works) (REQ-059) | builder defaults, reviewed |
+| Clock skew | A quote timestamped up to 2 s in the future counts as fresh; beyond that it is "unhealthy" with a reason (never trusted, never a crash) | orchestrator default, labelled in code |
+| Entry trigger before execution | An entry rule that fires before anything executed is recorded as "Active strategy version: none (not yet executed); evaluated against planned version N" | spec-conformant reading of REQ-040 AC-3 with ADR-009 Q17 / ADR-019 Q202 |
+| Fill identity | A broker fill is identified by (Zerodha order id, trade id); the same id with different details is a conflict that blocks, never silently ignored | independent review; Kite field names unverified until the Zerodha core proof |
+| Error wording | Every error message comes from a fixed, reviewed catalogue with typed slots; Zerodha's own message is shown word for word in a labelled field | independent review (ADR-003 already asks for a CI check of templates) |
 | Wheel template | Dropped: it is a stock-assignment cycle that cannot happen on cash-settled NIFTY/SENSEX options; Cash-Secured Put reworded (no "assignment") | verifier finding (misleading to beginners) |
 
 ## 3. Built overnight
@@ -56,14 +60,22 @@ Every item: builder in its own worktree → independent verifier (fresh context)
 | W-016 (REQ-070) | Builder activity history, undo, restore | **Merged** PR #18 — 3 rounds |
 | W-012 (REQ-038) | Strategy definition vs live state, versions, reconciliation flag | **Merged** PR #20 — 3 rounds + independent review; 26,051-step random test, invariant never broke. Gap filed: deferred #19 (a broker position that goes flat is stuck until REQ-060 adds "Exited") |
 | W-004 (REQ-035) | One strategy table (columns, Greeks, UX levels) | **PARKED** — issue #21. AC-1/2/6 pass; AC-7 failed because MY brief put one heading on every Guided column. One short round with your OK |
-| W-014 (REQ-059) | Pre-execution safety gate (Tier A) | In progress — 2 adversarial rounds done; AC-5 wiring to W-012 next |
+| W-014 (REQ-059) | Pre-execution safety gate (Tier A) | **Merged** PR #24 — 3 adversarial rounds; ~70 attack scenarios, 0 unsafe passes. Two residuals in deferred #29 (legs must come from the store at integration) |
+| W-018 (REQ-049) | Market data model + health (stale / delayed / unhealthy / unavailable; per-strategy monitoring pause) | **Merged** PR #25 — 2 rounds. AC-4 and the AC-6 badge are screen work, so REQ-049 stays open |
+| W-020 (REQ-040) | Strategy timeline + rule-trigger records + "Why did this trigger?" | **Merged** PR #27 — 3 rounds (one was my brief's mistake, reversed) |
+| W-019 (REQ-057) | Order lifecycle: 7 states; nothing changes until Zerodha confirms a fill | **Merged** PR #28 — failed twice, then an independent review found the real defect (two copies of the fill count); rebuilt on one fill ledger, passed |
+| W-021 (REQ-060) | Reconciliation with Zerodha positions (Tier A) | Built; independent adversarial verification running |
+| W-024 (REQ-065) | Error messages | **PARKED** — issue #30. Failed 3 times; the fixed message catalogue is right, but a code slot can still carry words like "risk-free", and three back doors skip the catalogue. One short round with your OK (fix list in the issue) |
+| W-023 (REQ-058) | Partial execution, no automatic retry (Tier A) | Building |
+| W-022 (REQ-056) | Multi-leg execution plan (Tier A) | Waits for W-021 |
 
-Issues filed: deferred #10 (small verifier findings), parked #12; kit harvest Startup-Factory #39, #40.
+Issues filed: deferred #10 (small verifier findings), #29 (order-ledger and gate hardening; items 1-4 are being fixed inside W-023), parked #12, #21; kit harvest Startup-Factory #39, #40.
 
 ## 4. Still open (for you)
 - Q204, Q205 — shared vs per-user Zerodha feed; monitoring while the daily session is expired. Depend on Zerodha's answer.
 - Q211 — legal/compliance review before advice-like features, billing and data display go live.
 - Q212 — the YouTube adjustment video transcript (you said you'd provide it).
+- W-024 (error messages) is parked, issue #30 — say "unpark W-024" for one short round (closed code lists, a runtime check on the finished message, back doors closed).
 - W-007 (entitlement engine) is parked, issue #12 — decide the recommended fix (separate "validate a new event" from "load stored history"; bound future-dated status changes).
 - The state-machine transition table in `spec/data/domain-model.md` §6 is still a proposal for your review.
 - **Which UX level shows Greeks?** REQ-006 says Standard shows Greeks; REQ-035 AC-7 says Advanced adds them. The table model follows REQ-035 (Guided: none, Standard: % return + breakevens, Advanced: IV + Greeks). Recommendation: keep REQ-035 (beginners in Standard don't need Greeks by default) and correct REQ-006.
