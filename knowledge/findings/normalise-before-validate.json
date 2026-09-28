@@ -1,0 +1,31 @@
+{
+  "id": "normalise-before-validate",
+  "class": "Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported.",
+  "mechanism": "Python's str.upper() maps some non-ASCII letters to ASCII (U+0131 dotless i -> I, U+00DF sharp s -> SS, U+017F long s -> S), so validating after upper-casing sees a valid ASCII ID that the user never typed.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-010 branch build/W-010-qualifying-list @ 1f03210, backend/ofo/admin/client_id.py normalise_client_id",
+    "evidence": "Independent verifier: U+0131+'b1234' -> IB1234, 'a'+U+00DF+'123' -> ASS123, U+017F+'t12345' -> ST12345 were imported as valid qualifying Client IDs (free Pro for the wrong ID); AC-2 tests were green (16 passed)."
+  },
+  "fix": "Refuse non-ASCII (str.isascii()) before any case change, then pattern-check (W-010 fix round). Sweep 2026-09-29 across main and all open branches: two other normalisers found (strategy/wording.py lower() for the banned-phrase scan; audit/models.py lower() for secret-key detection) \u2014 both only broaden detection and never produce accepted data, so they are safe; W-007 reference normalisation (casefold) merges look-alike references into duplicates, which fails closed (refuses a grant) rather than granting.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Second occurrence (strip before isascii) triggered an independent review (learning rule R1). Guarded only when a class-level test inserts every Unicode whitespace/format/confusable character before, inside and after a valid ID and asserts MALFORMED on every entry path."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-020.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-010 round 1 @ 1f03210",
+      "evidence": "str.upper() folded non-ASCII letters into valid IDs (IB1234, ASS123, ST12345)"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-010 round 2 @ f45b5c9",
+      "evidence": "str.strip() ran before isascii() and removed non-ASCII whitespace (U+00A0 no-break space, U+3000 ideographic space, U+2003 em space, U+0085 next line, U+2028 line separator): U+00A0 + 'AB1234' + U+00A0 was accepted as AB1234 on add, edit, import and is_qualifying. The fix covered the listed examples, not the class."
+    }
+  ]
+}

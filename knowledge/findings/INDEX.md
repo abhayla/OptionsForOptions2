@@ -2,9 +2,10 @@
 
 # Findings index
 
-2 finding(s), generated from `knowledge/findings/*.json`.
+3 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | spec_ref |
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | spec_ref |
+| normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | unguarded | occurrences, spec_ref |
