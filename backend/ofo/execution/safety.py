@@ -1,0 +1,354 @@
+"""Pre-execution safety gate and validation (REQ-059). Pure: no Zerodha call, no network, no mutation.
+
+``check_pre_execution`` evaluates EVERY check and returns every failure (never just the first), each with a stable
+code and a plain-language reason; execution is blocked when any check fails (AC-1, AC-2). The strategy is only
+read, never rewritten (AC-4, ADR-019). An unavailable contract is reported with the problem and, where the
+catalogue has them, the nearest listed and eligible strikes as alternatives; nothing is substituted — any change is
+the user's explicit choice (AC-5, ADR-016 Q44). Reason texts are decision-support wording only (ADR-003).
+"""
+from __future__ import annotations
+
+import datetime
+import logging
+from dataclasses import dataclass
+from decimal import Decimal
+from enum import Enum
+
+from ofo.engine import UNLIMITED, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.metrics import _Unlimited
+from ofo.execution.context import (
+    ACTIONS_NEEDING_PRO,
+    EXECUTABLE_VERSION_STATES,
+    REQUIRED_DATA_INPUTS,
+    DataHealth,
+    ExecutionContext,
+)
+from ofo.instruments import Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+
+logger = logging.getLogger("ofo.execution.safety")
+
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+MAX_ALTERNATIVES = 2
+
+
+class CheckCode(str, Enum):
+    UNDERLYING_UNSUPPORTED = "UNDERLYING_UNSUPPORTED"
+    MARKET_CLOSED = "MARKET_CLOSED"
+    VERSION_NOT_EXECUTABLE = "VERSION_NOT_EXECUTABLE"
+    BROKER_NOT_CONNECTED = "BROKER_NOT_CONNECTED"
+    SESSION_INVALID = "SESSION_INVALID"
+    ENTITLEMENT_REQUIRED = "ENTITLEMENT_REQUIRED"
+    DATA_UNHEALTHY = "DATA_UNHEALTHY"
+    RULES_INVALID = "RULES_INVALID"
+    EXPIRY_PASSED = "EXPIRY_PASSED"
+    CONTRACT_NOT_FOUND = "CONTRACT_NOT_FOUND"
+    CONTRACT_AMBIGUOUS = "CONTRACT_AMBIGUOUS"
+    CONTRACT_NOT_LISTED = "CONTRACT_NOT_LISTED"
+    CONTRACT_NOT_ELIGIBLE = "CONTRACT_NOT_ELIGIBLE"
+    QUANTITY_INVALID = "QUANTITY_INVALID"
+    DUPLICATE_LEG = "DUPLICATE_LEG"
+    MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
+    DEPENDENCIES_UNSATISFIED = "DEPENDENCIES_UNSATISFIED"
+    RECONCILIATION_MISMATCH = "RECONCILIATION_MISMATCH"
+
+
+# Checks that look at each leg's contract; skipped (reported as not checked) when the underlying is unsupported.
+_CONTRACT_CHECKS: tuple[CheckCode, ...] = (
+    CheckCode.EXPIRY_PASSED,
+    CheckCode.CONTRACT_NOT_FOUND,
+    CheckCode.CONTRACT_AMBIGUOUS,
+    CheckCode.CONTRACT_NOT_LISTED,
+    CheckCode.CONTRACT_NOT_ELIGIBLE,
+    CheckCode.QUANTITY_INVALID,
+)
+
+
+class FlagCode(str, Enum):
+    """Non-blocking observations shown with the result."""
+
+    MULTI_EXPIRY = "MULTI_EXPIRY"
+    UNLIMITED_LOSS = "UNLIMITED_LOSS"
+    CHARGES_UNAVAILABLE = "CHARGES_UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class CheckFailure:
+    code: CheckCode
+    reason: str
+    leg_number: int | None = None
+    alternatives: tuple[Decimal, ...] = ()
+
+
+@dataclass(frozen=True)
+class Flag:
+    code: FlagCode
+    message: str
+
+
+@dataclass(frozen=True)
+class SafetyResult:
+    failures: tuple[CheckFailure, ...]
+    passed: tuple[CheckCode, ...]
+    not_checked: tuple[CheckCode, ...]
+    flags: tuple[Flag, ...]
+    max_loss: Decimal | _Unlimited | None
+    margin_required: Decimal | None
+    charges_estimate: Decimal | None
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.failures)
+
+    @property
+    def failed_codes(self) -> frozenset[CheckCode]:
+        return frozenset(f.code for f in self.failures)
+
+
+def _rupees(amount: Decimal) -> str:
+    return f"₹{amount:,}"
+
+
+def _describe(number: int, leg: Leg, underlying: str) -> str:
+    what = "FUT" if leg.strike is None else f"{leg.strike:,} {leg.instrument.value}"
+    return f"Leg {number} ({leg.action.value} {underlying} {what}, expiry {leg.expiry:%d %b %Y})"
+
+
+def _kind(leg: Leg) -> ContractKind:
+    return ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
+
+
+_Key = tuple[datetime.date, str, Decimal | None]
+
+
+def _key(expiry: datetime.date | None, instrument_type: str, strike: Decimal | None) -> _Key:
+    return (expiry, instrument_type, None if instrument_type == Instrument.FUT.value else strike)
+
+
+def _index(catalogue: Catalogue, underlying: str) -> dict[_Key, list[CatalogueEntry]]:
+    index: dict[_Key, list[CatalogueEntry]] = {}
+    for entry in catalogue.all_entries():
+        c = entry.contract
+        if c.name == underlying:
+            index.setdefault(_key(c.expiry, c.instrument_type, c.strike), []).append(entry)
+    return index
+
+
+def _alternatives(
+    leg: Leg, underlying: str, catalogue: Catalogue, eligibility: EligibilityRegistry
+) -> tuple[Decimal, ...]:
+    """Nearest listed + eligible strikes of the same underlying, expiry and option type. Offered, never applied."""
+    if leg.strike is None:
+        return ()
+    strikes = {
+        e.contract.strike
+        for e in catalogue.all_entries()
+        if e.contract.name == underlying
+        and e.contract.expiry == leg.expiry
+        and e.contract.instrument_type == leg.instrument.value
+        and e.contract.strike != leg.strike
+        and e.currently_listed
+        and eligibility.is_tradable(e.contract.instrument_token)
+    }
+    return tuple(sorted(strikes, key=lambda s: (abs(s - leg.strike), s))[:MAX_ALTERNATIVES])
+
+
+def _alternatives_text(alternatives: tuple[Decimal, ...]) -> str:
+    if not alternatives:
+        return " No nearby listed strike is available to offer."
+    listed = " or ".join(f"{s:,}" for s in alternatives)
+    return f" Strikes you could consider instead: {listed}. Your strategy has not been changed."
+
+
+def _context_failures(ctx: ExecutionContext) -> list[CheckFailure]:
+    out: list[CheckFailure] = []
+
+    def unknown_or(value: bool | None, code: CheckCode, unknown: str, false: str) -> None:
+        if value is not True:
+            out.append(CheckFailure(code, unknown if value is None else false))
+
+    unknown_or(ctx.market_open, CheckCode.MARKET_CLOSED,
+               "We could not confirm that the market is open. Execution is paused until it is confirmed.",
+               "The market is closed. Orders can be placed once it opens.")
+    if ctx.version_state not in EXECUTABLE_VERSION_STATES[ctx.action]:
+        state = "unknown" if ctx.version_state is None else ctx.version_state.value.lower()
+        allowed = " or ".join(sorted(s.value.lower() for s in EXECUTABLE_VERSION_STATES[ctx.action]))
+        out.append(CheckFailure(
+            CheckCode.VERSION_NOT_EXECUTABLE,
+            f"This version of the strategy is {state}. This action executes only a version that is {allowed}.",
+        ))
+    unknown_or(ctx.broker_connected, CheckCode.BROKER_NOT_CONNECTED,
+               "We could not confirm your Zerodha connection. Reconnect to continue.",
+               "Your Zerodha account is not connected. Connect it to continue.")
+    unknown_or(ctx.session_valid, CheckCode.SESSION_INVALID,
+               "We could not confirm your Zerodha session. Reconnect to continue.",
+               "Your Zerodha session has expired. Reconnect to continue.")
+    if ctx.action in ACTIONS_NEEDING_PRO:
+        unknown_or(ctx.pro_entitled, CheckCode.ENTITLEMENT_REQUIRED,
+                   "We could not confirm your plan. New entries and adjustments need Pro.",
+                   "New entries and adjustments need Pro. Exiting an active strategy stays available on every plan.")
+    for data_input in REQUIRED_DATA_INPUTS:
+        health = ctx.data_health.get(data_input)
+        if health is not DataHealth.HEALTHY:
+            label = data_input.value.lower().replace("_", " ")
+            state = "has no status" if health is None else ("is out of date" if health is DataHealth.STALE
+                                                          else "is unavailable")
+            out.append(CheckFailure(
+                CheckCode.DATA_UNHEALTHY, f"Market data needed for execution ({label}) {state}. Execution is "
+                "paused until it is current."))
+    unknown_or(ctx.rules_valid, CheckCode.RULES_INVALID,
+               "We could not confirm that this strategy's rules are valid. Review them to continue.",
+               "This strategy's rules are not valid. Review them to continue.")
+    unknown_or(ctx.dependencies_satisfied, CheckCode.DEPENDENCIES_UNSATISFIED,
+               "We could not confirm that the orders this execution depends on are in place.",
+               "An order this execution depends on is not in place yet (for example a protective leg).")
+    if ctx.margin_available is None or ctx.margin_required is None:
+        out.append(CheckFailure(CheckCode.MARGIN_INSUFFICIENT,
+                                "We could not confirm your available margin with Zerodha. Execution is paused."))
+    elif ctx.margin_available < ctx.margin_required:
+        out.append(CheckFailure(
+            CheckCode.MARGIN_INSUFFICIENT,
+            f"Available margin {_rupees(ctx.margin_available)} is less than the estimated "
+            f"{_rupees(ctx.margin_required)} this strategy needs. Zerodha's figure is final. No order has been "
+            "submitted.",
+        ))
+    if ctx.strategy_id in ctx.reconciliation_blocked_strategy_ids:
+        out.append(CheckFailure(
+            CheckCode.RECONCILIATION_MISMATCH,
+            "Your Zerodha positions for this strategy do not match what we recorded. Resolve the mismatch to "
+            "continue.",
+        ))
+    return out
+
+
+def _leg_failures(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry
+) -> list[CheckFailure]:
+    out: list[CheckFailure] = []
+    underlying = ctx.underlying
+    index = _index(catalogue, underlying)
+    today = ctx.as_of.astimezone(IST).date()
+    seen: dict[_Key, int] = {}
+    for number, leg in enumerate(strategy.legs, start=1):
+        described = _describe(number, leg, underlying)
+        key = _key(leg.expiry, leg.instrument.value, leg.strike)
+        if key in seen:
+            out.append(CheckFailure(
+                CheckCode.DUPLICATE_LEG,
+                f"{described} is the same contract as leg {seen[key]}. The legs have not been combined; edit the "
+                "strategy to keep one or combine them yourself.",
+                leg_number=number,
+            ))
+        else:
+            seen[key] = number
+        try:
+            lot = catalogue.lot_size(underlying, leg.expiry, _kind(leg))
+        except ValueError:
+            out.append(CheckFailure(CheckCode.QUANTITY_INVALID,
+                                    f"{described}: the lot size for this expiry could not be confirmed.",
+                                    leg_number=number))
+        else:
+            if leg.quantity % lot != 0:
+                out.append(CheckFailure(
+                    CheckCode.QUANTITY_INVALID,
+                    f"{described}: quantity {leg.quantity} is not a whole number of lots. The {underlying} lot size "
+                    f"for this expiry is {lot} (for example {lot} or {2 * lot}).",
+                    leg_number=number,
+                ))
+        if leg.expiry < today:
+            out.append(CheckFailure(CheckCode.EXPIRY_PASSED, f"{described} has already expired.", leg_number=number))
+            continue
+        matches = index.get(key, [])
+        if len(matches) > 1:
+            out.append(CheckFailure(CheckCode.CONTRACT_AMBIGUOUS,
+                                    f"{described} matches more than one contract in the instrument list.",
+                                    leg_number=number))
+            continue
+        if not matches:
+            alts = _alternatives(leg, underlying, catalogue, eligibility)
+            out.append(CheckFailure(
+                CheckCode.CONTRACT_NOT_FOUND,
+                f"{described} does not exist in Zerodha's instrument list." + _alternatives_text(alts),
+                leg_number=number, alternatives=alts,
+            ))
+            continue
+        entry = matches[0]
+        if not entry.currently_listed:
+            alts = _alternatives(leg, underlying, catalogue, eligibility)
+            out.append(CheckFailure(
+                CheckCode.CONTRACT_NOT_LISTED,
+                f"{described} is no longer listed by Zerodha." + _alternatives_text(alts),
+                leg_number=number, alternatives=alts,
+            ))
+            continue
+        status = eligibility.get(entry.contract.instrument_token)
+        if status is None or not status.tradable:
+            alts = _alternatives(leg, underlying, catalogue, eligibility)
+            problem = (
+                "has not been confirmed as available on Zerodha yet. Refresh availability to continue."
+                if status is None
+                else "is currently unavailable on Zerodha. Zerodha isn't accepting fresh orders for this contract "
+                "right now."
+            )
+            out.append(CheckFailure(CheckCode.CONTRACT_NOT_ELIGIBLE, f"{described} {problem}" +
+                                    _alternatives_text(alts), leg_number=number, alternatives=alts))
+    return out
+
+
+def _risk_flags(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Flag], Decimal | _Unlimited | None]:
+    flags: list[Flag] = []
+    max_loss: Decimal | _Unlimited | None = None
+    if strategy.is_single_expiry:
+        max_loss = strategy_metrics(strategy).max_loss
+        if max_loss is UNLIMITED:
+            flags.append(Flag(FlagCode.UNLIMITED_LOSS,
+                              "This strategy's possible loss has no upper limit if the market moves far enough."))
+    else:
+        flags.append(Flag(FlagCode.MULTI_EXPIRY,
+                          "This strategy has legs on more than one expiry; its exact at-expiry maximum loss cannot "
+                          "be computed."))
+    if ctx.charges_estimate is None:
+        flags.append(Flag(FlagCode.CHARGES_UNAVAILABLE, "A charges estimate is not available for this strategy."))
+    return flags, max_loss
+
+
+def check_pre_execution(
+    strategy: Strategy, context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry
+) -> SafetyResult:
+    """Run every pre-execution check (REQ-059 AC-1, AC-3); block if any fails; never change ``strategy``."""
+    if not isinstance(strategy, Strategy):
+        raise ValueError(f"strategy must be a Strategy, got {strategy!r}")
+    if not isinstance(context, ExecutionContext):
+        raise ValueError(f"context must be an ExecutionContext, got {context!r}")
+    if not isinstance(catalogue, Catalogue) or not isinstance(eligibility, EligibilityRegistry):
+        raise ValueError("catalogue and eligibility must be a Catalogue and an EligibilityRegistry")
+
+    failures = _context_failures(context)
+    not_checked: tuple[CheckCode, ...] = ()
+    if context.underlying not in SUPPORTED_UNDERLYINGS:
+        failures.insert(0, CheckFailure(
+            CheckCode.UNDERLYING_UNSUPPORTED,
+            f"{context.underlying} is not supported. Supported underlyings: {', '.join(SUPPORTED_UNDERLYINGS)}.",
+        ))
+        not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
+    else:
+        failures.extend(_leg_failures(strategy, context, catalogue, eligibility))
+    flags, max_loss = _risk_flags(strategy, context)
+
+    failed = {f.code for f in failures}
+    applicable = [c for c in CheckCode if not (c is CheckCode.ENTITLEMENT_REQUIRED
+                                               and context.action not in ACTIONS_NEEDING_PRO)]
+    passed = tuple(c for c in applicable if c not in failed and c not in not_checked)
+    result = SafetyResult(
+        failures=tuple(failures), passed=passed, not_checked=not_checked, flags=tuple(flags), max_loss=max_loss,
+        margin_required=context.margin_required, charges_estimate=context.charges_estimate,
+    )
+    if result.blocked:
+        logger.warning(
+            "pre-execution blocked strategy=%s action=%s codes=%s", context.strategy_id, context.action.value,
+            ",".join(f.code.value for f in result.failures),
+        )
+    else:
+        logger.info("pre-execution passed strategy=%s action=%s", context.strategy_id, context.action.value)
+    return result
+
