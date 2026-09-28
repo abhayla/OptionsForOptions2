@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import itertools
+import random
 import time
 from decimal import Decimal as D
 
@@ -228,10 +230,11 @@ def test_complete_claim_that_disagrees_with_broker_position_is_a_mismatch_not_ac
     short = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=75)
     outcome = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, short, at(12), "exec-2"))
     assert outcome.kind is OutcomeKind.MISMATCH and rec.active_version.number == 1
-    assert rec.actual_position == short and rec.proposed_version.number == 2
+    assert rec.actual_position == short and rec.proposed_version is None and rec.reconciliation_required
     moved = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    rejected_but_moved = rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, moved, at(13), "exec-2b"))
-    assert rejected_but_moved.kind is OutcomeKind.MISMATCH and rec.actual_position == moved
+    late = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, moved, at(13), "exec-2b"))
+    assert late.kind is OutcomeKind.BLOCKED and rec.actual_position == moved and rec.active_version.number == 1
+    assert rec.reconciliation_required
 
 
 def test_first_execution_partial_fill_counts_as_executed_and_broker_actual_wins():
@@ -265,7 +268,7 @@ def test_input_domain_guards():
     rec.edit(scaled(CONDOR, 150), at=at(10))
     with pytest.raises(VersionError, match="awaiting its execution result"):
         rec.edit(scaled(CONDOR, 225), at=at(10))
-    with pytest.raises(VersionError, match="already executed"):
+    with pytest.raises(VersionError, match="cannot propose an execution"):
         rec.propose_execution(at=at(10))
     rec.confirm(2, at=at(11))
     with pytest.raises(VersionError, match="already confirmed"):
@@ -374,3 +377,125 @@ def test_position_contract_refuses_bad_underlying_expiry_and_future_strike():
                       ("NIFTY", Instrument.FUT, D("23000"), EXPIRY)):
         with pytest.raises(VersionError):
             Position(((contract_, 75),))
+
+
+# ---- round 3: a standing invariant between calls (reviewer: fixed baseline + sticky reconciliation flag) ----------
+
+OVER = dict(bp22800=300, sp23000=-150, sc23400=-150, bc23600=150)
+
+
+def test_sequence_a_overfill_then_failed_unmoved_requires_reconciliation():
+    """AC-4 red: overfill 300 -> MISMATCH; a later FAILED with the broker unmoved cannot clear it; edit/confirm refuse."""
+    rec = pending_two_lots()
+    assert rec.version(2).baseline == broker(**FILLED_1_LOT)
+    first = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1"))
+    assert first.kind is OutcomeKind.MISMATCH
+    rec.apply_result(ExecutionResult(2, ResultStatus.FAILED, broker(**OVER), at(13), "r2"))
+    assert rec.reconciliation_required and rec.proposed_version is None and rec.active_version.number == 1
+    with pytest.raises(VersionError, match="reconciliation required"):
+        rec.edit(scaled(CONDOR, 225), at=at(14))
+    with pytest.raises(VersionError, match="reconciliation required"):
+        rec.confirm(2, at=at(14))
+
+
+def test_sequence_b_partial_then_rejected_unmoved_requires_reconciliation():
+    """AC-3/AC-4 red: PARTIAL then REJECTED with the broker unmoved leaves a half-filled position: flag set."""
+    rec = pending_two_lots()
+    half = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, half, at(12), "r1")).kind is OutcomeKind.PARTIAL
+    rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, half, at(13), "r2"))
+    assert rec.reconciliation_required and rec.proposed_version is None and rec.active_version.number == 1
+    for action in (lambda: rec.edit(scaled(CONDOR, 225), at=at(14)), lambda: rec.confirm(2, at=at(14)),
+                   lambda: rec.propose_execution(at=at(14)), lambda: rec.restore(0, at=at(14))):
+        with pytest.raises(VersionError, match="reconciliation required"):
+            action()
+
+
+def test_sequence_c_window_does_not_slide_and_reconcile_is_the_only_way_out():
+    """AC-4 red: after a MISMATCH at 300, a PARTIAL at 200 is judged against the fixed baseline 75..150 (not the
+    last report 300), so it is not PARTIAL; the flag stays until an explicit, audited reconcile(); edits then work."""
+    rec = pending_two_lots()
+    rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1"))
+    at_200 = broker(bp22800=200, sp23000=-150, sc23400=-150, bc23600=150)
+    second = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, at_200, at(13), "r2"))
+    assert second.kind is OutcomeKind.MISMATCH and rec.reconciliation_required
+    with pytest.raises(VersionError, match="still differs"):
+        rec.reconcile(at=at(14), actor="user", resolution="adopt", definition=scaled(CONDOR, 150))
+    assert rec.reconciliation_required
+    v3 = rec.reconcile(at=at(14), actor="user:abhay", resolution="adopt actual broker position (Q198)")
+    assert not rec.reconciliation_required and rec.active_version == v3 and v3.intended_position == at_200
+    assert (v3.initiator, v3.reason, v3.based_on) == ("user:abhay", "adopt actual broker position (Q198)", 1)
+    audit = rec.outcomes[-1]
+    assert (audit.kind, audit.version_number, audit.actual, audit.at) == (OutcomeKind.RECONCILED, 3, at_200, at(14))
+    v4 = rec.edit(scaled(CONDOR, 150), at=at(15))
+    assert v4.baseline == at_200 and rec.proposed_version == v4
+
+
+def test_reconcile_refused_when_nothing_to_reconcile():
+    """AC-4 red: reconcile() is not a back door to activation when the position already matches."""
+    rec = executed_record()
+    with pytest.raises(VersionError, match="no reconciliation"):
+        rec.reconcile(at=at(10), actor="user", resolution="adopt")
+
+
+def _random_position(rng: random.Random, baseline: Position, target: Position) -> Position:
+    roll = rng.random()
+    if roll < 0.35:
+        return target  # an exact fill, so COMPLETE results really activate
+    if roll < 0.45:
+        return baseline  # nothing filled
+    base, goal = baseline.as_dict(), target.as_dict()
+    units = {}
+    for key in base.keys() | goal.keys():
+        b, t = base.get(key, 0), goal.get(key, 0)
+        units[key] = rng.choice([b, t, (b + t) // 2, 2 * t, -t, 0, t + (1 if t >= 0 else -1)])
+    if rng.random() < 0.1:
+        units[FUT] = rng.choice([75, -75])
+    return Position.of(units)
+
+
+def test_property_invariant_holds_after_every_step_over_500_random_sequences():
+    """AC-3/AC-4: after EVERY step, pending or reconciliation_required or actual == active intended; nothing
+    activates while the flag is set. 500 seeded sequences, all statuses, overfills, unasked contracts, side flips."""
+    rng = random.Random(20260929)
+    activations = reconciles = flagged_results = 0
+    for _ in range(500):
+        rec = StrategyRecord(CONDOR, at=T0, clock=clock)
+        minutes, refs = itertools.count(1), itertools.count()
+        for _step in range(12):
+            flagged, active_before = rec.reconciliation_required, rec.active_version
+            outcome = None
+            if flagged:
+                if rec.actual_position.lines and rng.random() < 0.4:
+                    rec.reconcile(at=at(next(minutes)), actor="user", resolution="adopt actual broker position")
+                    reconciles += 1
+                else:
+                    latest = rec.versions[-1]
+                    outcome = rec.apply_result(ExecutionResult(
+                        latest.number, rng.choice(list(ResultStatus)),
+                        _random_position(rng, latest.baseline, latest.intended_position),
+                        at(next(minutes)), f"r{next(refs)}"))
+                    flagged_results += 1
+            elif rec.proposed_version is None:
+                if rec.has_executed and rec.active_version is None:
+                    break  # executed, then flat with nothing active: closing a strategy is outside REQ-038
+                if rec.has_executed:
+                    proposal = rec.edit(scaled(CONDOR, rng.choice([75, 150, 225])), at=at(next(minutes)))
+                else:
+                    proposal = rec.propose_execution(at=at(next(minutes)))
+                if proposal is not None:
+                    rec.confirm(proposal.number, at=at(next(minutes)))
+            else:
+                pending = rec.proposed_version
+                outcome = rec.apply_result(ExecutionResult(
+                    pending.number, rng.choice(list(ResultStatus)),
+                    _random_position(rng, pending.baseline, pending.intended_position),
+                    at(next(minutes)), f"r{next(refs)}"))
+                activations += outcome.kind is OutcomeKind.ACTIVATED
+            if flagged and outcome is not None:
+                assert outcome.kind is not OutcomeKind.ACTIVATED and rec.active_version == active_before
+            active_intended = Position() if rec.active_version is None else rec.active_version.intended_position
+            assert (rec.proposed_version is not None or rec.reconciliation_required
+                    or rec.actual_position == active_intended)
+    # A property test that never reaches a branch proves nothing: every branch must be exercised.
+    assert activations > 50 and reconciles > 50 and flagged_results > 50

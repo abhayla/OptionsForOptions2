@@ -19,9 +19,15 @@ Rules implemented:
   position equals the version's intended position. Anything else leaves the active version unchanged and
   records an ``ExecutionOutcome`` (intended vs actual).
 - The result's status word is never trusted alone: any contract whose actual units fall outside the range
-  previous..intended (an unasked contract, a side flip, an overfill) makes the outcome MISMATCH, whatever the word.
+  baseline..intended makes the outcome MISMATCH, whatever the word. ``Version.baseline`` is the previous active
+  version's intended position, fixed when the proposal is created: the window never slides with later reports.
 - Every result replaces the recorded actual position with the broker's position: the broker wins.
-- With a proposal unresolved, or executed but no active version (reconciliation required), edits are refused.
+- MISMATCH, REJECTED and FAILED close the proposal. Standing invariant, re-checked after every result: either a
+  proposal is pending, or the broker's position equals the active version's intended position, or the sticky
+  ``reconciliation_required`` flag is set (ADR-018: an unresolved mismatch blocks execution). While it is set,
+  edit/restore/propose/confirm refuse, and a late result is recorded (``BLOCKED`` or ``MISMATCH``) but activates
+  nothing. Only ``reconcile()`` - explicit, audited, and only to a definition equal to the broker's position
+  (ADR-018 Q198 "adopt actual broker position") - clears it.
 """
 from __future__ import annotations
 
@@ -34,11 +40,12 @@ from ofo.strategy.definition import (
     MAX_TEXT,
     MAX_UNITS,
     Contract,
+    DefinitionLeg,
     StrategyDefinition,
     contract_sort_key,
     describe_contract,
 )
-from ofo.engine.legs import Instrument, require_price
+from ofo.engine.legs import Action, Instrument, require_price
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 MAX_HISTORY = 10_000
@@ -129,6 +136,7 @@ class Version:
     initiator: str
     reason: str
     changes: tuple[str, ...]
+    baseline: Position = Position()  # the previous active version's intended position when this was proposed
 
     @property
     def intended_position(self) -> Position:
@@ -171,6 +179,8 @@ class OutcomeKind(Enum):
     REJECTED = "rejected"
     FAILED = "failed"
     MISMATCH = "mismatch"  # the result's claim and the broker position disagree: reconcile before anything else
+    BLOCKED = "blocked"  # a late result recorded while reconciliation is required; it activates nothing
+    RECONCILED = "reconciled"  # an explicit, audited manual reconciliation (ADR-018 Q198)
 
 
 @dataclass(frozen=True)
@@ -234,7 +244,7 @@ class StrategyRecord:
 
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
-        "_confirmed", "_actual", "_executed", "_references",
+        "_confirmed", "_actual", "_executed", "_references", "_reconcile",
     )
 
     def __init__(
@@ -259,6 +269,7 @@ class StrategyRecord:
         self._set("_actual", Position())
         self._set("_executed", False)
         self._set("_references", set())
+        self._set("_reconcile", False)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"StrategyRecord is changed only through its methods; cannot set {name!r}")
@@ -280,6 +291,11 @@ class StrategyRecord:
     @property
     def has_executed(self) -> bool:
         return self._executed
+
+    @property
+    def reconciliation_required(self) -> bool:
+        """Sticky: the broker's position differs from the active version with no proposal pending (ADR-018)."""
+        return self._reconcile
 
     @property
     def history(self) -> tuple[HistoryEntry, ...]:
@@ -337,14 +353,14 @@ class StrategyRecord:
             raise VersionError(f"edit needs a StrategyDefinition, got {new!r}")
         _require_text(initiator, "initiator")
         _require_text(reason, "reason", allow_empty=True)
-        self._refuse_while_pending("edit")
+        self._refuse_while_blocked("edit")
         if not self._executed:
             if based_on is not None:
                 raise VersionError("before the first execution there are no versions to base an edit on")
             return self._append_history("changed", new, at)
         active = self.active_version
         if active is None:
-            raise VersionError("executed with no active version: reconciliation is required before any change")
+            raise VersionError("executed with no active version: the strategy has no accepted definition to change")
         if based_on is not None and based_on != active.number:
             raise VersionError(f"version {based_on} is not the active version ({active.number}); old versions are read-only")
         changes = new.changes_from(active.definition)
@@ -355,18 +371,18 @@ class StrategyRecord:
 
     def restore(self, seq: int, *, at: datetime.datetime) -> HistoryEntry | None:
         """Restore an earlier Builder configuration (before execution only); the current one stays in history."""
+        self._refuse_while_blocked("restore")
         if self._executed:
             raise VersionError("after the first execution, restore by proposing a new version")
-        self._refuse_while_pending("restore")
         if isinstance(seq, bool) or not isinstance(seq, int) or not 0 <= seq < len(self._history):
             raise VersionError(f"no history entry {seq!r}")
         return self._append_history(f"restored entry {seq}", self._history[seq].after, at)
 
     def propose_execution(self, *, at: datetime.datetime, initiator: str = "user", reason: str = "") -> Version:
         """Before the first execution: turn the Builder draft into proposed version N for execution."""
+        self._refuse_while_blocked("propose an execution")
         if self._executed:
             raise VersionError("already executed; changes after execution are proposed through edit()")
-        self._refuse_while_pending("propose an execution")
         _require_text(initiator, "initiator")
         _require_text(reason, "reason", allow_empty=True)
         self._stamp(at)
@@ -374,6 +390,8 @@ class StrategyRecord:
 
     def confirm(self, number: int, *, at: datetime.datetime) -> None:
         """The user's explicit confirmation of the pending proposed version."""
+        if self._reconcile:
+            raise VersionError("cannot confirm: reconciliation required (broker position differs from the active version)")
         if self._pending is None or number != self._pending:
             raise VersionError(f"version {number!r} is not the pending proposed version")
         if self._confirmed:
@@ -382,56 +400,117 @@ class StrategyRecord:
         self._set("_confirmed", True)
 
     def apply_result(self, result: ExecutionResult) -> ExecutionOutcome:
-        """Record an execution/reconciliation result. Activates the proposal only on a reconciled COMPLETE."""
+        """Record an execution/reconciliation result. Activates the proposal only on a reconciled COMPLETE.
+
+        While reconciliation is required, a late result for the latest version is still recorded (the broker's
+        position wins) but can activate nothing: its outcome is MISMATCH or BLOCKED and the flag stays set.
+        """
         if not isinstance(result, ExecutionResult):
             raise VersionError(f"apply_result needs an ExecutionResult, got {result!r}")
-        if self._pending is None or result.version_number != self._pending:
-            raise VersionError(f"version {result.version_number} is not the pending proposed version")
-        if not self._confirmed:
-            raise VersionError(f"version {result.version_number} was never confirmed by the user; it cannot activate")
+        if self._reconcile:
+            if result.version_number != len(self._versions):
+                raise VersionError(f"version {result.version_number} is not the latest version; late result refused")
+        else:
+            if self._pending is None or result.version_number != self._pending:
+                raise VersionError(f"version {result.version_number} is not the pending proposed version")
+            if not self._confirmed:
+                raise VersionError(f"version {result.version_number} was never confirmed by the user; it cannot activate")
         if result.reference in self._references:
             raise VersionError(f"result {result.reference!r} was already applied")
         if len(self._outcomes) >= MAX_OUTCOMES:
             raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
         self._stamp(result.at)
-        proposal = self._versions[self._pending - 1]
-        intended, previous, actual = proposal.intended_position, self._actual, result.broker_position
-        kind = self._classify(result.status, intended, previous, actual)
+        proposal = self._versions[result.version_number - 1]
+        intended, actual = proposal.intended_position, result.broker_position
+        kind = self._classify(result.status, proposal.baseline, intended, actual)
         self._references.add(result.reference)
         self._set("_actual", actual)
         if actual.lines:
             self._set("_executed", True)
-        if kind is OutcomeKind.ACTIVATED:
+        if self._reconcile:
+            if kind is not OutcomeKind.MISMATCH:
+                kind = OutcomeKind.BLOCKED
+        elif kind is OutcomeKind.ACTIVATED:
             self._set("_active", proposal.number)
             self._set("_executed", True)
-        if kind in (OutcomeKind.ACTIVATED, OutcomeKind.REJECTED, OutcomeKind.FAILED):
+        if kind is not OutcomeKind.PARTIAL:
             self._set("_pending", None)
             self._set("_confirmed", False)
         outcome = ExecutionOutcome(proposal.number, kind, intended, actual, result.at, result.reference)
         self._outcomes.append(outcome)
+        self._recheck_invariant()
         return outcome
+
+    def reconcile(
+        self,
+        *,
+        at: datetime.datetime,
+        actor: str,
+        resolution: str,
+        definition: StrategyDefinition | None = None,
+    ) -> Version:
+        """Explicit, audited manual reconciliation (ADR-018 Q198 "adopt actual broker position").
+
+        The ONLY way to clear ``reconciliation_required``. Records a new version equal to the broker's position
+        (``definition``, or one built from the broker's position keeping the current rules, risk limits and
+        preferences), makes it active, and logs a RECONCILED outcome with actor, time and resolution. Refused when
+        nothing needs reconciling, or when the recorded resolution would still differ from the broker's position.
+        """
+        if not self._reconcile:
+            raise VersionError("no reconciliation required: the broker position matches the active version")
+        _require_text(actor, "actor")
+        _require_text(resolution, "resolution")
+        base = self.definition
+        if definition is None:
+            definition = _definition_from(self._actual, base)
+        if not isinstance(definition, StrategyDefinition):
+            raise VersionError(f"reconcile needs a StrategyDefinition or None, got {definition!r}")
+        if Position.of(definition.intended_position()) != self._actual:
+            raise VersionError("the resolution still differs from the broker's actual position; not reconciled")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._stamp(at)
+        changes = ("manual reconciliation",) + (definition.changes_from(base) or ("adopted broker position",))
+        version = self._add_version(definition, self._active, at, actor, resolution, changes, pending=False)
+        reference = f"reconcile:v{version.number}"
+        self._references.add(reference)
+        self._set("_active", version.number)
+        self._set("_executed", True)
+        self._set("_reconcile", False)
+        self._outcomes.append(ExecutionOutcome(
+            version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
+        return version
 
     # ---- internals -------------------------------------------------------------------------------------------
 
     @staticmethod
-    def _classify(status: ResultStatus, intended: Position, previous: Position, actual: Position) -> OutcomeKind:
+    def _classify(status: ResultStatus, baseline: Position, intended: Position, actual: Position) -> OutcomeKind:
         """Positions decide, the status word never does (ADR-018: an unresolved mismatch blocks execution).
 
-        First, for EVERY status: each contract's actual units must lie between the previous position and the
-        intended one (inclusive). An unasked contract, a side flip or an overfill falls outside -> MISMATCH.
+        First, for EVERY status: each contract's actual units must lie between the version's FIXED baseline and
+        its intended units (inclusive). An unasked contract, a side flip or an overfill falls outside -> MISMATCH.
         Only then does the status word choose between the outcomes it is consistent with.
         """
-        if not _within_path(previous, intended, actual):
+        if not _within_path(baseline, intended, actual):
             return OutcomeKind.MISMATCH
         if status is ResultStatus.COMPLETE:
             return OutcomeKind.ACTIVATED if actual == intended else OutcomeKind.MISMATCH
         if status is ResultStatus.PARTIAL:
             return OutcomeKind.PARTIAL
-        if actual != previous:  # "rejected"/"failed" yet the broker position moved
-            return OutcomeKind.MISMATCH
         return OutcomeKind.REJECTED if status is ResultStatus.REJECTED else OutcomeKind.FAILED
 
-    def _refuse_while_pending(self, what: str) -> None:
+    def _active_intended(self) -> Position:
+        active = self.active_version
+        return Position() if active is None else active.intended_position
+
+    def _recheck_invariant(self) -> None:
+        """No proposal pending and the broker differs from the active version -> reconciliation required (sticky)."""
+        if self._pending is None and self._actual != self._active_intended():
+            self._set("_reconcile", True)
+
+    def _refuse_while_blocked(self, what: str) -> None:
+        if self._reconcile:
+            raise VersionError(f"cannot {what}: reconciliation required (broker position differs from the active version)")
         if self._pending is not None:
             raise VersionError(f"cannot {what}: proposed version {self._pending} is awaiting its execution result")
 
@@ -455,11 +534,35 @@ class StrategyRecord:
         initiator: str,
         reason: str,
         changes: tuple[str, ...],
+        *,
+        pending: bool = True,
     ) -> Version:
         if len(self._versions) >= MAX_VERSIONS:
             raise VersionError(f"version list is full ({MAX_VERSIONS})")
-        version = Version(len(self._versions) + 1, definition, based_on, at, initiator, reason, changes)
+        version = Version(
+            len(self._versions) + 1, definition, based_on, at, initiator, reason, changes, self._active_intended()
+        )
         self._versions.append(version)
-        self._set("_pending", version.number)
-        self._set("_confirmed", False)
+        if pending:
+            self._set("_pending", version.number)
+            self._set("_confirmed", False)
         return version
+
+
+def _definition_from(position: Position, like: StrategyDefinition) -> StrategyDefinition:
+    """A definition whose intended position equals ``position``, keeping ``like``'s rules, limits and preferences."""
+    if not position.lines:
+        raise VersionError("the broker position is flat; there is no position to adopt as a strategy definition")
+    underlyings = {contract[0] for contract, _ in position.lines}
+    if len(underlyings) != 1:
+        raise VersionError(f"the broker position spans {sorted(underlyings)}; adopt it with an explicit definition")
+    legs = tuple(
+        DefinitionLeg(Action.BUY if units > 0 else Action.SELL, instrument, strike, expiry, abs(units))
+        for (_underlying, instrument, strike, expiry), units in position.lines
+    )
+    try:
+        return StrategyDefinition(
+            underlyings.pop(), legs, like.rules_ref, like.risk_limits, like.preferences,
+        )
+    except ValueError as exc:
+        raise VersionError(f"the broker position cannot be adopted as a definition: {exc}") from exc
