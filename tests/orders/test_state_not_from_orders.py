@@ -29,16 +29,15 @@ def make_order() -> Order:
 
 def test_executed_order_row_without_a_fill_event_changes_nothing() -> None:
     """AC-3: an Executed order row, on its own, is not a source of position -- the derived
-    position for the strategy stays empty until a confirmed FillEvent lands in the book.
-    """
+    position for the strategy stays empty until a confirmed FillEvent lands in the book."""
     book = OrderBook()
     book.add(make_order())
     book.transition("BRK-5", OrderState.SUBMITTED)
-    order = book.apply_fill(
-        FillEvent("EVT-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
+    view = book.apply_fill(
+        FillEvent("T-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
                   datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
     )
-    assert order.state is OrderState.EXECUTED
+    assert view.state is OrderState.EXECUTED
 
     empty_book = OrderBook()  # never told about the fill above
     assert derive_strategy_position(empty_book, "STRAT-5") == {}
@@ -51,7 +50,7 @@ def test_derived_position_matches_confirmed_fills_only() -> None:
     book.add(make_order())
     book.transition("BRK-5", OrderState.SUBMITTED)
     book.apply_fill(
-        FillEvent("EVT-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
+        FillEvent("T-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
                   datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
     )
     assert derive_strategy_position(book, "STRAT-5") == {CONTRACT: 75}
@@ -59,17 +58,16 @@ def test_derived_position_matches_confirmed_fills_only() -> None:
 
 def test_refuse_position_from_orders_always_raises() -> None:
     """AC-3: the forbidden shortcut (derive position/state from order rows alone) is refused,
-    even when the orders are all Executed -- it is not a working code path under any input.
-    """
+    even when the orders are all Executed -- it is not a working code path under any input."""
     book = OrderBook()
     book.add(make_order())
     book.transition("BRK-5", OrderState.SUBMITTED)
     executed = book.apply_fill(
-        FillEvent("EVT-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
+        FillEvent("T-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
                   datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
     )
     with pytest.raises(ValueError):
-        refuse_position_from_orders([executed])
+        refuse_position_from_orders([executed.order])
     with pytest.raises(ValueError):
         refuse_position_from_orders([])  # even the empty case is refused, not silently {}
 
@@ -77,7 +75,6 @@ def test_refuse_position_from_orders_always_raises() -> None:
 def test_derive_strategy_position_rejects_a_non_book_source() -> None:
     """AC-3 negative case: derive_strategy_position refuses anything that is not the OrderBook
     itself (e.g. a plain list of order rows), so the "order rows alone" shortcut cannot be taken
-    by accident by passing the wrong object.
-    """
+    by accident by passing the wrong object."""
     with pytest.raises(ValueError):
         derive_strategy_position([make_order()], "STRAT-5")  # type: ignore[arg-type]
