@@ -278,6 +278,7 @@ def _worse_worst_case(active: tuple[Leg, ...], proposed: tuple[Leg, ...]) -> str
     )
 
 
+FUTURES_ENTRY_UNKNOWN_REASON = "Entry price of a futures leg is not known yet — adjustment needs Pro until it is."
 MULTI_EXPIRY_PRO_REASON = (
     "This strategy has legs on more than one expiry. Without Pro it can be exited, reduced by the same share on every "
     "leg, or have only its sold options closed; other adjustments may add risk and need Pro."
@@ -300,6 +301,8 @@ def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> str | None:
     active, proposed = ctx.active_legs, strategy.legs
     if not _reduces_only(active, proposed):
         return PRO_REASON
+    if ctx.active_futures_entry_known is not True and any(leg.instrument is Instrument.FUT for leg in active):
+        return FUTURES_ENTRY_UNKNOWN_REASON
     before_pos, after_pos = _positions(active), _positions(proposed)
     if _same_share(before_pos, after_pos):
         return None

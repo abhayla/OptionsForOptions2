@@ -38,6 +38,10 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
   recomputes the hash from the supplied legs and the executed strategy's id and blocks with
   ``ACTIVE_LEGS_UNVERIFIED`` on a mismatch or when the version id or hash is missing. Unverified legs are never
   used for the exit reduce-only check or the Limited-user entitlement decision.
+- **Futures entry price unknown (orchestrator default, fail closed; not from the spec).** A stored version carries
+  no entry prices. Unless ``active_futures_entry_known`` is True, a Limited user's adjustment of a strategy whose
+  active legs include a futures leg needs Pro: "Entry price of a futures leg is not known yet — adjustment needs
+  Pro until it is." Options are unaffected (rule 5 excludes premiums); exits are unaffected (no prices needed).
 - **Reconciliation status is required (round 2 MAJOR B).** ``reconciliation_blocked_strategy_ids`` has no
   default; ``None`` means unknown and blocks with ``RECONCILIATION_MISMATCH`` ("Reconciliation status unknown").
 - **An exit on unhealthy data needs confirmation (round 2 MINOR).** The result carries
@@ -157,6 +161,9 @@ class ExecutionContext:
     active_legs: tuple[Leg, ...] | None = None
     active_version_id: str | None = None
     active_legs_hash: str | None = None
+    # False/None: at least one futures leg of the active version has no known entry price (a stored definition
+    # carries none); a Limited user's adjustment then needs Pro. Exits are unaffected.
+    active_futures_entry_known: bool | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -192,6 +199,7 @@ class ExecutionContext:
             if isinstance(blocked, str) or not all(isinstance(s, str) for s in blocked):
                 raise ValueError("reconciliation_blocked_strategy_ids must be a collection of strategy id strings")
             object.__setattr__(self, "reconciliation_blocked_strategy_ids", frozenset(blocked))
+        _tristate(self.active_futures_entry_known, "active_futures_entry_known")
         for name in ("active_version_id", "active_legs_hash"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):

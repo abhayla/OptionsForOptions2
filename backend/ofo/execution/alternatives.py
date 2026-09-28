@@ -13,9 +13,9 @@ Q190/Q191; ADR-016 Q44 (never silent substitution).
   the history unchanged. W-012's refusals (reconciliation required, a proposal pending) apply as they are.
 - ``gate_inputs_from_record`` builds the gate's ``active_legs``, ``active_version_id`` and ``active_legs_hash``
   from the record's stored active Version, so a caller never hand-rolls them. Known limit: a stored definition
-  carries no entry prices, so the legs carry entry price 0.00. Options are unaffected (rule 5 already treats option
-  premiums as 0); a FUTURES leg's entry would be compared at 0, so adjustments of strategies with futures legs need
-  the entry price wired by the integration work item before rule 5 is trusted for them.
+  carries no entry prices: option legs carry 0.00 (rule 5 excludes premiums); a futures leg's entry comes from the
+  caller (``futures_entry_prices``) or is marked UNKNOWN (``active_futures_entry_known=False``), and then a
+  Limited user's adjustment needs Pro until it is known.
 """
 from __future__ import annotations
 
@@ -23,7 +23,9 @@ import dataclasses
 import datetime
 from decimal import Decimal
 
-from ofo.engine import Leg, Strategy
+from typing import Mapping
+
+from ofo.engine import Instrument, Leg, Strategy
 from ofo.execution.context import active_legs_hash
 from ofo.execution.safety import CheckCode, CheckFailure
 from ofo.strategy.versions import HistoryEntry, StrategyRecord, Version
@@ -78,17 +80,38 @@ def record_alternative_choice(
     return record.edit(changed, at=at, initiator=actor, reason=reason)
 
 
-def gate_inputs_from_record(record: StrategyRecord, *, strategy_id: str) -> dict[str, object]:
-    """``ExecutionContext`` fields for the active version, read from the stored record (never hand-rolled)."""
+def gate_inputs_from_record(
+    record: StrategyRecord,
+    *,
+    strategy_id: str,
+    futures_entry_prices: Mapping[datetime.date, Decimal] | None = None,
+) -> dict[str, object]:
+    """``ExecutionContext`` fields for the active version, read from the stored record (never hand-rolled).
+
+    Option legs carry entry 0.00 (rule 5 excludes premiums). A futures leg takes its entry price from
+    ``futures_entry_prices`` by expiry; if any is missing, ``active_futures_entry_known`` is False (never 0.00 as
+    if known) and a Limited user's adjustment needs Pro.
+    """
     active = record.active_version
     if active is None:
-        return {"active_legs": None, "active_version_id": None, "active_legs_hash": None}
-    legs = tuple(
-        Leg(d.action, d.instrument, d.strike, d.expiry, d.quantity, _ZERO) for d in active.definition.legs
-    )
+        return {"active_legs": None, "active_version_id": None, "active_legs_hash": None,
+                "active_futures_entry_known": None}
+    prices = dict(futures_entry_prices or {})
+    known = True
+    legs = []
+    for d in active.definition.legs:
+        entry = _ZERO
+        if d.instrument is Instrument.FUT:
+            if d.expiry in prices:
+                entry = prices[d.expiry]
+            else:
+                known = False  # the placeholder entry is never trusted: see active_futures_entry_known
+        legs.append(Leg(d.action, d.instrument, d.strike, d.expiry, d.quantity, entry))
+    legs = tuple(legs)
     version_id = f"v{active.number}"
     return {
         "active_legs": legs,
         "active_version_id": version_id,
         "active_legs_hash": active_legs_hash(strategy_id, version_id, legs),
+        "active_futures_entry_known": known,
     }

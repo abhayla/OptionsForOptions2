@@ -90,6 +90,7 @@ def all_true_context(**overrides: Any) -> ExecutionContext:
     # through so the context's own validation refuses them.
     if active is not None and all(isinstance(leg, Leg) for leg in active):
         overrides.setdefault("active_version_id", ACTIVE_VERSION_ID)
+        overrides.setdefault("active_futures_entry_known", True)  # hand-built legs carry real entries
         overrides.setdefault("active_legs_hash", active_legs_hash(
             overrides.get("strategy_id", STRATEGY_ID), overrides["active_version_id"], active))
     return dataclasses.replace(base, **overrides)

@@ -11,7 +11,7 @@ import pytest
 
 from execution_inputs import AS_OF, EXPIRY, all_true_context, check, closing_orders, find_token
 from ofo.engine import Action, Instrument, Leg, Strategy
-from ofo.execution import CheckCode, ExecutionAction, active_legs_hash
+from ofo.execution import CheckCode, ExecutionAction, VersionState, active_legs_hash
 from ofo.execution.alternatives import gate_inputs_from_record, record_alternative_choice
 from ofo.instruments import EligibilityStatus
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
@@ -141,6 +141,57 @@ def test_only_an_unavailable_contract_report_can_be_answered(condor, catalogue, 
     assert len(rec.history) == 1
 
 
+NEAR = datetime.date(2026, 9, 29)  # real NIFTY future and options expiry in the fixture
+COVERED_CALL = StrategyDefinition("NIFTY", (
+    DefinitionLeg(Action.BUY, Instrument.FUT, None, NEAR, 65),
+    DefinitionLeg(Action.SELL, Instrument.CE, D("23400"), NEAR, 65),
+))
+FUTURES_REASON = "Entry price of a futures leg is not known yet — adjustment needs Pro until it is."
+
+
+def _executed_covered_call() -> StrategyRecord:
+    rec = StrategyRecord(COVERED_CALL, at=AS_OF, clock=lambda: AS_OF + datetime.timedelta(days=1))
+    v1 = rec.propose_execution(at=_at(1))
+    rec.confirm(v1.number, at=_at(2))
+    rec.apply_result(ExecutionResult(v1.number, ResultStatus.COMPLETE,
+                                     Position.of(COVERED_CALL.intended_position()), _at(3), "fill-cc"))
+    return rec
+
+
+CLOSE_SHORT_CE = Strategy((Leg(Action.BUY, Instrument.FUT, None, NEAR, 65, D("23250.00")),))
+
+
+def _adjust(fields: dict[str, object], pro: bool = False):
+    return all_true_context(action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED,
+                            pro_entitled=pro, **fields)
+
+
+def test_unknown_futures_entry_price_needs_pro_for_a_limited_adjustment(catalogue, eligibility):
+    """AC-1 (orchestrator default, fail closed): the stored version has no futures entry price, so a Limited user's
+    adjustment of a strategy with a futures leg needs Pro, with the stated reason; a Pro user passes."""
+    fields = gate_inputs_from_record(_executed_covered_call(), strategy_id="S-1")
+    assert fields["active_futures_entry_known"] is False
+    result = check(CLOSE_SHORT_CE, _adjust(fields), catalogue, eligibility)
+    assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.ENTITLEMENT_REQUIRED, FUTURES_REASON)]
+    assert check(CLOSE_SHORT_CE, _adjust(fields, pro=True), catalogue, eligibility).failures == ()
+
+
+def test_known_futures_entry_price_lets_rule_5_decide(catalogue, eligibility):
+    """AC-1: when the caller supplies the futures entry price, rule 5 applies normally (closing the short call of a
+    covered call is allowed for a Limited user)."""
+    fields = gate_inputs_from_record(_executed_covered_call(), strategy_id="S-1",
+                                     futures_entry_prices={NEAR: D("23250.00")})
+    assert fields["active_futures_entry_known"] is True
+    assert check(CLOSE_SHORT_CE, _adjust(fields), catalogue, eligibility).failures == ()
+
+
+def test_unknown_futures_entry_price_does_not_affect_an_exit(catalogue, eligibility):
+    """AC-1: an exit needs no prices - the reduce-only check passes with the entry unknown."""
+    fields = gate_inputs_from_record(_executed_covered_call(), strategy_id="S-1")
+    ctx = all_true_context(action=ExecutionAction.EXIT, pro_entitled=False, **fields)
+    assert check(Strategy(closing_orders(fields["active_legs"])), ctx, catalogue, eligibility).failures == ()
+
+
 def test_gate_inputs_come_from_the_active_version(catalogue, eligibility):
     """AC-5 / round 2 MAJOR A: the active legs, version id and hash are built from the stored active version, and
     an exit of that version passes the gate."""
@@ -151,5 +202,7 @@ def test_gate_inputs_come_from_the_active_version(catalogue, eligibility):
     ctx = all_true_context(action=ExecutionAction.EXIT, **fields)
     result = check(Strategy(closing_orders(fields["active_legs"])), ctx, catalogue, eligibility)
     assert result.failures == ()
+    assert fields["active_futures_entry_known"] is True  # no futures leg: nothing unknown
     assert gate_inputs_from_record(_record(), strategy_id="S-1") == {
-        "active_legs": None, "active_version_id": None, "active_legs_hash": None}
+        "active_legs": None, "active_version_id": None, "active_legs_hash": None,
+        "active_futures_entry_known": None}
