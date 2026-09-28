@@ -55,7 +55,8 @@ class RuleTriggerRecord:
     timestamp: datetime.datetime
     source: str
     data_health: DataHealth
-    active_version: int
+    active_version: int | None
+    planned_version: int | None
     _token: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -72,7 +73,11 @@ class RuleTriggerRecord:
 
         The active version is read from ``strategy.active_version`` (the StrategyRecord owns the active pointer),
         never taken from a caller-supplied Version: a proposed version is not active until confirmed, executed and
-        reconciled (ADR-019 Q191). A strategy with no active version is refused (AC-3 needs one)."""
+        reconciled (ADR-019 Q191). Before anything has executed there is no active version: an ENTRY rule can fire then
+        (ADR-009 Q17, REQ-041 AC-2; ADR-019 Q202 "entry triggered"), so the record stores ``active_version=None`` and
+        ``planned_version`` = the version the StrategyRecord holds for execution (``proposed_version``, W-012). Neither
+        number is ever taken from the caller. Refused: no active and no planned version (nothing was evaluated against
+        a version), or an exit/adjustment rule with no active version (those rules act on an executed position)."""
         if not isinstance(rule, Rule):
             raise ValueError(f"expected a Rule, got {rule!r}")
         if not isinstance(evaluation, Evaluation):
@@ -96,10 +101,14 @@ class RuleTriggerRecord:
                 raise ValueError(f"missing input {name!r} is not read by rule {rule.rule_id!r}")
         if not isinstance(strategy, StrategyRecord):
             raise ValueError(f"strategy must be the StrategyRecord that owns the active version, got {strategy!r}")
-        active = strategy.active_version
+        active, planned = strategy.active_version, None
         if active is None:
-            raise ValueError("the strategy has no active version; a trigger record needs the active strategy version")
-        version_number = active.number
+            if rule.kind is not RuleKind.ENTRY:
+                raise ValueError(f"a {rule.kind.value} rule acts on an executed position; the strategy has no active "
+                                 "version")
+            planned = strategy.proposed_version
+            if planned is None:
+                raise ValueError("the strategy has no active version and no planned (proposed) version to record")
         return cls(
             rule_id=rule.rule_id,
             rule_text=rule.description,
@@ -110,7 +119,8 @@ class RuleTriggerRecord:
             timestamp=evaluation.as_of,
             source=evaluation.source,
             data_health=evaluation.data_health,
-            active_version=version_number,
+            active_version=None if active is None else active.number,
+            planned_version=None if planned is None else planned.number,
             _token=_FROM_EVALUATION,
         )
 
@@ -130,6 +140,7 @@ class RuleTriggerRecord:
             "source": self.source,
             "data_health": self.data_health.value,
             "active_version": self.active_version,
+            "planned_version": self.planned_version,
         }
 
 

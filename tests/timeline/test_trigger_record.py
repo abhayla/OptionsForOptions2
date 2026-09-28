@@ -13,6 +13,8 @@ import pytest
 
 from ofo.rules import (
     AnyOf,
+    Direction,
+    entry_level_reached,
     Compare,
     DataHealth,
     InputName,
@@ -94,7 +96,7 @@ def test_only_a_real_triggered_evaluation_becomes_a_record():
 
     with pytest.raises(ValueError, match="from_evaluation"):
         RuleTriggerRecord("ml-3000", "Max loss 3000", RuleKind.EXIT, RuleAction.ALERT_ONLY, (), (), CHECKED_AT,
-                          SOURCE, DataHealth.AVAILABLE, 1)
+                          SOURCE, DataHealth.AVAILABLE, 1, None)
     with pytest.raises(ValueError, match="from_evaluation"):
         dataclasses.replace(record(), active_version=2)
     with pytest.raises(ValueError, match="unspecified"):
@@ -234,6 +236,24 @@ def test_active_version_is_read_from_the_strategy_record_never_passed_in():
     with pytest.raises(ValueError, match="StrategyRecord"):
         RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(),
                                           strategy=rec.proposed_version)  # type: ignore[arg-type]
-    fresh = StrategyRecord(rec.definition, at=T0, clock=clock)
-    with pytest.raises(ValueError, match="no active version"):
+    assert r.planned_version is None
+
+
+def test_entry_rule_on_a_never_executed_strategy_records_the_planned_version():
+    """AC-3: an entry condition ("NIFTY reaches 23,000") fires before anything executes (ADR-009 Q17, ADR-019 Q202
+    "entry triggered"): the record has active version none and the planned version 1 read from the StrategyRecord;
+    with nothing planned, or for an exit rule with no active version, the record is refused."""
+    fresh = StrategyRecord(executed_record().definition, at=T0, clock=clock)
+    entry = entry_level_reached("nifty-23000", D("23000"), Direction.AT_OR_BELOW, action=RuleAction.ALERT_ONLY)
+    evaluation = evaluate(entry, snapshot(GOLDEN))  # underlying 22950 is at or below 23000
+    assert evaluation.outcome is Outcome.TRIGGERED
+    with pytest.raises(ValueError, match="no planned"):
+        RuleTriggerRecord.from_evaluation(entry, evaluation, strategy=fresh)
+    planned = fresh.propose_execution(at=T0 + datetime.timedelta(minutes=1))
+    assert fresh.active_version is None and planned.number == 1
+    r = RuleTriggerRecord.from_evaluation(entry, evaluation, strategy=fresh)
+    assert (r.active_version, r.planned_version) == (None, 1)
+    assert ("Active strategy version: none (not yet executed); evaluated against planned version 1."
+            in why_did_this_trigger(r))
+    with pytest.raises(ValueError, match="executed position"):
         RuleTriggerRecord.from_evaluation(MAX_LOSS_RULE, loss_evaluation(), strategy=fresh)

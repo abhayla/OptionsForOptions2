@@ -56,7 +56,7 @@ def test_core_max_loss_trigger_answer_quotes_the_recorded_values():
 
 def _record_numbers(record: RuleTriggerRecord) -> set[str]:
     numbers = {str(o.value) for o in record.observations} | {str(o.threshold) for o in record.observations}
-    numbers.add(str(record.active_version))
+    numbers |= {str(v) for v in (record.active_version, record.planned_version) if v is not None}
     return numbers
 
 

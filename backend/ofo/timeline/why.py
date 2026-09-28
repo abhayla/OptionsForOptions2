@@ -93,7 +93,11 @@ def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowU
         lines.append(_own("Not available when checked: " + ", ".join(INPUT_LABELS[n] for n in record.missing) + "."))
     lines.append(_own("Checked at: {}.", record.timestamp.isoformat()))
     lines.append(_own("Market data: source {}, health {}.", _quoted(record.source), record.data_health.value))
-    lines.append(_own("Active strategy version: {}.", record.active_version))
+    if record.active_version is not None:
+        lines.append(_own("Active strategy version: {}.", record.active_version))
+    else:
+        lines.append(_own("Active strategy version: none (not yet executed); evaluated against planned version {}.",
+                          record.planned_version))
     lines.append(_own(f"The rule's chosen action: {ACTION_WORDS[record.action]}."))
     for kind in FollowUpKind:
         follow_up = recorded.get(kind)
