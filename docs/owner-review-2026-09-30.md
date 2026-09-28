@@ -32,15 +32,34 @@ Everything decided or built while you were away (ADR-045). Each delegated decisi
 | ATM tie | A spot exactly between two strikes rounds up to the higher strike (23,225 at gap 50 → 23,250) when templates pick the at-the-money strike | orchestrator default |
 | Three-valued rule logic | An exit "A OR B" fires when A is proven true even if B's data is missing; AND is false when any branch is proven false; otherwise "cannot evaluate" (REQ-041) | verifier question; spec-conformant (ADR-015) |
 | Audit secrets | The audit log does not filter secrets by field name (that failed twice both ways: blocked Zerodha's `instrument_token`, let `X-Api-Key` and `enctoken` through). Replaced by design with a per-event-type field allowlist (REQ-063 AC-5, work item W-017), **blocked** until real Kite responses exist | independent reviewer + orchestrator |
-| Limited-user adjustments | A Limited user may adjust only if no position grows AND worst-case loss does not get worse (closing only the bought wing of a spread needs Pro — it raises risk) (REQ-059) | builder's risk note; ADR-037 |
+| Limited-user adjustments (SPEC CHANGE) | A Limited user may adjust only if no position grows AND the worst case at expiry, **with option premiums excluded**, does not get worse. Closing only the bought wing of a spread needs Pro (−26,000 → −2,990,000); closing the whole put spread or reducing a short leg is allowed; calendars only full exit / same-share reduction / closing shorts. Replaces the entry-price rule written earlier the same night, which blocked hedged partial exits (REQ-059, ADR-037) | builder found the flaw; independent reviewer's rule 5; joint |
+| Scenario level-set defaults | Minimum default range half-width 1,000 NIFTY / 3,000 SENSEX, plus 2 steps beyond the outermost strike or breakeven; user-range limits; a breakeven outside a user-chosen range still shows in Lower/Upper BE (scenario-calculations §4 "Level-set rules", marked open for your review) | W-003 builder default |
 | Execution gate | Entry/exit run the active version; unknown eligibility blocks; duplicate legs block; a reconciliation mismatch blocks exits too (acting on a wrong position picture could open a naked position; Kite still works) (REQ-059) | builder defaults, reviewed |
 | Wheel template | Dropped: it is a stock-assignment cycle that cannot happen on cash-settled NIFTY/SENSEX options; Cash-Secured Put reworded (no "assignment") | verifier finding (misleading to beginners) |
 
 ## 3. Built overnight
-_(updated as items merge)_
+Every item: builder in its own worktree → independent verifier (fresh context) → evidence files → PR → CI → merge. Tier A items also got adversarial reviews and mutation tests. Standard-library Python only (CI constraint).
+
+| Item | What it is | Result |
+|---|---|---|
+| W-001 (REQ-033) | Calculation engine core: expiry/live P&L for all 6 leg types, exact breakevens, max profit/loss | **Merged** PR #5 — golden Iron Condor exact |
+| W-006 (REQ-053) | Instrument catalogue from Zerodha's public list (lot size, tick, strike gap from data) | **Merged** PR #7 — 3 verification rounds |
+| W-002 (REQ-032) | Engine inputs, Black-Scholes IV/Greeks, money-precision guard, display | **Merged** PR #8 |
+| W-013 (REQ-041) | Rule engine (entry/adjustment/exit), engine net premium, three-valued logic | **Merged** PR #9 |
+| W-010 (REQ-020) | Admin qualifying Client ID list | **Merged** PR #13 — 3 rounds + independent review; 8,571 bad inputs, 0 accepted |
+| W-015 (REQ-064) | Append-only, tamper-evident audit log | **Merged** PR #14 — anchor store and timeline (REQ-040) not built; REQ-064 stays Approved |
+| W-005 (REQ-028) | Parametric strategy templates + matcher | **Merged** PR #15 — redesigned after an independent review; 0 mislabels in ~135k checks |
+| W-003 (REQ-034) | Scenario level set, inserted current/breakeven columns, two views | **Merged** PR #16 |
+| W-007 (REQ-017) | Entitlement engine | **PARKED** — issue #12 (3rd red of one defect class; recommendation inside) |
+| W-008, W-009, W-011 | Trial/Limited access, referrals, complimentary Pro | Blocked by W-007 |
+| W-017 (REQ-063) | Audit payload allowlist | Blocked: needs real Kite responses |
+| W-014, W-004, W-012, W-016 | Pre-execution gate, strategy table, versions, builder history | In progress at time of writing (see the final update below) |
+
+Issues filed: deferred #10 (small verifier findings), parked #12; kit harvest Startup-Factory #39, #40.
 
 ## 4. Still open (for you)
 - Q204, Q205 — shared vs per-user Zerodha feed; monitoring while the daily session is expired. Depend on Zerodha's answer.
 - Q211 — legal/compliance review before advice-like features, billing and data display go live.
 - Q212 — the YouTube adjustment video transcript (you said you'd provide it).
+- W-007 (entitlement engine) is parked, issue #12 — decide the recommended fix (separate "validate a new event" from "load stored history"; bound future-dated status changes).
 - The state-machine transition table in `spec/data/domain-model.md` §6 is still a proposal for your review.
