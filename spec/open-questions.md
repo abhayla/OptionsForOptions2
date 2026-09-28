@@ -38,13 +38,17 @@ party) · **DECIDED → ADR-###**.
   **Sample · Not Live** chain (as Q92 already allows) for learning.
 - Spec basis: ADR-020 (Q185–Q188), ADR-023 (Q92).
 
-## Q207 — OPEN — Futures leg payoff formula
+## Q207 — DECIDED → ADR-041 (owner, 2026-09-29: A) — Futures leg payoff formula
 - Futures Buy/Sell are V1 legs (Q8); the locked formulas cover options only.
 - **Recommended:** BUY FUT `(Market − Entry) × Qty`, SELL FUT `(Entry − Market) × Qty` (expiry), with LTP for live.
 - Spec basis: ADR-008, `spec/business-rules/scenario-calculations.md` §1.
 
-## Q208 — OPEN — Scenario and range step for SENSEX
+## Q208 — DECIDED → ADR-042 (owner, 2026-09-29: A) — Scenario and range step for SENSEX
 - All 100-point steps (Q33, Q108) were discussed on NIFTY; SENSEX trades roughly 3× higher (not re-measured today).
+- **Measured 2026-09-29** from Zerodha's public instrument list (api.kite.trade/instruments): NIFTY (NFO) strike gap
+  **50** points (128 of 137 gaps), lot size **65**; SENSEX (BFO) strike gap **100** points (151 of 151), lot size **20**;
+  nearest expiries 2026-09-29 (NIFTY) and 2026-10-01 (SENSEX). Worked examples in the spec that use quantity 75 are
+  illustrative only; the real lot size always comes from the instrument master (ADR-007 Q36).
 - **Recommended:** step per underlying as configuration; pick SENSEX's after checking its real strike spacing.
 - Spec basis: ADR-005 (Q108), ADR-008 (Q33C).
 
@@ -133,3 +137,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q220 — DECIDED → ADR-040 — Which system sends the WhatsApp OTP? (audit item C-19)
 - Owner, 2026-09-29: **A** — shared Notifier gateway, Wati AUTHENTICATION template, stand-in sender in dev/test.
 - Spec basis: ADR-021 (Q72), REQ-012 AC-2/AC-4.
+
+## Q221 — DECIDED → ADR-043 — Tech stack
+- Owner, 2026-09-29: **A** — Python 3.12+ / FastAPI, PostgreSQL, Redis, Vue 3 + Vite; legacy code may be copied with
+  provenance (`spec/technical-design/legacy-reuse.md`).
+- Spec basis: none before this (the spec had no stack decision); hard rules ADR-008, ADR-012, ADR-029.

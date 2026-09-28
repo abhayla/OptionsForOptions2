@@ -14,8 +14,8 @@ calculation engine.
 | SELL CALL | `[Entry Price − MAX(Market − Strike, 0)] × Quantity` |
 | BUY PUT | `[MAX(Strike − Market, 0) − Entry Price] × Quantity` |
 | SELL PUT | `[Entry Price − MAX(Strike − Market, 0)] × Quantity` |
-| BUY FUTURES | **not decided** — proposed `(Market − Entry Price) × Quantity` (open question Q207) |
-| SELL FUTURES | **not decided** — proposed `(Entry Price − Market) × Quantity` (open question Q207) |
+| BUY FUTURES | `(Market − Entry Price) × Quantity` (Q207 = A, owner 2026-09-29, ADR-041) |
+| SELL FUTURES | `(Entry Price − Market) × Quantity` (Q207 = A, owner 2026-09-29, ADR-041) |
 
 - Strategy scenario P&L at a level = the sum of every leg's P&L at that level.
 - Expiry scenarios use the **entry price**, never the current LTP. The LTP is used only in the live (current) P&L
@@ -27,7 +27,8 @@ calculation engine.
 
 ## 2. Live (current) P&L (T1 #85)
 
-- Per leg: BUY `(LTP − Entry Price) × Quantity`; SELL `(Entry Price − LTP) × Quantity`.
+- Per leg: BUY `(LTP − Entry Price) × Quantity`; SELL `(Entry Price − LTP) × Quantity`. Applies to option and
+  futures legs alike (for a futures leg, LTP is the futures contract's LTP; ADR-041).
 - First-class live fields: Entry Price, LTP, Entry Value, Current Value, Unrealized P&L, P&L %.
 - Whether LTP, bid/ask mid or another price is used for live estimates, slippage and charges: open (§95).
 
@@ -39,7 +40,9 @@ calculation engine.
 
 ## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 
-- Scenario columns are ~100 points apart for NIFTY, anchored to **rounded 100-point index levels** (Q33C). Index
+- Scenario column step is set **per index in Admin**: default **NIFTY 100 points**, **SENSEX 300 points**; every
+  column sits on a real strike level (a multiple of the index's strike gap: NIFTY 50, SENSEX 100, measured
+  2026-09-29) (Q208 = A, ADR-042). NIFTY columns are anchored to **rounded 100-point index levels** (Q33C). Index
   levels are **points**, not money: ₹ is used only for money values (premiums, P&L, margin); ChatGPT's option text
   "Rounded ₹100 level" (T1 #114) meant index points.
 - The default range is chosen from spot, strikes, breakevens, risk boundaries and expected move; the user can
