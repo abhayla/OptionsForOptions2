@@ -11,7 +11,7 @@ absolute instants, so any aware datetime works.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 
@@ -26,7 +26,7 @@ class Source(Enum):
 
 
 class Status(Enum):
-    """Recorded status of an entitlement. Natural expiry is derived from ``expiry``, not recorded."""
+    """Recorded status of an entitlement. Natural expiry is derived by the engine, not recorded."""
 
     ACTIVE = "active"
     REVOKED = "revoked"
@@ -66,40 +66,56 @@ class Audit:
         _require_text("reason", self.reason)
 
 
+class Placement(Enum):
+    """Where a time-limited grant's days go on the timeline (ADR-023 evaluation rules 2 and 5).
+
+    STACKED: laid end to end after the Pro already granted, in grant order (the default).
+    FROM_GRANT_TIME: a referral with the admin's stacking setting switched off (ADR-025 Q63);
+    it runs from its grant time and may overlap other Pro.
+    """
+
+    STACKED = "stacked"
+    FROM_GRANT_TIME = "from_grant_time"
+
+
 @dataclass(frozen=True)
 class EntitlementGrant:
-    """One entitlement: Pro from ``start`` (inclusive) to ``expiry`` (exclusive).
+    """One entitlement as granted: the grant time and HOW MUCH Pro, not fixed dates.
 
-    ``expiry`` is ``None`` only for a Direct Zerodha Customer (ADR-024: free Pro, expiry none).
+    ``duration`` is ``None`` only for a Direct Zerodha Customer (ADR-024: free Pro, expiry none),
+    whose Pro is open-ended from ``granted_at``. For every other source the actual start and expiry
+    are computed when access is evaluated (ADR-023 rule 5), so a revocation earlier in the
+    sequence pulls later periods forward; see ``ofo.entitlements.engine.resolve``.
     """
 
     entitlement_id: str
     source: Source
-    start: datetime
-    expiry: datetime | None
+    granted_at: datetime
+    duration: timedelta | None
     reference: str
     audit: Audit
+    placement: Placement = Placement.STACKED
 
     def __post_init__(self) -> None:
         _require_text("entitlement_id", self.entitlement_id)
         if not isinstance(self.source, Source):
             raise ValueError(f"source must be a Source, got {self.source!r}")
-        _require_aware("start", self.start)
+        _require_aware("granted_at", self.granted_at)
         _require_text("reference", self.reference)
         if not isinstance(self.audit, Audit):
             raise ValueError("audit must be an Audit record")
-        if self.expiry is None:
+        if not isinstance(self.placement, Placement):
+            raise ValueError(f"placement must be a Placement, got {self.placement!r}")
+        if self.placement is Placement.FROM_GRANT_TIME and self.source is not Source.REFERRAL:
+            raise ValueError("only a referral can run from its grant time (stacking switched off)")
+        if self.duration is None:
             if self.source is not Source.DIRECT_ZERODHA_CUSTOMER:
-                raise ValueError(f"{self.source.value} entitlement needs an expiry; only direct customers have none")
+                raise ValueError(f"{self.source.value} entitlement needs a duration; only direct customers have none")
             return
-        _require_aware("expiry", self.expiry)
-        if self.expiry <= self.start:
-            raise ValueError(f"expiry {self.expiry.isoformat()} must be after start {self.start.isoformat()}")
-
-    @property
-    def status(self) -> Status:
-        """A grant is recorded ACTIVE; a later status-change event changes the resolved status."""
-        return Status.ACTIVE
+        if self.source is Source.DIRECT_ZERODHA_CUSTOMER:
+            raise ValueError("a direct customer entitlement is open-ended; it takes no duration")
+        if not isinstance(self.duration, timedelta) or self.duration <= timedelta(0):
+            raise ValueError(f"duration must be a positive timedelta, got {self.duration!r}")
 
 
 @dataclass(frozen=True)

@@ -1,9 +1,9 @@
 """Mutation tests: flipping each access guard makes the real test suite fail (W-007, Tier A).
 
 Each test replaces ONE guard in ``ofo.entitlements.engine`` with a wrong version (via monkeypatch),
-then runs the real tests from ``test_engine`` that protect it and asserts they now FAIL. It also runs
-them un-mutated first, so a pass here means "this test detects exactly this mutation", not "this test
-was already broken".
+then runs the real tests from ``test_engine`` that protect it and asserts they now FAIL. It runs them
+un-mutated first, so a pass here means "this test detects exactly this mutation", not "this test was
+already broken".
 """
 
 from collections.abc import Callable
@@ -11,7 +11,7 @@ from collections.abc import Callable
 import pytest
 
 from ofo.entitlements import engine
-from ofo.entitlements.events import Status
+from ofo.entitlements.events import Placement, Status
 
 from . import test_engine as suite
 
@@ -47,51 +47,66 @@ def test_interval_start_made_exclusive_is_caught(monkeypatch):
 
 
 def test_stacking_removed_is_caught(monkeypatch):
-    """AC-4: a referral that ignores the current Pro end (20 Sep -> 20 Oct instead of 10 Oct -> 9 Nov) must fail."""
-    _passes_then_fails_under(monkeypatch, "_stacked_start", lambda granted_at, current_end, stacking: granted_at, [
+    """AC-4 rule 2: a period that ignores the current Pro end (overlapping it) must fail."""
+    _passes_then_fails_under(monkeypatch, "_chain_start", lambda granted_at, cursor: granted_at, [
         suite.test_stacked_referral_real_example_pro_until_10_oct_plus_referral_on_20_sep_is_9_nov,
         suite.test_three_stacked_referrals_add_ninety_days,
+        suite.test_rule2_paid_bought_during_trial_starts_when_the_trial_ends,
     ])
 
 
 def test_stacking_switch_ignored_is_caught(monkeypatch):
-    """AC-4: stacking that stays on when the admin switches it off must fail."""
-    _passes_then_fails_under(
-        monkeypatch, "_stacked_start", lambda granted_at, current_end, stacking: max(granted_at, current_end),
-        [suite.test_stacking_off_starts_the_referral_at_its_grant_time],
-    )
+    """AC-4: a referral that stays stacked when the admin switches stacking off must fail."""
+    _passes_then_fails_under(monkeypatch, "_placement", lambda stacking: Placement.STACKED, [
+        suite.test_stacking_off_runs_the_referral_from_its_grant_time_and_may_overlap,
+    ])
 
 
-def test_coverage_chaining_removed_is_caught(monkeypatch):
-    """AC-4: stacking on only the first covering entitlement (not the whole unbroken run) must fail at 3 referrals."""
-    def one_step(ledger, at):
-        ends = [r.end for r in engine.resolve(ledger) if r.end is not None and engine._covers(r.grant.start, r.end, at)]
-        return max(ends) if ends else at
+def test_sequencing_fixed_at_natural_end_leaves_a_gap_and_is_caught(monkeypatch):
+    """AC-4 rule 5: continuing the chain from where a revoked period WOULD have ended opens a Limited gap; must fail."""
+    def from_natural_end(previous, natural, kept):
+        return natural[-1][1] if natural else previous
 
-    _passes_then_fails_under(monkeypatch, "finite_pro_end", one_step, [
-        suite.test_three_stacked_referrals_add_ninety_days,
+    _passes_then_fails_under(monkeypatch, "_next_cursor", from_natural_end, [
+        suite.test_rule5_revoking_paid_pulls_the_stacked_referral_forward,
+        suite.test_rule5_adr039_trial_end_pulls_a_queued_paid_period_forward,
+    ])
+
+
+def test_banked_days_consumed_during_direct_pro_is_caught(monkeypatch):
+    """AC-4 rule 3: referral days that run down during Direct Customer Pro (instead of being banked) must fail."""
+    original = engine._consume
+
+    def ignore_open_ended(start, duration, open_ended):
+        return original(start, duration, [])
+
+    _passes_then_fails_under(monkeypatch, "_consume", ignore_open_ended, [
+        suite.test_rule3_referral_days_are_banked_during_direct_pro_and_start_when_it_ends,
+        suite.test_rule3_a_running_referral_pauses_while_direct_pro_is_in_force,
     ])
 
 
 def _ignoring(status: Status):
-    original = engine._effective_end
+    original = engine._truncate
 
-    def mutant(grant, change):
-        return original(grant, None if change is not None and change.status is status else change)
+    def mutant(segments, banked, change):
+        return original(segments, banked, None if change is not None and change.status is status else change)
 
     return mutant
 
 
 def test_revocation_ignored_is_caught(monkeypatch):
     """AC-4: a revocation that does not cut access must fail."""
-    _passes_then_fails_under(monkeypatch, "_effective_end", _ignoring(Status.REVOKED), [
+    _passes_then_fails_under(monkeypatch, "_truncate", _ignoring(Status.REVOKED), [
         suite.test_revocation_is_a_new_audited_event_and_cuts_access_at_its_instant,
-        suite.test_revoking_the_base_entitlement_does_not_move_a_stacked_referral_end_date,
+        suite.test_rule5_revoking_paid_pulls_the_stacked_referral_forward,
+        suite.test_rule3_referral_days_are_banked_during_direct_pro_and_start_when_it_ends,
     ])
 
 
 def test_trial_early_end_ignored_is_caught(monkeypatch):
     """AC-4: an ADR-039 early trial end that does not cut access must fail."""
-    _passes_then_fails_under(monkeypatch, "_effective_end", _ignoring(Status.ENDED), [
+    _passes_then_fails_under(monkeypatch, "_truncate", _ignoring(Status.ENDED), [
         suite.test_trial_is_ended_early_when_an_already_trialled_client_id_is_connected,
+        suite.test_rule5_adr039_trial_end_pulls_a_queued_paid_period_forward,
     ])

@@ -9,6 +9,7 @@ import ast
 import dataclasses
 import inspect
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -85,7 +86,7 @@ def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliat
     """AC-5: the three REQ-017 scenarios resolve from entitlement events alone, and Access carries no such state."""
     registered = ist(2026, 9, 29, 10)
     pro_user = EntitlementLedger("u-pro").append(
-        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), ist(2026, 10, 1), "pay", audit(ist(2026, 9, 1)))
+        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1)))
     )
     trial_user = EntitlementLedger("u-trial").append(trial_grant("t", registered, "reg", audit(registered)))
 
@@ -100,7 +101,7 @@ def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliat
 def test_user_id_does_not_change_access():
     """AC-5: the same events under a different user id (identity) give the same access at every instant."""
     events = (
-        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), ist(2026, 10, 1), "pay", audit(ist(2026, 9, 1))),
+        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1))),
     )
     a, b = EntitlementLedger("user-a", events), EntitlementLedger("user-b", events)
     for at in (ist(2026, 8, 31), ist(2026, 9, 1), ist(2026, 9, 30, 23, 59, 59), ist(2026, 10, 1)):
