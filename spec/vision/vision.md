@@ -1,6 +1,7 @@
 # Vision
 
-Decisions: ADR-001, ADR-002, ADR-003, ADR-004. Sources: all five files in `docs/reference/chatgpt/`.
+Decisions: ADR-001, ADR-002, ADR-003, ADR-004. Sources: the owner's first message (T1 #1) and the full chats in
+`docs/reference/chatgpt/`.
 
 **Core promise:** *Plan the trade. Follow the strategy. Then execute.*
 **Principle:** *You can change your strategy, but you cannot bypass the strategy.*
@@ -8,12 +9,13 @@ Decisions: ADR-001, ADR-002, ADR-003, ADR-004. Sources: all five files in `docs/
 
 ## What it is
 A public SaaS web platform for Indian index options and futures (V1: NIFTY on NSE, SENSEX on BSE; Zerodha only).
-It makes strategy-based trading, especially option selling, easy for beginners and useful for intermediate and
-advanced traders. Users build a strategy, see what can happen to their money at every market level before they
+It makes strategy-based trading, especially **option selling**, easy for anyone with basic option-selling knowledge
+("without any hand-holding", T1 #1) and useful for intermediate and advanced traders. Users build a strategy, see what can happen to their money at every market level before they
 trade, execute it through their own Zerodha account, and have it monitored against their own rules.
 
 ## Why
-Impulsive, unplanned trades are the problem it addresses. The product enforces strategy context, risk visibility,
+Impulsive, unplanned trades are the problem it addresses. The owner sees "no unrestricted orders" as the headline
+feature that builds user confidence (T1 #73). The product enforces strategy context, risk visibility,
 predefined conditions and controlled execution. It does not promise returns or that losses will be smaller.
 
 ## Who

@@ -9,18 +9,18 @@ strategies, see the outcome at every market level, then execute through their ow
 strategy monitored against their rules (`spec/vision/vision.md`). Built on the Startup-Factory kit (version in
 `KIT_VERSION`); the kit's rules in `.claude/rules/kit/` always apply.
 
-**Current state:** spec imported from the owner's ChatGPT handoffs (31 ADRs); no product code, no `tests/`.
-Open conflicts/gaps are in `spec/open-questions.md` (next: Q204). Do not write requirements or code before the ADRs
+**Current state:** spec built from the owner's two full ChatGPT chats (32 ADRs, 71 requirements, every Q1–Q203 in
+`spec/traceability/question-register.md`); no product code, no `tests/`. Open items: `spec/open-questions.md`. Do not write requirements or code before the ADRs
 they rest on exist, and prove the Zerodha core first (`docs/HANDOVER.md` NEXT).
 
 ## Read first
 1. `spec/decisions/ADR-*.md` — the owner's decisions. They win over everything else. Each carries the Q-numbers and
-   `provenance:` (owner-locked vs ChatGPT-reconstructed).
+   `provenance:` (owner answer vs ChatGPT answer under the owner's delegation), with chat message numbers.
 2. `docs/HANDOVER.md` — where the work stands and the next step.
 3. `spec/open-questions.md` — undecided items; never decide one silently. New questions are numbered Q204+.
 4. `knowledge/findings/` — proven failure classes; check before designing a mechanism.
-- `docs/reference/chatgpt/` holds the original handoffs, byte-for-byte. Reference only: never edit or delete them;
-  `spec/` wins on any conflict (ADR-031). Section map: `spec/traceability/source-map.md`.
+- `docs/reference/chatgpt/` holds the two full chat transcripts (primary) and the handoff files (lossy summaries).
+  Reference only: never edit or delete them; `spec/` wins on any conflict (ADR-031). Map: `spec/traceability/source-map.md`.
 
 ## How the repo fits together
 The repo is a traceability chain, checked by `tools/` and CI, not a code layout:

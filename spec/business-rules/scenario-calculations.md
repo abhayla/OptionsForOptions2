@@ -1,10 +1,10 @@
 # Scenario and P&L calculations
 
-Decisions: ADR-008 (Q114–Q123), ADR-001 (leg types). Sources: comprehensive handoff §21–§25; 15 Sep handoff
-§29–§33. These rules are locked; code must match them exactly and must not duplicate them outside the one
+Decisions: ADR-008 (Q15, Q33, Q33A–Q33D), ADR-001 (leg types). Sources: full chat T1 #83–#118 (the owner derived
+the formulas, #95–#98); handoffs §21–§25. These rules are locked; code must match them exactly and must not duplicate them outside the one
 calculation engine.
 
-## 1. Expiry scenario P&L per leg (locked, Q116)
+## 1. Expiry scenario P&L per leg (locked; owner, T1 #95–#98)
 
 `Market` = the scenario underlying level at expiry. `Quantity` = units (lots × lot size), never lots.
 
@@ -19,9 +19,9 @@ calculation engine.
 
 - Strategy scenario P&L at a level = the sum of every leg's P&L at that level.
 - Expiry scenarios use the **entry price**, never the current LTP.
-- Every cell is filled for every leg, including out-of-the-money legs (Q119). No blanks.
+- Every cell is filled for every leg, including out-of-the-money legs (owner, T1 #93, #95). No blanks.
 
-## 2. Live (current) P&L (Q117, Q122)
+## 2. Live (current) P&L (T1 #85)
 
 - Per leg: BUY `(LTP − Entry Price) × Quantity`; SELL `(Entry Price − LTP) × Quantity`.
 - First-class live fields: Entry Price, LTP, Entry Value, Current Value, Unrealized P&L, P&L %.
@@ -29,23 +29,26 @@ calculation engine.
 
 ## 3. Strategy-level values
 
-- Net premium, max profit, max loss and breakevens are **strategy-level** (Q121); legs carry no breakeven.
+- Net premium, max profit, max loss and breakevens are **strategy-level** (T1 #98); legs carry no breakeven.
 - Max profit/loss and breakevens are computed from the payoff, never typed or hard-coded.
 - Payoff graph and scenario table use the same engine (§22).
 
-## 4. Scenario levels (Q120)
+## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 
-- Centred on the current underlying level, current level highlighted.
-- Default step ~100 points for NIFTY, with ~1,000–2,000 points of useful range. Configurable.
-- **Open:** SENSEX step (Q208); anchoring to exact spot vs a rounded centre (15 Sep §37 item 3); whether
-  columns show expiry P&L, estimated current P&L or both (Q33A). Until Q33A is answered, scenario columns show
-  expiry P&L only.
+- Scenario columns are ~100 points apart for NIFTY, anchored to **rounded ₹100 levels** (Q33C).
+- The default range is chosen from spot, strikes, breakevens, risk boundaries and expected move; the user can
+  customise it (Q33B = E). Example: NIFTY 23,000 → 22,000 … 24,000.
+- The **exact live level (CURRENT)** and the **0-P&L / breakeven levels** are added as extra columns **at their actual
+  price position**, e.g. `22,900 | 22,909 0-P&L | 23,000 | 23,047 CURRENT | 23,100 …` (Q33C, Q33D = C).
+- Two views of the same columns (Q33A = C): **At Expiry** (default; the formulas in §1) and **Estimated Now**
+  (model-based value before expiry using time and IV; labelled as an estimate; model not yet specified).
+- Open: SENSEX step (Q208); whether Lower/Upper BE summary columns stay after the grid as well (Q213).
 
 ## 5. Money precision
 
 Use exact decimal arithmetic (or integer paise) for all money. Measured 2026-09-28: plain binary floating point
 gives `-322.4999999999998` for the Iron Condor's leg 1, which must be `-322.50`. Show values rounded to paise; avoid
-false precision for estimates (§21).
+false precision for estimates (Q15, e.g. "~73%" not "73.48291%").
 
 ## 6. Golden test: the handoffs' Iron Condor (verified 2026-09-28)
 
