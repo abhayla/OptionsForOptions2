@@ -1,18 +1,24 @@
 """Append-only audit log: hash-chained events, no update or delete API.
 
+This module does NOT filter secrets out of event payloads — see the ``models`` module docstring.
+Callers must pass only the fields their event type needs; per-event-type field allowlisting is
+REQ-063 AC-5, a separate, future work item, blocked until real Kite response fixtures are
+available to prove the allowlist against.
+
 Out of scope for W-015: the domain-model "timeline" records referenced alongside audit records in
-REQ-064 AC-2 ("Audit and timeline records are append-only") are a separate, user-facing feature
-(e.g. a strategy's activity timeline) and are not built here. This module only provides the audit
-log itself.
+REQ-064 AC-2 ("Audit and timeline records are append-only") are REQ-040, a separate, user-facing
+feature (e.g. a strategy's activity timeline), and are not built here. This module only provides
+the audit log itself.
 
 On truncation (REQ-064 fix round, class: "tamper evidence that lives only inside the data it
 protects"): a hash chain proves that every event PRESENT still links correctly to the one before
 it, but it cannot prove anything about events that are no longer present — deleting the tail (or
-all events) still leaves the remaining prefix perfectly self-consistent. Detecting that requires an
-external anchor (:class:`HeadAnchor`: event count + hash of the last event) recorded somewhere the
-attacker who can truncate the event store cannot also silently rewrite — e.g. a separate database
-table, an append-only file, or a checkpoint signed with a key the application does not hold. This
-module does not implement that separate store; it only provides the anchor value to persist
+all events) still leaves the remaining prefix perfectly self-consistent. Detecting that REQUIRES an
+external anchor (:class:`HeadAnchor`: event count + hash of the last event) stored SEPARATELY from
+the event store itself — e.g. a separate database table, an append-only file, or a checkpoint
+signed with a key the application does not hold — because an anchor stored alongside the events it
+protects can be truncated along with them, and would no longer detect anything. This module does
+not implement that separate store; it only provides the anchor value to persist
 (:meth:`AuditLog.head`) and the check against it (:meth:`AuditLog.verify` with ``expected_head``).
 """
 from __future__ import annotations

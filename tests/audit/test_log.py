@@ -150,57 +150,31 @@ def test_payload_must_be_json_serialisable() -> None:
         )
 
 
-def test_secret_looking_payload_keys_are_rejected() -> None:
-    """AC-2: payload keys that look like secrets are rejected, never logged.
-
-    "user_token" is deliberately not in this list (fix round: word-based matching only rejects a
-    "<prefix>_token" pair when the prefix is one of access/refresh/request/session/auth/api/
-    bearer/id — see test_catalogue... word-based guard tests below for the discriminating cases).
-    """
-    log = AuditLog()
-    for bad_key in ("password", "Password", "api_key", "API-KEY", "secret_token", "access_token"):
-        with pytest.raises(PayloadValidationError):
-            log.append(
-                EventType.SECURITY_EVENT_RECORDED,
-                actor="user-1",
-                timestamp=BASE_TIME,
-                correlation_id="corr-1",
-                payload={bad_key: "value"},
-            )
-
-
-def test_secret_looking_key_nested_in_payload_is_rejected() -> None:
-    """AC-2: the secret-key guard checks nested dicts and lists, not only the top level."""
-    log = AuditLog()
-    with pytest.raises(PayloadValidationError):
-        log.append(
-            EventType.SECURITY_EVENT_RECORDED,
-            actor="user-1",
-            timestamp=BASE_TIME,
-            correlation_id="corr-1",
-            payload={"details": {"nested": {"api_key": "sk-123"}}},
-        )
-    with pytest.raises(PayloadValidationError):
-        log.append(
-            EventType.SECURITY_EVENT_RECORDED,
-            actor="user-1",
-            timestamp=BASE_TIME,
-            correlation_id="corr-1",
-            payload={"items": [{"access_token": "abc"}]},
-        )
-
-
 def test_ordinary_payload_keys_are_accepted() -> None:
-    """AC-2: payload keys that merely contain safe substrings are not falsely rejected."""
+    """AC-2: this module does not filter secrets — see models.py docstring; REQ-063 AC-5 owns
+    per-event-type field allowlisting as separate, future work. Ordinary keys, including ones an
+    earlier (now-removed) name-based guard would have flagged, are accepted unchanged."""
     log = AuditLog()
     event = log.append(
         EventType.STRATEGY_CHANGED,
         actor="user-1",
         timestamp=BASE_TIME,
         correlation_id="corr-1",
-        payload={"strategy_id": "S-1", "amount": "1000.00", "note": "rebalanced"},
+        payload={
+            "strategy_id": "S-1",
+            "amount": "1000.00",
+            "note": "rebalanced",
+            # These key names would have been rejected by the now-removed name-based guard; this
+            # module stores whatever the caller passes, unfiltered.
+            "password": "not-actually-filtered-here",
+            "api_key": "not-actually-filtered-here",
+            "session_token": "not-actually-filtered-here",
+        },
     )
     assert event.payload["strategy_id"] == "S-1"
+    assert event.payload["password"] == "not-actually-filtered-here"
+    assert event.payload["api_key"] == "not-actually-filtered-here"
+    assert event.payload["session_token"] == "not-actually-filtered-here"
 
 
 def test_own_hash_matches_manual_recomputation() -> None:
@@ -372,46 +346,60 @@ def test_aware_datetime_nested_in_payload_is_accepted_and_hashed_as_utc() -> Non
     assert hash_with_aware == hash_with_utc_equivalent  # same instant -> same UTC ISO string
 
 
-# --- Expanded secret-key guard ---------------------------------------------------------------
+# --- Reserved "$" keys (type-tag disambiguation, not a secret guard) ------------------------
 
 
-def test_expanded_secret_key_markers_are_rejected() -> None:
-    """"session" and "session_id" are deliberately NOT in this list (fix round: word-based
-    matching only rejects bare "session" as part of a "session_token" pair, not standalone — a
-    standalone "session"/"session_id" is a normal, auditable field, e.g. a Zerodha session id)."""
-    bad_keys = (
-        "passwd",
-        "pwd",
-        "credential",
-        "credentials",
-        "PIN",
-        "pin_code",
-        "otp",
-        "otp_code",
-        "private_key",
-        "PrivateKey",
-        "session_token",
-        "session-token",
-    )
-    for bad_key in bad_keys:
-        log = AuditLog()
-        with pytest.raises(PayloadValidationError):
-            log.append(
-                EventType.SECURITY_EVENT_RECORDED,
-                actor="user-1",
-                timestamp=BASE_TIME,
-                correlation_id="corr-1",
-                payload={bad_key: "value"},
-            )
-
-
-def test_expanded_secret_key_markers_rejected_when_nested() -> None:
+def test_dollar_prefixed_key_is_rejected_top_level() -> None:
+    """"$"-prefixed keys are reserved for this module's own internal type tags (Decimal/datetime),
+    not a secret guard — see models.py docstring."""
     log = AuditLog()
     with pytest.raises(PayloadValidationError):
         log.append(
-            EventType.SECURITY_EVENT_RECORDED,
+            EventType.ORDER_PREPARED,
             actor="user-1",
             timestamp=BASE_TIME,
             correlation_id="corr-1",
-            payload={"auth": {"otp_code": "123456"}},
+            payload={"$decimal": "1365.00"},
         )
+
+
+def test_dollar_prefixed_key_is_rejected_nested() -> None:
+    log = AuditLog()
+    with pytest.raises(PayloadValidationError):
+        log.append(
+            EventType.ORDER_PREPARED,
+            actor="user-1",
+            timestamp=BASE_TIME,
+            correlation_id="corr-1",
+            payload={"details": {"$datetime": "2026-01-01T00:00:00+00:00"}},
+        )
+
+
+# --- Round 3: a real Kite-order-like payload is stored unchanged and verifies -----------------
+
+
+def test_kite_order_like_payload_is_stored_unchanged_and_verifies() -> None:
+    """REQ-064 stays exactly what its ACs ask for: an append-only, hash-chained audit log with no
+    secret filtering. A raw Kite-style broker-response payload (REQ-064 AC-1: "broker responses")
+    is stored exactly as passed, and the chain verifies."""
+    kite_order_payload = {
+        "instrument_token": 256265,
+        "exchange_token": 1001,
+        "order_id": "231020000000001",
+        "tradingsymbol": "NIFTY24JAN25000CE",
+        "session_expires_at": "2026-01-01T15:30:00+05:30",
+    }
+    log = AuditLog()
+    event = log.append(
+        EventType.BROKER_RESPONSE_RECORDED,
+        actor="system",
+        timestamp=BASE_TIME,
+        correlation_id="corr-1",
+        payload=kite_order_payload,
+    )
+    assert event.payload["instrument_token"] == 256265
+    assert event.payload["exchange_token"] == 1001
+    assert event.payload["order_id"] == "231020000000001"
+    assert event.payload["tradingsymbol"] == "NIFTY24JAN25000CE"
+    assert event.payload["session_expires_at"] == "2026-01-01T15:30:00+05:30"
+    assert log.verify().ok is True

@@ -1,9 +1,16 @@
-"""Audit event model: structured payload, actor, time, correlation id, and a tamper-evident hash."""
+"""Audit event model: structured payload, actor, time, correlation id, and a tamper-evident hash.
+
+This module does NOT filter secrets out of payloads (REQ-064 round 3, orchestrator + independent
+reviewer decision under ADR-045: secret filtering is not one of REQ-064's acceptance criteria — it
+was added by an earlier build brief, is a separate concern, and is removed here). Callers are
+responsible for passing only the fields their event type needs. Per-event-type field allowlisting
+belongs to REQ-063 AC-5 (a separate, future work item, blocked until real Kite response fixtures
+are available to prove the allowlist against).
+"""
 from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -15,85 +22,25 @@ from ofo.audit.catalogue import EventType
 #: Hash used as the "previous hash" of the first event in a chain (64 zero hex digits).
 GENESIS_HASH = "0" * 64
 
-#: Whole words that make a key a secret wherever they appear (REQ-064 fix round, class: a guard
-#: written as substring matching both over-blocks required data — "session_expires_at" or
-#: "instrument_token" contain "session"/"token" as substrings — and under-blocks real secrets
-#: whose word doesn't happen to be a configured substring). Matched as a WHOLE WORD after
-#: splitting the key (see ``_split_words``), never as a substring: "pin" no longer matches
-#: "shipping", and "session" alone no longer matches "session_expires_at".
-_SECRET_WORD_MARKERS = frozenset(
-    {
-        "password",
-        "passwd",
-        "pwd",
-        "secret",
-        "credential",
-        "credentials",
-        "authorization",
-        "cookie",
-        "bearer",
-        "jwt",
-        "otp",
-        "pin",
-        "signature",
-    }
-)
-
-#: A key ending in one of these words immediately followed by the word "token" is a secret
-#: (access_token, refresh_token, request_token, session_token, auth_token, api_token,
-#: bearer_token, id_token). "instrument_token" and "exchange_token" are NOT caught here because
-#: "instrument"/"exchange" are not in this set — REQ-064 AC-1 requires auditing broker responses,
-#: which carry exactly those two Kite-style field names.
-_TOKEN_PAIR_PREFIX_MARKERS = frozenset(
-    {"access", "refresh", "request", "session", "auth", "api", "bearer", "id"}
-)
-
-#: A key whose words, joined together, equal one of these exactly (api_key, apikey, private_key,
-#: client_secret) is a secret regardless of separator style.
-_EXACT_FORBIDDEN_JOINED_WORDS = frozenset({"apikey", "privatekey", "clientsecret"})
-
 #: Prefix reserved for this module's own internal type tags (see ``_json_default``): a caller's
 #: payload may never use a key starting with "$", at any depth, so a tagged internal value (e.g.
 #: ``{"$decimal": "1365.00"}``) can never collide with — and hash identically to — a caller-
 #: supplied dict that happens to look the same.
 _RESERVED_KEY_PREFIX = "$"
 
-_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-
 
 class PayloadValidationError(ValueError):
-    """Raised when an audit payload contains a forbidden key or is not JSON-serialisable."""
-
-
-def _split_words(key: str) -> list[str]:
-    """Split a key into lower-case words on '_', '-', '.', spaces and camelCase boundaries."""
-    words: list[str] = []
-    for part in re.split(r"[_\-.\s]+", key):
-        if not part:
-            continue
-        words.extend(w.lower() for w in _CAMEL_BOUNDARY.split(part) if w)
-    return words
-
-
-def _is_secret_key(key: str) -> bool:
-    """True if ``key`` names a secret, by word (not substring) matching. Only KEYS are scanned —
-    this never inspects the values, e.g. a value that happens to look like a JWT under an
-    innocuous key name is not detected; that is out of scope for a key-name guard."""
-    words = _split_words(key)
-    if not words:
-        return False
-    if any(word in _SECRET_WORD_MARKERS for word in words):
-        return True
-    if len(words) >= 2 and words[-1] == "token" and words[-2] in _TOKEN_PAIR_PREFIX_MARKERS:
-        return True
-    if "".join(words) in _EXACT_FORBIDDEN_JOINED_WORDS:
-        return True
-    return False
+    """Raised when an audit payload contains a reserved key or is not JSON-serialisable."""
 
 
 def _check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
-    """Recursively reject payload keys that look like a secret, or start with the reserved "$"
-    prefix (nested dicts and lists too). Only mapping KEYS are checked; values are never scanned."""
+    """Recursively reject non-string keys and keys starting with the reserved "$" prefix (nested
+    dicts and lists too).
+
+    This module does NOT filter secrets out of payloads. Callers are responsible for passing only
+    the fields their event type needs (see the module docstring); per-event-type field
+    allowlisting is REQ-063 AC-5, a separate, future work item.
+    """
     if isinstance(payload, Mapping):
         for key, value in payload.items():
             if not isinstance(key, str):
@@ -102,10 +49,6 @@ def _check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
                 raise PayloadValidationError(
                     f"{_path}.{key}: keys starting with '{_RESERVED_KEY_PREFIX}' are reserved for "
                     "internal type tags and cannot appear in a caller's payload"
-                )
-            if _is_secret_key(key):
-                raise PayloadValidationError(
-                    f"{_path}.{key}: payload key looks like a secret and must never be logged"
                 )
             _check_payload_safe(value, _path=f"{_path}.{key}")
     elif isinstance(payload, (list, tuple)):
