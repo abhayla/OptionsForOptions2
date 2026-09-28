@@ -18,6 +18,8 @@ Rules implemented:
 - A proposal activates only when (a) the user confirmed it and (b) a COMPLETE result arrives whose broker
   position equals the version's intended position. Anything else leaves the active version unchanged and
   records an ``ExecutionOutcome`` (intended vs actual).
+- The result's status word is never trusted alone: any contract whose actual units fall outside the range
+  previous..intended (an unasked contract, a side flip, an overfill) makes the outcome MISMATCH, whatever the word.
 - Every result replaces the recorded actual position with the broker's position: the broker wins.
 - With a proposal unresolved, or executed but no active version (reconciliation required), edits are refused.
 """
@@ -36,7 +38,8 @@ from ofo.strategy.definition import (
     contract_sort_key,
     describe_contract,
 )
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Instrument, require_price
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 MAX_HISTORY = 10_000
 MAX_VERSIONS = 1_000
@@ -79,8 +82,7 @@ class Position:
             if not isinstance(line, tuple) or len(line) != 2:
                 raise VersionError(f"a position line must be (contract, units), got {line!r}")
             contract, units = line
-            if not isinstance(contract, tuple) or len(contract) != 4 or not isinstance(contract[1], Instrument):
-                raise VersionError(f"a contract must be (underlying, Instrument, strike, expiry), got {contract!r}")
+            _check_contract(contract)
             if contract in seen:
                 raise VersionError(f"duplicate position line for {describe_contract(contract)}")
             seen.add(contract)
@@ -186,6 +188,41 @@ class ExecutionOutcome:
     def differences(self) -> tuple[tuple[Contract, int, int], ...]:
         """(contract, intended units, actual units) wherever the broker's actual differs from the version."""
         return self.intended.differences(self.actual)
+
+
+def _within_path(previous: Position, intended: Position, actual: Position) -> bool:
+    """True when every contract's actual units sit between its previous and intended units (inclusive).
+
+    First execution: previous is 0, so actual must be on the intended side and no larger. Increase 75 -> 150:
+    75..150. Reduction 150 -> 75: 75..150. A contract in neither previous nor intended must be 0.
+    """
+    before, after, now = previous.as_dict(), intended.as_dict(), actual.as_dict()
+    for key in before.keys() | after.keys() | now.keys():
+        low, high = sorted((before.get(key, 0), after.get(key, 0)))
+        if not low <= now.get(key, 0) <= high:
+            return False
+    return True
+
+
+def _check_contract(contract: object) -> None:
+    """A position contract passes the same guards as a definition leg (engine money guard on the strike)."""
+    if not isinstance(contract, tuple) or len(contract) != 4:
+        raise VersionError(f"a contract must be (underlying, Instrument, strike, expiry), got {contract!r}")
+    underlying, instrument, strike, expiry = contract
+    if underlying not in SUPPORTED_UNDERLYINGS:
+        raise VersionError(f"contract underlying must be one of {sorted(SUPPORTED_UNDERLYINGS)}, got {underlying!r}")
+    if not isinstance(instrument, Instrument):
+        raise VersionError(f"contract instrument must be an Instrument, got {instrument!r}")
+    if instrument is Instrument.FUT:
+        if strike is not None:
+            raise VersionError("a futures contract has no strike")
+    else:
+        try:
+            require_price(strike, "contract strike", allow_zero=False)
+        except ValueError as exc:
+            raise VersionError(str(exc)) from exc
+    if not isinstance(expiry, datetime.date) or isinstance(expiry, datetime.datetime):
+        raise VersionError(f"contract expiry must be a datetime.date, got {expiry!r}")
 
 
 def _utc_now() -> datetime.datetime:
@@ -378,11 +415,19 @@ class StrategyRecord:
 
     @staticmethod
     def _classify(status: ResultStatus, intended: Position, previous: Position, actual: Position) -> OutcomeKind:
+        """Positions decide, the status word never does (ADR-018: an unresolved mismatch blocks execution).
+
+        First, for EVERY status: each contract's actual units must lie between the previous position and the
+        intended one (inclusive). An unasked contract, a side flip or an overfill falls outside -> MISMATCH.
+        Only then does the status word choose between the outcomes it is consistent with.
+        """
+        if not _within_path(previous, intended, actual):
+            return OutcomeKind.MISMATCH
         if status is ResultStatus.COMPLETE:
             return OutcomeKind.ACTIVATED if actual == intended else OutcomeKind.MISMATCH
         if status is ResultStatus.PARTIAL:
             return OutcomeKind.PARTIAL
-        if actual != previous:  # "rejected"/"failed" yet the broker position moved: never trust the label
+        if actual != previous:  # "rejected"/"failed" yet the broker position moved
             return OutcomeKind.MISMATCH
         return OutcomeKind.REJECTED if status is ResultStatus.REJECTED else OutcomeKind.FAILED
 

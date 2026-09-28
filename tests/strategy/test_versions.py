@@ -296,3 +296,81 @@ def test_one_thousand_history_appends_stay_fast():
     for i in range(1000):
         rec.edit(scaled(CONDOR, 75 * (2 + i % 2)), at=at(1))
     assert len(rec.history) == 1001 and time.perf_counter() - start < 1.0
+
+
+FUT = ("NIFTY", Instrument.FUT, None, EXPIRY)
+
+
+def pending_two_lots() -> StrategyRecord:
+    rec = executed_record()
+    rec.edit(scaled(CONDOR, 150), at=at(10))
+    rec.confirm(2, at=at(11))
+    return rec
+
+
+def test_partial_with_unrequested_futures_position_is_a_mismatch():
+    """AC-4 red: a PARTIAL result that also holds an unasked 75-unit future is a MISMATCH, whatever the word says."""
+    rec = pending_two_lots()
+    held = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
+    extra = Position(held.lines + ((FUT, 75),))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, extra, at(12), "exec-2"))
+    assert outcome.kind is OutcomeKind.MISMATCH and rec.actual_position == extra
+    assert (FUT, 0, 75) in outcome.differences and rec.active_version.number == 1
+
+
+def test_partial_with_an_overfilled_leg_is_a_mismatch():
+    """AC-4 red: one leg filled 300 against 150 intended under a PARTIAL status is a MISMATCH."""
+    rec = pending_two_lots()
+    over = broker(bp22800=300, sp23000=-75, sc23400=-150, bc23600=150)
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, over, at(12), "exec-2"))
+    assert outcome.kind is OutcomeKind.MISMATCH and rec.actual_position == over
+
+
+def test_partial_with_a_side_flip_is_a_mismatch():
+    """AC-4 red: a leg held on the opposite side of what was asked is a MISMATCH, even on the first execution."""
+    rec = record()
+    rec.propose_execution(at=at(1))
+    rec.confirm(1, at=at(2))
+    flipped = broker(bp22800=-75)
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.PARTIAL, flipped, at(3), "exec-1"))
+    assert outcome.kind is OutcomeKind.MISMATCH
+
+
+def test_genuine_partial_stays_partial_and_complete_equal_activates():
+    """AC-4: every leg on its intended side and between the previous and intended quantity, no extra contract,
+    is PARTIAL; a later COMPLETE equal to the intended position activates."""
+    rec = pending_two_lots()
+    partial = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=75)
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, partial, at(12), "exec-2")).kind is OutcomeKind.PARTIAL
+    full = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, full, at(13), "exec-2b")).kind is OutcomeKind.ACTIVATED
+    assert rec.active_version.number == 2
+
+
+def test_partial_on_a_reduction_between_previous_and_intended_stays_partial():
+    """AC-4: reducing 150 -> 75 per leg, a broker holding 100 on one leg (between the two) is PARTIAL, not MISMATCH."""
+    rec = StrategyRecord(scaled(CONDOR, 150), at=T0, clock=clock)
+    rec.propose_execution(at=at(1))
+    rec.confirm(1, at=at(2))
+    two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, two, at(3), "exec-1"))
+    rec.edit(CONDOR, at=at(4))
+    rec.confirm(2, at=at(5))
+    part = broker(bp22800=100, sp23000=-150, sc23400=-150, bc23600=150)
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, part, at(6), "exec-2")).kind is OutcomeKind.PARTIAL
+
+
+@pytest.mark.parametrize("strike", [23000.0, D(23000.1), D("23000.001"), D("0"), "23000"])
+def test_position_contract_refuses_float_or_sub_paisa_strike(strike):
+    """AC-4 red: a broker position's contract strike passes the engine money guard (Decimal, <= 2 dp, > 0)."""
+    with pytest.raises(VersionError):
+        Position(((("NIFTY", Instrument.PE, strike, EXPIRY), -75),))
+
+
+def test_position_contract_refuses_bad_underlying_expiry_and_future_strike():
+    """AC-4 red: unknown underlying, datetime expiry and a futures contract with a strike are refused."""
+    for contract_ in (("BANKNIFTY", Instrument.PE, D("23000"), EXPIRY),
+                      ("NIFTY", Instrument.PE, D("23000"), datetime.datetime(2026, 10, 27, 15, 30)),
+                      ("NIFTY", Instrument.FUT, D("23000"), EXPIRY)):
+        with pytest.raises(VersionError):
+            Position(((contract_, 75),))
