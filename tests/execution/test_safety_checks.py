@@ -106,7 +106,8 @@ MUTATIONS = [
     ("session-unknown", _ctx(session_valid=None), CheckCode.SESSION_INVALID,
      "We could not confirm your Zerodha session. Reconnect to continue."),
     ("not-pro", _ctx(pro_entitled=False), CheckCode.ENTITLEMENT_REQUIRED,
-     "New entries and adjustments need Pro. Exiting an active strategy stays available on every plan."),
+     "New entries and adjustments that add or change positions need Pro. Exiting, or closing or reducing legs of "
+     "an active strategy, stays available on every plan."),
     ("data-stale", _ctx(data_health=_stale), CheckCode.DATA_UNHEALTHY,
      "Market data needed for execution (leg prices) is out of date. Execution is paused until it is current."),
     ("data-missing", _ctx(data_health=_missing), CheckCode.DATA_UNHEALTHY,
@@ -313,3 +314,92 @@ def test_futures_leg_is_checked_against_the_real_futures_contract(catalogue, eli
     result = check_pre_execution(Strategy((wrong,)), all_true_context(), catalogue, eligibility)
     assert result.failed_codes == {CheckCode.CONTRACT_NOT_FOUND, CheckCode.QUANTITY_INVALID}
     assert all(f.alternatives == () for f in result.failures)
+
+
+# ---------------------------------------------------------------- ADR-037 by actor intent (fix round 1)
+
+PRO_REASON = (
+    "New entries and adjustments that add or change positions need Pro. Exiting, or closing or reducing legs of an "
+    "active strategy, stays available on every plan."
+)
+ACTIVE_TWO_LOTS = condor_legs(quantity=130)
+
+
+def _limited_adjustment(
+    proposed: tuple[Leg, ...], pro: bool | None = False, active: tuple[Leg, ...] | None = ACTIVE_TWO_LOTS
+) -> tuple[Strategy, ExecutionContext]:
+    ctx = all_true_context(action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED,
+                           pro_entitled=pro, active_legs=active)
+    return Strategy(proposed), ctx
+
+
+def _replace_leg(index: int, **changes: object) -> tuple[Leg, ...]:
+    legs = list(ACTIVE_TWO_LOTS)
+    legs[index] = dataclasses.replace(legs[index], **changes)
+    return tuple(legs)
+
+
+@pytest.mark.parametrize("proposed", [
+    pytest.param(_replace_leg(1, quantity=65), id="reduce-short-leg-2-lots-to-1"),
+    pytest.param(ACTIVE_TWO_LOTS[1:], id="close-one-wing"),
+    pytest.param(condor_legs(quantity=65), id="reduce-every-leg"),
+])
+def test_limited_user_may_close_or_reduce_legs_of_the_active_strategy(proposed, catalogue, eligibility):
+    """AC-1 (ADR-037): a reduce-only adjustment is a partial exit, allowed for a Limited (non-Pro) user."""
+    strategy, ctx = _limited_adjustment(proposed)
+    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    assert result.failures == ()
+    assert CheckCode.ENTITLEMENT_REQUIRED not in result.passed  # not applicable, not "passed"
+
+
+@pytest.mark.parametrize("proposed", [
+    pytest.param(ACTIVE_TWO_LOTS + (Leg(Action.BUY, Instrument.CE, D("23800"), EXPIRY, 65, D("20.00")),),
+                 id="add-new-leg"),
+    pytest.param(_replace_leg(2, strike=D("23450")), id="roll-to-new-strike"),
+    pytest.param(_replace_leg(1, action=Action.BUY), id="side-flip"),
+    pytest.param(_replace_leg(1, quantity=195), id="quantity-increase"),
+])
+def test_limited_user_is_blocked_from_risk_adding_or_rolling_adjustments(proposed, catalogue, eligibility):
+    """AC-1 (ADR-037): a new contract, a side flip or a quantity increase needs Pro; the Pro reason is shown."""
+    strategy, ctx = _limited_adjustment(proposed)
+    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.ENTITLEMENT_REQUIRED, PRO_REASON)]
+    pro_strategy, pro_ctx = _limited_adjustment(proposed, pro=True)
+    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+
+
+def test_adjustment_without_active_legs_needs_pro(catalogue, eligibility):
+    """AC-1 (fail closed): without the active legs the adjustment cannot be shown to reduce only, so it needs Pro."""
+    strategy, ctx = _limited_adjustment(_replace_leg(1, quantity=65), active=None)
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+
+
+# ---------------------------------------------------------------- AC-2 structured audit record (fix round 1)
+
+
+@pytest.mark.parametrize("case,mutate,code,reason", MUTATIONS, ids=[m[0] for m in MUTATIONS])
+def test_every_blocked_result_carries_a_blocked_execution_record(case, mutate, code, reason, condor, catalogue,
+                                                                 eligibility):
+    """AC-2: every blocked result carries the audit record: strategy, version, action, codes, reasons, time, actor."""
+    strategy, ctx, cat, elig = mutate(condor, catalogue, eligibility)
+    result = check_pre_execution(strategy, ctx, cat, elig)
+    record = result.blocked_execution
+    assert record is not None
+    assert (record.strategy_id, record.version_id, record.action, record.actor) == (
+        "S-1", "V-3", "NEW_ENTRY", "user:U-42")
+    assert record.failed_codes == tuple(f.code for f in result.failures)
+    assert record.reasons == tuple(f.reason for f in result.failures)
+    assert record.at == ctx.as_of and record.at.utcoffset() is not None
+
+
+def test_passed_result_carries_no_blocked_record(condor, catalogue, eligibility):
+    """AC-2: a result that is not blocked carries no blocked-execution record."""
+    assert check_pre_execution(condor, all_true_context(), catalogue, eligibility).blocked_execution is None
+
+
+@pytest.mark.parametrize("overrides", [{"version_id": ""}, {"actor": None}, {"active_legs": ["leg"]}],
+                         ids=["version_id", "actor", "active_legs"])
+def test_malformed_record_inputs_are_refused(overrides):
+    """AC-2 (fail closed): the record's identity inputs are required and typed."""
+    with pytest.raises(ValueError):
+        all_true_context(**overrides)

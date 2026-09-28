@@ -8,9 +8,19 @@ from ofo.execution.context import (
     VersionState,
     margin_required_from,
 )
-from ofo.execution.safety import CheckCode, CheckFailure, Flag, FlagCode, SafetyResult, check_pre_execution
+from ofo.execution.safety import (
+    BlockedExecution,
+    CheckCode,
+    CheckFailure,
+    Flag,
+    FlagCode,
+    SafetyResult,
+    check_pre_execution,
+    needs_pro,
+)
 
 __all__ = [
+    "BlockedExecution",
     "CheckCode",
     "CheckFailure",
     "DataHealth",
@@ -24,4 +34,5 @@ __all__ = [
     "VersionState",
     "check_pre_execution",
     "margin_required_from",
+    "needs_pro",
 ]

@@ -4,18 +4,25 @@ Nothing here calls Zerodha or the network. Each status input is ``True`` (confir
 ``None`` (could not be confirmed); only ``True`` passes, so a missing fact fails closed. A wrong type raises
 ``ValueError`` at construction, never defaults.
 
-Modelling choices (spec basis in each line):
+Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis in each line):
 
-- ``action`` distinguishes a new entry, an adjustment and an exit, because ADR-037 lets a Limited user exit an active
-  strategy while new entries and adjustments stay Pro. ``pro_entitled`` is the entitlement layer's answer ("does this
-  user currently hold Pro?"), passed in as a boolean; this module does not import the entitlement layer.
-- ``version_state`` is the state of the version being executed. ADR-019 Q191: a proposed version becomes active only
-  after execution + reconciliation, so an ADJUSTMENT executes a PROPOSED version, while a NEW_ENTRY or EXIT executes
-  the strategy's current (ACTIVE) configuration; a SUPERSEDED version is never executed.
-- ``reconciliation_blocked_strategy_ids`` is the set of strategies with an unresolved mismatch, from the reconciliation
-  layer. REQ-060 AC-7: a mismatch blocks only its own strategy, and standalone positions are never mismatches, so the
-  gate asks only whether THIS ``strategy_id`` is in the set. ADR-019 Q200 (Reconciliation Required: execute no) makes
-  it block every action, exits included.
+- **Versions.** A NEW_ENTRY or EXIT executes the strategy's ACTIVE version (its current configuration); an ADJUSTMENT
+  executes the PROPOSED version (ADR-019 Q191: a proposed version becomes active only after execution +
+  reconciliation). A SUPERSEDED version is never executed.
+- **Entitlement by actor intent (ADR-037).** A Limited user may exit, and an adjustment made ONLY of closing or
+  reducing orders on legs of the active strategy (no new contract, no quantity increase, no side flip) is a partial
+  exit, so it is allowed too. Anything else (new entry, risk-adding or rolling adjustment) needs Pro. The adjustment is
+  classified from the legs, before (``active_legs``) vs after (the proposed strategy), never from a user flag.
+  ``pro_entitled`` is the entitlement layer's answer, passed in as a boolean; this module does not import that layer.
+- **Unknown eligibility blocks.** A contract with no recorded Zerodha eligibility read is not executable (fail closed,
+  matching ``EligibilityRegistry.is_tradable``).
+- **Duplicate legs block, never merged.** The same contract twice is reported; the user edits the strategy.
+- **A reconciliation mismatch blocks exits too.** ADR-019 Q200 (Reconciliation Required: execute no): acting on a
+  wrong position picture could open an unintended naked position; the user can still act in Kite. REQ-060 AC-7: a
+  mismatch blocks only its own strategy and standalone positions are never mismatches, so the gate asks only whether
+  THIS ``strategy_id`` is in ``reconciliation_blocked_strategy_ids``.
+- **No quantity cap beyond margin.** Zerodha's RMS is the authority on order size (ADR-016); the margin gate is the
+  platform's only upper bound.
 """
 from __future__ import annotations
 
@@ -25,7 +32,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Mapping, Protocol
 
-from ofo.engine import Strategy
+from ofo.engine import Leg, Strategy
 from ofo.engine.legs import require_decimal
 
 
@@ -46,9 +53,6 @@ EXECUTABLE_VERSION_STATES: dict[ExecutionAction, frozenset[VersionState]] = {
     ExecutionAction.ADJUSTMENT: frozenset({VersionState.PROPOSED}),
     ExecutionAction.EXIT: frozenset({VersionState.ACTIVE}),
 }
-
-# ADR-037: exits stay open to a Limited user; everything else needs Pro.
-ACTIONS_NEEDING_PRO: frozenset[ExecutionAction] = frozenset({ExecutionAction.NEW_ENTRY, ExecutionAction.ADJUSTMENT})
 
 
 class DataInput(Enum):
@@ -94,6 +98,8 @@ class ExecutionContext:
     """All inputs to the pre-execution gate for one strategy and one action. Immutable once built."""
 
     strategy_id: str
+    version_id: str
+    actor: str
     underlying: str
     action: ExecutionAction
     as_of: datetime.datetime
@@ -109,12 +115,17 @@ class ExecutionContext:
     margin_required: Decimal | None
     reconciliation_blocked_strategy_ids: frozenset[str] = field(default_factory=frozenset)
     charges_estimate: Decimal | None = None
+    active_legs: tuple[Leg, ...] | None = None  # the active version's legs; needed to classify an ADJUSTMENT
 
     def __post_init__(self) -> None:
-        if not isinstance(self.strategy_id, str) or not self.strategy_id.strip():
-            raise ValueError(f"strategy_id must be a non-empty string, got {self.strategy_id!r}")
-        if not isinstance(self.underlying, str) or not self.underlying.strip():
-            raise ValueError(f"underlying must be a non-empty string, got {self.underlying!r}")
+        for name in ("strategy_id", "version_id", "actor", "underlying"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string, got {value!r}")
+        if self.active_legs is not None:
+            if isinstance(self.active_legs, (str, bytes)) or not all(isinstance(x, Leg) for x in self.active_legs):
+                raise ValueError("active_legs must be a collection of Leg or None")
+            object.__setattr__(self, "active_legs", tuple(self.active_legs))
         if not isinstance(self.action, ExecutionAction):
             raise ValueError(f"action must be an ExecutionAction, got {self.action!r}")
         if not isinstance(self.as_of, datetime.datetime) or self.as_of.utcoffset() is None:

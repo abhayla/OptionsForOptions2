@@ -17,10 +17,10 @@ from enum import Enum
 from ofo.engine import UNLIMITED, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.metrics import _Unlimited
 from ofo.execution.context import (
-    ACTIONS_NEEDING_PRO,
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
     DataHealth,
+    ExecutionAction,
     ExecutionContext,
 )
 from ofo.instruments import Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
@@ -87,6 +87,23 @@ class Flag:
 
 
 @dataclass(frozen=True)
+class BlockedExecution:
+    """The audit record of one blocked execution attempt (REQ-059 AC-2 "the event is logged").
+
+    Plain values only (strings, codes, a timezone-aware time) so the audit log can store it without importing this
+    module's types beyond ``CheckCode``.
+    """
+
+    strategy_id: str
+    version_id: str
+    action: str
+    failed_codes: tuple[CheckCode, ...]
+    reasons: tuple[str, ...]
+    at: datetime.datetime
+    actor: str
+
+
+@dataclass(frozen=True)
 class SafetyResult:
     failures: tuple[CheckFailure, ...]
     passed: tuple[CheckCode, ...]
@@ -95,6 +112,7 @@ class SafetyResult:
     max_loss: Decimal | _Unlimited | None
     margin_required: Decimal | None
     charges_estimate: Decimal | None
+    blocked_execution: BlockedExecution | None
 
     @property
     def blocked(self) -> bool:
@@ -160,7 +178,35 @@ def _alternatives_text(alternatives: tuple[Decimal, ...]) -> str:
     return f" Strikes you could consider instead: {listed}. Your strategy has not been changed."
 
 
-def _context_failures(ctx: ExecutionContext) -> list[CheckFailure]:
+def _positions(legs: tuple[Leg, ...]) -> dict[tuple[_Key, str], int]:
+    """Units held per (contract, side)."""
+    held: dict[tuple[_Key, str], int] = {}
+    for leg in legs:
+        k = (_key(leg.expiry, leg.instrument.value, leg.strike), leg.action.value)
+        held[k] = held.get(k, 0) + leg.quantity
+    return held
+
+
+def _reduces_only(active: tuple[Leg, ...], proposed: tuple[Leg, ...]) -> bool:
+    """True when ``proposed`` only closes or reduces legs of ``active``: no new contract, no side flip, no increase."""
+    before = _positions(active)
+    return all(before.get(k, 0) >= units for k, units in _positions(proposed).items())
+
+
+def needs_pro(strategy: Strategy, ctx: ExecutionContext) -> bool:
+    """ADR-037 by actor intent: an exit, or an adjustment that only closes/reduces active legs, is open to every plan.
+
+    An adjustment without the active legs to compare against cannot be shown to reduce only, so it needs Pro
+    (fail closed).
+    """
+    if ctx.action is ExecutionAction.EXIT:
+        return False
+    if ctx.action is ExecutionAction.ADJUSTMENT and ctx.active_legs is not None:
+        return not _reduces_only(ctx.active_legs, strategy.legs)
+    return True
+
+
+def _context_failures(ctx: ExecutionContext, pro_needed: bool) -> list[CheckFailure]:
     out: list[CheckFailure] = []
 
     def unknown_or(value: bool | None, code: CheckCode, unknown: str, false: str) -> None:
@@ -183,10 +229,12 @@ def _context_failures(ctx: ExecutionContext) -> list[CheckFailure]:
     unknown_or(ctx.session_valid, CheckCode.SESSION_INVALID,
                "We could not confirm your Zerodha session. Reconnect to continue.",
                "Your Zerodha session has expired. Reconnect to continue.")
-    if ctx.action in ACTIONS_NEEDING_PRO:
+    if pro_needed:
         unknown_or(ctx.pro_entitled, CheckCode.ENTITLEMENT_REQUIRED,
-                   "We could not confirm your plan. New entries and adjustments need Pro.",
-                   "New entries and adjustments need Pro. Exiting an active strategy stays available on every plan.")
+                   "We could not confirm your plan. New entries and adjustments that add or change positions need "
+                   "Pro.",
+                   "New entries and adjustments that add or change positions need Pro. Exiting, or closing or "
+                   "reducing legs of an active strategy, stays available on every plan.")
     for data_input in REQUIRED_DATA_INPUTS:
         health = ctx.data_health.get(data_input)
         if health is not DataHealth.HEALTHY:
@@ -323,7 +371,8 @@ def check_pre_execution(
     if not isinstance(catalogue, Catalogue) or not isinstance(eligibility, EligibilityRegistry):
         raise ValueError("catalogue and eligibility must be a Catalogue and an EligibilityRegistry")
 
-    failures = _context_failures(context)
+    pro_needed = needs_pro(strategy, context)
+    failures = _context_failures(context, pro_needed)
     not_checked: tuple[CheckCode, ...] = ()
     if context.underlying not in SUPPORTED_UNDERLYINGS:
         failures.insert(0, CheckFailure(
@@ -336,12 +385,18 @@ def check_pre_execution(
     flags, max_loss = _risk_flags(strategy, context)
 
     failed = {f.code for f in failures}
-    applicable = [c for c in CheckCode if not (c is CheckCode.ENTITLEMENT_REQUIRED
-                                               and context.action not in ACTIONS_NEEDING_PRO)]
+    applicable = [c for c in CheckCode if pro_needed or c is not CheckCode.ENTITLEMENT_REQUIRED]
     passed = tuple(c for c in applicable if c not in failed and c not in not_checked)
+    record = None
+    if failures:
+        record = BlockedExecution(
+            strategy_id=context.strategy_id, version_id=context.version_id, action=context.action.value,
+            failed_codes=tuple(f.code for f in failures), reasons=tuple(f.reason for f in failures),
+            at=context.as_of, actor=context.actor,
+        )
     result = SafetyResult(
         failures=tuple(failures), passed=passed, not_checked=not_checked, flags=tuple(flags), max_loss=max_loss,
-        margin_required=context.margin_required, charges_estimate=context.charges_estimate,
+        margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
     )
     if result.blocked:
         logger.warning(

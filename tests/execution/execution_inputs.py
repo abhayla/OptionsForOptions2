@@ -58,6 +58,8 @@ def eligibility(catalogue: Catalogue) -> EligibilityRegistry:
 def all_true_context(**overrides: Any) -> ExecutionContext:
     base = ExecutionContext(
         strategy_id="S-1",
+        version_id="V-3",
+        actor="user:U-42",
         underlying="NIFTY",
         action=ExecutionAction.NEW_ENTRY,
         as_of=AS_OF,
