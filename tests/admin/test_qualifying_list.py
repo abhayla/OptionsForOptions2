@@ -60,6 +60,17 @@ def test_normalisation_is_trim_and_upper_only() -> None:
         normalise_client_id(1234)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("raw", ["\u0131b1234", "a\u00df123", "\u017ft12345", "AB\uff11\uff12\uff13\uff14"])
+def test_non_ascii_rejected_before_upper(raw: str) -> None:
+    """AC-1: non-ASCII input is malformed even when upper() would fold it into A-Z (IB1234, ASS123, ST12345)."""
+    with pytest.raises(MalformedClientIdError):
+        normalise_client_id(raw)
+    svc = new_service()
+    with pytest.raises(MalformedClientIdError):
+        svc.add(raw, ADMIN)
+    assert svc.search() == ()
+
+
 def test_manual_changes_fail_closed() -> None:
     """AC-1: duplicate add, unknown ID, no-op edit, rename onto an existing or verified ID, and missing actor raise."""
     svc = new_service()
@@ -120,7 +131,7 @@ def test_search_filter_and_per_id_status() -> None:
     )
 
 
-@pytest.mark.parametrize("prefix", ["", "  ", "AB-", "AB%", "ÄB"])
+@pytest.mark.parametrize("prefix", ["", "  ", "AB-", "AB%", "ÄB", "\u0131B", "\u017f"])
 def test_bad_search_prefix_rejected(prefix: str) -> None:
     """AC-3: a prefix that is empty or not plain letters/digits is rejected, not treated as 'match all'."""
     svc = _populated()
@@ -200,7 +211,7 @@ def test_is_qualifying_only_for_active_listed_ids() -> None:
     assert (svc.is_qualifying("AB1234"), svc.is_qualifying("CD5678"), svc.is_qualifying("EF9012")) == (
         True, False, False,
     )
-    with pytest.raises(MalformedClientIdError):
-        svc.is_qualifying("not-an-id")
+    for malformed in ("not-an-id", "\u0131b1234", "", "AB\uff11\uff12\uff13\uff14"):
+        assert svc.is_qualifying(malformed) is False
     with pytest.raises(ValueError):
         svc.search(list_status="INACTIVE")  # type: ignore[arg-type]

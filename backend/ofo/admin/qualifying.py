@@ -10,11 +10,17 @@ problem (malformed or duplicated within the file); the admin resolves a problem 
 explicitly excluding the row in the ``ImportRequest``. A row whose ID is already on the list and ACTIVE is not a
 problem: it is skipped, so re-importing the same file changes nothing. A row whose ID is on the list but INACTIVE is
 a problem (``INACTIVE_ON_LIST``) until the admin chooses to reactivate it (``reactivate_rows``) or exclude it; an
-import never reactivates an ID silently. Every change writes one audit entry.
+import never reactivates an ID silently. A fully blank line (empty, whitespace-only or commas-only) is skipped and
+counted in ``ImportReport.blank_lines_ignored``; it is never a problem. Every change writes one audit entry.
+
+Import reads only the ``client_id`` column. Importing an export into a fresh list therefore adds every ID as ACTIVE
+and UNVERIFIED with no user link: list status, verification and associations are NOT restored. Import is for
+adding IDs, not for restoring a backup.
 
 Removing an ID DEACTIVATES it (ADR-024 Q70 "deactivate"; decided under ADR-045 from the admin's intent: free Pro
 should stop, the record and its history stay, and the change is reversible with ``reactivate``). ``is_qualifying``
-is the check complimentary-Pro matching (W-011) uses: only an ACTIVE entry qualifies. Entitlement status is an input
+is the check complimentary-Pro matching (W-011) uses: only an ACTIVE entry qualifies, and a malformed ID
+returns False (fail closed) rather than raising. Entitlement status is an input
 from the entitlement engine (``record_entitlement_status``), never computed here.
 """
 from __future__ import annotations
@@ -95,6 +101,7 @@ class ImportRow:
 class ImportReport:
     file_name: str
     rows: tuple[ImportRow, ...]
+    blank_lines_ignored: int = 0
 
     @property
     def problems(self) -> tuple[ImportRow, ...]:
@@ -296,25 +303,39 @@ class QualifyingListService:
         return self._set_list_status(client_id, actor, ListStatus.ACTIVE, "reactivate")
 
     def is_qualifying(self, client_id: str) -> bool:
-        """True only for an ID on the list with list status ACTIVE (used by complimentary-Pro matching)."""
-        entry = self._repo.get(normalise_client_id(client_id))
+        """True only for an ID on the list with list status ACTIVE (used by complimentary-Pro matching).
+
+        A malformed ID returns False: it can never be on the list, so it never qualifies (fail closed).
+        """
+        try:
+            normalised = normalise_client_id(client_id)
+        except MalformedClientIdError:
+            return False
+        entry = self._repo.get(normalised)
         return entry is not None and entry.list_status is ListStatus.ACTIVE
 
     # ----- CSV import (AC-1, AC-2) ------------------------------------------------------------------------
 
     @staticmethod
-    def _read_rows(request: ImportRequest) -> list[tuple[int, str]]:
+    def _read_rows(request: ImportRequest) -> tuple[list[tuple[int, str]], int]:
         _require_text(request.file_name, "file_name")
         if not isinstance(request.csv_text, str):
             raise ValueError("csv_text must be a string")
         records = list(csv.reader(io.StringIO(request.csv_text.lstrip("﻿"))))
         if not records:
             raise ValueError(f"{request.file_name!r} is empty")
-        header = [cell.strip().lower() for cell in records[0]]
+        # ASCII check before lower(), so no non-ASCII header can fold into "client_id".
+        header = [cell.strip().lower() if cell.isascii() else cell for cell in records[0]]
         if header.count(CLIENT_ID_COLUMN) != 1:
             raise ValueError(f"{request.file_name!r} must have exactly one '{CLIENT_ID_COLUMN}' header column")
         column = header.index(CLIENT_ID_COLUMN)
-        rows = [(n, rec[column] if column < len(rec) else "") for n, rec in enumerate(records[1:], start=2)]
+        rows: list[tuple[int, str]] = []
+        blank = 0
+        for n, rec in enumerate(records[1:], start=2):
+            if all(not cell.strip() for cell in rec):
+                blank += 1
+                continue
+            rows.append((n, rec[column] if column < len(rec) else ""))
         if not rows:
             raise ValueError(f"{request.file_name!r} has no data rows")
         known = {n for n, _ in rows}
@@ -327,7 +348,7 @@ class QualifyingListService:
         both = set(request.reactivate_rows) & set(request.excluded_rows)
         if both:
             raise ValueError(f"rows {sorted(both)} are both reactivated and excluded")
-        return rows
+        return rows, blank
 
     def _classify_one(
         self, row_number: int, raw: str, seen: dict[str, int], edited: bool
@@ -358,7 +379,8 @@ class QualifyingListService:
         """Dry run: classify every data row; changes nothing."""
         seen: dict[str, int] = {}
         rows: list[ImportRow] = []
-        for row_number, raw in self._read_rows(request):
+        data_rows, blank = self._read_rows(request)
+        for row_number, raw in data_rows:
             if row_number in request.excluded_rows:
                 rows.append(ImportRow(row_number, raw, None, RowCategory.EXCLUDED, "excluded by admin", False))
                 continue
@@ -372,7 +394,7 @@ class QualifyingListService:
                     )
                 row = replace(row, category=RowCategory.REACTIVATE, message=f"{row.client_id} will be reactivated")
             rows.append(row)
-        return ImportReport(request.file_name.strip(), tuple(rows))
+        return ImportReport(request.file_name.strip(), tuple(rows), blank)
 
     @staticmethod
     def _refuse_if_problems(report: ImportReport) -> None:
@@ -431,9 +453,10 @@ class QualifyingListService:
         """Entries matching every given filter, sorted by Client ID."""
         prefix = None
         if id_prefix is not None:
-            prefix = _require_text(id_prefix, "id_prefix").upper()
-            if not prefix.isalnum() or not prefix.isascii():
+            prefix = _require_text(id_prefix, "id_prefix")
+            if not prefix.isascii() or not prefix.isalnum():  # ASCII check before upper(), as in client_id.py
                 raise ValueError("id_prefix must be letters and digits only")
+            prefix = prefix.upper()
         if list_status is not None and not isinstance(list_status, ListStatus):
             raise ValueError("list_status must be a ListStatus")
         if verification_status is not None and not isinstance(verification_status, VerificationStatus):

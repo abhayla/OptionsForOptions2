@@ -11,6 +11,7 @@ from qualifying_checks import (
     new_service,
 )
 from ofo.admin.qualifying import ImportRefusedError, ImportRequest, RowCategory
+from ofo.admin.qualifying_store import ListStatus, VerificationStatus
 
 
 def test_core_import_refused_until_resolved_then_applied_exactly_once() -> None:
@@ -57,16 +58,66 @@ def test_apply_revalidates_against_the_list_at_apply_time() -> None:
     assert [a.action for a in svc.audit_trail("CD5678")] == ["add"]
 
 
-def test_already_on_list_is_not_a_problem_but_blank_rows_are() -> None:
-    """AC-2: an ID already on the list is skipped (not a problem); an empty cell or blank line is malformed."""
+def test_already_on_list_is_not_a_problem_but_empty_cells_are() -> None:
+    """AC-2: an ID already on the list is skipped (not a problem); an empty client_id cell on a row with other
+    data is malformed; a fully blank line is ignored and counted, never a problem."""
     svc = new_service()
     svc.add("AB1234", ADMIN)
     report = svc.preview_import(ImportRequest("f.csv", "Client_ID,name\nAB1234,x\n,y\n\nCD5678,z\n"))
     assert [(r.row_number, r.category) for r in report.rows] == [
         (2, RowCategory.ALREADY_ON_LIST),
         (3, RowCategory.MALFORMED),
-        (4, RowCategory.MALFORMED),
         (5, RowCategory.NEW),
+    ]
+    assert report.blank_lines_ignored == 1
+
+
+def test_blank_lines_are_ignored_not_problems() -> None:
+    """AC-2: a blank line mid-file, a whitespace/comma-only line and a trailing double newline are skipped and
+    counted as 'blank lines ignored'; they never block apply."""
+    svc = new_service()
+    request = ImportRequest("f.csv", "client_id\nAB1234\n\n  \n,\nCD5678\n\n")
+    report = svc.preview_import(request)
+    assert [(r.row_number, r.category) for r in report.rows] == [(2, RowCategory.NEW), (6, RowCategory.NEW)]
+    assert report.problems == ()
+    assert report.blank_lines_ignored == 4
+    record = svc.apply_import(request, ADMIN)
+    assert (record.added, record.total_rows) == (2, 2)
+    with pytest.raises(ValueError):
+        svc.preview_import(ImportRequest("f.csv", "client_id\nAB1234\n\n", excluded_rows=frozenset({3})))
+    with pytest.raises(ValueError):
+        svc.preview_import(ImportRequest("f.csv", "client_id\n\n\n"))
+
+
+@pytest.mark.parametrize("raw", ["\u0131b1234", "a\u00df123", "\u017ft12345", "AB\uff11\uff12\uff13\uff14"])
+def test_non_ascii_lookalikes_are_malformed_never_imported(raw: str) -> None:
+    """AC-2: a non-ASCII value that upper() would fold into a valid-looking ID (dotless i -> I, sharp s -> SS,
+    long s -> S) or that uses fullwidth digits is MALFORMED and never imported."""
+    svc = new_service()
+    request = ImportRequest("f.csv", f"client_id\n{raw}\nCD5678\n")
+    assert [(r.row_number, r.category, r.client_id) for r in svc.preview_import(request).problems] == [
+        (2, RowCategory.MALFORMED, None)
+    ]
+    with pytest.raises(ImportRefusedError):
+        svc.apply_import(request, ADMIN)
+    assert svc.search() == ()
+
+
+def test_export_reimported_into_fresh_list_reads_only_client_id() -> None:
+    """AC-2/AC-5 (documents a limit): importing an export into a fresh list adds the IDs as ACTIVE and
+    UNVERIFIED; list_status, verification and user links are NOT restored. Import adds IDs; it is not a backup
+    restore."""
+    old = new_service()
+    old.add("AB1234", ADMIN)
+    old.add("CD5678", ADMIN)
+    old.edit("AB1234", ADMIN, verification_status=VerificationStatus.VERIFIED, platform_user_id="user-1")
+    old.remove("CD5678", ADMIN)
+    fresh = new_service()
+    record = fresh.apply_import(ImportRequest("export.csv", old.export_csv()), ADMIN)
+    assert record.added == 2
+    assert [(e.client_id, e.list_status, e.verification_status, e.platform_user_id) for e in fresh.search()] == [
+        ("AB1234", ListStatus.ACTIVE, VerificationStatus.UNVERIFIED, None),
+        ("CD5678", ListStatus.ACTIVE, VerificationStatus.UNVERIFIED, None),
     ]
 
 
