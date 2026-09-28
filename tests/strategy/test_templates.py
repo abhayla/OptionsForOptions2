@@ -5,9 +5,10 @@ four legs the engine prices -- see ``test_iron_condor_core_proof_at_nifty``.
 """
 from __future__ import annotations
 
+import ast
 import datetime
-import re
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,7 @@ from ofo.engine.metrics import MultiExpiryError, strategy_metrics
 from ofo.engine.legs import Instrument
 from ofo.strategy.loader import DEFAULT_CATALOGUE_PATH, load_templates
 from ofo.strategy.model import Template, TemplateError, TemplateLeg, resolve_template
+from ofo.strategy.wording import BANNED_PHRASES, find_banned_phrases
 
 CATALOGUE = load_templates()
 NEAR_EXPIRY = datetime.date(2026, 10, 30)
@@ -28,10 +30,13 @@ def _sample_prices(n: int) -> list[Decimal]:
     return [SAMPLE_PRICE_CYCLE[i % len(SAMPLE_PRICE_CYCLE)] for i in range(n)]
 
 
-def test_catalogue_has_22_templates_adapted_from_algochanakya():
-    """AC-3: the catalogue loads as data; count matches spec/technical-design/legacy-reuse.md row 7."""
-    assert len(CATALOGUE) == 22
-    assert len({t.id for t in CATALOGUE}) == 22
+def test_catalogue_has_21_templates_adapted_from_algochanakya():
+    """AC-3: the catalogue loads as data; 21, not the legacy file's 22 -- ``wheel_strategy`` was dropped
+    as a stock-assignment cycle that cannot happen on cash-settled NIFTY/SENSEX index options (AC-5,
+    fix round 2026-09-29, see catalogue.yaml's header)."""
+    assert len(CATALOGUE) == 21
+    assert len({t.id for t in CATALOGUE}) == 21
+    assert "wheel_strategy" not in {t.id for t in CATALOGUE}
 
 
 def test_iron_condor_core_proof_at_nifty():
@@ -128,23 +133,34 @@ def test_adding_a_template_file_needs_zero_code_changes(tmp_path):
     assert metrics.max_profit == Decimal("1125")  # premium 15 x 75
 
 
-BANNED_PHRASES = ("best", "you should", "guaranteed", "sure", "risk-free", "risk free")
-
-
 def test_no_template_text_uses_banned_advice_wording():
     """AC-5 (ADR-003): template names/descriptions never say 'best', 'you should', 'guaranteed', ...
 
     Red case: a text string carrying a banned phrase is caught by the same scan.
     """
     for template in CATALOGUE:
-        text = f"{template.name} {template.description}".lower()
-        for phrase in BANNED_PHRASES:
-            assert not re.search(rf"\b{re.escape(phrase)}\b", text), (template.id, phrase)
+        found = find_banned_phrases(f"{template.name} {template.description}")
+        assert found == [], (template.id, found)
 
-    with pytest.raises(AssertionError):
-        text = "this is the best strategy, you should always use it".lower()
-        for phrase in BANNED_PHRASES:
-            assert not re.search(rf"\b{re.escape(phrase)}\b", text)
+    assert find_banned_phrases("this is the best strategy, you should always use it") == ["best", "you should"]
+
+
+def test_loader_rejects_a_banned_phrase_at_load_time(tmp_path):
+    """AC-5c: a template carrying a banned phrase is REJECTED at load, not merely caught by a later scan."""
+    bad_catalogue = tmp_path / "bad.yaml"
+    bad_catalogue.write_text(
+        """
+        templates:
+          - id: too_good
+            name: "A Certain Profit Play"
+            description: "This is the safest, no risk way to trade."
+            legs:
+              - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+        """,
+        encoding="utf-8",
+    )
+    with pytest.raises(TemplateError, match="banned wording"):
+        load_templates(bad_catalogue)
 
 
 def test_default_catalogue_path_points_at_the_real_file():
@@ -194,3 +210,93 @@ def test_futures_leg_has_no_strike_offset():
     fut_legs = [leg for leg in strategy.legs if leg.instrument is Instrument.FUT]
     assert len(fut_legs) == 1
     assert fut_legs[0].strike is None
+
+
+# ---------------------------------------------------------------------------
+# AC-3: the loader must reject unknown/misspelled keys rather than silently defaulting them.
+# ---------------------------------------------------------------------------
+
+
+def test_loader_rejects_a_misspelled_leg_key(tmp_path):
+    """AC-3 (fix round): a typo'd key like ``qty_multiplier`` must be REJECTED, never silently read as
+    ``quantity_multiplier: 1`` (which would hide the leg's real, intended multiplier)."""
+    bad_catalogue = tmp_path / "typo.yaml"
+    bad_catalogue.write_text(
+        """
+        templates:
+          - id: typo_template
+            name: "Typo Template"
+            description: "Sell a call, meant to be entered three lots at a time."
+            legs:
+              - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, qty_multiplier: 3}
+        """,
+        encoding="utf-8",
+    )
+    with pytest.raises(TemplateError, match="qty_multiplier"):
+        load_templates(bad_catalogue)
+
+
+def test_loader_rejects_a_misspelled_template_key(tmp_path):
+    """AC-3 (fix round): an unknown top-level template key is rejected, naming the key and template id."""
+    bad_catalogue = tmp_path / "typo_template.yaml"
+    bad_catalogue.write_text(
+        """
+        templates:
+          - id: typo_top_level
+            name: "Typo Top Level"
+            description: "Sell a call."
+            note: "this field does not exist"
+            legs:
+              - {action: SELL, instrument: CE, offset_steps: 2, expiry_slot: near, quantity_multiplier: 1}
+        """,
+        encoding="utf-8",
+    )
+    with pytest.raises(TemplateError, match="typo_top_level"):
+        load_templates(bad_catalogue)
+
+
+# ---------------------------------------------------------------------------
+# AC-5a: literally, no template id or name appears in code (outside comments/docstrings).
+# ---------------------------------------------------------------------------
+
+
+def _string_and_name_literals(tree: ast.AST) -> set[str]:
+    """Every string constant and identifier in ``tree`` -- i.e. everything the interpreter can see,
+    which by construction excludes comments (tokenizer strips those before ast ever sees them) and
+    excludes nothing that is a real string or docstring. We additionally drop docstrings explicitly."""
+    docstrings: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc is not None:
+                docstrings.add(doc)
+
+    literals: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value in docstrings:
+                continue
+            literals.add(node.value)
+        elif isinstance(node, ast.Name):
+            literals.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            literals.add(node.attr)
+    return literals
+
+
+def test_no_template_id_or_name_appears_in_backend_code_outside_docstrings():
+    """AC-5: no template id or display name is hard-coded into engine/strategy code (outside a comment
+    or docstring); a template that needs special-case code is not really "data" (AC-3, AC-5). Parsed
+    with ``ast``, not a naive grep, so a docstring mentioning "Iron Condor" as an example is allowed."""
+    backend_root = Path(__file__).resolve().parents[2] / "backend"
+    py_files = list(backend_root.rglob("*.py"))
+    names_and_ids = {t.id for t in CATALOGUE} | {t.name for t in CATALOGUE}
+
+    offenders: list[tuple[str, str]] = []
+    for py_file in py_files:
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        literals = _string_and_name_literals(tree)
+        for literal in literals:
+            if literal in names_and_ids:
+                offenders.append((str(py_file), literal))
+    assert offenders == []
