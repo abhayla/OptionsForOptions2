@@ -248,9 +248,11 @@ def compare(
     groups = _pair_moved_contracts(differing, diff, held)
     mismatches = []
     for contracts, kind_hint in groups:
-        owners = held[contracts[0]]
+        # A paired group's owners come from its HELD contract, wherever the pair sorts (the unheld one may sort first).
+        owners = tuple(sorted({sid for contract in contracts for sid in held[contract]}))
         if owners:
-            kind = kind_hint or _classify_held(contracts[0], owners, broker, alone, actives, proposals, outside)
+            anchor = next(contract for contract in contracts if held[contract])
+            kind = kind_hint or _classify_held(anchor, owners, broker, alone, actives, proposals, outside)
         else:
             kind = MismatchKind.STANDALONE_CHANGED if alone.get(contracts[0]) else MismatchKind.UNEXPECTED_BROKER_POSITION
         if owners and any(outside.get(c) for c in contracts):
