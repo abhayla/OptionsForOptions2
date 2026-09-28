@@ -11,28 +11,26 @@ import datetime
 import re
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
 
 from ofo.engine.legs import require_decimal, require_price
+from ofo.rules.inputs import DataHealth
 from ofo.strategy.definition import MAX_LEGS
 
 MAX_NAMED = 50
 MAX_COUNT = 10**12
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,59}$")
 
+__all__ = [
+    "DataHealth",
+    "Greeks",
+    "LegQuote",
+    "LiveState",
+    "LiveStateError",
+]
+
 
 class LiveStateError(ValueError):
     """A live market state value is invalid."""
-
-
-class DataHealth(Enum):
-    """Market data health (domain-model §5; ADR-015 Q182: stale data is never shown as live)."""
-
-    AVAILABLE = "available"
-    STALE = "stale"
-    DELAYED = "delayed"
-    UNHEALTHY = "unhealthy"
-    UNAVAILABLE = "unavailable"
 
 
 def _signed(value: object, label: str) -> Decimal:
