@@ -1,0 +1,17 @@
+{
+  "id": "aggregate-across-mixed-instrument-kinds",
+  "class": "Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs.",
+  "mechanism": "The method groups contracts by underlying and expiry only and treats a non-uniform attribute as bad data, but Zerodha lists NIFTY options at tick 0.05 and the NIFTY future at tick 0.1 on the same expiry date.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-006 branch worktree-agent-aff2767756260822f @ cbafb26, backend/ofo/instruments/catalogue.py Catalogue.tick_size()",
+    "evidence": "Independent verifier ran tick_size on the real fixture for NIFTY expiry 2026-09-29: ValueError 'inconsistent tick size ... [0.05, 0.1]'. No test called tick_size(), so the suite was green (16 passed)."
+  },
+  "fix": "Derive per underlying + expiry + instrument kind (option vs future); tests loop over every expiry in the real fixture for both kinds (W-006 fix round).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Becomes guarded when the W-006 fix round's per-kind tests on the real fixture merge; also related: far-from-money NIFTY strikes jump by 1,300/1,500, so 'a multiple of the strike gap' is not always a listed strike (W-003 must place columns on listed strikes)."
+  },
+  "spec_ref": ["spec/requirements/REQ-053.md", "spec/decisions/ADR-042.md"]
+}
