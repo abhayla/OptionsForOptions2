@@ -151,9 +151,14 @@ def test_payload_must_be_json_serialisable() -> None:
 
 
 def test_secret_looking_payload_keys_are_rejected() -> None:
-    """AC-2: payload keys that look like secrets are rejected, never logged."""
+    """AC-2: payload keys that look like secrets are rejected, never logged.
+
+    "user_token" is deliberately not in this list (fix round: word-based matching only rejects a
+    "<prefix>_token" pair when the prefix is one of access/refresh/request/session/auth/api/
+    bearer/id — see test_catalogue... word-based guard tests below for the discriminating cases).
+    """
     log = AuditLog()
-    for bad_key in ("password", "Password", "api_key", "API-KEY", "secret_token", "user_token"):
+    for bad_key in ("password", "Password", "api_key", "API-KEY", "secret_token", "access_token"):
         with pytest.raises(PayloadValidationError):
             log.append(
                 EventType.SECURITY_EVENT_RECORDED,
@@ -371,6 +376,9 @@ def test_aware_datetime_nested_in_payload_is_accepted_and_hashed_as_utc() -> Non
 
 
 def test_expanded_secret_key_markers_are_rejected() -> None:
+    """"session" and "session_id" are deliberately NOT in this list (fix round: word-based
+    matching only rejects bare "session" as part of a "session_token" pair, not standalone — a
+    standalone "session"/"session_id" is a normal, auditable field, e.g. a Zerodha session id)."""
     bad_keys = (
         "passwd",
         "pwd",
@@ -382,8 +390,7 @@ def test_expanded_secret_key_markers_are_rejected() -> None:
         "otp_code",
         "private_key",
         "PrivateKey",
-        "session",
-        "session_id",
+        "session_token",
         "session-token",
     )
     for bad_key in bad_keys:
