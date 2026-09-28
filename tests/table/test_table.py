@@ -1,7 +1,13 @@
 """REQ-035: the single strategy table. Core proof: the golden Iron Condor table matches AC-2's locked column
 order and every leg/total cell exactly (scenario-calculations.md §6).
+
+Round-3 fix (independent verifier finding: round-2's Greek tests asserted numbers produced by RUNNING the code
+under test, so a round-then-scale bug passed unnoticed). Every Greek assertion below is checked against an
+independent Black-Scholes implementation written in THIS file (``math.erf``, no import from ``ofo.engine``), never
+against a hard-coded number that came from the table module itself.
 """
-from decimal import Decimal as D
+import math
+from decimal import ROUND_HALF_EVEN, Decimal as D
 
 import pytest
 
@@ -11,7 +17,7 @@ from ofo.engine.black_scholes import Greeks
 from ofo.table.columns import ColumnId
 from ofo.table.model import CellKind, StrategyHealth, TOTAL_ROW_ID, build_table
 
-from conftest import NIFTY_EXPIRY, nifty_input, nifty_leg
+from conftest import GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
 
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
@@ -20,29 +26,48 @@ FIXED_ORDER = [
 ]
 TRAILING_ORDER = [ColumnId.LOWER_BE, ColumnId.UPPER_BE, ColumnId.STATUS]
 GREEK_COLUMNS = [ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA]
+GREEK_NAMES = ("delta", "gamma", "theta", "vega")
 
 LEG_ENTRY_VALUES = [D("3187.50"), D("6450"), D("6862.50"), D("3300")]
 LEG_LIVE_PNL = [D("-322.50"), D("1012.50"), D("1012.50"), D("-337.50")]
 LEG_PNL_PERCENT = [D("-10.12"), D("15.70"), D("14.75"), D("-10.23")]
 LEG_CURRENT_VALUES = [D("2865"), D("5437.50"), D("5850"), D("2962.50")]
 
-# Platform Black-Scholes PER-UNIT Greeks (Cell.per_unit — the secondary, Advanced-only field).
-PER_UNIT_GREEKS = [
-    Greeks(D("-0.2560"), D("0.0007"), D("-6.1454"), D("12.2756")),
-    Greeks(D("-0.4125"), D("0.0009"), D("-6.3666"), D("14.8510")),
-    Greeks(D("0.1947"), D("0.0008"), D("-5.6963"), D("10.5071")),
-    Greeks(D("0.0992"), D("0.0004"), D("-3.8114"), D("6.6575")),
-]
-# POSITION Greeks (per_unit x quantity x sign: BUY +1, SELL -1) — Cell.value, the table's ONE Greek unit
-# (fix round: leg cells used to be per-unit while the TOTAL row was position-level; now both are position-level
-# and TOTAL = sum of the leg cells exactly, proven below).
-POSITION_GREEKS = [
-    Greeks(D("-19.2000"), D("0.0525"), D("-460.9050"), D("920.6700")),   # leg 1: BUY x 75
-    Greeks(D("30.9375"), D("-0.0675"), D("477.4950"), D("-1113.8250")),  # leg 2: SELL x 75
-    Greeks(D("-14.6025"), D("-0.0600"), D("427.2225"), D("-788.0325")),  # leg 3: SELL x 75
-    Greeks(D("7.4400"), D("0.0300"), D("-285.8550"), D("499.3125")),     # leg 4: BUY x 75
-]
-TOTAL_GREEKS = {"delta": D("4.5750"), "gamma": D("-0.0450"), "theta": D("157.9575"), "vega": D("-481.8750")}
+# The §6 golden legs' own data, needed by the independent Black-Scholes check below (kept separate from
+# conftest.GOLDEN_LEGS so this file never imports a computed Greek from anywhere).
+GOLDEN_STRIKES = [22800.0, 23000.0, 23400.0, 23600.0]
+GOLDEN_IVS = [0.117446, 0.108838, 0.093349, 0.102360]
+GOLDEN_IS_CALL = [False, False, True, True]  # PE, PE, CE, CE
+GOLDEN_SIGNS = [D(1), D(-1), D(-1), D(1)]  # BUY, SELL, SELL, BUY
+GOLDEN_QTY = D(75)
+DAYS_IN_YEAR = 365
+YEARS = 10 / 365  # VALUATION -> NIFTY_EXPIRY is exactly 10 calendar days at the same 15:30 IST close
+
+
+def _independent_bs_greeks(is_call: bool, s: float, k: float, t: float, r: float, v: float) -> dict:
+    """A from-scratch Black-Scholes Greeks implementation (Hull), independent of ofo.engine.black_scholes."""
+    d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
+    d2 = d1 - v * math.sqrt(t)
+    pdf = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+    cdf = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))  # noqa: E731
+    delta = cdf(d1) if is_call else cdf(d1) - 1.0
+    gamma = pdf / (s * v * math.sqrt(t))
+    vega = s * pdf * math.sqrt(t) / 100.0
+    decay = -s * pdf * v / (2.0 * math.sqrt(t))
+    carry = r * k * math.exp(-r * t)
+    theta_year = decay - carry * cdf(d2) if is_call else decay + carry * cdf(-d2)
+    return {"delta": delta, "gamma": gamma, "theta": theta_year / DAYS_IN_YEAR, "vega": vega}
+
+
+def _independent_position_greeks() -> list[dict]:
+    """The independent per-leg POSITION Greeks (per-unit x quantity x sign), one dict per golden leg."""
+    s, r = float(GOLDEN_SPOT), float(RATE)
+    out = []
+    for i in range(4):
+        per_unit = _independent_bs_greeks(GOLDEN_IS_CALL[i], s, GOLDEN_STRIKES[i], YEARS, r, GOLDEN_IVS[i])
+        sign = 1.0 if GOLDEN_SIGNS[i] == D(1) else -1.0
+        out.append({name: value * sign * 75.0 for name, value in per_unit.items()})
+    return out
 
 
 def test_core_golden_iron_condor_column_order_matches_ac2(golden, golden_scenario):
@@ -120,32 +145,53 @@ def test_ac2_scenario_level_columns_match_engine_exactly(golden, golden_scenario
 
 def test_ac6_iv_and_greeks_from_platform_black_scholes(golden, golden_scenario):
     """AC-6: IV cells are exact; Greek cells are POSITION-level (per-unit x quantity x sign), the platform's
-    per-unit Black-Scholes value kept as the secondary ``per_unit`` field (fix round)."""
+    per-unit Black-Scholes value kept as the secondary ``per_unit`` field. Every value is checked against an
+    INDEPENDENT Black-Scholes computation (``_independent_bs_greeks``, this file's own ``math.erf``), never a
+    hard-coded number produced by running ``ofo.engine`` (round-3 fix: that is exactly how round-2's
+    round-then-scale bug passed unnoticed).
+
+    Mutation test: round-then-scale (rounding each per-unit Greek to 4 dp before x quantity) fails this test — the
+    tolerance (0.00005) is sized to cover only the position cell's OWN final 4 dp rounding (max half-step 0.00005),
+    not an extra compounded per-unit rounding error (which was up to 0.0035 on the golden Gamma legs).
+    """
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
     ivs = [D("0.117446"), D("0.108838"), D("0.093349"), D("0.102360")]
+    independent = _independent_position_greeks()
+    tolerance = 0.00005
     for i, row in enumerate(table.rows[:4]):
         assert row.cell(ColumnId.IV).value == ivs[i]
-        for j, cid in enumerate(GREEK_COLUMNS):
-            name = ("delta", "gamma", "theta", "vega")[j]
+        for name, cid in zip(GREEK_NAMES, GREEK_COLUMNS):
             cell = row.cell(cid)
-            assert cell.value == getattr(POSITION_GREEKS[i], name)
-            assert cell.per_unit == getattr(PER_UNIT_GREEKS[i], name)
+            assert abs(float(cell.value) - independent[i][name]) <= tolerance, (i, name, cell.value)
+
     total = table.rows[-1]
-    for name, expected in TOTAL_GREEKS.items():
-        cid = {"delta": ColumnId.DELTA, "gamma": ColumnId.GAMMA, "theta": ColumnId.THETA,
-               "vega": ColumnId.VEGA}[name]
-        assert total.cell(cid).value == expected
+    independent_total = {name: sum(leg[name] for leg in independent) for name in GREEK_NAMES}
+    for name, cid in zip(GREEK_NAMES, GREEK_COLUMNS):
+        assert abs(float(total.cell(cid).value) - independent_total[name]) <= tolerance, name
 
 
-def test_fix_round_leg_greeks_sum_exactly_to_total_greeks(golden, golden_scenario):
-    """Fix round Proof (Class: one column mixing per-unit and position-level units): the four leg Delta cells
-    (and Gamma, Theta, Vega) must SUM to the TOTAL cell — same unit throughout the column, red before the fix."""
+def test_fix_round_leg_display_sums_within_rounding_tolerance_of_total(golden, golden_scenario):
+    """Round-3 fix item 1: legs are rounded individually, TOTAL is rounded once after summing the UNROUNDED
+    values — so the four DISPLAYED leg cells sum to within 0.0001 x 4 of the displayed TOTAL, not exactly."""
+    level_set, values = golden_scenario
+    table = build_table(golden, level_set=level_set, scenario=values)
+    tolerance = D("0.0001") * 4
+    for cid in GREEK_COLUMNS:
+        leg_sum = sum((table.rows[i].cell(cid).value for i in range(4)), D(0))
+        assert abs(leg_sum - table.rows[-1].cell(cid).value) <= tolerance, cid
+
+
+def test_fix_round_unrounded_leg_greeks_sum_exactly_to_total(golden, golden_scenario):
+    """Round-3 fix item 1, exact check: summing the legs' UNROUNDED ``per_unit`` Greeks (x quantity x sign) and
+    rounding ONCE gives EXACTLY the TOTAL cell — proving TOTAL is sum-then-round, never round-then-sum."""
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
     for cid in GREEK_COLUMNS:
-        leg_sum = sum((table.rows[i].cell(cid).value for i in range(4)), D(0))
-        assert leg_sum == table.rows[-1].cell(cid).value, cid
+        raw_sum = sum(
+            (table.rows[i].cell(cid).per_unit * GOLDEN_SIGNS[i] * GOLDEN_QTY for i in range(4)), D(0)
+        )
+        assert raw_sum.quantize(D("0.0001"), rounding=ROUND_HALF_EVEN) == table.rows[-1].cell(cid).value, cid
 
 
 def test_fix_round_futures_leg_delta_is_position_level_and_included_in_total():
@@ -181,7 +227,8 @@ def test_ac6_vendor_greek_is_a_reference_field_never_the_value(golden_scenario):
     inputs = nifty_input(legs)
     table = build_table(inputs, level_set=level_set, scenario=values)
     delta_cell = table.rows[0].cell(ColumnId.DELTA)
-    assert delta_cell.value == POSITION_GREEKS[0].delta  # the platform position value, not the vendor's -0.9999
+    independent_delta = _independent_position_greeks()[0]["delta"]
+    assert abs(float(delta_cell.value) - independent_delta) <= 0.00005  # the platform value, not vendor's -0.9999
     assert delta_cell.value != vendor_greeks.delta
     assert delta_cell.vendor == vendor_greeks.delta
 

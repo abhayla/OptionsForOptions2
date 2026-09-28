@@ -190,6 +190,35 @@ def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: 
     return 0.5 * (lo + hi)
 
 
+def _greek_floats(kind: Instrument, s: float, k: float, t: float, r: float, v: float,
+                   days_in_year: int) -> dict[str, float]:
+    """The four raw (unrounded) Greek floats. Shared by :func:`bs_greeks` and :func:`bs_greeks_unrounded`."""
+    d1, d2 = _d1_d2(s, k, t, r, v)
+    pdf = _norm_pdf(d1)
+    decay = -s * pdf * v / (2.0 * math.sqrt(t))
+    carry = r * k * math.exp(-r * t)
+    if kind is Instrument.CE:
+        delta, theta_year = _norm_cdf(d1), decay - carry * _norm_cdf(d2)
+    else:
+        delta, theta_year = _norm_cdf(d1) - 1.0, decay + carry * _norm_cdf(-d2)
+    return {
+        "delta": delta,
+        "gamma": pdf / (s * v * math.sqrt(t)),
+        "theta": theta_year / days_in_year,
+        "vega": s * pdf * math.sqrt(t) / 100.0,
+    }
+
+
+def _check_greek_inputs(option: Instrument, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal,
+                         vol: Decimal, days_in_year: int) -> tuple[Instrument, float, float, float, float, float]:
+    kind = _kind(option)
+    s, k = _paise(spot, "spot"), _paise(strike, "strike")
+    t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
+    if isinstance(days_in_year, bool) or not isinstance(days_in_year, int) or days_in_year <= 0:
+        raise ValueError(f"days_in_year must be a positive integer, got {days_in_year!r}")
+    return kind, s, k, t, r, v
+
+
 def bs_greeks(
     option: Instrument,
     spot: Decimal,
@@ -200,23 +229,38 @@ def bs_greeks(
     *,
     days_in_year: int = DAYS_IN_YEAR,
 ) -> Greeks:
-    """Delta, gamma, theta (per calendar day) and vega (per 1 vol point) per unit, each rounded to 4 dp."""
-    kind = _kind(option)
-    s, k = _paise(spot, "spot"), _paise(strike, "strike")
-    t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
-    if isinstance(days_in_year, bool) or not isinstance(days_in_year, int) or days_in_year <= 0:
-        raise ValueError(f"days_in_year must be a positive integer, got {days_in_year!r}")
-    d1, d2 = _d1_d2(s, k, t, r, v)
-    pdf = _norm_pdf(d1)
-    decay = -s * pdf * v / (2.0 * math.sqrt(t))
-    carry = r * k * math.exp(-r * t)
-    if kind is Instrument.CE:
-        delta, theta_year = _norm_cdf(d1), decay - carry * _norm_cdf(d2)
-    else:
-        delta, theta_year = _norm_cdf(d1) - 1.0, decay + carry * _norm_cdf(-d2)
-    return Greeks(
-        delta=_to_decimal(delta, GREEK_STEP),
-        gamma=_to_decimal(pdf / (s * v * math.sqrt(t)), GREEK_STEP),
-        theta=_to_decimal(theta_year / days_in_year, GREEK_STEP),
-        vega=_to_decimal(s * pdf * math.sqrt(t) / 100.0, GREEK_STEP),
-    )
+    """Delta, gamma, theta (per calendar day) and vega (per 1 vol point) per unit, each rounded to 4 dp.
+
+    This is the DISPLAY boundary rounding (spec §4 "Greeks to 4 dp at the boundary") for a single option shown on
+    its own. A caller that AGGREGATES several legs' Greeks (e.g. the table's position-level totals, REQ-035 AC-6)
+    must use :func:`bs_greeks_unrounded` and round only once, after scaling and summing — rounding here first and
+    then multiplying by quantity (round-then-scale) compounds the rounding error (fix round finding: a golden
+    Iron Condor leg's Gamma was off by 0.0035 at position level from exactly this bug).
+    """
+    kind, s, k, t, r, v = _check_greek_inputs(option, spot, strike, years, rate, vol, days_in_year)
+    raw = _greek_floats(kind, s, k, t, r, v, days_in_year)
+    return Greeks(**{name: _to_decimal(value, GREEK_STEP) for name, value in raw.items()})
+
+
+def bs_greeks_unrounded(
+    option: Instrument,
+    spot: Decimal,
+    strike: Decimal,
+    years: Decimal,
+    rate: Decimal,
+    vol: Decimal,
+    *,
+    days_in_year: int = DAYS_IN_YEAR,
+) -> Greeks:
+    """The same per-unit Greeks as :func:`bs_greeks`, WITHOUT the 4 dp display rounding.
+
+    ``Decimal(repr(float))`` is exact (no further precision lost converting the model's float to Decimal); only the
+    display-boundary quantize step is skipped. For internal aggregation only — a caller that scales by quantity and
+    sums several legs, then rounds once at its own boundary (never displayed to a user directly).
+    """
+    kind, s, k, t, r, v = _check_greek_inputs(option, spot, strike, years, rate, vol, days_in_year)
+    raw = _greek_floats(kind, s, k, t, r, v, days_in_year)
+    for name, value in raw.items():
+        if not math.isfinite(value):
+            raise ValueError(f"the model produced a non-finite {name}: {value}")
+    return Greeks(**{name: Decimal(repr(value)) for name, value in raw.items()})

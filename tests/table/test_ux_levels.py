@@ -1,6 +1,7 @@
 """REQ-035 AC-7: the column order stays locked; what is shown depends on the UX level."""
+from ofo.engine.display import format_points
 from ofo.table.columns import ColumnId, UXLevel
-from ofo.table.model import build_table, visible_columns
+from ofo.table.model import build_table, scenario_header, visible_columns
 
 GUIDED_EXPECTED = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
@@ -74,3 +75,34 @@ def test_ac7_scenario_level_columns_always_visible(golden, golden_scenario):
         visible_ids = {c.id for c in visible_columns(table, level)}
         for scenario_level in level_set.levels:
             assert scenario_level in visible_ids
+
+
+def test_ac7_guided_scenario_header_is_plain_language(golden, golden_scenario):
+    """Round-3 fix item 3: Guided's scenario-column header text is 'NIFTY at expiry | You make/lose' for every
+    scenario column (T1 #78-#79 style), not the raw index level."""
+    level_set, values = golden_scenario
+    table = build_table(golden, level_set=level_set, scenario=values)
+    guided_scenario_cols = [c for c in visible_columns(table, UXLevel.GUIDED) if c.is_scenario_level]
+    assert len(guided_scenario_cols) == len(level_set.levels)
+    for col in guided_scenario_cols:
+        assert col.label == "NIFTY at expiry | You make/lose"
+
+
+def test_ac7_standard_and_advanced_scenario_header_is_the_level_value(golden, golden_scenario):
+    """Round-3 fix item 3: Standard/Advanced show the level value itself (points), unlike Guided."""
+    level_set, values = golden_scenario
+    table = build_table(golden, level_set=level_set, scenario=values)
+    for level in (UXLevel.STANDARD, UXLevel.ADVANCED):
+        scenario_cols = [c for c in visible_columns(table, level) if c.is_scenario_level]
+        for col in scenario_cols:
+            assert col.label == format_points(col.id)
+
+
+def test_scenario_header_uses_the_strategy_underlying_name():
+    """Round-3 fix item 3: the Guided header names the strategy's own underlying (SENSEX for a SENSEX strategy,
+    not a hard-coded NIFTY)."""
+    from decimal import Decimal as D
+
+    assert scenario_header(UXLevel.GUIDED, "SENSEX", D("75000")) == "SENSEX at expiry | You make/lose"
+    assert scenario_header(UXLevel.GUIDED, "NIFTY", D("23000")) == "NIFTY at expiry | You make/lose"
+    assert scenario_header(UXLevel.STANDARD, "SENSEX", D("75000")) == format_points(D("75000"))
