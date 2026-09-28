@@ -51,7 +51,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q33 | Risk acknowledgement | Owner replaced it with the strategy outcome table requirement (#83–#98); risk UX later as contextual | Owner | T1 #83–#98 | ADR-008 |
 | Q33A | Scenario columns: expiry vs current estimate | C — both, Expiry P&L default | Owner | T1 #111 | ADR-008 |
 | Q33B | Scenario range | E — intelligent default + user customization | Owner | T1 #113 | ADR-008 |
-| Q33C | Scenario anchoring | Owner: 'B + current market price + 0 P&L' — rounded ₹100 grid plus current level and breakevens | Owner | T1 #115 | ADR-008 |
+| Q33C | Scenario anchoring | Owner: 'B + current market price + 0 P&L' — rounded 100-point grid (index points, not ₹) plus current level and breakevens | Owner | T1 #115 | ADR-008 |
 | Q33D | Where current/0-P&L columns go | C — inserted at their actual price position | Owner | T1 #117 | ADR-008 |
 | Q34 | Option Chain role | B + multi-select checkboxes, 'Add Selected (N)' | Owner | T1 #119 | ADR-007 |
 | Q35 | Where Buy/Sell is chosen | C — both chain and Builder; Builder is default | Owner | T1 #121 | ADR-007 |
@@ -76,11 +76,11 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q54 | Changing lots in chain | A — +/- lot stepper | Owner | T1 #165 | ADR-007 |
 | Q55 | Chain payoff preview | A — compact live preview | Owner | T1 #167 | ADR-007 |
 | Q56 | Removing a selected leg | D — remove + short Undo | Owner | T1 #169 | ADR-007 |
-| Q57 | Where adjustment rules live | C — global defaults + per-strategy overrides. (Two earlier Q57s — Undo duration, data provider — were paused and never answered.) | Owner | T1 #179 | ADR-011 |
+| Q57 | Where adjustment rules live | C — global defaults + per-strategy overrides. (Three earlier Q57s — Undo duration (T1 #170), primary organizing concept strategy-centric/terminal/hybrid (T1 #174), data-provider strategy (T1 #176) — were paused and never answered.) | Owner | T1 #179 | ADR-011 |
 | Q58 | Public live data | A — all behind login | Owner | T1 #181 | ADR-027 |
 | Q59 | Public site | A — marketing only | Owner | T1 #183 | ADR-027 |
 | Q60 | Free via referral | Yes: 1 referral = permanent free → replaced by '1 referral = 1 month Pro' (T1 #189) | Superseded | T1 #185, #189 | ADR-025 |
-| Q61 | Successful referral / direct customers | A — account opened + attributed; owner: direct customers get full Pro free forever | Owner | T1 #187, #191 | ADR-024, ADR-025 |
+| Q61 | Successful referral / direct customers | Two meanings under one number. First (T1 #187): what counts as a successful referral — A, account opened + attributed (ADR-025). Then (T1 #191, owner): direct qualifying customers get full Pro free forever (ADR-024) | Owner | T1 #187, #191 | ADR-024, ADR-025 |
 | Q62 | Direct customer billing page | Owner: 'You're already on Pro', payment disabled | Owner | T1 #193 | ADR-024 |
 | Q63 | Referral stacking | C — admin-configurable, stacking on by default | Owner | T1 #195 | ADR-025 |
 | Q64 | Price | A — ₹600/month + discounted annual | Owner | T1 #197 | ADR-026 |
@@ -169,7 +169,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q147 | Rule complexity | Controlled in V1 | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q148 | When a rule triggers | Explain + prepare; user decides | ChatGPT (delegated) | T2 #86 | ADR-009 |
 | Q149 | Monitor without adjustment rules | C — detect opportunities, labelled as platform-detected | Owner | T2 #87 | ADR-011 |
-| Q150 | Where monitoring lives | Both: Strategy (plan) + Live Position | Owner | T2 #87–#90 | ADR-010 |
+| Q150 | Where monitoring lives | Both: Strategy (plan) + Live Position | ChatGPT (delegated), owner-raised (owner asked at T2 #87 "Where should the monitoring happen?"; answer and lock are ChatGPT's, T2 #88/#90; the owner's "C" at T2 #89 answered Q153, not Q150) | T2 #87–#90 | ADR-010 |
 | Q151 | Define exit/adjustment in strategy | Yes | Owner | T2 #87–#90 | ADR-009 |
 | Q152 | Adjustments tied to monitoring | Yes | Owner | T2 #87–#90 | ADR-011 |
 | Q153 | Exit/adjustment plan required | C — both optional | Owner | T2 #89 | ADR-009 |
@@ -179,7 +179,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q157 | Plan editable after execution | Yes, with history | ChatGPT (delegated) | T2 #90 | ADR-002 |
 | Q158 | Same numbers on Strategy and Position | Shared engine, different presentation | ChatGPT (delegated) | T2 #90 | ADR-010 |
 | Q159 | Risk area, no user rule | B — warning + generic approaches | Owner | T2 #91 | ADR-011 |
-| Q160 | Opportunity panel | Four layers | ChatGPT (delegated) | T2 #98 | ADR-011 |
+| Q160 | Opportunity panel | Asked twice. First (T2 #92): approach names / names + brief explanation / exact strikes — B, names + explanation, no exact strikes (folded into REQ-045 AC-5, REQ-046 AC-3). Then (T2 #98): the four-layer panel | ChatGPT (delegated) | T2 #92, #98 | ADR-011 |
 | Q161 | Adjustment metric history | Yes | ChatGPT (delegated) | T2 #100 | ADR-013 |
 | Q162 | Leg + strategy data | Yes | ChatGPT (delegated) | T2 #100 | ADR-013 |
 | Q163 | Underlying data alone | Yes | ChatGPT (delegated) | T2 #100 | ADR-013 |
@@ -191,7 +191,7 @@ lost details (e.g. Q33A–Q33D, Q35, Q60–Q71, Q81).
 | Q169 | Build history from live feed | Yes | ChatGPT (delegated) | T2 #102 | ADR-013 |
 | Q170 | Per-user calculation | No — shared once | ChatGPT (delegated) | T2 #102 | ADR-012 |
 | Q171 | Authoritative live data source | Licensed NSE-authorized vendor; owner #107: Zerodha only for orders/positions → later overridden by owner #121 | Superseded | T2 #106–#107 | ADR-014 |
-| Q172 | Do TrueData/GFDL cover our needs | Technically yes; commercial rights unconfirmed | ChatGPT (delegated) | T2 #108 | ADR-014 |
+| Q172 | Live-data level to buy / Do TrueData/GFDL cover our needs | Used twice. First (T2 #106): what level of live data to buy — V1 buys no tick-by-tick or full order-book (L2/L3) data unless a demonstrated requirement needs it. Then (T2 #108): TrueData/GFDL technically yes; commercial rights unconfirmed | ChatGPT (delegated) | T2 #106, #108 | ADR-014 |
 | Q173 | Vendor checklist first | Yes | ChatGPT (delegated) | T2 #108 | ADR-014 |
 | Q174 | Which TrueData plan | Not Velocity; custom commercial API quote | ChatGPT (delegated) | T2 #110 | ADR-014 |
 | Q175 | Ask TrueData for quote | Yes — owner emailed TrueData | Owner | T2 #110–#113 | ADR-014 |

@@ -31,32 +31,50 @@ party) · **DECIDED → ADR-###**.
   exists. Q89 (monitoring continues after Pro expiry) cannot be met without a session either.
 - Spec basis: ADR-010, ADR-015 (Q182, Q184), ADR-020, ADR-023 (Q89).
 
-## Q206 — OPEN — Prices for drafts and trials without Zerodha
+## Q206 — DECIDED (spec-conformant, 2026-09-29; no new rule: follows Q185/Q186, Q92, ADR-034) — Prices for drafts and trials without Zerodha
 - Drafts without Zerodha are allowed and must not show fake prices (Q185, Q186). Q9 originally meant users could
   explore the chain without a broker; the interim Zerodha source removes that.
 - **Recommended:** keep drafts price-less ("Connect Zerodha to see live prices") and allow a clearly labelled
   **Sample · Not Live** chain (as Q92 already allows) for learning.
 - Spec basis: ADR-020 (Q185–Q188), ADR-023 (Q92).
 
-## Q207 — OPEN — Futures leg payoff formula
+## Q207 — DECIDED → ADR-041 (owner, 2026-09-29: A) — Futures leg payoff formula
 - Futures Buy/Sell are V1 legs (Q8); the locked formulas cover options only.
 - **Recommended:** BUY FUT `(Market − Entry) × Qty`, SELL FUT `(Entry − Market) × Qty` (expiry), with LTP for live.
 - Spec basis: ADR-008, `spec/business-rules/scenario-calculations.md` §1.
 
-## Q208 — OPEN — Scenario and range step for SENSEX
+## Q208 — DECIDED → ADR-042 (owner, 2026-09-29: A) — Scenario and range step for SENSEX
 - All 100-point steps (Q33, Q108) were discussed on NIFTY; SENSEX trades roughly 3× higher (not re-measured today).
+- **Measured 2026-09-29** from Zerodha's public instrument list (api.kite.trade/instruments): NIFTY (NFO) strike gap
+  **50** points (128 of 137 gaps), lot size **65**; SENSEX (BFO) strike gap **100** points (151 of 151), lot size **20**;
+  nearest expiries 2026-09-29 (NIFTY) and 2026-10-01 (SENSEX). Worked examples in the spec that use quantity 75 are
+  illustrative only; the real lot size always comes from the instrument master (ADR-007 Q36).
 - **Recommended:** step per underlying as configuration; pick SENSEX's after checking its real strike spacing.
 - Spec basis: ADR-005 (Q108), ADR-008 (Q33C).
 
-## Q209 — OPEN — How a referral's success reaches the platform
+## Q209 — DECIDED → ADR-044 (owner, 2026-09-29: A) — How a referral's success reaches the platform
 - A referral counts only when an account is opened and attributed (Q61); no mechanism is recorded.
 - **Recommended:** admin imports confirmed openings (CSV, like ADR-024), each creating an entitlement event.
 - Spec basis: ADR-024, ADR-025.
 
-## Q210 — EXTERNAL + OPEN — What Zerodha allows, and what it costs each user
-- ChatGPT's check of Zerodha's docs on 28 Sep (T2 #122, **not verified by us**): the free Personal plan has no live
+## Q210 — DECIDED → ADR-034 (email Zerodha first; owner, 2026-09-29) + EXTERNAL (waiting on Zerodha's written answer) — What Zerodha allows, and what it costs each user
+- ChatGPT's check of Zerodha's docs on 28 Sep (T2 #122): the free Personal plan has no live
   data; live data needs the ₹500/month Connect plan per API key; Kite Connect data may not be displayed or
   redistributed on other platforms; startups building mass-retail products may get Kite Connect free.
+- **Verified by us, 2026-09-28, on Zerodha's own pages:**
+  - support.zerodha.com "What are the charges for Kite APIs": Personal (free) "excludes historical or real-time data";
+    Connect gives "real-time data via WebSockets" and "historical candle data", "₹500 per app each month";
+    Startups: "For startups developing mass retail products, Kite Connect APIs are free", contact Zerodha's API team.
+  - support.zerodha.com "Can I use historical and live data … on other platforms?": "you cannot display data from
+    Kite Connect APIs on other platforms, as this violates the exchange's data vending policies … Kite Connect API
+    is primarily an execution suite, not a data vending service"; for distribution, "contact an exchange-authorised
+    data vendor".
+  - kite.trade/startups: "If your platform is targeted at the mass retail market, the Kite Connect APIs are available
+    free of cost"; the page does **not** say whether the free startup access includes live market data or permits
+    display on our platform.
+  - Consequence (open for owner decision): the T2 #121 premise "Zerodha's live market data, which is free" is not
+    true for the Personal plan, and showing Kite Connect data in our product is refused by default. Unmeasured:
+    whether the startup programme changes either point — only Zerodha's written answer settles it.
 - The owner's plan (T2 #121) assumed the live data was free. If each user must create their own Connect app, each
   user pays Zerodha ₹500/month on top of ₹600 for Pro — a very different product.
 - **Recommended:** email Zerodha's API team first (startup/mass-retail programme + written permission for our SaaS
@@ -74,12 +92,12 @@ The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer
 could not read the transcript and the owner will provide it later (T2 #95). Pending: the transcript, then a line-by-
 line data checklist (REQ "Adjustment data requirements from the owner's reference video").
 
-## Q213 — OPEN (small) — Breakeven columns: inserted, at the end, or both?
+## Q213 — DECIDED (delegated overnight, ADR-045: recommendation A = both) — Breakeven columns: inserted, at the end, or both?
 Q33D inserts 0-P&L columns at their price position; the earlier locked column list (T1 #90) also has Lower BE /
 Upper BE after the grid. **Recommended:** both (inserted markers for reading the grid, summary columns for the
 numbers). Spec basis: ADR-008.
 
-## Q214 — OPEN (small) — How long Undo stays after removing a leg
+## Q214 — DECIDED (delegated overnight, ADR-045: about 5 seconds, admin-configurable) — How long Undo stays after removing a leg
 Q56 chose "remove + Undo"; the follow-up question (duration) was paused and never answered. **Recommended:** about 5
 seconds (ChatGPT's recommendation, T1 #170). Spec basis: ADR-007.
 
@@ -95,3 +113,32 @@ alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits
 cooldown · security architecture · data-retention policy · admin/system-health screens · final cloud/stack · the
 strategy state transition table (proposal in `spec/data/domain-model.md`) · what happens when a Client ID leaves the
 complimentary list · Zerodha rate limits for per-user WebSockets.
+
+## Q215 — DECIDED → ADR-035 — Expiry P&L: entry price or current price? (audit item X-T1#95)
+- Owner, 2026-09-29: **A** — expiry columns use the entry price; the LTP only in the live P&L column (Q33A = C).
+- Spec basis: ADR-008; `spec/business-rules/scenario-calculations.md` §1–§2; T1 #95–#97.
+
+## Q216 — DECIDED → ADR-036 — Beta first, or public launch? (audit item Q13)
+- Owner, 2026-09-29: **A** — public SaaS as chosen at Q13 = B; invite-only switch exists, off by default.
+- Spec basis: ADR-001 (Q13 = B, T1 #27), REQ-003.
+
+## Q217 — DECIDED → ADR-037 — Can a Limited user exit an active strategy? (audit item C-5)
+- Owner, 2026-09-29: **A** — yes; exit and closing orders for active strategies are allowed; new trades stay Pro.
+- Spec basis: ADR-023 (Q67/Q89/Q91), REQ-018, ADR-018.
+
+## Q218 — DECIDED → ADR-038 — Referral reward: calendar month or 30 days? (audit item C-3)
+- Owner, 2026-09-29: **A** — 30 days per referral, day count in Admin, exact end date shown.
+- Spec basis: ADR-025 (Q63), REQ-021, ADR-026 (T1 #189).
+
+## Q219 — DECIDED → ADR-039 — A running trial meets an already-trialled Client ID (audit item C-4)
+- Owner, 2026-09-29: **A** — the running trial ends; offer the verified transfer or Pro.
+- Spec basis: ADR-023 (Q88), ADR-022 (Q82/Q83), REQ-014.
+
+## Q220 — DECIDED → ADR-040 — Which system sends the WhatsApp OTP? (audit item C-19)
+- Owner, 2026-09-29: **A** — shared Notifier gateway, Wati AUTHENTICATION template, stand-in sender in dev/test.
+- Spec basis: ADR-021 (Q72), REQ-012 AC-2/AC-4.
+
+## Q221 — DECIDED → ADR-043 — Tech stack
+- Owner, 2026-09-29: **A** — Python 3.12+ / FastAPI, PostgreSQL, Redis, Vue 3 + Vite; legacy code may be copied with
+  provenance (`spec/technical-design/legacy-reuse.md`).
+- Spec basis: none before this (the spec had no stack decision); hard rules ADR-008, ADR-012, ADR-029.
