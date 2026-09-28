@@ -1,0 +1,41 @@
+{
+  "id": "fill-not-exactly-once",
+  "class": "Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills.",
+  "mechanism": "Rounds 1 and 2 guarded the doors into two separate stores (Order._filled_quantity and PositionLedger._positions) instead of removing the duplication between them, so a bug in either write path diverged them without either guard noticing: a trade id reused across two orders (only guaranteed unique per order by the broker) collided under a trade-id-only key and dropped the second order's fill; a replay with a changed quantity was accepted as an ordinary duplicate; Order.transition(filled_delta=...) plus OrderBook.add let an order be marked Executed with 10 units filled while the ledger, updated separately, still held 0 -- and a genuine later fill of 3 units was then refused as an over-fill against the order's own (wrong) count.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-019 round 2 backend/ofo/orders/model.py OrderBook.apply_fill / Order.transition(filled_delta=...) @ a885a1c",
+    "evidence": "Independent verifier probe: event id e1 reused for a second order C (qty 3) returned OK and dropped C's fill; a replay of e1 with a different qty (6) returned OK; Order.transition(filled_delta=10) + OrderBook.add produced an order reading Executed/10-filled while PositionLedger.position(...) read 0, and a subsequent real fill of 3 units was refused as over-fill."
+  },
+  "fix": "Round 3 (a885a1c..HEAD): removed the second store entirely. FillLedger is append-only, keyed by (broker_order_id, trade_id) -- the composite key is what stops a trade id that is only broker-unique-per-order from colliding across two orders. Order carries no filled_quantity field and no fill-implied state; OrderBook.apply_fill is the only writer, and OrderBook computes filled_quantity/effective state/position fresh from the ledger on every read (never cached). A same-key identical fill is an idempotent no-op; a same-key different fill raises FillConflictError; a genuinely new key is validated (known order, contract/side match, order open, cumulative <= ordered) before it is appended. Property-tested: tests/orders/test_ledger_property.py drives 5 x 400 randomized calls (fills, replays, reused trade ids across orders, conflicts, add/transition misuse) and asserts after every single call that every order's filled_quantity equals the sum of its own ledger rows and every position equals the signed sum of the matching ledger rows.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/orders/test_ledger_property.py::test_ledger_is_the_only_source_of_truth_under_random_misuse",
+      "tests/orders/test_no_state_before_fill.py::test_two_orders_can_independently_reuse_the_same_trade_id",
+      "tests/orders/test_no_state_before_fill.py::test_a_replayed_identical_fill_is_a_no_op_even_after_completion",
+      "tests/orders/test_no_state_before_fill.py::test_same_key_different_copy_conflicts",
+      "tests/orders/test_lifecycle.py::test_transition_refuses_fill_implying_states",
+      "tests/orders/test_no_state_before_fill.py::test_add_refuses_every_non_prepared_state"
+    ],
+    "note": "Mutation-verified 2026-09-29 (monkeypatch, not a committed scratch copy): dropping broker_order_id from the ledger key, skipping the same-key copy comparison, letting add() accept a non-Prepared order, storing filled_quantity on the order instead of computing it, and skipping order-level validation on a new key were each independently confirmed to make their listed test fail before this fix; none of the five is possible in the merged code."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-057.md",
+    "spec/decisions/ADR-016.md",
+    "spec/decisions/ADR-018.md",
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-019 round 1 @ 0c7c83a",
+      "evidence": "PositionLedger.apply_fill accepted any fill message without checking it against the order it claims to fill (no replay/unknown-order/contract/side/over-fill checks at all)."
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-019 round 2 @ a885a1c",
+      "evidence": "OrderBook.apply_fill added the checks but kept Order._filled_quantity as a second, separately-written store; independent review found the two-store duplication was itself the root cause (see mechanism)."
+    }
+  ]
+}
