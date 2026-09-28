@@ -30,6 +30,10 @@ Everything decided or built while you were away (ADR-045). Each delegated decisi
 | Estimated Now | Default model: Black-Scholes, no dividends, calendar days/365 to 15:30 IST expiry, rate as an input, per-leg IV; futures at a what-if level = level × e^(rT). Always labelled "estimate" | builder default, recorded (scenario-calculations §4) |
 | Remove = deactivate | Removing a qualifying Client ID deactivates it (history kept, reversible, no longer qualifies) — ADR-024 Q70 already said "deactivate" | actor intent (why an admin removes an ID) |
 | ATM tie | A spot exactly between two strikes rounds up to the higher strike (23,225 at gap 50 → 23,250) when templates pick the at-the-money strike | orchestrator default |
+| Three-valued rule logic | An exit "A OR B" fires when A is proven true even if B's data is missing; AND is false when any branch is proven false; otherwise "cannot evaluate" (REQ-041) | verifier question; spec-conformant (ADR-015) |
+| Audit secrets | The audit log does not filter secrets by field name (that failed twice both ways: blocked Zerodha's `instrument_token`, let `X-Api-Key` and `enctoken` through). Replaced by design with a per-event-type field allowlist (REQ-063 AC-5, work item W-017), **blocked** until real Kite responses exist | independent reviewer + orchestrator |
+| Limited-user adjustments | A Limited user may adjust only if no position grows AND worst-case loss does not get worse (closing only the bought wing of a spread needs Pro — it raises risk) (REQ-059) | builder's risk note; ADR-037 |
+| Execution gate | Entry/exit run the active version; unknown eligibility blocks; duplicate legs block; a reconciliation mismatch blocks exits too (acting on a wrong position picture could open a naked position; Kite still works) (REQ-059) | builder defaults, reviewed |
 | Wheel template | Dropped: it is a stock-assignment cycle that cannot happen on cash-settled NIFTY/SENSEX options; Cash-Secured Put reworded (no "assignment") | verifier finding (misleading to beginners) |
 
 ## 3. Built overnight
