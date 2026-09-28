@@ -15,7 +15,7 @@ from decimal import Decimal
 from enum import Enum
 
 from ofo.engine import UNLIMITED, Instrument, Leg, Strategy, strategy_metrics
-from ofo.engine.metrics import _Unlimited
+from ofo.engine.metrics import MultiExpiryError, _Unlimited
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
@@ -193,20 +193,54 @@ def _reduces_only(active: tuple[Leg, ...], proposed: tuple[Leg, ...]) -> bool:
     return all(before.get(k, 0) >= units for k, units in _positions(proposed).items())
 
 
-def needs_pro(strategy: Strategy, ctx: ExecutionContext) -> bool:
-    """ADR-037 by actor intent: an exit, or an adjustment that only closes/reduces active legs, is open to every plan.
+PRO_REASON = (
+    "New entries and adjustments that add or change positions need Pro. Exiting, or closing or reducing legs of an "
+    "active strategy, stays available on every plan."
+)
 
-    An adjustment without the active legs to compare against cannot be shown to reduce only, so it needs Pro
-    (fail closed).
+
+def _worst_case_text(min_pnl: Decimal | _Unlimited) -> str:
+    if min_pnl is UNLIMITED:
+        return "an unlimited loss"
+    return f"a loss of {_rupees(-min_pnl)}" if min_pnl < 0 else f"a gain of {_rupees(min_pnl)}"
+
+
+def _worse(after: Decimal | _Unlimited, before: Decimal | _Unlimited) -> bool:
+    """True when ``after`` is a worse worst case than ``before``; UNLIMITED is worse than any finite value."""
+    if after is UNLIMITED:
+        return before is not UNLIMITED
+    return before is not UNLIMITED and after < before
+
+
+def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> str | None:
+    """The reason this action needs Pro, or None when it is open to every plan (ADR-037, by actor intent).
+
+    An EXIT is open to every plan. An ADJUSTMENT is open only if (a) no position grows (no new contract, no quantity
+    increase, no side flip) AND (b) the engine's worst case does not get worse: ``strategy_metrics(after).min_pnl >=
+    strategy_metrics(before).min_pnl``. Fail closed: no active legs to compare, or a multi-expiry strategy whose
+    exact metrics raise ``MultiExpiryError``, needs Pro.
     """
     if ctx.action is ExecutionAction.EXIT:
-        return False
-    if ctx.action is ExecutionAction.ADJUSTMENT and ctx.active_legs is not None:
-        return not _reduces_only(ctx.active_legs, strategy.legs)
-    return True
+        return None
+    if ctx.action is not ExecutionAction.ADJUSTMENT or ctx.active_legs is None:
+        return PRO_REASON
+    if not _reduces_only(ctx.active_legs, strategy.legs):
+        return PRO_REASON
+    try:
+        before = strategy_metrics(Strategy(ctx.active_legs)).min_pnl
+        after = strategy_metrics(strategy).min_pnl
+    except MultiExpiryError:
+        return PRO_REASON
+    if _worse(after, before):
+        return (
+            f"This adjustment makes the strategy's worst case larger: from {_worst_case_text(before)} to "
+            f"{_worst_case_text(after)}. Adjustments that add risk need Pro. Exiting, or closing or reducing legs "
+            "without a larger worst case, stays available on every plan."
+        )
+    return None
 
 
-def _context_failures(ctx: ExecutionContext, pro_needed: bool) -> list[CheckFailure]:
+def _context_failures(ctx: ExecutionContext, pro_reason: str | None) -> list[CheckFailure]:
     out: list[CheckFailure] = []
 
     def unknown_or(value: bool | None, code: CheckCode, unknown: str, false: str) -> None:
@@ -229,12 +263,11 @@ def _context_failures(ctx: ExecutionContext, pro_needed: bool) -> list[CheckFail
     unknown_or(ctx.session_valid, CheckCode.SESSION_INVALID,
                "We could not confirm your Zerodha session. Reconnect to continue.",
                "Your Zerodha session has expired. Reconnect to continue.")
-    if pro_needed:
+    if pro_reason is not None:
         unknown_or(ctx.pro_entitled, CheckCode.ENTITLEMENT_REQUIRED,
                    "We could not confirm your plan. New entries and adjustments that add or change positions need "
                    "Pro.",
-                   "New entries and adjustments that add or change positions need Pro. Exiting, or closing or "
-                   "reducing legs of an active strategy, stays available on every plan.")
+                   pro_reason)
     for data_input in REQUIRED_DATA_INPUTS:
         health = ctx.data_health.get(data_input)
         if health is not DataHealth.HEALTHY:
@@ -371,8 +404,8 @@ def check_pre_execution(
     if not isinstance(catalogue, Catalogue) or not isinstance(eligibility, EligibilityRegistry):
         raise ValueError("catalogue and eligibility must be a Catalogue and an EligibilityRegistry")
 
-    pro_needed = needs_pro(strategy, context)
-    failures = _context_failures(context, pro_needed)
+    pro_reason = pro_requirement(strategy, context)
+    failures = _context_failures(context, pro_reason)
     not_checked: tuple[CheckCode, ...] = ()
     if context.underlying not in SUPPORTED_UNDERLYINGS:
         failures.insert(0, CheckFailure(
@@ -385,7 +418,7 @@ def check_pre_execution(
     flags, max_loss = _risk_flags(strategy, context)
 
     failed = {f.code for f in failures}
-    applicable = [c for c in CheckCode if pro_needed or c is not CheckCode.ENTITLEMENT_REQUIRED]
+    applicable = [c for c in CheckCode if pro_reason is not None or c is not CheckCode.ENTITLEMENT_REQUIRED]
     passed = tuple(c for c in applicable if c not in failed and c not in not_checked)
     record = None
     if failures:

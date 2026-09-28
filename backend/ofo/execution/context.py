@@ -9,10 +9,14 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
 - **Versions.** A NEW_ENTRY or EXIT executes the strategy's ACTIVE version (its current configuration); an ADJUSTMENT
   executes the PROPOSED version (ADR-019 Q191: a proposed version becomes active only after execution +
   reconciliation). A SUPERSEDED version is never executed.
-- **Entitlement by actor intent (ADR-037).** A Limited user may exit, and an adjustment made ONLY of closing or
-  reducing orders on legs of the active strategy (no new contract, no quantity increase, no side flip) is a partial
-  exit, so it is allowed too. Anything else (new entry, risk-adding or rolling adjustment) needs Pro. The adjustment is
-  classified from the legs, before (``active_legs``) vs after (the proposed strategy), never from a user flag.
+- **Entitlement by actor intent (ADR-037 "risk-adding adjustments stay behind Pro"; REQ-059 Gate decisions,
+  fix round 2).** A Limited user may exit. A Limited user may run an adjustment only if (a) no position grows (no new
+  contract, no quantity increase, no side flip) AND (b) the engine's worst case does not get worse:
+  ``strategy_metrics(after).min_pnl >= strategy_metrics(before).min_pnl``, an UNLIMITED loss being worse than any
+  finite one; a multi-expiry strategy (exact metrics raise ``MultiExpiryError``) needs Pro, fail closed. Anything
+  else needs Pro. Classified from the legs, before (``active_legs``) vs after (the proposed strategy), never from a
+  user flag. Known gap: the at-expiry metric does not count P&L realised by the legs being closed, so closing a whole
+  credit spread can read as a larger worst case (see the strict xfail in tests/execution/test_safety_checks.py).
   ``pro_entitled`` is the entitlement layer's answer, passed in as a boolean; this module does not import that layer.
 - **Unknown eligibility blocks.** A contract with no recorded Zerodha eligibility read is not executable (fail closed,
   matching ``EligibilityRegistry.is_tradable``).

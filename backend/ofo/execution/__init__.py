@@ -16,7 +16,7 @@ from ofo.execution.safety import (
     FlagCode,
     SafetyResult,
     check_pre_execution,
-    needs_pro,
+    pro_requirement,
 )
 
 __all__ = [
@@ -34,5 +34,5 @@ __all__ = [
     "VersionState",
     "check_pre_execution",
     "margin_required_from",
-    "needs_pro",
+    "pro_requirement",
 ]

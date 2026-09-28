@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import datetime
 import logging
 import re
 from decimal import Decimal as D
@@ -340,16 +341,67 @@ def _replace_leg(index: int, **changes: object) -> tuple[Leg, ...]:
 
 
 @pytest.mark.parametrize("proposed", [
-    pytest.param(_replace_leg(1, quantity=65), id="reduce-short-leg-2-lots-to-1"),
-    pytest.param(ACTIVE_TWO_LOTS[1:], id="close-one-wing"),
-    pytest.param(condor_legs(quantity=65), id="reduce-every-leg"),
+    pytest.param(condor_legs(quantity=65), id="reduce-every-leg-2-lots-to-1"),
 ])
-def test_limited_user_may_close_or_reduce_legs_of_the_active_strategy(proposed, catalogue, eligibility):
-    """AC-1 (ADR-037): a reduce-only adjustment is a partial exit, allowed for a Limited (non-Pro) user."""
+def test_limited_user_may_reduce_legs_when_worst_case_does_not_worsen(proposed, catalogue, eligibility):
+    """AC-1 (ADR-037): reduce-only AND worst case not worse (-14,170 -> -7,085) is allowed for a Limited user."""
     strategy, ctx = _limited_adjustment(proposed)
     result = check_pre_execution(strategy, ctx, catalogue, eligibility)
     assert result.failures == ()
     assert CheckCode.ENTITLEMENT_REQUIRED not in result.passed  # not applicable, not "passed"
+    pro_strategy, pro_ctx = _limited_adjustment(proposed, pro=True)
+    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+
+
+def test_closing_only_the_bought_wing_is_risk_adding_and_needs_pro(catalogue, eligibility):
+    """AC-1 (ADR-037): closing only the bought 22,800 PE wing leaves the sold 23,000 PE unprotected; the engine's
+    worst case goes from -14,170.00 to -29,72,645.00, so a Limited user is blocked and the reason says so."""
+    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[1:])
+    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    assert [(f.code, f.reason) for f in result.failures] == [(
+        CheckCode.ENTITLEMENT_REQUIRED,
+        "This adjustment makes the strategy's worst case larger: from a loss of ₹14,170.00 to a loss of "
+        "₹2,972,645.00. Adjustments that add risk need Pro. Exiting, or closing or reducing legs without a larger "
+        "worst case, stays available on every plan.",
+    )]
+    pro_strategy, pro_ctx = _limited_adjustment(ACTIVE_TWO_LOTS[1:], pro=True)
+    assert check_pre_execution(pro_strategy, pro_ctx, catalogue, eligibility).failures == ()
+
+
+def test_closing_all_four_legs_is_an_exit_open_to_limited_user(condor, catalogue, eligibility):
+    """AC-1 (ADR-037): closing every leg is an EXIT (a strategy cannot have zero legs), allowed without Pro."""
+    ctx = all_true_context(action=ExecutionAction.EXIT, pro_entitled=False)
+    assert check_pre_execution(condor, ctx, catalogue, eligibility).failures == ()
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Brief expectation conflicts with rule (b): the engine's at-expiry min_pnl of the remaining 23,400/23,600 call "
+    "spread is -19,825.00 vs -14,170.00 for the 2-lot condor (the closed put spread's 43.50/unit credit is no longer "
+    "counted), so rule (b) blocks it. Reported to the coordinator; not decided by the builder."))
+def test_closing_sold_put_with_its_wing_allowed_per_brief(catalogue, eligibility):
+    """AC-1 (ADR-037): brief says closing the sold 23,000 PE with its 22,800 PE wing is allowed for Limited."""
+    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[2:])
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
+
+
+def test_unlimited_worst_case_is_always_worse_than_finite(catalogue, eligibility):
+    """AC-1: closing the bought 23,600 CE wing turns a finite worst case into UNLIMITED -> needs Pro; reducing a
+    naked short call from 2 lots to 1 (UNLIMITED -> UNLIMITED) does not get worse and is allowed."""
+    strategy, ctx = _limited_adjustment(ACTIVE_TWO_LOTS[:3])
+    result = check_pre_execution(strategy, ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
+    assert "to an unlimited loss" in result.failures[0].reason
+    naked = (Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 130, D("91.50")),)
+    strategy, ctx = _limited_adjustment((dataclasses.replace(naked[0], quantity=65),), active=naked)
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failures == ()
+
+
+def test_multi_expiry_adjustment_needs_pro(catalogue, eligibility):
+    """AC-1 (fail closed): exact metrics raise MultiExpiryError for a multi-expiry strategy, so it needs Pro."""
+    active = ACTIVE_TWO_LOTS + (Leg(Action.BUY, Instrument.CE, D("23400"), datetime.date(2026, 9, 29), 65,
+                                    D("30.00")),)
+    strategy, ctx = _limited_adjustment(active[1:], active=active)
+    assert check_pre_execution(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.ENTITLEMENT_REQUIRED}
 
 
 @pytest.mark.parametrize("proposed", [
