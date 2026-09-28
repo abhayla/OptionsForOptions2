@@ -21,7 +21,7 @@ from ofo.entitlements.events import (
 )
 from ofo.entitlements.ledger import EntitlementLedger
 
-from .helpers import audit, ist
+from .helpers import audit, ist, ledger_for
 
 YEAR = timedelta(days=365)
 
@@ -50,7 +50,7 @@ def test_entitlement_stores_source_start_expiry_status_reference_and_audit():
     with pytest.raises(dataclasses.FrozenInstanceError):
         grant.duration = timedelta(days=1)
 
-    (resolved,) = resolve(EntitlementLedger("u-1").append(grant))
+    (resolved,) = resolve(ledger_for("u-1").append(grant))
     assert (resolved.start, resolved.expiry, resolved.status_at(ist(2026, 10, 1))) == (ist(2026, 10, 1), ist(2027, 10, 1), Status.ACTIVE)
 
 

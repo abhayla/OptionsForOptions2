@@ -20,7 +20,7 @@ from ofo.entitlements.engine import access_at, trial_grant
 from ofo.entitlements.events import AccessLevel, EntitlementGrant, Source
 from ofo.entitlements.ledger import EntitlementLedger
 
-from .helpers import audit, ist
+from .helpers import audit, ist, ledger_for
 
 PACKAGE_DIR = Path(ofo.entitlements.__file__).parent
 
@@ -85,10 +85,10 @@ def test_access_takes_only_a_ledger_and_an_instant():
 def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliation_required():
     """AC-5: the three REQ-017 scenarios resolve from entitlement events alone, and Access carries no such state."""
     registered = ist(2026, 9, 29, 10)
-    pro_user = EntitlementLedger("u-pro").append(
+    pro_user = ledger_for("u-pro").append(
         EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1)))
     )
-    trial_user = EntitlementLedger("u-trial").append(trial_grant("t", registered, "reg", audit(registered)))
+    trial_user = ledger_for("u-trial").append(trial_grant("t", registered, "reg", audit(registered)))
 
     # "A Pro user can be disconnected from Zerodha" and "a strategy can be Reconciliation Required while the
     # subscription is active": the Pro user's ledger holds no session or strategy, and stays Pro.
@@ -103,6 +103,6 @@ def test_user_id_does_not_change_access():
     events = (
         EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1))),
     )
-    a, b = EntitlementLedger("user-a", events), EntitlementLedger("user-b", events)
+    a, b = ledger_for("user-a", events), ledger_for("user-b", events)
     for at in (ist(2026, 8, 31), ist(2026, 9, 1), ist(2026, 9, 30, 23, 59, 59), ist(2026, 10, 1)):
         assert access_at(a, at) == access_at(b, at)

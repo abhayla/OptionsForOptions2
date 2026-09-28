@@ -21,7 +21,7 @@ time on its own and may overlap other Pro (ADR-025 Q63 admin setting).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from ofo.entitlements.events import (
     AccessLevel,
@@ -38,9 +38,6 @@ from ofo.entitlements.ledger import EntitlementLedger
 TRIAL_DAYS_DEFAULT = 7
 REFERRAL_DAYS_DEFAULT = 30
 _ZERO = timedelta(0)
-# The last representable instant. Days that would run past it are cut there (year 9999; every
-# accepted duration is at most MAX_DAYS, but a long chain of them can reach it), never an OverflowError.
-END_OF_TIME = datetime.max.replace(tzinfo=timezone.utc)
 
 Segment = tuple[datetime, datetime | None]  # [start, end); end None = open-ended
 
@@ -112,14 +109,6 @@ def _placement(stacking: bool) -> Placement:
     return Placement.STACKED if stacking else Placement.FROM_GRANT_TIME
 
 
-def _add(at: datetime, duration: timedelta) -> datetime:
-    """``at + duration``, cut at END_OF_TIME instead of raising OverflowError."""
-    try:
-        return min(at + duration, END_OF_TIME)
-    except OverflowError:
-        return END_OF_TIME
-
-
 def _consume(start: datetime, duration: timedelta, open_ended: list[Segment]) -> tuple[tuple[Segment, ...], timedelta]:
     """Rule 3: lay ``duration`` from ``start`` on time NOT covered by open-ended Pro.
 
@@ -137,7 +126,8 @@ def _consume(start: datetime, duration: timedelta, open_ended: list[Segment]) ->
                 return tuple(segments), remaining
             cursor = max(e for e in blocking if e is not None)
             continue
-        natural_end = _add(cursor, remaining)
+        # Cannot overflow: the ledger refuses any event whose bound passes the last representable date.
+        natural_end = cursor + remaining
         upcoming = [s for s, _ in open_ended if cursor < s < natural_end]
         if upcoming:
             cut = min(upcoming)
@@ -207,7 +197,7 @@ def resolve(ledger: EntitlementLedger) -> tuple[ResolvedEntitlement, ...]:
         if grant.duration is None:
             segments, banked = _truncate(((grant.granted_at, None),), _ZERO, change)
         elif grant.placement is Placement.FROM_GRANT_TIME:
-            segments, banked = _truncate(((grant.granted_at, _add(grant.granted_at, grant.duration)),), _ZERO, change)
+            segments, banked = _truncate(((grant.granted_at, grant.granted_at + grant.duration),), _ZERO, change)
         else:
             if chain_banked:
                 natural, banked = (), grant.duration
@@ -235,6 +225,20 @@ def banked_time(ledger: EntitlementLedger) -> timedelta:
 def banked_days(ledger: EntitlementLedger) -> int:
     """Whole banked days, for display ("30 referral days saved")."""
     return banked_time(ledger).days
+
+
+def unused_free_time(ledger: EntitlementLedger, at: datetime) -> timedelta:
+    """Free (trial + referral) Pro not yet used at ``at``: scheduled after ``at`` plus banked (REQ-021 AC-5)."""
+    _require_aware("at", at)
+    unused = _ZERO
+    for resolved in resolve(ledger):
+        if resolved.grant.source not in (Source.TRIAL, Source.REFERRAL):
+            continue
+        unused += resolved.banked
+        for start, end in resolved.segments:
+            if end is not None and end > at:
+                unused += end - max(start, at)
+    return unused
 
 
 def pro_end(ledger: EntitlementLedger, at: datetime) -> datetime | None:

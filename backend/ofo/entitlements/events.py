@@ -91,6 +91,9 @@ class Placement(Enum):
 class EntitlementGrant:
     """One entitlement as granted: the grant time and HOW MUCH Pro, not fixed dates.
 
+    ``granted_at`` is when the platform grants it (within the ledger's clock skew of recording);
+    ``paid_at`` optionally keeps the payment gateway's time for audit and never moves the schedule.
+
     ``duration`` is ``None`` only for a Direct Zerodha Customer (ADR-024: free Pro, expiry none),
     whose Pro is open-ended from ``granted_at``. For every other source the actual start and expiry
     are computed when access is evaluated (ADR-023 rule 5), so a revocation earlier in the
@@ -104,6 +107,7 @@ class EntitlementGrant:
     reference: str
     audit: Audit
     placement: Placement = Placement.STACKED
+    paid_at: datetime | None = None  # payment gateway's own time, audit only (a late webhook keeps it here)
 
     def __post_init__(self) -> None:
         _require_text("entitlement_id", self.entitlement_id)
@@ -115,6 +119,10 @@ class EntitlementGrant:
             raise ValueError("audit must be an Audit record")
         if not isinstance(self.placement, Placement):
             raise ValueError(f"placement must be a Placement, got {self.placement!r}")
+        if self.paid_at is not None:
+            if self.source not in (Source.PAID_MONTHLY, Source.PAID_ANNUAL):
+                raise ValueError("paid_at is only for a paid entitlement")
+            _require_aware("paid_at", self.paid_at)
         if self.placement is Placement.FROM_GRANT_TIME and self.source is not Source.REFERRAL:
             raise ValueError("only a referral can run from its grant time (stacking switched off)")
         if self.duration is None:

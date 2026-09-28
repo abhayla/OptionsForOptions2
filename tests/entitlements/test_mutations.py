@@ -47,7 +47,7 @@ def _no_op(*args):
     "guard, tests",
     [
         ("_check_unique_id", [boundary.test_duplicate_entitlement_id_is_refused]),
-        ("_check_unique_source_reference", [boundary.test_second_grant_with_same_source_and_reference_is_refused]),
+        ("_check_unique_reference", [boundary.test_second_grant_with_same_source_and_reference_is_refused]),
         ("_check_single_trial", [boundary.test_second_trial_in_one_ledger_is_refused]),
         ("_check_not_future", [
             boundary.test_grant_time_far_after_its_recording_is_refused,
@@ -55,6 +55,15 @@ def _no_op(*args):
         ]),
         ("_check_not_backdated", [boundary.test_backdated_revocation_is_refused]),
         ("_check_ended_only_for_trial", [boundary.test_ended_is_only_for_a_trial]),
+        ("_check_grant_not_backdated", [boundary.test_backdated_open_ended_grant_is_refused]),
+        ("_check_recorded_not_future", [
+            boundary.test_recorded_at_after_the_clock_is_refused_so_the_ledger_never_freezes,
+            boundary.test_default_clock_is_the_real_utc_now,
+        ]),
+        ("_check_free_day_cap", [
+            boundary.test_maximum_accumulated_free_days_cap_of_90,
+            boundary.test_free_day_cap_counts_trial_days_and_defaults_to_no_cap,
+        ]),
     ],
 )
 def test_removing_a_ledger_guard_is_caught(monkeypatch, guard, tests):
@@ -70,11 +79,29 @@ def test_removing_the_duration_cap_is_caught(monkeypatch):
     )
 
 
-def test_removing_the_overflow_clamp_is_caught(monkeypatch):
-    """AC-1: without the END_OF_TIME clamp, an accepted ledger crashes access evaluation with OverflowError."""
+def test_removing_the_representable_date_guard_is_caught(monkeypatch):
+    """AC-1 (round 4, MINOR 3): without the bound check, a grant ending past year 9999 is accepted."""
     _passes_then_fails_under(
-        monkeypatch, "_add", lambda at, duration: at + duration,
-        [boundary.test_access_never_crashes_on_an_accepted_ledger_at_the_cap_near_the_end_of_time],
+        monkeypatch, "_check_representable", _no_op,
+        [boundary.test_a_grant_that_would_end_past_the_representable_date_is_refused], module=ledger_module,
+    )
+
+
+def test_raw_reference_comparison_is_caught(monkeypatch):
+    """AC-4 (round 4, MINOR 1): comparing references raw (no strip/casefold, per source) lets duplicates through."""
+    def raw(grant):
+        return grant.source.value, grant.reference
+
+    for variant in ("alice ", "ALICE"):
+        _passes_then_fails_under(
+            monkeypatch, "_reference_key", raw,
+            [lambda: boundary.test_references_are_normalised_before_the_duplicate_check(variant)],
+            module=ledger_module,
+        )
+        monkeypatch.undo()
+    _passes_then_fails_under(
+        monkeypatch, "_reference_key", raw,
+        [boundary.test_one_payment_reference_grants_once_across_monthly_and_annual], module=ledger_module,
     )
 
 
