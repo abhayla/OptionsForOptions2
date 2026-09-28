@@ -97,6 +97,33 @@ def test_ac5_broker_flat_exits_the_strategy_issue_19():
         mark_requires_attention("IC-1", rec, actor="user", at=at(23), reason="again", audit=audit)
 
 
+def test_ac5_exited_record_refuses_every_later_change():
+    """AC-5 (versions.py support): once exited, results, confirmations, observations and reconciles are refused;
+    exit is refused for a never-executed record and while a proposal is in flight."""
+    from ofo.strategy.versions import ExecutionResult, ResultStatus, StrategyRecord
+    from recon_fixtures import T0, scaled
+    rec, audit, _ = flagged(broker={})
+    rec.mark_exited(at=at(20), actor="user", resolution="flat in Kite")
+    for attempt in (
+        lambda: rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, Position(), at(21), "late")),
+        lambda: rec.confirm(1, at=at(21)),
+        lambda: rec.observe_broker_position(Position.of({SC23400: -75}), at=at(21), reference="again"),
+        lambda: rec.reconcile(at=at(21), actor="user", resolution="x"),
+        lambda: rec.mark_exited(at=at(21), actor="user", resolution="twice"),
+        lambda: rec.propose_execution(at=at(21)),
+    ):
+        with pytest.raises(VersionError):
+            attempt()
+    fresh = StrategyRecord(CONDOR, at=T0, clock=clock)
+    with pytest.raises(VersionError):
+        fresh.mark_exited(at=at(1), actor="user", resolution="never traded")
+    in_flight = executed()
+    in_flight.edit(scaled(CONDOR, 150), at=at(4))
+    in_flight.observe_broker_position(Position(), at=at(5), reference="flat")
+    with pytest.raises(VersionError):
+        in_flight.mark_exited(at=at(6), actor="user", resolution="flat with a proposal pending")
+
+
 def test_ac5_exit_refused_while_the_broker_still_holds_a_position():
     """AC-5 (negative): broker not flat -> exit refused, strategy still blocked."""
     rec, audit, _ = flagged()

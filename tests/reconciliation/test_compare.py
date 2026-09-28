@@ -207,3 +207,15 @@ def test_ac2_large_account_is_fast():
     report = run(broker, strategies)
     assert time.perf_counter() - start < 5.0
     assert len(report.mismatches) == 1004     # 1000 unexpected + 4 condor contracts (200 x 75 expected, 0 held)
+
+
+def test_ac2_strike_move_to_a_lower_strike_still_blocks_the_holder():
+    """AC-2 regression (found by the AC-6 property test): the long put moved in Kite from 22800 to 21000. The
+    unheld 21000 PE sorts BEFORE the held 22800 PE; the pair must still be attributed to, and block, IC-1."""
+    lower = c(Instrument.PE, "21000")
+    broker = {lower: 75, SP23000: -75, SC23400: -75, BC23600: 75}
+    report = run(broker, {"IC-1": executed()})
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.STRIKE_MISMATCH and m.strategy_ids == ("IC-1",)
+    assert m.difference == ((lower, 75), (BP22800, -75))
+    assert report.blocked_strategy_ids == frozenset({"IC-1"})

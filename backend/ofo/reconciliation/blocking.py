@@ -4,7 +4,8 @@ A strategy is blocked for new execution and adjustment execution while it has an
 latest reconciliation report attributes a difference to it, or its record carries the sticky
 ``reconciliation_required`` flag (set by a result or an observation, cleared only by an explicit resolution).
 Only those strategies: a mismatch on another strategy, an unexpected broker position or a changed standalone
-blocks none (AC-7).
+blocks none (AC-7). After a resolution, the strategy stays blocked by the latest report until a new run agrees
+(fail closed: the block lifts on the broker's word, never on the platform's).
 """
 from __future__ import annotations
 
