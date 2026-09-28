@@ -42,6 +42,31 @@ def test_duplicate_detector_flags_a_duplicate():
     assert duplicate_ac_ids({"acceptance_criteria": [{"id": "AC-1"}, {"id": "AC-2"}]}) == []
 
 
+def duplicate_test_basenames(paths):
+    seen = {}
+    for p in paths:
+        seen.setdefault(p.name, []).append(p)
+    return {name: ps for name, ps in seen.items() if len(ps) > 1}
+
+
+def test_test_file_names_are_unique_across_test_folders():
+    # a test folder without __init__.py is not a package, so pytest imports its tests by bare file name;
+    # two such folders holding the same file name collide ("import file mismatch") only once both reach
+    # main (finding: duplicate-test-basename-collision). Files inside package folders are imported by a
+    # dotted name and cannot collide this way, so they are left out.
+    tests = sorted(
+        p for p in (ROOT / "tests").rglob("test_*.py") if not (p.parent / "__init__.py").exists()
+    )
+    assert duplicate_test_basenames(tests) == {}
+
+
+def test_duplicate_test_basename_detector_flags_a_collision():
+    a = pathlib.Path("tests/rules/test_model.py")
+    b = pathlib.Path("tests/strategy/test_model.py")
+    assert set(duplicate_test_basenames([a, b])) == {"test_model.py"}
+    assert duplicate_test_basenames([a, pathlib.Path("tests/strategy/test_strategy_model.py")]) == {}
+
+
 def test_work_items_link_exactly_one_requirement():
     # evidence is keyed evidence/<W-id>/<AC-id>.md, so a work item linking two requirements would
     # make AC-1 of both collide in one file
