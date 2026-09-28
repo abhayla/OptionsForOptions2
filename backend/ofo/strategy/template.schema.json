@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ofo/strategy/template.schema.json",
+  "title": "Strategy template catalogue (REQ-028 AC-3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["templates"],
+  "properties": {
+    "templates": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/$defs/template"}}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 40},
+    "steps": {"type": "integer", "minimum": -50, "maximum": 50},
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "params", "constraints", "legs"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[A-Za-z][A-Za-z0-9 ()'-]*$"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 400},
+        "params": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/param"}},
+        "constraints": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/constraint"}},
+        "legs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/leg"}}
+      }
+    },
+    "param": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "unit", "default", "min", "max", "must_be_positive"],
+      "properties": {
+        "name": {"$ref": "#/$defs/identifier"},
+        "unit": {"const": "steps"},
+        "default": {"$ref": "#/$defs/steps"},
+        "min": {"$ref": "#/$defs/steps"},
+        "max": {"$ref": "#/$defs/steps"},
+        "must_be_positive": {"type": "boolean"}
+      }
+    },
+    "leg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "action", "instrument", "expiry_slot", "quantity_multiplier"],
+      "properties": {
+        "name": {"$ref": "#/$defs/identifier"},
+        "action": {"enum": ["BUY", "SELL"]},
+        "instrument": {"enum": ["CE", "PE", "FUT"]},
+        "strike": {
+          "oneOf": [
+            {"$ref": "#/$defs/steps"},
+            {"type": "string", "maxLength": 80, "pattern": "^[a-z0-9_ *+-]+$"}
+          ]
+        },
+        "expiry_slot": {"enum": ["near", "next"]},
+        "quantity_multiplier": {"type": "integer", "minimum": 1, "maximum": 10}
+      },
+      "if": {"properties": {"instrument": {"const": "FUT"}}},
+      "then": {"not": {"required": ["strike"]}},
+      "else": {"required": ["strike"]}
+    },
+    "constraint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["equal"],
+          "properties": {
+            "equal": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sign"],
+          "properties": {
+            "sign": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["leg", "is"],
+              "properties": {
+                "leg": {"$ref": "#/$defs/identifier"},
+                "is": {"enum": ["negative", "non_positive", "zero", "non_negative", "positive"]}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["order"],
+          "properties": {
+            "order": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/identifier"}}
+          }
+        }
+      ]
+    }
+  }
+}
