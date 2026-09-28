@@ -2,14 +2,16 @@
 
 # Findings index
 
-9 finding(s), generated from `knowledge/findings/*.json`.
+11 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
+| advice-wording-denylist-per-module | Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another. | unguarded | occurrences, spec_ref |
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | spec_ref |
 | brief-rule-from-memory | Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it. | unguarded | occurrences, spec_ref |
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | spec_ref |
 | duplicate-test-basename-collision | Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time. | guarded | spec_ref |
+| fill-not-exactly-once | Any path by which a broker-confirmed fill can change order or position state that is not exactly-once, keyed by the broker's own identity and validated against its order, lets the platform's view drift from Zerodha: a replay doubles a position, a key collision silently drops a real fill, or a second write path records a fill no broker reported. | unguarded | occurrences, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | spec_ref |
 | normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | guarded | occurrences, spec_ref |
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | spec_ref |

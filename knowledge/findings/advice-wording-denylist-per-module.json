@@ -1,0 +1,31 @@
+{
+  "id": "advice-wording-denylist-per-module",
+  "class": "Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another.",
+  "mechanism": "Each builder wrote a fresh list of exact phrases ('guaranteed', 'recommended trade', 'risk-free', 'you should'); the scans compared lowercased substrings without normalising spaces or stems.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-024 backend/ofo/errors/model.py @ edfc6f0 (second list after W-005 backend/ofo/strategy/wording.py)",
+    "evidence": "Independent verifier: 'We guarantee returns', 'We recommend buying calls', 'Risk free setup', 'A sure-shot trade', 'Traders should hedge now.', 'You  should buy' (double space), 'This will reduce your losses' all ACCEPTED; W-005's verifier earlier found 'limited risk' on a naked call and a unicode-hyphen position word passing its own list."
+  },
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-005 strategy/wording.py",
+      "evidence": "W-005 round-3 verifier: 'limited risk' on a naked call and unicode-hyphen words passed (deferred #10)"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-024 errors/model.py",
+      "evidence": "see first_seen"
+    }
+  ],
+  "fix": "One shared checker, backend/ofo/wording.py (normalise case, whitespace, invisible characters; stem-based patterns with word boundaries; list cites ADR-003), used by every module that emits user-facing text (W-024 fix round; W-005's wording.py delegates to it; W-020 told to use it).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Becomes guarded when W-024's shared checker merges with the verifier's variant cases as tests; a follow-up check could assert no module other than ofo/wording.py defines a banned-phrase list (AST scan)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-003.md"
+  ]
+}
