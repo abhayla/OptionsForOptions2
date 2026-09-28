@@ -26,6 +26,7 @@ from ofo.orders.model import (
 UTC = datetime.timezone.utc
 AT = datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
 CONTRACT = "NIFTY26OCT23200CE"
+LATER = AT + datetime.timedelta(seconds=1)
 
 
 def _book_with_fill(filled: int = 10) -> OrderBook:
@@ -47,7 +48,7 @@ def test_lower_broker_count_blocks_submit_for_the_strategy() -> None:
     book = _book_with_fill(10)
     _second_order(book)
     with pytest.raises(FillConflictError):
-        book.reconcile_cumulative("BRK-9", 5)
+        book.reconcile_cumulative("BRK-9", 5, read_at=AT)
     assert book.is_submit_blocked("STRAT-9") is True
     with pytest.raises(ValueError, match="reconciliation mismatch"):
         book.transition("BRK-10", OrderState.SUBMITTED)
@@ -58,24 +59,26 @@ def test_block_clears_only_after_a_fresh_reconcile_agrees_and_is_audited() -> No
     book = _book_with_fill(10)
     _second_order(book)
     with pytest.raises(FillConflictError):
-        book.reconcile_cumulative("BRK-9", 5)
+        book.reconcile_cumulative("BRK-9", 5, read_at=AT)
 
     # still disagreeing: refused, block stays, nothing audited as cleared
     with pytest.raises(FillConflictError):
-        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 5, "BRK-10": 0}, actor="user:U-1", reason="r", at=AT)
+        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 5, "BRK-10": 0}, read_at=LATER, actor="user:U-1", reason="r", at=AT)
     assert book.is_submit_blocked("STRAT-9")
+    # that disagreeing read at LATER renewed the block, so every later clear needs a read after LATER
+    fresher = LATER + datetime.timedelta(seconds=1)
     # an order of the strategy missing from the fresh read: refused (a partial re-read is not agreement)
     with pytest.raises(ValueError, match="BRK-10"):
-        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, actor="user:U-1", reason="r", at=AT)
+        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=fresher, actor="user:U-1", reason="r", at=AT)
     assert book.is_submit_blocked("STRAT-9")
     # an order of ANOTHER strategy in the read: refused (unknown keys are never ignored)
     with pytest.raises(ValueError, match="BRK-X"):
         book.clear_reconciliation_block(
-            "STRAT-9", {"BRK-9": 10, "BRK-10": 0, "BRK-X": 0}, actor="user:U-1", reason="r", at=AT)
+            "STRAT-9", {"BRK-9": 10, "BRK-10": 0, "BRK-X": 0}, read_at=fresher, actor="user:U-1", reason="r", at=AT)
     assert book.is_submit_blocked("STRAT-9")
 
     book.clear_reconciliation_block(
-        "STRAT-9", {"BRK-9": 10, "BRK-10": 0}, actor="user:U-1", reason="broker re-read agrees", at=AT)
+        "STRAT-9", {"BRK-9": 10, "BRK-10": 0}, read_at=fresher, actor="user:U-1", reason="broker re-read agrees", at=AT)
     assert book.is_submit_blocked("STRAT-9") is False
     events = book.reconciliation_events("STRAT-9")
     # the first mismatch, the refused re-read that still disagreed (every disagreeing read is audited), the clear
@@ -89,21 +92,45 @@ def test_clearing_an_unblocked_strategy_is_refused() -> None:
     """Item 1 negative: there is nothing to clear, so the call is refused rather than silently audited."""
     book = _book_with_fill(10)
     with pytest.raises(ValueError, match="not blocked"):
-        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, actor="user:U-1", reason="r", at=AT)
+        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=LATER, actor="user:U-1", reason="r", at=AT)
 
 
 def test_clear_needs_actor_reason_and_aware_time() -> None:
     """Item 1 input domain: blank actor/reason and a naive time are refused; the block stays."""
     book = _book_with_fill(10)
-    book.reconcile_cumulative("BRK-9", 12)
+    book.reconcile_cumulative("BRK-9", 12, read_at=AT)
     for kwargs in (
         {"actor": " ", "reason": "r", "at": AT},
         {"actor": "user:U-1", "reason": "", "at": AT},
         {"actor": "user:U-1", "reason": "r", "at": datetime.datetime(2026, 9, 29, 10, 0)},
     ):
         with pytest.raises(ValueError):
-            book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, **kwargs)
+            book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=LATER, **kwargs)
     assert book.is_submit_blocked("STRAT-9")
+
+
+def test_clearing_with_a_stale_read_is_refused() -> None:
+    """Item 1 / W-023 fix (e), verifier attack 3: a broker read taken BEFORE (or at) the read that set the block
+    cannot clear it, even when its counts agree; a read taken after it can."""
+    t_block = AT + datetime.timedelta(minutes=5)
+    book = _book_with_fill(10)
+    book.reconcile_cumulative("BRK-9", 12, read_at=t_block)
+    for stale in (AT, t_block):
+        with pytest.raises(ValueError, match="stale"):
+            book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=stale, actor="user:U-1", reason="r",
+                                            at=t_block)
+        assert book.is_submit_blocked("STRAT-9")
+    book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=t_block + datetime.timedelta(seconds=1),
+                                    actor="user:U-1", reason="r", at=t_block)
+    assert not book.is_submit_blocked("STRAT-9")
+
+
+def test_reconcile_needs_an_aware_read_time() -> None:
+    """Item 1 input domain: a naive read_at is refused and nothing is blocked."""
+    book = _book_with_fill(10)
+    with pytest.raises(ValueError):
+        book.reconcile_cumulative("BRK-9", 12, read_at=datetime.datetime(2026, 9, 29, 10, 0))
+    assert not book.is_submit_blocked("STRAT-9")
 
 
 # -- item 2 -------------------------------------------------------------------------------------------------------

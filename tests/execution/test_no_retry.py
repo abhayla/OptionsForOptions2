@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from partial_inputs import (
+    READ_AT,
     REJECT_TEXT,
     FakeBroker,
     FakePlanner,
@@ -37,7 +38,7 @@ def _prep(catalogue, eligibility, fn=complete_strategy, *extra):  # noqa: ANN001
 def test_ac6_failure_shown_with_reason_and_nothing_sent() -> None:
     """AC-6: assessing the rejection shows the broker's reason and the user's choices; nothing is sent."""
     submitter = FakeSubmitter()
-    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert [f.reason for f in a.failures] == [REJECT_TEXT]
     assert a.choices[0] is PartialChoice.COMPLETE_STRATEGY
     assert submitter.sent == []
@@ -45,7 +46,7 @@ def test_ac6_failure_shown_with_reason_and_nothing_sent() -> None:
 
 def test_ac6_missing_reason_is_said_not_invented() -> None:
     """AC-6: a rejection with no broker text says so plainly instead of a made-up cause."""
-    a = assess(plan(), three_positions(), statuses(reason=None), book_with_three_filled(), FakePlanner())
+    a = assess(plan(), three_positions(), statuses(reason=None), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert [f.reason for f in a.failures] == ["no reason given by the broker"]
 
 

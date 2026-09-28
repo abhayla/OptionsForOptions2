@@ -140,6 +140,12 @@ def _non_negative_int(value: object, field_name: str) -> int:
     return value
 
 
+def _aware(value: object, field_name: str) -> datetime.datetime:
+    if not isinstance(value, datetime.datetime) or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be a timezone-aware datetime, got {value!r}")
+    return value
+
+
 class FillConflictError(ValueError):
     """Raised when a (broker_order_id, trade_id) key is reused with a different fill, or the
     broker's reconciled cumulative quantity is LOWER than what is already recorded locally --
@@ -164,6 +170,7 @@ class Order:
     quantity: int
     price: Decimal
     broker_order_id: str | None = None
+    version_id: str | None = None  # the strategy version this order executes (W-023 fix (a))
     _state: OrderState = field(default=OrderState.PREPARED, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -176,6 +183,8 @@ class Order:
         require_price(self.price, "price", allow_zero=False)
         if self.broker_order_id is not None:
             _non_empty_str(self.broker_order_id, "broker_order_id")
+        if self.version_id is not None:
+            _non_empty_str(self.version_id, "version_id")
 
     @property
     def state(self) -> OrderState:
@@ -334,6 +343,9 @@ class OrderBook:
         self._ledger = FillLedger()
         self._blocked_strategies: set[str] = set()
         self._reconciliation_events: list[ReconciliationEvent] = []
+        self._blocked_at: dict[str, datetime.datetime] = {}  # latest broker read that set/renewed each block
+        self._live_preparation: dict[str, object] = {}  # strategy -> the one unconsumed preparation (its owner)
+        self._closing_read_at: dict[str, datetime.datetime] = {}  # strategy -> read on which Close was chosen
 
     # -- registration & views -------------------------------------------------------------
 
@@ -453,7 +465,9 @@ class OrderBook:
 
     # -- reconciliation (ADR-016/ADR-018) -----------------------------------------------------
 
-    def reconcile_cumulative(self, broker_order_id: str, broker_filled_qty: int) -> Literal["ok", "missing_trades"]:
+    def reconcile_cumulative(
+        self, broker_order_id: str, broker_filled_qty: int, *, read_at: datetime.datetime,
+    ) -> Literal["ok", "missing_trades"]:
         """Compare the broker's reconciled cumulative filled quantity for an order against what
         is recorded locally (ADR-018: an unresolved mismatch blocks execution).
 
@@ -464,15 +478,20 @@ class OrderBook:
         - Broker LOWER: irreconcilable -- blocks the strategy exactly as HIGHER does (issue #29 item 1,
           core invariant 6), THEN raises :class:`FillConflictError`.
 
-        Either block stays until :meth:`clear_reconciliation_block` succeeds.
+        Either block stays until :meth:`clear_reconciliation_block` succeeds with a LATER read. ``read_at`` is the
+        time of the broker read (tz-aware); the block remembers the latest read that set or renewed it.
         """
+        _aware(read_at, "read_at")
         view = self.order_for(broker_order_id)
         _non_negative_int(broker_filled_qty, "broker_filled_qty")
         if broker_filled_qty == view.filled_quantity:
             return "ok"
         self._blocked_strategies.add(view.strategy_id)
+        previous = self._blocked_at.get(view.strategy_id)
+        self._blocked_at[view.strategy_id] = read_at if previous is None else max(previous, read_at)
         self._reconciliation_events.append(ReconciliationEvent(
-            view.strategy_id, "blocked", broker_order_id, broker_filled_qty, view.filled_quantity, None, None, None))
+            view.strategy_id, "blocked", broker_order_id, broker_filled_qty, view.filled_quantity, None, None,
+            read_at))
         if broker_filled_qty > view.filled_quantity:
             return "missing_trades"
         raise FillConflictError(
@@ -484,23 +503,29 @@ class OrderBook:
         return strategy_id in self._blocked_strategies
 
     def clear_reconciliation_block(
-        self, strategy_id: str, broker_filled: Mapping[str, int], *, actor: str, reason: str, at: datetime.datetime,
+        self, strategy_id: str, broker_filled: Mapping[str, int], *, read_at: datetime.datetime, actor: str,
+        reason: str, at: datetime.datetime,
     ) -> ReconciliationEvent:
         """The one way to lift a reconciliation block (issue #29 item 1; ADR-018 "until it is resolved").
 
         ``broker_filled`` is a FRESH broker read: the cumulative filled quantity of EVERY order of this strategy in
         the book, keyed by broker order id. Refused (block kept) when the strategy is not blocked, when any order of
         the strategy is missing from the read, when the read names an order that is not this strategy's, or when any
-        count differs from the ledger (a lower count raises :class:`FillConflictError`). Only then is the block
+        count differs from the ledger (a lower count raises :class:`FillConflictError`), or when the read is stale:
+        ``read_at`` must be strictly LATER than the read that set the block (W-023 fix (e)). Only then is the block
         lifted, with an audit event naming the actor, reason and time.
         """
         _non_empty_str(strategy_id, "strategy_id")
         _non_empty_str(actor, "actor")
         _non_empty_str(reason, "reason")
-        if not isinstance(at, datetime.datetime) or at.utcoffset() is None:
-            raise ValueError(f"at must be a timezone-aware datetime, got {at!r}")
+        _aware(at, "at")
+        _aware(read_at, "read_at")
         if strategy_id not in self._blocked_strategies:
             raise ValueError(f"strategy {strategy_id!r} is not blocked; there is nothing to clear")
+        blocked_at = self._blocked_at[strategy_id]
+        if read_at <= blocked_at:
+            raise ValueError(f"stale broker read ({read_at.isoformat()}); the block was set by a read at "
+                             f"{blocked_at.isoformat()} and only a later read can clear it")
         if not isinstance(broker_filled, Mapping):
             raise ValueError("broker_filled must be a mapping of broker order id to filled quantity")
         mine = {boid for boid, o in self._orders.items() if o.strategy_id == strategy_id}
@@ -512,14 +537,50 @@ class OrderBook:
             raise ValueError(f"a fresh broker read must cover every order of the strategy; missing {missing}")
         disagreeing = []
         for boid in sorted(mine):
-            if self.reconcile_cumulative(boid, broker_filled[boid]) != "ok":  # a lower count raises here
+            if self.reconcile_cumulative(boid, broker_filled[boid], read_at=read_at) != "ok":  # a lower count raises here
                 disagreeing.append(boid)
         if disagreeing:
             raise FillConflictError(f"broker read still disagrees with the ledger for {disagreeing}; block kept")
         self._blocked_strategies.discard(strategy_id)
+        del self._blocked_at[strategy_id]
         event = ReconciliationEvent(strategy_id, "cleared", None, None, None, actor, reason, at)
         self._reconciliation_events.append(event)
         return event
+
+    # -- per-strategy execution locks (W-023 fix round) ---------------------------------------------
+
+    def views_for(self, strategy_id: str) -> tuple[OrderView, ...]:
+        """Every registered order of one strategy, with ledger-computed state and filled quantity."""
+        return tuple(self._view(o) for o in self._orders.values() if o.strategy_id == strategy_id)
+
+    def hold_preparation(self, strategy_id: str, owner: object) -> None:
+        """Record ``owner`` as the strategy's one live (unconsumed) preparation; refuse if another holds it."""
+        current = self._live_preparation.get(strategy_id)
+        if current is not None and current is not owner:
+            raise ValueError(f"strategy {strategy_id!r} already has a preparation waiting for confirmation")
+        self._live_preparation[strategy_id] = owner
+
+    def release_preparation(self, strategy_id: str, owner: object) -> None:
+        """Only the holder releases its own hold (shared state records its owner)."""
+        if self._live_preparation.get(strategy_id) is owner:
+            del self._live_preparation[strategy_id]
+
+    def has_live_preparation(self, strategy_id: str) -> bool:
+        return strategy_id in self._live_preparation
+
+    def mark_closing(self, strategy_id: str, read_at: datetime.datetime) -> None:
+        """Close Partial Strategy was chosen on the broker read taken at ``read_at``."""
+        _aware(read_at, "read_at")
+        self._closing_read_at[strategy_id] = read_at
+
+    def closing_read_at(self, strategy_id: str) -> datetime.datetime | None:
+        return self._closing_read_at.get(strategy_id)
+
+    def clear_closing(self, strategy_id: str, read_at: datetime.datetime) -> None:
+        """Forget the Close choice once a read strictly later than the one it was made on has been assessed."""
+        marked = self._closing_read_at.get(strategy_id)
+        if marked is not None and read_at > marked:
+            del self._closing_read_at[strategy_id]
 
     def reconciliation_events(self, strategy_id: str) -> tuple[ReconciliationEvent, ...]:
         """Every block/clear event for one strategy, oldest first (append-only audit trail)."""
