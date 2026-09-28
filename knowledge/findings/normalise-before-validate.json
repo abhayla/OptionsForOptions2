@@ -7,11 +7,18 @@
     "where": "W-010 branch build/W-010-qualifying-list @ 1f03210, backend/ofo/admin/client_id.py normalise_client_id",
     "evidence": "Independent verifier: U+0131+'b1234' -> IB1234, 'a'+U+00DF+'123' -> ASS123, U+017F+'t12345' -> ST12345 were imported as valid qualifying Client IDs (free Pro for the wrong ID); AC-2 tests were green (16 passed)."
   },
-  "fix": "Refuse non-ASCII (str.isascii()) before any case change, then pattern-check (W-010 fix round). Sweep 2026-09-29 across main and all open branches: two other normalisers found (strategy/wording.py lower() for the banned-phrase scan; audit/models.py lower() for secret-key detection) \u2014 both only broaden detection and never produce accepted data, so they are safe; W-007 reference normalisation (casefold) merges look-alike references into duplicates, which fails closed (refuses a grant) rather than granting.",
+  "fix": "One gate, backend/ofo/admin/untrusted_text.py ascii_token(raw, field): isascii() on the raw value, then strip only ASCII space and tab, refuse empty; used by every untrusted-text path feeding a strict pattern (W-010 round 3, after an independent review).",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Second occurrence (strip before isascii) triggered an independent review (learning rule R1). Guarded only when a class-level test inserts every Unicode whitespace/format/confusable character before, inside and after a valid ID and asserts MALFORMED on every entry path."
+    "status": "guarded",
+    "checks": [
+      "tests/admin/test_qualifying_untrusted_text.py::test_contaminated_value_is_malformed_on_every_path",
+      "tests/admin/test_qualifying_untrusted_text.py::test_ascii_space_and_tab_padding_still_accepted",
+      "tests/admin/test_qualifying_untrusted_text.py::test_nbsp_only_row_is_reported_not_skipped_as_blank",
+      "tests/admin/test_qualifying_untrusted_text.py::test_ascii_token_rules",
+      "tests/admin/test_qualifying_untrusted_text.py::test_mutant_strip_before_ascii_check_is_caught",
+      "tests/admin/test_qualifying_untrusted_text.py::test_real_gate_passes_the_whole_class"
+    ],
+    "note": "Class test: 19 contaminants x 3 positions over every entry path (add, edit, import preview+apply, search, is_qualifying) plus a mutation test swapping the gate for strip(). Independent verifier's own 8,571-value sweep found 0 accepted (2026-09-29). Rule for new code: validate the raw character set first (ascii_token), normalise second."
   },
   "spec_ref": [
     "spec/requirements/REQ-020.md"
