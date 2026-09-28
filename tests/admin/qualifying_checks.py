@@ -106,3 +106,52 @@ def check_removal_deactivates_and_keeps_audit(svc: QualifyingListService) -> Non
     svc.reactivate("AB1234", ADMIN)
     assert svc.is_qualifying("AB1234") is True
     assert [a.action for a in svc.audit_trail("AB1234")] == ["add", "deactivate", "reactivate"]
+
+
+# ----- class: untrusted text transformed before a strict-charset check (W-010 rounds 2-3) ----------------------
+# Each contaminant is inserted BEFORE, INSIDE and AFTER "AB1234"; every entry path must treat the result as malformed.
+CONTAMINANTS = {
+    "NBSP": " ", "IDEOGRAPHIC_SPACE": "　", "EM_SPACE": " ", "EN_SPACE": " ",
+    "THIN_SPACE": " ", "ZERO_WIDTH_SPACE": "​", "ZWJ": "‍", "LINE_SEP": " ",
+    "PARA_SEP": " ", "NEL": "\u0085", "BOM": "﻿", "LRM": "‎", "RLM": "‏",
+    "SOFT_HYPHEN": "­", "DOTLESS_I": "ı", "SHARP_S": "ß", "LONG_S": "ſ",
+    "CYRILLIC_A": "А", "FULLWIDTH_1": "１",
+}
+CONTAMINATED = [
+    (f"{name}-{where}", value)
+    for name, c in CONTAMINANTS.items()
+    for where, value in (("before", c + "AB1234"), ("inside", "AB1" + c + "234"), ("after", "AB1234" + c))
+]
+ASCII_PADDED = [" AB1234", "\tAB1234 ", "AB1234\t\t", "  ab1234  "]
+
+
+def check_every_path_rejects(value: str) -> None:
+    """add, edit(new_client_id), preview/apply import, search(id_prefix) and is_qualifying all refuse ``value``."""
+    svc = new_service()
+    with pytest.raises(ValueError):
+        svc.add(value, ADMIN)
+    assert svc.search() == ()
+
+    svc.add("CD5678", ADMIN)
+    with pytest.raises(ValueError):
+        svc.edit("CD5678", ADMIN, new_client_id=value)
+    assert [e.client_id for e in svc.search()] == ["CD5678"]
+
+    request = ImportRequest("f.csv", f"client_id\n{value}\n")
+    assert [(r.row_number, r.category) for r in svc.preview_import(request).problems] == [
+        (2, RowCategory.MALFORMED)
+    ]
+    with pytest.raises(ImportRefusedError):
+        svc.apply_import(request, ADMIN)
+
+    svc.add("AB1234", ADMIN)
+    with pytest.raises(ValueError):
+        svc.search(id_prefix=value)
+    assert svc.is_qualifying(value) is False
+    assert [e.client_id for e in svc.search()] == ["AB1234", "CD5678"]
+
+
+def check_class_rejected_everywhere() -> None:
+    """Every contaminated value is refused on every entry path."""
+    for _, value in CONTAMINATED:
+        check_every_path_rejects(value)

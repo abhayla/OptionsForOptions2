@@ -32,6 +32,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable, Mapping
 
+from ofo.admin import untrusted_text
 from ofo.admin.client_id import MalformedClientIdError, normalise_client_id
 from ofo.admin.qualifying_store import (
     Actor,
@@ -132,6 +133,9 @@ def _utc_now() -> datetime.datetime:
 
 
 def _require_text(value: object, name: str) -> str:
+    """Non-empty free text (file name, platform user id). Not for anything checked against a strict character set:
+    those go through ``untrusted_text.ascii_token``. Unicode strip() is acceptable here because the value is stored
+    and displayed, never matched against a pattern or used as a list key."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value.strip()
@@ -193,7 +197,7 @@ class QualifyingListService:
     def _require_entry(self, client_id: str) -> QualifyingEntry:
         entry = self._repo.get(normalise_client_id(client_id))
         if entry is None:
-            raise ValueError(f"{client_id.strip().upper()} is not on the qualifying list")
+            raise ValueError(f"{client_id!r} is not on the qualifying list")
         return entry
 
     # ----- manual add / edit / remove (AC-1) --------------------------------------------------------------
@@ -321,18 +325,20 @@ class QualifyingListService:
         _require_text(request.file_name, "file_name")
         if not isinstance(request.csv_text, str):
             raise ValueError("csv_text must be a string")
+        # Removes only a file-level byte-order mark before the header; data cells are never transformed here.
         records = list(csv.reader(io.StringIO(request.csv_text.lstrip("﻿"))))
         if not records:
             raise ValueError(f"{request.file_name!r} is empty")
-        # ASCII check before lower(), so no non-ASCII header can fold into "client_id".
-        header = [cell.strip().lower() if cell.isascii() else cell for cell in records[0]]
+        # Raw ASCII check before any strip()/lower(), so no non-ASCII header can become "client_id".
+        header = [cell.strip(untrusted_text.ASCII_BLANKS).lower() if cell.isascii() else cell for cell in records[0]]
         if header.count(CLIENT_ID_COLUMN) != 1:
             raise ValueError(f"{request.file_name!r} must have exactly one '{CLIENT_ID_COLUMN}' header column")
         column = header.index(CLIENT_ID_COLUMN)
         rows: list[tuple[int, str]] = []
         blank = 0
         for n, rec in enumerate(records[1:], start=2):
-            if all(not cell.strip() for cell in rec):
+            # Blank = only ASCII spaces/tabs; a cell of NBSP etc. is data (reported MALFORMED), never skipped.
+            if all(not cell.strip(untrusted_text.ASCII_BLANKS) for cell in rec):
                 blank += 1
                 continue
             rows.append((n, rec[column] if column < len(rec) else ""))
@@ -453,8 +459,8 @@ class QualifyingListService:
         """Entries matching every given filter, sorted by Client ID."""
         prefix = None
         if id_prefix is not None:
-            prefix = _require_text(id_prefix, "id_prefix")
-            if not prefix.isascii() or not prefix.isalnum():  # ASCII check before upper(), as in client_id.py
+            prefix = untrusted_text.ascii_token(id_prefix, "id_prefix")
+            if not prefix.isalnum():
                 raise ValueError("id_prefix must be letters and digits only")
             prefix = prefix.upper()
         if list_status is not None and not isinstance(list_status, ListStatus):

@@ -42,6 +42,7 @@ class Actor:
     actor_id: str
 
     def __post_init__(self) -> None:
+        # Emptiness check only; actor_id is stored verbatim and never matched against a strict character set.
         if not isinstance(self.actor_id, str) or not self.actor_id.strip():
             raise ValueError("actor_id must be a non-empty string")
 
