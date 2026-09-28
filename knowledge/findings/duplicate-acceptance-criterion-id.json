@@ -1,0 +1,17 @@
+{
+  "id": "duplicate-acceptance-criterion-id",
+  "class": "Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous.",
+  "mechanism": "The requirement schema checks only the pattern of each AC id (^AC-\\d+$), not uniqueness within the file; an edit that appends a criterion by guessing the next number collides with an existing one unnoticed.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "spec/requirements/REQ-018.md, owner-answer recording for Q217",
+    "evidence": "After inserting a new criterion after AC-8, REQ-018 had two '- id: AC-9' entries; factory_lint printed 'checked: 37 decision ... 71 requirement' with no error. A sweep of all 71 REQ files after renumbering to AC-11 found 0 files with duplicate AC ids."
+  },
+  "fix": "Renumbered the new criterion to AC-11 and updated its two citations (REQ-018 AC-5, ADR-037). Class-level: a project test asserts AC ids are unique in every requirement file; a harvest issue asks the kit lint to check it.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Becomes guarded when tests/test_spec_integrity.py (unique AC ids per requirement) lands in CI with the first code work item."
+  },
+  "spec_ref": ["spec/requirements/REQ-018.md"]
+}

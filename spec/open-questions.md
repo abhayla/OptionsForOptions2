@@ -31,7 +31,7 @@ party) · **DECIDED → ADR-###**.
   exists. Q89 (monitoring continues after Pro expiry) cannot be met without a session either.
 - Spec basis: ADR-010, ADR-015 (Q182, Q184), ADR-020, ADR-023 (Q89).
 
-## Q206 — OPEN — Prices for drafts and trials without Zerodha
+## Q206 — DECIDED (spec-conformant, 2026-09-29; no new rule: follows Q185/Q186, Q92, ADR-034) — Prices for drafts and trials without Zerodha
 - Drafts without Zerodha are allowed and must not show fake prices (Q185, Q186). Q9 originally meant users could
   explore the chain without a broker; the interim Zerodha source removes that.
 - **Recommended:** keep drafts price-less ("Connect Zerodha to see live prices") and allow a clearly labelled
@@ -52,7 +52,7 @@ party) · **DECIDED → ADR-###**.
 - **Recommended:** step per underlying as configuration; pick SENSEX's after checking its real strike spacing.
 - Spec basis: ADR-005 (Q108), ADR-008 (Q33C).
 
-## Q209 — OPEN — How a referral's success reaches the platform
+## Q209 — DECIDED → ADR-044 (owner, 2026-09-29: A) — How a referral's success reaches the platform
 - A referral counts only when an account is opened and attributed (Q61); no mechanism is recorded.
 - **Recommended:** admin imports confirmed openings (CSV, like ADR-024), each creating an entitlement event.
 - Spec basis: ADR-024, ADR-025.
@@ -92,12 +92,12 @@ The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer
 could not read the transcript and the owner will provide it later (T2 #95). Pending: the transcript, then a line-by-
 line data checklist (REQ "Adjustment data requirements from the owner's reference video").
 
-## Q213 — OPEN (small) — Breakeven columns: inserted, at the end, or both?
+## Q213 — DECIDED (delegated overnight, ADR-045: recommendation A = both) — Breakeven columns: inserted, at the end, or both?
 Q33D inserts 0-P&L columns at their price position; the earlier locked column list (T1 #90) also has Lower BE /
 Upper BE after the grid. **Recommended:** both (inserted markers for reading the grid, summary columns for the
 numbers). Spec basis: ADR-008.
 
-## Q214 — OPEN (small) — How long Undo stays after removing a leg
+## Q214 — DECIDED (delegated overnight, ADR-045: about 5 seconds, admin-configurable) — How long Undo stays after removing a leg
 Q56 chose "remove + Undo"; the follow-up question (duration) was paused and never answered. **Recommended:** about 5
 seconds (ChatGPT's recommendation, T1 #170). Spec basis: ADR-007.
 

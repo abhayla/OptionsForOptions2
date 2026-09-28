@@ -40,6 +40,9 @@ calculation engine.
 
 ## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 
+- Breakevens appear twice (Q213, delegated overnight, ADR-045): as 0-P&L columns inserted at their price position
+  in the grid (Q33D = C) AND as Lower BE / Upper BE summary columns after the grid (T1 #90); a missing breakeven
+  shows "—".
 - Scenario column step is set **per index in Admin**: default **NIFTY 100 points**, **SENSEX 300 points**; every
   column sits on a real strike level (a multiple of the index's strike gap: NIFTY 50, SENSEX 100, measured
   2026-09-29) (Q208 = A, ADR-042). NIFTY columns are anchored to **rounded 100-point index levels** (Q33C). Index
