@@ -66,7 +66,8 @@ def test_ac6_block_persists_on_the_record_until_resolved():
     report = compare(broker, recs, STANDALONE, at=at(10), clock=clock)
     record_report(report, recs, audit=audit, run_id="r1")
     assert blocked_strategy_ids(None, recs) == frozenset({"IC-1"})
-    adopt_broker_position("IC-1", recs["IC-1"], actor="user", at=at(11), reason="adopt Kite", audit=audit)
+    adopt_broker_position("IC-1", recs["IC-1"], report=report, actor="user", at=at(11), reason="adopt Kite",
+                          audit=audit)
     assert blocked_strategy_ids(report, recs) == frozenset({"IC-1"})          # stale report: still blocked
     fresh = compare(broker, recs, STANDALONE, at=at(12), clock=clock)
     assert fresh.mismatches == () and blocked_strategy_ids(fresh, recs) == frozenset()
@@ -160,6 +161,29 @@ def _holders_first_only(contract, actives, proposals):
 
 def _holders_none(contract, actives, proposals):
     return ()
+
+
+def _holders_active_only(contract, actives, proposals):
+    return tuple(sorted(sid for sid in actives if contract in actives[sid]))
+
+
+def test_ac6_contract_held_only_in_a_pending_proposal_blocks_that_strategy(monkeypatch):
+    """AC-6 (mutant M20): the first execution is in flight (no active version); the broker filled the long put only.
+    The contract is held only by the pending proposal, so the mismatch is that strategy's partial execution and
+    blocks it; a holders rule that ignores proposals would call it unexpected and block nobody."""
+    from ofo.reconciliation.compare import MismatchKind
+    from ofo.strategy.versions import StrategyRecord
+    from recon_fixtures import T0
+    rec = StrategyRecord(CONDOR, at=T0, clock=clock)
+    rec.propose_execution(at=at(1))
+    rec.confirm(1, at=at(2))
+    report = compare({BP22800: 75}, {"IC-1": rec}, at=at(10), clock=clock)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.PARTIAL_EXECUTION and m.strategy_ids == ("IC-1",)
+    assert m.difference == ((BP22800, 75),) and blocked_strategy_ids(report, {"IC-1": rec}) == frozenset({"IC-1"})
+    monkeypatch.setattr(compare_module, "holders_of", _holders_active_only)
+    mutated = compare({BP22800: 75}, {"IC-1": rec}, at=at(10), clock=clock)
+    assert mutated.blocked_strategy_ids == frozenset()          # the mutant is visible: nobody blocked
 
 
 @pytest.mark.parametrize("name, mutant", [

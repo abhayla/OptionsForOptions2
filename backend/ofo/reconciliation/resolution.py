@@ -5,6 +5,12 @@ Reconciliation Required, Q197), AC-5 (manual reconciliation allowed, explicit an
 choices "Adopt actual broker position · Close/reconcile through a prepared order · Mark as requiring attention; no
 casual ignore"; ADR-019 Q200 (Exited); deferred issue #19 (broker flat -> strategy exited).
 
+Premise rule (W-021 fix round; class: a resolution whose premise, the broker position, is read from a stored copy
+instead of the latest run): every run refreshes the broker picture of EVERY strategy it covers, and every resolution
+takes that run's report and checks its premise against it. The report must be the one last recorded on the
+strategy (an older one is refused; one not yet recorded is refused), and its share must equal the recorded broker
+position. Adopt adopts that report's quantities; exit needs that report to show the strategy flat.
+
 Every resolution needs a named actor and a non-empty reason (no casual "ignore"), appends one hash-chained audit
 event (``EventType.RECONCILIATION_RECORDED``) with before and after, and returns a ``Resolution``. Nothing here
 places an order: a prepared closing order is a proposal object, and the block stays until the broker agrees.
@@ -34,6 +40,7 @@ class ResolutionKind(Enum):
     ADOPT_BROKER_POSITION = "adopt actual broker position"
     PREPARE_CLOSING_ORDER = "close/reconcile through a prepared order"
     MARK_REQUIRES_ATTENTION = "mark as requiring attention"
+    REVIEW_AND_MODIFY = "review and modify strategy"  # hands off to the modification flow (W-027); blocked until then
     BROKER_FLAT_EXITED = "broker flat: strategy exited"
 
 
@@ -115,21 +122,22 @@ def record_report(
     run_id: str,
     actor: str = "system",
 ) -> tuple[ExecutionOutcome, ...]:
-    """Record every mismatch in the audit log, and each blocked strategy's broker share on its record.
+    """Record every mismatch in the audit log, and EVERY covered strategy's broker share on its record.
 
-    Through ``StrategyRecord.observe_broker_position`` a differing share with no proposal in flight puts the
-    strategy into Reconciliation Required (the sticky flag in versions.py; not duplicated here).
+    Agreeing strategies are refreshed too, so no later resolution can act on an older picture. Through
+    ``StrategyRecord.observe_broker_position`` a differing share with no proposal in flight puts the strategy into
+    Reconciliation Required (the sticky flag in versions.py; not duplicated here).
     """
     if not isinstance(report, ReconciliationReport):
         raise ReconciliationError(f"record_report needs a ReconciliationReport, got {report!r}")
     _require_audit(audit)
     _require_text(run_id, "run id")
     _require_text(actor, "actor")
-    missing = sorted(report.blocked_strategy_ids - set(records))
+    missing = sorted((report.covered_strategy_ids | report.blocked_strategy_ids) - set(records))
     if missing:
-        raise ReconciliationError(f"the report blocks strategies with no record here: {missing}")
+        raise ReconciliationError(f"the report covers strategies with no record here: {missing}")
     outcomes = []
-    for sid in sorted(report.blocked_strategy_ids):
+    for sid in sorted(report.covered_strategy_ids):
         try:
             outcome = _require_record(records[sid]).observe_broker_position(
                 report.share(sid), at=report.at, reference=f"{run_id}:{sid}")
@@ -187,23 +195,46 @@ def _resolve(
     return Resolution(strategy_id, kind, actor, at, reason, before_broker, before_platform, after, blocked, proposal)
 
 
-def _start(strategy_id: str, record: object, actor: object, reason: object, audit: object, *, blocked: bool = True):
+def _start(
+    strategy_id: str, record: object, report: object, at: object, actor: object, reason: object, audit: object,
+    *, blocked: bool = True,
+):
+    """Validate a resolution and check its premise against the latest recorded run. Returns (record, broker, platform).
+
+    The broker picture returned is the REPORT's share for this strategy, never a stored copy on its own.
+    """
     require_id(strategy_id)
     rec = _require_record(record)
+    if not isinstance(report, ReconciliationReport):
+        raise ReconciliationError(f"a resolution needs the latest ReconciliationReport, got {report!r}")
     _require_text(actor, "actor")
     _require_text(reason, "reason")
     _require_audit(audit)
     if rec.exited:
         raise ReconciliationError(f"strategy {strategy_id!r} has exited; nothing to reconcile")
+    if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None or at < report.at:
+        raise ReconciliationError(f"resolution time must be timezone-aware and not before the run, got {at!r}")
+    share = report.share(strategy_id)
+    observed = rec.last_observed_at
+    if observed is None or report.at > observed:
+        raise ReconciliationError(f"strategy {strategy_id!r}: this run is not recorded on the strategy yet "
+                                  "(record_report first, or a later execution result superseded it)")
+    if report.at < observed:
+        raise ReconciliationError(f"strategy {strategy_id!r}: the report ({report.at.isoformat()}) is older than the "
+                                  f"latest recorded run ({observed.isoformat()}); resolve on the latest run")
+    if share != rec.actual_position:
+        raise ReconciliationError(f"strategy {strategy_id!r}: the report's broker position differs from the one "
+                                  "recorded at the same time; resolve on the run that was recorded")
     if blocked and not rec.reconciliation_required:
         raise ReconciliationError(f"strategy {strategy_id!r} needs no reconciliation")
-    return rec, rec.actual_position, _platform(rec)
+    return rec, share, _platform(rec)
 
 
 def adopt_broker_position(
     strategy_id: str,
     record: StrategyRecord,
     *,
+    report: ReconciliationReport,
     actor: str,
     at: datetime.datetime,
     reason: str,
@@ -211,8 +242,9 @@ def adopt_broker_position(
     definition: StrategyDefinition | None = None,
 ) -> Resolution:
     """Q198 "Adopt actual broker position": a new active version equal to the broker's position (versions.reconcile)."""
-    rec, broker, platform = _start(strategy_id, record, actor, reason, audit)
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
     try:
+        # versions.reconcile adopts the recorded position, which _start proved equal to the latest run's share.
         rec.reconcile(at=at, actor=actor, resolution=reason, definition=definition)
     except VersionError as exc:
         raise ReconciliationError(f"strategy {strategy_id!r}: {exc}") from exc
@@ -224,6 +256,7 @@ def prepare_closing_order(
     strategy_id: str,
     record: StrategyRecord,
     *,
+    report: ReconciliationReport,
     actor: str,
     at: datetime.datetime,
     reason: str,
@@ -231,7 +264,7 @@ def prepare_closing_order(
     target: ClosingTarget = ClosingTarget.ACTIVE_VERSION,
 ) -> Resolution:
     """Q198 "Close/reconcile through a prepared order": an order proposal, never placed; the block stays."""
-    rec, broker, platform = _start(strategy_id, record, actor, reason, audit)
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
     if not isinstance(target, ClosingTarget):
         raise ReconciliationError(f"target must be a ClosingTarget, got {target!r}")
     goal = platform.as_dict() if target is ClosingTarget.ACTIVE_VERSION else {}
@@ -252,13 +285,14 @@ def mark_requires_attention(
     strategy_id: str,
     record: StrategyRecord,
     *,
+    report: ReconciliationReport,
     actor: str,
     at: datetime.datetime,
     reason: str,
     audit: AuditLog,
 ) -> Resolution:
     """Q198 "Mark as requiring attention": recorded and audited; the strategy stays blocked."""
-    rec, broker, platform = _start(strategy_id, record, actor, reason, audit)
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
     return _resolve(strategy_id, rec, ResolutionKind.MARK_REQUIRES_ATTENTION, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform)
 
@@ -267,16 +301,40 @@ def mark_exited_broker_flat(
     strategy_id: str,
     record: StrategyRecord,
     *,
+    report: ReconciliationReport,
     actor: str,
     at: datetime.datetime,
     reason: str,
     audit: AuditLog,
 ) -> Resolution:
     """Broker flat -> strategy Exited (ADR-019 Q200; closes the stuck case of deferred issue #19)."""
-    rec, broker, platform = _start(strategy_id, record, actor, reason, audit, blocked=False)
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit, blocked=False)
+    if broker.lines:
+        raise ReconciliationError(f"strategy {strategy_id!r}: the latest run shows the broker still holding "
+                                  f"{len(broker.lines)} of its contracts; it is not flat")
     try:
         rec.mark_exited(at=at, actor=actor, resolution=reason)
     except VersionError as exc:
         raise ReconciliationError(f"strategy {strategy_id!r}: {exc}") from exc
     return _resolve(strategy_id, rec, ResolutionKind.BROKER_FLAT_EXITED, actor=actor, at=at, reason=reason,
+                    audit=audit, before_broker=broker, before_platform=platform)
+
+
+def review_and_modify(
+    strategy_id: str,
+    record: StrategyRecord,
+    *,
+    report: ReconciliationReport,
+    actor: str,
+    at: datetime.datetime,
+    reason: str,
+    audit: AuditLog,
+) -> Resolution:
+    """Q198 "Review and modify strategy": records the choice and hands off to the modification flow (W-027).
+
+    Builds no modification. The strategy stays blocked; it is unblocked only through the existing paths once a
+    fresh run agrees (an adopted or executed version the broker matches).
+    """
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
+    return _resolve(strategy_id, rec, ResolutionKind.REVIEW_AND_MODIFY, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform)
