@@ -9,9 +9,14 @@
   },
   "fix": "Renumbered the new criterion to AC-11 and updated its two citations (REQ-018 AC-5, ADR-037). Class-level: a project test asserts AC ids are unique in every requirement file; a harvest issue asks the kit lint to check it.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Becomes guarded when tests/test_spec_integrity.py (unique AC ids per requirement) lands in CI with the first code work item."
+    "status": "guarded",
+    "checks": [
+      "tests/test_spec_integrity.py::test_acceptance_criterion_ids_are_unique_per_requirement",
+      "tests/test_spec_integrity.py::test_duplicate_detector_flags_a_duplicate"
+    ],
+    "note": "Project test runs in CI (pytest). Kit lint still does not check it; harvest issue to be filed."
   },
-  "spec_ref": ["spec/requirements/REQ-018.md"]
+  "spec_ref": [
+    "spec/requirements/REQ-018.md"
+  ]
 }
