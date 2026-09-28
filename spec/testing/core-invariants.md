@@ -44,4 +44,15 @@ error, blocked and active states, and the reconciliation state where relevant. C
 Domain (versioning, transitions, rules, timeline) · calculations (payoff, P&L, breakevens, max P/L, scenario
 table) · broker (connection, margin, submission, status, positions) · execution (dependencies, partial, no
 auto-retry, no silent unwind) · reconciliation (mismatch, external change, manual, block) · UI (screenshots,
-responsive, strategy-only controls, error states).
+responsive, strategy-only controls, error states). Also (M §92 Phase 3; audit S-MASTER-§92): unit and integration
+tests pass; security checks — each REQ-063 boundary has a test (no API places an order outside a strategy or
+bypasses a reconciliation block; vendor credentials never reach the browser; the Zerodha access token is stored only
+through the official token mechanism, encrypted at rest and never logged — best practice, the legacy stored it in
+plaintext), plus a dependency-vulnerability scan and a secret scan with no open high finding (best practice).
+
+## 5. Definition of done (implementation control §21; audit S-IMPL-§21)
+A work item is done only when: 1 code implemented; 2 its tests pass (`tests_required`, CI); 3 the relevant failure
+paths in §2 are tested; 4 the §1 invariants still pass; 5 UI screenshot-verified per §3 where UI changed; 6 no
+`spec/decisions/` row violated (Spec-deviation block, class none/1/2 only); 7 spec, work item and status updated;
+8 the change is reviewable (one work item per PR, verifier evidence in `evidence/<W-id>/`); 9 no production change
+(production only per REQ-067 AC-6).

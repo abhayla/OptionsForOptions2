@@ -37,6 +37,12 @@ calculation engine.
 - Net premium, max profit, max loss and breakevens are **strategy-level** (T1 #98); legs carry no breakeven.
 - Max profit/loss and breakevens are computed from the payoff, never typed or hard-coded.
 - Payoff graph and scenario table use the same engine (§22).
+- **Tails (clarification, 2026-09-29, delegated overnight, ADR-045).** An index cannot fall below 0, so the lower tail
+  is evaluated at level 0 and is always finite; only the upper tail can be UNLIMITED (non-zero slope above the highest
+  strike). Example: SELL 23,000 PE at ₹80 × 75 → max loss ₹17,19,000 (not "unlimited"); BUY 24,000 FUT × 75 → max
+  loss ₹18,00,000, max profit UNLIMITED. `min_pnl` is the signed minimum of the payoff; max loss is its magnitude
+  when negative, else 0. Breakevens are reported only above 0; a non-terminating breakeven is rounded half-even to
+  0.01 points.
 
 ## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 

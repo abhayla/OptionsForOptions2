@@ -3,7 +3,8 @@
 Decisions: ADR-001, ADR-002, ADR-003, ADR-004. Sources: the owner's first message (T1 #1) and the full chats in
 `docs/reference/chatgpt/`.
 
-**Core promise:** *Plan the trade. Follow the strategy. Then execute.*
+**Core promise:** *Plan your trade. Follow your strategy. Then execute.* (one canonical wording; "your" keeps the user the
+decision-maker, ADR-003; SPEC CHANGE copy-only, delegated overnight, audit S-MASTER-§1)
 **Principle:** *You can change your strategy, but you cannot bypass the strategy.*
 **Positioning:** *Your Zerodha account. Your strategy. Your decision. Our technology.*
 
