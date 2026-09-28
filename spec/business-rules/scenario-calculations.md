@@ -70,7 +70,7 @@ calculation engine.
   where one exists); a futures leg at a what-if level is valued at level x e^(rT). Model prices are rounded to ₹0.01 and
   Greeks to 4 dp at the boundary; money stays Decimal. Core check: Hull reference S=42, K=40, r=10%, sigma=20%, T=0.5 →
   call 4.76, put 0.81.
-- Open: SENSEX step (Q208); whether Lower/Upper BE summary columns stay after the grid as well (Q213).
+- Decided: SENSEX step 300 per index in Admin (Q208, ADR-042); Lower/Upper BE summary columns stay after the grid as well as the inserted 0-P&L columns (Q213, delegated overnight, ADR-045).
 - **Level-set rules (implementation of Q33B–Q33D, 2026-09-29, delegated overnight under ADR-045, W-003; the spec
   was silent on these details — open for owner review, no decision row changed).** Code: `backend/ofo/scenario/`.
   - Admin config per index (points): step, anchor, minimum half-width, margin steps, maximum columns. Defaults NIFTY
