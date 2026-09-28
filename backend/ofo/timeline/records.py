@@ -61,6 +61,8 @@ class RuleTriggerRecord:
     def __post_init__(self) -> None:
         if self._token is not _FROM_EVALUATION:
             raise ValueError("a RuleTriggerRecord is made only by RuleTriggerRecord.from_evaluation()")
+        # Spend the token so dataclasses.replace() (which copies init fields) cannot forge a changed copy.
+        object.__setattr__(self, "_token", None)
 
     @classmethod
     def from_evaluation(

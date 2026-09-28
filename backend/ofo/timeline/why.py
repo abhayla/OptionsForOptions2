@@ -14,6 +14,7 @@ from typing import Iterable
 from ofo.rules.conditions import Op
 from ofo.rules.inputs import InputName
 from ofo.rules.model import RuleAction
+from ofo.strategy.wording import find_banned_phrases
 from ofo.timeline.catalogue import FollowUpKind
 from ofo.timeline.records import FollowUp, RuleTriggerRecord
 
@@ -58,6 +59,12 @@ FOLLOW_UP_LABELS: dict[FollowUpKind, str] = {
     FollowUpKind.BROKER_REPORTED: "Broker reported",
     FollowUpKind.RECONCILIATION_SUCCEEDED: "Reconciliation succeeded",
 }
+
+
+def advice_words_in(text: str) -> list[str]:
+    """ADR-003 advice phrases found in ``text``. The one call site of the shared wording checker, so moving to the
+    stricter shared module (W-024) is a one-line change here."""
+    return find_banned_phrases(text)
 
 
 def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowUp] = ()) -> str:

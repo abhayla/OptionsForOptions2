@@ -13,7 +13,7 @@ import pytest
 from ofo.rules import DataHealth, InputName, Outcome, RuleAction
 from ofo.rules import entry_immediate
 from ofo.timeline import FollowUp, FollowUpKind, RuleTriggerRecord, Timeline, why_did_this_trigger
-from ofo.timeline.why import INPUT_LABELS
+from ofo.timeline.why import ACTION_WORDS, FOLLOW_UP_LABELS, INPUT_LABELS, OP_WORDS, advice_words_in
 
 from timeline_fixtures import (
     CHECKED_AT,
@@ -25,11 +25,6 @@ from timeline_fixtures import (
     executed_record,
     loss_evaluation,
 )
-
-#: ADR-003 forbidden list, plus advice verbs the platform never uses.
-FORBIDDEN = ("you should", "best trade", "best adjustment", "recommended", "recommend", "guaranteed", "risk-free",
-             "certain profit", "must exit", "should exit", "what should i do")
-
 
 def _recorded_trigger():
     evaluation = loss_evaluation()
@@ -83,7 +78,8 @@ def test_every_number_in_the_answer_is_a_recorded_field():
 
 
 def test_answer_has_no_advice_words():
-    """AC-5 with ADR-003: the answer uses 'Your rule was triggered' and none of the forbidden advice wording."""
+    """AC-5 with ADR-003: the answer uses 'Your rule was triggered' and the shared wording checker
+    (ofo.strategy.wording, via advice_words_in) finds no advice phrase in it or in any fixed wording the answer uses."""
     timeline, seq, _ = _recorded_trigger()
     for kind, answer in ((FollowUpKind.ALERT_GENERATED, True), (FollowUpKind.ORDER_PREPARED, True),
                          (FollowUpKind.CONFIRMATION_REQUIRED, True), (FollowUpKind.EXECUTED, False),
@@ -92,8 +88,10 @@ def test_answer_has_no_advice_words():
         timeline.record_follow_up(FollowUp(kind, seq, CHECKED_AT, answer))
     text = timeline.why(seq)
     assert text.startswith("Your rule was triggered")
-    lowered = text.lower()
-    assert [word for word in FORBIDDEN if word in lowered] == []
+    assert advice_words_in(text) == []
+    fixed = [*INPUT_LABELS.values(), *OP_WORDS.values(), *ACTION_WORDS.values(), *FOLLOW_UP_LABELS.values()]
+    assert [phrase for phrase in fixed if advice_words_in(phrase)] == []
+    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should"]  # checker is live
     assert "Alert generated: yes." in text and "Executed: no." in text
     assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 

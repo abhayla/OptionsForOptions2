@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal as D
+from pathlib import Path
+
+import yaml
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.rules import DataHealth, Evaluation, RuleAction, evaluate, exit_max_loss, snapshot_from_strategy
@@ -71,3 +74,13 @@ def snapshot(strategy: Strategy, *, health: DataHealth = DataHealth.AVAILABLE,
 
 def loss_evaluation(**kwargs) -> Evaluation:
     return evaluate(MAX_LOSS_RULE, snapshot(STRESSED, **kwargs))
+
+
+REQ_040 = Path(__file__).resolve().parents[2] / "spec" / "requirements" / "REQ-040.md"
+
+
+def ac_text(ac_id: str) -> str:
+    """One REQ-040 acceptance-criterion text, read from the spec file on disk (never copied into a test)."""
+    raw = REQ_040.read_text(encoding="utf-8")
+    _, frontmatter, _ = raw.split("---\n", 2)
+    return {ac["id"]: ac["text"] for ac in yaml.safe_load(frontmatter)["acceptance_criteria"]}[ac_id]
