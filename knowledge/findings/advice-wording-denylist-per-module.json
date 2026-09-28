@@ -17,9 +17,19 @@
       "date": "2026-09-29",
       "where": "W-024 errors/model.py",
       "evidence": "see first_seen"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-024 round 2 @ 78c5257 (shared stem-aware checker)",
+      "evidence": "'you must buy more lots', 'you ought to close this leg', 'best strike to pick', 'best entry point' passed; parts differing only by a full stop not flagged; Cyrillic/fullwidth letters bypassed"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-024 round 3 @ 63e8d08 (fixed template catalogue after independent review)",
+      "evidence": "catalogue itself holds, but Code slot carried 'risk-free' / 'GUARANTEED-PROFIT' / 'you_should_buy' into rendered text (no runtime check); _build, object.__new__ and a subclass bypassed render with the AST test green (57 passed); Money accepted NaN and -5"
     }
   ],
-  "fix": "One shared checker, backend/ofo/wording.py (normalise case, whitespace, invisible characters; stem-based patterns with word boundaries; list cites ADR-003), used by every module that emits user-facing text (W-024 fix round; W-005's wording.py delegates to it; W-020 told to use it).",
+  "fix": "Not landed: W-024 parked (#30) after the third red. Recommended: closed-enum Code/Instrument slots, a runtime wording check on the rendered text (fail closed), render made the only reachable constructor (no _build, no subclassing, __new__ guarded) with the AST test extended, finite signed Money slots.",
   "detection": {
     "status": "unguarded",
     "checks": [],

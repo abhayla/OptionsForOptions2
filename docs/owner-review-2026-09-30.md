@@ -65,7 +65,7 @@ Every item: builder in its own worktree → independent verifier (fresh context)
 | W-020 (REQ-040) | Strategy timeline + rule-trigger records + "Why did this trigger?" | **Merged** PR #27 — 3 rounds (one was my brief's mistake, reversed) |
 | W-019 (REQ-057) | Order lifecycle: 7 states; nothing changes until Zerodha confirms a fill | **Merged** PR #28 — failed twice, then an independent review found the real defect (two copies of the fill count); rebuilt on one fill ledger, passed |
 | W-021 (REQ-060) | Reconciliation with Zerodha positions (Tier A) | Built; independent adversarial verification running |
-| W-024 (REQ-065) | Error messages | Failed twice (advice-word blocklists always leak); rebuilt as a fixed, reviewed message catalogue; final verification running — parks if it fails |
+| W-024 (REQ-065) | Error messages | **PARKED** — issue #30. Failed 3 times; the fixed message catalogue is right, but a code slot can still carry words like "risk-free", and three back doors skip the catalogue. One short round with your OK (fix list in the issue) |
 | W-023 (REQ-058) | Partial execution, no automatic retry (Tier A) | Building |
 | W-022 (REQ-056) | Multi-leg execution plan (Tier A) | Waits for W-021 |
 
@@ -75,6 +75,7 @@ Issues filed: deferred #10 (small verifier findings), #29 (order-ledger and gate
 - Q204, Q205 — shared vs per-user Zerodha feed; monitoring while the daily session is expired. Depend on Zerodha's answer.
 - Q211 — legal/compliance review before advice-like features, billing and data display go live.
 - Q212 — the YouTube adjustment video transcript (you said you'd provide it).
+- W-024 (error messages) is parked, issue #30 — say "unpark W-024" for one short round (closed code lists, a runtime check on the finished message, back doors closed).
 - W-007 (entitlement engine) is parked, issue #12 — decide the recommended fix (separate "validate a new event" from "load stored history"; bound future-dated status changes).
 - The state-machine transition table in `spec/data/domain-model.md` §6 is still a proposal for your review.
 - **Which UX level shows Greeks?** REQ-006 says Standard shows Greeks; REQ-035 AC-7 says Advanced adds them. The table model follows REQ-035 (Guided: none, Standard: % return + breakevens, Advanced: IV + Greeks). Recommendation: keep REQ-035 (beginners in Standard don't need Greeks by default) and correct REQ-006.
