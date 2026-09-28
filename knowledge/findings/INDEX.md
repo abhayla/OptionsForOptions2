@@ -2,7 +2,7 @@
 
 # Findings index
 
-6 finding(s), generated from `knowledge/findings/*.json`.
+8 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -12,3 +12,5 @@
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | spec_ref |
 | normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | guarded | occurrences, spec_ref |
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | spec_ref |
+| test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, spec_ref |
+| trust-broker-status-word | Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position. | unguarded | occurrences, spec_ref |
