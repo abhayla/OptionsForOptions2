@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from ofo.engine.legs import Leg
@@ -81,6 +82,27 @@ def _leg_key(leg: Leg) -> tuple:
     return (leg.action, leg.instrument, leg.strike, leg.expiry)
 
 
+def _leg_sort_key(leg: Leg) -> tuple:
+    """A total order over every field of a leg, safe to sort (never compares None to a Decimal)."""
+    return (
+        leg.action.value,
+        leg.instrument.value,
+        leg.strike is None,
+        leg.strike if leg.strike is not None else Decimal(0),
+        leg.quantity,
+        leg.expiry,
+        leg.entry_price,
+        leg.ltp is None,
+        leg.ltp if leg.ltp is not None else Decimal(0),
+    )
+
+
+def _same_configuration(a: Sequence[Leg], b: Sequence[Leg]) -> bool:
+    """Fix round item 1: compare configurations order-insensitively (leg order is cosmetic everywhere)."""
+    a, b = tuple(a), tuple(b)
+    return len(a) == len(b) and sorted(a, key=_leg_sort_key) == sorted(b, key=_leg_sort_key)
+
+
 def _check_legs(legs: Sequence[Leg]) -> tuple[Leg, ...]:
     """Shared validation for any full leg set: type, non-empty, no duplicate logical leg, within the leg cap."""
     checked = tuple(legs)
@@ -112,8 +134,8 @@ class BuilderSession:
         self._seq = 0
         self._undo_target: int | None = None
         self._executed = False
-        self.display_name = display_name
-        self.display_flags: dict = {}
+        self._display_name = display_name
+        self._display_flags: dict = {}
         self._append(LABEL_ORIGINAL, self._legs)
 
     # -- accessors -----------------------------------------------------------------------------------------
@@ -122,9 +144,21 @@ class BuilderSession:
         """The current configuration only."""
         return self._legs
 
+    @property
+    def display_name(self) -> str:
+        """Fix round item 3: read-only - changed only through :meth:`rename`, which refuses after execution."""
+        return self._display_name
+
+    @property
+    def display_flags(self) -> Mapping[str, bool]:
+        """Fix round item 3: a read-only view - changed only through :meth:`toggle_display`."""
+        return MappingProxyType(self._display_flags)
+
     def default_view(self) -> DefaultView:
         """AC-5: the default output - current legs and display metadata, no history field of any kind."""
-        return DefaultView(legs=self._legs, display_name=self.display_name, display_flags=dict(self.display_flags))
+        return DefaultView(
+            legs=self._legs, display_name=self._display_name, display_flags=dict(self._display_flags)
+        )
 
     def history(self) -> tuple[HistoryEntry, ...]:
         """Explicit accessor for the full labelled history (AC-5); persists across :meth:`mark_executed`."""
@@ -244,7 +278,7 @@ class BuilderSession:
         """
         self._check_not_executed()
         checked = _check_legs(new_legs)
-        if checked == self._legs:
+        if _same_configuration(checked, self._legs):
             return
         self._record_meaningful(LABEL_ALTERNATIVE, checked)
 
@@ -262,14 +296,14 @@ class BuilderSession:
         self._check_not_executed()
         if not isinstance(new_name, str) or not new_name.strip():
             raise BuilderHistoryError(f"new_name must be a non-empty string, got {new_name!r}")
-        self.display_name = new_name
+        self._display_name = new_name
 
     def toggle_display(self, flag_name: str) -> None:
         """Toggling a display-only flag (e.g. 'collapsed') touches no leg field, so it is cosmetic (AC-2)."""
         self._check_not_executed()
         if not isinstance(flag_name, str) or not flag_name:
             raise BuilderHistoryError(f"flag_name must be a non-empty string, got {flag_name!r}")
-        self.display_flags[flag_name] = not self.display_flags.get(flag_name, False)
+        self._display_flags[flag_name] = not self._display_flags.get(flag_name, False)
 
     # -- restore and undo (AC-3, AC-4) -------------------------------------------------------------------------
     def restore(self, seq: int) -> HistoryEntry:
@@ -280,6 +314,8 @@ class BuilderSession:
         equal to the last entry it appends).
         """
         self._check_not_executed()
+        if isinstance(seq, bool) or not isinstance(seq, int):
+            raise BuilderHistoryError(f"seq must be a plain int (not bool/float), got {seq!r}")
         target = self._entry_by_seq(seq)
         entry = self._append(LABEL_RESTORE, target.legs)
         self._legs = entry.legs

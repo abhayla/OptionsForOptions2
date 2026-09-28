@@ -69,6 +69,30 @@ def test_ac1_alternative_identical_to_current_creates_no_entry():
     assert session.current == CONDOR_LEGS
 
 
+def test_ac2_alternative_in_reversed_order_creates_no_entry():
+    """Small fix round item 1: builder_history.py:247 compared legs as an ordered tuple, so a reversed-order
+    'alternative' with the SAME legs recorded a spurious entry - leg order is cosmetic everywhere (AC-2)."""
+    session = make_session()
+    session.choose_alternative(tuple(reversed(CONDOR_LEGS)))
+    assert [e.label for e in session.history()] == [LABEL_ORIGINAL]
+    assert session.current == CONDOR_LEGS  # current is untouched, not silently reordered either
+
+
+def test_ac2_genuinely_different_alternative_still_records():
+    """Small fix round item 1: the order-insensitive comparison must not swallow a real change."""
+    session = make_session()
+    different = (LEG1, LEG2, LEG3)  # same order prefix, genuinely fewer legs
+    session.choose_alternative(different)
+    assert [e.label for e in session.history()] == [LABEL_ORIGINAL, LABEL_ALTERNATIVE]
+    assert session.current == different
+
+    session2 = make_session()
+    reordered_but_different = (LEG4, LEG3, LEG2, Leg(Action.BUY, Instrument.PE, D("22700"), EXPIRY, QTY, D("30.00")))
+    session2.choose_alternative(reordered_but_different)
+    assert [e.label for e in session2.history()] == [LABEL_ORIGINAL, LABEL_ALTERNATIVE]
+    assert session2.current == reordered_but_different
+
+
 def test_ac2_meaningful_changes_create_exactly_one_labelled_entry_each():
     """AC-2: add/remove leg, strike, quantity, expiry each create exactly one labelled entry, holding the
     RESULTING configuration - fix round: the label names the state its own entry stores."""
@@ -170,6 +194,17 @@ def test_ac3_restore_unknown_entry_is_refused():
         session.restore(9999)
 
 
+def test_red_restore_requires_a_plain_int_seq():
+    """Small fix round item 2: restore(True)/restore(1.0) were wrongly accepted as entry 1 (bool/float alias)."""
+    session = make_session()
+    with pytest.raises(BuilderHistoryError):
+        session.restore(True)  # isinstance(True, int) is True in Python - must be explicitly rejected
+    with pytest.raises(BuilderHistoryError):
+        session.restore(1.0)  # 1.0 == 1 - must be explicitly rejected too
+    # a genuine plain int still works.
+    assert session.restore(session.history()[0].seq).legs == CONDOR_LEGS
+
+
 def test_ac4_undo_reverts_exactly_the_last_meaningful_change_and_is_recorded():
     """AC-4: undo reverts the last meaningful change - jumps to the entry BEFORE it - and is itself recorded."""
     session = make_session()
@@ -237,6 +272,24 @@ def test_ac5_history_persists_after_execution_and_edits_are_refused():
         session.undo()
     # history stays fully readable after every refused edit.
     assert [e.label for e in session.history()] == [LABEL_ORIGINAL, LABEL_STRIKE]
+
+
+def test_red_display_fields_are_read_only_only_through_their_methods():
+    """Small fix round item 3: display_name/display_flags could be assigned directly, bypassing rename()/
+    toggle_display() (which already refuse after execution) - make the attributes read-only always."""
+    session = make_session()
+    with pytest.raises(AttributeError):
+        session.display_name = "hacked"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        session.display_flags["collapsed"] = True  # type: ignore[index]
+
+    session.rename("Renamed via the proper method")
+    session.mark_executed()
+    with pytest.raises(AttributeError):
+        session.display_name = "hacked again"  # type: ignore[misc]
+    with pytest.raises(BuilderHistoryError):
+        session.rename("also refused after execution")
+    assert session.display_name == "Renamed via the proper method"
 
 
 def test_ac5_default_view_carries_no_history_data():
