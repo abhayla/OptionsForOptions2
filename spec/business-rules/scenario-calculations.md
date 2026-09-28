@@ -4,7 +4,7 @@ Decisions: ADR-008 (Q15, Q33, Q33A–Q33D), ADR-001 (leg types). Sources: full c
 the formulas, #95–#98); handoffs §21–§25. These rules are locked; code must match them exactly and must not duplicate them outside the one
 calculation engine.
 
-## 1. Expiry scenario P&L per leg (locked; owner, T1 #95–#98)
+## 1. Expiry scenario P&L per leg (locked; owner, T1 #95–#98; entry-price rule confirmed by the owner 2026-09-29, ADR-035)
 
 `Market` = the scenario underlying level at expiry. `Quantity` = units (lots × lot size), never lots.
 
@@ -18,7 +18,11 @@ calculation engine.
 | SELL FUTURES | **not decided** — proposed `(Entry Price − Market) × Quantity` (open question Q207) |
 
 - Strategy scenario P&L at a level = the sum of every leg's P&L at that level.
-- Expiry scenarios use the **entry price**, never the current LTP.
+- Expiry scenarios use the **entry price**, never the current LTP. The LTP is used only in the live (current) P&L
+  columns (§2), which Q33A = C shows alongside expiry P&L. Source: the owner typed the current price (₹38.20) at
+  T1 #95; ChatGPT changed it to the entry price at #96; the owner confirmed the entry price on 2026-09-29 (Q215,
+  ADR-035). Worked check: BUY 22,800 PE, entry ₹42.50, LTP ₹38.20, Quantity 75, Market 22,000 → expiry P&L
+  `(800 − 42.50) × 75 = ₹56,812.50` (not ₹57,135, which the LTP would give).
 - Every cell is filled for every leg, including out-of-the-money legs (owner, T1 #93, #95). No blanks.
 
 ## 2. Live (current) P&L (T1 #85)
@@ -35,7 +39,9 @@ calculation engine.
 
 ## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 
-- Scenario columns are ~100 points apart for NIFTY, anchored to **rounded ₹100 levels** (Q33C).
+- Scenario columns are ~100 points apart for NIFTY, anchored to **rounded 100-point index levels** (Q33C). Index
+  levels are **points**, not money: ₹ is used only for money values (premiums, P&L, margin); ChatGPT's option text
+  "Rounded ₹100 level" (T1 #114) meant index points.
 - The default range is chosen from spot, strikes, breakevens, risk boundaries and expected move; the user can
   customise it (Q33B = E). Example: NIFTY 23,000 → 22,000 … 24,000.
 - The **exact live level (CURRENT)** and the **0-P&L / breakeven levels** are added as extra columns **at their actual

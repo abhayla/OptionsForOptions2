@@ -16,7 +16,9 @@ Decisions: ADR-002, ADR-019, ADR-016–ADR-018, ADR-023. Source: comprehensive h
 | risk limits, user preferences/constraints | distances (to strikes, breakevens), trigger state, timestamps, data health |
 
 ## 3. Versions (Q190, Q191)
-- Every change to a definition creates a new version; old versions are kept.
+- Before the first execution, definition changes are activity-history entries with restore (Q135, T2 #86), not
+  versions. From the first execution on, every meaningful modification creates a new version; old versions are kept
+  (Q190, T2 #128; ADR-019 "versions after execution").
 - **Active** version = the accepted state. **Proposed** version = separate; it becomes active only after user
   confirmation and successful execution/reconciliation.
 - Partial execution → exception/reconciliation state; the broker's actual state wins.
@@ -34,11 +36,12 @@ Notification · Strategy Activity Event · Audit Event.
 | Dimension | Values | Source |
 |---|---|---|
 | Strategy operational state | the 12 states in §6 | ADR-019 (Q200) |
-| Monitoring status | Green Healthy · Yellow Watch · Orange Adjustment opportunity · Red Exit condition reached | ADR-010 (Q144) |
+| Strategy health (monitoring status) | Green Healthy · Yellow Watch · Orange Adjustment opportunity · Red Exit condition reached — the owner-chosen health scale (Q20 = B, T1 #40–#41); these four colours mean health only | ADR-010 (Q20, T1 #41) |
+| Monitoring availability | active · paused, per strategy (Q184, T2 #124) — separate from strategy health; the 🟢/🔴 marks in ChatGPT's Q184 example and the 🔴 in Q199's *"Execution blocked"* (T2 #130) are illustrations, not the health colours; the icon for paused/blocked is **not decided** | ADR-015, ADR-018 |
 | Order state | Prepared · Submitted · Pending · Partially Executed · Executed · Rejected · Cancelled | ADR-017 (Q194) |
 | Entitlement | Trial Pro · Direct Zerodha Customer Pro · Referral-earned Pro · Paid Monthly/Annual Pro · Expired/Limited | ADR-023 |
-| Broker session | connected · expired · disconnected | ADR-020 |
-| Market data health | available · stale · delayed · unhealthy · unavailable | ADR-015 (Q184) |
+| Broker connection | four separate statuses (Q181, T2 #124): account connection · live market data · position/account sync · order-execution readiness, each Connected · Partially connected · Disconnected. The Zerodha authorization session itself is valid · expired (expires every morning, owner T1 #265); expiry is not identity loss | ADR-020, ADR-022 |
+| Market data health | available · stale · delayed · unhealthy · unavailable | ADR-015 (Q182, T2 #124: never use stale data as live; the five-value list itself comes only from the handoff C-file) |
 
 Valid combinations include: Pro + broker disconnected; Limited + monitoring an Active strategy; Active strategy +
 expired Zerodha session; Reconciliation Required + active subscription.

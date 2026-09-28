@@ -53,10 +53,24 @@ party) · **DECIDED → ADR-###**.
 - **Recommended:** admin imports confirmed openings (CSV, like ADR-024), each creating an entitlement event.
 - Spec basis: ADR-024, ADR-025.
 
-## Q210 — EXTERNAL + OPEN — What Zerodha allows, and what it costs each user
-- ChatGPT's check of Zerodha's docs on 28 Sep (T2 #122, **not verified by us**): the free Personal plan has no live
+## Q210 — DECIDED → ADR-034 (email Zerodha first; owner, 2026-09-29) + EXTERNAL (waiting on Zerodha's written answer) — What Zerodha allows, and what it costs each user
+- ChatGPT's check of Zerodha's docs on 28 Sep (T2 #122): the free Personal plan has no live
   data; live data needs the ₹500/month Connect plan per API key; Kite Connect data may not be displayed or
   redistributed on other platforms; startups building mass-retail products may get Kite Connect free.
+- **Verified by us, 2026-09-28, on Zerodha's own pages:**
+  - support.zerodha.com "What are the charges for Kite APIs": Personal (free) "excludes historical or real-time data";
+    Connect gives "real-time data via WebSockets" and "historical candle data", "₹500 per app each month";
+    Startups: "For startups developing mass retail products, Kite Connect APIs are free", contact Zerodha's API team.
+  - support.zerodha.com "Can I use historical and live data … on other platforms?": "you cannot display data from
+    Kite Connect APIs on other platforms, as this violates the exchange's data vending policies … Kite Connect API
+    is primarily an execution suite, not a data vending service"; for distribution, "contact an exchange-authorised
+    data vendor".
+  - kite.trade/startups: "If your platform is targeted at the mass retail market, the Kite Connect APIs are available
+    free of cost"; the page does **not** say whether the free startup access includes live market data or permits
+    display on our platform.
+  - Consequence (open for owner decision): the T2 #121 premise "Zerodha's live market data, which is free" is not
+    true for the Personal plan, and showing Kite Connect data in our product is refused by default. Unmeasured:
+    whether the startup programme changes either point — only Zerodha's written answer settles it.
 - The owner's plan (T2 #121) assumed the live data was free. If each user must create their own Connect app, each
   user pays Zerodha ₹500/month on top of ₹600 for Pro — a very different product.
 - **Recommended:** email Zerodha's API team first (startup/mass-retail programme + written permission for our SaaS
@@ -95,3 +109,7 @@ alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits
 cooldown · security architecture · data-retention policy · admin/system-health screens · final cloud/stack · the
 strategy state transition table (proposal in `spec/data/domain-model.md`) · what happens when a Client ID leaves the
 complimentary list · Zerodha rate limits for per-user WebSockets.
+
+## Q215 — DECIDED → ADR-035 — Expiry P&L: entry price or current price? (audit item X-T1#95)
+- Owner, 2026-09-29: **A** — expiry columns use the entry price; the LTP only in the live P&L column (Q33A = C).
+- Spec basis: ADR-008; `spec/business-rules/scenario-calculations.md` §1–§2; T1 #95–#97.
