@@ -8,6 +8,7 @@ itself) cites a current Zerodha source and date; a rule is never hard-coded with
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,25 @@ class SourceRef:
     url: str
     captured_on: str  # ISO date string, e.g. "2026-09-29" — the date the rule was verified.
     note: str = ""
+
+
+def validate_source(ref: SourceRef) -> None:
+    """Validate one `SourceRef`: a real https URL and a real ISO calendar date.
+
+    Raises `ValueError` (fail closed) if either is missing or malformed — e.g. `"2026-99-99"`
+    is shaped like a date but is not a real calendar date, and must be rejected, not accepted by
+    a regex that only checks digit positions.
+    """
+    if not ref.url or not ref.url.startswith("https://"):
+        raise ValueError(f"{ref.rule}: source url must be a real https url, got {ref.url!r}")
+    if not ref.captured_on:
+        raise ValueError(f"{ref.rule}: captured_on must not be empty")
+    try:
+        date.fromisoformat(ref.captured_on)
+    except ValueError as exc:
+        raise ValueError(
+            f"{ref.rule}: captured_on is not a real ISO calendar date: {ref.captured_on!r}"
+        ) from exc
 
 
 # Every rule this codebase encodes from Zerodha's public documentation/data. Add an entry here
@@ -36,11 +56,17 @@ SOURCES: dict[str, SourceRef] = {
 
 
 def get(rule: str) -> SourceRef:
-    """Look up a cited source by rule name. Raises `KeyError` if the rule is not registered."""
+    """Look up a cited source by rule name.
+
+    Raises `KeyError` if the rule is not registered, or `ValueError` (via `validate_source`) if
+    the registered entry itself is malformed — a caller never gets back a bad source silently.
+    """
     try:
-        return SOURCES[rule]
+        ref = SOURCES[rule]
     except KeyError as exc:
         raise KeyError(
             f"no cited source for rule {rule!r} — register one in ofo.instruments.sources "
             f"before encoding this Zerodha rule (REQ-053 AC-5)"
         ) from exc
+    validate_source(ref)
+    return ref

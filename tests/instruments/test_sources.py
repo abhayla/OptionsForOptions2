@@ -1,31 +1,33 @@
 """AC-5 tests: every Zerodha rule encoded in code cites a source URL and a capture date."""
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
 
-from ofo.instruments.sources import SOURCES, SourceRef, get
+from ofo.instruments.sources import SOURCES, SourceRef, get, validate_source
 
 
 def test_every_source_entry_has_url_and_date() -> None:
     """AC-5: any Zerodha rule encoded in code cites a current Zerodha source and date."""
     assert SOURCES, "the source registry must not be empty"
     for rule_name, ref in SOURCES.items():
-        assert ref.url, f"{rule_name} has no source url"
-        assert ref.url.startswith("https://"), f"{rule_name} url must be a real https source"
-        assert ref.captured_on, f"{rule_name} has no captured_on date"
-        # A real ISO date, not just a string shaped like one: date.fromisoformat rejects
-        # out-of-range values like "2026-99-99" that a regex ^\d{4}-\d{2}-\d{2}$ would accept.
-        date.fromisoformat(ref.captured_on)
+        validate_source(ref)  # our own registry validation, not just a stdlib call inline
         assert ref.rule == rule_name, f"{rule_name} key/rule mismatch: {ref.rule}"
 
 
 def test_invalid_captured_on_date_is_rejected() -> None:
-    """AC-5 negative case: a captured_on that is not a real calendar date must fail validation."""
+    """AC-5 negative case: a captured_on that is not a real calendar date must fail OUR OWN
+    registry validation (`validate_source`), not just the stdlib's `date.fromisoformat` in the
+    test itself — a regex-based check would wrongly accept "2026-99-99"."""
     bad_ref = SourceRef(rule="bad_rule", url="https://example.com", captured_on="2026-99-99")
     with pytest.raises(ValueError):
-        date.fromisoformat(bad_ref.captured_on)
+        validate_source(bad_ref)
+
+
+def test_invalid_url_is_rejected_by_registry_validation() -> None:
+    """AC-5 negative case: a non-https or empty url must fail our own `validate_source`."""
+    bad_ref = SourceRef(rule="bad_rule", url="http://not-https.example.com", captured_on="2026-09-29")
+    with pytest.raises(ValueError):
+        validate_source(bad_ref)
 
 
 def test_get_returns_registered_source() -> None:

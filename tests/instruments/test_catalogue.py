@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from ofo.instruments.catalogue import Catalogue, ContractKind
+from ofo.instruments.catalogue import DEFAULT_MAX_UNLIST_SHARE, Catalogue, ContractKind
 from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_csv
@@ -165,21 +165,87 @@ def test_update_refuses_empty_list(catalogue: Catalogue) -> None:
     assert after == before, "a refused update must change nothing"
 
 
-def test_update_refuses_when_it_would_unlist_more_than_default_share(
+def test_update_refuses_when_it_would_unlist_more_than_default_share_for_one_underlying(
     catalogue: Catalogue, contracts: list[Contract]
 ) -> None:
-    """update() refuses a source list that would unlist more than 50% of currently listed
-    contracts (an incomplete/truncated feed), and leaves the catalogue unchanged."""
+    """update() refuses a source list that would unlist more than 50% of ONE underlying's
+    currently listed contracts, even with the OTHER underlying fully present (so this exercises
+    the per-underlying SHARE guard specifically, not the zero-rows guard)."""
     before = _listedness_snapshot(catalogue)
-    # Keep only NIFTY near-expiry rows: far below half of everything currently listed.
-    truncated = [c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY]
-    assert truncated and len(truncated) < len(contracts) * 0.5
+    # Keep only NIFTY CE near-expiry rows (~29% of all NIFTY) plus every SENSEX row: NIFTY would
+    # lose >50%, SENSEX loses nothing.
+    nifty_small_slice = [
+        c for c in contracts if c.name == "NIFTY" and c.instrument_type == "CE" and c.expiry == NIFTY_NEAR_EXPIRY
+    ]
+    sensex_full = [c for c in contracts if c.name == "SENSEX"]
+    truncated = nifty_small_slice + sensex_full
+    nifty_total = sum(1 for c in contracts if c.name == "NIFTY")
+    assert nifty_small_slice and len(nifty_small_slice) < nifty_total * 0.5
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="NIFTY"):
         catalogue.update(truncated)
 
     after = _listedness_snapshot(catalogue)
     assert after == before, "a refused update must change nothing"
+
+
+def test_update_refuses_a_nifty_less_slice_of_the_real_fixture(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2 fix round 3 (real-data proof): dropping ALL NIFTY rows from the real fixture must be
+    refused per-underlying, even though NIFTY is only ~44% of the WHOLE catalogue (under the 50%
+    global threshold that let this through before). Catalogue is unchanged after the refusal."""
+    before = _listedness_snapshot(catalogue)
+    nifty_less = [c for c in contracts if c.name != "NIFTY"]
+    assert any(c.name == "SENSEX" for c in nifty_less)  # a real, non-empty, plausible feed
+
+    with pytest.raises(ValueError, match="NIFTY"):
+        catalogue.update(nifty_less)
+
+    after = _listedness_snapshot(catalogue)
+    assert after == before, "a refused update must change nothing"
+
+
+def test_update_refuses_a_halfway_cut_of_the_real_fixture(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2 fix round 3 (real-data proof): the fixture cut at its halfway row (as the real full
+    instrument list was, per the verifier's finding) drops NIFTY entirely — must be refused."""
+    before = _listedness_snapshot(catalogue)
+    half = len(contracts) // 2
+    halfway_cut = contracts[:half]
+    assert not any(c.name == "NIFTY" for c in halfway_cut), (
+        "fixture ordering assumption: the first half must contain zero NIFTY rows for this to "
+        "be the real scenario the verifier found"
+    )
+
+    with pytest.raises(ValueError):
+        catalogue.update(halfway_cut)
+
+    after = _listedness_snapshot(catalogue)
+    assert after == before, "a refused update must change nothing"
+
+
+def test_mutation_whole_catalogue_share_would_have_missed_dropping_all_nifty(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """Mutation-style: prove the fix DISCRIMINATES. On the real fixture, NIFTY is 481/1085 (~44%)
+    of the whole catalogue — under the 50% default — so a whole-catalogue share check would NOT
+    have refused dropping all NIFTY rows. The per-underlying check (100% of NIFTY specifically)
+    correctly refuses it. If catalogue.update() ever reverts to a whole-catalogue share, this
+    test's own precondition proves the bug would go undetected by the old check, while the
+    refusal assertion below would then fail (the test goes red)."""
+    total_listed = len(catalogue.all_entries())
+    nifty_listed = sum(1 for e in catalogue.all_entries() if e.contract.name == "NIFTY")
+    whole_catalogue_share_if_nifty_dropped = nifty_listed / total_listed
+    assert whole_catalogue_share_if_nifty_dropped < DEFAULT_MAX_UNLIST_SHARE, (
+        "precondition: dropping all NIFTY must be UNDER the global threshold, proving a "
+        "whole-catalogue check would have missed it"
+    )
+
+    nifty_less = [c for c in contracts if c.name != "NIFTY"]
+    with pytest.raises(ValueError):
+        catalogue.update(nifty_less)  # the per-underlying check still catches it
 
 
 def test_update_force_overrides_the_unlist_share_guard(catalogue: Catalogue, contracts: list[Contract]) -> None:
