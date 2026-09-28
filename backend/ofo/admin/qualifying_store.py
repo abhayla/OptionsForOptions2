@@ -20,6 +20,13 @@ class VerificationStatus(Enum):
     VERIFIED = "VERIFIED"
 
 
+class ListStatus(Enum):
+    """Whether the ID currently qualifies. Removing an ID deactivates it (ADR-024 Q70); it is never deleted."""
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
 class EntitlementStatus(Enum):
     """Entitlement state reported by the entitlement engine; this module records it, never computes it."""
 
@@ -44,6 +51,7 @@ class QualifyingEntry:
     """One qualifying Client ID and its per-ID status fields (REQ-020 AC-3)."""
 
     client_id: str
+    list_status: ListStatus
     verification_status: VerificationStatus
     verified_at: datetime.datetime | None
     platform_user_id: str | None
@@ -56,6 +64,7 @@ class QualifyingEntry:
         return MappingProxyType(
             {
                 "client_id": self.client_id,
+                "list_status": self.list_status.value,
                 "verification_status": self.verification_status.value,
                 "verified_at": self.verified_at.isoformat() if self.verified_at else None,
                 "platform_user_id": self.platform_user_id,
@@ -91,6 +100,7 @@ class ImportRecord:
     total_rows: int
     added: int
     already_on_list: int
+    reactivated: int
     edited_rows: int
     excluded_rows: int
 

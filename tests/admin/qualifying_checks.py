@@ -15,7 +15,7 @@ from ofo.admin.qualifying import (
     QualifyingListService,
     RowCategory,
 )
-from ofo.admin.qualifying_store import Actor, InMemoryQualifyingRepository
+from ofo.admin.qualifying_store import Actor, InMemoryQualifyingRepository, ListStatus
 
 ADMIN = Actor("admin:priya")
 T0 = datetime.datetime(2026, 9, 29, 10, 0, tzinfo=datetime.timezone.utc)
@@ -91,12 +91,18 @@ def check_resolved_apply_adds_exactly_once(svc: QualifyingListService) -> None:
     assert [(h.import_id, h.added) for h in svc.import_history()] == [("IMP-0001", 7), ("IMP-0002", 0)]
 
 
-def check_removal_keeps_audit(svc: QualifyingListService) -> None:
-    """AC-4: removing an ID keeps its full audit history and appends a 'remove' entry."""
+def check_removal_deactivates_and_keeps_audit(svc: QualifyingListService) -> None:
+    """AC-1/AC-4: removing an ID deactivates it (entry kept, no longer qualifying), keeps its full audit history,
+    and is reversible with reactivate."""
     svc.add("AB1234", ADMIN)
     svc.remove("AB1234", ADMIN)
-    assert svc.get("AB1234") is None
+    entry = svc.get("AB1234")
+    assert entry is not None and entry.list_status is ListStatus.INACTIVE
+    assert svc.is_qualifying("AB1234") is False
+    assert [e.client_id for e in svc.search(list_status=ListStatus.INACTIVE)] == ["AB1234"]
     trail = svc.audit_trail("AB1234")
-    assert [a.action for a in trail] == ["add", "remove"]
-    assert trail[1].before is not None and trail[1].before["client_id"] == "AB1234"
-    assert trail[1].after is None
+    assert [a.action for a in trail] == ["add", "deactivate"]
+    assert (trail[1].before["list_status"], trail[1].after["list_status"]) == ("ACTIVE", "INACTIVE")
+    svc.reactivate("AB1234", ADMIN)
+    assert svc.is_qualifying("AB1234") is True
+    assert [a.action for a in svc.audit_trail("AB1234")] == ["add", "deactivate", "reactivate"]

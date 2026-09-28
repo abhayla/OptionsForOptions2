@@ -7,11 +7,14 @@ Spec: REQ-020 (import, validation, search/filter, per-ID status, import history,
 Import is two-step. ``preview_import`` returns a dry-run report that classifies every data row. ``apply_import``
 re-runs that classification against the list as it is NOW and refuses (``ImportRefusedError``) while any row is a
 problem (malformed or duplicated within the file); the admin resolves a problem by editing the row's value or by
-explicitly excluding the row in the ``ImportRequest``. A row whose ID is already on the list is not a problem: it
-is skipped, so re-importing the same file changes nothing. Every change writes one audit entry.
+explicitly excluding the row in the ``ImportRequest``. A row whose ID is already on the list and ACTIVE is not a
+problem: it is skipped, so re-importing the same file changes nothing. A row whose ID is on the list but INACTIVE is
+a problem (``INACTIVE_ON_LIST``) until the admin chooses to reactivate it (``reactivate_rows``) or exclude it; an
+import never reactivates an ID silently. Every change writes one audit entry.
 
-Not decided by the spec, so not decided here: what removing an ID does to an already-granted entitlement
-(ADR-024 consequences). This module only removes the list entry and audits it; entitlement status is an input
+Removing an ID DEACTIVATES it (ADR-024 Q70 "deactivate"; decided under ADR-045 from the admin's intent: free Pro
+should stop, the record and its history stay, and the change is reversible with ``reactivate``). ``is_qualifying``
+is the check complimentary-Pro matching (W-011) uses: only an ACTIVE entry qualifies. Entitlement status is an input
 from the entitlement engine (``record_entitlement_status``), never computed here.
 """
 from __future__ import annotations
@@ -29,6 +32,7 @@ from ofo.admin.qualifying_store import (
     AuditEntry,
     EntitlementStatus,
     ImportRecord,
+    ListStatus,
     QualifyingEntry,
     QualifyingRepository,
     VerificationStatus,
@@ -37,6 +41,7 @@ from ofo.admin.qualifying_store import (
 CLIENT_ID_COLUMN = "client_id"
 EXPORT_COLUMNS = (
     "client_id",
+    "list_status",
     "verification_status",
     "verified_at",
     "platform_user_id",
@@ -49,17 +54,22 @@ EXPORT_COLUMNS = (
 class RowCategory(Enum):
     NEW = "NEW"
     ALREADY_ON_LIST = "ALREADY_ON_LIST"
+    INACTIVE_ON_LIST = "INACTIVE_ON_LIST"
+    REACTIVATE = "REACTIVATE"
     DUPLICATE_IN_FILE = "DUPLICATE_IN_FILE"
     MALFORMED = "MALFORMED"
     EXCLUDED = "EXCLUDED"
 
 
-PROBLEM_CATEGORIES = frozenset({RowCategory.DUPLICATE_IN_FILE, RowCategory.MALFORMED})
+PROBLEM_CATEGORIES = frozenset(
+    {RowCategory.DUPLICATE_IN_FILE, RowCategory.MALFORMED, RowCategory.INACTIVE_ON_LIST}
+)
 
 
 @dataclass(frozen=True)
 class ImportRequest:
-    """A CSV file plus the admin's resolutions: per-row replacement values and explicitly excluded rows.
+    """A CSV file plus the admin's resolutions: per-row replacement values, explicitly excluded rows, and rows
+    whose INACTIVE ID the admin chose to reactivate.
 
     Row numbers are spreadsheet line numbers: the header is row 1, the first data row is row 2.
     """
@@ -68,6 +78,7 @@ class ImportRequest:
     csv_text: str
     edits: Mapping[int, str] = field(default_factory=dict)
     excluded_rows: frozenset[int] = frozenset()
+    reactivate_rows: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -195,6 +206,7 @@ class QualifyingListService:
     def _new_entry(client_id: str, actor: Actor, now: datetime.datetime) -> QualifyingEntry:
         return QualifyingEntry(
             client_id=client_id,
+            list_status=ListStatus.ACTIVE,
             verification_status=VerificationStatus.UNVERIFIED,
             verified_at=None,
             platform_user_id=None,
@@ -264,13 +276,29 @@ class QualifyingListService:
         self._audit(actor, now, "entitlement_status", after.client_id, before, after)
         return after
 
-    def remove(self, client_id: str, actor: Actor) -> None:
-        """Take an ID off the list. Its audit history is kept (append-only)."""
+    def _set_list_status(self, client_id: str, actor: Actor, status: ListStatus, action: str) -> QualifyingEntry:
         actor = self._require_actor(actor)
         before = self._require_entry(client_id)
+        if before.list_status is status:
+            raise ValueError(f"{before.client_id} is already {status.value}")
+        after = replace(before, list_status=status)
         now = self._now()
-        self._repo.delete(before.client_id)
-        self._audit(actor, now, "remove", before.client_id, before, None)
+        self._repo.update(after)
+        self._audit(actor, now, action, after.client_id, before, after)
+        return after
+
+    def remove(self, client_id: str, actor: Actor) -> QualifyingEntry:
+        """Deactivate an ID: it stops qualifying, but the entry and its audit history stay (reversible)."""
+        return self._set_list_status(client_id, actor, ListStatus.INACTIVE, "deactivate")
+
+    def reactivate(self, client_id: str, actor: Actor) -> QualifyingEntry:
+        """Make a deactivated ID qualify again."""
+        return self._set_list_status(client_id, actor, ListStatus.ACTIVE, "reactivate")
+
+    def is_qualifying(self, client_id: str) -> bool:
+        """True only for an ID on the list with list status ACTIVE (used by complimentary-Pro matching)."""
+        entry = self._repo.get(normalise_client_id(client_id))
+        return entry is not None and entry.list_status is ListStatus.ACTIVE
 
     # ----- CSV import (AC-1, AC-2) ------------------------------------------------------------------------
 
@@ -290,12 +318,15 @@ class QualifyingListService:
         if not rows:
             raise ValueError(f"{request.file_name!r} has no data rows")
         known = {n for n, _ in rows}
-        for n in set(request.edits) | set(request.excluded_rows):
+        for n in set(request.edits) | set(request.excluded_rows) | set(request.reactivate_rows):
             if n not in known:
                 raise ValueError(f"row {n} does not exist in {request.file_name!r}")
         both = set(request.edits) & set(request.excluded_rows)
         if both:
             raise ValueError(f"rows {sorted(both)} are both edited and excluded")
+        both = set(request.reactivate_rows) & set(request.excluded_rows)
+        if both:
+            raise ValueError(f"rows {sorted(both)} are both reactivated and excluded")
         return rows
 
     def _classify_one(
@@ -311,7 +342,13 @@ class QualifyingListService:
                 f"{client_id} also appears on row {seen[client_id]}", edited,
             )
         seen[client_id] = row_number
-        if self._repo.get(client_id) is not None:
+        existing = self._repo.get(client_id)
+        if existing is not None and existing.list_status is ListStatus.INACTIVE:
+            return ImportRow(
+                row_number, raw, client_id, RowCategory.INACTIVE_ON_LIST,
+                f"{client_id} is on the list but INACTIVE; reactivate or exclude this row", edited,
+            )
+        if existing is not None:
             return ImportRow(
                 row_number, raw, client_id, RowCategory.ALREADY_ON_LIST, f"{client_id} is already on the list", edited
             )
@@ -327,7 +364,14 @@ class QualifyingListService:
                 continue
             edited = row_number in request.edits
             value = request.edits[row_number] if edited else raw
-            rows.append(self._classify_one(row_number, value, seen, edited))
+            row = self._classify_one(row_number, value, seen, edited)
+            if row_number in request.reactivate_rows:
+                if row.category is not RowCategory.INACTIVE_ON_LIST:
+                    raise ValueError(
+                        f"row {row_number} cannot be reactivated: it is {row.category.value}, not INACTIVE_ON_LIST"
+                    )
+                row = replace(row, category=RowCategory.REACTIVATE, message=f"{row.client_id} will be reactivated")
+            rows.append(row)
         return ImportReport(request.file_name.strip(), tuple(rows))
 
     @staticmethod
@@ -343,12 +387,18 @@ class QualifyingListService:
         new_ids = [r.client_id for r in report.rows_in(RowCategory.NEW)]
         if len(set(new_ids)) != len(new_ids) or any(self._repo.get(cid) is not None for cid in new_ids):
             raise ValueError("import plan would add an ID twice; nothing was applied")
+        reactivate_ids = [r.client_id for r in report.rows_in(RowCategory.REACTIVATE)]
         now = self._now()
         import_id = f"IMP-{len(self._repo.import_records()) + 1:04d}"
         for client_id in new_ids:
             entry = self._new_entry(client_id, actor, now)
             self._repo.insert(entry)
             self._audit(actor, now, "import_add", client_id, None, entry, import_id=import_id)
+        for client_id in reactivate_ids:
+            before = self._require_entry(client_id)
+            after = replace(before, list_status=ListStatus.ACTIVE)
+            self._repo.update(after)
+            self._audit(actor, now, "reactivate", client_id, before, after, import_id=import_id)
         record = ImportRecord(
             import_id=import_id,
             actor_id=actor.actor_id,
@@ -357,6 +407,7 @@ class QualifyingListService:
             total_rows=len(report.rows),
             added=len(new_ids),
             already_on_list=len(report.rows_in(RowCategory.ALREADY_ON_LIST)),
+            reactivated=len(reactivate_ids),
             edited_rows=sum(1 for r in report.rows if r.edited),
             excluded_rows=len(report.rows_in(RowCategory.EXCLUDED)),
         )
@@ -372,6 +423,7 @@ class QualifyingListService:
         self,
         *,
         id_prefix: str | None = None,
+        list_status: ListStatus | None = None,
         verification_status: VerificationStatus | None = None,
         entitlement_status: EntitlementStatus | None = None,
         linked: bool | None = None,
@@ -382,6 +434,8 @@ class QualifyingListService:
             prefix = _require_text(id_prefix, "id_prefix").upper()
             if not prefix.isalnum() or not prefix.isascii():
                 raise ValueError("id_prefix must be letters and digits only")
+        if list_status is not None and not isinstance(list_status, ListStatus):
+            raise ValueError("list_status must be a ListStatus")
         if verification_status is not None and not isinstance(verification_status, VerificationStatus):
             raise ValueError("verification_status must be a VerificationStatus")
         if entitlement_status is not None and not isinstance(entitlement_status, EntitlementStatus):
@@ -390,6 +444,7 @@ class QualifyingListService:
             e
             for e in self._repo.all_entries()
             if (prefix is None or e.client_id.startswith(prefix))
+            and (list_status is None or e.list_status is list_status)
             and (verification_status is None or e.verification_status is verification_status)
             and (entitlement_status is None or e.entitlement_status is entitlement_status)
             and (linked is None or (e.platform_user_id is not None) is linked)

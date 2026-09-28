@@ -5,7 +5,7 @@ import dataclasses
 
 import pytest
 
-from qualifying_checks import ADMIN, check_removal_keeps_audit, new_service
+from qualifying_checks import ADMIN, check_removal_deactivates_and_keeps_audit, new_service
 from ofo.admin.qualifying import ImportRequest
 from ofo.admin.qualifying_store import Actor, EntitlementStatus, InMemoryQualifyingRepository, VerificationStatus
 
@@ -28,7 +28,7 @@ def test_every_change_audited_with_who_when_what_before_after() -> None:
         (3, "admin:priya", "edit", "AB1234"),
         (4, "admin:ravi", "edit", "CD5679"),
         (5, "system:entitlement-engine", "entitlement_status", "AB1234"),
-        (6, "admin:priya", "remove", "CD5679"),
+        (6, "admin:priya", "deactivate", "CD5679"),
     ]
     times = [a.at for a in trail]
     assert times == sorted(times) and len(set(times)) == 6
@@ -43,7 +43,7 @@ def test_every_change_audited_with_who_when_what_before_after() -> None:
     assert trail[1].import_id == "IMP-0001" and trail[0].import_id is None
     # The renamed ID's history is reachable from both its old and its new ID.
     assert [a.action for a in svc.audit_trail("CD5678")] == ["import_add", "edit"]
-    assert [a.action for a in svc.audit_trail("CD5679")] == ["edit", "remove"]
+    assert [a.action for a in svc.audit_trail("CD5679")] == ["edit", "deactivate"]
 
 
 def test_import_history_records_who_when_file_and_counts() -> None:
@@ -69,7 +69,7 @@ def test_import_history_records_who_when_file_and_counts() -> None:
 
 def test_removal_keeps_audit_history() -> None:
     """AC-4: removing an ID never deletes its audit history."""
-    check_removal_keeps_audit(new_service())
+    check_removal_deactivates_and_keeps_audit(new_service())
 
 
 def test_audit_records_are_immutable() -> None:

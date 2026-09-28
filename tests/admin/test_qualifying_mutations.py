@@ -10,12 +10,12 @@ import pytest
 from qualifying_checks import (
     ADMIN,
     check_problems_reported_and_apply_refused,
-    check_removal_keeps_audit,
+    check_removal_deactivates_and_keeps_audit,
     check_resolved_apply_adds_exactly_once,
     new_service,
 )
 from ofo.admin.qualifying import ImportReport, ImportRow, QualifyingListService
-from ofo.admin.qualifying_store import InMemoryQualifyingRepository
+from ofo.admin.qualifying_store import InMemoryQualifyingRepository, ListStatus
 
 # A check "goes red" by a failed assert or a failed pytest.raises (pytest.fail.Exception).
 CHECK_FAILED = (AssertionError, pytest.fail.Exception)
@@ -57,11 +57,22 @@ class ApplyBlindToList(QualifyingListService):
 
 
 class PurgingRepository(InMemoryQualifyingRepository):
-    """Mutant (c): removing an ID also deletes its audit history."""
+    """Mutant (c): deactivating an ID also deletes its earlier audit history."""
 
-    def delete(self, client_id: str) -> None:
-        super().delete(client_id)
-        self._audit = [a for a in self._audit if a.client_id != client_id]
+    def update(self, entry) -> None:  # type: ignore[no-untyped-def]
+        super().update(entry)
+        if entry.list_status is ListStatus.INACTIVE:
+            self._audit = [a for a in self._audit if a.client_id != entry.client_id]
+
+
+class RemoveDeletesEntry(QualifyingListService):
+    """Mutant (d): remove hard-deletes the entry instead of deactivating it."""
+
+    def remove(self, client_id, actor):  # type: ignore[no-untyped-def]
+        before = self._require_entry(client_id)
+        self._repo.delete(before.client_id)
+        self._audit(actor, self._now(), "deactivate", before.client_id, before, None)
+        return before
 
 
 def test_real_code_passes_every_check() -> None:
@@ -69,7 +80,7 @@ def test_real_code_passes_every_check() -> None:
     svc = new_service()
     check_problems_reported_and_apply_refused(svc)
     check_resolved_apply_adds_exactly_once(svc)
-    check_removal_keeps_audit(new_service())
+    check_removal_deactivates_and_keeps_audit(new_service())
 
 
 def test_mutant_apply_ignores_unresolved_problems_is_caught() -> None:
@@ -92,9 +103,15 @@ def test_mutant_reimport_applies_again_is_caught() -> None:
 
 
 def test_mutant_removal_deletes_audit_history_is_caught() -> None:
-    """AC-4 mutation (c): if removal deleted audit history, the audit-kept check fails."""
+    """AC-4 mutation (c): if deactivation deleted audit history, the audit-kept check fails."""
     with pytest.raises(CHECK_FAILED):
-        check_removal_keeps_audit(new_service(repo=PurgingRepository()))
+        check_removal_deactivates_and_keeps_audit(new_service(repo=PurgingRepository()))
+
+
+def test_mutant_remove_deletes_entry_is_caught() -> None:
+    """AC-1 mutation (d): if remove hard-deleted the entry instead of deactivating it, the check fails."""
+    with pytest.raises(CHECK_FAILED):
+        check_removal_deactivates_and_keeps_audit(new_service(RemoveDeletesEntry))
 
 
 def test_mutant_upserting_store_alone_is_still_blocked_by_service() -> None:

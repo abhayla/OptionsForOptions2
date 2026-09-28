@@ -99,3 +99,53 @@ def test_apply_requires_explicit_actor() -> None:
     with pytest.raises(ValueError):
         svc.apply_import(ImportRequest("f.csv", "client_id\nAB1234\n"), "admin:priya")  # type: ignore[arg-type]
     assert svc.search() == ()
+
+
+def test_inactive_id_in_import_is_a_problem_until_admin_chooses() -> None:
+    """AC-2: an INACTIVE ID in a CSV is reported as INACTIVE_ON_LIST and blocks apply; it is never silently
+    reactivated. The admin either excludes the row or asks for reactivation, which is audited with the import id."""
+    svc = new_service()
+    svc.add("AB1234", ADMIN)
+    svc.remove("AB1234", ADMIN)
+    request = ImportRequest("f.csv", "client_id\nAB1234\nCD5678\n")
+    assert [(r.row_number, r.category) for r in svc.preview_import(request).problems] == [
+        (2, RowCategory.INACTIVE_ON_LIST)
+    ]
+    with pytest.raises(ImportRefusedError):
+        svc.apply_import(request, ADMIN)
+    assert svc.is_qualifying("AB1234") is False and svc.get("CD5678") is None
+
+    excluded = svc.apply_import(ImportRequest("f.csv", request.csv_text, excluded_rows=frozenset({2})), ADMIN)
+    assert (excluded.added, excluded.reactivated, excluded.excluded_rows) == (1, 0, 1)
+    assert svc.is_qualifying("AB1234") is False
+
+    chosen = ImportRequest("f.csv", request.csv_text, reactivate_rows=frozenset({2}))
+    assert [r.category for r in svc.preview_import(chosen).rows] == [
+        RowCategory.REACTIVATE, RowCategory.ALREADY_ON_LIST,
+    ]
+    record = svc.apply_import(chosen, ADMIN)
+    assert (record.import_id, record.added, record.reactivated, record.already_on_list) == ("IMP-0002", 0, 1, 1)
+    assert svc.is_qualifying("AB1234") is True
+    last = svc.audit_trail("AB1234")[-1]
+    assert (last.action, last.import_id, last.before["list_status"], last.after["list_status"]) == (
+        "reactivate", "IMP-0002", "INACTIVE", "ACTIVE",
+    )
+    again = svc.apply_import(ImportRequest("f.csv", request.csv_text), ADMIN)
+    assert (again.added, again.reactivated, again.already_on_list) == (0, 0, 2)
+
+
+def test_reactivate_rows_fail_closed() -> None:
+    """AC-2: asking to reactivate a row that is not an INACTIVE ID, or both reactivating and excluding it, raises."""
+    svc = new_service()
+    svc.add("AB1234", ADMIN)
+    svc.remove("AB1234", ADMIN)
+    text = "client_id\nAB1234\nCD5678\n"
+    with pytest.raises(ValueError):
+        svc.preview_import(ImportRequest("f.csv", text, reactivate_rows=frozenset({3})))
+    with pytest.raises(ValueError):
+        svc.preview_import(
+            ImportRequest("f.csv", text, reactivate_rows=frozenset({2}), excluded_rows=frozenset({2}))
+        )
+    with pytest.raises(ValueError):
+        svc.apply_import(ImportRequest("f.csv", text, reactivate_rows=frozenset({9})), ADMIN)
+    assert svc.is_qualifying("AB1234") is False and svc.get("CD5678") is None
