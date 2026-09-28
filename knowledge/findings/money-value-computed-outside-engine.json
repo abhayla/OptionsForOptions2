@@ -1,0 +1,25 @@
+{
+  "id": "money-value-computed-outside-engine",
+  "class": "Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree.",
+  "mechanism": "The rule engine summed signed per-unit LTPs itself to build its PREMIUM input and never multiplied by each leg's quantity, so strategies whose legs have different quantities (ratio spreads) got a wrong premium while equal-quantity strategies looked right.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-013 branch build/W-013-rule-engine @ d211f3b, backend/ofo/rules/inputs.py snapshot_from_strategy()",
+    "evidence": "BUY 75 x 23000 CE @ 100 / SELL 150 x 23200 CE @ 60: the rules' PREMIUM was -40 where the quantity-weighted net premium is +1,500 (red test run before the fix: 'assert Decimal('-40') == Decimal('1500)'; that case now lives in tests/rules/test_entry.py), and 'net credit at least 1,000' was NOT_TRIGGERED. Found by the independent verifier (AC-2/AC-4 fail); the golden Iron Condor has equal quantities, so every earlier test passed."
+  },
+  "fix": "engine.net_premium(strategy, PriceBasis) is the only net-premium formula (rupee total, credit positive, futures 0); the rules' NET_PREMIUM input reads it. Definition written in scenario-calculations.md section 3.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/rules/test_model.py::test_no_money_arithmetic_on_leg_prices_in_rules",
+      "tests/engine/test_net_premium.py::test_ratio_spread_net_premium_weights_each_leg_by_its_quantity",
+      "tests/rules/test_entry.py::test_premium_target_on_ratio_spread_uses_engine_net_premium"
+    ],
+    "note": "The AST guard fails on any use of ltp/entry_price in backend/ofo/rules/ other than an 'is None' check; its self-test proves it flags the original re-implementation (a UnaryOp inside sum(), which a BinOp-only scan would miss). It covers only backend/ofo/rules/; other consumer packages (screens, monitoring) are not scanned yet. Sweep 2026-09-29 (case-insensitive ltp|last_price|entry|premium): backend/ofo/instruments/ does no money arithmetic; its only price hit is 'last_price' as a CSV column name in parser.py."
+  },
+  "spec_ref": [
+    "spec/business-rules/scenario-calculations.md",
+    "spec/requirements/REQ-041.md",
+    "spec/decisions/ADR-008.md"
+  ]
+}
