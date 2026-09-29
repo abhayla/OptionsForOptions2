@@ -14,8 +14,10 @@ Builds on, and does not duplicate:
   rather than re-implementing it.
 - ``ofo.engine`` (``strategy_metrics``, ``Strategy``) and ``ofo.engine.interfaces`` (``MarginPlanner``,
   ``ChargesModel``) for every recalculated number.
-- ``ofo.execution.safety.check_pre_execution`` (W-014/REQ-059): the caller runs the gate and passes its
-  ``SafetyResult`` in; a blocked result never reaches ``StrategyRecord.apply_result``.
+- ``ofo.execution.safety.check_pre_execution`` (W-014/REQ-059): THIS module calls the gate itself, on this
+  record's own pending proposal (``prepare_confirmed_modification`` / ``execute_confirmed_modification``). No
+  public function here accepts a caller-supplied ``SafetyResult`` -- a hand-built "always passes" verdict cannot
+  be injected, because none of these functions take one as input.
 
 Change model (AC-1): a proposal is a tuple of ``LegChange``, each naming a *slot* -- (instrument, strike, expiry) --
 of the ACTIVE version's own definition. ADD is refused if the slot already exists; REMOVE and RESIZE are refused
@@ -37,9 +39,14 @@ from ofo.engine.interfaces import ChargesModel, MarginPlanner, estimate_charges,
 from ofo.engine.legs import Action, Instrument, Leg, require_price
 from ofo.engine.metrics import StrategyMetrics, _Unlimited, strategy_metrics
 from ofo.engine.strategy import Strategy
-from ofo.execution.safety import SafetyResult
+from ofo.execution.alternatives import gate_inputs_from_record
+from ofo.execution.context import ExecutionAction, ExecutionContext
+from ofo.execution.safety import SafetyResult, check_pre_execution
+from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import ExecutionOutcome, ExecutionResult, StrategyRecord, Version
+
+_ZERO = Decimal("0.00")
 
 #: A leg's identity within a definition, independent of side: which contract it occupies.
 Slot = tuple[Instrument, "Decimal | None", datetime.date]
@@ -273,24 +280,80 @@ def confirm_modification(
     return version
 
 
+def _gate_legs(definition: StrategyDefinition) -> tuple[Leg, ...]:
+    """Legs for the REQ-059 gate: option premiums excluded (0.00), matching ``gate_inputs_from_record``'s own
+    convention (rule 5 excludes premiums from every adjustment check). Futures are out of scope for this module."""
+    legs = []
+    for d in definition.legs:
+        if d.instrument is Instrument.FUT:
+            raise ModificationError("a futures leg's gate entry price is not supported by this module yet")
+        legs.append(Leg(d.action, d.instrument, d.strike, d.expiry, d.quantity, _ZERO))
+    return tuple(legs)
+
+
+def prepare_confirmed_modification(
+    record: StrategyRecord,
+    version_number: int,
+    *,
+    strategy_id: str,
+    context: ExecutionContext,
+    catalogue: Catalogue,
+    eligibility: EligibilityRegistry,
+) -> SafetyResult:
+    """Run the REQ-059 gate on THIS record's own pending proposal (AC-4). The ONLY way to learn whether an
+    adjustment may execute: there is no public function in this module that accepts a caller-supplied verdict.
+
+    ``context`` supplies the outside facts the gate needs (market/broker/session/margin/etc., ``action`` must be
+    ``ADJUSTMENT`` and ``version_id`` must name ``version_number``); the active-version identity fields
+    (``active_legs``, ``active_version_id``, ``active_legs_hash``, ``active_futures_entry_known``) and
+    ``strategy_id`` are always computed HERE from ``record`` itself (``gate_inputs_from_record``) and overwrite
+    whatever ``context`` carries, so a forged identity cannot be injected through it either.
+    """
+    if not isinstance(record, StrategyRecord):
+        raise ModificationError(f"record must be a StrategyRecord, got {record!r}")
+    proposed = record.proposed_version
+    if proposed is None or proposed.number != version_number:
+        raise ModificationError(f"version {version_number!r} is not the pending proposed version of this record")
+    if not isinstance(context, ExecutionContext):
+        raise ModificationError(f"context must be an ExecutionContext, got {context!r}")
+    if context.action is not ExecutionAction.ADJUSTMENT:
+        raise ModificationError("a modification proposal executes as an ExecutionAction.ADJUSTMENT")
+    if context.version_id != f"v{proposed.number}":
+        raise ModificationError(f"context.version_id must be 'v{proposed.number}' for this proposal")
+    if not isinstance(strategy_id, str) or not strategy_id.strip():
+        raise ModificationError(f"strategy_id must be a non-empty string, got {strategy_id!r}")
+    identity = gate_inputs_from_record(record, strategy_id=strategy_id)
+    grounded_context = dataclasses.replace(context, strategy_id=strategy_id, **identity)
+    strategy = Strategy(_gate_legs(proposed.definition))
+    return check_pre_execution(strategy, grounded_context, catalogue, eligibility, strategy_id=strategy_id)
+
+
 def execute_confirmed_modification(
     record: StrategyRecord,
-    safety: SafetyResult,
+    version_number: int,
+    *,
+    strategy_id: str,
+    context: ExecutionContext,
+    catalogue: Catalogue,
+    eligibility: EligibilityRegistry,
     result: ExecutionResult,
 ) -> ExecutionOutcome:
-    """Apply a broker execution result for the confirmed proposal, ONLY when the REQ-059 gate passed (AC-4).
+    """Apply a broker execution result for the confirmed proposal, ONLY when the REQ-059 gate -- run HERE, on this
+    record's own pending proposal -- passes (AC-4). The gate runs exactly once per call, via
+    ``prepare_confirmed_modification``; there is no parameter through which a caller can hand in a verdict instead
+    of letting this function compute one, and no way to name a different strategy or version than the one this
+    record actually has pending.
 
-    A blocked ``safety`` is refused before ``StrategyRecord.apply_result`` is ever called: no order is treated as
+    A blocked gate is refused before ``StrategyRecord.apply_result`` is ever called: no order is treated as
     prepared, and the active version (v1, or whichever version is currently active) is left exactly as it was.
     """
-    if not isinstance(safety, SafetyResult):
-        raise ModificationError(f"safety must be a SafetyResult, got {safety!r}")
+    safety = prepare_confirmed_modification(
+        record, version_number, strategy_id=strategy_id, context=context, catalogue=catalogue, eligibility=eligibility,
+    )
     if safety.blocked:
         reasons = "; ".join(f.reason for f in safety.failures)
         raise ModificationError(
             f"execution is blocked by the pre-execution gate; no order has been prepared and the active version is "
             f"unchanged: {reasons}"
         )
-    if not isinstance(record, StrategyRecord):
-        raise ModificationError(f"record must be a StrategyRecord, got {record!r}")
     return record.apply_result(result)
