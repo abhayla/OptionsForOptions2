@@ -258,3 +258,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   with reasons; (2) Review Manually is not a transition; (3) an adjustment proposal can be withdrawn (recorded) → Active;
   (4) partial fills → Partially Executed, Reconciliation Required only on a real broker mismatch; (5) "any live state"
   = Active, Monitoring Paused, Adjustment Proposed, Execution in Progress, Partially Executed.
+
+## Q244 — DECIDED (owner, 2026-09-29) — Catalogue truncation guard
+- Decision: contract-level — refuse any update that removes a not-yet-expired contract; the 50% per-index rule goes.
+  Recorded in REQ-053 "Owner decision (Q244)".
