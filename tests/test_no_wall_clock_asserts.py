@@ -63,8 +63,8 @@ def wall_clock_asserts(source: str) -> list[int]:
     return sorted(hits)
 
 
-def test_ac1_no_test_compares_elapsed_wall_clock_time_to_a_number() -> None:
-    """AC-2: no file under tests/ asserts a clock reading against a number (outside the explicit ALLOWLIST)."""
+def test_guard_no_test_compares_elapsed_wall_clock_time_to_a_number() -> None:
+    """Guard (finding wall-clock-assertion-flakes-under-load): no file under tests/ asserts a clock reading against a number (outside the explicit ALLOWLIST)."""
     found = []
     for path in sorted(TESTS.rglob("*.py")):
         relative = path.relative_to(TESTS).as_posix()
@@ -74,8 +74,8 @@ def test_ac1_no_test_compares_elapsed_wall_clock_time_to_a_number() -> None:
     assert not found, "wall-clock threshold assertions (count work instead, see tests/work_count.py): " + ", ".join(found)
 
 
-def test_ac1_guard_flags_every_clock_threshold_shape_and_passes_clean_code() -> None:
-    """AC-2: self-test on sample snippets: each real-world shape is flagged, look-alikes are not."""
+def test_guard_flags_every_clock_threshold_shape_and_passes_clean_code() -> None:
+    """Guard self-test on sample snippets: each real-world shape is flagged, look-alikes are not."""
     direct = "import time\nstart = time.perf_counter()\nrun()\nassert time.perf_counter() - start < 0.05\n"
     via_variable = "import time\ns = time.monotonic()\nrun()\nelapsed = time.monotonic() - s\nassert elapsed < 2.0, 'slow'\n"
     bare = "from time import perf_counter\nt = perf_counter()\nassert perf_counter() - t < 5\n"
