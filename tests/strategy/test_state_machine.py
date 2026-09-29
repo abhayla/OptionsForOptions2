@@ -688,9 +688,9 @@ def test_ac1_each_guard_refuses_on_the_records_facts():
 
 
 def test_ac2_the_transition_log_is_capped(monkeypatch):
-    """AC-2: absurd sizes are refused; the log has a hard cap (lowered here to 3 so the test is quick)."""
+    """AC-2: absurd sizes are refused; the log has a hard cap (lowered here to 2 so the test is quick)."""
     import ofo.strategy.state_machine as module
-    monkeypatch.setattr(module, "MAX_TRANSITIONS", 3)
+    monkeypatch.setattr(module, "MAX_TRANSITIONS", 2)
     ctx = to_validated()
     with pytest.raises(StateMachineError, match="full"):
         ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
