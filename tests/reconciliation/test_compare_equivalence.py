@@ -108,6 +108,7 @@ def test_ac2_linear_compare_equals_the_pre_w037_compare_on_600_seeded_accounts()
             continue
         assert new.blocked_strategy_ids == old.blocked_strategy_ids
         assert new.shares == old.shares and new.mismatches == old.mismatches
+        assert all(new.share(sid) == position for sid, position in old.shares)  # the indexed lookup, per strategy
         kinds.update(m.kind for m in new.mismatches)
         blocked_total += len(new.blocked_strategy_ids)
         shared_blocks += sum(1 for m in new.mismatches if len(m.strategy_ids) > 1)

@@ -257,6 +257,27 @@ def test_ac2_strike_move_to_a_lower_strike_still_blocks_the_holder():
     assert report.blocked_strategy_ids == frozenset({"IC-1"})
 
 
+def test_ac2_share_of_a_strategy_the_run_did_not_cover_is_refused():
+    """AC-2 (W-037 indexed ``share``): only a covered strategy has a share; an exited one, an unknown id and a
+    non-string id are refused with ReconciliationError, never answered from another strategy or a stale index."""
+    import dataclasses
+
+    gone = executed(reference="e-gone")
+    gone.observe_broker_position(Position(), at=at(5), reference="flat")
+    gone.mark_exited(at=at(6), actor="user", resolution="closed in Kite")
+    report = run(dict(CONDOR_UNITS), {"IC-1": executed(), "GONE": gone})
+    assert report.covered_strategy_ids == frozenset({"IC-1"})
+    assert report.share("IC-1").as_dict() == CONDOR_UNITS
+    for bad in ("GONE", "IC-2", ["IC-1"], None):
+        with pytest.raises(ReconciliationError, match="not covered"):
+            report.share(bad)
+    # A report rebuilt with other shares answers from ITS shares, not the original's.
+    flat = dataclasses.replace(report, shares=(("IC-9", Position()),))
+    assert flat.share("IC-9") == Position()
+    with pytest.raises(ReconciliationError, match="not covered"):
+        flat.share("IC-1")
+
+
 def _all_mismatched(strategy_count: int, shared: bool):
     """``strategy_count`` executed strategies, zero broker contracts, so every strategy is mismatched. ``shared``:
     every strategy is the golden condor (4 contracts, each held by all of them: the Q224 case); otherwise each
