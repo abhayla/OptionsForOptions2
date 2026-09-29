@@ -231,3 +231,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q236 — DECIDED (owner, 2026-09-29) — TOTAL Entry Value: net or plain sum?
 - Decision: NET entry premium (sells − buys) × quantity, Cr/Dr labelled; golden condor ₹6,825 Cr. Corrects the
   orchestrator's ambiguous "signed as the legs" in REQ-035 "Owner decision (Q233)".
+
+## Q237 — DECIDED (owner, 2026-09-29) — CI for the API/web layers on a private repo
+- Decision: (a) a path-filtered project workflow `app-tests.yml`; usage reported after a week. Recorded in ADR-046.
