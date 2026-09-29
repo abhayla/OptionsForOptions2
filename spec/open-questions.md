@@ -142,3 +142,15 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Owner, 2026-09-29: **A** — Python 3.12+ / FastAPI, PostgreSQL, Redis, Vue 3 + Vite; legacy code may be copied with
   provenance (`spec/technical-design/legacy-reuse.md`).
 - Spec basis: none before this (the spec had no stack decision); hard rules ADR-008, ADR-012, ADR-029.
+
+## Q223 — OPEN — Close Partial Strategy while the platform's own entry order is still open (W-023 orchestrator default OD-m)
+- Situation: some legs filled, one entry order (e.g. BUY 23,600 CE) is still open at Zerodha, and the user picks Close
+  Partial Strategy. If that entry order fills after the exits, it leaves a new position; for a condor's short call the
+  mirror case is a naked short.
+- Orchestrator default in W-023 (flagged, not settled): the Close preparation also LISTS a cancel request for each of the
+  platform's own still-open entry orders on that strategy, shown to the user before confirmation. Nothing is sent
+  without the user's confirmation; W-023 builds the list only (`backend/ofo/execution/partial.py`, OD-m).
+- Recommendation: keep it (A). Alternative (B): do not offer Close until the open entry order is terminal.
+- Spec basis: ADR-017 Q27 (Close Partial Strategy is a user choice; executed legs never unwound automatically), ADR-018
+  Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
+  None of these says what happens to an open entry order when the user closes.
