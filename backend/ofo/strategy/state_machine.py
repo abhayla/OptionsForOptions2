@@ -94,6 +94,7 @@ class Trigger(Enum):
     USER_CONFIRMS_EXECUTE = "user confirms Execute Strategy"
     EXECUTED_AND_RECONCILED = "every leg confirmed executed by the broker and reconciled"
     NOTHING_FILLED = "no leg filled and every order is finally rejected/failed"
+    ADJUSTMENT_NOTHING_FILLED = "an adjustment whose every order is finally rejected/failed with nothing filled"
     SOME_LEGS_EXECUTED = "some legs executed, the rest finally failed/rejected"
     USER_COMPLETES_OR_RETRIES = "user chooses complete or retry"
     USER_CLOSES_PARTIAL = "user chooses close partial"
@@ -130,6 +131,7 @@ def _table() -> dict[tuple[StrategyState, StrategyState], frozenset[Trigger]]:
         (_S.VALIDATED, _S.EXECUTION_IN_PROGRESS): {_T.USER_CONFIRMS_EXECUTE},
         (_S.EXECUTION_IN_PROGRESS, _S.ACTIVE): {_T.EXECUTED_AND_RECONCILED},
         (_S.EXECUTION_IN_PROGRESS, _S.VALIDATED): {_T.NOTHING_FILLED},
+        (_S.EXECUTION_IN_PROGRESS, _S.ADJUSTMENT_PROPOSED): {_T.ADJUSTMENT_NOTHING_FILLED},  # Q245
         (_S.EXECUTION_IN_PROGRESS, _S.PARTIALLY_EXECUTED): {_T.SOME_LEGS_EXECUTED},
         (_S.PARTIALLY_EXECUTED, _S.EXECUTION_IN_PROGRESS): {_T.USER_COMPLETES_OR_RETRIES},
         (_S.PARTIALLY_EXECUTED, _S.EXITED): {_T.USER_CLOSES_PARTIAL},
@@ -280,6 +282,12 @@ class StrategyStateMachine:
                                     "Execute again, or edit the strategy.")
         if state not in NON_NORMAL_STATES or entry is None:
             return None
+        if entry.trigger is _T.ADJUSTMENT_NOTHING_FILLED:
+            reasons = dict(entry.detail)["reasons"]
+            return StateExplanation(state, f"Zerodha rejected every order of adjustment version {self._executing} and "
+                                           f"nothing was filled. The original version stays active. Reasons: "
+                                           f"{reasons}.", entry.at, _BLOCKED[state],
+                                    "Execute the adjustment again, or withdraw it.")
         if state is _S.EXECUTION_IN_PROGRESS:
             happened = f"Orders for version {self._executing} were sent to Zerodha. Waiting for Zerodha to confirm every leg."
             next_action = "Wait for Zerodha to confirm the orders. Nothing is retried automatically."
@@ -356,14 +364,13 @@ class StrategyStateMachine:
             return self._commit(_S.PARTIALLY_EXECUTED, _T.SOME_LEGS_EXECUTED, "system", at,
                                 (("version", str(pending.number)),))
         if last.kind in _FINAL_FAILURES:  # nothing filled (a fill kept the proposal open, caught above)
-            if active is not None:
-                raise StateMachineError(
-                    f"every order of adjustment version {last.version_number} was rejected and nothing was filled; "
-                    "there is no approved row for an adjustment that never filled (domain-model §6, Q243)")
-            self._precheck(_S.VALIDATED, _T.NOTHING_FILLED, at, "system")
             reasons = "; ".join(last.reasons) or "Zerodha gave no reason"
-            return self._commit(_S.VALIDATED, _T.NOTHING_FILLED, "system", at,
-                                (("version", str(last.version_number)), ("reasons", reasons)))
+            detail = (("version", str(last.version_number)), ("reasons", reasons))
+            if active is not None:  # an ADJUSTMENT (the record holds an active version): Q245
+                self._precheck(_S.ADJUSTMENT_PROPOSED, _T.ADJUSTMENT_NOTHING_FILLED, at, "system")
+                return self._commit(_S.ADJUSTMENT_PROPOSED, _T.ADJUSTMENT_NOTHING_FILLED, "system", at, detail)
+            self._precheck(_S.VALIDATED, _T.NOTHING_FILLED, at, "system")
+            return self._commit(_S.VALIDATED, _T.NOTHING_FILLED, "system", at, detail)
         return None
 
     def continue_execution(self, *, at: datetime.datetime, actor: str) -> StateTransition:

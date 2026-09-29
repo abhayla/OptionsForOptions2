@@ -72,6 +72,7 @@ SPEC_ROWS: dict[tuple[StrategyState, StrategyState], set[Trigger]] = {
     (S.VALIDATED, S.EXECUTION_IN_PROGRESS): {Trigger.USER_CONFIRMS_EXECUTE},
     (S.EXECUTION_IN_PROGRESS, S.ACTIVE): {Trigger.EXECUTED_AND_RECONCILED},
     (S.EXECUTION_IN_PROGRESS, S.VALIDATED): {Trigger.NOTHING_FILLED},  # Q243 fix 1
+    (S.EXECUTION_IN_PROGRESS, S.ADJUSTMENT_PROPOSED): {Trigger.ADJUSTMENT_NOTHING_FILLED},  # Q245
     (S.EXECUTION_IN_PROGRESS, S.PARTIALLY_EXECUTED): {Trigger.SOME_LEGS_EXECUTED},  # Q243 fix 4
     (S.PARTIALLY_EXECUTED, S.EXECUTION_IN_PROGRESS): {Trigger.USER_COMPLETES_OR_RETRIES},
     # Q243 fix 2: "Review Manually" is not a transition; Partially Executed -> Reconciliation Required comes only
@@ -278,6 +279,13 @@ def ev_confirm_adjustment(ctx: Ctx) -> None:
     ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
 
 
+def ev_adjustment_rejected(ctx: Ctx) -> None:
+    """The user confirms an adjustment (Adjustment Proposed only) and Zerodha rejects every order, nothing filled."""
+    ev_confirm_adjustment(ctx)
+    ctx.result(ResultStatus.REJECTED, nothing(ctx), REASONS)
+    ctx.machine.follow_execution(at=ctx.tick())
+
+
 def ev_withdraw_proposal(ctx: Ctx) -> None:
     """The user made a proposed version (not confirmed) and withdraws it."""
     if ctx.record.active_version is not None:
@@ -325,6 +333,7 @@ EVENTS = {
     "fill_partial": ev_fill(ResultStatus.PARTIAL, some_legs),
     "fill_mismatch": ev_fill(ResultStatus.COMPLETE, overfilled),
     "fill_rejected_nothing": ev_fill(ResultStatus.REJECTED, nothing),
+    "adjustment_rejected_nothing": ev_adjustment_rejected,
     "fill_failed_some": ev_fill(ResultStatus.FAILED, some_legs),
     "broker_differs": ev_broker_differs,
     "partial_complete_or_retry": lambda ctx: ctx.machine.continue_execution(at=ctx.tick(), actor="user-1"),
@@ -355,7 +364,7 @@ def test_ac1_the_approved_table_is_exactly_the_spec_rows_for_all_144_pairs():
     for pair in pairs:
         assert set(allowed_triggers(*pair)) == SPEC_ROWS.get(pair, set()), pair
     assert {pair: set(triggers) for pair, triggers in TRANSITIONS.items()} == SPEC_ROWS
-    assert len(SPEC_PAIRS) == 30
+    assert len(SPEC_PAIRS) == 31
 
 
 def test_ac1_every_from_to_pair_of_the_12_states():
@@ -662,14 +671,6 @@ def test_ac1_each_guard_refuses_on_the_records_facts():
     ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
     with pytest.raises(StateMachineError, match="already pending"):
         ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")
-    # A fully rejected ADJUSTMENT (nothing filled, a position still held) has no approved row: the Q243 fix 1 row
-    # returns an un-executed strategy to Validated, which a strategy holding a position is not. Refused loudly.
-    ctx = to_adjusting()
-    ev_confirm_adjustment(ctx)
-    ctx.result(ResultStatus.REJECTED, ctx.record.active_version.intended_position)
-    with pytest.raises(StateMachineError, match="no approved row"):
-        ctx.machine.follow_execution(at=ctx.tick())
-    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
     # Closing needs the record to exit: with a proposal still pending (orders may be working) it refuses.
     ctx = to_partial()
     with pytest.raises(VersionError, match="awaiting"):
@@ -881,3 +882,90 @@ def test_ac1_q243_fix3_a_withdrawal_that_leaves_the_broker_differing_requires_re
     ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
     assert ctx.record.reconciliation_required
     assert ctx.machine.sync_broker(at=ctx.tick()).to_state is S.RECONCILIATION_REQUIRED
+
+
+def _confirmed_adjustment(ctx: Ctx) -> None:
+    """The user modifies the active version and confirms the proposal: Execution in Progress."""
+    version = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    ctx.record.confirm(version.number, at=ctx.tick())
+    ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+
+
+def _rejected_adjustment(status: ResultStatus = ResultStatus.REJECTED, reasons: tuple[str, ...] = REASONS) -> Ctx:
+    """An active strategy whose confirmed adjustment (version 2) is finally rejected/failed, nothing filled."""
+    ctx = to_adjusting()
+    _confirmed_adjustment(ctx)
+    ctx.result(status, ctx.record.proposed_version.baseline, reasons)
+    return ctx
+
+
+def test_ac1_q245_a_rejected_adjustment_with_nothing_filled_returns_to_adjustment_proposed():
+    """AC-1 (Q245): an adjustment whose every order is finally rejected with nothing filled moves Execution in
+    Progress -> Adjustment Proposed with the reasons on the transition; the original version stays active."""
+    ctx = _rejected_adjustment()
+    step = ctx.machine.follow_execution(at=ctx.tick())
+    assert (step.from_state, step.to_state, step.trigger) == (S.EXECUTION_IN_PROGRESS, S.ADJUSTMENT_PROPOSED,
+                                                             Trigger.ADJUSTMENT_NOTHING_FILLED)
+    assert step.detail == (("version", "2"), ("reasons", "; ".join(REASONS)))
+    assert ctx.machine.state is S.ADJUSTMENT_PROPOSED
+    assert ctx.audit.events[-1].payload["to"] == "Adjustment Proposed"
+    assert ctx.record.active_version.number == 1
+    assert ctx.record.actual_position == ctx.record.version(1).intended_position  # the broker still holds v1
+    explanation = ctx.machine.explain()
+    assert explanation.state is S.ADJUSTMENT_PROPOSED
+    assert explanation.what_happened == ("Zerodha rejected every order of adjustment version 2 and nothing was "
+                                         f"filled. The original version stays active. Reasons: {REASONS[0]}; "
+                                         f"{REASONS[1]}.")
+    assert explanation.next_action == "Execute the adjustment again, or withdraw it."
+    assert explanation.since == step.at and explanation.blocked == ("new execution", "a second modification")
+    # FAILED with no broker text says so instead of inventing a reason.
+    ctx = _rejected_adjustment(ResultStatus.FAILED, ())
+    assert ctx.machine.follow_execution(at=ctx.tick()).detail == (("version", "2"),
+                                                                  ("reasons", "Zerodha gave no reason"))
+
+
+def test_ac1_q245_the_rejected_adjustment_can_be_executed_again_or_withdrawn():
+    """AC-1 (Q245): from Adjustment Proposed the user may execute again (a new confirmed proposal -> Execution in
+    Progress, then Active when it fills) or withdraw (-> Active, original version unchanged)."""
+    ctx = _rejected_adjustment()
+    ctx.machine.follow_execution(at=ctx.tick())
+    version = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    ctx.record.confirm(version.number, at=ctx.tick())
+    assert ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1").to_state is S.EXECUTION_IN_PROGRESS
+    ctx.result(ResultStatus.COMPLETE, full(ctx))
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.ACTIVE
+    assert ctx.record.active_version.number == 3
+    ctx = _rejected_adjustment()
+    ctx.machine.follow_execution(at=ctx.tick())
+    step = ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
+    assert (step.to_state, step.trigger) == (S.ACTIVE, Trigger.USER_WITHDRAWS_PROPOSAL)
+    assert ctx.record.active_version.number == 1 and ctx.record.proposed_version is None
+
+
+def test_ac1_q245_the_machine_reads_the_record_adjustment_vs_entry_and_fills():
+    """AC-1 (Q245 + Q243 fix 1/4): a partly filled adjustment is still Partially Executed; a first entry with nothing
+    filled is still Validated; a non-final result on an adjustment changes nothing. The record decides all three."""
+    ctx = to_adjusting()
+    _confirmed_adjustment(ctx)
+    ctx.result(ResultStatus.REJECTED, some_legs(ctx), REASONS)
+    step = ctx.machine.follow_execution(at=ctx.tick())
+    assert (step.to_state, step.trigger) == (S.PARTIALLY_EXECUTED, Trigger.SOME_LEGS_EXECUTED)
+    entry = to_executing()
+    entry.result(ResultStatus.REJECTED, Position(), REASONS)
+    step = entry.machine.follow_execution(at=entry.tick())
+    assert (step.to_state, step.trigger) == (S.VALIDATED, Trigger.NOTHING_FILLED)
+    ctx = to_adjusting()
+    _confirmed_adjustment(ctx)
+    ctx.result(ResultStatus.PARTIAL, ctx.record.proposed_version.baseline)
+    assert ctx.machine.follow_execution(at=ctx.tick()) is None
+    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
+
+
+def test_ac1_q245_adjustment_proposed_is_entered_only_by_the_approved_triggers():
+    """AC-1 (Q245): the state is entered from Active (user modification), from Execution in Progress (the new
+    trigger) and back from Reconciliation Required (manual resolution); from no other state."""
+    expected = {S.ACTIVE: {Trigger.USER_STARTS_MODIFICATION},
+                S.EXECUTION_IN_PROGRESS: {Trigger.ADJUSTMENT_NOTHING_FILLED},
+                S.RECONCILIATION_REQUIRED: {Trigger.MANUAL_RESOLUTION}}
+    for state in StrategyState:
+        assert set(allowed_triggers(state, S.ADJUSTMENT_PROPOSED)) == expected.get(state, set()), state
