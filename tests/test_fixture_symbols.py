@@ -10,10 +10,8 @@ just enforced):
    followed by ``CE``/``PE`` (an option) or ``FUT`` directly (a future) -- is found ANYWHERE in the
    file's text (so it also catches a symbol embedded inside a longer message string, e.g. an
    assertion's expected error text). It must appear verbatim as a ``tradingsymbol`` in the catalogue
-   CSV. Because the Zerodha symbol format encodes its own expiry (the day/month code IS the expiry),
-   catalogue membership of the full literal already proves the symbol is paired with a real, matching
-   expiry -- this is exactly what catches the finding's example (``NIFTY26OCT23400CE`` is not a real
-   catalogue symbol for expiry 2026-10-06; the real one is ``NIFTY26O0623400CE``).
+   CSV. This catches the case where the symbol TEXT itself is wrong (``NIFTY26OCT23400CE`` is not a
+   real catalogue symbol for any expiry; the real one is ``NIFTY26O0623400CE``).
 2. A *dynamic head* -- the same prefix/year/month pattern immediately followed by an f-string ``{``
    (a template whose strike and CE/PE suffix are filled in at runtime, e.g.
    ``f"NIFTY26OCT{strike}{instrument.value}"``) -- is checked differently: the catalogue must contain
@@ -22,20 +20,46 @@ just enforced):
    ``NIFTY26OCT`` -- the catalogue's only 2026-10-27 NIFTY row is the future, ``NIFTY26OCTFUT``; it
    holds no NIFTY options at that expiry, so no template built on that head can ever produce a real
    option symbol).
+3. **Pairing (AST-based).** A full literal being a real catalogue symbol does NOT by itself prove it is
+   paired with the right expiry: a real symbol (``NIFTY26O0623400CE``, catalogue expiry 2026-10-06) can
+   still be attached to the WRONG separately-declared expiry (e.g. ``expiry=date(2026, 10, 13)``) --
+   exactly the original W-023 defect shape (a symbol string plus a separate expiry value that silently
+   drift apart). Every Python file is parsed with ``ast``; two deterministic pairings are checked:
 
-A small, explicit allowlist covers two honest exceptions, each with a one-line reason: (a) a fixture
-that is DELIBERATELY not in the catalogue, to prove some guard refuses it (an "attack" fixture); (b) a
-locked spec example (scenario-calculations.md §6) whose expiry has no matching row in this catalogue
-SLICE at all -- corrected only by inventing a row, which is worse than naming the gap.
+   a. **Same call.** For every ``ast.Call`` (a function/constructor call, e.g. ``Leg(contract=...,
+      expiry=...)``), if one keyword argument's value is a full symbol literal AND another keyword
+      argument is named ``expiry`` or ``expiry_date`` with a value that is either a ``"YYYY-MM-DD"``
+      string or a ``date(y, m, d)``/``datetime.date(y, m, d)`` call with literal integer arguments, the
+      two are paired and compared against the catalogue's real expiry for that symbol.
+   b. **Module constants.** At module top level only (``ast.Assign`` to a single ``Name``), collect
+      every assignment whose value resolves to a date (as above) and every assignment whose value is a
+      full symbol literal, or a tuple/list made ENTIRELY of full symbol literals. When a file declares
+      **exactly one** such date constant, every symbol constant in that same file is paired with it and
+      compared (the ``partial_inputs.py`` style: one shared ``EXPIRY``, several contract constants).
+      A file with zero or more than one date constant is left **unpairable** -- reported as nothing,
+      never failed -- rather than guess which constant a given symbol belongs to.
 
-Anything not in the catalogue and not allowlisted is a genuine instance of the finding's class and
-must be corrected to a real catalogue symbol (same strike/expiry, symbol text only) before this test
-is allowed to pass.
+   Only keyword-argument calls and simple top-level assignments are parsed; anything else (a symbol or
+   expiry built through a function call, an f-string interpolation, a class attribute) is unpairable by
+   this rule and is not checked for pairing (it may still be checked as a full literal/dynamic head
+   above).
+
+A small, explicit allowlist covers three honest exceptions, each with a one-line reason: (a) a fixture
+that is DELIBERATELY not in the catalogue, or deliberately mispaired, to prove some guard refuses it
+(an "attack" fixture); (b) a locked spec example (scenario-calculations.md §6) whose expiry has no
+matching row in this catalogue SLICE at all -- corrected only by inventing a row, which is worse than
+naming the gap; (c) a defect found outside this item's named scope, deferred to a filed issue.
+
+Anything not in the catalogue, not correctly paired, and not allowlisted is a genuine instance of the
+finding's class and must be corrected to a real catalogue symbol and/or a matching expiry before this
+test is allowed to pass.
 """
 from __future__ import annotations
 
+import ast
 import csv
 import re
+from datetime import date
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -100,13 +124,141 @@ def _load_catalogue_symbols() -> set[str]:
         return {row["tradingsymbol"] for row in csv.DictReader(fh)}
 
 
+def _load_catalogue_expiries() -> dict[str, date]:
+    """Only F&O rows carry a real expiry (equity/cash rows leave the column blank); those are simply
+    not candidates for pairing and are skipped rather than raising."""
+    with CATALOGUE_CSV.open(encoding="utf-8") as fh:
+        out: dict[str, date] = {}
+        for row in csv.DictReader(fh):
+            m = _ISO_DATE_RE.match(row.get("expiry", "") or "")
+            if not m:
+                continue
+            out[row["tradingsymbol"]] = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        return out
+
+
+_ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+EXPIRY_KEYWORDS = {"expiry", "expiry_date"}
+
+
+def _date_from_node(node: ast.AST) -> date | None:
+    """A "YYYY-MM-DD" string constant, or a date(y, m, d)/datetime.date(y, m, d) call with three
+    literal integer arguments. Anything else (a Name, an f-string, a call with non-literal args)
+    returns None -- unpairable by design, never guessed."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        m = _ISO_DATE_RE.match(node.value)
+        if not m:
+            return None
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    if isinstance(node, ast.Call):
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+        if name != "date" or len(node.args) < 3:
+            return None
+        vals = []
+        for arg in node.args[:3]:
+            if not (isinstance(arg, ast.Constant) and isinstance(arg.value, int) and not isinstance(arg.value, bool)):
+                return None
+            vals.append(arg.value)
+        try:
+            return date(*vals)
+        except ValueError:
+            return None
+    return None
+
+
+def _symbol_from_node(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) and FULL_SYMBOL_RE.fullmatch(node.value):
+        return node.value
+    return None
+
+
+def _pairing_violations(rel: str, text: str, cat_expiries: dict[str, date],
+                         allowlist: dict[tuple[str, str], str]) -> list[tuple[str, int, str, str]]:
+    """AST-based pairing checks (rule 3 in the module docstring): a real catalogue symbol paired,
+    in the same call or via a single module-level expiry constant, with an expiry that does not
+    match the catalogue's own expiry for that symbol."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    violations: list[tuple[str, int, str, str]] = []
+
+    # 3a: same-call pairing.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        sym_val: str | None = None
+        exp_node: ast.AST | None = None
+        for kw in node.keywords:
+            if kw.arg is None:
+                continue
+            sym = _symbol_from_node(kw.value)
+            if sym is not None:
+                sym_val = sym
+            if kw.arg in EXPIRY_KEYWORDS:
+                exp_node = kw.value
+        if sym_val is None or exp_node is None:
+            continue
+        real = cat_expiries.get(sym_val)
+        if real is None:
+            continue  # already reported (or allowlisted) as a full-symbol violation
+        claimed = _date_from_node(exp_node)
+        if claimed is None or claimed == real:
+            continue
+        if (rel, sym_val) in allowlist:
+            continue
+        violations.append((rel, node.lineno, sym_val,
+                            f"paired with expiry {claimed.isoformat()} but the catalogue lists "
+                            f"{real.isoformat()} for this symbol"))
+
+    # 3b: module-level constant pairing.
+    date_constants: list[date] = []
+    symbol_assignments: list[tuple[int, str]] = []  # (lineno, symbol)
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)):
+            continue
+        val = node.value
+        d = _date_from_node(val)
+        if d is not None:
+            date_constants.append(d)
+            continue
+        sym = _symbol_from_node(val)
+        if sym is not None:
+            symbol_assignments.append((node.lineno, sym))
+            continue
+        if isinstance(val, (ast.Tuple, ast.List)) and val.elts:
+            syms = [_symbol_from_node(elt) for elt in val.elts]
+            if all(syms):
+                symbol_assignments.extend((node.lineno, s) for s in syms if s)
+    if len(date_constants) == 1:
+        real_by_symbol = date_constants[0]
+        for lineno, sym in symbol_assignments:
+            real = cat_expiries.get(sym)
+            if real is None or real == real_by_symbol:
+                continue
+            if (rel, sym) in allowlist:
+                continue
+            violations.append((rel, lineno, sym,
+                                f"module constant paired with expiry {real_by_symbol.isoformat()} but "
+                                f"the catalogue lists {real.isoformat()} for this symbol"))
+    return violations
+
+
 def find_violations(paths: list[Path], catalogue_symbols: set[str],
                      allowlist: dict[tuple[str, str], str] | None = None,
-                     base: Path = TESTS_DIR) -> list[tuple[str, int, str, str]]:
+                     base: Path = TESTS_DIR,
+                     catalogue_expiries: dict[str, date] | None = None) -> list[tuple[str, int, str, str]]:
     """Return (relative_path, line_number, matched_text, reason) for every literal that is neither a
-    real catalogue symbol/head nor allowlisted. Pure function of its inputs -- used directly by the
-    mutation test below without touching the real tree."""
+    real catalogue symbol/head nor allowlisted, plus every real symbol paired (same call or a single
+    module expiry constant) with an expiry the catalogue does not agree with. Pure function of its
+    inputs -- used directly by the mutation tests below without touching the real tree."""
     allowlist = allowlist or {}
+    if catalogue_expiries is None:
+        catalogue_expiries = _load_catalogue_expiries()
     violations: list[tuple[str, int, str, str]] = []
     for path in paths:
         text = path.read_text(encoding="utf-8")
@@ -125,6 +277,7 @@ def find_violations(paths: list[Path], catalogue_symbols: set[str],
             if not any(s.startswith(head) and s.endswith(("CE", "PE")) for s in catalogue_symbols):
                 line = text.count("\n", 0, m.start()) + 1
                 violations.append((rel, line, head, "no catalogue option starts with this head"))
+        violations.extend(_pairing_violations(rel, text, catalogue_expiries, allowlist))
     return violations
 
 
@@ -137,30 +290,82 @@ def test_every_tradingsymbol_literal_in_tests_resolves_in_the_catalogue() -> Non
     literals and fails, listing file:line, if any is neither a real catalogue symbol/head for its
     paired expiry nor an explicitly-reasoned allowlist entry."""
     catalogue_symbols = _load_catalogue_symbols()
-    violations = find_violations(_real_test_files(), catalogue_symbols, ALLOWLIST)
+    catalogue_expiries = _load_catalogue_expiries()
+    violations = find_violations(_real_test_files(), catalogue_symbols, ALLOWLIST,
+                                  catalogue_expiries=catalogue_expiries)
     assert violations == [], "tradingsymbol literal(s) not in the catalogue (see ALLOWLIST to accept):\n" + "\n".join(
         f"  {path}:{line}: {sym!r} ({reason})" for path, line, sym, reason in violations
     )
+
+
+def _run_on_scratch(source: str) -> list[tuple[str, int, str, str]]:
+    catalogue_symbols = _load_catalogue_symbols()
+    catalogue_expiries = _load_catalogue_expiries()
+    scratch = TESTS_DIR / "_scratch_mutation_probe.py"
+    scratch.write_text(source, encoding="utf-8")
+    try:
+        return find_violations([scratch], catalogue_symbols, ALLOWLIST, catalogue_expiries=catalogue_expiries)
+    finally:
+        scratch.unlink()
 
 
 def test_guard_goes_red_on_the_findings_example_mutation() -> None:
     """Core/Proof mutation: reintroducing NIFTY26OCT23400CE paired with expiry 2026-10-06 (the exact
     finding example) must be caught. Run against a synthetic snippet (never the real tree) so this
     test itself never needs the real files to be broken."""
-    catalogue_symbols = _load_catalogue_symbols()
     mutated_source = (
         "import datetime\n"
         "EXPIRY = datetime.date(2026, 10, 6)\n"
         'CONTRACT = "NIFTY26OCT23400CE"\n'
     )
-    scratch = TESTS_DIR / "_scratch_mutation_probe.py"
-    scratch.write_text(mutated_source, encoding="utf-8")
-    try:
-        violations = find_violations([scratch], catalogue_symbols, ALLOWLIST)
-    finally:
-        scratch.unlink()
+    violations = _run_on_scratch(mutated_source)
     assert violations, "the guard must go red on NIFTY26OCT23400CE (not a real catalogue symbol)"
     assert any(sym == "NIFTY26OCT23400CE" for _, _, sym, _ in violations)
+
+
+def test_guard_catches_a_real_symbol_paired_with_the_wrong_expiry_same_call() -> None:
+    """Attack 3 (verifier, round 2), same-call form: NIFTY26O0623400CE is a REAL catalogue symbol
+    (expiry 2026-10-06), but here it is passed to a call alongside expiry=date(2026, 10, 13). Full-
+    literal membership alone would pass this (the symbol IS in the catalogue); only the pairing check
+    (rule 3a) catches the mismatch."""
+    mutated_source = (
+        "import datetime\n"
+        "def Leg(contract, expiry):\n"
+        "    return (contract, expiry)\n"
+        'Leg(contract="NIFTY26O0623400CE", expiry=datetime.date(2026, 10, 13))\n'
+    )
+    violations = _run_on_scratch(mutated_source)
+    assert violations, "the guard must go red on a real symbol paired with the wrong expiry (same call)"
+    assert any(sym == "NIFTY26O0623400CE" and "paired with expiry 2026-10-13" in reason
+               for _, _, sym, reason in violations)
+
+
+def test_guard_catches_a_real_symbol_paired_with_the_wrong_expiry_module_constants() -> None:
+    """Attack 3, module-constant form (the partial_inputs.py style): a single module-level EXPIRY
+    constant and a real symbol constant that does not actually expire on that date."""
+    mutated_source = (
+        "import datetime\n"
+        "EXPIRY = datetime.date(2026, 10, 13)\n"
+        'CONTRACT = "NIFTY26O0623400CE"\n'
+    )
+    violations = _run_on_scratch(mutated_source)
+    assert violations, "the guard must go red on a module-constant pairing mismatch"
+    assert any(sym == "NIFTY26O0623400CE" and "module constant paired with expiry 2026-10-13" in reason
+               for _, _, sym, reason in violations)
+
+
+def test_guard_does_not_guess_when_a_file_has_no_or_multiple_expiry_constants() -> None:
+    """A file with two expiry constants (like scenario_fixtures.py's NIFTY_EXPIRY/SENSEX_EXPIRY) must
+    NOT be paired by guesswork -- unpairable, not a violation -- even when a symbol constant next to
+    them would mismatch one of the two if guessed wrong."""
+    mutated_source = (
+        "import datetime\n"
+        "A_EXPIRY = datetime.date(2026, 10, 6)\n"
+        "B_EXPIRY = datetime.date(2026, 10, 13)\n"
+        'CONTRACT = "NIFTY26O0623400CE"\n'
+    )
+    violations = _run_on_scratch(mutated_source)
+    assert violations == [], f"a file with 2 expiry constants must be left unpairable, got: {violations}"
 
 
 def test_allowlist_entries_are_not_stale() -> None:
