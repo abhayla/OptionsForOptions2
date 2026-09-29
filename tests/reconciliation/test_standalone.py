@@ -87,6 +87,7 @@ def test_ac7_mutant_blocking_on_unheld_contract_is_caught(monkeypatch):
     broker = {CE25000: -75, CE25500: -75, ce26000: -25}
     real = compare(broker, strategies(), {CE25000: -25}, at=at(10), clock=clock)
     assert real.blocked_strategy_ids == frozenset()
-    monkeypatch.setattr(compare_module, "holders_of", lambda contract, actives, proposals: tuple(sorted(actives)))
+    monkeypatch.setattr(compare_module, "holders_by_contract",
+                        lambda contracts, actives, proposals: {c: tuple(sorted(actives)) for c in contracts})
     mutated = compare(broker, strategies(), {CE25000: -25}, at=at(10), clock=clock)
     assert mutated.blocked_strategy_ids == frozenset({"S-25000", "S-25500"}) != real.blocked_strategy_ids
