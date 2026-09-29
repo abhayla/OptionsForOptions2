@@ -568,7 +568,6 @@ def _prepare_missing(
     closing = book.closing_read_at(plan.strategy_id)
     if closing is not None and a.read_at <= closing:
         return _not_prepared(choice, a, NEEDS_FRESH_READ)
-    book.clear_closing(plan.strategy_id, a.read_at)
     # In flight = non-terminal in the reconciled book. While anything is, nothing is prepared.
     if a.open_orders:
         return _not_prepared(choice, a, IN_FLIGHT)
@@ -593,8 +592,11 @@ def _prepare_missing(
                                         "prepared.")
     required = require_decimal(planner.required_margin(Strategy(legs)), "margin_required")  # OD-d
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
+    prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
                  slices=seq.orders)
+    if prep.ready:  # W-036 (#62): the Close choice is forgotten only once a later read actually prepared orders
+        book.clear_closing(plan.strategy_id, a.read_at)
+    return prep
 
 
 def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Preparation | None:
@@ -689,7 +691,7 @@ def close_partial_strategy(
     if a.status not in (ExecutionStatus.PARTIAL_EXCEPTION, ExecutionStatus.IN_PROGRESS) or not a.actual_legs:
         return _not_prepared(choice, a)
     record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
-    book.mark_closing(plan.strategy_id, a.read_at)  # Complete/Retry now need a read newer than this one
+    # W-036 (#62): every refusal below is decided BEFORE the Close choice is recorded (mark_closing, at the end).
     if any(leg.ltp is None for leg in a.actual_legs):  # orchestrator default OD-e: fail closed without a price
         return _not_prepared(choice, a, "Zerodha did not give a current price for every filled leg. No order has "
                                         "been prepared.")
@@ -715,7 +717,10 @@ def close_partial_strategy(
                                         "prepared.")
     pairs.sort(key=lambda pl: 0 if pl[1].action is Action.BUY else 1)  # OD-e: buy back shorts first
     groups = [[(p.leg_ref, e.quantity) for p, e in pairs if e.action is side] for side in (Action.BUY, Action.SELL)]
-    slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
+    try:
+        slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
+    except ValueError as exc:  # W-036 (#62): a slicing refusal is shown with its reason, never raised
+        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
     exits = {p.leg_ref: e for p, e in pairs}
     orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
                          s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id) for s in slices)
@@ -725,8 +730,16 @@ def close_partial_strategy(
         context, action=ExecutionAction.EXIT, active_legs=a.actual_legs, active_version_id=context.version_id,
         active_legs_hash=active_legs_hash(plan.strategy_id, context.version_id, a.actual_legs),
     )
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels),
+    prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels),
                  slices)
+    if not prep.ready:  # the safety checks refused it: nothing prepared, so the Close choice is not recorded
+        return prep
+    try:
+        book.mark_closing(plan.strategy_id, a.read_at)  # Complete/Retry now need a read newer than this one
+    except ValueError as exc:  # the read went stale while preparing: undo the preparation, record nothing
+        discard_preparation(prep)
+        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
+    return prep
 
 
 @dataclass(frozen=True)

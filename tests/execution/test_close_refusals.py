@@ -32,6 +32,7 @@ from partial_inputs import (
     REFS,
     REJECT_TEXT,
     STRATEGY_ID,
+    Clock,
     FakeBroker,
     FakePlanner,
     entry_context,
@@ -78,7 +79,7 @@ def _legs(market: str) -> tuple[Leg, ...]:
             Leg(Action.BUY, Instrument.CE, D("74500"), e, SENSEX_QTY, D("100.00")))
 
 
-def _state(market: str = "NIFTY"):  # noqa: ANN202
+def _state(market: str = "NIFTY", clock: Clock | None = None):  # noqa: ANN202
     """Three legs filled in full (LTP on each), the fourth (the long CE) REJECTED with nothing filled."""
     legs = _legs(market)
     contracts = CONTRACTS if market == "NIFTY" else SENSEX_CONTRACTS
@@ -89,7 +90,7 @@ def _state(market: str = "NIFTY"):  # noqa: ANN202
         record = StrategyRecord(StrategyDefinition.from_engine("SENSEX", Strategy(legs)),
                                 at=FILL_AT - datetime.timedelta(minutes=10), clock=lambda: READ_AT)
         record.propose_execution(at=FILL_AT - datetime.timedelta(minutes=9))
-    book = new_book(record=record)
+    book = new_book(clock=clock, record=record)
     positions, sts = [], []
     for i, (ref, contract, lg) in enumerate(zip(REFS, contracts, legs)):
         book.add(Order(STRATEGY_ID, ref, contract, lg.action, qty, lg.entry_price, broker_order_id=BROKER_IDS[i],
@@ -247,3 +248,30 @@ def test_ac6_complete_refusal_on_a_later_read_keeps_the_close_marker(catalogue, 
     ok = _complete(plan, book, broker, ctx, catalogue, eligibility)
     assert ok.ready, ok.reason
     assert book.closing_read_at(STRATEGY_ID) is None
+
+
+class _SlowPlanner(FakePlanner):
+    """Each margin question takes 30 s of platform time, so the broker read goes stale while Close prepares."""
+
+    def __init__(self, clock: Clock) -> None:
+        super().__init__()
+        self.clock = clock
+
+    def required_margin(self, strategy: Strategy) -> D:
+        self.clock.advance(30)
+        return super().required_margin(strategy)
+
+
+def test_ac6_a_read_gone_stale_while_preparing_leaves_no_marker_and_no_held_preparation(catalogue,  # noqa: ANN001
+                                                                                       eligibility) -> None:
+    """AC-6: the read (READ_AT) was fresh when taken (clock READ_AT + 10 s) but three 30 s margin questions later the
+    clock is READ_AT + 100 s, past the 60 s age limit, so the Close choice cannot be recorded on it: the ready
+    preparation is discarded (nothing held, cannot be sent) and a "Nothing prepared: stale broker read" result comes
+    back instead of an exception."""
+    clock = Clock()
+    plan, book, broker, ctx = _state(clock=clock)
+    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility)
+    assert clock() == READ_AT + datetime.timedelta(seconds=70)
+    _assert_refused(prep, "stale broker read")
+    assert book.closing_read_at(STRATEGY_ID) is None
+    assert not book.has_live_preparation(STRATEGY_ID)
