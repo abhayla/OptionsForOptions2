@@ -43,9 +43,9 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   does not address (it is silent on whether a futures leg's Entry Value belongs in the same sum as an option
   premium, or needs its own line). Not changed by this fix round; the leg-level Entry Value cell is unaffected and
   correct on its own.
-- **Scenario column header text (AC-7, round-3 fix).** The column order never changes with the UX level (AC-7
-  header text is a LABEL, not a reorder), but each scenario level column's header text does: see
-  :func:`scenario_header` and :func:`visible_columns`.
+- **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
+  at every UX level, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
+  is the section caption (:func:`scenario_caption`), not a per-column label.
 """
 from __future__ import annotations
 
@@ -128,6 +128,7 @@ class ColumnSpec:
     label: str
     kind: CellKind
     is_scenario_level: bool = False
+    markers: tuple[str, ...] = ()  # scenario columns only: "CURRENT" and/or "0-P&L" (Q227)
 
 
 @dataclass(frozen=True)
@@ -409,7 +410,9 @@ def build_table(
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
     columns = [ColumnSpec(cid, HEADER_LABELS[cid], _leading_kind(cid)) for cid in LEADING_COLUMNS]
-    columns += [ColumnSpec(level, format_points(level), CellKind.MONEY, is_scenario_level=True)
+    marker_map = _markers_by_level(level_set)
+    columns += [ColumnSpec(level, scenario_header(UXLevel.STANDARD, inputs.underlying, level, marker_map[level]),
+                           CellKind.MONEY, is_scenario_level=True, markers=marker_map[level])
                 for level in level_columns]
     columns += [ColumnSpec(cid, HEADER_LABELS[cid], _trailing_kind(cid)) for cid in TRAILING_COLUMNS]
 
@@ -451,19 +454,33 @@ def _trailing_kind(cid: ColumnId) -> CellKind:
     }[cid]
 
 
-def scenario_header(level: UXLevel, underlying: str, value: Decimal) -> str:
-    """AC-7 scenario-column header text, per UX level (round-3 fix: was a fixed points label at every level).
+def _markers_by_level(level_set: LevelSet | None) -> dict[Decimal, tuple[str, ...]]:
+    if level_set is None:
+        return {}
+    return {
+        col.level: (("CURRENT",) if col.is_current else ()) + (("0-P&L",) if col.is_zero_pnl else ())
+        for col in level_set.columns
+    }
 
-    Guided: "NIFTY at expiry | You make/lose" (or SENSEX, ...) for every scenario column — plain language, no
-    index-points literacy assumed. Standard/Advanced: the level value itself (points), as before.
+
+def scenario_header(level: UXLevel, underlying: str, value: Decimal, markers: Sequence[str] = ()) -> str:
+    """One scenario column's own heading (AC-7, Q227): its index level, e.g. "22,900", with the CURRENT and 0-P&L
+    columns marked ("CURRENT 23,047", "0-P&L 23,491"). The same at every UX level: the "NIFTY at expiry | You
+    make/lose" phrase is the caption of the scenario section (:func:`scenario_caption`), never a column heading.
     """
     if not isinstance(level, UXLevel):
         raise ValueError(f"level must be a UXLevel, got {level!r}")
     if not isinstance(underlying, str) or not underlying.strip():
         raise ValueError(f"underlying must be a non-empty string, got {underlying!r}")
-    if level is UXLevel.GUIDED:
-        return f"{underlying} at expiry | You make/lose"
-    return format_points(value)
+    return " ".join((*markers, format_points(value)))
+
+
+def scenario_caption(table: Table) -> str:
+    """The scenario section's caption (AC-7, Q227): the pair "<underlying> at expiry | You make/lose" — SENSEX for a
+    SENSEX strategy."""
+    if not isinstance(table, Table):
+        raise ValueError(f"table must be a Table, got {table!r}")
+    return f"{table.underlying} at expiry | You make/lose"
 
 
 def visible_columns(table: Table, level: UXLevel) -> tuple[ColumnSpec, ...]:
@@ -478,7 +495,7 @@ def visible_columns(table: Table, level: UXLevel) -> tuple[ColumnSpec, ...]:
     result = []
     for col in table.columns:
         if col.is_scenario_level:
-            result.append(_replace(col, label=scenario_header(level, table.underlying, col.id)))
+            result.append(_replace(col, label=scenario_header(level, table.underlying, col.id, col.markers)))
         elif is_visible(col.id, level):
             result.append(col)
     return tuple(result)

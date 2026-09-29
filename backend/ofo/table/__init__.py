@@ -17,6 +17,7 @@ from ofo.table.model import (
     Table,
     TOTAL_ROW_ID,
     build_table,
+    scenario_caption,
     scenario_header,
     visible_columns,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "Table",
     "TOTAL_ROW_ID",
     "build_table",
+    "scenario_caption",
     "scenario_header",
     "visible_columns",
 ]

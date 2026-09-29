@@ -98,6 +98,9 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("scenario/scenario_fixtures.py", "NIFTY26OCT"):
         "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for scenario "
         "tests: no NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
+    ("table/conftest.py", "NIFTY26OCT"):
+        "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for the table tests: no "
+        "NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
     ("scenario/test_modes.py", "NIFTY26OCT22800PE"):
         "same golden Iron Condor fixture: the unavailable-IV message names the same leg used by "
         "engine/conftest.py, for which no catalogue row exists at 2026-10-27.",

@@ -1,5 +1,7 @@
 """REQ-035 AC-7: the column order stays locked; what is shown depends on the UX level."""
-from ofo.engine.display import format_points
+from dataclasses import replace as _replace
+from decimal import Decimal
+
 from ofo.table.columns import ColumnId, UXLevel
 from ofo.table.model import build_table, scenario_header, visible_columns
 
@@ -77,32 +79,66 @@ def test_ac7_scenario_level_columns_always_visible(golden, golden_scenario):
             assert scenario_level in visible_ids
 
 
-def test_ac7_guided_scenario_header_is_plain_language(golden, golden_scenario):
-    """Round-3 fix item 3: Guided's scenario-column header text is 'NIFTY at expiry | You make/lose' for every
-    scenario column (T1 #78-#79 style), not the raw index level."""
+# Hand-derived from the §6 golden Iron Condor (NIFTY, spot 23,047, NIFTY step 100): grid 22,000..24,000 every 100,
+# plus the CURRENT column 23,047 and the two 0-P&L columns. Net credit = 86 + 91.5 - 42.5 - 44 = 91 points, so the
+# breakevens are 23,000 - 91 = 22,909 and 23,400 + 91 = 23,491. Sorted ascending, that is 24 columns.
+EXPECTED_HEADINGS = [
+    "22,000", "22,100", "22,200", "22,300", "22,400", "22,500", "22,600", "22,700", "22,800", "22,900",
+    "0-P&L 22,909", "23,000", "CURRENT 23,047", "23,100", "23,200", "23,300", "23,400", "0-P&L 23,491",
+    "23,500", "23,600", "23,700", "23,800", "23,900", "24,000",
+]
+
+
+def _scenario_labels(table, level):
+    return [c.label for c in visible_columns(table, level) if c.is_scenario_level]
+
+
+def test_ac7_every_ux_level_headings_are_the_index_levels_with_current_and_zero_pnl_marked(golden, golden_scenario):
+    """AC-7 (Q227): each scenario column's own heading is its index level, CURRENT and 0-P&L columns marked — at
+    Guided, Standard and Advanced alike. 24 columns, 24 distinct headings (round 3 gave Guided 24 identical ones)."""
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
-    guided_scenario_cols = [c for c in visible_columns(table, UXLevel.GUIDED) if c.is_scenario_level]
-    assert len(guided_scenario_cols) == len(level_set.levels)
-    for col in guided_scenario_cols:
-        assert col.label == "NIFTY at expiry | You make/lose"
+    for level in UXLevel:
+        labels = _scenario_labels(table, level)
+        assert labels == EXPECTED_HEADINGS, level
+        assert len(set(labels)) == 24
 
 
-def test_ac7_standard_and_advanced_scenario_header_is_the_level_value(golden, golden_scenario):
-    """Round-3 fix item 3: Standard/Advanced show the level value itself (points), unlike Guided."""
+def test_ac7_scenario_section_caption_is_the_pair_naming_the_underlying(golden, golden_scenario):
+    """AC-7 (Q227): "NIFTY at expiry | You make/lose" is the caption of the scenario section, not a column label;
+    a SENSEX strategy says SENSEX."""
+    from ofo.table.model import scenario_caption
+
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
-    for level in (UXLevel.STANDARD, UXLevel.ADVANCED):
-        scenario_cols = [c for c in visible_columns(table, level) if c.is_scenario_level]
-        for col in scenario_cols:
-            assert col.label == format_points(col.id)
+    assert scenario_caption(table) == "NIFTY at expiry | You make/lose"
+    for level in UXLevel:
+        assert all("You make/lose" not in label for label in _scenario_labels(table, level))
+    sensex = _replace(table, underlying="SENSEX")
+    assert scenario_caption(sensex) == "SENSEX at expiry | You make/lose"
 
 
-def test_scenario_header_uses_the_strategy_underlying_name():
-    """Round-3 fix item 3: the Guided header names the strategy's own underlying (SENSEX for a SENSEX strategy,
-    not a hard-coded NIFTY)."""
-    from decimal import Decimal as D
+def test_ac7_guided_still_hides_iv_and_greek_columns_with_level_headings(golden, golden_scenario):
+    """AC-7: the heading change does not un-hide anything: Guided has no IV/Greek column and keeps the locked order."""
+    level_set, values = golden_scenario
+    table = build_table(golden, level_set=level_set, scenario=values)
+    guided_ids = [c.id for c in visible_columns(table, UXLevel.GUIDED)]
+    for hidden in (ColumnId.IV, ColumnId.DELTA, ColumnId.GAMMA, ColumnId.THETA, ColumnId.VEGA):
+        assert hidden not in guided_ids
+    assert guided_ids == GUIDED_EXPECTED[:11] + list(level_set.levels) + [ColumnId.STATUS]
 
-    assert scenario_header(UXLevel.GUIDED, "SENSEX", D("75000")) == "SENSEX at expiry | You make/lose"
-    assert scenario_header(UXLevel.GUIDED, "NIFTY", D("23000")) == "NIFTY at expiry | You make/lose"
-    assert scenario_header(UXLevel.STANDARD, "SENSEX", D("75000")) == format_points(D("75000"))
+
+def test_scenario_header_marks_current_zero_pnl_and_both(golden):
+    """AC-7: a level that is both CURRENT and a breakeven carries both marks (no mark is dropped)."""
+    assert scenario_header(UXLevel.GUIDED, "NIFTY", Decimal("23047"), ("CURRENT", "0-P&L")) == "CURRENT 0-P&L 23,047"
+    assert scenario_header(UXLevel.ADVANCED, "SENSEX", Decimal("75000")) == "75,000"
+
+
+def test_scenario_header_rejects_bad_level_and_blank_underlying():
+    """AC-7: fail closed on a non-UXLevel or blank underlying (each guard has its own killing case)."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        scenario_header("guided", "NIFTY", Decimal("23000"))
+    with pytest.raises(ValueError):
+        scenario_header(UXLevel.GUIDED, "  ", Decimal("23000"))
