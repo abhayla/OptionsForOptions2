@@ -1,9 +1,9 @@
 """REQ-039: the strategy operational state machine accepts only the owner-approved transitions (W-041).
 
 Expected values come from the spec, never from running the code: ``SPEC_PAIRS`` below is typed from the transition
-table in spec/data/domain-model.md §6 (owner-approved Q240, 2026-09-29), row by row, with "any live state" expanded
-to the five live states the module names (Active, Monitoring Paused, Adjustment Proposed, Execution in Progress,
-Partially Executed) and "previous live state" to the same five.
+table in spec/data/domain-model.md §6 (owner-approved Q240, amended by Q243 on 2026-09-29), row by row, with "any live
+state" expanded to the five live states Q243 fix 5 lists (Active, Monitoring Paused, Adjustment Proposed, Execution in
+Progress, Partially Executed) and "previous live state" to the same five.
 
 Core proof: ``test_ac1_every_from_to_pair_of_the_12_states``. For every one of the 12 states it builds a real
 machine in that state (Reconciliation Required once per live state it can be entered from), fires EVERY event the
@@ -71,13 +71,15 @@ SPEC_ROWS: dict[tuple[StrategyState, StrategyState], set[Trigger]] = {
     (S.READY_FOR_VALIDATION, S.DRAFT): {Trigger.VALIDATION_FAILS},
     (S.VALIDATED, S.EXECUTION_IN_PROGRESS): {Trigger.USER_CONFIRMS_EXECUTE},
     (S.EXECUTION_IN_PROGRESS, S.ACTIVE): {Trigger.EXECUTED_AND_RECONCILED},
-    (S.EXECUTION_IN_PROGRESS, S.PARTIALLY_EXECUTED): {Trigger.SOME_LEGS_EXECUTED},
+    (S.EXECUTION_IN_PROGRESS, S.VALIDATED): {Trigger.NOTHING_FILLED},  # Q243 fix 1
+    (S.EXECUTION_IN_PROGRESS, S.PARTIALLY_EXECUTED): {Trigger.SOME_LEGS_EXECUTED},  # Q243 fix 4
     (S.PARTIALLY_EXECUTED, S.EXECUTION_IN_PROGRESS): {Trigger.USER_COMPLETES_OR_RETRIES},
-    (S.PARTIALLY_EXECUTED, S.RECONCILIATION_REQUIRED): {Trigger.USER_REVIEWS, Trigger.BROKER_DIFFERS},
+    # Q243 fix 2: "Review Manually" is not a transition; Partially Executed -> Reconciliation Required comes only
+    # from the "any live state" row below.
     (S.PARTIALLY_EXECUTED, S.EXITED): {Trigger.USER_CLOSES_PARTIAL},
     (S.ACTIVE, S.ADJUSTMENT_PROPOSED): {Trigger.USER_STARTS_MODIFICATION},
     (S.ADJUSTMENT_PROPOSED, S.EXECUTION_IN_PROGRESS): {Trigger.USER_CONFIRMS_PROPOSAL},
-    (S.ADJUSTMENT_PROPOSED, S.ACTIVE): {Trigger.USER_DISCARDS_PROPOSAL},
+    (S.ADJUSTMENT_PROPOSED, S.ACTIVE): {Trigger.USER_WITHDRAWS_PROPOSAL},  # Q243 fix 3
     (S.ACTIVE, S.MONITORING_PAUSED): {Trigger.USER_PAUSES_MONITORING},
     (S.MONITORING_PAUSED, S.ACTIVE): {Trigger.USER_RESUMES_MONITORING},
     (S.ACTIVE, S.EXITED): {Trigger.EXIT_ORDERS_EXECUTED},
@@ -111,10 +113,10 @@ class Ctx:
     def ref(self) -> str:
         return f"r{next(self.refs)}"
 
-    def result(self, status: ResultStatus, position: Position) -> None:
+    def result(self, status: ResultStatus, position: Position, reasons: tuple[str, ...] = ()) -> None:
         pending = self.record.proposed_version
         number = pending.number if pending is not None else len(self.record.versions) or 1
-        self.record.apply_result(ExecutionResult(number, status, position, self.tick(), self.ref()))
+        self.record.apply_result(ExecutionResult(number, status, position, self.tick(), self.ref(), reasons))
 
     def observe(self, position: Position) -> None:
         self.record.observe_broker_position(position, at=self.tick(), reference=self.ref())
@@ -130,6 +132,11 @@ def some_legs(ctx: Ctx) -> Position:
     intended, base = version.intended_position.as_dict(), version.baseline.as_dict()
     keys = sorted(intended.keys() | base.keys(), key=str)
     return Position.of({k: (intended.get(k, 0) if i < 2 else base.get(k, 0)) for i, k in enumerate(keys)})
+
+
+def nothing(ctx: Ctx) -> Position:
+    """Nothing filled: the broker still holds exactly the proposal's baseline."""
+    return ctx.record.proposed_version.baseline
 
 
 def overfilled(ctx: Ctx) -> Position:
@@ -271,6 +278,13 @@ def ev_confirm_adjustment(ctx: Ctx) -> None:
     ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
 
 
+def ev_withdraw_proposal(ctx: Ctx) -> None:
+    """The user made a proposed version (not confirmed) and withdraws it."""
+    if ctx.record.active_version is not None:
+        _try(lambda: ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=ctx.record.active_version.number))
+    ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
+
+
 def ev_close_partial(ctx: Ctx) -> None:
     if ctx.record.proposed_version is not None:  # the closing orders executed: the broker is flat again
         _try(lambda: ctx.result(ResultStatus.REJECTED, Position()))
@@ -310,13 +324,16 @@ EVENTS = {
     "fill_complete": ev_fill(ResultStatus.COMPLETE, full),
     "fill_partial": ev_fill(ResultStatus.PARTIAL, some_legs),
     "fill_mismatch": ev_fill(ResultStatus.COMPLETE, overfilled),
+    "fill_rejected_nothing": ev_fill(ResultStatus.REJECTED, nothing),
+    "fill_failed_some": ev_fill(ResultStatus.FAILED, some_legs),
     "broker_differs": ev_broker_differs,
     "partial_complete_or_retry": lambda ctx: ctx.machine.continue_execution(at=ctx.tick(), actor="user-1"),
-    "partial_review": lambda ctx: ctx.machine.review_partial(at=ctx.tick(), actor="user-1"),
+    "partial_review": lambda ctx: ctx.machine.review_partial(),
     "partial_close": ev_close_partial,
     "start_adjustment": lambda ctx: ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1"),
     "confirm_adjustment": ev_confirm_adjustment,
-    "discard_adjustment": lambda ctx: ctx.machine.discard_adjustment(at=ctx.tick(), actor="user-1"),
+    "withdraw_adjustment": lambda ctx: ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1"),
+    "withdraw_proposal": ev_withdraw_proposal,
     "pause": lambda ctx: ctx.machine.pause_monitoring(at=ctx.tick(), actor="user-1"),
     "resume": lambda ctx: ctx.machine.resume_monitoring(at=ctx.tick(), actor="user-1"),
     "resolve_adopt": ev_resolve_adopt,
@@ -338,7 +355,7 @@ def test_ac1_the_approved_table_is_exactly_the_spec_rows_for_all_144_pairs():
     for pair in pairs:
         assert set(allowed_triggers(*pair)) == SPEC_ROWS.get(pair, set()), pair
     assert {pair: set(triggers) for pair, triggers in TRANSITIONS.items()} == SPEC_ROWS
-    assert len(SPEC_PAIRS) == 29
+    assert len(SPEC_PAIRS) == 30
 
 
 def test_ac1_every_from_to_pair_of_the_12_states():
@@ -391,18 +408,15 @@ def test_ac1_an_agreeing_run_or_no_resolution_never_leaves_reconciliation_requir
 
 
 def test_ac1_a_resolution_recorded_before_the_mismatch_does_not_count():
-    """AC-1 (Q222): the machine reads the resolution itself and it must postdate entering Reconciliation Required;
-    no method takes a "resolved" flag, so an old resolution cannot be replayed as a new one."""
+    """AC-1 (Q222): the machine reads the resolution itself and it must postdate the difference that put the strategy
+    into Reconciliation Required; no method takes a "resolved" flag, so an old resolution cannot be replayed."""
     ctx = to_active()
     ctx.observe(odd(ctx))
     ctx.record.reconcile(at=ctx.tick(), actor="user-1", resolution="adopt")  # resolved before the machine looked
     assert ctx.record.outcomes[-1].kind is OutcomeKind.RECONCILED
-    ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")
-    ev_confirm_adjustment(ctx)
-    ctx.result(ResultStatus.PARTIAL, some_legs(ctx))
-    ctx.machine.follow_execution(at=ctx.tick())
-    ctx.machine.review_partial(at=ctx.tick(), actor="user-1")
-    assert ctx.machine.state is S.RECONCILIATION_REQUIRED and not ctx.record.reconciliation_required
+    ctx.observe(odd(ctx))  # a NEW difference from the adopted version
+    ctx.machine.sync_broker(at=ctx.tick())
+    assert ctx.machine.state is S.RECONCILIATION_REQUIRED and ctx.record.reconciliation_required
     with pytest.raises(StateMachineError, match="manual resolution"):
         ctx.machine.resolve_reconciliation(at=ctx.tick())
     for name in ("resolve_reconciliation", "sync_broker", "follow_execution"):
@@ -456,12 +470,13 @@ def test_ac1_guards_read_the_record_not_the_caller():
         ctx.machine.pause_monitoring(at=ctx.tick(), actor="user-1")
     with pytest.raises(StateMachineError, match="reconciliation"):
         ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")
-    # Discarding a proposal the user already confirmed (orders may be out) is refused.
+    # Withdrawing a proposal the user already confirmed (orders may be out) is refused by the record itself.
     ctx = to_adjusting()
     version = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
     ctx.record.confirm(version.number, at=ctx.tick())
-    with pytest.raises(StateMachineError, match="confirmed"):
-        ctx.machine.discard_adjustment(at=ctx.tick(), actor="user-1")
+    with pytest.raises(VersionError, match="confirmed"):
+        ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.ADJUSTMENT_PROPOSED and ctx.record.proposed_version is version
     # Confirming an adjustment needs a confirmed proposal created after the adjustment started.
     ctx = to_adjusting()
     with pytest.raises(StateMachineError, match="proposal"):
@@ -604,7 +619,7 @@ EXPECTED_EXPLANATIONS = {
     S.ADJUSTMENT_PROPOSED: (
         "A modification of version 1 was started by user-1.",
         ("new execution", "a second modification"),
-        "Confirm or discard the proposal.",
+        "Confirm or withdraw the proposal.",
     ),
 }
 
@@ -647,21 +662,23 @@ def test_ac1_each_guard_refuses_on_the_records_facts():
     ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
     with pytest.raises(StateMachineError, match="already pending"):
         ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")
-    # A fully rejected adjustment (nothing filled) is not "every leg executed": the state stays as it is.
+    # A fully rejected ADJUSTMENT (nothing filled, a position still held) has no approved row: the Q243 fix 1 row
+    # returns an un-executed strategy to Validated, which a strategy holding a position is not. Refused loudly.
     ctx = to_adjusting()
     ev_confirm_adjustment(ctx)
     ctx.result(ResultStatus.REJECTED, ctx.record.active_version.intended_position)
-    assert ctx.machine.follow_execution(at=ctx.tick()) is None
+    with pytest.raises(StateMachineError, match="no approved row"):
+        ctx.machine.follow_execution(at=ctx.tick())
     assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
     # Closing needs the record to exit: with a proposal still pending (orders may be working) it refuses.
     ctx = to_partial()
     with pytest.raises(VersionError, match="awaiting"):
         ctx.machine.close_partial(at=ctx.tick(), actor="user-1")
-    # Discard, resume and expiry refuse while the record says the broker differs.
+    # Withdraw, resume and expiry refuse while the record says the broker differs.
     ctx = to_adjusting()
     ctx.observe(odd(ctx))
     with pytest.raises(StateMachineError, match="reconciliation"):
-        ctx.machine.discard_adjustment(at=ctx.tick(), actor="user-1")
+        ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
     ctx = to_paused()
     ctx.observe(odd(ctx))
     with pytest.raises(StateMachineError, match="reconciliation"):
@@ -691,3 +708,164 @@ def test_ac2_the_transition_log_is_capped(monkeypatch):
     with pytest.raises(StateMachineError, match="full"):
         ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
     assert ctx.machine.state is S.VALIDATED and ctx.record.proposed_version is None
+
+
+# ---- Q243 (owner, 2026-09-29): five fixes to the §6 table ------------------------------------------------------
+REASONS = ("RMS:Margin Exceeds, Required:95000.00, Available:40000.00", "Order rejected: strike not tradable")
+
+
+def test_ac1_q243_fix1_nothing_filled_and_every_order_rejected_returns_to_validated_with_the_reasons():
+    """AC-1 (Q243 fix 1): no leg filled and every order finally rejected/failed -> Validated, the rejection reasons
+    shown; the user may execute again. The machine reads the record's own result, never a caller flag."""
+    ctx = to_executing()
+    ctx.result(ResultStatus.REJECTED, Position(), REASONS)
+    step = ctx.machine.follow_execution(at=ctx.tick())
+    assert ctx.machine.state is S.VALIDATED
+    assert (step.from_state, step.to_state, step.trigger) == (S.EXECUTION_IN_PROGRESS, S.VALIDATED,
+                                                             Trigger.NOTHING_FILLED)
+    assert step.detail == (("version", "1"), ("reasons", "; ".join(REASONS)))
+    assert ctx.audit.events[-1].payload["to"] == "Validated"
+    assert ctx.machine.explain() == StateExplanation(
+        S.VALIDATED,
+        f"Zerodha rejected every order of version 1 and nothing was filled. Reasons: {REASONS[0]}; {REASONS[1]}.",
+        step.at, (), "Execute again, or edit the strategy.")
+    # Execute again: a new proposed version, back to Execution in Progress through the approved row.
+    ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
+    assert ctx.machine.transitions[-1].detail == (("version", "2"),)
+    # A FAILED result with no broker text says so instead of inventing a reason.
+    ctx.result(ResultStatus.FAILED, Position())
+    assert ctx.machine.follow_execution(at=ctx.tick()).detail == (("version", "2"),
+                                                                  ("reasons", "Zerodha gave no reason"))
+    assert ctx.machine.state is S.VALIDATED
+
+
+def test_ac1_q243_fix1_only_when_nothing_filled_and_the_result_is_final():
+    """AC-1 (Q243 fix 1, negatives): a rejection with some legs filled is Partially Executed, not Validated; a
+    non-final (PARTIAL) result with nothing filled changes nothing yet."""
+    ctx = to_executing()
+    ctx.result(ResultStatus.REJECTED, some_legs(ctx), REASONS)
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.PARTIALLY_EXECUTED
+    ctx = to_executing()
+    ctx.result(ResultStatus.PARTIAL, Position())
+    assert ctx.machine.follow_execution(at=ctx.tick()) is None
+    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
+
+
+@pytest.mark.parametrize("status", [ResultStatus.REJECTED, ResultStatus.FAILED])
+def test_ac1_q243_fix4_a_final_failure_with_some_legs_filled_is_partially_executed(status):
+    """AC-1 (Q243 fix 4): some legs executed, the rest finally failed/rejected -> Partially Executed, even though the
+    platform's intended legs differ from the fills; the proposal stays open for Complete/Retry; no reconciliation."""
+    ctx = to_executing()
+    ctx.result(status, some_legs(ctx))
+    assert ctx.record.proposed_version.number == 1 and ctx.record.proposal_confirmed
+    assert not ctx.record.reconciliation_required
+    step = ctx.machine.follow_execution(at=ctx.tick())
+    assert (step.to_state, step.trigger) == (S.PARTIALLY_EXECUTED, Trigger.SOME_LEGS_EXECUTED)
+    ctx.machine.continue_execution(at=ctx.tick(), actor="user-1")  # Complete Strategy: the missing legs go out
+    ctx.result(ResultStatus.COMPLETE, full(ctx))
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.ACTIVE
+
+
+def test_ac1_q243_fix4_reconciliation_required_only_when_the_broker_differs_from_the_fills():
+    """AC-1 (Q243 fix 4): a broker position the fills cannot explain (outside baseline..intended) is Reconciliation
+    Required, during execution and after a partial."""
+    ctx = to_executing()
+    ctx.result(ResultStatus.REJECTED, overfilled(ctx))
+    assert ctx.record.reconciliation_required
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.RECONCILIATION_REQUIRED
+    ctx = to_partial()
+    ctx.result(ResultStatus.REJECTED, overfilled(ctx))
+    step = ctx.machine.sync_broker(at=ctx.tick())
+    assert (step.from_state, step.to_state, step.trigger) == (S.PARTIALLY_EXECUTED, S.RECONCILIATION_REQUIRED,
+                                                             Trigger.BROKER_DIFFERS)
+
+
+def test_ac1_q243_fix2_review_manually_is_a_view_not_a_transition():
+    """AC-1 (Q243 fix 2): "Review Manually" keeps Partially Executed and opens the review; nothing is recorded."""
+    assert allowed_triggers(S.PARTIALLY_EXECUTED, S.RECONCILIATION_REQUIRED) == frozenset({Trigger.BROKER_DIFFERS})
+    assert "USER_REVIEWS" not in Trigger.__members__
+    ctx = to_partial()
+    log, events = ctx.machine.transitions, ctx.audit.events
+    assert ctx.machine.review_partial() == ctx.machine.explain()
+    assert ctx.machine.state is S.PARTIALLY_EXECUTED
+    assert ctx.machine.transitions == log and ctx.audit.events == events
+    with pytest.raises(StateMachineError, match="Partially Executed"):
+        to_active().machine.review_partial()
+
+
+def test_ac1_q243_fix3_withdrawing_an_unconfirmed_proposal_is_recorded_in_the_version_history():
+    """AC-1 (Q243 fix 3): Adjustment Proposed -> Active when the user withdraws the proposal; the withdrawal is a
+    WITHDRAWN entry in the record's history; the version itself is kept and the active version is unchanged."""
+    ctx = to_adjusting()
+    proposal = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    step = ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
+    assert (step.from_state, step.to_state, step.trigger) == (S.ADJUSTMENT_PROPOSED, S.ACTIVE,
+                                                             Trigger.USER_WITHDRAWS_PROPOSAL)
+    assert step.detail == (("version", "2"),)
+    withdrawn = ctx.record.outcomes[-1]
+    assert (withdrawn.version_number, withdrawn.kind, withdrawn.actor, withdrawn.at, withdrawn.reference) == (
+        2, OutcomeKind.WITHDRAWN, "user-1", step.at, "withdrawn:v2")
+    assert withdrawn.intended == proposal.intended_position
+    assert ctx.record.proposed_version is None and ctx.record.active_version.number == 1
+    assert ctx.record.versions[-1] is proposal and not ctx.record.reconciliation_required
+    assert ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1).number == 3  # the strategy can be modified again
+    # With no proposal made yet there is nothing in the version history to withdraw; the state change is recorded.
+    ctx = to_adjusting()
+    count = len(ctx.record.outcomes)
+    assert ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1").detail == ()
+    assert len(ctx.record.outcomes) == count
+
+
+def test_ac1_q243_fix3_a_confirmed_or_executing_proposal_cannot_be_withdrawn():
+    """AC-1 (Q243 fix 3): only an UNCONFIRMED proposal can be withdrawn; every other withdrawal is refused by the
+    record and changes nothing."""
+    ctx = to_active()
+    with pytest.raises(VersionError, match="no proposed version"):
+        ctx.record.withdraw(2, at=ctx.tick(), actor="user-1")
+    proposal = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    with pytest.raises(VersionError, match="not the pending"):
+        ctx.record.withdraw(1, at=ctx.tick(), actor="user-1")
+    with pytest.raises(VersionError, match="actor"):
+        ctx.record.withdraw(2, at=ctx.tick(), actor="")
+    with pytest.raises(VersionError, match="before"):
+        ctx.record.withdraw(2, at=T0, actor="user-1")
+    ctx.record.confirm(proposal.number, at=ctx.tick())
+    with pytest.raises(VersionError, match="confirmed"):
+        ctx.record.withdraw(2, at=ctx.tick(), actor="user-1")
+    ctx.result(ResultStatus.PARTIAL, some_legs(ctx))  # executing: some legs already at the broker
+    with pytest.raises(VersionError, match="confirmed"):
+        ctx.record.withdraw(2, at=ctx.tick(), actor="user-1")
+    assert ctx.record.proposed_version is proposal
+    assert OutcomeKind.WITHDRAWN not in {o.kind for o in ctx.record.outcomes}
+    ctx = to_exited()
+    with pytest.raises(VersionError, match="exited"):
+        ctx.record.withdraw(1, at=ctx.tick(), actor="user-1")
+
+
+def test_ac1_q243_fix3_the_withdrawal_log_is_capped(monkeypatch):
+    """AC-1: the outcome log keeps its hard cap for withdrawals too (lowered here so the test is quick)."""
+    import ofo.strategy.versions as versions
+    ctx = to_active()
+    ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    monkeypatch.setattr(versions, "MAX_OUTCOMES", len(ctx.record.outcomes))
+    with pytest.raises(VersionError, match="full"):
+        ctx.record.withdraw(2, at=ctx.tick(), actor="user-1")
+    assert ctx.record.proposed_version.number == 2
+
+
+@pytest.mark.parametrize("reasons", ["one text", ("",), (5,), tuple(f"r{i}" for i in range(51)), ("x" * 201,)])
+def test_ac1_q243_rejection_reasons_are_checked(reasons):
+    """AC-1 (Q243 fix 1): the broker's reason texts are a bounded tuple of non-empty strings (fail closed)."""
+    with pytest.raises(VersionError, match="reasons"):
+        ExecutionResult(1, ResultStatus.REJECTED, Position(), T0, "r1", reasons)
+
+
+def test_ac1_q243_fix5_any_live_state_is_exactly_the_five_listed():
+    """AC-1 (Q243 fix 5): broker differs -> Reconciliation Required from exactly Active, Monitoring Paused,
+    Adjustment Proposed, Execution in Progress, Partially Executed; from no other state."""
+    for state in StrategyState:
+        expected = {Trigger.BROKER_DIFFERS} if state in LIVE else set()
+        assert set(allowed_triggers(state, S.RECONCILIATION_REQUIRED)) == expected, state
+    for previous in LIVE:
+        assert to_reconciliation(previous).machine.transitions[-1].from_state is previous

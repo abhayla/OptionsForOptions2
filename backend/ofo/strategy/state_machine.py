@@ -4,7 +4,10 @@ Spec basis: REQ-039 AC-1 (the 12 states), AC-2 ("Every state change is an explic
 inferred only from order rows"), AC-3 (every non-normal state says what happened, when, what is blocked and the next
 action; Q201); spec/data/domain-model.md §6, the transition table approved by the owner on 2026-09-29 (Q240) with two
 fixes: Reconciliation Required is left only through a recorded manual resolution (Q222), and Active <-> Monitoring
-Paused happens only when the user pauses or resumes; REQ-043 AC-4 (monitoring status is a separate axis); ADR-019.
+Paused happens only when the user pauses or resumes; amended the same day by Q243 (five fixes: nothing filled ->
+Validated with the reasons; "Review Manually" is not a transition; a withdrawn proposal is recorded in the version
+history; a final partial result is Partially Executed; "any live state" listed); REQ-043 AC-4 (monitoring status is a
+separate axis); ADR-019.
 
 One owner per fact, no second source of truth:
 - The OPERATIONAL STATE lives only here: it is the target of the last recorded ``StateTransition`` (Draft before the
@@ -19,11 +22,19 @@ One owner per fact, no second source of truth:
   changes"); the REQ-040 timeline's entry catalogue is fixed to its AC-1 text and has no "state changed" type.
 
 Readings of the table (spec words that needed a concrete meaning; each is reported, none adds a row):
-- "any live state" / "previous live state": Active, Monitoring Paused, Adjustment Proposed, Execution in Progress,
-  Partially Executed -- the states in which the broker can hold or be filling this strategy's position.
-- "some legs executed, some failed/rejected": the record's PARTIAL outcome for the executing version whose broker
-  position moved off the version's baseline. A final REJECTED/FAILED with some legs filled closes the proposal and
-  the record itself requires reconciliation (W-012 invariant, ADR-018), so that case moves to Reconciliation Required.
+- "any live state" / "previous live state": the five states Q243 fix 5 lists (Active, Monitoring Paused, Adjustment
+  Proposed, Execution in Progress, Partially Executed).
+- "no leg filled and every order is finally rejected/failed" (Q243 fix 1): the record's REJECTED or FAILED outcome
+  for the executing version with the broker still at the version's baseline (the record then closes the proposal).
+  The row returns an UN-executed strategy to Validated; for an adjustment of a strategy that already holds a position
+  the table has no row, so that case is refused loudly (owner question), never guessed.
+- "some legs executed, the rest finally failed/rejected" (Q243 fix 4): the record's PARTIAL, REJECTED or FAILED
+  outcome for the executing version whose broker position moved off the baseline but stayed inside baseline..intended
+  (the record keeps the proposal open). "Zerodha's positions differ from the recorded fills": the record's own
+  comparison (W-012 ``_within_path``, the same range test W-021's ``_classify_held`` uses for a partial execution)
+  found a broker position no fill of this version explains; the record sets its sticky flag and the move is
+  Reconciliation Required. The machine cannot read the order book (``ofo.orders`` may be imported only by the
+  execution flow, tests/execution/test_strategy_only.py AC-3), so the record's results are its fill records.
 - "every leg confirmed executed by the broker and reconciled": the record ACTIVATED the executing version, or (after
   returning from Reconciliation Required) a manual adoption made the broker's position the active version.
 - "all legs expired": every contract of the active version and of the broker position expired before ``at``'s
@@ -82,13 +93,13 @@ class Trigger(Enum):
     VALIDATION_FAILS = "validation fails (with reasons)"
     USER_CONFIRMS_EXECUTE = "user confirms Execute Strategy"
     EXECUTED_AND_RECONCILED = "every leg confirmed executed by the broker and reconciled"
-    SOME_LEGS_EXECUTED = "some legs executed, some failed/rejected"
+    NOTHING_FILLED = "no leg filled and every order is finally rejected/failed"
+    SOME_LEGS_EXECUTED = "some legs executed, the rest finally failed/rejected"
     USER_COMPLETES_OR_RETRIES = "user chooses complete or retry"
-    USER_REVIEWS = "user chooses review"
     USER_CLOSES_PARTIAL = "user chooses close partial"
     USER_STARTS_MODIFICATION = "user starts a modification, or accepts a detected opportunity to review"
     USER_CONFIRMS_PROPOSAL = "user confirms the proposal"
-    USER_DISCARDS_PROPOSAL = "user discards the proposal"
+    USER_WITHDRAWS_PROPOSAL = "user withdraws the proposal"
     USER_PAUSES_MONITORING = "the user explicitly pauses monitoring of this strategy"
     USER_RESUMES_MONITORING = "the user resumes monitoring of this strategy"
     BROKER_DIFFERS = "broker state differs from platform state"
@@ -100,6 +111,8 @@ class Trigger(Enum):
 
 
 _S, _T = StrategyState, Trigger
+_FINAL_FAILURES: Final = frozenset({OutcomeKind.REJECTED, OutcomeKind.FAILED})
+_FILL_KINDS: Final = _FINAL_FAILURES | {OutcomeKind.PARTIAL}
 LIVE_STATES: Final = frozenset({
     _S.ACTIVE, _S.MONITORING_PAUSED, _S.ADJUSTMENT_PROPOSED, _S.EXECUTION_IN_PROGRESS, _S.PARTIALLY_EXECUTED,
 })
@@ -116,13 +129,13 @@ def _table() -> dict[tuple[StrategyState, StrategyState], frozenset[Trigger]]:
         (_S.READY_FOR_VALIDATION, _S.DRAFT): {_T.VALIDATION_FAILS},
         (_S.VALIDATED, _S.EXECUTION_IN_PROGRESS): {_T.USER_CONFIRMS_EXECUTE},
         (_S.EXECUTION_IN_PROGRESS, _S.ACTIVE): {_T.EXECUTED_AND_RECONCILED},
+        (_S.EXECUTION_IN_PROGRESS, _S.VALIDATED): {_T.NOTHING_FILLED},
         (_S.EXECUTION_IN_PROGRESS, _S.PARTIALLY_EXECUTED): {_T.SOME_LEGS_EXECUTED},
         (_S.PARTIALLY_EXECUTED, _S.EXECUTION_IN_PROGRESS): {_T.USER_COMPLETES_OR_RETRIES},
-        (_S.PARTIALLY_EXECUTED, _S.RECONCILIATION_REQUIRED): {_T.USER_REVIEWS},
         (_S.PARTIALLY_EXECUTED, _S.EXITED): {_T.USER_CLOSES_PARTIAL},
         (_S.ACTIVE, _S.ADJUSTMENT_PROPOSED): {_T.USER_STARTS_MODIFICATION},
         (_S.ADJUSTMENT_PROPOSED, _S.EXECUTION_IN_PROGRESS): {_T.USER_CONFIRMS_PROPOSAL},
-        (_S.ADJUSTMENT_PROPOSED, _S.ACTIVE): {_T.USER_DISCARDS_PROPOSAL},
+        (_S.ADJUSTMENT_PROPOSED, _S.ACTIVE): {_T.USER_WITHDRAWS_PROPOSAL},
         (_S.ACTIVE, _S.MONITORING_PAUSED): {_T.USER_PAUSES_MONITORING},
         (_S.MONITORING_PAUSED, _S.ACTIVE): {_T.USER_RESUMES_MONITORING},
         (_S.RECONCILIATION_REQUIRED, _S.EXITED): {_T.MANUAL_RESOLUTION_BROKER_FLAT},
@@ -133,7 +146,7 @@ def _table() -> dict[tuple[StrategyState, StrategyState], frozenset[Trigger]]:
         (_S.DRAFT, _S.ARCHIVED): {_T.USER_ARCHIVES},
     }
     for live in LIVE_STATES:
-        rows.setdefault((live, _S.RECONCILIATION_REQUIRED), set()).add(_T.BROKER_DIFFERS)
+        rows[(live, _S.RECONCILIATION_REQUIRED)] = {_T.BROKER_DIFFERS}
         rows[(_S.RECONCILIATION_REQUIRED, live)] = {_T.MANUAL_RESOLUTION}
     return {pair: frozenset(triggers) for pair, triggers in rows.items()}
 
@@ -256,11 +269,17 @@ class StrategyStateMachine:
         return self._audit
 
     def explain(self) -> StateExplanation | None:
-        """AC-3: the explanation of a non-normal state; None for a normal one."""
+        """AC-3: the explanation of a non-normal state, or of a Validated strategy whose execution was rejected
+        (Q243 fix 1); None for a normal one."""
         state = self.state
-        if state not in NON_NORMAL_STATES:
+        entry = self._transitions[-1] if self._transitions else None
+        if entry is not None and entry.trigger is _T.NOTHING_FILLED:
+            reasons = dict(entry.detail)["reasons"]
+            return StateExplanation(state, f"Zerodha rejected every order of version {self._executing} and nothing "
+                                           f"was filled. Reasons: {reasons}.", entry.at, (),
+                                    "Execute again, or edit the strategy.")
+        if state not in NON_NORMAL_STATES or entry is None:
             return None
-        entry = self._transitions[-1]
         if state is _S.EXECUTION_IN_PROGRESS:
             happened = f"Orders for version {self._executing} were sent to Zerodha. Waiting for Zerodha to confirm every leg."
             next_action = "Wait for Zerodha to confirm the orders. Nothing is retried automatically."
@@ -268,11 +287,8 @@ class StrategyStateMachine:
             happened = f"Some legs of version {self._executing} executed and others did not."
             next_action = "Choose one: " + ", ".join(PARTIAL_CHOICES) + "."
         elif state is _S.RECONCILIATION_REQUIRED:
-            if entry.trigger is _T.USER_REVIEWS:
-                happened = f"{entry.actor} chose {PARTIAL_CHOICES[2]} after a partial execution."
-            else:
-                count = len(self._record.actual_position.differences(self._active_intended()))
-                happened = f"Zerodha's position differs from this strategy's ({_differs(count)})."
+            count = len(self._record.actual_position.differences(self._active_intended()))
+            happened = f"Zerodha's position differs from this strategy's ({_differs(count)})."
             next_action = _RECONCILE_NEXT
         elif state is _S.MONITORING_PAUSED:
             happened = f"Monitoring of this strategy was paused by {entry.actor}."
@@ -280,7 +296,7 @@ class StrategyStateMachine:
         else:
             active = self._record.active_version
             happened = f"A modification of version {active.number if active else '-'} was started by {entry.actor}."
-            next_action = "Confirm or discard the proposal."
+            next_action = "Confirm or withdraw the proposal."
         return StateExplanation(state, happened, entry.at, _BLOCKED[state], next_action)
 
     # ---- events: Draft to execution ----------------------------------------------------------------------------
@@ -334,11 +350,20 @@ class StrategyStateMachine:
             return self._commit(_S.ACTIVE, _T.EXECUTED_AND_RECONCILED, "system", at,
                                 (("version", str(active.number)),))
         pending = record.proposed_version
-        if (last.kind is OutcomeKind.PARTIAL and pending is not None and last.version_number == self._executing
-                == pending.number and last.actual != pending.baseline):
+        if (last.kind in _FILL_KINDS and pending is not None and last.version_number == self._executing
+                == pending.number and last.actual != pending.baseline):  # Q243 fix 4: the record kept it open
             self._precheck(_S.PARTIALLY_EXECUTED, _T.SOME_LEGS_EXECUTED, at, "system")
             return self._commit(_S.PARTIALLY_EXECUTED, _T.SOME_LEGS_EXECUTED, "system", at,
                                 (("version", str(pending.number)),))
+        if last.kind in _FINAL_FAILURES and pending is None:  # nothing filled: the record closed the proposal
+            if active is not None:
+                raise StateMachineError(
+                    f"every order of adjustment version {last.version_number} was rejected and nothing was filled; "
+                    "there is no approved row for an adjustment that never filled (domain-model §6, Q243)")
+            self._precheck(_S.VALIDATED, _T.NOTHING_FILLED, at, "system")
+            reasons = "; ".join(last.reasons) or "Zerodha gave no reason"
+            return self._commit(_S.VALIDATED, _T.NOTHING_FILLED, "system", at,
+                                (("version", str(last.version_number)), ("reasons", reasons)))
         return None
 
     def continue_execution(self, *, at: datetime.datetime, actor: str) -> StateTransition:
@@ -352,10 +377,14 @@ class StrategyStateMachine:
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, actor, at,
                             (("version", str(pending.number)),))
 
-    def review_partial(self, *, at: datetime.datetime, actor: str) -> StateTransition:
-        """Partially Executed: the user chose Review Manually."""
-        self._precheck(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, at, actor)
-        return self._commit(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, actor, at)
+    def review_partial(self) -> StateExplanation:
+        """Partially Executed: the user chose Review Manually. A view, not a transition (Q243 fix 2): the state stays
+        Partially Executed and nothing is recorded; the review shows the partial's explanation."""
+        state = self.state
+        if state is not _S.PARTIALLY_EXECUTED:
+            raise StateMachineError(f"{PARTIAL_CHOICES[2]} is offered only in Partially Executed (state is "
+                                    f"{state.value})")
+        return self.explain()  # type: ignore[return-value]  # Partially Executed is a non-normal state
 
     def close_partial(self, *, at: datetime.datetime, actor: str) -> StateTransition:
         """Partially Executed: the user chose Close Partial Strategy and the closing orders left the broker flat
@@ -388,15 +417,16 @@ class StrategyStateMachine:
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_CONFIRMS_PROPOSAL, actor, at,
                             (("version", str(pending.number)),))
 
-    def discard_adjustment(self, *, at: datetime.datetime, actor: str) -> StateTransition:
-        self._precheck(_S.ACTIVE, _T.USER_DISCARDS_PROPOSAL, at, actor)
+    def withdraw_adjustment(self, *, at: datetime.datetime, actor: str) -> StateTransition:
+        """Adjustment Proposed -> Active (Q243 fix 3). An unconfirmed proposed version is withdrawn in the record,
+        which appends a WITHDRAWN entry to the version history; the record refuses a confirmed one."""
+        self._precheck(_S.ACTIVE, _T.USER_WITHDRAWS_PROPOSAL, at, actor)
         self._refuse_if_broker_differs()
         pending = self._record.proposed_version
-        if pending is not None:
-            what = "was confirmed and may already have orders" if self._record.proposal_confirmed else \
-                "is recorded on the strategy and cannot be withdrawn here"
-            raise StateMachineError(f"proposed version {pending.number} {what}; it cannot be discarded")
-        return self._commit(_S.ACTIVE, _T.USER_DISCARDS_PROPOSAL, actor, at)
+        if pending is None:
+            return self._commit(_S.ACTIVE, _T.USER_WITHDRAWS_PROPOSAL, actor, at)
+        self._record.withdraw(pending.number, at=at, actor=actor)
+        return self._commit(_S.ACTIVE, _T.USER_WITHDRAWS_PROPOSAL, actor, at, (("version", str(pending.number)),))
 
     def pause_monitoring(self, *, at: datetime.datetime, actor: str) -> StateTransition:
         self._precheck(_S.MONITORING_PAUSED, _T.USER_PAUSES_MONITORING, at, actor)
@@ -448,8 +478,9 @@ class StrategyStateMachine:
         if self._record.exited:  # mark_exited: an explicit, audited resolution that needs a flat broker
             self._precheck(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, at, "system")
             return self._commit(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, "system", at)
-        kinds = {outcome.kind for outcome in self._record.outcomes[self._mark:]}
-        if not self._record.reconciliation_required and OutcomeKind.RECONCILED in kinds:
+        # Entered only with the record's flag set (sync_broker / follow_execution), and only reconcile() -- which
+        # appends a RECONCILED outcome -- or mark_exited (above) clears it (W-012): a cleared flag IS the resolution.
+        if not self._record.reconciliation_required:
             previous = self._transitions[-1].from_state
             self._precheck(previous, _T.MANUAL_RESOLUTION, at, "system")
             return self._commit(previous, _T.MANUAL_RESOLUTION, "system", at)

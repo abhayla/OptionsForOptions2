@@ -408,17 +408,24 @@ def test_sequence_a_overfill_then_failed_unmoved_requires_reconciliation():
         rec.confirm(2, at=at(14))
 
 
-def test_sequence_b_partial_then_rejected_unmoved_requires_reconciliation():
-    """AC-3/AC-4 red: PARTIAL then REJECTED with the broker unmoved leaves a half-filled position: flag set."""
+def test_sequence_b_partial_then_rejected_with_fills_stays_a_partial_execution():
+    """AC-3/AC-4 (amended by owner decision Q243 fix 4, 2026-09-29): PARTIAL then a final REJECTED with some legs
+    filled (inside baseline..intended) is a partially executed strategy, not a reconciliation: the proposal stays
+    pending and confirmed for Complete/Retry, no flag is set, and nothing else can start meanwhile."""
     rec = pending_two_lots()
     half = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
     assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, half, at(12), "r1")).kind is OutcomeKind.PARTIAL
-    rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, half, at(13), "r2"))
-    assert rec.reconciliation_required and rec.proposed_version is None and rec.active_version.number == 1
-    for action in (lambda: rec.edit(scaled(CONDOR, 225), at=at(14)), lambda: rec.confirm(2, at=at(14)),
-                   lambda: rec.propose_execution(at=at(14)), lambda: rec.restore(0, at=at(14))):
-        with pytest.raises(VersionError, match="reconciliation required"):
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, half, at(13), "r2")).kind is OutcomeKind.REJECTED
+    assert not rec.reconciliation_required and rec.proposed_version.number == 2 and rec.proposal_confirmed
+    assert rec.active_version.number == 1 and rec.actual_position == half
+    for action in (lambda: rec.edit(scaled(CONDOR, 225), at=at(14)), lambda: rec.propose_execution(at=at(14)),
+                   lambda: rec.restore(0, at=at(14))):
+        with pytest.raises(VersionError, match="awaiting its execution result"):
             action()
+    # Outside the path (the broker holds what no fill of version 2 explains) is still a reconciliation.
+    over = broker(bp22800=300, sp23000=-150, sc23400=-150, bc23600=150)
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, over, at(14), "r3")).kind is OutcomeKind.MISMATCH
+    assert rec.reconciliation_required and rec.proposed_version is None
 
 
 def test_sequence_c_window_does_not_slide_and_reconcile_is_the_only_way_out():

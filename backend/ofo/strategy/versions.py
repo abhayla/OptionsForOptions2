@@ -22,7 +22,10 @@ Rules implemented:
   baseline..intended makes the outcome MISMATCH, whatever the word. ``Version.baseline`` is the previous active
   version's intended position, fixed when the proposal is created: the window never slides with later reports.
 - Every result replaces the recorded actual position with the broker's position: the broker wins.
-- MISMATCH, REJECTED and FAILED close the proposal. Standing invariant, re-checked after every result: either a
+- MISMATCH closes the proposal. REJECTED and FAILED close it when nothing moved off the baseline (nothing filled);
+  with some legs filled (inside the path) the proposal stays open and confirmed: a partially executed strategy whose
+  missing legs the user may complete or retry, not a reconciliation (Q243 fix 4, domain-model §6). The broker's
+  reason texts ride on the result (``reasons``) and are kept on the outcome (Q243 fix 1). Standing invariant, re-checked after every result: either a
   proposal is pending, or the broker's position equals the active version's intended position, or the sticky
   ``reconciliation_required`` flag is set (ADR-018: an unresolved mismatch blocks execution). While it is set,
   edit/restore/propose/confirm refuse, and a late result is recorded (``BLOCKED`` or ``MISMATCH``) but activates
@@ -33,6 +36,9 @@ Rules implemented:
   flag through the same invariant; ``mark_exited()`` closes a strategy whose broker position is flat (ADR-019 Q200
   Exited; deferred issue #19: a flat broker position cannot be adopted as a definition, so without this the
   strategy stayed blocked forever). An exited strategy accepts no further change.
+- ``withdraw()`` (Q243 fix 3): the user withdraws a proposed version they have NOT confirmed; a WITHDRAWN outcome
+  (actor, time) is appended to the history and the version is kept. A confirmed proposal (orders may be out) cannot
+  be withdrawn.
 """
 from __future__ import annotations
 
@@ -58,6 +64,7 @@ MAX_HISTORY = 10_000
 MAX_VERSIONS = 1_000
 MAX_OUTCOMES = 10_000
 MAX_POSITION_LINES = 100
+MAX_REASONS = 50  # broker reason texts on one result (one per order at most; a condor has 4)
 #: How far ahead of the clock a timestamp may be (clock skew between services), never more.
 MAX_FUTURE_SKEW = datetime.timedelta(seconds=60)
 
@@ -167,6 +174,7 @@ class ExecutionResult:
     broker_position: Position
     at: datetime.datetime
     reference: str
+    reasons: tuple[str, ...] = ()  # the broker's own rejection/failure texts, shown as is (Q243 fix 1)
 
     def __post_init__(self) -> None:
         if isinstance(self.version_number, bool) or not isinstance(self.version_number, int):
@@ -177,6 +185,10 @@ class ExecutionResult:
             raise VersionError(f"broker_position must be a Position, got {self.broker_position!r}")
         _require_aware(self.at, "result time")
         _require_text(self.reference, "result reference")
+        if (not isinstance(self.reasons, tuple) or len(self.reasons) > MAX_REASONS
+                or not all(isinstance(r, str) and r.strip() and len(r) <= MAX_TEXT for r in self.reasons)):
+            raise VersionError(f"result reasons must be a tuple of at most {MAX_REASONS} non-empty strings of at most "
+                               f"{MAX_TEXT} chars, got {self.reasons!r}")
 
 
 class OutcomeKind(Enum):
@@ -189,6 +201,7 @@ class OutcomeKind(Enum):
     RECONCILED = "reconciled"  # an explicit, audited manual reconciliation (ADR-018 Q198)
     OBSERVED = "observed"  # a broker position recorded by a reconciliation run, outside any execution result
     EXITED = "exited"  # the broker position is flat and the strategy was closed (ADR-019 Q200)
+    WITHDRAWN = "withdrawn"  # the user withdrew an unconfirmed proposed version (Q243 fix 3)
 
 
 @dataclass(frozen=True)
@@ -201,6 +214,8 @@ class ExecutionOutcome:
     actual: Position
     at: datetime.datetime
     reference: str
+    reasons: tuple[str, ...] = ()  # the broker's texts from the result (Q243 fix 1)
+    actor: str | None = None  # who acted, for a user action recorded here (WITHDRAWN)
 
     @property
     def differences(self) -> tuple[tuple[Contract, int, int], ...]:
@@ -473,10 +488,13 @@ class StrategyRecord:
         elif kind is OutcomeKind.ACTIVATED:
             self._set("_active", proposal.number)
             self._set("_executed", True)
-        if kind is not OutcomeKind.PARTIAL:
+        still_open = kind is OutcomeKind.PARTIAL or (
+            kind in (OutcomeKind.REJECTED, OutcomeKind.FAILED) and actual != proposal.baseline)  # Q243 fix 4
+        if not still_open:
             self._set("_pending", None)
             self._set("_confirmed", False)
-        outcome = ExecutionOutcome(proposal.number, kind, intended, actual, result.at, result.reference)
+        outcome = ExecutionOutcome(proposal.number, kind, intended, actual, result.at, result.reference,
+                                   result.reasons)
         self._outcomes.append(outcome)
         self._recheck_invariant()
         return outcome
@@ -521,6 +539,34 @@ class StrategyRecord:
         self._outcomes.append(ExecutionOutcome(
             version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
         return version
+
+    def withdraw(self, number: int, *, at: datetime.datetime, actor: str) -> ExecutionOutcome:
+        """The user withdraws the pending proposed version ``number`` before confirming it (Q243 fix 3).
+
+        Appends a WITHDRAWN outcome (who, when) and frees the strategy for a new modification; the version itself is
+        kept (Q190). Refused for a confirmed proposal: orders may already be at the broker.
+        """
+        self._refuse_if_exited("withdraw a proposal")
+        _require_text(actor, "actor")
+        if self._pending is None:
+            raise VersionError("there is no proposed version to withdraw")
+        if number != self._pending:
+            raise VersionError(f"version {number!r} is not the pending proposed version ({self._pending})")
+        if self._confirmed:
+            raise VersionError(f"version {number} was confirmed by the user and may be executing; it cannot be "
+                               "withdrawn")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._stamp(at)
+        proposal = self._versions[number - 1]
+        reference = f"withdrawn:v{number}"
+        self._references.add(reference)
+        self._set("_pending", None)
+        outcome = ExecutionOutcome(number, OutcomeKind.WITHDRAWN, proposal.intended_position, self._actual, at,
+                                   reference, actor=actor)
+        self._outcomes.append(outcome)
+        self._recheck_invariant()
+        return outcome
 
     def observe_broker_position(
         self, position: Position, *, at: datetime.datetime, reference: str
