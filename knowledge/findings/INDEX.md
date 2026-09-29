@@ -2,7 +2,7 @@
 
 # Findings index
 
-19 finding(s), generated from `knowledge/findings/*.json`.
+20 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -11,6 +11,7 @@
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | spec_ref |
 | brief-rule-from-memory | Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it. | unguarded | occurrences, spec_ref |
 | caller-supplied-verdict-trusted | Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing. | unguarded | occurrences, spec_ref |
+| date-stamp-typed-from-memory | Any date or time written into a status document, decision row or file name from the author's sense of 'today' instead of the system clock drifts; a long session that crosses midnight, or one that plans for 'tomorrow morning', stamps the future, and every reader then trusts a date that did not happen yet. | unguarded | occurrences, spec_ref |
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | spec_ref |
 | duplicate-test-basename-collision | Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time. | guarded | spec_ref |
 | fill-not-exactly-once | Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills. | guarded | occurrences, spec_ref |

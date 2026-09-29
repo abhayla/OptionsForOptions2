@@ -157,7 +157,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
   None of these says what happens to an open entry order when the user closes.
 
-## Q222 — DECIDED (delegated overnight, ADR-045; reversible) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
+## Q222 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
 - Situation: a mismatch blocked a strategy (ADR-018); a later run finds the broker agreeing again.
 - Decision (recommendation A, applied overnight): NO automatic unblock. The block lifts only through a recorded manual
   resolution on the latest run (adopt, prepared closing order, broker flat → exited), so the user sees what happened in
@@ -168,7 +168,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   W-021 judged A the safer default.
 - Built in W-021 (`backend/ofo/reconciliation/`).
 
-## Q224 — DECIDED (delegated overnight, ADR-045; reversible) — A contract held by more than one strategy disagrees with Zerodha
+## Q224 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — A contract held by more than one strategy disagrees with Zerodha
 - Situation: strategies A and B each SELL 23400 CE x50; Zerodha nets them per contract. If the user squares off in Kite
   (broker 0) or partly (broker −50), nothing tells the platform which strategy's leg changed.
 - Finding (W-021 verifier, 2026-09-29): splitting by "broker minus the other holders' platform quantity" invented a
@@ -210,3 +210,27 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q230 — DECIDED (owner, 2026-09-29) — Q226 edge cases (W-024 round 5)
 - Decision: ban all word forms of the five words; do not ban "must"/"have to"/"ought to"; exceptions match exactly as
   spelled. Recorded in ADR-003 "Q230".
+
+## Q231 — DECIDED (owner, 2026-09-29) — Is "safety" banned by the Q230 word-form rule?
+- Decision: no — "safety" (and "safety check/checks/gate") is a reviewed exception. Recorded in ADR-003 "Q231".
+
+## Q232 — DECIDED (owner, 2026-09-29) — Which UX level shows Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
+- Decision: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
+
+## Q233 — DECIDED (owner, 2026-09-29) — Strategy table TOTAL row: P&L % and Entry Value
+- Decision: TOTAL P&L % = unrealized P&L ÷ max loss ("—" if unlimited); Entry Value only for options-only strategies.
+  Recorded in REQ-035 "Owner decision (Q233)".
+
+## Q234 — DECIDED (owner, 2026-09-29) — Zerodha Client ID format
+- Decision: 6 characters, 2–3 letters then digits (AB1234 or ABC123). Recorded in REQ-020 "Owner decision (Q234)".
+
+## Q235 — DECIDED (owner, 2026-09-29) — Trust boundary for the advice-wording check (W-024 round 6)
+- Decision: same boundary as W-026 (accidental misuse by own code, CI-flagged internals; runtime sabotage out of scope);
+  promise phrases added to the checker. Recorded in ADR-003 "Q235".
+
+## Q236 — DECIDED (owner, 2026-09-29) — TOTAL Entry Value: net or plain sum?
+- Decision: NET entry premium (sells − buys) × quantity, Cr/Dr labelled; golden condor ₹6,825 Cr. Corrects the
+  orchestrator's ambiguous "signed as the legs" in REQ-035 "Owner decision (Q233)".
+
+## Q237 — DECIDED (owner, 2026-09-29) — CI for the API/web layers on a private repo
+- Decision: (a) a path-filtered project workflow `app-tests.yml`; usage reported after a week. Recorded in ADR-046.
