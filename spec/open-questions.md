@@ -248,3 +248,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q241 — DECIDED (owner, 2026-09-29) — Moneyness column in the strategy table
 - Decision: no — leave it out; the locked column order stays. Recorded in REQ-035.
+
+## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption at every level; TOTAL P&L % "—" cases
+- Decision: caption at all three UX levels; TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
+  Recorded in REQ-035.
