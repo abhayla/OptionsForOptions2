@@ -8,6 +8,12 @@ for user-facing errors) each missed word-stem variants a verifier found in the o
 module is the fix at class level: one normaliser, one pattern list, used everywhere text reaches a
 user.
 
+Round 5 (issue #30) implements owner decision Q226 exactly: the bare words in `Q226_BARE_WORDS`,
+minus the four reviewed exceptions in `Q226_NAMED_EXCEPTIONS`, matched on TOKENS (so `_` and `-`
+split words: "you_should_buy", "RISK-FREE"), plus the ADR-003 phrase families below. The error
+catalogue's `render()` runs it on every finished message at runtime; the strategy template loader
+runs it on top of its own list (`ofo.strategy.wording`), so neither is narrower than before.
+
 ADR-003 forbidden wording (quoted): "You should take this trade", "This is the best trade",
 "Best adjustment", "Recommended trade", "Guaranteed", "Risk-free", "Certain profit", and any promise
 of returns or of reduced losses.

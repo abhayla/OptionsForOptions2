@@ -183,6 +183,15 @@ def test_attack_you_should_buy_in_code_slot_is_refused_and_flagged() -> None:
     assert find_advice_wording("RISK_FREE") != []
 
 
+def test_closed_slots_refuse_free_words_that_are_not_advice() -> None:
+    """AC-2: the closed slots are the FIRST line on their own: a free word the wording check would
+    pass ("WINNER-PICK", "HELLO") is still refused, so the slot, not the second line, stops it."""
+    with pytest.raises(ValueError):
+        render("internal_system_save_failed", reference="HELLO")
+    with pytest.raises(ValueError):
+        render("market_data_stale", symbol="WINNER-PICK", minutes=5)
+
+
 class _EvilStr(str):
     """A str whose formatting says something other than its value (a known check code)."""
 
@@ -255,6 +264,8 @@ def test_attack_rendered_error_is_immutable() -> None:
         error.what_happened = "you should buy"  # type: ignore[misc]
     with pytest.raises(AttributeError):
         object.__setattr__(error, "what_happened", "you should buy")
+    with pytest.raises(AttributeError):
+        object.__setattr__(error, "note", "you should buy")  # no instance dict to carry extra text
     assert error.what_happened == "The lot size you entered (0) is not a positive whole number."
 
 
