@@ -14,25 +14,10 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import CONTRACTS, LOT, REFS, plan
+from plan_inputs import BUY, CE, EXP, FUT, NEXT, PE, SELL, leg, mk
 
-from ofo.engine import Action, Instrument, Leg
-from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg
+from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan
 from ofo.execution.sequence import OrderSequence, PlanStep, StepKind, Undetermined, Unprotected, sequence_plan
-
-EXP = datetime.date(2026, 10, 6)
-NEXT = datetime.date(2026, 10, 13)
-BUY, SELL = Action.BUY, Action.SELL
-CE, PE, FUT = Instrument.CE, Instrument.PE, Instrument.FUT
-
-
-def leg(action: Action, kind: Instrument, strike: str | None, qty: int = LOT, expiry: datetime.date = EXP,
-        price: str = "50.00") -> Leg:
-    return Leg(action, kind, D(strike) if strike else None, expiry, qty, D(price))
-
-
-def mk(*legs: Leg) -> ExecutionPlan:
-    return ExecutionPlan("S-9", tuple(PlannedLeg(f"L{i + 1}", f"C{i + 1}", lg) for i, lg in enumerate(legs)))
-
 
 # leg-1 BUY 22,800 PE · leg-2 SELL 23,000 PE · leg-3 SELL 23,400 CE · leg-4 BUY 23,600 CE (§6)
 BUY_PE, SELL_PE, SELL_CE, BUY_CE = REFS
@@ -169,3 +154,35 @@ def test_ac2_a_sequence_cannot_be_forged_by_the_caller() -> None:
         OrderSequence("S-1", (PlanStep(StepKind.OTHER, REFS),), (), (), (), "mine")
     with pytest.raises(ValueError, match="needs an ExecutionPlan"):
         sequence_plan([p for p in plan().legs])  # type: ignore[arg-type]
+
+
+def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(catalogue, eligibility) -> None:  # noqa: ANN001
+    """AC-3: W-023's Complete now follows this plan. BUY 22,800 PE (filled) · SELL 23,000 PE · BUY 23,600 CE (both
+    rejected). The sold put depends on the filled put wing (step 2); the bought call protects nothing (step 3). So
+    Complete prepares SELL 23,000 PE then BUY 23,600 CE; a buys-first sort would reverse them."""
+    from partial_inputs import (BROKER_IDS, FILL_AT, REJECT_TEXT, STRATEGY_ID, FakeBroker, FakePlanner,
+                                entry_context, new_book)
+
+    from ofo.execution.partial import BrokerOrderStatus, BrokerPositionLine, complete_strategy
+    from ofo.orders import FillEvent, Order, OrderState
+
+    full = plan().legs
+    three = ExecutionPlan(STRATEGY_ID, (full[0], full[1], full[3]))
+    assert sequence_plan(three).sequence == (BUY_PE, SELL_PE, BUY_CE)
+    book = new_book()
+    ids = (BROKER_IDS[0], BROKER_IDS[1], BROKER_IDS[3])
+    for p, bid in zip(three.legs, ids):
+        book.add(Order(STRATEGY_ID, p.leg_ref, p.contract, p.leg.action, p.leg.quantity, p.leg.entry_price,
+                       broker_order_id=bid))
+        book.transition(bid, OrderState.SUBMITTED)
+    book.apply_fill(FillEvent("T-1", ids[0], full[0].contract, BUY, LOT, D("42.50"), FILL_AT))
+    book.transition(ids[1], OrderState.REJECTED)
+    book.transition(ids[2], OrderState.REJECTED)
+    broker = FakeBroker(
+        [BrokerPositionLine(full[0].contract, LOT, D("42.50"), None)],
+        [BrokerOrderStatus(ids[0], full[0].contract, OrderState.EXECUTED, LOT),
+         BrokerOrderStatus(ids[1], full[1].contract, OrderState.REJECTED, 0, REJECT_TEXT),
+         BrokerOrderStatus(ids[2], full[3].contract, OrderState.REJECTED, 0, REJECT_TEXT)])
+    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [
+        ("NIFTY26OCT23000PE", SELL, LOT), ("NIFTY26OCT23600CE", BUY, LOT)]
