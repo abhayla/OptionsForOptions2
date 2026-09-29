@@ -431,10 +431,12 @@ def test_q226_bare_words_are_flagged_after_splitting_on_underscore_and_hyphen(te
 @pytest.mark.parametrize(
     "text",
     ["The best bid is 101.5.", "Best ask: 102.", "The best-case outcome is ₹4,000.", "Make sure your session is live.",
-     "best_bid", "BEST-ASK"],
+     "BEST BID", "MAKE SURE"],
 )
 def test_q226_named_exceptions_pass(text: str) -> None:
-    """AC-2 / Q226: the four reviewed exceptions are not flagged, whatever the joiner or case."""
+    """AC-2 / Q226+Q230: the four reviewed exceptions pass as spelled, in any letter case (Q230
+    round 6: "best_bid" and "BEST-ASK" are no longer exceptions; see
+    test_q230_exceptions_match_only_as_spelled)."""
     from ofo.wording import find_advice_wording
 
     assert find_advice_wording(text) == []
@@ -451,12 +453,204 @@ def test_q226_an_exception_covers_only_its_own_words(text: str) -> None:
     assert find_advice_wording(text) != []
 
 
-@pytest.mark.parametrize("text", ["the second-best bid", "ensure", "unsafe", "safely", "insurer", "bestow"])
-def test_q226_only_whole_words_are_bare_words(text: str) -> None:
-    """AC-2 / Q226 says "bare words": a word that merely contains the letters is not the bare word
-    ("unsafe", "ensure", "bestow"); but a hyphen splits, so "second-best" is caught unless it is
-    one of the exceptions. Hand-worked: "the second-best bid" -> tokens second, best, bid ->
-    "best bid" is an exception -> clean."""
+@pytest.mark.parametrize("text", ["the second-best bid", "ensure", "unsafe", "insurer", "assured"])
+def test_q226_only_words_that_start_with_the_word_are_banned(text: str) -> None:
+    """AC-2 / Q226+Q230: a word form STARTS with the banned word ("safely", "surely"); a word that
+    merely contains the letters later on ("unsafe", "ensure", "insurer", "assured") is another word.
+    A hyphen splits, so "second-best" is caught unless it is one of the exceptions. Hand-worked:
+    "the second-best bid" -> "best bid" appears exactly as spelled -> masked -> clean.
+    (Round 6: "safely" and "bestow" moved out of this list: Q230 bans "safely" by name, and every
+    token starting with a banned word is treated as a word form, so "bestow" is caught too.)"""
     from ofo.wording import find_advice_wording
 
     assert find_advice_wording(text) == []
+
+
+# --- Round 6 (issue #30, owner decision Q230): checks inside the builder; Q226 made exact --------
+# Q230 (ADR-003, quote): "the ban covers every word form of the five words (e.g. "best", "safest",
+# "safely", "safer", "surely", "guaranteed", "recommended", "recommendation"). "must", "have to" and
+# "ought to" are NOT banned ... The four exceptions match only as spelled ("best bid", "best ask",
+# "best-case", "make sure"); "best case" with a space is not an exception. The checks run inside the
+# one function that builds a message, so no construction route skips them."
+
+_ADVICE = "You should take this trade; it is the best, guaranteed."
+_CLEAN_PARTS = {
+    "impact": "Zerodha would not accept this order.",
+    "what_is_blocked": "Execution of this strategy.",
+    "next_action": "Add funds in Zerodha, then retry.",
+}
+
+
+def _builder_and_token() -> tuple[object, object]:
+    """The round-5 verifier's probe: the private builder and its token, pulled out of render()'s
+    closure with inspect.getclosurevars (no private name is typed)."""
+    import inspect
+
+    nonlocals = inspect.getclosurevars(render).nonlocals
+    return nonlocals["build"], nonlocals["token"]
+
+
+def _build_via_closure(**overrides: object) -> object:
+    build, token = _builder_and_token()
+    fields: dict[str, object] = {
+        "error_class": ErrorClass.MARGIN,
+        "code": "MARGIN_001",
+        "what_happened": "Margin available is below what this strategy needs.",
+        **_CLEAN_PARTS,
+        "external": None,
+    }
+    fields.update(overrides)
+    return build(token, **fields)  # type: ignore[operator]
+
+
+def test_round6_core_builder_reached_through_the_closure_refuses_advice() -> None:
+    """AC-2 core (round 6): calling the builder directly, reached with inspect.getclosurevars, with
+    the ADR-003 text "You should take this trade; it is the best, guaranteed." raises, because the
+    wording check runs INSIDE the builder, not only in render()."""
+    with pytest.raises(ValueError, match="banned wording"):
+        _build_via_closure(what_happened=_ADVICE)
+
+
+def test_round6_builder_through_the_closure_accepts_a_clean_message() -> None:
+    """AC-2: the same route with clean, distinct, Latin text builds (the refusal above is the
+    wording check, not a blanket refusal); every part reads back as given."""
+    error = _build_via_closure()
+    assert error.what_happened == "Margin available is below what this strategy needs."  # type: ignore[attr-defined]
+    assert error.next_action == "Add funds in Zerodha, then retry."  # type: ignore[attr-defined]
+    assert error.external_text is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("part", ["what_happened", "impact", "what_is_blocked", "next_action"])
+def test_round6_builder_checks_every_part_for_wording(part: str) -> None:
+    """AC-2: each of the four parts is scanned inside the builder."""
+    with pytest.raises(ValueError, match="banned wording"):
+        _build_via_closure(**{part: "A safer route is open."})
+
+
+@pytest.mark.parametrize("part", ["what_happened", "impact", "what_is_blocked", "next_action"])
+def test_round6_builder_refuses_a_blank_part(part: str) -> None:
+    """AC-2 (all four parts required): a part that is only a zero-width space is blank."""
+    with pytest.raises(ValueError, match="blank"):
+        _build_via_closure(**{part: "​"})
+
+
+def test_round6_builder_refuses_a_non_latin_part() -> None:
+    """AC-2: a Cyrillic look-alike ("о", U+043E) is refused inside the builder."""
+    with pytest.raises(ValueError, match="non-Latin"):
+        _build_via_closure(what_happened="Margin is lоw right now.")
+
+
+def test_round6_builder_refuses_a_part_that_is_not_exactly_str() -> None:
+    """AC-2: a str subclass could print anything; the builder takes exactly str."""
+
+    class Sneaky(str):
+        pass
+
+    with pytest.raises(TypeError):
+        _build_via_closure(impact=Sneaky("Zerodha would not accept this order."))
+
+
+def test_round6_builder_refuses_duplicate_parts() -> None:
+    """AC-2: four parts means four different statements (round-3 finding: parts differing only by
+    a full stop)."""
+    with pytest.raises(ValueError, match="duplicate"):
+        _build_via_closure(impact="Execution of this strategy", what_is_blocked="Execution of this strategy.")
+
+
+def test_round6_builder_refuses_a_wrong_error_class_or_code() -> None:
+    """AC-1/AC-2: the class is an ErrorClass and the code is that class's name + 3 digits, so a code
+    can never carry words ("YOU_SHOULD_BUY") or disagree with the class."""
+    with pytest.raises(TypeError):
+        _build_via_closure(error_class="MARGIN")
+    for code in ("YOU_SHOULD_BUY", "MARGIN_1", "USER_INPUT_001", "MARGIN_001\n"):
+        with pytest.raises(ValueError, match="code"):
+            _build_via_closure(code=code)
+
+
+def test_round6_builder_refuses_unlabelled_external_text() -> None:
+    """Q226: outside text is shown only quoted in a labelled field: the builder takes an
+    ExternalText (never a bare string), and shows it with its label."""
+    from ofo.errors.slots import ExternalSource
+
+    with pytest.raises(TypeError):
+        _build_via_closure(external="You should buy now")
+    error = _build_via_closure(external=ExternalText(source=ExternalSource.ZERODHA, text="RMS: blocked"))
+    assert error.external_text == "Zerodha's message: «RMS: blocked»"  # type: ignore[attr-defined]
+
+
+def test_round6_builder_refuses_missing_or_extra_fields() -> None:
+    """AC-2: all four parts are required; no other field can be smuggled in."""
+    build, token = _builder_and_token()
+    with pytest.raises(TypeError):
+        build(token, error_class=ErrorClass.MARGIN, code="MARGIN_001", what_happened="x",  # type: ignore[operator]
+              impact="y", what_is_blocked="z", external=None)
+    with pytest.raises(TypeError):
+        _build_via_closure(extra_part="free text")
+
+
+def test_round6_a_registry_entry_written_directly_is_refused_on_read() -> None:
+    """AC-2 (every construction route): an instance made with object.__new__ and given text by
+    writing the private registry (reached with getclosurevars) is refused when read, because the
+    same checks run on every read."""
+    import inspect
+    from types import MappingProxyType
+
+    from ofo.errors import UserFacingError
+    from ofo.errors import model as model_module
+
+    registry = inspect.getclosurevars(getattr(model_module, "_fields_of")).nonlocals["issued"]
+    forged = object.__new__(UserFacingError)
+    registry[forged] = MappingProxyType({
+        "error_class": ErrorClass.MARGIN, "code": "MARGIN_001", "what_happened": _ADVICE,
+        **_CLEAN_PARTS, "external": None,
+    })
+    with pytest.raises(ValueError, match="banned wording"):
+        forged.what_happened  # noqa: B018 - the read is the point
+
+
+@pytest.mark.parametrize(
+    "text,word",
+    [("The safest leg.", "safe"), ("It will surely rise.", "sure"), ("Recommended setup.", "recommend*"),
+     ("Exit safely.", "safe"), ("A safer route.", "safe"), ("Guaranteed", "guarantee*"),
+     ("Our recommendation", "recommend*"), ("The bests of the day.", "best"), ("Surer odds.", "sure")],
+)
+def test_q230_every_word_form_is_banned(text: str, word: str) -> None:
+    """Q230: every word form of the five words is banned (ADR-003's own examples plus plurals)."""
+    from ofo.wording import find_advice_wording
+
+    assert word in find_advice_wording(text)
+
+
+@pytest.mark.parametrize("text", ["The best case is a gain.", "best_case", "best_bid", "BEST-ASK", "make-sure",
+                                  "best  bid", "best\tbid"])
+def test_q230_exceptions_match_only_as_spelled(text: str) -> None:
+    """Q230: "best case" with a space (or any other joiner than the one written) is not an
+    exception; the bare word inside it is then caught."""
+    from ofo.wording import find_advice_wording
+
+    assert find_advice_wording(text) != [], text
+
+
+@pytest.mark.parametrize("text", ["You must reconnect Zerodha.", "You have to log in again.",
+                                  "The order ought to be reviewed by you.", "MUST"])
+def test_q230_must_have_to_ought_to_are_allowed(text: str) -> None:
+    """Q230: "must", "have to" and "ought to" are NOT banned."""
+    from ofo.wording import find_advice_wording
+
+    assert find_advice_wording(text) == []
+
+
+def test_q230_a_platform_instruction_with_must_builds() -> None:
+    """Q230's own example, "You must reconnect Zerodha", passes the builder's checks."""
+    error = _build_via_closure(next_action="You must reconnect Zerodha.")
+    assert error.next_action == "You must reconnect Zerodha."  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("text", ["​", "​‌‍", "   ", "﻿"])
+def test_external_text_that_is_only_invisible_characters_is_refused(text: str) -> None:
+    """AC-2 / Q226: an ExternalText that shows nothing (only a zero-width space, BOM or spaces) is
+    refused; Zerodha's message field is never empty to the eye."""
+    from ofo.errors.slots import ExternalSource
+
+    with pytest.raises(ValueError, match="blank"):
+        ExternalText.validate(ExternalText(source=ExternalSource.ZERODHA, text=text))
