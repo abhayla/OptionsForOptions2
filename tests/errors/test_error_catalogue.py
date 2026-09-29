@@ -253,50 +253,99 @@ def test_ast_no_direct_userfacingerror_calls_and_no_fstring_arguments_to_render(
     assert not offenders, "\n".join(offenders)
 
 
+#: Private construction machinery of `ofo.errors.model` / `ofo.errors.templates`. Naming any of
+#: them outside those two files is a reach round `render()`.
+_PRIVATE_MACHINERY = {"_build", "_claim_render_token", "_fields_of", "_make_machinery", "_make_render"}
+#: Introspection that can pull the closure-held token or registry out of `render`/`_build`.
+_INTROSPECTION_ATTRS = {"__closure__", "cell_contents", "__globals__", "get_referents", "get_referrers"}
+
+
+def _names_user_facing_error(node: ast.AST) -> bool:
+    return (isinstance(node, ast.Name) and node.id == "UserFacingError") or (
+        isinstance(node, ast.Attribute) and node.attr == "UserFacingError"
+    )
+
+
+def _render_bypass_offences(tree: ast.AST) -> list[str]:
+    """Every source-level way round `render()` in one module's AST (round 5, brief item 4):
+    - a `_build` / other private-machinery name (as an attribute, or imported from ofo.errors);
+    - importing `ofo.errors.model` or `ofo.errors.templates` internals at all (the public surface
+      is `ofo.errors`);
+    - `object.__new__(UserFacingError)` or `UserFacingError.__new__(...)`;
+    - a class that subclasses `UserFacingError`;
+    - closure/GC introspection (`__closure__`, `cell_contents`, `__globals__`, `gc.get_referents`)."""
+    found: list[str] = []
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Attribute):
+            if node.attr in _PRIVATE_MACHINERY:
+                found.append(f"{line}: private render machinery .{node.attr}")
+            if node.attr in _INTROSPECTION_ATTRS:
+                found.append(f"{line}: introspection .{node.attr}")
+            if node.attr == "__new__" and _names_user_facing_error(node.value):
+                found.append(f"{line}: UserFacingError.__new__")
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("ofo.errors"):
+            if node.module in {"ofo.errors.model", "ofo.errors.templates"}:
+                found.append(f"{line}: imports from {node.module}")
+            for alias in node.names:
+                if alias.name in _PRIVATE_MACHINERY or alias.name in {"model", "templates"}:
+                    found.append(f"{line}: imports {alias.name} from {node.module}")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"ofo.errors.model", "ofo.errors.templates"}:
+                    found.append(f"{line}: imports {alias.name}")
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "__new__"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "object"
+                and any(_names_user_facing_error(a) for a in [*node.args, *(k.value for k in node.keywords)])
+            ):
+                found.append(f"{line}: object.__new__(UserFacingError)")
+        if isinstance(node, ast.ClassDef) and any(_names_user_facing_error(b) for b in node.bases):
+            found.append(f"{line}: class {node.name} subclasses UserFacingError")
+    return found
+
+
 def test_ast_no_bypass_of_render_outside_the_catalogue_module() -> None:
-    """Round-4 fix: `_build(...)`, `object.__new__(...)` and any `UserFacingError` subclass are only
-    legitimate inside `errors/model.py` (defines `_build`) and `errors/templates.py` (`render`, the
-    only caller). Anywhere else in `backend/ofo`, any of the three is a way round `render()` that the
-    independent reviewer found unguarded in round 3."""
+    """AC-2 (round 5): no module in backend/ofo outside errors/model.py and errors/templates.py
+    reaches round `render()` by any of the shapes `_render_bypass_offences` names."""
     offenders: list[str] = []
     for path in BACKEND_OFO_DIR.rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        if path in _CATALOGUE_MODULE_FILES:
+        if "__pycache__" in path.parts or path in _CATALOGUE_MODULE_FILES:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func = node.func
-                if isinstance(func, ast.Attribute) and func.attr == "_build":
-                    offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}: call to _build(...)")
-                if (
-                    isinstance(func, ast.Attribute)
-                    and func.attr == "__new__"
-                    and isinstance(func.value, ast.Name)
-                    and func.value.id == "object"
-                ):
-                    # Only `object.__new__(UserFacingError)`-shaped calls are a bypass of render();
-                    # `object.__new__(SomeOtherClass)` is an unrelated, legitimate pattern elsewhere
-                    # in the codebase (e.g. `Order._copy_with`) and is not this test's concern.
-                    args = list(node.args) + [kw.value for kw in node.keywords]
-                    mentions_target = any(
-                        (isinstance(a, ast.Name) and a.id == "UserFacingError")
-                        or (isinstance(a, ast.Attribute) and a.attr == "UserFacingError")
-                        for a in args
-                    )
-                    if mentions_target:
-                        offenders.append(
-                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}: call to object.__new__(UserFacingError)"
-                        )
-            if isinstance(node, ast.ClassDef):
-                for base in node.bases:
-                    base_name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", None)
-                    if base_name == "UserFacingError":
-                        offenders.append(
-                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}: class {node.name} subclasses UserFacingError"
-                        )
+        offenders += [f"{path.relative_to(REPO_ROOT)}:{o}" for o in _render_bypass_offences(tree)]
     assert not offenders, "\n".join(offenders)
+
+
+_BYPASS_SAMPLES = {
+    "module _build": "from ofo.errors import model\nmodel._build(tok, what_happened='you should buy')",
+    "import _build": "from ofo.errors.model import _build",
+    "claim token": "import ofo.errors.model\nofo.errors.model._claim_render_token()",
+    "object.__new__": "from ofo.errors import UserFacingError\nx = object.__new__(UserFacingError)",
+    "class __new__": "from ofo.errors import UserFacingError\nx = UserFacingError.__new__(UserFacingError)",
+    "subclass": "from ofo.errors import UserFacingError\nclass E(UserFacingError):\n    pass",
+    "dotted subclass": "import ofo.errors\nclass E(ofo.errors.UserFacingError):\n    pass",
+    "closure": "from ofo.errors import render\ntok = render.__closure__[0].cell_contents",
+    "gc": "import gc\nfrom ofo.errors import render\ngc.get_referents(render)",
+    "templates internals": "from ofo.errors.templates import _make_render",
+}
+
+
+@pytest.mark.parametrize("label", sorted(_BYPASS_SAMPLES))
+def test_ast_bypass_detector_flags_each_bypass_shape(label: str) -> None:
+    """AC-2 (round 5): the detector itself goes red on each bypass shape the round-3 verifier used
+    (`_build`, `object.__new__`, a subclass) and the closure/import routes round 5 closed."""
+    assert _render_bypass_offences(ast.parse(_BYPASS_SAMPLES[label])) != [], label
+
+
+def test_ast_bypass_detector_passes_ordinary_code() -> None:
+    """AC-2: public use of ofo.errors is not flagged (no false positive on the intended path)."""
+    ok = "from ofo.errors import ErrorClass, render\nerr = render('user_input_lot_size', entered=0)\nerr.as_dict()"
+    assert _render_bypass_offences(ast.parse(ok)) == []
 
 
 # --- Mutation tests: each must go red against the checks above ----------------------------------

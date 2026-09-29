@@ -5,7 +5,7 @@ broker authentication, broker eligibility, margin, order rejection, partial exec
 reconciliation mismatch, notification, entitlement/access, internal system."
 
 Member names are the AC-1 phrases normalised to `UPPER_SNAKE_CASE` (spaces and `/` become `_`),
-which is what lets `tests/errors/test_catalogue.py` parse the requirement text on disk and check
+which is what lets `tests/errors/test_error_catalogue.py` parse the requirement text on disk and check
 every listed class has a member, without hand-typing the mapping twice.
 """
 

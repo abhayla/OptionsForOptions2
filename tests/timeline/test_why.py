@@ -90,15 +90,7 @@ def test_answer_has_no_advice_words():
     assert advice_words_in(text) == []
     fixed = [*INPUT_LABELS.values(), *OP_WORDS.values(), *ACTION_WORDS.values(), *FOLLOW_UP_LABELS.values()]
     assert [phrase for phrase in fixed if advice_words_in(phrase)] == []
-    # checker is live: shared ofo.wording label families changed shape on purpose (W-024) to
-    # generalise past exact substrings ("should" catches every "should"/"shouldn't" phrasing; "best
-    # <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>" replaced a bare "best"
-    # that false-positived on ordinary words like "best way" — see tests/strategy/test_templates.py).
-    # This assertion is updated to the real current labels rather than the stale ones it hardcoded.
-    assert advice_words_in("You should exit now, it is the best trade") == [
-        "should",
-        "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>",
-    ]
+    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should"]  # checker is live
     assert "Alert generated: yes." in text and "Executed: no." in text
     assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 
