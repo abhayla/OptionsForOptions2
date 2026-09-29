@@ -14,7 +14,7 @@ import pytest
 
 from ofo.engine.legs import Instrument as EngineInstrument
 from ofo.errors import ErrorClass, render
-from ofo.errors.slots import Code, ExternalText, Instrument, Int, Money, Time
+from ofo.errors.slots import Code, ExternalText, Instrument, Int, Money, PnLMoney, Time, Underlying
 
 
 # --- Slot types: validate + format ---------------------------------------------------------------
@@ -28,6 +28,32 @@ def test_money_requires_decimal_not_str_int_float_bool() -> None:
 
 def test_money_format_uses_rupee_sign_and_thousands_separator() -> None:
     assert Money.format(Decimal("41200")) == "₹41,200"
+
+
+def test_money_rejects_nan_and_infinity() -> None:
+    """AC-2 (W-024 round-4 fix): NaN/Infinity must be refused, not rendered as "₹NaN"/crash."""
+    for bad in (Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")):
+        with pytest.raises(ValueError):
+            Money.validate(bad)
+
+
+def test_money_rejects_negative_amounts() -> None:
+    """AC-2 (W-024 round-4 fix): every current Money slot is an amount (never a P&L), so negative is
+    refused; a P&L slot uses `PnLMoney` instead."""
+    with pytest.raises(ValueError):
+        Money.validate(Decimal("-5"))
+
+
+def test_pnlmoney_allows_negative_but_still_rejects_nan_and_infinity() -> None:
+    PnLMoney.validate(Decimal("-1500"))  # ok: a real loss
+    for bad in (Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")):
+        with pytest.raises(ValueError):
+            PnLMoney.validate(bad)
+
+
+def test_pnlmoney_format_shows_a_leading_sign_for_a_loss() -> None:
+    assert PnLMoney.format(Decimal("-1500")) == "-₹1,500"
+    assert PnLMoney.format(Decimal("1500")) == "₹1,500"
 
 
 def test_int_requires_int_not_bool_or_float() -> None:
@@ -54,12 +80,29 @@ def test_instrument_requires_engine_instrument_enum() -> None:
         Instrument.validate("CE")
 
 
-def test_code_rejects_free_text_with_spaces() -> None:
-    Code.validate("ORDER-REF-001")  # ok
-    with pytest.raises(ValueError):
-        Code.validate("this is a sentence with spaces")
+def test_code_is_a_closed_enum_known_check_code_or_strict_reference_id() -> None:
+    """AC-2 (W-024 round-4 fix): Code is closed to known check codes / a strict `ERR-`+8-hex
+    reference id — no free words, however they are joined."""
+    Code.validate("MARGIN_INSUFFICIENT")  # ok: a known CheckCode value
+    Code.validate("ERR-DEADBEEF")  # ok: strict reference id format
+    for bad in ("this is a sentence with spaces", "ORDER-REF-001", "risk-free", "you_should_buy"):
+        with pytest.raises(ValueError):
+            Code.validate(bad)
     with pytest.raises(TypeError):
         Code.validate("")
+
+
+def test_underlying_is_closed_to_the_catalogues_supported_symbols() -> None:
+    """AC-2 (W-024 round-4 fix): the market-symbol slot is closed to the catalogue's underlyings
+    (NIFTY/SENSEX) — never a free word."""
+    Underlying.validate("NIFTY")  # ok
+    Underlying.validate("SENSEX")  # ok
+    with pytest.raises(ValueError):
+        Underlying.validate("GUARANTEED-PROFIT")
+    with pytest.raises(ValueError):
+        Underlying.validate("BANKNIFTY")  # not in SUPPORTED_UNDERLYINGS
+    with pytest.raises(TypeError):
+        Underlying.validate("")
 
 
 def test_external_text_requires_nonblank_source_and_text() -> None:

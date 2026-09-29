@@ -19,6 +19,14 @@ from .classes import ErrorClass
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 
+#: Module-private sentinel (round-4 fix, REQ-065/W-024 second parked round): the ONE token that
+#: `_build` will accept. It is created here and imported ONLY by `ofo.errors.templates` (`render`'s
+#: home module); nothing else in the codebase has a reference to it, so nothing else can call
+#: `_build` successfully even though `_build` itself is not name-mangled. The AST test
+#: (`tests/errors/test_error_catalogue.py`) additionally flags any `_build(`/`object.__new__(...)`
+#: call, or any `UserFacingError` subclass, outside this module and `templates.py`.
+_RENDER_TOKEN = object()
+
 
 @dataclass(frozen=True)
 class UserFacingError:
@@ -44,10 +52,20 @@ class UserFacingError:
             "ofo.errors.templates.render(template_id, **slots), never by passing free text directly"
         )
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Round-4 fix: a subclass could otherwise define its own `__init__`/fields and bypass
+        `__post_init__`'s refusal entirely. There is no legitimate reason to subclass a message
+        carrier that has exactly one builder (`render`); refuse at class-definition time."""
+        raise TypeError(
+            "UserFacingError must not be subclassed (W-024): the only way to build an instance is "
+            "ofo.errors.templates.render(template_id, **slots)"
+        )
+
     @classmethod
     def _build(
         cls,
         *,
+        _token: object,
         error_class: ErrorClass,
         code: str,
         what_happened: str,
@@ -57,9 +75,17 @@ class UserFacingError:
         external_text: str | None = None,
     ) -> "UserFacingError":
         """Construct an instance WITHOUT running `__post_init__` (bypasses the free-text refusal
-        above). Called only from `ofo.errors.templates.render`, after every slot has already been
-        validated and every part has already come from a CI-scanned template — never called with
-        caller-supplied free text."""
+        above). Round-4 fix: requires `_token` to be this module's private `_RENDER_TOKEN` object,
+        which only `ofo.errors.templates` imports — so even a caller that reaches `_build` directly
+        (bypassing the AST guard) cannot supply a valid token from outside this package. Called only
+        from `ofo.errors.templates.render`, after every slot has already been validated and every
+        part has already come from a CI-scanned template — never called with caller-supplied free
+        text."""
+        if _token is not _RENDER_TOKEN:
+            raise ValueError(
+                "UserFacingError._build requires the render()-only sentinel token; build an "
+                "instance with ofo.errors.templates.render(template_id, **slots) instead"
+            )
         obj = object.__new__(cls)
         object.__setattr__(obj, "error_class", error_class)
         object.__setattr__(obj, "code", code)

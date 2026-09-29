@@ -15,6 +15,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from ofo.engine.legs import Instrument as _EngineInstrument
+from ofo.execution.safety import CheckCode
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 
 class SlotType:
@@ -30,17 +32,44 @@ class SlotType:
 
 
 class Money(SlotType):
-    """A rupee amount. Must be `decimal.Decimal` (ADR-008: money is exact decimal, never float)."""
+    """A non-negative rupee amount. Must be `decimal.Decimal` (ADR-008: money is exact decimal,
+    never float), finite (NaN/Infinity refused: round-4 verifier finding — a template once rendered
+    "₹NaN is below the ₹-5 this strategy needs"), and >= 0 — every current Money slot is an amount
+    (available/required margin), never a P&L; a slot that legitimately needs a sign uses `PnLMoney`.
+    """
 
     @staticmethod
     def validate(value: object) -> None:
         if isinstance(value, bool) or not isinstance(value, Decimal):
             raise TypeError(f"Money slot requires decimal.Decimal, got {type(value).__name__}")
+        if not value.is_finite():
+            raise ValueError(f"Money slot requires a finite value, got {value!r} (NaN/Infinity refused)")
+        if value < 0:
+            raise ValueError(f"Money slot requires a non-negative amount, got {value!r}")
 
     @staticmethod
     def format(value: Decimal) -> str:
         quantised = value.quantize(Decimal("1")) if value == value.to_integral_value() else value
         return f"₹{quantised:,}"
+
+
+class PnLMoney(SlotType):
+    """A profit/loss rupee amount: may be negative (a loss), but still `decimal.Decimal` and finite
+    (NaN/Infinity refused). Use only for a slot that is genuinely a signed P&L figure — every other
+    money slot is `Money` (amounts are never negative)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if isinstance(value, bool) or not isinstance(value, Decimal):
+            raise TypeError(f"PnLMoney slot requires decimal.Decimal, got {type(value).__name__}")
+        if not value.is_finite():
+            raise ValueError(f"PnLMoney slot requires a finite value, got {value!r} (NaN/Infinity refused)")
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        quantised = value.quantize(Decimal("1")) if value == value.to_integral_value() else value
+        sign = "-" if quantised < 0 else ""
+        return f"{sign}₹{abs(quantised):,}"
 
 
 class Int(SlotType):
@@ -84,18 +113,58 @@ class Instrument(SlotType):
         return value.name
 
 
-_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+$")
+#: Strict incident-reference format: "ERR-" + 8 hex digits, e.g. "ERR-1A2B3C4D". Chosen specifically
+#: because hex digits cannot spell a word: this closes off the round-4 verifier's injection ("free
+#: text with hyphens/underscores can spell an advice phrase") for any reference id, without relying
+#: on the wording checker to catch it.
+_REFERENCE_ID_PATTERN = re.compile(r"^ERR-[0-9A-Fa-f]{8}$")
+
+#: The known check/error codes a Code slot may carry, alongside a strict reference id. Built from
+#: `CheckCode` (the safety-gate check codes, W-014) rather than hand-duplicated, so a new check code
+#: is automatically a valid Code value without a second list to keep in sync.
+_KNOWN_CODES: frozenset[str] = frozenset(code.value for code in CheckCode)
 
 
 class Code(SlotType):
-    """A machine identifier (order id, error code fragment) — no spaces, no free-form sentences."""
+    """A closed machine identifier: one of the known check/error codes (`CheckCode`), or a strict
+    incident reference id (`ERR-` + 8 hex digits). Round-4 fix (REQ-065/W-024 second parked round):
+    the old pattern accepted ANY hyphen/underscore-joined word ("risk-free", "GUARANTEED-PROFIT",
+    "you_should_buy") because it never checked meaning, only character class — so advice wording
+    reached a user through a slot the wording checker never looked at. A closed set has no room for
+    that: neither "risk-free" nor "GUARANTEED-PROFIT" is a `CheckCode` value or matches the reference
+    format, so both are refused at the slot boundary, before render() even reaches the wording check.
+    """
 
     @staticmethod
     def validate(value: object) -> None:
         if not isinstance(value, str) or not value.strip():
             raise TypeError("Code slot requires a non-empty str")
-        if not _CODE_PATTERN.match(value):
-            raise ValueError(f"Code slot must match {_CODE_PATTERN.pattern!r}, got {value!r}")
+        if value in _KNOWN_CODES:
+            return
+        if _REFERENCE_ID_PATTERN.match(value):
+            return
+        raise ValueError(
+            f"Code slot must be a known check code or match {_REFERENCE_ID_PATTERN.pattern!r}, got {value!r}"
+        )
+
+    @staticmethod
+    def format(value: str) -> str:
+        return value
+
+
+class Underlying(SlotType):
+    """A market symbol: closed to the underlyings this catalogue tracks (`SUPPORTED_UNDERLYINGS`,
+    i.e. NIFTY/SENSEX) — never a free word, for the same reason `Code` is now closed: an unchecked
+    string slot is a place advice wording (or anything else) can be smuggled into user-facing text."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if not isinstance(value, str) or not value.strip():
+            raise TypeError("Underlying slot requires a non-empty str")
+        if value not in SUPPORTED_UNDERLYINGS:
+            raise ValueError(
+                f"Underlying slot must be one of {sorted(SUPPORTED_UNDERLYINGS)}, got {value!r}"
+            )
 
     @staticmethod
     def format(value: str) -> str:

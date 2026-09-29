@@ -16,9 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ofo.wording import find_advice_wording, is_blank_after_normalising, is_nfkc_clean_latin
+
 from .classes import ErrorClass
-from .model import UserFacingError
-from .slots import Code, ExternalText, Instrument, Int, Money, SlotType, Time
+from .model import _RENDER_TOKEN, UserFacingError
+from .slots import Code, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -70,7 +72,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         impact="Prices and Greeks on screen are stale and may not match the live market.",
         what_is_blocked="New order preparation for this instrument.",
         next_action="Wait for the data feed to reconnect, or refresh the page in a few minutes.",
-        slots={"symbol": Code, "minutes": Int},
+        slots={"symbol": Underlying, "minutes": Int},
     ),
     MessageTemplate(
         id="broker_authentication_session_expired",
@@ -201,6 +203,23 @@ def render(template_id: str, **slots: object) -> UserFacingError:
 
     parts = {part_name: getattr(template, part_name).format(**formatted) for part_name in _PART_NAMES}
 
+    # Round-4 fix (REQ-065/W-024, second parked round): run the ADR-003 wording check on the
+    # FINISHED text of every part, at every render() call, not only once over the static catalogue
+    # in CI (`tests/errors/test_error_catalogue.py`). The static scan only ever sees the templates
+    # committed today; this runtime check is what catches a slot value combining with fixed template
+    # text to still say something the static scan never saw, and fails closed rather than trusting
+    # the slot-level checks alone.
+    for part_name, text in parts.items():
+        if is_blank_after_normalising(text):
+            raise ValueError(f"template {template_id!r} part {part_name!r} rendered blank")
+        if not is_nfkc_clean_latin(text):
+            raise ValueError(
+                f"template {template_id!r} part {part_name!r} has non-Latin/confusable characters: {text!r}"
+            )
+        hits = find_advice_wording(text)
+        if hits:
+            raise ValueError(f"template {template_id!r} part {part_name!r} contains banned wording {hits}: {text!r}")
+
     external_text: str | None = None
     if template.external_text_slot is not None:
         value = slots[template.external_text_slot]
@@ -208,6 +227,7 @@ def render(template_id: str, **slots: object) -> UserFacingError:
         external_text = ExternalText.format(value)
 
     return UserFacingError._build(
+        _token=_RENDER_TOKEN,
         error_class=template.error_class,
         code=template.code,
         external_text=external_text,
