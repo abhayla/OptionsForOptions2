@@ -27,7 +27,7 @@ from ofo.orders.model import (
 
 UTC = datetime.timezone.utc
 AT = datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
-CONTRACT = "NIFTY26OCT23200CE"
+CONTRACT = "NIFTY26O0623200CE"
 LATER = AT + datetime.timedelta(seconds=1)
 
 
