@@ -210,3 +210,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q230 — DECIDED (owner, 2026-09-29) — Q226 edge cases (W-024 round 5)
 - Decision: ban all word forms of the five words; do not ban "must"/"have to"/"ought to"; exceptions match exactly as
   spelled. Recorded in ADR-003 "Q230".
+
+## Q231 — DECIDED (owner, 2026-09-29) — Is "safety" banned by the Q230 word-form rule?
+- Decision: no — "safety" (and "safety check/checks/gate") is a reviewed exception. Recorded in ADR-003 "Q231".
