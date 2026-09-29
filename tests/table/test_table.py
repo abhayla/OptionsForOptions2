@@ -114,22 +114,16 @@ def test_ac2_total_row_values_exact(golden, golden_scenario):
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
     total = table.rows[-1]
-    assert total.cell(ColumnId.ENTRY_VALUE).value == D("19800.00")
+    assert total.cell(ColumnId.ENTRY_VALUE).value == D("6825.00")
     assert total.cell(ColumnId.UNREALIZED_PNL).value == D("1365.00")
     assert total.cell(ColumnId.LOWER_BE).value == D("22909")
     assert total.cell(ColumnId.UPPER_BE).value == D("23491")
 
 
-def test_fix_round_total_pnl_percent_is_always_a_dash(golden, golden_scenario):
-    """Fix round item 4: the TOTAL row's P&L % is always '—' (owner-reviewed source leaves it blank;
-    gross entry value misleads for a net-credit strategy — open owner question, never computed)."""
+def test_total_row_pnl_percent_leaves_leg_rows_unchanged(golden, golden_scenario):
+    """AC-2: a leg's P&L % still uses unrealized / |entry value| x 100 (only the TOTAL row is risk-based, Q233)."""
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
-    cell = table.rows[-1].cell(ColumnId.PNL_PERCENT)
-    assert cell.value is None
-    assert cell.display == "—"
-    assert cell.reason
-    # a leg's P&L % is unaffected: it still uses unrealized / |entry value| x 100.
     assert table.rows[0].cell(ColumnId.PNL_PERCENT).value == LEG_PNL_PERCENT[0]
 
 

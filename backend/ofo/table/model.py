@@ -7,10 +7,11 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
 
 - **P&L %** (documented here; the spec is silent on this exact ratio): a leg's P&L % is
   ``unrealized P&L / |entry value| x 100``, rounded half-even to 0.01 %; an entry value of 0 gives no value and the
-  reason "entry value is zero", never a divide error. The **TOTAL row's P&L % is always "—"** (fix round, verifier
-  finding): the owner-reviewed source table leaves the strategy total blank, and gross entry value would mislead
-  for a net-credit strategy (e.g. the §6 Iron Condor collects a credit, so "% of entry value" has no agreed meaning)
-  — open owner question, not computed here.
+  reason "entry value is zero", never a divide error. The **TOTAL row's P&L %** is risk-based (owner
+  decision Q233, 2026-09-29): ``unrealized P&L / max loss x 100``, both from the engine (``strategy_metrics`` and
+  ``live_pnl``, never recomputed here), rounded HALF-UP to 0.1 % (the spec's own example is "+16.7%": 1,365 / 8,175
+  = 16.697...) and shown with an explicit sign. "—" (with a reason) when max loss is UNLIMITED or zero, when the
+  strategy has more than one expiry (the exact at-expiry max loss is single-expiry), or when a leg has no LTP.
 - **AC-6, Greeks are POSITION-level, one unit throughout the table** (round-2 fix, verifier finding: leg cells were
   per-unit while the TOTAL row was position-level — two units in one column is the defect). A leg's Delta/Gamma/
   Theta/Vega cell is the platform Black-Scholes per-unit Greek x quantity x sign (+1 BUY / -1 SELL) — the same
@@ -36,13 +37,11 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
   29-30, the owner's exact labels: "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
-- **TOTAL Entry Value mixes premiums and futures notional (left as is, open owner question).** The TOTAL row's
-  Entry Value is the plain sum of every leg's ``entry_price x quantity``, including a futures leg — whose "entry
-  price" is the contract's traded level (e.g. NIFTY ~23,000), not a small option premium. A strategy with both
-  option and futures legs therefore gets a TOTAL Entry Value dominated by the futures notional, which the spec
-  does not address (it is silent on whether a futures leg's Entry Value belongs in the same sum as an option
-  premium, or needs its own line). Not changed by this fix round; the leg-level Entry Value cell is unaffected and
-  correct on its own.
+- **TOTAL Entry Value is options-only and NET** (Q233, Q236): sells minus buys, each premium x its own leg's
+  quantity. The cell's ``value`` is the non-negative magnitude, its ``side`` is "Cr" (net credit) or "Dr" (net
+  debit) and ``display`` is e.g. "₹6,825.00 Cr". A net of exactly zero has ``side`` None and displays "₹0.00"
+  (neither a credit nor a debit). A strategy with any futures leg shows "—", because a premium and a futures
+  notional cannot be added. Leg rows keep their unsigned ``entry_price x quantity``.
 - **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
   at every UX level, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
   is the section caption (:func:`scenario_caption`), not a per-column label.
@@ -50,7 +49,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
 from __future__ import annotations
 
 from dataclasses import dataclass, replace as _replace
-from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from enum import Enum
 from typing import Sequence
 
@@ -58,6 +57,7 @@ from ofo.engine.black_scholes import GREEK_STEP, Greeks, bs_greeks_unrounded, ye
 from ofo.engine.display import format_points, format_rupees
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument, live_pnl
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues
 from ofo.table.columns import (
@@ -70,6 +70,7 @@ from ofo.table.columns import (
 )
 
 _PERCENT_STEP = Decimal("0.01")
+_TOTAL_PERCENT_STEP = Decimal("0.1")
 TOTAL_ROW_ID = "TOTAL"
 
 # A futures leg's per-unit Greeks (implementation decision, spec silent): linear payoff, slope 1, no volatility
@@ -112,6 +113,7 @@ class Cell:
     reason: str | None = None
     vendor: Decimal | None = None
     per_unit: Decimal | None = None
+    side: str | None = None  # TOTAL Entry Value only: "Cr" (net credit) or "Dr" (net debit); None otherwise
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, CellKind):
@@ -161,6 +163,16 @@ def _money(value: Decimal | None, reason: str | None = None) -> Cell:
     if value is None:
         return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
     return Cell(value, format_rupees(value), CellKind.MONEY)
+
+
+def _net_premium_cell(net: Decimal | None, reason: str | None = None) -> Cell:
+    """TOTAL Entry Value: the net premium as a magnitude plus an explicit Cr/Dr side (Q236)."""
+    if net is None:
+        return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
+    if net == 0:
+        return Cell(net, format_rupees(net), CellKind.MONEY)
+    side = "Cr" if net > 0 else "Dr"
+    return Cell(abs(net), f"{format_rupees(abs(net))} {side}", CellKind.MONEY, side=side)
 
 
 def _points(value: Decimal | None, reason: str | None = None) -> Cell:
@@ -304,10 +316,31 @@ def _leg_row(index: int, leg: LegInput, inputs: StrategyInput, level_columns: Se
     return Row(str(index), cells)
 
 
+def _total_pnl_percent_cell(inputs: StrategyInput, unrealized: Decimal | None) -> Cell:
+    """TOTAL P&L % = unrealized P&L / max loss x 100, half-up to 0.1 % (Q233); "—" with a reason otherwise."""
+    if unrealized is None:
+        return _percent_cell(None, "not every leg has an LTP")
+    try:
+        max_loss = strategy_metrics(inputs.strategy).max_loss
+    except MultiExpiryError:
+        return _percent_cell(None, "max loss is exact only for a single-expiry strategy")
+    if max_loss is UNLIMITED:
+        return _percent_cell(None, "max loss is unlimited")
+    if max_loss == 0:
+        return _percent_cell(None, "max loss is zero")
+    with localcontext() as ctx:
+        ctx.prec = 50
+        ratio = (unrealized / max_loss) * 100
+    value = ratio.quantize(_TOTAL_PERCENT_STEP, rounding=ROUND_HALF_UP)
+    return Cell(value, f"{value:+}%", CellKind.PERCENT)
+
+
 def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns: Sequence[Decimal],
                scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
     legs = inputs.legs
-    entry_value = sum((leg.premium * leg.quantity for leg in legs), Decimal(0))
+    has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
+    net_entry = None if has_futures else sum(
+        ((leg.premium if leg.action is Action.SELL else -leg.premium) * leg.quantity for leg in legs), Decimal(0))
     have_all_ltp = all(leg.ltp is not None for leg in legs)
     if have_all_ltp:
         current_value = sum((leg.ltp * leg.quantity for leg in legs), Decimal(0))
@@ -315,11 +348,6 @@ def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns:
     else:
         current_value = None
         unrealized = None
-
-    # TOTAL row P&L % is always "—" (fix round): the owner-reviewed source leaves it blank; gross entry value
-    # misleads for a net-credit strategy. Open owner question — never computed here.
-    pnl_percent_reason = "not shown for the strategy total (open owner question: gross entry value misleads " \
-                          "for a net-credit strategy)"
 
     # Round-3 fix: sum the UNROUNDED position Greeks across legs, round ONCE at the end (no round-then-scale).
     raw_totals: dict[str, Decimal] = {"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0),
@@ -349,10 +377,10 @@ def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns:
         ColumnId.QUANTITY: _text(None),
         ColumnId.ENTRY_PRICE: _text(None),
         ColumnId.LTP: _text(None),
-        ColumnId.ENTRY_VALUE: _money(entry_value),
+        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, "a premium and a futures notional cannot be added"),
         ColumnId.CURRENT_VALUE: _money(current_value, "not every leg has an LTP"),
         ColumnId.UNREALIZED_PNL: _money(unrealized, "not every leg has an LTP"),
-        ColumnId.PNL_PERCENT: _percent_cell(None, pnl_percent_reason),
+        ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
         ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason),
         ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, None, greek_reason),
