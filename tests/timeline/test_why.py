@@ -90,7 +90,8 @@ def test_answer_has_no_advice_words():
     assert advice_words_in(text) == []
     fixed = [*INPUT_LABELS.values(), *OP_WORDS.values(), *ACTION_WORDS.values(), *FOLLOW_UP_LABELS.values()]
     assert [phrase for phrase in fixed if advice_words_in(phrase)] == []
-    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should"]  # checker is live
+    # checker is live: main's phrase list first, then the shared Q226/Q230 checker's extra label (W-024 round 6)
+    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should", "should"]
     assert "Alert generated: yes." in text and "Executed: no." in text
     assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 
@@ -138,3 +139,18 @@ def test_platform_wording_is_checked_at_runtime_but_recorded_text_is_quoted_not_
     text = timeline.why(seq)
     assert 'Broker reported: "best price filled".' in text
     assert text.splitlines()[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'
+
+
+def test_platform_words_pass_the_shared_check_on_top_of_the_phrase_list():
+    """AC-5 with ADR-003 (W-046): advice_words_in adds the shared ofo.wording checker to the older phrase list, and
+    the platform's own words also pass check_platform_text (a look-alike letter or blank template is refused)."""
+    from ofo.timeline.why import _own
+
+    assert advice_words_in("A recommendation") == ["recommend*"]  # Q230 word form, absent from the phrase list
+    assert advice_words_in("safest exit") == ["safe"]
+    assert advice_words_in("Run the safety check") == []  # Q231 exception
+    with pytest.raises(ValueError, match="non-Latin/confusable"):
+        _own("Exіt at {}.", "10:00")  # Cyrillic i: no word scan sees it
+    with pytest.raises(ValueError, match="blank"):
+        _own("{}", "recorded data only")
+    assert _own("Broker reported: {}.", '"best price filled"') == 'Broker reported: "best price filled".'
