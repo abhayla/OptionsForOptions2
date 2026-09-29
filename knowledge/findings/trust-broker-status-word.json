@@ -1,0 +1,32 @@
+{
+  "id": "trust-broker-status-word",
+  "class": "Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position.",
+  "mechanism": "The classifier returned PARTIAL for every PARTIAL status without checking the positions, so an extra futures line or a leg filled at 300 against 150 intended was recorded as an ordinary partial fill.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-012 backend/ofo/strategy/versions.py _classify @ 5b27556",
+    "evidence": "Independent verifier probe: PARTIAL + unasked 75-unit FUT -> OutcomeKind.PARTIAL; PARTIAL overfill 300 vs 150 -> OutcomeKind.PARTIAL; tests green (19 passed)."
+  },
+  "fix": "Position check first for every status: each contract's actual quantity must lie between the previous and the intended quantity (same side); any unasked contract, side flip or overfill is MISMATCH whatever the status word (W-012 fix round, f6c398d).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Second occurrence triggered an independent review (learning rule R1). Guarded only when a property test over random result sequences asserts after every step: edits/confirmations/executions are allowed only while the last known broker position equals the active version's intended position; a mismatch stays until an explicit reconcile."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-038.md",
+    "spec/decisions/ADR-018.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-012 round 1 @ 5b27556",
+      "evidence": "PARTIAL status trusted: unasked FUT and 300-vs-150 overfill labelled PARTIAL"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-012 round 2 @ f6c398d",
+      "evidence": "sequence of results: overfill MISMATCH then FAILED (nothing moved) clears the proposal and allows edit() creating v3 while the broker holds 300 vs v1's 75; PARTIAL then REJECTED leaves active v1 != broker yet edit/confirm allowed; after MISMATCH at 300 a PARTIAL at 200 accepted (range measured from the last reported position)"
+    }
+  ]
+}

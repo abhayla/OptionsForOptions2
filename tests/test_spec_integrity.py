@@ -75,3 +75,27 @@ def test_work_items_link_exactly_one_requirement():
         assert len(fm.get("requirement_ids") or []) == 1, f"{path.name} must link exactly one requirement"
         for entry in fm.get("tests_required") or []:
             assert re.match(r"^AC-\d+(:|$)", entry), f"{path.name}: tests_required entry must start with AC-<n>: {entry!r}"
+
+
+EVIDENCE_FOOTER = "Recorded by the orchestrator from the verifier's returned block."
+
+
+def evidence_files_missing_footer(paths):
+    return sorted(pathlib.Path(p).name for p in paths
+                  if EVIDENCE_FOOTER not in pathlib.Path(p).read_text(encoding="utf-8"))
+
+
+def test_evidence_files_are_recorded_by_the_orchestrator():
+    # Guards knowledge/findings/verifier-writes-outside-sandbox.json
+    files = sorted((ROOT / "evidence").glob("*/*.md"))
+    assert files, "no evidence files found"
+    assert evidence_files_missing_footer(files) == [], "evidence not recorded by the orchestrator"
+
+
+def test_evidence_footer_detector_flags_a_verifier_written_file(tmp_path):
+    # red case: proves the check can fail
+    bad = tmp_path / "AC-1.md"
+    bad.write_text("---\nac: AC-1\nresult: pass\n---\nwritten by a verifier\n", encoding="utf-8")
+    good = tmp_path / "AC-2.md"
+    good.write_text("---\nac: AC-2\n---\n" + EVIDENCE_FOOTER + "\n", encoding="utf-8")
+    assert evidence_files_missing_footer([bad, good]) == ["AC-1.md"]

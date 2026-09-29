@@ -1,0 +1,41 @@
+{
+  "id": "test-asserts-implementation-output",
+  "class": "Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green.",
+  "mechanism": "Builders wrote the implementation first, then asserted the values it returned; independent verifiers who recomputed the values from the spec found the mismatch.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-004 tests/table/test_table.py (leg Greek cells per-unit unsigned while TOTAL is position-level; test asserted -0.4125 for a sold put whose position delta is about +30.9) and W-016 tests/strategy/test_builder_history.py (asserted history_entries()[-1].legs == CONDOR_LEGS, i.e. the pre-change snapshot under the change's label)",
+    "evidence": "W-004 verifier: sum of leg delta cells -0.3746 vs TOTAL 4.5750, test green (12 passed). W-016 verifier: restore('User modified strike') returned 22800 after a change to 22750, test green (22 passed)."
+  },
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-004",
+      "evidence": "see first_seen"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-016",
+      "evidence": "see first_seen"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-004 round 2 @ 16bb7d9",
+      "evidence": "position Greeks built from 4-dp-rounded per-unit values x quantity (gamma ~10% wrong: 0.0300 vs 0.0335); the test pinned POSITION_GREEKS[3].gamma == 0.0300, taken from the code's output"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-018 tests/marketdata/test_rule_health.py @ adc0b2e",
+      "evidence": "test set the snapshot's data_health=quote.health by hand, hiding that the record-level health is caller-supplied; with a stale deciding input the record said AVAILABLE"
+    }
+  ],
+  "fix": "Builder brief rule (every future brief): expected values come from the spec or an independent hand computation, never from the code's own output; add consistency tests (leg rows sum to totals; restore-by-label returns the labelled state). Independent verifiers recompute expected values from the spec (already their brief).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Third occurrence (W-004 twice, W-016 once). Mechanism strengthened: builder brief rule + tests must compute expected numeric values with an independent implementation written in the test (e.g. Black-Scholes via math.erf, importing nothing from the code under test); verifiers recompute independently. Still no automated detector of where an expected value came from; a candidate check: an AST test flagging numeric literals with >=4 decimals in tests of computed Greeks without an independent helper \u2014 not built."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ]
+}
