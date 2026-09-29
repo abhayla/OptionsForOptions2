@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from ofo.audit import AuditLog, EventType
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
@@ -213,10 +214,10 @@ def test_update_accepts_new_expiries_being_added(catalogue: Catalogue, contracts
 
 
 def test_update_force_overrides_the_guard(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: force=True lets a real broker delisting through and marks (never deletes) the rows."""
+    """AC-2: force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog() lets a real broker delisting through and marks (never deletes) the rows."""
     victim = next(c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_FAR_EXPIRY)
     result = catalogue.update(
-        [c for c in contracts if c.instrument_token != victim.instrument_token], as_of=ON_EXPIRY_DAY, force=True
+        [c for c in contracts if c.instrument_token != victim.instrument_token], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog()
     )
     assert result.newly_unlisted == 1
     assert _entry(catalogue, victim.instrument_token).currently_listed is False
@@ -225,7 +226,7 @@ def test_update_force_overrides_the_guard(catalogue: Catalogue, contracts: list[
 def test_update_relists_a_contract_that_reappears(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: a force-delisted contract that reappears in a later list is relisted."""
     token = next(c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY).instrument_token
-    catalogue.update([c for c in contracts if c.instrument_token != token], as_of=ON_EXPIRY_DAY, force=True)
+    catalogue.update([c for c in contracts if c.instrument_token != token], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
     assert _entry(catalogue, token).currently_listed is False
     catalogue.update(contracts, as_of=ON_EXPIRY_DAY)
     assert _entry(catalogue, token).currently_listed is True
@@ -281,3 +282,69 @@ def test_strike_gap_raises_for_fewer_than_two_strikes() -> None:
     cat.load([contract])
     with pytest.raises(ValueError):
         cat.strike_gap("NIFTY", NIFTY_NEAR_EXPIRY)
+
+
+def _without(contracts: list[Contract], token: int) -> list[Contract]:
+    return [c for c in contracts if c.instrument_token != token]
+
+
+def _live_victim(contracts: list[Contract]) -> Contract:
+    return next(c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_FAR_EXPIRY)
+
+
+@pytest.mark.parametrize("reason", [None, "", "   "])
+def test_force_without_reason_is_refused_and_changes_nothing(
+    catalogue: Catalogue, contracts: list[Contract], reason: str | None
+) -> None:
+    """AC-2: force=True with a missing/blank reason is refused; no audit entry, nothing unlisted."""
+    victim = _live_victim(contracts)
+    log = AuditLog()
+    with pytest.raises(ValueError, match="reason"):
+        catalogue.update(
+            _without(contracts, victim.instrument_token),
+            as_of=ON_EXPIRY_DAY, force=True, reason=reason, actor="ops-admin", audit_log=log,
+        )
+    assert log.events == ()
+    assert _entry(catalogue, victim.instrument_token).currently_listed is True
+
+
+def test_force_without_actor_or_audit_log_is_refused(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: force needs a who and an explicit audit sink (no hidden global)."""
+    rest = _without(contracts, _live_victim(contracts).instrument_token)
+    with pytest.raises(ValueError, match="actor"):
+        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", audit_log=AuditLog())
+    with pytest.raises(ValueError, match="audit_log"):
+        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", actor="ops-admin")
+
+
+def test_reason_args_without_force_are_refused(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: reason/actor/audit_log without force is a caller mistake, not silently ignored."""
+    with pytest.raises(ValueError, match="only valid with force"):
+        catalogue.update(contracts, as_of=ON_EXPIRY_DAY, reason="x")
+
+
+def test_force_with_reason_is_audited_with_exact_dropped_contracts(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2: a forced update appends one audit event: who, when, reason, exact dropped ids."""
+    victim = _live_victim(contracts)
+    log = AuditLog()
+    result = catalogue.update(
+        _without(contracts, victim.instrument_token),
+        as_of=ON_EXPIRY_DAY, force=True, reason="NSE delisted it (circular 123)", actor="ops-admin", audit_log=log,
+    )
+    assert result.newly_unlisted == 1
+    (event,) = log.events
+    assert event.event_type is EventType.ADMIN_CHANGE_RECORDED
+    assert event.actor == "ops-admin"
+    assert event.timestamp == ON_EXPIRY_DAY
+    assert event.payload["reason"] == "NSE delisted it (circular 123)"
+    assert event.payload["dropped_instrument_tokens"] == (victim.instrument_token,)
+    assert event.payload["dropped_tradingsymbols"] == (victim.tradingsymbol,)
+    assert log.verify().ok
+
+
+def test_unforced_refusal_writes_no_audit_entry(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: the guard's normal refusal is unchanged and still refuses without force."""
+    with pytest.raises(ValueError, match="refused"):
+        catalogue.update(_without(contracts, _live_victim(contracts).instrument_token), as_of=ON_EXPIRY_DAY)

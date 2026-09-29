@@ -16,6 +16,7 @@ from typing import Callable
 import pytest
 
 from execution_inputs import ACTIVE_VERSION_ID, check, closing_orders, AS_OF, EXPIRY, all_true_context, condor_legs, find_token
+from ofo.audit import AuditLog
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import (
     CheckCode,
@@ -48,7 +49,7 @@ def _strike_off_ladder(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inp
 
 def _unlisted(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
     token = find_token(c, "PE", "23000")
-    c.update([x for x in parse_instruments_csv(FIXTURE) if x.instrument_token != token], as_of=AS_OF, force=True)
+    c.update([x for x in parse_instruments_csv(FIXTURE) if x.instrument_token != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
     return s, all_true_context(), c, e
 
 
