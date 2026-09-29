@@ -156,6 +156,20 @@ def test_ac4_a_missing_quantity_that_is_not_a_whole_number_of_lots_is_refused(ca
         sequence_plan(odd, catalogue=catalogue)
     with pytest.raises(ValueError, match="whole number of lots"):
         sequence_plan(big_plan(), catalogue=catalogue, quantities={BUY_CE: 100})
+    with pytest.raises(ValueError, match="3000 units is not a whole number of lots"):  # the leg itself, even when
+        sequence_plan(odd, catalogue=catalogue, quantities={BUY_CE: LOT})  # the part still to order is one lot
+
+
+def test_ac4_a_symbol_held_by_two_catalogue_instruments_is_refused(catalogue) -> None:  # noqa: ANN001
+    """AC-4 negative: the catalogue is keyed by instrument token, so a second token with the 23,600 CE symbol (lot 75
+    here) makes the lot size ambiguous; refused rather than picking one."""
+    (entry,) = [e for e in catalogue.all_entries() if e.contract.tradingsymbol == CONTRACTS[3]]
+    twin = dataclasses.replace(entry.contract, instrument_token=entry.contract.instrument_token + 1, lot_size=75)
+    catalogue.load([twin])
+    with pytest.raises(ValueError, match="2 instruments with that symbol"):
+        sequence_plan(big_plan(), catalogue=catalogue)
+    with pytest.raises(ValueError, match="instrument catalogue"):
+        sequence_plan(big_plan(), catalogue={CONTRACTS[3]: 65})  # a caller's own lot table is not the catalogue
 
 
 def test_ac4_a_plan_contract_outside_the_catalogue_is_refused(catalogue) -> None:  # noqa: ANN001
@@ -167,7 +181,7 @@ def test_ac4_a_plan_contract_outside_the_catalogue_is_refused(catalogue) -> None
 
 
 @pytest.mark.parametrize("quantities", [{"leg-9": 65}, {BUY_CE: 0}, {BUY_CE: -65}, {BUY_CE: True},
-                                        {BUY_CE: QTY + LOT}, {BUY_CE: "65"}])
+                                        {BUY_CE: QTY + LOT}, {BUY_CE: "65"}, [(BUY_CE, 65)]])
 def test_ac4_bad_remaining_quantities_are_refused(quantities, catalogue) -> None:  # noqa: ANN001
     """AC-4 input domain: an unknown leg, a zero/negative/boolean/string quantity, or more than the leg's planned
     units is refused, never ignored."""
