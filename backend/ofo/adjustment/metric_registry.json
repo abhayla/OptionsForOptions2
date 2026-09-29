@@ -38,9 +38,9 @@
   "source": "Computed by our engine",
   "frequency": "per minute / on request",
   "calculation": "Pricing model from LTP, spot, IV, rate, time (record inputs per ADR-012)",
-  "feasibility": "unknown",
-  "feasibility_note": "unknown - calculable, but model, rate, IV source and reproducibility record not decided",
-  "owner_reading": "",
+  "feasibility": "pass",
+  "feasibility_note": "pass - Black-Scholes per scenario-calculations §4; rate = admin setting, default 6.5% (owner Q248); inputs recorded per calculation",
+  "owner_reading": "Per-option delta from the engine's Black-Scholes model (scenario-calculations section 4); risk-free rate is an admin setting, default 6.5% p.a., recorded with every calculation (Q248, owner 2026-09-29).",
   "out_of_v1": false
  },
  {
@@ -280,9 +280,9 @@
   "source": "Computed from option LTP, or vendor field",
   "frequency": "per minute",
   "calculation": "implied vol solved from LTP with the pricing model (unclear whether the speaker means IV or India VIX)",
-  "feasibility": "unknown",
-  "feasibility_note": "unknown - model and source not decided (same as row 4)",
-  "owner_reading": "Each option's implied volatility from the engine's pricing model; India VIX is not a V1 value (Q246).",
+  "feasibility": "pass",
+  "feasibility_note": "pass - Black-Scholes per scenario-calculations §4; rate = admin setting, default 6.5% (owner Q248); inputs recorded per calculation",
+  "owner_reading": "Each option's implied volatility from the engine's pricing model (scenario-calculations section 4); India VIX is not a V1 value (Q246); rate is an admin setting, default 6.5% p.a. (Q248).",
   "out_of_v1": false
  },
  {
@@ -303,7 +303,7 @@
   "frequency": "tick",
   "calculation": "loss / capital x 100 (which capital: notional or margin, unclear)",
   "feasibility": "pass",
-  "feasibility_note": "pass once capital definition is chosen",
+  "feasibility_note": "pass - capital = margin blocked for the strategy (owner Q246)",
   "owner_reading": "Capital = the margin blocked for the strategy, i.e. row 27 (Q246).",
   "out_of_v1": false
  },

@@ -62,11 +62,13 @@ def test_ac1_known_feasibility_and_owner_readings():
     """AC-1: hand-read spec verdicts, Q246 readings on rows 10/26/28, rows 24-25 out of V1."""
     reg = MetricRegistry()
     expected = {23: "fail", 20: "unknown", 19: "unknown", 12: "unclear", 13: "unclear",
-                3: "pass", 8: "pass", 10: "pass", 28: "pass", 26: "unknown", 24: "unknown", 25: "unknown"}
+                3: "pass", 4: "pass", 8: "pass", 10: "pass", 28: "pass", 26: "pass", 24: "unknown", 25: "unknown"}
     for i, f in expected.items():
         assert reg.get(i).feasibility == f, i
     for i in (10, 26, 28):
         assert "Q246" in reg.get(i).owner_reading
+    for i in (4, 26):
+        assert "Q248" in reg.get(i).owner_reading
     for i in (24, 25):
         assert reg.get(i).out_of_v1 and reg.get(i).feasibility != "pass"
     assert [r.id for r in reg.rows if r.out_of_v1] == [24, 25]
@@ -157,3 +159,23 @@ def test_ac1_data_file_rejects_drift(tmp_path):
     with pytest.raises(RegistryError):
         load_rows(write(oov))
     assert len(load_rows(write(good))) == 30
+
+
+def test_ac2_rows_4_26_28_accept_a_calculator():
+    """AC-2: owner decisions Q248 (rows 4, 26) and Q246 (row 28) made these feasible; each accepts a calculator."""
+    reg = MetricRegistry()
+    for i in (4, 26, 28):
+        assert reg.get(i).feasibility == "pass", i
+        reg.register_calculator(i, _fake)
+        assert reg.calculator(i) is _fake
+    assert reg.registered_ids() == [4, 26, 28]
+
+
+def test_ac1_data_file_refuses_a_boolean_id(tmp_path):
+    """AC-1: True == 1 in Python, so a row id of true must be refused, not accepted as row 1."""
+    rows = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    rows[0]["id"] = True
+    p = tmp_path / "r.json"
+    p.write_text(json.dumps(rows), encoding="utf-8")
+    with pytest.raises(RegistryError):
+        load_rows(p)

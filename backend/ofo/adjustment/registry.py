@@ -49,6 +49,8 @@ def load_rows(path: Path = DATA_FILE) -> tuple[MetricRow, ...]:
     for item in raw:
         if not isinstance(item, dict) or set(item) != _KEYS:
             raise RegistryError(f"row has missing or unknown keys: {sorted(item) if isinstance(item, dict) else item}")
+        if type(item["id"]) is not int:
+            raise RegistryError(f"row id {item['id']!r} must be an int (a bool is not an id)")
         if item["feasibility"] not in FEASIBILITY_VALUES:
             raise RegistryError(f"row {item['id']}: feasibility {item['feasibility']!r} not in {sorted(FEASIBILITY_VALUES)}")
         if not isinstance(item["out_of_v1"], bool):
