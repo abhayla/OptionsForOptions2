@@ -1,0 +1,38 @@
+{
+  "id": "caller-supplied-verdict-trusted",
+  "class": "Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing.",
+  "mechanism": "Public functions took a SafetyResult / Version / legs-hash argument and trusted it: W-027 execute_confirmed_modification checked only `.blocked` on a caller-built SafetyResult; W-020 from_evaluation recorded a caller-passed Version as active; W-014 accepted a legs hash the caller computed over its own legs.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-014 backend/ofo/execution (active-legs hash)",
+    "evidence": "final verifier: exit of 650 units against a fake 'SELL 650' position with a self-computed hash -> blocked=False"
+  },
+  "fix": "Per instance: W-020 reads versions from the exact StrategyRecord type; W-027 calls check_pre_execution itself with inputs grounded from the record (no public verdict parameter); W-014 residual in deferred #29 item 5 (integration must read legs from the store). Mechanism: builder brief quality-bar line 'Never trust a caller-supplied verdict or identity' with a required forged-result test.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Brief line is prose; guarded only when a lint/AST test flags public functions in backend/ofo taking *Result/*Verdict/hash parameters, or every gate-dependent module has a forged-input test. Not built."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-059.md",
+    "spec/requirements/REQ-037.md",
+    "spec/requirements/REQ-040.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-014 @ 432de2f",
+      "evidence": "self-computed active-legs hash accepted"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-020 @ 52073893 / 7717c98",
+      "evidence": "proposed v2 passed as active; then a StrategyRecord subclass overriding active_version"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-027 @ 2512751",
+      "evidence": "execute_confirmed_modification(rec, SafetyResult((),(),(),(),(),None,None,None,None), ...) -> ACTIVATED v2"
+    }
+  ]
+}

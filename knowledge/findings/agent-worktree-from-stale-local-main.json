@@ -1,0 +1,26 @@
+{
+  "id": "agent-worktree-from-stale-local-main",
+  "class": "Any isolated agent worktree created from the orchestrator's LOCAL main starts from whatever that checkout last pulled; if merges landed on origin since, the agent builds on a stale base, misses files the work depends on (its own work item) and invents substitutes that conflict later.",
+  "mechanism": "The main checkout was last pulled before PRs #31/#32; W-025's builder did not find work/W-025.md (added in #32), wrote its own with status in_progress, and the conflict surfaced only at rebase.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-025 builder @ 55c31f8 (base 60b326a, origin/main was 07f0cb9)",
+    "evidence": "builder report: 'work/W-025.md (created - the work item did not exist yet)'; git log showed base 60b326a = PR #31"
+  },
+  "fix": "Orchestrator runs `git pull --ff-only` in the main checkout before every dispatch (board rule); builders rebase on origin/main before pushing.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Habit only. A guard would be a PreToolUse hook on Agent dispatch comparing local main to origin/main, or the builder brief's first command asserting `git merge-base --is-ancestor origin/main HEAD`."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-026.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-025, W-027 dispatches",
+      "evidence": "both builders started from 60b326a; W-027 told to rebase before push"
+    }
+  ]
+}

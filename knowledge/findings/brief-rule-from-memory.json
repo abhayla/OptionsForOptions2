@@ -42,6 +42,11 @@
       "date": "2026-09-29",
       "where": "W-020 fix-round brief (AC-3)",
       "evidence": "brief said 'refuse the call if there is no active version'; ADR-009 Q17 / REQ-041 entry conditions and ADR-019 Q202 'entry triggered' fire before any execution, so the refusal dropped a spec-required record; builder applied it, orchestrator caught it on reading the side-effect note and reversed it (7717c98)"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-025 builder brief default (a)",
+      "evidence": "brief said 'include the exact current level as the first value, then 100-point multiples away from it'; built as offsets from an unaligned level, so SENSEX 81,422 gave 81,322 (not a strike) and the REQ-026 note 'every value is a real strike' became false; verifier failed AC-5"
     }
   ],
   "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
