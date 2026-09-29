@@ -1,35 +1,42 @@
 """The reconciliation trigger policy, as data (REQ-060 AC-1; ADR-018 Q196).
 
 Q196: "reconcile after execution, after reconnect, at app start/resume, periodically for active strategies, on
-broker/order events". Each event maps to one run with a scope. The periodic interval is not set here: the spec
-gives no number, and periodic runs after the daily Zerodha session expires are open question Q205.
+broker/order events". Each event maps to one run; the periodic interval is not set here: the spec gives no number,
+and periodic runs after the daily Zerodha session expires are open question Q205.
 
-Account-wide coverage, always (W-021 fix round 4, 2026-09-29; ORCHESTRATOR DEFAULT, not an owner decision; class:
-a caller-supplied map deciding safety coverage -- finding caller-supplied-verdict-trusted). An earlier version of
-this module scoped "after execution" and "order event" to the single strategy that triggered them, then (fix round
-3) tried to repair that by covering the CLOSURE of every strategy sharing a contract with it -- computed from a
-caller-supplied ``contracts_by_strategy`` map. That still failed open: whenever the caller omitted, emptied, or
-simply forgot a holder in that map (which nothing forced them to keep complete), the run silently fell back to
-covering only the named strategy again. Example: A and B each SELL the same contract x50; Zerodha nets -100. A run
-"after execution" for A with no (or an incomplete) map compares A alone against -100, reports a false quantity
-mismatch, and adopting writes -100 into A's own definition -- corrupting it, while B still shows its true -50.
+Scheduling vs coverage, and the trust boundary (W-021 fix round 5, 2026-09-29; ORCHESTRATOR DEFAULT, not an owner
+decision; class: any run whose COMPARISON set is narrower than the set of strategies that can hold positions in the
+account -- finding caller-supplied-verdict-trusted). Fix round 4 made "after execution"/"order event" account-wide,
+but PERIODIC still compared only the caller-supplied ``active_ids``. That reintroduced the same class: a strategy
+can be Monitoring Paused (ADR-019 Q200 -- not exited, so it still holds positions) without being "active". Example:
+A is active, B is Monitoring Paused; both SELL the same contract x50; Zerodha nets -100. A periodic run scoped to
+``active_ids={A}`` compares A alone against -100, finds a false -50 quantity mismatch, and adopting rewrites A to
+-100 while B's true -50 is never seen.
 
-Zerodha nets strategies per contract: it has no notion of which strategy a unit belongs to, so a comparison over
-any strategy subset can never be safe -- the subset might be missing another holder of the same contract, and
-nothing about a single contract can prove it isn't. The only input that is NEVER incomplete is "the whole account",
-because it needs no map at all. So every trigger's scope is now account-wide (``ALL_STRATEGIES`` or, for the
-periodic trigger, ``ACTIVE_STRATEGIES``, which was already whole-population and safe). "After execution" and "order
-event" still name the strategy whose action triggered the run -- kept on ``ReconciliationRun.triggered_by`` purely
-for the audit trail ("triggered by S") -- but the run itself compares and can block every strategy, exactly like
-every other trigger.
+Zerodha nets strategies per contract with no notion of which strategy a unit belongs to, so COVERAGE (the set
+``compare()`` is run against) must always be every strategy that can hold a position -- every NON-EXITED strategy
+of the account, active or paused alike. Only "exited" strictly means the strategy holds nothing (ADR-019 Q200), so
+it is the one state safe to leave out. SCHEDULING (whether a periodic tick is worth running at all) is a separate,
+weaker question, answered by whether anything is active; it must never narrow WHAT is compared once a run does
+happen. So: ``plan_run`` takes every strategy's ``StrategyRecord`` and derives coverage itself (every non-exited
+one), never a caller-supplied id list; ``active_ids`` is used ONLY to decide whether a PERIODIC run fires at all
+(returns ``None`` when nothing is active), never to narrow coverage.
+
+Trust boundary (the one this layer cannot remove): ``plan_run`` filters OUT exited records from what it is given,
+but it has no way to detect a non-exited record left OUT of the ``records`` mapping entirely -- the caller (the
+strategy store / integration layer) must pass every non-exited record of the account, and that completeness is
+guaranteed one layer up, not here. (Fix round 4's docstring called ``ACTIVE_STRATEGIES`` "already whole-population",
+which was false -- Monitoring Paused strategies are excluded from "active" and are exactly the gap this round
+closes; corrected here.)
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from ofo.reconciliation.compare import MAX_STRATEGIES, ReconciliationError, require_id
+from ofo.strategy.versions import StrategyRecord
 
 
 class Trigger(Enum):
@@ -43,22 +50,12 @@ class Trigger(Enum):
 
 
 class Scope(Enum):
-    ALL_STRATEGIES = "every strategy of the account"  # the whole account's broker positions are re-read
-    ACTIVE_STRATEGIES = "active strategies"
+    ALL_STRATEGIES = "every non-exited strategy of the account"  # every trigger's coverage, always
 
 
-#: The policy. Every trigger runs reconciliation over the WHOLE account (module docstring) except PERIODIC, which
-#: is scoped to active strategies only (that scope was already whole-population, so no caller map can leave it
-#: incomplete).
-POLICY: dict[Trigger, Scope] = {
-    Trigger.AFTER_EXECUTION: Scope.ALL_STRATEGIES,
-    Trigger.AFTER_RECONNECT: Scope.ALL_STRATEGIES,
-    Trigger.APP_START: Scope.ALL_STRATEGIES,
-    Trigger.APP_RESUME: Scope.ALL_STRATEGIES,
-    Trigger.PERIODIC: Scope.ACTIVE_STRATEGIES,
-    Trigger.BROKER_POSITION_EVENT: Scope.ALL_STRATEGIES,  # a position event may touch any strategy's contract
-    Trigger.ORDER_EVENT: Scope.ALL_STRATEGIES,
-}
+#: Every trigger's coverage is the whole account's non-exited strategies (module docstring); PERIODIC additionally
+#: needs at least one strategy active to fire at all (scheduling), but that never narrows its coverage.
+POLICY: dict[Trigger, Scope] = {trigger: Scope.ALL_STRATEGIES for trigger in Trigger}
 
 #: Triggers caused by one strategy's own action. The run still covers the whole account (module docstring); the
 #: causing strategy id is required and kept only as ``ReconciliationRun.triggered_by``, for the audit trail.
@@ -73,32 +70,57 @@ class ReconciliationRun:
     triggered_by: str | None = None  # the strategy whose action caused the run, for the audit trail only
 
 
+def _records(records: object) -> dict[str, StrategyRecord]:
+    if not isinstance(records, Mapping):
+        raise ReconciliationError(f"records must be a mapping of strategy id -> StrategyRecord, got {records!r}")
+    if len(records) > MAX_STRATEGIES:
+        raise ReconciliationError(f"{len(records)} strategies; at most {MAX_STRATEGIES}")
+    result: dict[str, StrategyRecord] = {}
+    seen: set[int] = set()
+    for sid, record in records.items():
+        require_id(sid)
+        if not isinstance(record, StrategyRecord):
+            raise ReconciliationError(f"strategy {sid!r} must be a StrategyRecord, got {record!r}")
+        if id(record) in seen:
+            raise ReconciliationError(f"strategy {sid!r} is the same record as another id; one record, one id")
+        seen.add(id(record))
+        result[sid] = record
+    return result
+
+
 def plan_run(
     trigger: Trigger,
     *,
-    all_ids: Iterable[str],
+    records: Mapping[str, StrategyRecord],
     active_ids: Iterable[str] = (),
     strategy_id: str | None = None,
-) -> ReconciliationRun:
-    """The run an event must start. Unknown triggers and inconsistent inputs are refused (fail closed).
+) -> ReconciliationRun | None:
+    """The run an event must start, or ``None`` if it does not fire (module docstring: only PERIODIC can decline,
+    when nothing is active). Unknown triggers and inconsistent inputs are refused (fail closed).
 
-    ``strategy_id`` is required for, and only for, a trigger in ``NAMES_TRIGGERING_STRATEGY`` (the strategy whose
-    execution/order caused the run) -- it never narrows the run's coverage (module docstring).
+    ``records``: every strategy of the account, id -> its ``StrategyRecord``; coverage is derived from it (every
+    non-exited record), never from a caller-narrowed id list. ``active_ids`` decides ONLY whether a PERIODIC run
+    fires; it is not a coverage input. ``strategy_id`` is required for, and only for, a trigger in
+    ``NAMES_TRIGGERING_STRATEGY`` -- kept as ``triggered_by`` for the audit trail, never narrowing coverage.
     """
     if not isinstance(trigger, Trigger):
         raise ReconciliationError(f"unknown reconciliation trigger {trigger!r}")
     scope = POLICY[trigger]
-    everyone = _ids(all_ids, "all_ids")
+    all_records = _records(records)
+    everyone = tuple(sorted(all_records))
     active = _ids(active_ids, "active_ids")
     if not set(active) <= set(everyone):
         raise ReconciliationError(f"active ids not among all ids: {sorted(set(active) - set(everyone))}")
     if trigger in NAMES_TRIGGERING_STRATEGY:
         if strategy_id is None or require_id(strategy_id) not in everyone:
             raise ReconciliationError(f"{trigger.value} must name a known strategy, got {strategy_id!r}")
-        return ReconciliationRun(trigger, scope, everyone, triggered_by=strategy_id)
-    if strategy_id is not None:
-        raise ReconciliationError(f"{trigger.value} covers {scope.value}; it names no single strategy")
-    return ReconciliationRun(trigger, scope, everyone if scope is Scope.ALL_STRATEGIES else active)
+    elif strategy_id is not None:
+        raise ReconciliationError(f"{trigger.value} names no single strategy")
+    if trigger is Trigger.PERIODIC and not active:
+        return None  # scheduling only: nothing active, no run needed (coverage is unaffected either way)
+    covered = tuple(sorted(sid for sid, record in all_records.items() if not record.exited))
+    triggered_by = strategy_id if trigger in NAMES_TRIGGERING_STRATEGY else None
+    return ReconciliationRun(trigger, scope, covered, triggered_by=triggered_by)
 
 
 def _ids(values: Iterable[str], label: str) -> tuple[str, ...]:
@@ -108,5 +130,5 @@ def _ids(values: Iterable[str], label: str) -> tuple[str, ...]:
     if len(result) > MAX_STRATEGIES:
         raise ReconciliationError(f"{label}: at most {MAX_STRATEGIES} ids")
     if len(set(result)) != len(result):
-        raise ReconciliationError(f"{label} has duplicate ids")
+        raise ReconciliationError(f"{label} has duplicates")
     return tuple(sorted(result))
