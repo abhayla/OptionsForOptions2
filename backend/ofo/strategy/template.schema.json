@@ -10,15 +10,26 @@
   },
   "$defs": {
     "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 40},
+    "views": {
+      "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true,
+      "items": {"enum": ["bullish", "bearish", "range-bound", "volatile"]}
+    },
+    "objectives": {
+      "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true,
+      "items": {"enum": ["income", "directional", "hedge", "volatility"]}
+    },
     "steps": {"type": "integer", "minimum": -50, "maximum": 50},
     "template": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "description", "params", "constraints", "legs"],
+      "required": ["id", "name", "description", "level", "views", "objectives", "params", "constraints", "legs"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "name": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[A-Za-z][A-Za-z0-9 ()'-]*$"},
         "description": {"type": "string", "minLength": 1, "maxLength": 400},
+        "level": {"enum": ["Beginner", "Intermediate", "Advanced"]},
+        "views": {"$ref": "#/$defs/views"},
+        "objectives": {"$ref": "#/$defs/objectives"},
         "params": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/param"}},
         "constraints": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/constraint"}},
         "legs": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/leg"}}

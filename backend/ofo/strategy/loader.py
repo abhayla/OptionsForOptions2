@@ -100,6 +100,7 @@ def _build(raw: dict[str, Any]) -> Template:
     try:
         return Template(
             id=tid, name=raw["name"], description=raw["description"],
+            level=raw["level"], views=tuple(raw["views"]), objectives=tuple(raw["objectives"]),
             params=params, constraints=tuple(constraints), legs=tuple(legs),
         )
     except TemplateError as exc:
