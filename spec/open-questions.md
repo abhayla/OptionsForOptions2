@@ -220,3 +220,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q233 — DECIDED (owner, 2026-09-29) — Strategy table TOTAL row: P&L % and Entry Value
 - Decision: TOTAL P&L % = unrealized P&L ÷ max loss ("—" if unlimited); Entry Value only for options-only strategies.
   Recorded in REQ-035 "Owner decision (Q233)".
+
+## Q234 — DECIDED (owner, 2026-09-29) — Zerodha Client ID format
+- Decision: 6 characters, 2–3 letters then digits (AB1234 or ABC123). Recorded in REQ-020 "Owner decision (Q234)".
