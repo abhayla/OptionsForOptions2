@@ -23,48 +23,86 @@ import unicodedata
 #: would not remove.
 _FORMAT_CATEGORY = "Cf"
 
-#: (regex, label) pairs. `label` names the phrase family for messages; the compiled `regex` is the
-#: enforced rule. Each pattern generalises one ADR-003 phrase, or a variant of it the W-024 verifier
-#: found, to its word stem/boundary so re-wording cannot dodge the ban by pluralising, hyphenating,
-#: inserting extra whitespace or adding a different following noun.
+#: Owner decision Q226 (2026-09-29, ADR-003): "Templates may not contain the bare words "best",
+#: "sure", "safe", "guarantee*" or "recommend*" (in addition to the Forbidden phrases above)."
+#: A trailing `*` means the word stem: any token starting with it ("guaranteed", "recommendation").
+#: A bare word is a whole TOKEN: "unsafe", "ensure" and "bestow" are other words, not these ones.
+Q226_BARE_WORDS: tuple[str, ...] = ("best", "sure", "safe", "guarantee*", "recommend*")
+
+#: Owner decision Q226: "Named exceptions, reviewed once: "best bid", "best ask", "best-case",
+#: "make sure"; a new exception needs its own review." The ONE place exceptions live. Each is
+#: tokenised the same way as the text, so "best-case", "best_case" and "best case" are one
+#: exception, and an exception excuses only the words it covers, never a second bare occurrence.
+Q226_NAMED_EXCEPTIONS: tuple[str, ...] = ("best bid", "best ask", "best-case", "make sure")
+
+#: (regex, label) pairs run over the TOKENS joined by single spaces (so `_` and `-` are word
+#: breaks). ADR-003's Forbidden phrases ("You should take this trade", "This is the best trade",
+#: "Best adjustment", "Recommended trade", "Guaranteed", "Risk-free", "Certain profit") and "any
+#: promise of returns or of reduced losses", generalised to the word stem; plus imperative variants
+#: earlier verifier rounds found ("must", "ought to", "have to"). "best"/"recommend*"/"guarantee*"
+#: are covered by the Q226 bare words above, so they are not repeated here.
 ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
-    # ADR-003: "You should take this trade" -> generalised to the imperative word itself.
-    (r"\bshould\b", "should"),
-    # W-024 round-3 verifier finding: "you must buy more lots" makes the same imperative claim.
-    # Negative lookahead excludes the compound "must-have" (round-4 false-positive finding: an
-    # ordinary word, not an imperative), while "must buy"/"must sell"/bare "must" stay caught.
-    (r"\bmust\b(?!-have)", "must"),
-    # W-024 round-3 verifier finding: "you ought to close this leg" makes the same imperative claim.
-    (r"\bought\s+to\b", "ought to"),
-    # W-024 round-4 verifier finding: "you'll have to exit" makes the same imperative claim as "must".
-    (r"\bhave\s+to\b", "have to"),
-    # ADR-003: "This is the best trade" / "Best adjustment" -> best + a trade-like noun. Deliberately
-    # NOT a bare \bbest\b (round-3 design constraint: that would block "best-case", an ordinary word).
-    (r"\bbest\s+(trade|strategy|option|choice|adjustment|strike|entry|time|pick|level)s?\b",
-     "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>"),
-    # ADR-003: "Recommended trade" -> any recommend* stem.
-    (r"\brecommend\w*\b", "recommend*"),
-    # ADR-003: "Guaranteed" -> any guarantee* stem.
-    (r"\bguarantee\w*\b", "guarantee*"),
-    # ADR-003: "Risk-free" -> hyphen, space or no separator.
-    (r"\brisk[- ]?free\b", "risk-free"),
-    # ADR-003: "Certain profit" -> certain profit(s)/return(s).
-    (r"\bcertain\s+(profit|return)s?\b", "certain profit/return"),
-    # W-024 verifier finding: "sure-shot" makes the same claim as "guaranteed".
-    (r"\bsure[- ]?shot\b", "sure-shot"),
-    # W-024 verifier finding: "no risk" makes the same claim as "risk-free".
-    (r"\bno\s+risk\b", "no risk"),
-    # W-024 verifier finding: "safe trade/bet/profit" makes the same claim as "risk-free"/"guaranteed".
-    (r"\bsafe\s+(trade|bet|profit)s?\b", "safe <trade/bet/profit>"),
-    # ADR-003: "any promise ... of reduced losses" -> reduce/avoid/never-lose phrasing.
-    (r"\breduc\w*\s+(your\s+)?loss(es)?\b", "reduce loss(es)"),
-    (r"\bavoid\w*\s+(a\s+)?loss(es)?\b", "avoid loss(es)"),
-    (r"\bnever\s+los\w*\b", "never lose"),
+    (r"\bshould(n)?\b", "should"),
+    (r"\bmust\b", "must"),
+    (r"\bought to\b", "ought to"),
+    (r"\bhave to\b", "have to"),
+    (r"\brisk ?free\b", "risk-free"),
+    (r"\bcertain (profit|return)s?\b", "certain profit/return"),
+    (r"\bno risk\b", "no risk"),
+    (r"\breduc\w* (your )?loss(es)?\b", "reduce loss(es)"),
+    (r"\bavoid\w* (a )?loss(es)?\b", "avoid loss(es)"),
+    (r"\bnever los\w*\b", "never lose"),
 )
 
 _COMPILED_PATTERNS: tuple[tuple["re.Pattern[str]", str], ...] = tuple(
-    (re.compile(pattern, re.IGNORECASE), label) for pattern, label in ADVICE_WORDING_PATTERNS
+    (re.compile(pattern), label) for pattern, label in ADVICE_WORDING_PATTERNS
 )
+
+#: A token is a run of letters/digits; everything else, INCLUDING `_` and `-`, separates tokens
+#: (brief item 3: "tokenised so `_` and `-` split words"; round-3 attack "you_should_buy").
+_TOKEN = re.compile(r"[^\W_]+")
+
+
+def tokenise(text: str) -> list[str]:
+    """NFKC-normalise, drop zero-width/format characters, casefold, and split into letter/digit
+    tokens. `_`, `-`, spaces and punctuation all separate words."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != _FORMAT_CATEGORY)
+    return _TOKEN.findall(text.casefold())
+
+
+_EXCEPTION_TOKENS: tuple[tuple[str, ...], ...] = tuple(tuple(tokenise(e)) for e in Q226_NAMED_EXCEPTIONS)
+
+
+def _bare_word_matches(word: str, token: str) -> bool:
+    if word.endswith("*"):
+        return token.startswith(word[:-1])
+    return token == word
+
+
+def _covered_by_exception(tokens: list[str], index: int) -> bool:
+    """True if the token at `index` is part of one of the Q226 named exceptions, in place."""
+    for exception in _EXCEPTION_TOKENS:
+        for offset, part in enumerate(exception):
+            if part != tokens[index]:
+                continue
+            start = index - offset
+            if start >= 0 and tuple(tokens[start:start + len(exception)]) == exception:
+                return True
+    return False
+
+
+def find_q226_bare_words(text: str) -> list[str]:
+    """Every Q226 bare word present in `text` and not covered by a named exception, as the Q226
+    label (e.g. "guarantee*"), in `Q226_BARE_WORDS` order."""
+    tokens = tokenise(text)
+    found: list[str] = []
+    for word in Q226_BARE_WORDS:
+        for index, token in enumerate(tokens):
+            if _bare_word_matches(word, token) and not _covered_by_exception(tokens, index):
+                found.append(word)
+                break
+    return found
 
 
 def normalise_for_wording_scan(text: str) -> str:
@@ -90,10 +128,11 @@ def normalise_for_wording_scan(text: str) -> str:
 
 
 def find_advice_wording(text: str) -> list[str]:
-    """Return every ADR-003 advice-wording family found in `text` (normalised first), by label,
-    in `ADVICE_WORDING_PATTERNS` order. Empty list means the text is clean."""
-    normalised = normalise_for_wording_scan(text)
-    return [label for pattern, label in _COMPILED_PATTERNS if pattern.search(normalised)]
+    """Return every ADR-003/Q226 advice-wording hit in `text`: first the Q226 bare words (by their
+    Q226 label), then the phrase families (by label). Empty list means the text is clean."""
+    joined = " ".join(tokenise(text))
+    phrases = [label for pattern, label in _COMPILED_PATTERNS if pattern.search(joined)]
+    return find_q226_bare_words(text) + phrases
 
 
 def is_blank_after_normalising(text: str) -> bool:

@@ -14,13 +14,15 @@ identifiers.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from ofo.wording import find_advice_wording, is_blank_after_normalising, is_nfkc_clean_latin
 
 from .classes import ErrorClass
-from .model import _RENDER_TOKEN, UserFacingError
-from .slots import Code, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from .model import UserFacingError, _build, _claim_render_token
+from .slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -39,8 +41,12 @@ class MessageTemplate:
     impact: str
     what_is_blocked: str
     next_action: str
-    slots: dict[str, type[SlotType]] = field(default_factory=dict)
+    slots: Mapping[str, type[SlotType]] = field(default_factory=dict)
     external_text_slot: str | None = None
+
+    def __post_init__(self) -> None:
+        # Read-only slot map: a template's slot types cannot be swapped after it is defined.
+        object.__setattr__(self, "slots", MappingProxyType(dict(self.slots)))
 
 
 _TEMPLATES: tuple[MessageTemplate, ...] = (
@@ -72,7 +78,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         impact="Prices and Greeks on screen are stale and may not match the live market.",
         what_is_blocked="New order preparation for this instrument.",
         next_action="Wait for the data feed to reconnect, or refresh the page in a few minutes.",
-        slots={"symbol": Underlying, "minutes": Int},
+        slots={"symbol": Underlying, "minutes": Count},
     ),
     MessageTemplate(
         id="broker_authentication_session_expired",
@@ -126,7 +132,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         impact="The strategy's current position does not match its intended shape yet.",
         what_is_blocked="Automatic adjustments and rule evaluation for this strategy.",
         next_action="Check the open legs in Zerodha and cancel or complete them manually.",
-        slots={"filled": Int, "total": Int},
+        slots={"filled": Count, "total": Count},
     ),
     MessageTemplate(
         id="reconciliation_mismatch_lots",
@@ -136,7 +142,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         impact="P&L, Greeks and rule checks for this strategy cannot be trusted until this is resolved.",
         what_is_blocked="New orders and automatic rule triggers for this strategy.",
         next_action="Review the mismatch on the reconciliation screen and confirm which figure is correct.",
-        slots={"broker_lots": Int, "platform_lots": Int},
+        slots={"broker_lots": Count, "platform_lots": Count},
     ),
     MessageTemplate(
         id="notification_delivery_failed",
@@ -170,66 +176,90 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
     ),
 )
 
-CATALOGUE: dict[str, MessageTemplate] = {t.id: t for t in _TEMPLATES}
+
+#: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
+#: `render()` never reads it: it works from its own snapshot taken below, so neither adding a key
+#: (refused: a mappingproxy has no __setitem__) nor forcing new text into a template object (with
+#: `object.__setattr__`) changes what a user is shown.
+CATALOGUE: Mapping[str, MessageTemplate] = MappingProxyType({t.id: t for t in _TEMPLATES})
+if len(CATALOGUE) != len(_TEMPLATES):
+    raise ValueError("duplicate template id in the catalogue")
 
 
-def render(template_id: str, **slots: object) -> UserFacingError:
-    """The only public way to build a `UserFacingError`: fill `template_id`'s typed slots.
+def _make_render(token: object) -> Callable[..., UserFacingError]:
+    """Snapshot the catalogue into immutable tuples and return `render`, which holds that snapshot,
+    the token and the checks in its closure (none of them is a module attribute a caller can swap)."""
+    snapshot: dict[str, tuple[ErrorClass, str, tuple[str, ...], tuple[tuple[str, type[SlotType]], ...], str | None]]
+    snapshot = {
+        t.id: (
+            t.error_class,
+            t.code,
+            tuple(str(getattr(t, name)) for name in _PART_NAMES),
+            tuple(t.slots.items()),
+            t.external_text_slot,
+        )
+        for t in _TEMPLATES
+    }
+    advice = find_advice_wording
+    blank = is_blank_after_normalising
+    latin = is_nfkc_clean_latin
+    external = ExternalText
+    build = _build
 
-    Fails closed: unknown `template_id`; a missing or extra slot name; a slot value of the wrong
-    type (a `str` where `Money` is expected, a `float` anywhere, an untyped/naive value, ...).
-    """
-    template = CATALOGUE.get(template_id)
-    if template is None:
-        raise ValueError(f"unknown template id {template_id!r}")
+    def render(template_id: str, **slots: object) -> UserFacingError:
+        """The only way to build a `UserFacingError`: fill `template_id`'s typed slots.
 
-    expected_names = set(template.slots)
-    if template.external_text_slot is not None:
-        expected_names.add(template.external_text_slot)
-    provided_names = set(slots)
+        Fails closed on: an unknown template id; a missing or extra slot; a slot value of the wrong
+        type or outside its closed set/range; and, as a second line after the typed slots, FINISHED
+        text that is blank, has non-Latin/confusable characters, or contains ADR-003/Q226 wording.
+        """
+        if type(template_id) is not str or template_id not in snapshot:
+            raise ValueError(f"unknown template id {template_id!r}")
+        error_class, code, part_texts, slot_types, external_slot = snapshot[template_id]
 
-    missing = expected_names - provided_names
-    if missing:
-        raise ValueError(f"template {template_id!r} missing slot(s): {sorted(missing)}")
-    extra = provided_names - expected_names
-    if extra:
-        raise ValueError(f"template {template_id!r} got unexpected slot(s): {sorted(extra)}")
+        expected = {name for name, _ in slot_types}
+        if external_slot is not None:
+            expected.add(external_slot)
+        missing = expected - set(slots)
+        if missing:
+            raise ValueError(f"template {template_id!r} missing slot(s): {sorted(missing)}")
+        extra = set(slots) - expected
+        if extra:
+            raise ValueError(f"template {template_id!r} got unexpected slot(s): {sorted(extra)}")
 
-    formatted: dict[str, str] = {}
-    for name, slot_type in template.slots.items():
-        value = slots[name]
-        slot_type.validate(value)
-        formatted[name] = slot_type.format(value)
+        formatted: dict[str, str] = {}
+        for name, slot_type in slot_types:
+            value = slots[name]
+            slot_type.validate(value)
+            text = slot_type.format(value)
+            if type(text) is not str:
+                raise TypeError(f"slot {name!r} formatter returned {type(text).__name__}, not str")
+            formatted[name] = text
 
-    parts = {part_name: getattr(template, part_name).format(**formatted) for part_name in _PART_NAMES}
+        parts = {name: text.format(**formatted) for name, text in zip(_PART_NAMES, part_texts)}
 
-    # Round-4 fix (REQ-065/W-024, second parked round): run the ADR-003 wording check on the
-    # FINISHED text of every part, at every render() call, not only once over the static catalogue
-    # in CI (`tests/errors/test_error_catalogue.py`). The static scan only ever sees the templates
-    # committed today; this runtime check is what catches a slot value combining with fixed template
-    # text to still say something the static scan never saw, and fails closed rather than trusting
-    # the slot-level checks alone.
-    for part_name, text in parts.items():
-        if is_blank_after_normalising(text):
-            raise ValueError(f"template {template_id!r} part {part_name!r} rendered blank")
-        if not is_nfkc_clean_latin(text):
-            raise ValueError(
-                f"template {template_id!r} part {part_name!r} has non-Latin/confusable characters: {text!r}"
-            )
-        hits = find_advice_wording(text)
-        if hits:
-            raise ValueError(f"template {template_id!r} part {part_name!r} contains banned wording {hits}: {text!r}")
+        # Second line (Q226, brief item 3): check the FINISHED text of every part at every call,
+        # not only the static templates in CI. Catches any slot value or formatter that combines
+        # with fixed template text into advice wording.
+        for name, text in parts.items():
+            if blank(text):
+                raise ValueError(f"template {template_id!r} part {name!r} rendered blank")
+            if not latin(text):
+                raise ValueError(f"template {template_id!r} part {name!r} has non-Latin/confusable characters: {text!r}")
+            hits = advice(text)
+            if hits:
+                raise ValueError(f"template {template_id!r} part {name!r} contains banned wording {hits}: {text!r}")
 
-    external_text: str | None = None
-    if template.external_text_slot is not None:
-        value = slots[template.external_text_slot]
-        ExternalText.validate(value)
-        external_text = ExternalText.format(value)
+        external_text: str | None = None
+        if external_slot is not None:
+            value = slots[external_slot]
+            external.validate(value)
+            external_text = external.format(value)
 
-    return UserFacingError._build(
-        _token=_RENDER_TOKEN,
-        error_class=template.error_class,
-        code=template.code,
-        external_text=external_text,
-        **parts,
-    )
+        return build(token, error_class=error_class, code=code, external_text=external_text, **parts)
+
+    return render
+
+
+render = _make_render(_claim_render_token())
+del _make_render

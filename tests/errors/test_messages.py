@@ -85,11 +85,12 @@ def test_code_is_a_closed_enum_known_check_code_or_strict_reference_id() -> None
     reference id — no free words, however they are joined."""
     Code.validate("MARGIN_INSUFFICIENT")  # ok: a known CheckCode value
     Code.validate("ERR-DEADBEEF")  # ok: strict reference id format
-    for bad in ("this is a sentence with spaces", "ORDER-REF-001", "risk-free", "you_should_buy"):
+    for bad in ("this is a sentence with spaces", "ORDER-REF-001", "risk-free", "you_should_buy", "",
+                "ERR-DEADBEEF\n", "err-deadbeef", "MARGIN_INSUFFICIENT "):
         with pytest.raises(ValueError):
             Code.validate(bad)
     with pytest.raises(TypeError):
-        Code.validate("")
+        Code.validate(None)
 
 
 def test_underlying_is_closed_to_the_catalogues_supported_symbols() -> None:
@@ -101,14 +102,22 @@ def test_underlying_is_closed_to_the_catalogues_supported_symbols() -> None:
         Underlying.validate("GUARANTEED-PROFIT")
     with pytest.raises(ValueError):
         Underlying.validate("BANKNIFTY")  # not in SUPPORTED_UNDERLYINGS
-    with pytest.raises(TypeError):
-        Underlying.validate("")
-
-
-def test_external_text_requires_nonblank_source_and_text() -> None:
-    ExternalText.validate(ExternalText(source="Zerodha", text="rejected"))  # ok
     with pytest.raises(ValueError):
-        ExternalText.validate(ExternalText(source="", text="rejected"))
+        Underlying.validate("")
+    with pytest.raises(TypeError):
+        Underlying.validate(None)
+
+
+def test_external_text_requires_a_closed_source_and_nonblank_text() -> None:
+    """AC-2 / Q226: the source is a closed label (Zerodha or the user), the text is non-blank."""
+    from ofo.errors.slots import ExternalSource
+
+    ExternalText.validate(ExternalText(source=ExternalSource.ZERODHA, text="rejected"))  # ok
+    ExternalText.validate(ExternalText(source=ExternalSource.USER, text="my note"))  # ok
+    with pytest.raises(ValueError):
+        ExternalText.validate(ExternalText(source=ExternalSource.ZERODHA, text="  "))
+    with pytest.raises(TypeError):
+        ExternalText.validate(ExternalText(source="", text="rejected"))  # type: ignore[arg-type]
     with pytest.raises(TypeError):
         ExternalText.validate("Zerodha: rejected")
 
@@ -126,12 +135,9 @@ def test_round2_red_case_must_is_rejected_at_the_template_level() -> None:
 def test_round2_red_case_best_strike_to_pick_pattern_is_covered_by_the_checker() -> None:
     from ofo.wording import find_advice_wording
 
-    assert find_advice_wording("best strike to pick") == [
-        "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>"
-    ]
-    assert find_advice_wording("best entry point") == [
-        "best <trade/strategy/option/choice/adjustment/strike/entry/time/pick/level>"
-    ]
+    # Q226: "best" is a banned bare word (label "best"), so any following noun is covered.
+    assert find_advice_wording("best strike to pick") == ["best"]
+    assert find_advice_wording("best entry point") == ["best"]
 
 
 # --- Legitimate rendered output is not flagged ----------------------------------------------------
