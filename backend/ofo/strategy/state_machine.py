@@ -205,8 +205,7 @@ _BLOCKED: Final[Mapping[StrategyState, tuple[str, ...]]] = MappingProxyType({
 class StrategyStateMachine:
     """The operational state of one strategy. Changed only through the event methods below, each an approved row."""
 
-    __slots__ = ("_id", "_record", "_audit", "_clock", "_transitions", "_mark", "_validated", "_executing",
-                 "_adjust_from")
+    __slots__ = ("_id", "_record", "_audit", "_clock", "_transitions", "_mark", "_validated", "_executing")
 
     def __init__(
         self,
@@ -227,7 +226,7 @@ class StrategyStateMachine:
             raise StateMachineError(f"audit must be an AuditLog, got {audit!r}")
         for name, value in (("_id", strategy_id), ("_record", record), ("_audit", audit or AuditLog()),
                             ("_clock", clock), ("_transitions", []), ("_mark", 0), ("_validated", None),
-                            ("_executing", None), ("_adjust_from", 0)):
+                            ("_executing", None)):
             object.__setattr__(self, name, value)
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -326,7 +325,7 @@ class StrategyStateMachine:
             return None
         last, record = outcomes[-1], self._record
         active = record.active_version
-        if record.proposed_version is None and active is not None and (
+        if active is not None and (
                 (last.kind is OutcomeKind.ACTIVATED and last.version_number == self._executing == active.number)
                 or last.kind is OutcomeKind.RECONCILED):
             self._precheck(_S.ACTIVE, _T.EXECUTED_AND_RECONCILED, at, "system")
@@ -353,7 +352,6 @@ class StrategyStateMachine:
                 self._record.mark_exited(at=at, actor=actor, resolution=choice.value)
             return self._commit(_S.EXITED, _T.USER_CLOSES_PARTIAL, actor, at)
         self._precheck(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, at, actor)
-        self._refuse_if_broker_differs()
         pending = self._record.proposed_version
         if pending is None or pending.number != self._executing or not self._record.proposal_confirmed:
             raise StateMachineError(f"version {self._executing} is no longer pending and confirmed; nothing to "
@@ -366,16 +364,17 @@ class StrategyStateMachine:
     def start_adjustment(self, *, at: datetime.datetime, actor: str) -> StateTransition:
         self._precheck(_S.ADJUSTMENT_PROPOSED, _T.USER_STARTS_MODIFICATION, at, actor)
         self._refuse_if_broker_differs()
-        self._set("_adjust_from", len(self._record.versions))
+        pending = self._record.proposed_version
+        if pending is not None:
+            raise StateMachineError(f"proposed version {pending.number} is already pending; its result comes first")
         return self._commit(_S.ADJUSTMENT_PROPOSED, _T.USER_STARTS_MODIFICATION, actor, at)
 
     def confirm_adjustment(self, *, at: datetime.datetime, actor: str) -> StateTransition:
-        """Needs the record to hold a proposed version created since the modification started, confirmed by the user
-        (W-027 ``confirm_modification``)."""
+        """Needs the record to hold a proposed version confirmed by the user (W-027 ``confirm_modification``);
+        ``start_adjustment`` refused while one was already pending, so this one was created since."""
         self._precheck(_S.EXECUTION_IN_PROGRESS, _T.USER_CONFIRMS_PROPOSAL, at, actor)
-        self._refuse_if_broker_differs()
-        pending = self._record.proposed_version
-        if pending is None or pending.number <= self._adjust_from:
+        pending = self._record.proposed_version  # a set reconciliation flag always means no proposal (W-012)
+        if pending is None:
             raise StateMachineError("no proposal was created since the modification started")
         if not self._record.proposal_confirmed:
             raise StateMachineError(f"proposed version {pending.number} is not confirmed by the user")
@@ -414,11 +413,8 @@ class StrategyStateMachine:
     def complete_at_expiry(self, *, at: datetime.datetime) -> StateTransition:
         self._precheck(_S.COMPLETED, _T.ALL_LEGS_EXPIRED, at, "system")
         self._refuse_if_broker_differs()
-        active = self._record.active_version
-        if active is None:
-            raise StateMachineError("no active version to complete")
         today = at.astimezone(IST).date()
-        expiries = [leg.expiry for leg in active.definition.legs]
+        expiries = [leg.expiry for leg in self._record.definition.legs]  # Active: the active version's legs
         expiries += [contract[3] for contract, _ in self._record.actual_position.lines]
         if not all(expiry < today for expiry in expiries):
             raise StateMachineError(f"not every leg has expired by {today.isoformat()} (India date)")
@@ -443,10 +439,10 @@ class StrategyStateMachine:
         state = self.state
         if state is not _S.RECONCILIATION_REQUIRED:
             raise StateMachineError(f"no reconciliation is required (state is {state.value})")
-        kinds = {outcome.kind for outcome in self._record.outcomes[self._mark:]}
-        if self._record.exited and OutcomeKind.EXITED in kinds:
+        if self._record.exited:  # mark_exited: an explicit, audited resolution that needs a flat broker
             self._precheck(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, at, "system")
             return self._commit(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, "system", at)
+        kinds = {outcome.kind for outcome in self._record.outcomes[self._mark:]}
         if not self._record.reconciliation_required and OutcomeKind.RECONCILED in kinds:
             previous = self._transitions[-1].from_state
             self._precheck(previous, _T.MANUAL_RESOLUTION, at, "system")

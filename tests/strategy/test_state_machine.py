@@ -632,3 +632,66 @@ def test_ac3_every_non_normal_state_says_what_happened_when_what_is_blocked_and_
     for state in set(StrategyState) - set(NON_NORMAL_STATES):
         if state in BUILD:
             assert BUILD[state]().machine.explain() is None, state
+
+
+def test_ac1_each_guard_refuses_on_the_records_facts():
+    """AC-1: the remaining guards, one refusal each, every fact read from the record or the machine's own log."""
+    with pytest.raises(StateMachineError, match="AuditLog"):
+        StrategyStateMachine("s-2", StrategyRecord(CONDOR, at=T0, clock=lambda: FAR), audit=[], clock=lambda: FAR)
+    ctx = to_active()
+    with pytest.raises(StateMachineError, match="no execution is in progress"):
+        ctx.machine.follow_execution(at=ctx.tick())
+    with pytest.raises(StateMachineError, match="no reconciliation is required"):
+        ctx.machine.resolve_reconciliation(at=ctx.tick())
+    with pytest.raises(StateMachineError, match="reason"):
+        ctx.machine.confirm_exit(at=ctx.tick(), actor="user-1", reason="")
+    # A proposal already pending (made outside the machine) must get its result before a modification starts.
+    ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    with pytest.raises(StateMachineError, match="already pending"):
+        ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")
+    # A fully rejected adjustment (nothing filled) is not "every leg executed": the state stays as it is.
+    ctx = to_adjusting()
+    ev_confirm_adjustment(ctx)
+    ctx.result(ResultStatus.REJECTED, ctx.record.active_version.intended_position)
+    assert ctx.machine.follow_execution(at=ctx.tick()) is None
+    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
+    # Choices are W-023's enum, never free text; closing needs the record to exit (a proposal still pending: no).
+    ctx = to_partial()
+    with pytest.raises(StateMachineError, match="PartialChoice"):
+        ctx.machine.choose_partial("Close Partial Strategy", at=ctx.tick(), actor="user-1")  # type: ignore[arg-type]
+    with pytest.raises(VersionError, match="awaiting"):
+        ctx.machine.choose_partial(PartialChoice.CLOSE_PARTIAL_STRATEGY, at=ctx.tick(), actor="user-1")
+    # Discard, resume and expiry refuse while the record says the broker differs.
+    ctx = to_adjusting()
+    ctx.observe(odd(ctx))
+    with pytest.raises(StateMachineError, match="reconciliation"):
+        ctx.machine.discard_adjustment(at=ctx.tick(), actor="user-1")
+    ctx = to_paused()
+    ctx.observe(odd(ctx))
+    with pytest.raises(StateMachineError, match="reconciliation"):
+        ctx.machine.resume_monitoring(at=ctx.tick(), actor="user-1")
+    ctx = to_active()
+    ctx.observe(odd(ctx))
+    with pytest.raises(StateMachineError, match="reconciliation"):
+        ctx.machine.complete_at_expiry(at=ctx.tick(AFTER_EXPIRY))
+    # A completed strategy is not live: a later broker difference does not pull it into Reconciliation Required.
+    ctx = to_completed()
+    ctx.observe(odd(ctx))
+    assert ctx.machine.sync_broker(at=ctx.tick()) is None
+    assert ctx.machine.state is S.COMPLETED
+    # An adoption followed by a NEW difference (the flag set again) does not unblock.
+    ctx = to_reconciliation(S.ACTIVE)
+    ctx.record.reconcile(at=ctx.tick(), actor="user-1", resolution="adopt")
+    ctx.observe(odd(ctx))
+    with pytest.raises(StateMachineError, match="manual resolution"):
+        ctx.machine.resolve_reconciliation(at=ctx.tick())
+
+
+def test_ac2_the_transition_log_is_capped(monkeypatch):
+    """AC-2: absurd sizes are refused; the log has a hard cap (lowered here to 3 so the test is quick)."""
+    import ofo.strategy.state_machine as module
+    monkeypatch.setattr(module, "MAX_TRANSITIONS", 3)
+    ctx = to_validated()
+    with pytest.raises(StateMachineError, match="full"):
+        ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.VALIDATED and ctx.record.proposed_version is None
