@@ -86,3 +86,14 @@ Partly covered (extend an existing row): 1 (non-NIFTY underlyings), 2 (chain), 9
 Fully covered: 3 (Option LTP), 8 (Strategy P&L).
 Total: 30 rows; 2 covered, 4 partial, 24 gaps.
 Unclear speaker meaning: rows 10, 12, 13, 24, 25, 26, 28.
+
+### Owner readings of the unclear values (2026-09-29, Q246)
+- **Row 10, profit still left** = the position's maximum profit at expiry **minus losses already booked** on the
+  strategy (what is still earnable on the whole trade), computed by the one engine (ADR-008).
+- **Row 28, loss as % of capital**: capital = the **margin blocked** for the strategy (Zerodha margin, row 27).
+- **Row 26, volatility** = each option's **implied volatility** from our engine's pricing model; India VIX may be
+  shown separately later (not a V1 value).
+- **Rows 24-25, swing highs/lows and trending vs range-bound**: **out of V1** — they need price history, which V1
+  does not store (REQ-047 AC-1).
+- Rows 12 and 13 (payoff slope; "green area" edges) remain unclear; 13 is read as the breakevens (already built,
+  REQ-033) unless the owner says otherwise.
