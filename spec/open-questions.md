@@ -237,3 +237,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q238 — DECIDED (owner, 2026-09-29) — Order of exit orders (OD-e)
 - Decision: shorts bought back first, then longs sold, never in one batch. Recorded in REQ-058 "Owner decision (Q238)".
+
+## Q239 — DECIDED (owner, 2026-09-29) — Gate checks on exits (W-014)
+- Decision: keep all five checks on exits. Recorded in REQ-059 "Owner decision (Q239)".
