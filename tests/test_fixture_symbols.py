@@ -98,6 +98,9 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("scenario/scenario_fixtures.py", "NIFTY26OCT"):
         "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for scenario "
         "tests: no NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
+    ("table/conftest.py", "NIFTY26OCT"):
+        "same golden Iron Condor fixture (scenario-calculations.md section 6) reused for the table tests: no "
+        "NIFTY option row exists at the 2026-10-27 expiry in this catalogue slice.",
     ("scenario/test_modes.py", "NIFTY26OCT22800PE"):
         "same golden Iron Condor fixture: the unavailable-IV message names the same leg used by "
         "engine/conftest.py, for which no catalogue row exists at 2026-10-27.",
@@ -105,17 +108,6 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "REQ-064: the audit log stores a raw Kite-style broker-response payload EXACTLY as passed, "
         "with no secret filtering and no catalogue lookup; the payload's tradingsymbol is "
         "illustrative content the log must not alter, not a contract this test resolves.",
-    ("marketdata/test_quote.py", "NIFTY26O2823500CE"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "NormalizedQuote carries an illustrative instrument_id and performs no catalogue lookup; "
-        "corrected in a follow-up.",
-    ("marketdata/test_rule_health.py", "NIFTY26O2823500CE"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "same illustrative instrument_id as marketdata/test_quote.py; corrected in a follow-up.",
-    ("range/test_pick_lists.py", "NIFTY26NOV"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "pick-list strike range fixture uses a monthly November head for which this catalogue slice "
-        "holds no options (only NIFTY26NOVFUT); corrected in a follow-up.",
 }
 
 

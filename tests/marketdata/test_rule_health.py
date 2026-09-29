@@ -56,8 +56,8 @@ def nifty_quote(*, age_seconds: int, feed_connected: bool = True):
 def option_quote(*, age_seconds: int):
     ts = NOW - datetime.timedelta(seconds=age_seconds)
     return build_quote(
-        instrument_id="NIFTY26O2823500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
-        instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 28), strike=D("23500"),
+        instrument_id="NIFTY26O0623500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
+        instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 6), strike=D("23500"),
         ltp=D("120.50"), bid=D("120"), ask=D("121"), volume=1000, oi=1000, oi_change=10,
         iv=D("14"), delta=D("0.45"), gamma=D("0.002"), theta=D("-8"), vega=D("6"),
         timestamp=ts, source=SourceMetadata(provider="vendor-x", feed_id="NIFTY-OPT"),

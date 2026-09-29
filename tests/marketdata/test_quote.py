@@ -15,12 +15,12 @@ SOURCE = SourceMetadata(provider="vendor-x", feed_id="NFO-OPT-1")
 
 def option_quote(**overrides) -> NormalizedQuote:
     fields = dict(
-        instrument_id="NIFTY26O2823500CE",
+        instrument_id="NIFTY26O0623500CE",
         underlying="NIFTY",
         exchange="NFO",
         segment="NFO-OPT",
         instrument_type=Instrument.CE,
-        expiry=datetime.date(2026, 10, 28),
+        expiry=datetime.date(2026, 10, 6),
         strike=D("23500"),
         ltp=D("120.50"),
         bid=D("120.00"),
@@ -45,11 +45,11 @@ def test_ac1_every_named_field_is_present_with_exact_types():
     """AC-1: instrument id, underlying, exchange, segment, expiry, strike, CE/PE, LTP, bid, ask, volume, OI,
     OI change, IV, Greeks, timestamp, source metadata, data health."""
     q = option_quote()
-    assert q.instrument_id == "NIFTY26O2823500CE"
+    assert q.instrument_id == "NIFTY26O0623500CE"
     assert q.underlying == "NIFTY"
     assert q.exchange == "NFO"
     assert q.segment == "NFO-OPT"
-    assert q.expiry == datetime.date(2026, 10, 28)
+    assert q.expiry == datetime.date(2026, 10, 6)
     assert q.strike == D("23500") and isinstance(q.strike, D)
     assert q.instrument_type is Instrument.CE
     for field_name in ("ltp", "bid", "ask", "iv", "delta", "gamma", "theta", "vega"):
@@ -72,7 +72,7 @@ def test_ac1_future_quote_has_expiry_but_no_strike():
     q = option_quote(instrument_type=Instrument.FUT, strike=None)
     assert q.instrument_type is Instrument.FUT
     assert q.strike is None
-    assert q.expiry == datetime.date(2026, 10, 28)
+    assert q.expiry == datetime.date(2026, 10, 6)
 
 
 def test_rejects_naive_timestamp():
@@ -90,8 +90,8 @@ def test_future_timestamp_never_raises_but_is_unhealthy_beyond_clock_skew():
 
     future = NOW + datetime.timedelta(hours=1)
     q = build_quote(
-        instrument_id="NIFTY26O2823500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
-        instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 28), strike=D("23500"),
+        instrument_id="NIFTY26O0623500CE", underlying="NIFTY", exchange="NFO", segment="NFO-OPT",
+        instrument_type=Instrument.CE, expiry=datetime.date(2026, 10, 6), strike=D("23500"),
         ltp=D("120.50"), bid=D("120.00"), ask=D("121.00"), volume=1000, oi=1000, oi_change=10,
         iv=D("14"), delta=D("0.4"), gamma=D("0.001"), theta=D("-1"), vega=D("1"),
         timestamp=future, source=SOURCE, now=NOW,
