@@ -201,3 +201,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q228 — DECIDED (owner, 2026-09-29 morning) — Length of a paid month / year
 - Decision: 30 days / 365 days, fixed; not calendar months. Recorded in ADR-023 "Q228". (Was owner-review item 3b.)
+
+## Q229 — DECIDED (owner, 2026-09-29 morning) — Entitlement evaluation rules 2-3
+- Decision: both confirmed as written in ADR-023 "Evaluation rules". Recorded in ADR-023 "Q229".
