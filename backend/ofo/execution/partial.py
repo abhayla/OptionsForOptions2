@@ -70,7 +70,8 @@ from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
 from ofo.execution.context import ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash
 from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, ident
 from ofo.execution.safety import SafetyResult, check_pre_execution
-from ofo.execution.sequence import sequence_plan
+from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
+from ofo.execution.sequence import BrokerConstraints, PlannedOrder, sequence_plan
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
@@ -380,20 +381,20 @@ class Preparation:
     """
 
     __slots__ = ("choice", "assessment", "orders", "gate", "reason", "book", "strategy_id", "cancels", "guard",
-                 "plan", "catalogue", "_seal", "_consumed")
+                 "plan", "catalogue", "slices", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
                  gate: SafetyResult | None, reason: str, book: OrderBook | None = None,
                  strategy_id: str | None = None, cancels: tuple[str, ...] = (),
                  guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
-                 catalogue: Catalogue | None = None, *,
+                 catalogue: Catalogue | None = None, slices: tuple[PlannedOrder, ...] = (), *,
                  _mint: object = None) -> None:
         if _mint is not _MINT:
             raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
         orders = tuple(orders)
         for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
                             ("reason", reason), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
-                            ("guard", guard), ("plan", plan), ("catalogue", catalogue),
+                            ("guard", guard), ("plan", plan), ("catalogue", catalogue), ("slices", tuple(slices)),
                             ("_seal", (_orders_digest(orders), gate)),
                             ("_consumed", False)):
             object.__setattr__(self, name, value)
@@ -531,7 +532,7 @@ def _margin_or_unknown(planner: MarginPlanner, legs: tuple[Leg, ...]) -> Decimal
 def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContext, book: OrderBook,
           plan: ExecutionPlan, catalogue: Catalogue, eligibility: EligibilityRegistry, choice: PartialChoice,
           a: Assessment, record: StrategyRecord, planner: MarginPlanner,
-          cancels: tuple[str, ...] = ()) -> Preparation:
+          cancels: tuple[str, ...] = (), slices: tuple[PlannedOrder, ...] = ()) -> Preparation:
     blocked = ctx.reconciliation_blocked_strategy_ids
     if blocked is not None and book.is_submit_blocked(plan.strategy_id):
         ctx = dataclasses.replace(ctx, reconciliation_blocked_strategy_ids=blocked | {plan.strategy_id})
@@ -551,13 +552,15 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     reason = f"{len(orders)} order(s) ready for your confirmation."
     if decision.changes_risk_profile:
         reason = f"{decision.message}. {reason}"
-    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan, catalogue)
+    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan, catalogue,
+                 slices)
 
 
 def _prepare_missing(
     choice: PartialChoice, remaining: Sequence[RemainingLeg], plan: ExecutionPlan, reader: BrokerReader,
     book: OrderBook, planner: MarginPlanner, context: ExecutionContext, catalogue: Catalogue,
-    eligibility: EligibilityRegistry, a: Assessment,
+    eligibility: EligibilityRegistry, a: Assessment, margin_planner: PlanMarginPlanner | None,
+    constraints: BrokerConstraints | None,
 ) -> Preparation:
     if context.action is ExecutionAction.EXIT:
         raise ValueError("completing or retrying uses the entry/adjustment context, not an EXIT context")
@@ -570,16 +573,18 @@ def _prepare_missing(
     if a.open_orders:
         return _not_prepared(choice, a, IN_FLIGHT)
     record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
-    # ADR-017 Q26 / REQ-056 AC-3 (W-022): the missing legs go in the full plan's dependency-aware sequence, never
-    # "all buys first"; protectors come before the sells that depend on them.
-    position = {ref: i for i, ref in enumerate(sequence_plan(plan).sequence)}
-    ordered = sorted(remaining, key=lambda r: position[r.planned.leg_ref])
-    legs = tuple(dataclasses.replace(r.planned.leg, quantity=r.missing_quantity) for r in ordered)
+    # ADR-017 Q26 / REQ-056 AC-2/AC-3 (W-022, W-028): the missing units go through the FULL plan's sequence with the
+    # plan's own margin planner and broker constraints: protectors before the sells that depend on them, never "all
+    # buys first"; freeze-limit slices, each a whole number of catalogue lots; batches never span a step.
+    missing = {r.planned.leg_ref: r.missing_quantity for r in remaining}
+    seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
+    legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
+                 for ref in dict.fromkeys(o.leg_ref for o in seq.orders))
     orders = tuple(
         # orchestrator default OD-c: the planned leg's price, reviewed by the user before confirming
-        Order(plan.strategy_id, r.planned.leg_ref, r.planned.contract, r.planned.leg.action, r.missing_quantity,
-              r.planned.leg.entry_price, version_id=context.version_id)
-        for r in ordered
+        Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, plan.by_ref(s.leg_ref).leg.action,
+              s.quantity, plan.by_ref(s.leg_ref).leg.entry_price, version_id=context.version_id)
+        for s in seq.orders
     )
     try:
         available = require_decimal(reader.fetch_available_margin(), "margin_available")  # OD-d: fresh read
@@ -588,7 +593,8 @@ def _prepare_missing(
                                         "prepared.")
     required = require_decimal(planner.required_margin(Strategy(legs)), "margin_required")  # OD-d
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner)
+    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
+                 slices=seq.orders)
 
 
 def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Preparation | None:
@@ -600,10 +606,14 @@ def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Prepar
 
 def complete_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: EligibilityRegistry,
+    catalogue: Catalogue, eligibility: EligibilityRegistry, *, margin_planner: PlanMarginPlanner | None = None,
+    constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """AC-4: re-fetch, sync, recompute the remaining strategy, re-check margin, verify the missing legs, prepare only
-    them. A late fill that closes the gap makes the strategy COMPLETE and prepares nothing."""
+    them. A late fill that closes the gap makes the strategy COMPLETE and prepares nothing.
+
+    W-028: ``margin_planner`` and ``constraints`` are the same engine margin planner and broker constraints the plan
+    (``sequence_plan``) uses; the missing units are prepared as that plan's lot-aligned freeze slices."""
     choice = PartialChoice.COMPLETE_STRATEGY
     waiting = _live(choice, book, plan)
     if waiting is not None:
@@ -618,14 +628,17 @@ def complete_strategy(
         return _not_prepared(choice, a, IN_FLIGHT)
     if a.status is not ExecutionStatus.PARTIAL_EXCEPTION:
         return _not_prepared(choice, a)
-    return _prepare_missing(choice, a.remaining, plan, reader, book, planner, context, catalogue, eligibility, a)
+    return _prepare_missing(choice, a.remaining, plan, reader, book, planner, context, catalogue, eligibility, a,
+                            margin_planner, constraints)
 
 
 def retry_failed_leg(
     plan: ExecutionPlan, leg_ref: str, reader: BrokerReader, book: OrderBook, planner: MarginPlanner,
-    context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry, *,
+    margin_planner: PlanMarginPlanner | None = None, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
-    """Orchestrator default OD-a: one new order for the same contract as one FAILED leg, after the same re-reads."""
+    """Orchestrator default OD-a: new order(s) for the same contract as one FAILED leg, after the same re-reads.
+    W-028: the still-missing units are sent as the plan's lot-aligned freeze slices (same planner and constraints)."""
     _ident(leg_ref, "leg_ref")
     choice = PartialChoice.RETRY_FAILED_LEG
     waiting = _live(choice, book, plan)
@@ -641,7 +654,8 @@ def retry_failed_leg(
     if leg_ref not in {f.leg_ref for f in a.failures}:
         raise ValueError(f"leg {leg_ref!r} has no failed order to retry")
     (target,) = [r for r in a.remaining if r.planned.leg_ref == leg_ref]
-    return _prepare_missing(choice, (target,), plan, reader, book, planner, context, catalogue, eligibility, a)
+    return _prepare_missing(choice, (target,), plan, reader, book, planner, context, catalogue, eligibility, a,
+                            margin_planner, constraints)
 
 
 def review_manually(assessment: Assessment) -> Preparation:
@@ -804,7 +818,7 @@ def submit_confirmed(
         tagged, request = tagged_orders[index], requests[index]
         tag = tagged.client_tag
         book.add(tagged)  # registered BEFORE the broker sees it
-        rest = tuple(o.leg_ref for o in orders[index + 1:])
+        rest = tuple(dict.fromkeys(o.leg_ref for o in orders[index + 1:]))  # W-028: one entry per leg with unsent slices
         try:
             broker_order_id = sink.submit(request)
         except OrderRefused as exc:  # no retry: a definite refusal, recorded and shown with the broker's text

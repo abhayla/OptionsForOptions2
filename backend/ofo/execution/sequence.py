@@ -41,6 +41,14 @@ real ones at the Kite build): a leg above the freeze quantity is split into seve
 orders are grouped into batches of at most ``max_orders_per_batch``; a batch never spans two steps, so every
 protective slice is placed before any dependent slice.
 
+LOTS (W-028, deferred #43; REQ-056 AC-9 "lot validity"): given the instrument ``catalogue``, every plan contract must
+be a catalogue instrument, and every leg quantity and every quantity to order must be a whole number of that
+instrument's catalogue lot size, else refused. ORCHESTRATOR DEFAULT (W-028, the spec is silent): a freeze quantity
+that is not a whole number of lots is rounded DOWN to whole lots (freeze 200, lot 65 -> 195), so every slice is
+lot-aligned; a freeze below one lot is refused.
+REMAINING ORDERS (W-028): ``quantities`` names the units still to order per leg (Complete / Retry); steps, dependencies
+and margin order stay those of the FULL plan, only the named legs get orders.
+
 WITHHOLD (AC-4): a dependent is not submitted when ANY of its protectors failed or was itself withheld (one pass in
 sequence order is the fixpoint, protectors always come earlier).
 NAKED (``unprotected``): from the same relation. Sold options and their protectors are grouped into connected sets;
@@ -49,7 +57,7 @@ is singled out). A sold option with no protector is naked in full.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -58,6 +66,7 @@ from typing import Final, Protocol
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.interfaces import MarginPlanner, plan_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
+from ofo.instruments import Catalogue
 
 _BUILDER_KEY: Final = object()
 MARGIN_UNVERIFIED: Final = "unverified against real Zerodha margin behaviour (ADR-017 Q26)"
@@ -194,6 +203,18 @@ class OrderSequence:
                 blocked.add(ref)
         return Simulation(tuple(sent), tuple(refused), tuple(withheld))
 
+    def simulate_slices(self, failed: Iterable[tuple[str, int]]) -> Simulation:
+        """AC-4 per slice (W-028): a failed slice ``(leg_ref, slice_no)`` of this sequence's orders counts as a failed
+        leg, so every dependent of that leg is withheld."""
+        failing = tuple(failed)
+        known = {(o.leg_ref, o.slice_no) for o in self.orders}
+        for item in failing:
+            if not isinstance(item, tuple) or len(item) != 2 or isinstance(item[1], bool) or item not in known:
+                raise ValueError(f"{item!r} is not a (leg_ref, slice_no) order of this plan")
+        if len(set(failing)) != len(failing):
+            raise ValueError(f"duplicate slice in the failed set: {failing}")
+        return self.simulate(tuple(dict.fromkeys(ref for ref, _ in failing)))
+
 
 def protects(protector: Leg, sold: Leg) -> bool:
     """True when ``protector`` caps ``sold``'s loss (rules and sources in the module docstring)."""
@@ -265,16 +286,64 @@ def _positive_int(value: object, name: str, cap: int | None = None) -> int:
     return value
 
 
-def _orders(plan: ExecutionPlan, steps: tuple[PlanStep, ...], constraints: BrokerConstraints) -> tuple[PlannedOrder, ...]:
+def _lot_sizes(plan: ExecutionPlan, catalogue: Catalogue) -> dict[str, int]:
+    """Each plan leg's lot size from the catalogue entry of its contract; every leg a whole number of lots."""
+    if not isinstance(catalogue, Catalogue):
+        raise ValueError(f"lot sizes come from the instrument catalogue, got {catalogue!r}")
+    by_symbol: dict[str, list[int]] = {}
+    for entry in catalogue.all_entries():
+        by_symbol.setdefault(entry.contract.tradingsymbol, []).append(entry.contract.lot_size)
+    lots: dict[str, int] = {}
+    for p in plan.legs:
+        found = by_symbol.get(p.contract, [])
+        if len(found) != 1:
+            raise ValueError(f"{p.contract}: the catalogue has {len(found)} instruments with that symbol; "
+                             "no lot size, nothing is planned")
+        lots[p.leg_ref] = _positive_int(found[0], f"catalogue lot size of {p.contract}")
+        if p.leg.quantity % lots[p.leg_ref]:
+            raise ValueError(f"{p.contract}: {p.leg.quantity} units is not a whole number of lots of "
+                             f"{lots[p.leg_ref]}")
+    return lots
+
+
+def _quantities(plan: ExecutionPlan, quantities: Mapping[str, int] | None,
+                lots: Mapping[str, int] | None) -> dict[str, int]:
+    """Units to order per leg: the full plan by default, else ``quantities`` (known legs, 1..planned units)."""
+    if quantities is None:
+        wanted = {p.leg_ref: p.leg.quantity for p in plan.legs}
+    else:
+        if not isinstance(quantities, Mapping):
+            raise ValueError(f"quantities must map leg refs to units, got {quantities!r}")
+        wanted = {}
+        for ref, units in quantities.items():
+            p = plan.by_ref(ref) if isinstance(ref, str) else None
+            if p is None:
+                raise ValueError(f"leg {ref!r} is not in this plan")
+            wanted[ref] = _positive_int(units, f"units to order of {ref}", p.leg.quantity)
+    if lots is not None:
+        for ref, units in wanted.items():
+            if units % lots[ref]:
+                raise ValueError(f"{units} units of {ref} is not a whole number of lots of {lots[ref]}")
+    return wanted
+
+
+def _orders(plan: ExecutionPlan, steps: tuple[PlanStep, ...], constraints: BrokerConstraints,
+            quantities: Mapping[str, int], lots: Mapping[str, int] | None) -> tuple[PlannedOrder, ...]:
     per_batch = _positive_int(constraints.max_orders_per_batch(), "max_orders_per_batch", MAX_BATCH_SIZE)
     out: list[PlannedOrder] = []
     batch = 0
     for number, step in enumerate(steps, start=1):
         in_step = 0
         for ref in step.leg_refs:
+            if ref not in quantities:
+                continue
             p = plan.by_ref(ref)
             freeze = _positive_int(constraints.freeze_quantity(p.contract), f"freeze quantity of {p.contract}")
-            remaining, slice_no = p.leg.quantity, 0
+            if lots is not None:  # orchestrator default (W-028): round the freeze DOWN to whole lots
+                freeze = freeze // lots[ref] * lots[ref]
+                if freeze == 0:
+                    raise ValueError(f"{p.contract}: the freeze quantity is below one lot of {lots[ref]}")
+            remaining, slice_no = quantities[ref], 0
             if -(-remaining // freeze) > MAX_SLICES_PER_LEG:
                 raise ValueError(f"{p.contract}: {remaining} units at a freeze of {freeze} needs more than "
                                  f"{MAX_SLICES_PER_LEG} orders")
@@ -296,10 +365,16 @@ ORDERING_BASIS: Final = (
 
 
 def sequence_plan(plan: ExecutionPlan, margin_planner: MarginPlanner | None = None,
-                  constraints: BrokerConstraints | None = None) -> OrderSequence:
-    """Build the leg dependencies, the order sequence and the orders for ``plan`` (rules in the module docstring)."""
+                  constraints: BrokerConstraints | None = None, *, catalogue: Catalogue | None = None,
+                  quantities: Mapping[str, int] | None = None) -> OrderSequence:
+    """Build the leg dependencies, the order sequence and the orders for ``plan`` (rules in the module docstring).
+
+    ``catalogue``: lot sizes (every leg and slice a whole number of lots). ``quantities``: units still to order per
+    leg (Complete / Retry); legs not named get no orders."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"sequence_plan needs an ExecutionPlan, got {plan!r}")
+    lots = _lot_sizes(plan, catalogue) if catalogue is not None else None
+    wanted = _quantities(plan, quantities, lots)
     legs = plan.legs
     dependencies: list[tuple[str, tuple[str, ...]]] = []
     for p in legs:
@@ -321,6 +396,7 @@ def sequence_plan(plan: ExecutionPlan, margin_planner: MarginPlanner | None = No
     }
     used, note = _margin_order(plan, members, margin_planner)
     steps = tuple(PlanStep(kind, tuple(refs)) for kind, refs in members.items() if refs)
-    orders = _orders(plan, steps, constraints if constraints is not None else UnverifiedDefaultConstraints())
+    orders = _orders(plan, steps, constraints if constraints is not None else UnverifiedDefaultConstraints(),
+                     wanted, lots)
     return OrderSequence(plan.strategy_id, steps, tuple(dependencies), tuple(undetermined),
                          tuple(_naked(legs, dependencies)), ORDERING_BASIS, orders, used, note, _BUILDER_KEY)
