@@ -30,6 +30,18 @@ def test_invalid_url_is_rejected_by_registry_validation() -> None:
         validate_source(bad_ref)
 
 
+@pytest.mark.parametrize("url", ["https://", "https:///instruments", "https://:443/x", "https://?a=b"])
+def test_url_without_a_host_is_rejected(url: str) -> None:
+    """AC-5 negative case (issue #10 item 1): a bare `https://` has the scheme but no host and must be refused."""
+    with pytest.raises(ValueError, match="host"):
+        validate_source(SourceRef(rule="bad_rule", url=url, captured_on="2026-09-29"))
+
+
+def test_real_instrument_list_url_still_passes_validation() -> None:
+    """AC-5: the real Zerodha URL used by the downloader still validates after the host check."""
+    validate_source(SourceRef(rule="r", url="https://api.kite.trade/instruments", captured_on="2026-09-29"))
+
+
 def test_get_returns_registered_source() -> None:
     """AC-5: the instrument-list source used by the parser/catalogue is registered and lookup-able."""
     ref = get("instrument_list_url")
