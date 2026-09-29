@@ -79,6 +79,9 @@ ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bzero risk\b", "zero risk"),
     (r"\bavoid\w* (a )?loss(es)?\b", "avoid loss(es)"),
     (r"\bnever los\w*\b", "never lose"),
+    # W-046 round 2: "de-risk" is a promise that risk is removed ("Adjustments are never described
+    # as reducing risk by default", T1 #176).
+    (r"\bde ?risk\w*\b", "de-risk"),
 )
 
 _COMPILED_PATTERNS: tuple[tuple["re.Pattern[str]", str], ...] = tuple(
@@ -157,12 +160,118 @@ def normalise_for_wording_scan(text: str) -> str:
     return text
 
 
+#: ---- Sentence-level promise rules (W-046 round 2) ------------------------------------------------
+#: ADR-003: "never ... promises that losses will be reduced"; Forbidden: "any promise of returns or of
+#: reduced losses (T1 #74)"; "Adjustments are never described as reducing risk by default; they can
+#: increase it (T1 #176)"; Q235: "in every word form". The phrase patterns above match one word ORDER
+#: ("reduce your losses"), so "Your losses will be reduced" or "returns are assured" passed. These rules
+#: look at a whole SENTENCE instead: a loss/risk word together with a reduction word, or a return/profit
+#: word together with an assurance word, anywhere in the same sentence, is a promise.
+#:
+#: There is deliberately NO blanket exemption for metric labels ("maximum loss", "max loss", "loss at",
+#: "P&L"): a label with no reduction/assurance word next to it already passes ("Maximum loss 8,175"),
+#: and exempting the label would let "This adjustment lowers your maximum loss" through, which is the
+#: exact promise T1 #176 forbids.
+
+#: Loss/risk terms (whole tokens).
+_LOSS_TERM = re.compile(r"\b(?:loss|losses|risk|risks|drawdown|drawdowns|downside|downsides)\b")
+
+#: Reduction words, every word form (a token-start match where the stem is unambiguous).
+_REDUCTION_TERM = re.compile(
+    r"\b(?:reduc\w*|lower|lowers|lowered|lowering|cut|cuts|cutting|limit|limits|limited|limiting"
+    r"|minimi[sz]\w*|protect\w*|shield\w*|prevent\w*|avoid\w*|eliminat\w*|decreas\w*|mitigat\w*"
+    r"|curb\w*)\b"
+)
+
+#: Non-promise senses of a reduction word, blanked before the co-occurrence test. Each is a noun or
+#: adjective use naming a thing (a strike, an order type, a cap on the size of a loss), never a verb
+#: acting on a loss. Narrow on purpose: only the reduction word itself is blanked, so a real verb in
+#: the same sentence ("buy at a lower strike to cut your loss") is still seen.
+_REDUCTION_NOUN_SENSES: tuple["re.Pattern[str]", ...] = tuple(re.compile(p) for p in (
+    # "lower" as a position adjective: "a lower strike", "the lower breakeven".
+    r"\blower(?= (?:strike|strikes|breakeven|breakevens|leg|legs|wing|wings|bound|band|call|put|limit|limits)\b)",
+    # "limit" as a noun: "no upper limit", "risk limit", "loss limit", "a limit order", "limit price".
+    r"(?<=\bupper )limits?\b",
+    r"(?<=\blower )limits?\b",
+    r"(?<=\bloss )limits?\b",
+    r"(?<=\brisk )limits?\b",
+    r"\blimit(?= (?:order|orders|price|prices)\b)",
+    # A stated cap, which is a factual quantity: "the loss is limited to the premium paid", "to 5 000".
+    r"\blimited(?= to (?:the )?(?:premium|net debit|debit|spread width|width|\d))",
+))
+
+#: A negated loss: "won't lose", "will not lose", "can't lose", "never lose", "cannot possibly lose".
+#: Tokens are letters/digits only, so "won't" arrives as "won t". Exempt only when what is not lost is
+#: the user's own data/work in the app ("you will not lose your plan"), never money.
+_NEGATED_LOSS = re.compile(
+    r"\b(?:not|t|never|cannot)(?: \w+)? (?:lose|loses|losing|lost)\b"
+    r"(?! (?:your |the |any )?(?:data|plan|plans|changes|settings)\b)"
+)
+_NO_CHANCE_OF_LOSS = re.compile(
+    r"\b(?:(?:no|zero) (?:chance|possibility|way|danger|risk) of (?:a |any )?|without (?:a |any )?)"
+    r"(?:loss|losses|losing)\b"
+)
+_NO_DOWNSIDE = re.compile(r"\b(?:no|zero|without) (?:any )?(?:downside|downsides|drawdown|drawdowns)\b")
+
+#: Return/profit terms (whole tokens).
+_RETURN_TERM = re.compile(r"\b(?:return|returns|profit|profits|income|incomes|gain|gains|earnings|yield|yields)\b")
+
+#: Assurance words, every word form.
+_ASSURANCE_TERM = re.compile(
+    r"\b(?:assur\w*|guarantee\w*|certain|certainly|certainty|sure|surely|fixed|risk free|riskless"
+    r"|definite\w*|promis\w*)\b"
+)
+
+#: "certain" as a determiner ("in certain cases") is not an assurance.
+_ASSURANCE_NON_SENSES: tuple["re.Pattern[str]", ...] = (
+    re.compile(r"\bcertain(?= (?:cases|conditions|situations|circumstances|scenarios|events|legs|strikes"
+               r"|orders|instruments)\b)"),
+)
+
+#: A sentence ends at . ! ? ; or a line break followed by whitespace/end (so "8.5" stays one sentence).
+_SENTENCE_BREAK = re.compile(r"[.!?;]+(?=\s|$)|[\r\n]+")
+
+PROMISE_REDUCED_LOSS = "promise of reduced loss/risk"
+PROMISE_NO_LOSS = "promise of no loss"
+PROMISE_RETURNS = "promise of returns"
+
+
+def _blank(joined: str, patterns: tuple["re.Pattern[str]", ...]) -> str:
+    """`joined` with every match of every pattern (each found on the ORIGINAL text, so one blank never
+    hides another's context: "lower limit" blanks both words) replaced by spaces."""
+    chars = list(joined)
+    for pattern in patterns:
+        for match in pattern.finditer(joined):
+            chars[match.start():match.end()] = " " * (match.end() - match.start())
+    return "".join(chars)
+
+
+def find_promise_sentences(text: str) -> list[str]:
+    """Sentence-level ADR-003 promise check: the labels (in fixed order, each once) of every promise
+    found in any sentence of `text`. Named Q226 exceptions ("make sure") are blanked first."""
+    prepared = _without_exceptions(_prepare(text))
+    found: set[str] = set()
+    for sentence in _SENTENCE_BREAK.split(prepared):
+        joined = " ".join(_TOKEN.findall(sentence))
+        if not joined:
+            continue
+        reductions = _blank(joined, _REDUCTION_NOUN_SENSES)
+        if _LOSS_TERM.search(joined) and _REDUCTION_TERM.search(reductions):
+            found.add(PROMISE_REDUCED_LOSS)
+        if _NEGATED_LOSS.search(joined) or _NO_CHANCE_OF_LOSS.search(joined) or _NO_DOWNSIDE.search(joined):
+            found.add(PROMISE_NO_LOSS)
+        if _RETURN_TERM.search(joined) and _ASSURANCE_TERM.search(_blank(joined, _ASSURANCE_NON_SENSES)):
+            found.add(PROMISE_RETURNS)
+    return [label for label in (PROMISE_REDUCED_LOSS, PROMISE_NO_LOSS, PROMISE_RETURNS) if label in found]
+
+
 def find_advice_wording(text: str) -> list[str]:
     """Return every ADR-003/Q226 advice-wording hit in `text`: first the Q226 bare words (by their
-    Q226 label), then the phrase families (by label). Empty list means the text is clean."""
+    Q226 label), then the phrase families (by label), then the sentence-level promise rules (by
+    label). Empty list means the text is clean."""
     joined = " ".join(tokenise(text))
     phrases = [label for pattern, label in _COMPILED_PATTERNS if pattern.search(joined)]
-    return find_q226_bare_words(text) + phrases
+    return find_q226_bare_words(text) + phrases + find_promise_sentences(text)
 
 
 def is_blank_after_normalising(text: str) -> bool:

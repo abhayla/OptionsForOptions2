@@ -264,3 +264,172 @@ def test_real_strategy_catalogue_passes_the_shared_check() -> None:
     for template in templates:
         check_platform_text(template.name, f"{template.id} name")
         check_platform_text(template.description, f"{template.id} description")
+
+
+# ---------------------------------------------------------------------------------------------
+# W-046 round 2: sentence-level promise rules. ADR-003: "never ... promises that losses will be
+# reduced"; Forbidden: "any promise of returns or of reduced losses (T1 #74)"; "Adjustments are never
+# described as reducing risk by default; they can increase it (T1 #176)"; Q235 "in every word form".
+# Round 1 matched only the listed word ORDER; the verifier's reworded phrases below passed it.
+# ---------------------------------------------------------------------------------------------
+
+#: The W-046 round-1 verifier's exact failing phrases (each passed check_platform_text on f6cac29).
+VERIFIER_ROUND1_PROMISES: tuple[str, ...] = (
+    "Your losses will be reduced",
+    "returns are assured",
+    "won't lose",
+    "lower your losses",
+    "Adjustments reduce risk",
+)
+
+
+@pytest.mark.parametrize("text", VERIFIER_ROUND1_PROMISES)
+def test_verifier_reworded_promises_are_refused(text: str) -> None:
+    """AC-2: the W-046 verifier's reworded promises (any word order) are refused by check_platform_text."""
+    with pytest.raises(ValueError, match="banned wording"):
+        check_platform_text(text, "test")
+
+
+#: Builder's own paraphrases, loss/risk side: each is a promise of reduced loss or risk.
+LOSS_PROMISE_PARAPHRASES: tuple[str, ...] = (
+    "This adjustment will cut your losses.",          # cut
+    "Losses are minimised with this setup.",          # minimi[sz]*, passive
+    "Your downside is protected.",                    # protect*, downside
+    "The hedge shields your position from risk.",     # shield*
+    "Risk is eliminated once the put is bought.",     # eliminat*
+    "Drawdowns are prevented by this rule.",          # prevent*, drawdown
+    "Rolling the call lowers the risk.",              # lowers
+    "Your risk is limited with this adjustment.",     # limited (not "limited to <amount>")
+    "Adjusting now helps you avoid further losses.",  # avoid*
+    "Risk decreases after the roll.",                 # decreas*
+    "The spread mitigates losses.",                   # mitigat*
+    "This curbs your losses.",                        # curb*
+    "Loss reduction built in.",                       # reduc* (noun form)
+    "This adjustment lowers your maximum loss.",      # no blanket metric-label exemption (T1 #176)
+)
+
+
+@pytest.mark.parametrize("text", LOSS_PROMISE_PARAPHRASES)
+def test_loss_reduction_paraphrases_are_refused(text: str) -> None:
+    """AC-2: a loss/risk word with a reduction word anywhere in one sentence is a promise of reduced loss."""
+    assert "promise of reduced loss/risk" in find_advice_wording(text), text
+    with pytest.raises(ValueError, match="banned wording"):
+        check_platform_text(text, "test")
+
+
+NO_LOSS_PROMISES: tuple[str, ...] = (
+    "You won't ever lose money here.",
+    "You will not lose on this spread.",
+    "This trade has never lost.",
+    "There is no chance of a loss.",
+    "Exit without losses.",
+    "No downside at all.",
+    "zero drawdown",
+    "You do not lose if NIFTY stays in range.",
+)
+
+
+@pytest.mark.parametrize("text", NO_LOSS_PROMISES)
+def test_negated_loss_promises_are_refused(text: str) -> None:
+    """AC-2: "won't/will not/never lose", "no chance of loss", "without losses", "no downside" are promises of
+    no loss."""
+    assert "promise of no loss" in find_advice_wording(text), text
+
+
+#: Builder's own paraphrases, return side: each promises a return or profit.
+RETURN_PROMISE_PARAPHRASES: tuple[str, ...] = (
+    "Profit is certain if held to expiry.",
+    "This setup gives a fixed monthly income.",
+    "Gains are assured.",
+    "You will certainly make a profit.",
+    "Assured income every week.",
+    "The profit is definite at expiry.",
+    "We promise steady returns.",
+    "Earnings are sure with this spread.",
+    "Returns: assured.",
+    "A yield you can be certain of.",
+    "Riskless profits.",
+)
+
+
+@pytest.mark.parametrize("text", RETURN_PROMISE_PARAPHRASES)
+def test_return_promise_paraphrases_are_refused(text: str) -> None:
+    """AC-2: a return/profit word with an assurance word anywhere in one sentence is a promise of returns."""
+    assert "promise of returns" in find_advice_wording(text), text
+    with pytest.raises(ValueError, match="banned wording"):
+        check_platform_text(text, "test")
+
+
+#: Factual risk/return text that must pass: the brief's four near-misses, real platform text that puts
+#: a loss next to a reduction word's noun sense, and metric labels.
+FACTUAL_RISK_TEXTS: tuple[str, ...] = (
+    "maximum loss",
+    "You can lose money",
+    "no loss of data",
+    "reduce the quantity",
+    "Maximum loss ₹8,175",
+    "Max loss: ₹2,500 at the lower breakeven.",
+    "Loss at 22,000: ₹1,200.",
+    "P&L at expiry",
+    # Real platform text, backend/ofo/execution/safety.py:
+    "This strategy's possible loss has no upper limit if the market moves far enough.",
+    "The loss is limited to the premium paid",
+    "Sell a put and buy a put at a lower strike; the loss is shown for every level.",
+    "Risk limit reached: ₹5,000.",
+    "Your loss limit was triggered.",
+    "Loss at the lower limit is shown.",
+    "Place a limit order and see the loss at expiry.",
+    "Adjustments can increase risk.",
+    "Losses are shown per leg. Reduce the quantity to see a smaller position.",  # two sentences
+    "In certain cases the profit shown may change.",
+    "Make sure the profit target is set.",
+    "If Zerodha disconnects, you will not lose your plan.",
+    "Maximum profit ₹3,000 at the upper breakeven.",
+    "Protective put",
+)
+
+
+@pytest.mark.parametrize("text", FACTUAL_RISK_TEXTS)
+def test_factual_risk_text_passes(text: str) -> None:
+    """AC-2: factual risk/return text (metric labels, noun senses of "lower"/"limit", separate sentences, the
+    Q226 "make sure" exception) is not a promise and passes check_platform_text."""
+    assert find_advice_wording(text) == [], text
+    assert check_platform_text(text, "test") is None
+
+
+def test_noun_sense_exemption_does_not_hide_a_real_verb() -> None:
+    """AC-2: blanking "lower strike" / "limited to the premium" removes only that word; a real reduction verb in
+    the same sentence is still seen."""
+    assert "promise of reduced loss/risk" in find_advice_wording("Buy at a lower strike to cut your loss.")
+    assert "promise of reduced loss/risk" in find_advice_wording(
+        "The loss is limited to the premium paid, so this reduces risk.")
+    assert "promise of reduced loss/risk" in find_advice_wording("Losses are limited to what you can afford.")
+
+
+def test_certain_as_determiner_does_not_hide_a_real_assurance() -> None:
+    """AC-2: "certain cases" is exempt, but "certain" as an assurance in the same sentence is still seen."""
+    assert "promise of returns" in find_advice_wording("In certain cases the profit is certain.")
+
+
+def test_data_exemption_is_only_for_app_data() -> None:
+    """AC-2: "you will not lose your plan" passes, "you will not lose your money" is refused."""
+    assert find_advice_wording("You will not lose your plan.") == []
+    assert "promise of no loss" in find_advice_wording("You will not lose your money.")
+
+
+def test_de_risk_is_refused() -> None:
+    """AC-2 / T1 #176: "de-risk" describes an adjustment as removing risk."""
+    assert "de-risk" in find_advice_wording("De-risk your position with this adjustment")
+    assert "de-risk" in find_advice_wording("Derisking made easy")
+
+
+def test_sentences_split_on_line_breaks() -> None:
+    """AC-2: a line break ends a sentence, so a loss word on one line and "reduce" on the next are separate."""
+    assert find_advice_wording("Loss shown per level\nReduce the quantity") == []
+    assert "promise of reduced loss/risk" in find_advice_wording("Loss shown per level, reduce it")
+
+
+def test_decimal_point_does_not_split_a_sentence() -> None:
+    """AC-2: "8.5" is not a sentence end, so the promise around it is still one sentence."""
+    assert "promise of reduced loss/risk" in find_advice_wording("Cuts the loss by 8.5 percent")
+    assert "promise of returns" in find_advice_wording("Returns of 1.5 percent assured")
