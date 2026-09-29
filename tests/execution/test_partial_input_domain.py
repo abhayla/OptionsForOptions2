@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal as D
 
 import pytest
-from partial_inputs import READ_AT, CONTRACTS, LOT, FakePlanner, book_with_three_filled, plan, statuses, three_positions
+from partial_inputs import new_book, READ_AT, CONTRACTS, LOT, FakePlanner, book_with_three_filled, plan, statuses, three_positions
 
 from execution_inputs import condor_legs
 from ofo.execution.partial import (
@@ -90,7 +90,7 @@ def test_nothing_filled_is_not_a_partial_exception() -> None:
     """All four rejected, nothing held: NOT_EXECUTED, no choices (there is no partial position to protect)."""
     from ofo.orders import Order, OrderBook  # noqa: PLC0415
 
-    book = OrderBook()
+    book = new_book()
     for i, (c, leg) in enumerate(zip(CONTRACTS, condor_legs())):
         book.add(Order("S-1", f"leg-{i + 1}", c, leg.action, leg.quantity, leg.entry_price, broker_order_id=f"B{i}"))
         book.transition(f"B{i}", OrderState.SUBMITTED)

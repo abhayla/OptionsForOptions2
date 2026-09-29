@@ -29,8 +29,12 @@ CONTRACT = "NIFTY26OCT23200CE"
 LATER = AT + datetime.timedelta(seconds=1)
 
 
+#: Platform clock for these tests: well after every read used here, reads up to a day old accepted.
+NOW = AT + datetime.timedelta(minutes=10)
+
+
 def _book_with_fill(filled: int = 10) -> OrderBook:
-    book = OrderBook()
+    book = OrderBook(clock=lambda: NOW, max_read_age=datetime.timedelta(days=1))
     book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9"))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(FillEvent("T-1", "BRK-9", CONTRACT, Action.BUY, filled, D("91.50"), AT))
@@ -123,6 +127,33 @@ def test_clearing_with_a_stale_read_is_refused() -> None:
     book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=t_block + datetime.timedelta(seconds=1),
                                     actor="user:U-1", reason="r", at=t_block)
     assert not book.is_submit_blocked("STRAT-9")
+
+
+def test_future_stamped_read_neither_clears_nor_sets_a_block() -> None:
+    """W-023 round 3 red (c): a read stamped a year ahead is refused by clear (block kept) and by reconcile (no
+    block, no block time pushed forward); a read within the 5 s skew is accepted."""
+    year_ahead = NOW + datetime.timedelta(days=365)
+    book = _book_with_fill(10)
+    book.reconcile_cumulative("BRK-9", 12, read_at=AT)
+    with pytest.raises(ValueError, match="future"):
+        book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=year_ahead, actor="user:U-1", reason="r",
+                                        at=NOW)
+    assert book.is_submit_blocked("STRAT-9")
+    with pytest.raises(ValueError, match="future"):
+        book.reconcile_cumulative("BRK-9", 13, read_at=year_ahead)
+    # the refused read did not push the block time forward: an honest later read still clears it
+    book.clear_reconciliation_block("STRAT-9", {"BRK-9": 10}, read_at=NOW + datetime.timedelta(seconds=4),
+                                    actor="user:U-1", reason="r", at=NOW)
+    assert not book.is_submit_blocked("STRAT-9")
+
+
+def test_stale_read_older_than_age_limit_refused() -> None:
+    """W-023 round 3: a read older than the book's age limit (default 60 s) is refused."""
+    book = OrderBook(clock=lambda: NOW)
+    book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9"))
+    with pytest.raises(ValueError, match="stale"):
+        book.reconcile_cumulative("BRK-9", 0, read_at=NOW - datetime.timedelta(seconds=61))
+    assert book.reconcile_cumulative("BRK-9", 0, read_at=NOW - datetime.timedelta(seconds=59)) == "ok"
 
 
 def test_reconcile_needs_an_aware_read_time() -> None:

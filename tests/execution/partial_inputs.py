@@ -14,7 +14,7 @@ from execution_inputs import AS_OF, LOT, all_true_context, condor_legs
 
 from ofo.engine import Action, Strategy
 from ofo.execution import ExecutionContext
-from ofo.execution.partial import BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg
+from ofo.execution.partial import OrderRefused, BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg
 from ofo.orders import FillEvent, Order, OrderBook, OrderState
 
 STRATEGY_ID = "S-1"
@@ -26,13 +26,30 @@ FILL_AT = datetime.datetime(2026, 9, 29, 4, 31, tzinfo=datetime.timezone.utc)
 READ_AT = datetime.datetime(2026, 9, 29, 4, 32, tzinfo=datetime.timezone.utc)
 
 
+class Clock:
+    """The platform clock injected into every test book: fixed until a test moves it."""
+
+    def __init__(self, t: datetime.datetime = READ_AT + datetime.timedelta(seconds=10)) -> None:
+        self.t = t
+
+    def __call__(self) -> datetime.datetime:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += datetime.timedelta(seconds=seconds)
+
+
+def new_book(clock: Clock | None = None) -> OrderBook:
+    return OrderBook(clock=clock or Clock())
+
+
 def plan() -> ExecutionPlan:
     return ExecutionPlan(STRATEGY_ID, tuple(PlannedLeg(r, c, leg) for r, c, leg in zip(REFS, CONTRACTS, condor_legs())))
 
 
-def book_with_three_filled(fourth: OrderState = OrderState.REJECTED) -> OrderBook:
+def book_with_three_filled(fourth: OrderState = OrderState.REJECTED, clock: Clock | None = None) -> OrderBook:
     """Legs 1-3 filled at their planned prices; leg 4 (BUY 23,600 CE) in ``fourth`` with nothing filled."""
-    book = OrderBook()
+    book = new_book(clock)
     for i, (ref, contract, leg) in enumerate(zip(REFS, CONTRACTS, condor_legs())):
         book.add(Order(STRATEGY_ID, ref, contract, leg.action, leg.quantity, leg.entry_price,
                        broker_order_id=BROKER_IDS[i]))
@@ -110,7 +127,7 @@ class FakeSubmitter:
     def submit(self, order: Order) -> str:
         self.sent.append(order)
         if self.refuse == len(self.sent):
-            raise RuntimeError("Order rejected: RMS:Margin Exceeds")
+            raise OrderRefused("Order rejected: RMS:Margin Exceeds")
         return f"NEW-{len(self.sent)}"
 
 

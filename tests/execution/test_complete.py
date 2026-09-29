@@ -6,6 +6,7 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import (
+    new_book,
     READ_AT,
     CONTRACTS,
     LOT,
@@ -118,7 +119,7 @@ def test_ac4_only_the_missing_part_of_a_partly_filled_leg(catalogue, eligibility
     legs = condor_legs(quantity=2 * LOT)
     two_lot = ExecutionPlan("S-1", tuple(PlannedLeg(f"leg-{i + 1}", c, leg) for i, (c, leg) in
                                          enumerate(zip(CONTRACTS, legs))))
-    book = OrderBook()
+    book = new_book()
     positions, sts = [], []
     for i, (c, leg) in enumerate(zip(CONTRACTS, legs)):
         boid = f"BRK-{i + 1}"
