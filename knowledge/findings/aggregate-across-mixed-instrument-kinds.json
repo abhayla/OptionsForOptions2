@@ -7,11 +7,17 @@
     "where": "W-006 branch worktree-agent-aff2767756260822f @ cbafb26, backend/ofo/instruments/catalogue.py Catalogue.tick_size()",
     "evidence": "Independent verifier ran tick_size on the real fixture for NIFTY expiry 2026-09-29: ValueError 'inconsistent tick size ... [0.05, 0.1]'. No test called tick_size(), so the suite was green (16 passed)."
   },
-  "fix": "Derive per underlying + expiry + instrument kind (option vs future); tests loop over every expiry in the real fixture for both kinds (W-006 fix round).",
+  "fix": "Tick and lot size derived per underlying + expiry + instrument kind (option vs future); merged with W-006.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Becomes guarded when the W-006 fix round's per-kind tests on the real fixture merge; also related: far-from-money NIFTY strikes jump by 1,300/1,500, so 'a multiple of the strike gap' is not always a listed strike (W-003 must place columns on listed strikes)."
+    "status": "guarded",
+    "checks": [
+      "tests/instruments/test_catalogue.py::test_tick_size_differs_by_kind_on_real_fixture",
+      "tests/instruments/test_catalogue.py::test_tick_size_and_lot_size_hold_for_every_expiry_and_kind_in_fixture"
+    ],
+    "note": "Per-kind derivation tested on the real fixture across every underlying+expiry+kind; independent verifier checked all 44 combinations on the full real list (2026-09-29). Related residual: far-from-money strikes jump by 1,300/1,500, so W-003 must place scenario columns on listed strikes."
   },
-  "spec_ref": ["spec/requirements/REQ-053.md", "spec/decisions/ADR-042.md"]
+  "spec_ref": [
+    "spec/requirements/REQ-053.md",
+    "spec/decisions/ADR-042.md"
+  ]
 }

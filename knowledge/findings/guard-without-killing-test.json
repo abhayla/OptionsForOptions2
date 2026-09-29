@@ -1,0 +1,36 @@
+{
+  "id": "guard-without-killing-test",
+  "class": "Any safety guard (an if-refuse/block/raise that protects money or state) with no test that fails when the guard is removed can be deleted or weakened in a later change with the suite still green; the guard's protection then depends on nobody touching that line.",
+  "mechanism": "Builders wrote tests for the behaviours named in the ACs and the attacks in the brief, not for every guard they added; independent verifiers deleted guards one at a time and the suite stayed green.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-021 @ f6a4cdf",
+    "evidence": "M3 (report share differs from stored) and M5 (fill resets last_observed_at) removed: 76 of 76 tests passed"
+  },
+  "fix": "Per instance: W-021, W-023 (rounds 4-6, test-only), W-027 regression tests added until every listed mutant was killed. Mechanism: builder brief quality-bar line 'Every guard has a test that dies without it' (list each guard, delete it in a scratch copy, name the killing test).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Verifier mutation runs catch it per item; no automated mutation-testing gate in CI (a stdlib mutation script over backend/ofo guard lines would guard it)."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-021 @ f6a4cdf / 66bbce0",
+      "evidence": "M3, M5 survived; later the fail-open map fallback was locked in by a test"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-023 @ 6038e94 / 2da1042 / f06af81",
+      "evidence": "M2, M3 (timeout->Rejected re-opens duplicate order), M1, M6, M10, M13, M16, submit-time block re-check each survived until test-only rounds added killing tests"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-027 @ 7f283fe",
+      "evidence": "removing the record grounding left 9 of 9 tests green while a forged context dodged the Pro check"
+    }
+  ]
+}

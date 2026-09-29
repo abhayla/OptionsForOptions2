@@ -1,0 +1,46 @@
+{
+  "id": "resolution-on-stale-broker-copy",
+  "class": "Any manual resolution or state change whose premise (what the broker holds) is read from a stored copy rather than from the latest reconciliation, or any multi-strategy recording that mutates some records before validating all of them, lets the platform act on a broker picture that is no longer true or leave a half-recorded run.",
+  "mechanism": "W-021: record_report refreshed only blocked strategies, so exit/adopt used a stale copy (exited while the broker held 4 contracts; adopted -50 while the broker held -75); after that fix, record_report mutated strategy A before strategy B refused the run, leaving A flagged with no audit.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-021 @ a838015",
+    "evidence": "verifier: 'HOLE: exited while broker holds 4 contracts'; 'adopted active SP -50 while broker -75'"
+  },
+  "fix": "Merged in W-021 (PR #40): every run refreshes every non-exited strategy; resolutions check the latest recorded report; record_report is two-phase; shared-contract resolutions needing attribution refused (Q224).",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/reconciliation/test_resolution.py",
+      "tests/reconciliation/test_external_change.py",
+      "tests/reconciliation/test_triggers.py"
+    ],
+    "note": "Guarded by the merged W-021 tests; >20 mutants killed across verifier rounds."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-060.md",
+    "spec/decisions/ADR-018.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-021 round 0 @ a838015",
+      "evidence": "stale broker copy used by exit/adopt"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-021 fix 1 @ f6a4cdf",
+      "evidence": "A flagged, 0 audit events, run not re-recordable"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-021 fix 2 @ 66bbce0",
+      "evidence": "named-strategy run falsely blocks a strategy sharing a contract; hand-built report leaves 1 audit event and no flag"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-021 @ 1e2d056",
+      "evidence": "shared contract A,B x50 with broker 0: share rule invented +50 for A; adopt wrote it and the closing order proposed SELL 100 (fixed fail-closed, Q224)"
+    }
+  ]
+}
