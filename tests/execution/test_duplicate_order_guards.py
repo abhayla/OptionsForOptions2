@@ -20,6 +20,9 @@ W-023 round 5 (issue #37 follow-up), three more mutants with no killing test:
   mismatch -> ``test_broker_status_for_another_strategys_order_is_a_mismatch``.
 - M16: the 60 s stale-read comparison in ``OrderBook.check_read`` moves by one tick ->
   ``test_stale_read_boundary_exact_60s_accepted_then_one_tick_older_is_refused``.
+
+W-023 round 6 (issue #37 last gap): the ``is_submit_blocked`` re-check at the top of ``submit_confirmed`` had no
+killing test -> ``test_blocked_strategy_refuses_submit_confirmed_and_sends_nothing``.
 """
 from __future__ import annotations
 
@@ -206,3 +209,29 @@ def test_stale_read_boundary_exact_60s_accepted_then_one_tick_older_is_refused(c
                        read_at=clock.t - datetime.timedelta(seconds=60, milliseconds=1))
     refused = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert refused.orders == () and "could not re-read" in refused.reason
+
+
+def test_blocked_strategy_refuses_submit_confirmed_and_sends_nothing(catalogue, eligibility) -> None:  # noqa: ANN001
+    """The ``is_submit_blocked`` re-check at the top of ``submit_confirmed``: a strategy is prepared (Complete,
+    ready), then a reconciliation mismatch lands on it (a broker cumulative count higher than the ledger) AFTER the
+    preparation was made but BEFORE the user confirms. ``submit_confirmed`` must refuse, and the fake broker/
+    submitter must receive ZERO orders -- nothing goes out for a strategy under an unresolved mismatch."""
+    book = book_with_three_filled()
+    prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(),
+                             entry_context(), catalogue, eligibility)
+    assert prep.ready and len(prep.orders) == 1
+
+    # a reconciliation mismatch lands on the strategy after preparation, before confirmation: the broker now reports
+    # more filled on BRK-1 than the ledger has recorded -- reconcile_cumulative blocks the strategy for this reason.
+    book.reconcile_cumulative("BRK-1", LOT + 1, read_at=READ_AT + datetime.timedelta(seconds=1))
+    assert book.is_submit_blocked("S-1")
+
+    submitter = FakeSubmitter()
+    try:
+        submit_confirmed(prep, choice=COMPLETE, confirmed_by="user:U-42", submitter=submitter)
+        raised = False
+    except ValueError as exc:
+        raised = True
+        assert "unresolved reconciliation mismatch" in str(exc)
+    assert raised, "submit_confirmed must refuse a strategy that became blocked after preparation"
+    assert submitter.sent == []  # the broker/submitter must see ZERO orders
