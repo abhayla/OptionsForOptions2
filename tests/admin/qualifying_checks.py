@@ -29,13 +29,13 @@ PROOF_CSV = (
     " EF9012 \n"     # row 4  (padded, normalised)
     "ab1234\n"       # row 5  duplicate of row 2 after normalisation
     "GHJ345\n"       # row 6
-    "KL67890\n"      # row 7
+    "KLM678\n"       # row 7
     "12AB34\n"       # row 8  malformed
     "MN4321\n"       # row 9
     "CD5678\n"       # row 10 duplicate of row 3
     "PQ8765\n"       # row 11
 )
-VALID_IDS = ["AB1234", "CD5678", "EF9012", "GHJ345", "KL67890", "MN4321", "PQ8765"]
+VALID_IDS = ["AB1234", "CD5678", "EF9012", "GHJ345", "KLM678", "MN4321", "PQ8765"]
 
 
 class StepClock:
