@@ -229,7 +229,7 @@ def test_ac2_default_constraints_are_labelled_unverified() -> None:
     from ofo.execution.sequence import DEFAULT_FREEZE_UNITS, UnverifiedDefaultConstraints
 
     assert UnverifiedDefaultConstraints.unverified is True
-    assert UnverifiedDefaultConstraints().freeze_quantity("NIFTY26OCT23000PE") == DEFAULT_FREEZE_UNITS == 27 * 65
+    assert UnverifiedDefaultConstraints().freeze_quantity("NIFTY26O0623000PE") == DEFAULT_FREEZE_UNITS == 27 * 65
 
 
 def test_ac2_twenty_legs_plan_fast_and_twenty_one_refused() -> None:

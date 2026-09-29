@@ -19,7 +19,7 @@ from ofo.orders.model import FillConflictError, FillEvent, Order, OrderBook, Ord
 
 
 UTC = datetime.timezone.utc
-CONTRACT = "NIFTY26OCT23000PE"
+CONTRACT = "NIFTY26O0623000PE"
 READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 
 
@@ -94,7 +94,7 @@ def test_fill_for_the_wrong_contract_is_refused() -> None:
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     with pytest.raises(ValueError):
-        book.apply_fill(fill("T-1", 10, contract="NIFTY26OCT23400CE"))
+        book.apply_fill(fill("T-1", 10, contract="NIFTY26O0623400CE"))
     assert book.raw_fills() == ()
 
 
@@ -174,7 +174,7 @@ def test_a_replayed_identical_fill_is_a_no_op_even_after_completion() -> None:
     "conflicting",
     [
         dict(quantity=6),
-        dict(contract="NIFTY26OCT23400CE"),
+        dict(contract="NIFTY26O0623400CE"),
         dict(side=Action.BUY),
         dict(price=D("99.99")),
     ],

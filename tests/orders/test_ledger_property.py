@@ -23,7 +23,7 @@ from ofo.orders.model import FillEvent, Order, OrderBook, OrderState
 UTC = datetime.timezone.utc
 READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 STRATEGIES = ("STRAT-1", "STRAT-2")
-CONTRACTS = ("NIFTY26OCT23000CE", "NIFTY26OCT23000PE")
+CONTRACTS = ("NIFTY26O0623000CE", "NIFTY26O0623000PE")
 BROKER_ORDER_IDS = ("BRK-1", "BRK-2", "BRK-3", "BRK-4")
 TRADE_IDS = ("t1", "t2", "t3")  # deliberately few, so ids collide across orders (round-2 bug)
 

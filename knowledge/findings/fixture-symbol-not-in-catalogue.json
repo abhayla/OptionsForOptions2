@@ -7,11 +7,12 @@
     "where": "W-026 round 2 @ 0b04329 (tests/execution/partial_inputs.py)",
     "evidence": "builder: catalogue check refused NIFTY26OCT… for expiry 2026-10-06; real symbols NIFTY26O06…; fixture fixed; verifier confirmed no assertion weakened"
   },
-  "fix": "W-026 switched the execution fixtures to catalogue symbols. Sweep 2026-09-29 (grep NIFTY26OCT|SENSEX26OCT in tests/): 20 uses in 14 files remain (tests/orders x5 files, tests/engine x3, tests/scenario x2, tests/execution x3, plus the fixture CSV's real NIFTY26OCTFUT); not yet checked against the catalogue; deferred issue filed.",
+  "fix": "W-026 switched the execution fixtures to catalogue symbols. W-030 (2026-09-29) added tests/test_fixture_symbols.py, a guard scanning every tests/**/*.py literal against the catalogue, and corrected the 7 genuinely-wrong files it found in the originally-swept 14 (tests/orders/test_hardening.py, test_ledger_property.py, test_lifecycle.py, test_no_state_before_fill.py, test_state_not_from_orders.py; tests/execution/test_partial_input_domain.py, test_plan.py) to real NIFTY26O06<strike><CE|PE> weekly symbols. The guard's own scan (broader than the original grep) also found 6 more pre-existing instances outside this item's named scope: two deliberate attack fixtures needing only an allowlist entry (execution/test_strategy_only.py BANKNIFTY26OCT50000CE, execution/test_complete_slices.py NIFTY26O0623625CE, both intentionally-absent symbols proving a refusal path), one locked spec example needing an allowlist (engine/conftest.py + engine/test_inputs.py + scenario/scenario_fixtures.py + scenario/test_modes.py: the section-6 golden Iron Condor at the monthly 2026-10-27 expiry, for which this catalogue SLICE holds only the future, no options), one audit-log illustrative payload needing an allowlist (audit/test_log.py: REQ-064 stores raw broker payloads unchanged, no catalogue lookup), and three genuinely deferred (marketdata/test_quote.py, marketdata/test_rule_health.py, range/test_pick_lists.py -- filed as GitHub issue, see detection.deferred_issue).",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Guarded when a test asserts every tradingsymbol literal in tests/ resolves in tests/fixtures/instruments/instruments_slice.csv with the expiry it is paired with."
+    "status": "guarded",
+    "checks": ["tests/test_fixture_symbols.py::test_every_tradingsymbol_literal_in_tests_resolves_in_the_catalogue"],
+    "note": "Scans every tests/**/*.py literal (full symbols and dynamic f-string heads) against tests/fixtures/instruments/instruments_slice.csv; a same-turn red-then-green self-test (test_guard_goes_red_on_the_findings_example_mutation) proves it catches the exact finding example. Does NOT yet cover marketdata/test_quote.py, marketdata/test_rule_health.py or range/test_pick_lists.py, which are explicitly allowlisted as deferred (see deferred_issue) rather than corrected -- those three remain unguarded for their specific symbols until the follow-up lands.",
+    "deferred_issue": "abhayla/OptionsForOptions2#51"
   },
   "spec_ref": [
     "spec/requirements/REQ-053.md"

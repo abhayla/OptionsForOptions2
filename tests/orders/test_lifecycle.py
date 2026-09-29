@@ -23,7 +23,7 @@ from ofo.orders.model import (
 )
 
 UTC = datetime.timezone.utc
-CONTRACT = "NIFTY26OCT23000CE"
+CONTRACT = "NIFTY26O0623000CE"
 
 
 def make_order(**overrides: object) -> Order:

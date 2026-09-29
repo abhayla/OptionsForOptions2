@@ -69,7 +69,7 @@ def test_too_many_position_lines_refused() -> None:
 
 
 @pytest.mark.parametrize("line", [
-    BrokerPositionLine("NIFTY26OCT24000CE", -65, D("10.00")),  # contract outside the plan
+    BrokerPositionLine("NIFTY26O0624000CE", -65, D("10.00")),  # contract outside the plan
     BrokerPositionLine(CONTRACTS[2], 65, D("91.50")),  # planned short, broker shows long
     BrokerPositionLine(CONTRACTS[2], -2 * LOT, D("91.50")),  # more than planned
 ])
