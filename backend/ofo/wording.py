@@ -31,27 +31,28 @@ _FORMAT_CATEGORY = "Cf"
 
 #: Owner decision Q226 (2026-09-29, ADR-003): "Templates may not contain the bare words "best",
 #: "sure", "safe", "guarantee*" or "recommend*" (in addition to the Forbidden phrases above)."
-#: A trailing `*` means the word stem: any token starting with it ("guaranteed", "recommendation").
-#: A bare word is a whole TOKEN: "unsafe", "ensure" and "bestow" are other words, not these ones.
+#: Owner decision Q230 (2026-09-29, ADR-003): "the ban covers every word form of the five words
+#: (e.g. "best", "safest", "safely", "safer", "surely", "guaranteed", "recommended",
+#: "recommendation")." So every one of the five is matched as a word START: any token that begins
+#: with it ("safest", "surely", "bests", and, as a consequence, "bestow"/"safeguard"). A token that
+#: merely contains the letters later ("unsafe", "ensure", "insurer") is another word.
 Q226_BARE_WORDS: tuple[str, ...] = ("best", "sure", "safe", "guarantee*", "recommend*")
 
 #: Owner decision Q226: "Named exceptions, reviewed once: "best bid", "best ask", "best-case",
-#: "make sure"; a new exception needs its own review." The ONE place exceptions live. Each is
-#: tokenised the same way as the text, so "best-case", "best_case" and "best case" are one
-#: exception, and an exception excuses only the words it covers, never a second bare occurrence.
+#: "make sure"; a new exception needs its own review." Q230: "The four exceptions match only as
+#: spelled ... "best case" with a space is not an exception." The ONE place exceptions live. An
+#: exception matches only its exact characters (letter case aside: "Best bid" opens a sentence),
+#: as a whole word, and excuses only the words it covers.
 Q226_NAMED_EXCEPTIONS: tuple[str, ...] = ("best bid", "best ask", "best-case", "make sure")
 
 #: (regex, label) pairs run over the TOKENS joined by single spaces (so `_` and `-` are word
 #: breaks). ADR-003's Forbidden phrases ("You should take this trade", "This is the best trade",
 #: "Best adjustment", "Recommended trade", "Guaranteed", "Risk-free", "Certain profit") and "any
-#: promise of returns or of reduced losses", generalised to the word stem; plus imperative variants
-#: earlier verifier rounds found ("must", "ought to", "have to"). "best"/"recommend*"/"guarantee*"
-#: are covered by the Q226 bare words above, so they are not repeated here.
+#: promise of returns or of reduced losses", generalised to the word stem. "best"/"recommend*"/
+#: "guarantee*" are covered by the Q226 words above, so they are not repeated here. Q230: "must",
+#: "have to" and "ought to" are NOT banned, so no pattern for them exists.
 ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bshould(n)?\b", "should"),
-    (r"\bmust\b", "must"),
-    (r"\bought to\b", "ought to"),
-    (r"\bhave to\b", "have to"),
     (r"\brisk ?free\b", "risk-free"),
     (r"\bcertain (profit|return)s?\b", "certain profit/return"),
     (r"\bno risk\b", "no risk"),
@@ -65,49 +66,48 @@ _COMPILED_PATTERNS: tuple[tuple["re.Pattern[str]", str], ...] = tuple(
 )
 
 #: A token is a run of letters/digits; everything else, INCLUDING `_` and `-`, separates tokens
-#: (brief item 3: "tokenised so `_` and `-` split words"; round-3 attack "you_should_buy").
+#: (round-3 attack "you_should_buy").
 _TOKEN = re.compile(r"[^\W_]+")
 
 
-def tokenise(text: str) -> list[str]:
-    """NFKC-normalise, drop zero-width/format characters, casefold, and split into letter/digit
-    tokens. `_`, `-`, spaces and punctuation all separate words."""
+def _prepare(text: str) -> str:
+    """NFKC-normalise (fullwidth letters fold to ASCII), drop zero-width/format characters, casefold."""
     text = unicodedata.normalize("NFKC", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != _FORMAT_CATEGORY)
-    return _TOKEN.findall(text.casefold())
+    return text.casefold()
 
 
-_EXCEPTION_TOKENS: tuple[tuple[str, ...], ...] = tuple(tuple(tokenise(e)) for e in Q226_NAMED_EXCEPTIONS)
+def tokenise(text: str) -> list[str]:
+    """`_prepare`, then split into letter/digit tokens. `_`, `-`, spaces and punctuation all
+    separate words."""
+    return _TOKEN.findall(_prepare(text))
 
 
-def _bare_word_matches(word: str, token: str) -> bool:
-    if word.endswith("*"):
-        return token.startswith(word[:-1])
-    return token == word
+#: Each exception as a regex over `_prepare`d text: its exact characters (one ASCII space stays one
+#: ASCII space, the hyphen stays a hyphen), not preceded or followed by a letter/digit.
+_EXCEPTION_PATTERNS: tuple["re.Pattern[str]", ...] = tuple(
+    re.compile(r"(?<![^\W_])" + re.escape(e.casefold()) + r"(?![^\W_])") for e in Q226_NAMED_EXCEPTIONS
+)
 
 
-def _covered_by_exception(tokens: list[str], index: int) -> bool:
-    """True if the token at `index` is part of one of the Q226 named exceptions, in place."""
-    for exception in _EXCEPTION_TOKENS:
-        for offset, part in enumerate(exception):
-            if part != tokens[index]:
-                continue
-            start = index - offset
-            if start >= 0 and tuple(tokens[start:start + len(exception)]) == exception:
-                return True
-    return False
+def _without_exceptions(prepared: str) -> str:
+    """`prepared` with every exact named exception blanked out, so only the words it covers are
+    excused and a second, bare occurrence is still seen."""
+    for pattern in _EXCEPTION_PATTERNS:
+        prepared = pattern.sub(" ", prepared)
+    return prepared
 
 
 def find_q226_bare_words(text: str) -> list[str]:
-    """Every Q226 bare word present in `text` and not covered by a named exception, as the Q226
-    label (e.g. "guarantee*"), in `Q226_BARE_WORDS` order."""
-    tokens = tokenise(text)
+    """Every Q226/Q230 banned word present in `text` (any word form: a token starting with it) and
+    not inside an exact named exception, as its Q226 label (e.g. "guarantee*"), in
+    `Q226_BARE_WORDS` order."""
+    tokens = _TOKEN.findall(_without_exceptions(_prepare(text)))
     found: list[str] = []
     for word in Q226_BARE_WORDS:
-        for index, token in enumerate(tokens):
-            if _bare_word_matches(word, token) and not _covered_by_exception(tokens, index):
-                found.append(word)
-                break
+        stem = word.rstrip("*")
+        if any(token.startswith(stem) for token in tokens):
+            found.append(word)
     return found
 
 
@@ -179,3 +179,20 @@ def is_nfkc_clean_latin(text: str) -> bool:
     """
     normalised = unicodedata.normalize("NFKC", text)
     return bool(_ALLOWED_PLATFORM_TEXT.match(normalised))
+
+
+def check_platform_text(text: object, where: str) -> None:
+    """THE check every piece of the platform's own user-visible text passes (ADR-003, Q226, Q230):
+    exactly a `str`; not blank once invisible characters are removed; only Latin letters, digits,
+    ₹ and punctuation (no confusable other-script letters); and no ADR-003/Q226/Q230 wording.
+    Raises TypeError / ValueError naming `where`. Zerodha's or the user's own words never go
+    through this: they are quoted in a labelled field (Q226)."""
+    if type(text) is not str:
+        raise TypeError(f"{where}: platform text must be exactly str, got {type(text).__name__}")
+    if is_blank_after_normalising(text):
+        raise ValueError(f"{where}: platform text is blank: {text!r}")
+    if not is_nfkc_clean_latin(text):
+        raise ValueError(f"{where}: platform text has non-Latin/confusable characters: {text!r}")
+    hits = find_advice_wording(text)
+    if hits:
+        raise ValueError(f"{where}: platform text contains banned wording {hits}: {text!r}")

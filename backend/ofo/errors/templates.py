@@ -18,8 +18,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-from ofo.wording import find_advice_wording, is_nfkc_clean_latin
-
 from .classes import ErrorClass
 from .model import UserFacingError, _build, _claim_render_token
 from .slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
@@ -198,17 +196,14 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         )
         for t in _TEMPLATES
     }
-    advice = find_advice_wording
-    latin = is_nfkc_clean_latin
-    external = ExternalText
     build = _build
 
     def render(template_id: str, **slots: object) -> UserFacingError:
         """The only way to build a `UserFacingError`: fill `template_id`'s typed slots.
 
         Fails closed on: an unknown template id; a missing or extra slot; a slot value of the wrong
-        type or outside its closed set/range; and, as a second line after the typed slots, FINISHED
-        text that has non-Latin/confusable characters, or contains ADR-003/Q226 wording.
+        type or outside its closed set/range; and (in the builder, round 6) FINISHED text that is
+        blank, duplicated, has non-Latin/confusable characters, or contains ADR-003/Q226/Q230 wording.
         """
         if template_id not in snapshot:
             raise ValueError(f"unknown template id {template_id!r}")
@@ -235,23 +230,14 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
 
         parts = {name: text.format(**formatted) for name, text in zip(_PART_NAMES, part_texts)}
 
-        # Second line (Q226, brief item 3): check the FINISHED text of every part at every call,
-        # not only the static templates in CI. Catches any slot value or formatter that combines
-        # with fixed template text into advice wording.
-        for name, text in parts.items():
-            if not latin(text):
-                raise ValueError(f"template {template_id!r} part {name!r} has non-Latin/confusable characters: {text!r}")
-            hits = advice(text)
-            if hits:
-                raise ValueError(f"template {template_id!r} part {name!r} contains banned wording {hits}: {text!r}")
+        # Zerodha's or the user's own words go to the builder as the ExternalText itself; the
+        # builder validates it and shows it quoted with its label (Q226).
+        external = None if external_slot is None else slots[external_slot]
 
-        external_text: str | None = None
-        if external_slot is not None:
-            value = slots[external_slot]
-            external.validate(value)
-            external_text = external.format(value)
-
-        return build(token, error_class=error_class, code=code, external_text=external_text, **parts)
+        # The four-part, Latin-letter and ADR-003/Q226/Q230 wording checks run INSIDE the builder
+        # (round 6, Q230), on the FINISHED text, so a slot value or formatter that combines with
+        # fixed template text into advice wording is refused there, whatever route reached it.
+        return build(token, error_class=error_class, code=code, external=external, **parts)
 
     return render
 

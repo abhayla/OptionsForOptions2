@@ -257,7 +257,12 @@ def test_ast_no_direct_userfacingerror_calls_and_no_fstring_arguments_to_render(
 #: them outside those two files is a reach round `render()`.
 _PRIVATE_MACHINERY = {"_build", "_claim_render_token", "_fields_of", "_make_machinery", "_make_render"}
 #: Introspection that can pull the closure-held token or registry out of `render`/`_build`.
-_INTROSPECTION_ATTRS = {"__closure__", "cell_contents", "__globals__", "get_referents", "get_referrers"}
+_INTROSPECTION_ATTRS = {
+    "__closure__", "cell_contents", "__globals__", "get_referents", "get_referrers", "getclosurevars",
+}
+#: The two internal modules: named as a string (sys.modules[...], importlib.import_module(...),
+#: __import__(...)) they are a route to the machinery that no import statement shows (round 6).
+_INTERNAL_MODULES = {"ofo.errors.model", "ofo.errors.templates"}
 
 
 def _names_user_facing_error(node: ast.AST) -> bool:
@@ -273,10 +278,34 @@ def _render_bypass_offences(tree: ast.AST) -> list[str]:
       is `ofo.errors`);
     - `object.__new__(UserFacingError)` or `UserFacingError.__new__(...)`;
     - a class that subclasses `UserFacingError`;
-    - closure/GC introspection (`__closure__`, `cell_contents`, `__globals__`, `gc.get_referents`)."""
+    - closure/GC introspection (`__closure__`, `cell_contents`, `__globals__`, `gc.get_referents`,
+      `inspect.getclosurevars`), as an attribute, an imported or bare name, or a string
+      (`getattr(render, "__closure__")`);
+    - the internal modules named as a string or reached through `sys.modules` (round 6:
+      `sys.modules["ofo.errors.model"]`, `importlib.import_module("ofo.errors.model")`).
+    Not caught, and not claimed: a name assembled at run time (`"__clo" + "sure__"`); nothing in a
+    Python process can stop code that rewrites closure cells, so this is a source-review aid."""
     found: list[str] = []
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.value in _INTROSPECTION_ATTRS or node.value in _PRIVATE_MACHINERY:
+                found.append(f"{line}: string names introspection/private machinery {node.value!r}")
+            if node.value in _INTERNAL_MODULES:
+                found.append(f"{line}: string names internal module {node.value!r}")
+        if isinstance(node, ast.Name) and node.id in _INTROSPECTION_ATTRS:
+            found.append(f"{line}: introspection name {node.id}")
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "modules"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "sys"
+        ):
+            found.append(f"{line}: sys.modules")
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in _INTROSPECTION_ATTRS:
+                    found.append(f"{line}: imports {alias.name} from {node.module}")
         if isinstance(node, ast.Attribute):
             if node.attr in _PRIVATE_MACHINERY:
                 found.append(f"{line}: private render machinery .{node.attr}")
@@ -444,10 +473,10 @@ def test_mutation_free_text_code_slot_is_caught() -> None:
 def test_mutation_skipping_the_runtime_wording_check_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mutation: if render() stopped running the wording check on the FINISHED text (brief item 3),
     a slot formatter that returned advice would reach a user. Here the Int formatter is forced to
-    return "0, you must buy more lots"; render() must refuse it."""
+    return advice ("safest", a Q230 word form; "must" is allowed since Q230); render() must refuse it."""
     from ofo.errors.slots import Int
 
-    monkeypatch.setattr(Int, "format", staticmethod(lambda value: "0; you must buy more lots"))
+    monkeypatch.setattr(Int, "format", staticmethod(lambda value: "0; the safest lot count"))
     with pytest.raises(ValueError, match="banned wording"):
         render("user_input_lot_size", entered=0)
 
@@ -474,17 +503,19 @@ def test_mutation_nan_and_infinity_money_is_caught() -> None:
 
 
 def test_build_without_the_render_sentinel_token_is_refused() -> None:
-    """`_build` refuses without the exact token `render()` claimed; the token is not reachable."""
+    """`_build` refuses without the exact token `render()` claimed. The fields here are otherwise
+    valid (round 6: the builder's own checks would refuse bad ones), so only the token guard can
+    raise, and `match` pins it to that guard."""
     from ofo.errors import model
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="token"):
         model._build(
             object(),
             error_class=ErrorClass.MARGIN,
-            code="ERR-00000000",
-            what_happened="a",
-            impact="b",
-            what_is_blocked="c",
-            next_action="d",
-            external_text=None,
+            code="MARGIN_001",
+            what_happened="Margin available is below what this strategy needs.",
+            impact="Zerodha would not accept this order.",
+            what_is_blocked="Execution of this strategy.",
+            next_action="Add funds in Zerodha, then retry.",
+            external=None,
         )

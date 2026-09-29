@@ -20,12 +20,22 @@ internals outside this package.
 
 from __future__ import annotations
 
+import re
 import weakref
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
+from ofo.wording import check_platform_text, normalise_for_duplicate_check
+
 from .classes import ErrorClass
+from .slots import ExternalText
+
+
+def _external_text(fields: Mapping[str, Any]) -> str | None:
+    """The labelled quote of Zerodha's or the user's own words, or None (Q226)."""
+    external = fields["external"]
+    return None if external is None else ExternalText.format(external)
 
 class UserFacingError:
     """An error shown to a user: classified, with all four REQ-065 AC-2 parts filled, plus an
@@ -74,7 +84,7 @@ class UserFacingError:
 
     @property
     def external_text(self) -> str | None:
-        return _fields_of(self)["external_text"]
+        return _external_text(_fields_of(self))
 
     def as_dict(self) -> dict[str, str | None]:
         fields = _fields_of(self)
@@ -85,7 +95,7 @@ class UserFacingError:
             "impact": fields["impact"],
             "what_is_blocked": fields["what_is_blocked"],
             "next_action": fields["next_action"],
-            "external_text": fields["external_text"],
+            "external_text": _external_text(fields),
         }
 
     def __repr__(self) -> str:
@@ -96,16 +106,62 @@ class UserFacingError:
         return f"<UserFacingError {fields['error_class'].name} {fields['code']}>"
 
 
+_PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
+_FIELD_NAMES: frozenset[str] = frozenset({"error_class", "code", "external", *_PART_NAMES})
+
+
+def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Every check a message must pass, run by the builder on every build AND by `_fields_of` on
+    every read (Q230: "The checks run inside the one function that builds a message, so no
+    construction route skips them"). Returns the fields as a read-only mapping.
+
+    - exactly the seven fields; `error_class` an `ErrorClass`; `code` that class's name + "_" + 3
+      digits (so a code carries no words and matches its class);
+    - the four REQ-065 AC-2 parts: each passes `ofo.wording.check_platform_text` (exact str, not
+      blank, Latin only, no ADR-003/Q226/Q230 wording), and no two say the same thing;
+    - `external`: None or an `ExternalText` (Zerodha's or the user's own words, quoted with its
+      label, never scanned: Q226).
+    """
+    fields = dict(fields)  # one copy, checked and then stored: no value can change between the two
+    names = set(fields)
+    if names != _FIELD_NAMES:
+        raise TypeError(
+            f"a message needs exactly the fields {sorted(_FIELD_NAMES)}: "
+            f"missing {sorted(_FIELD_NAMES - names)}, unexpected {sorted(names - _FIELD_NAMES)}"
+        )
+    error_class = fields["error_class"]
+    if type(error_class) is not ErrorClass:
+        raise TypeError(f"error_class must be an ErrorClass, got {type(error_class).__name__}")
+    code = fields["code"]
+    if type(code) is not str or not re.fullmatch(rf"{error_class.name}_[0-9]{{3}}", code):
+        raise ValueError(f"code must be {error_class.name}_ + 3 digits, got {code!r}")
+    seen: dict[str, str] = {}
+    for name in _PART_NAMES:
+        text = fields[name]
+        check_platform_text(text, f"UserFacingError.{name}")
+        key = normalise_for_duplicate_check(text)
+        if key in seen:
+            raise ValueError(f"UserFacingError.{name} is a duplicate of {seen[key]}: {text!r}")
+        seen[key] = name
+    external = fields["external"]
+    if external is not None:
+        ExternalText.validate(external)
+    return MappingProxyType(fields)
+
+
 def _make_machinery() -> tuple[
     Callable[[], object],
     Callable[..., UserFacingError],
     Callable[[UserFacingError], Mapping[str, Any]],
 ]:
     """Create the token, the registry and the three functions that use them. The token and the
-    registry exist only in this closure; nothing else in the process holds a reference to them."""
+    registry exist only in this closure. Round 6 (issue #30): the token is no longer what keeps a
+    message clean: `inspect.getclosurevars(render)` hands out both the builder and the token, so
+    the builder runs every check itself, and so does every read."""
     token = object()
     claimed = False
     issued: "weakref.WeakKeyDictionary[UserFacingError, Mapping[str, Any]]" = weakref.WeakKeyDictionary()
+    checked = _checked
 
     def claim_render_token() -> object:
         nonlocal claimed
@@ -114,18 +170,39 @@ def _make_machinery() -> tuple[
         claimed = True
         return token
 
-    def build(_token: object, **fields: Any) -> UserFacingError:
+    def build(
+        _token: object,
+        *,
+        error_class: ErrorClass,
+        code: str,
+        what_happened: str,
+        impact: str,
+        what_is_blocked: str,
+        next_action: str,
+        external: ExternalText | None,
+    ) -> UserFacingError:
         if _token is not token:
             raise ValueError("_build requires render()'s token; build a message with ofo.errors.render()")
+        fields = checked({
+            "error_class": error_class,
+            "code": code,
+            "what_happened": what_happened,
+            "impact": impact,
+            "what_is_blocked": what_is_blocked,
+            "next_action": next_action,
+            "external": external,
+        })
         obj = object.__new__(UserFacingError)
-        issued[obj] = MappingProxyType(dict(fields))
+        issued[obj] = fields
         return obj
 
     def fields_of(obj: UserFacingError) -> Mapping[str, Any]:
         fields = issued.get(obj)
         if fields is None:
             raise ValueError("this UserFacingError was not issued by render() and carries no message")
-        return fields
+        # Re-checked on every read: an entry written into the registry by any other route (it is
+        # reachable with getclosurevars) is refused before a user sees it.
+        return checked(fields)
 
     return claim_render_token, build, fields_of
 
