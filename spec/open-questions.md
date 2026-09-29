@@ -223,3 +223,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q234 — DECIDED (owner, 2026-09-29) — Zerodha Client ID format
 - Decision: 6 characters, 2–3 letters then digits (AB1234 or ABC123). Recorded in REQ-020 "Owner decision (Q234)".
+
+## Q235 — DECIDED (owner, 2026-09-29) — Trust boundary for the advice-wording check (W-024 round 6)
+- Decision: same boundary as W-026 (accidental misuse by own code, CI-flagged internals; runtime sabotage out of scope);
+  promise phrases added to the checker. Recorded in ADR-003 "Q235".
