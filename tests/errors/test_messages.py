@@ -607,6 +607,16 @@ def test_round6_a_registry_entry_written_directly_is_refused_on_read() -> None:
     with pytest.raises(ValueError, match="banned wording"):
         forged.what_happened  # noqa: B018 - the read is the point
 
+    # A forged entry missing a field (the builder's keyword-only signature makes this unreachable
+    # through build(); only a direct registry write can do it) is refused on read too.
+    short = object.__new__(UserFacingError)
+    registry[short] = MappingProxyType({
+        "error_class": ErrorClass.MARGIN, "code": "MARGIN_001",
+        "what_happened": "Margin available is below what this strategy needs.", **_CLEAN_PARTS,
+    })
+    with pytest.raises(TypeError, match="exactly the fields"):
+        short.impact  # noqa: B018 - the read is the point
+
 
 @pytest.mark.parametrize(
     "text,word",
@@ -622,7 +632,7 @@ def test_q230_every_word_form_is_banned(text: str, word: str) -> None:
 
 
 @pytest.mark.parametrize("text", ["The best case is a gain.", "best_case", "best_bid", "BEST-ASK", "make-sure",
-                                  "best  bid", "best\tbid"])
+                                  "best  bid", "best\tbid", "best bidder", "remake sure", "best-cases"])
 def test_q230_exceptions_match_only_as_spelled(text: str) -> None:
     """Q230: "best case" with a space (or any other joiner than the one written) is not an
     exception; the bare word inside it is then caught."""
@@ -654,3 +664,68 @@ def test_external_text_that_is_only_invisible_characters_is_refused(text: str) -
 
     with pytest.raises(ValueError, match="blank"):
         ExternalText.validate(ExternalText(source=ExternalSource.ZERODHA, text=text))
+
+
+# --- Round 6: every other user-visible platform string passes the same check function -----------
+
+
+def test_round6_check_failure_reason_and_flag_message_pass_the_shared_check() -> None:
+    """AC-2 / Q230: a CheckFailure reason or Flag message with a Q230 word form, a blank or a
+    Cyrillic look-alike is refused where it is made; "must" (Q230) and the gate's em dash pass."""
+    from ofo.execution.safety import CheckCode, CheckFailure, Flag, FlagCode
+
+    for bad, match in (("The safest fix is to reconnect.", "banned wording"), ("\u200b", "blank"),
+                       ("Reconnect t\u043e continue.", "non-Latin")):
+        with pytest.raises(ValueError, match=match):
+            CheckFailure(CheckCode.SESSION_INVALID, bad)
+        with pytest.raises(ValueError, match=match):
+            Flag(FlagCode.MULTI_EXPIRY, bad)
+    ok = CheckFailure(CheckCode.SESSION_INVALID, "You must reconnect Zerodha.")
+    assert ok.reason == "You must reconnect Zerodha."
+    stale = Flag(FlagCode.DATA_STALE_ON_EXIT, "Prices shown may be stale \u2014 confirm to continue.")
+    assert stale.message == "Prices shown may be stale \u2014 confirm to continue."
+
+
+def test_round6_disconnect_message_runs_the_shared_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2: disconnect_message passes its finished text through the shared check; a changed
+    fixed text carrying a Q230 word form is refused, the owner-cited text passes (05:12:17 UTC is
+    10:42:17 AM IST, ADR-015's own example time)."""
+    from ofo.marketdata import disconnect
+
+    at = datetime.datetime(2026, 9, 29, 5, 12, 17, tzinfo=datetime.timezone.utc)
+    assert disconnect.disconnect_message(at) == (
+        "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused.")
+    monkeypatch.setattr(disconnect, "_MESSAGE", "Live market data disconnected at {time}; you are safe.")
+    with pytest.raises(ValueError, match="banned wording"):
+        disconnect.disconnect_message(at)
+
+
+def test_round6_why_answer_uses_the_shared_check() -> None:
+    """AC-2: timeline/why.py's own words go through BOTH its old phrase list (unchanged coverage)
+    and the shared Q226/Q230 checker: "safest" is not on the old list, so only the shared checker
+    finds it; the shared check function refuses a non-Latin template."""
+    from ofo.strategy.wording import find_banned_phrases
+    from ofo.timeline import why
+
+    assert find_banned_phrases("the safest leg") == []
+    assert why.advice_words_in("the safest leg") == ["safe"]
+    with pytest.raises(ValueError, match="advice phrases"):
+        why._own("Your rule was triggered: the safest exit {}.", "x")
+    with pytest.raises(ValueError, match="non-Latin"):
+        why._own("Your rule was triggered: {} \u043e.", "x")
+
+
+def test_round6_strategy_loader_runs_the_shared_check_function() -> None:
+    """AC-2: the strategy template loader runs the shared check function on name and description
+    (on top of its old list and the shared wording scan): a Cyrillic look-alike is refused."""
+    import dataclasses
+
+    from ofo.strategy.loader import TemplateError, check_wording, load_templates
+
+    template = load_templates()[0]
+    with pytest.raises(TemplateError, match="non-Latin"):
+        check_wording(dataclasses.replace(template, description="A spread \u043en NIFTY."))
+    with pytest.raises(TemplateError, match="non-Latin"):
+        check_wording(dataclasses.replace(template, name="Spread \u043en NIFTY"))
+    with pytest.raises(TemplateError, match="banned wording"):
+        check_wording(dataclasses.replace(template, description="The safest spread."))

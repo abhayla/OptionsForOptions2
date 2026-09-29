@@ -90,7 +90,8 @@ def test_answer_has_no_advice_words():
     assert advice_words_in(text) == []
     fixed = [*INPUT_LABELS.values(), *OP_WORDS.values(), *ACTION_WORDS.values(), *FOLLOW_UP_LABELS.values()]
     assert [phrase for phrase in fixed if advice_words_in(phrase)] == []
-    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should"]  # checker is live
+    # checker is live: main's phrase list first, then the shared Q226/Q230 checker's extra label (W-024 round 6)
+    assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should", "should"]
     assert "Alert generated: yes." in text and "Executed: no." in text
     assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 

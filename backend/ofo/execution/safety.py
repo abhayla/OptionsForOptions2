@@ -28,6 +28,7 @@ from ofo.execution.context import (
 )
 from ofo.instruments import Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.wording import check_platform_text
 
 logger = logging.getLogger("ofo.execution.safety")
 
@@ -87,11 +88,19 @@ class CheckFailure:
     leg_number: int | None = None
     alternatives: tuple[Decimal, ...] = ()
 
+    def __post_init__(self) -> None:
+        # W-024 round 6 (ADR-003, Q226/Q230): the reason is shown to the user, so it passes the same check as every
+        # platform message.
+        check_platform_text(self.reason, f"CheckFailure {getattr(self.code, 'value', self.code)} reason")
+
 
 @dataclass(frozen=True)
 class Flag:
     code: FlagCode
     message: str
+
+    def __post_init__(self) -> None:
+        check_platform_text(self.message, f"Flag {getattr(self.code, 'value', self.code)} message")
 
 
 @dataclass(frozen=True)
@@ -599,7 +608,7 @@ def check_pre_execution(
         logger.exception("pre-execution checks raised strategy=%s action=%s", strategy_id, context.action.value)
         failures = [CheckFailure(
             CheckCode.INTERNAL_ERROR,
-            "An internal error stopped the safety checks. Execution is blocked and no order has been submitted.",
+            "An internal error stopped the pre-execution checks. Execution is blocked and no order has been submitted.",
         )]
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
