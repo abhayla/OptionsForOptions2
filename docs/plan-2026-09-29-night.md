@@ -28,4 +28,4 @@ written answer (ADR-034).
 
 ## Not tonight
 Live Zerodha data, orders/execution, OTP sending, payments, anything production. Open owner items are listed in
-`docs/owner-review-2026-09-30.md`.
+`docs/owner-review-2026-09-29.md`.
