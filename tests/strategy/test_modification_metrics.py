@@ -127,7 +127,7 @@ def test_core_ac2_roll_recalculates_before_and_after():
     """
     rec = executed_record()
     comparison = propose_modification(
-        rec, ROLL, entry_prices=ENTRY_PRICES, ltps=LTPS,
+        rec, ROLL, strategy_id="S-1", entry_prices=ENTRY_PRICES, ltps=LTPS,
         margin_planner=_FakeMarginPlanner(D("50000.00")), charges_model=_FakeChargesModel(D("236.40")),
     )
     assert comparison.active_version_number == 1
@@ -159,7 +159,7 @@ def test_ac2_a_failing_margin_or_charges_provider_gives_unknown_never_zero():
     """AC-2: margin and charges come from the interfaces; a failing provider reports unknown, never a silent 0."""
     rec = executed_record()
     comparison = propose_modification(
-        rec, ROLL, entry_prices=ENTRY_PRICES, ltps=None,
+        rec, ROLL, strategy_id="S-1", entry_prices=ENTRY_PRICES, ltps=None,
         margin_planner=_FailingMarginPlanner(), charges_model=_FailingChargesModel(),
     )
     for side in (comparison.before, comparison.after):

@@ -25,6 +25,11 @@ unless the slot already exists in the active definition. The resulting definitio
 ``dataclasses.replace`` on the active definition, so every added leg is merged into that same strategy object: there
 is no function in this module that can hand back a leg not attached to a ``StrategyDefinition``, so a leg can never
 be constructed as a standalone, unrelated trade.
+
+Strategy Guard (W-026, REQ-036 AC-5, ADR-002): ``propose_modification`` runs the record's own guard on the same
+engine Before/After it shows, bound to (strategy id, active version, hash of the active and proposed definitions).
+``prepare_confirmed_modification`` refuses unless the guard checked exactly this proposal and, when the risk profile
+changes, the caller hands back that decision's own acknowledgement; ``execute_confirmed_modification`` consumes it.
 """
 from __future__ import annotations
 
@@ -44,6 +49,7 @@ from ofo.execution.context import ExecutionAction, ExecutionContext
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
+from ofo.strategy.guard import GuardBinding, GuardDecision, proposal_hash
 from ofo.strategy.versions import ExecutionOutcome, ExecutionResult, StrategyRecord, Version
 
 _ZERO = Decimal("0.00")
@@ -220,12 +226,14 @@ class ModificationComparison:
     changes_description: tuple[str, ...]
     before: SideMetrics
     after: SideMetrics
+    guard: GuardDecision  # REQ-036 AC-5: message + consequences + (when flagged) the acknowledgement token
 
 
 def propose_modification(
     record: StrategyRecord,
     changes: tuple[LegChange, ...],
     *,
+    strategy_id: str,
     entry_prices: Mapping[Slot, Decimal],
     ltps: Mapping[Slot, Decimal] | None,
     margin_planner: MarginPlanner,
@@ -247,9 +255,37 @@ def propose_modification(
     description = new_def.changes_from(active_def)
     if not description:
         raise ModificationError("this change makes no meaningful difference to the active version")
-    before = _side_metrics(Strategy(_engine_legs(active_def, entry_prices, ltps)), margin_planner, charges_model)
-    after = _side_metrics(Strategy(_engine_legs(new_def, entry_prices, ltps)), margin_planner, charges_model)
-    return ModificationComparison(active.number, description, before, after)
+    before_strategy = Strategy(_engine_legs(active_def, entry_prices, ltps))
+    after_strategy = Strategy(_engine_legs(new_def, entry_prices, ltps))
+    before = _side_metrics(before_strategy, margin_planner, charges_model)
+    after = _side_metrics(after_strategy, margin_planner, charges_model)
+    binding = _guard_binding(strategy_id, active, new_def)
+    decision = record.guard._issue(binding, before_strategy, after_strategy, before.margin, after.margin)
+    return ModificationComparison(active.number, description, before, after, decision)
+
+
+def _definition_rows(definition: StrategyDefinition) -> list[list[str]]:
+    return sorted(
+        [d.action.value, d.instrument.value, "" if d.strike is None else format(d.strike.normalize(), "f"),
+         d.expiry.isoformat(), str(d.quantity)]
+        for d in definition.legs
+    )
+
+
+def _guard_binding(strategy_id: object, active: Version, proposed: StrategyDefinition) -> GuardBinding:
+    """The Strategy Guard binding of a modification: this strategy, its active version, this exact change."""
+    if not isinstance(strategy_id, str) or not strategy_id.strip():
+        raise ModificationError(f"strategy_id must be a non-empty string, got {strategy_id!r}")
+    payload = {"strategy_id": strategy_id, "active_version": active.number, "underlying": proposed.underlying,
+               "active": _definition_rows(active.definition), "proposed": _definition_rows(proposed)}
+    return GuardBinding(strategy_id, f"v{active.number}", proposal_hash(payload))
+
+
+def _pending_binding(record: StrategyRecord, strategy_id: str) -> GuardBinding:
+    active, proposed = record.active_version, record.proposed_version
+    if active is None or proposed is None:
+        raise ModificationError("no active version with a pending proposal to check")
+    return _guard_binding(strategy_id, active, proposed.definition)
 
 
 def confirm_modification(
@@ -299,6 +335,7 @@ def prepare_confirmed_modification(
     context: ExecutionContext,
     catalogue: Catalogue,
     eligibility: EligibilityRegistry,
+    acknowledgement: str | None = None,
 ) -> SafetyResult:
     """Run the REQ-059 gate on THIS record's own pending proposal (AC-4). The ONLY way to learn whether an
     adjustment may execute: there is no public function in this module that accepts a caller-supplied verdict.
@@ -322,6 +359,8 @@ def prepare_confirmed_modification(
         raise ModificationError(f"context.version_id must be 'v{proposed.number}' for this proposal")
     if not isinstance(strategy_id, str) or not strategy_id.strip():
         raise ModificationError(f"strategy_id must be a non-empty string, got {strategy_id!r}")
+    # REQ-036 AC-5: the record's own guard must have checked THIS proposal; a flagged one needs its own token.
+    record.guard.check(_pending_binding(record, strategy_id), acknowledgement)
     identity = gate_inputs_from_record(record, strategy_id=strategy_id)
     grounded_context = dataclasses.replace(context, strategy_id=strategy_id, **identity)
     strategy = Strategy(_gate_legs(proposed.definition))
@@ -337,6 +376,7 @@ def execute_confirmed_modification(
     catalogue: Catalogue,
     eligibility: EligibilityRegistry,
     result: ExecutionResult,
+    acknowledgement: str | None = None,
 ) -> ExecutionOutcome:
     """Apply a broker execution result for the confirmed proposal, ONLY when the REQ-059 gate -- run HERE, on this
     record's own pending proposal -- passes (AC-4). The gate runs exactly once per call, via
@@ -349,6 +389,7 @@ def execute_confirmed_modification(
     """
     safety = prepare_confirmed_modification(
         record, version_number, strategy_id=strategy_id, context=context, catalogue=catalogue, eligibility=eligibility,
+        acknowledgement=acknowledgement,
     )
     if safety.blocked:
         reasons = "; ".join(f.reason for f in safety.failures)
@@ -356,4 +397,5 @@ def execute_confirmed_modification(
             f"execution is blocked by the pre-execution gate; no order has been prepared and the active version is "
             f"unchanged: {reasons}"
         )
+    record.guard.redeem(_pending_binding(record, strategy_id), acknowledgement)  # single use (REQ-036 AC-5)
     return record.apply_result(result)

@@ -27,6 +27,7 @@ from partial_inputs import (
     three_positions,
 )
 
+from ofo.execution.send_guard import SendCapability
 from ofo.engine import Action
 from ofo.execution.partial import (
     BrokerOrderStatus,
@@ -158,7 +159,8 @@ class _IdSubmitter(FakeSubmitter):
         super().__init__()
         self.broker_id = broker_id
 
-    def submit(self, order: Order) -> str:
+    def submit(self, order, capability) -> str:
+        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
         self.sent.append(order)
         return self.broker_id  # type: ignore[return-value]
 
@@ -186,9 +188,10 @@ class _BlockingSubmitter(FakeSubmitter):
         super().__init__()
         self.book = book
 
-    def submit(self, order: Order) -> str:
+    def submit(self, order, capability) -> str:
+        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
         self.book.block_strategy("S-1", "mismatch found by another read while sending")
-        return super().submit(order)
+        return self._send(order)
 
 
 def test_transition_refused_after_send_still_counts_as_in_flight(catalogue, eligibility) -> None:  # noqa: ANN001
@@ -212,10 +215,11 @@ class _ConcurrentSubmitter(FakeSubmitter):
         self.args = (book, catalogue, eligibility)
         self.during = None
 
-    def submit(self, order: Order) -> str:
+    def submit(self, order, capability) -> str:
+        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
         book, catalogue, eligibility = self.args
         self.during = _complete(book, FakeBroker(three_positions(LTPS), statuses()), catalogue, eligibility)
-        return super().submit(order)
+        return self._send(order)
 
 
 def test_order_is_in_flight_from_before_the_broker_sees_it(catalogue, eligibility) -> None:  # noqa: ANN001

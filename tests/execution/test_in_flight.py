@@ -68,7 +68,7 @@ def test_sent_order_is_registered_in_the_book(catalogue, eligibility) -> None:  
                      submitter=FakeSubmitter())
     view = book.order_for("NEW-1")
     assert (view.state, view.strategy_id, view.order.leg_ref, view.order.version_id, view.quantity) == (
-        OrderState.SUBMITTED, "S-1", "leg-4", "V-3", LOT)
+        OrderState.SUBMITTED, "S-1", "leg-4", "v1", LOT)
 
 
 def test_discarded_preparation_frees_the_strategy(catalogue, eligibility) -> None:  # noqa: ANN001
@@ -91,6 +91,7 @@ def test_retry_after_close_with_stale_read_prepares_nothing(catalogue, eligibili
     waiting = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert waiting.orders == ()
     submit_confirmed(close, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
+                     acknowledgement=close.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=FakeSubmitter())
     after = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     complete = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
@@ -119,6 +120,7 @@ def test_second_close_on_stale_read_prepares_nothing(catalogue, eligibility) -> 
     first = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     submitter = FakeSubmitter()
     submit_confirmed(first, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
+                     acknowledgement=first.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=submitter)
     second = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert second.orders == ()

@@ -30,6 +30,7 @@ import datetime
 from decimal import Decimal as D
 
 from partial_inputs import (
+    condor_record,
     CONTRACTS,
     LOT,
     READ_AT,
@@ -44,6 +45,7 @@ from partial_inputs import (
     three_positions,
 )
 
+from ofo.execution.send_guard import SendCapability
 from ofo.engine import Action
 from ofo.execution.partial import (
     BrokerOrderStatus,
@@ -65,7 +67,8 @@ LTPS = (D("40.00"), D("80.00"), D("120.00"))
 class _TimeoutSubmitter(FakeSubmitter):
     """Accepts the order onto the wire, then the broker call itself times out (outcome unknown, OD-l)."""
 
-    def submit(self, order):  # noqa: ANN001, ANN201
+    def submit(self, order, capability):  # noqa: ANN001, ANN201
+        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
         self.sent.append(order)
         raise TimeoutError("broker did not respond in time")
 
@@ -111,6 +114,7 @@ def test_open_exit_order_blocks_completion_after_a_fresh_close_read(catalogue, e
     close = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert close.ready and len(close.orders) == 3
     submit_confirmed(close, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
+                     acknowledgement=close.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=FakeSubmitter())
 
     fresh = FakeBroker(three_positions(LTPS), statuses(), read_at=READ_AT + datetime.timedelta(seconds=5))
@@ -182,7 +186,8 @@ def test_broker_status_for_another_strategys_order_is_a_mismatch(catalogue, elig
     book is flagged ("belongs to another strategy") and blocks with RECONCILIATION_REQUIRED, never silently
     ignored (which would let this strategy's assessment go on as if that line never arrived)."""
     book = book_with_three_filled()
-    other = Order("S-9", "other-leg", CONTRACTS[3], Action.BUY, LOT, D("44.00"), broker_order_id="BRK-OTHER")
+    book.bind_strategy("S-9", condor_record())  # REQ-036 AC-1: every order's strategy has a record
+    other = Order("S-9", "other-leg", CONTRACTS[3], Action.BUY, LOT, D("44.00"), broker_order_id="BRK-OTHER", version_id="v1")
     book.add(other)
     book.transition("BRK-OTHER", OrderState.SUBMITTED)
 

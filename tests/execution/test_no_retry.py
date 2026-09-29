@@ -117,7 +117,7 @@ def test_ac6_no_scheduling_or_loop_around_submission() -> None:
     (func,) = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "submit_confirmed"]
     loops = [n for n in ast.walk(func) if isinstance(n, (ast.For, ast.AsyncFor))]
     assert len(loops) == 1 and isinstance(loops[0].iter, ast.Call)
-    assert loops[0].iter.func.id == "enumerate" and ast.unparse(loops[0].iter.args[0]) == "preparation.orders"
+    assert loops[0].iter.func.id == "enumerate" and ast.unparse(loops[0].iter.args[0]) == "orders"  # W-026: the snapshot the guard checked
     # the except handler inside the loop returns (stops); it never continues to another submit
     handlers = [n for n in ast.walk(loops[0]) if isinstance(n, ast.ExceptHandler)]
     assert handlers and all(isinstance(h.body[-1], ast.Return) for h in handlers)

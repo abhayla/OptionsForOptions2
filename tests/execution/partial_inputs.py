@@ -12,13 +12,16 @@ from typing import Sequence
 
 from execution_inputs import AS_OF, LOT, all_true_context, condor_legs
 
+from ofo.execution.send_guard import SendCapability
 from ofo.engine import Action, Strategy
 from ofo.execution import ExecutionContext
 from ofo.execution.partial import OrderRefused, BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg
 from ofo.orders import FillEvent, Order, OrderBook, OrderState
+from ofo.strategy.definition import StrategyDefinition
+from ofo.strategy.versions import StrategyRecord
 
 STRATEGY_ID = "S-1"
-CONTRACTS = ("NIFTY26OCT22800PE", "NIFTY26OCT23000PE", "NIFTY26OCT23400CE", "NIFTY26OCT23600CE")
+CONTRACTS = ("NIFTY26O0622800PE", "NIFTY26O0623000PE", "NIFTY26O0623400CE", "NIFTY26O0623600CE")  # real fixture symbols (W-026)
 REFS = ("leg-1", "leg-2", "leg-3", "leg-4")
 BROKER_IDS = ("BRK-1", "BRK-2", "BRK-3", "BRK-4")
 REJECT_TEXT = "RMS:Margin Exceeds, Required:4400.00, Available:1200.00 for entity account-XX"
@@ -39,20 +42,36 @@ class Clock:
         self.t += datetime.timedelta(seconds=seconds)
 
 
-def new_book(clock: Clock | None = None) -> OrderBook:
-    return OrderBook(clock=clock or Clock())
+VERSION_ID = "v1"  # the record's own id of the version the plan executes (REQ-036 AC-1)
+
+
+def condor_record(quantity: int = LOT) -> StrategyRecord:
+    """The strategy's record: version 1 is exactly the plan's legs (proposed for execution)."""
+    record = StrategyRecord(StrategyDefinition.from_engine("NIFTY", Strategy(condor_legs(quantity))),
+                            at=FILL_AT - datetime.timedelta(minutes=10), clock=lambda: READ_AT)
+    record.propose_execution(at=FILL_AT - datetime.timedelta(minutes=9))
+    return record
+
+
+def new_book(clock: Clock | None = None, record: StrategyRecord | None | bool = None) -> OrderBook:
+    """``record=False`` leaves the strategy unbound (no record: REQ-036 AC-1 negative cases)."""
+    book = OrderBook(clock=clock or Clock())
+    if record is not False:
+        book.bind_strategy(STRATEGY_ID, record or condor_record())
+    return book
 
 
 def plan() -> ExecutionPlan:
     return ExecutionPlan(STRATEGY_ID, tuple(PlannedLeg(r, c, leg) for r, c, leg in zip(REFS, CONTRACTS, condor_legs())))
 
 
-def book_with_three_filled(fourth: OrderState = OrderState.REJECTED, clock: Clock | None = None) -> OrderBook:
+def book_with_three_filled(fourth: OrderState = OrderState.REJECTED, clock: Clock | None = None,
+                           record: StrategyRecord | None | bool = None) -> OrderBook:
     """Legs 1-3 filled at their planned prices; leg 4 (BUY 23,600 CE) in ``fourth`` with nothing filled."""
-    book = new_book(clock)
+    book = new_book(clock, record)
     for i, (ref, contract, leg) in enumerate(zip(REFS, CONTRACTS, condor_legs())):
         book.add(Order(STRATEGY_ID, ref, contract, leg.action, leg.quantity, leg.entry_price,
-                       broker_order_id=BROKER_IDS[i]))
+                       broker_order_id=BROKER_IDS[i], version_id="v1"))
         book.transition(BROKER_IDS[i], OrderState.SUBMITTED)
         if i < 3:
             book.apply_fill(FillEvent(f"T-{i + 1}", BROKER_IDS[i], contract, leg.action, leg.quantity,
@@ -124,7 +143,12 @@ class FakeSubmitter:
         self.sent: list[Order] = []
         self.refuse = refuse
 
-    def submit(self, order: Order) -> str:
+    def submit(self, order, capability) -> str:
+        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
+        return self._send(order)
+
+    def _send(self, order: Order) -> str:
+        """The broker's side once the capability was redeemed (subclasses reuse it)."""
         self.sent.append(order)
         if self.refuse == len(self.sent):
             raise OrderRefused("Order rejected: RMS:Margin Exceeds")
@@ -132,6 +156,7 @@ class FakeSubmitter:
 
 
 def entry_context(**overrides: object) -> ExecutionContext:
+    overrides.setdefault("version_id", VERSION_ID)
     return all_true_context(**overrides)
 
 
