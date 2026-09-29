@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from ofo.marketdata.availability import MonitoringStatus
 from ofo.rules.inputs import IST
+from ofo.wording import check_platform_text
 
 _MESSAGE = "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused."
 
@@ -24,7 +25,9 @@ def disconnect_message(last_updated: datetime.datetime) -> str:
     if not isinstance(last_updated, datetime.datetime) or last_updated.tzinfo is None:
         raise ValueError(f"last_updated must be a timezone-aware datetime, got {last_updated!r}")
     ist_time = last_updated.astimezone(IST).strftime("%I:%M:%S %p")
-    return _MESSAGE.format(time=ist_time)
+    message = _MESSAGE.format(time=ist_time)
+    check_platform_text(message, "disconnect_message")  # W-024 round 6: the check every platform message passes
+    return message
 
 
 @dataclass(frozen=True)

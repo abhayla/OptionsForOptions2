@@ -373,6 +373,9 @@ _BYPASS_SAMPLES = {
     "importlib.import_module": "import importlib\nm = importlib.import_module('ofo.errors.model')",
     "importlib templates": "import importlib\nm = importlib.import_module('ofo.errors.templates')",
     "__import__": "m = __import__('ofo.errors.model', fromlist=['x'])",
+    # One sample per new rule that no other rule also catches (each rule has its own killing case).
+    "bare getclosurevars name": "from inspect import *\ngetclosurevars(render)",
+    "sys.modules by variable": "import sys\nm = sys.modules[name]",
 }
 
 

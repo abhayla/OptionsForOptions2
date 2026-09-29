@@ -32,7 +32,7 @@ from ofo.strategy.model import (
     TemplateLeg,
 )
 from ofo.strategy.wording import find_banned_phrases, find_position_words
-from ofo.wording import find_advice_wording
+from ofo.wording import check_platform_text, find_advice_wording
 
 DEFAULT_CATALOGUE_PATH: Path = Path(__file__).with_name("catalogue.yaml")
 SCHEMA_PATH: Path = Path(__file__).with_name("template.schema.json")
@@ -117,6 +117,11 @@ def check_wording(template: Template) -> None:
     banned += [hit for hit in find_advice_wording(text) if hit not in banned]
     if banned:
         raise TemplateError(f"template {template.id!r}: banned wording {banned} in name/description (ADR-003)")
+    for label, value in (("name", template.name), ("description", template.description)):
+        try:
+            check_platform_text(value, f"template {template.id!r} {label}")
+        except (TypeError, ValueError) as exc:
+            raise TemplateError(str(exc)) from exc
     signs = {(template.leg(c.leg).instrument, c.sign) for c in template.constraints if isinstance(c, SignConstraint)}
     constant_zero = any(
         leg.strike is not None and leg.strike.is_constant and leg.strike.const == 0 for leg in template.legs

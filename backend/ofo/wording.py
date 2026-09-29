@@ -160,11 +160,13 @@ def normalise_for_duplicate_check(text: str) -> str:
 #: non-Latin letter such as Cyrillic "о" (U+043E, which LOOKS like Latin "o" but is a different
 #: character and a different Unicode script) — fails this check. `ExternalText` (round-3 slot type)
 #: is exempt: it is someone else's text, shown quoted and labelled, never scanned or restyled.
-#: `{}` are included because this check also runs over un-rendered `MessageTemplate` text
+#: En and em dashes (U+2013, U+2014) are punctuation, not letters: round 6 added them so the
+#: execution gate's own texts ("Prices shown may be stale — confirm to continue.") pass the same
+#: check. `{}` are included because this check also runs over un-rendered `MessageTemplate` text
 #: (`{slot_name}` placeholders), not only final display strings — a slot's own formatted value is
 #: substituted in before anything is shown to a user.
 _ALLOWED_PLATFORM_TEXT = re.compile(
-    r"^[A-Za-z0-9₹\s.,;:!?()'\"‘’“”%/&@#+=<>*«»_{}-]*$"
+    r"^[A-Za-z0-9₹\s.,;:!?()'\"‘’“”%/&@#+=<>*«»_{}\u2013\u2014-]*$"
 )
 
 
