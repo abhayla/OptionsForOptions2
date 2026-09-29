@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -22,14 +23,14 @@ class SourceRef:
 
 
 def validate_source(ref: SourceRef) -> None:
-    """Validate one `SourceRef`: a real https URL and a real ISO calendar date.
+    """Validate one `SourceRef`: a real https URL (with a host) and a real ISO calendar date.
 
     Raises `ValueError` (fail closed) if either is missing or malformed — e.g. `"2026-99-99"`
     is shaped like a date but is not a real calendar date, and must be rejected, not accepted by
     a regex that only checks digit positions.
     """
-    if not ref.url or not ref.url.startswith("https://"):
-        raise ValueError(f"{ref.rule}: source url must be a real https url, got {ref.url!r}")
+    if not ref.url or not ref.url.startswith("https://") or not urlsplit(ref.url).hostname:
+        raise ValueError(f"{ref.rule}: source url must be a real https url with a host, got {ref.url!r}")
     if not ref.captured_on:
         raise ValueError(f"{ref.rule}: captured_on must not be empty")
     try:
