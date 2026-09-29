@@ -127,6 +127,15 @@ def record_report(
     Agreeing strategies are refreshed too, so no later resolution can act on an older picture. Through
     ``StrategyRecord.observe_broker_position`` a differing share with no proposal in flight puts the strategy into
     Reconciliation Required (the sticky flag in versions.py; not duplicated here).
+
+    All or nothing (W-021 fix round 2; class: a multi-strategy recording that mutates some strategies before
+    validating all of them). Phase 1 validates every covered strategy (exited, time order, capacity, duplicate
+    reference, share) and builds every audit payload, changing nothing. Only if all pass does phase 2 write the
+    audit records, then apply the observations. A refused run leaves no strategy, audit event or reference behind,
+    so the same run id can be recorded again once the state allows it.
+
+    Note (not built): a run started for one named strategy (``Scope.NAMED_STRATEGY``) should compare only that
+    strategy's contracts, not the whole account map; this function records whatever ``compare`` was given.
     """
     if not isinstance(report, ReconciliationReport):
         raise ReconciliationError(f"record_report needs a ReconciliationReport, got {report!r}")
@@ -136,26 +145,38 @@ def record_report(
     missing = sorted((report.covered_strategy_ids | report.blocked_strategy_ids) - set(records))
     if missing:
         raise ReconciliationError(f"the report covers strategies with no record here: {missing}")
-    outcomes = []
+
+    # Phase 1: validate everything; mutate nothing.
+    planned = []
     for sid in sorted(report.covered_strategy_ids):
+        record = _require_record(records[sid])
+        share, reference = report.share(sid), f"{run_id}:{sid}"
         try:
-            outcome = _require_record(records[sid]).observe_broker_position(
-                report.share(sid), at=report.at, reference=f"{run_id}:{sid}")
+            record.check_observation(share, at=report.at, reference=reference)
         except VersionError as exc:
-            raise ReconciliationError(f"strategy {sid!r}: {exc}") from exc
-        if outcome is not None:
-            outcomes.append(outcome)
+            raise ReconciliationError(f"strategy {sid!r}: {exc}; nothing was recorded for this run") from exc
+        planned.append((record, share, reference))
+    events = []
     for mismatch in report.mismatches:
         event = (EventType.EXTERNAL_BROKER_CHANGE_DETECTED if mismatch.kind is MismatchKind.EXTERNAL_MODIFICATION
                  else EventType.RECONCILIATION_RECORDED)
-        audit.append(event, actor=actor, timestamp=report.at, correlation_id=run_id, payload={
+        events.append((event, {
             "kind": mismatch.kind.value,
             "strategy_ids": list(mismatch.strategy_ids),
             "broker_state": [[describe_contract(c), u] for c, u in mismatch.broker_state],
             "platform_state": [[describe_contract(c), u] for c, u in mismatch.platform_state],
             "difference": [[describe_contract(c), u] for c, u in mismatch.difference],
             "next_action": mismatch.next_action,
-        })
+        }))
+
+    # Phase 2: audit first, then the observations (each re-checks what phase 1 proved, so none can refuse now).
+    for event, payload in events:
+        audit.append(event, actor=actor, timestamp=report.at, correlation_id=run_id, payload=payload)
+    outcomes = []
+    for record, share, reference in planned:
+        outcome = record.observe_broker_position(share, at=report.at, reference=reference)
+        if outcome is not None:
+            outcomes.append(outcome)
     return tuple(outcomes)
 
 
@@ -263,7 +284,11 @@ def prepare_closing_order(
     audit: AuditLog,
     target: ClosingTarget = ClosingTarget.ACTIVE_VERSION,
 ) -> Resolution:
-    """Q198 "Close/reconcile through a prepared order": an order proposal, never placed; the block stays."""
+    """Q198 "Close/reconcile through a prepared order": an order proposal, never placed; the block stays.
+
+    Note (not built): two proposals prepared on the same report are both allowed here; the confirm/submit step
+    must dedupe them (W-023 blocks a second live preparation).
+    """
     rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
     if not isinstance(target, ClosingTarget):
         raise ReconciliationError(f"target must be a ClosingTarget, got {target!r}")

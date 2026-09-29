@@ -205,6 +205,33 @@ def test_ac5_unrecorded_or_superseded_report_is_refused():
         mark_requires_attention("IC-1", rec, report="latest", actor="user", at=at(20), reason="why", audit=audit)
 
 
+def test_ac5_same_time_report_from_another_account_is_refused():
+    """AC-5 guard M3: a report with the SAME timestamp as the recorded run but a different broker picture (another
+    account's positions) passes the time checks; the share check must still refuse it."""
+    rec, audit, n, report = flagged()
+    other_account = compare({}, {"IC-1": rec}, at=report.at, clock=clock)            # flat, same 10:00 stamp
+    assert other_account.at == report.at and other_account.share("IC-1") != report.share("IC-1")
+    for resolve in (adopt_broker_position, prepare_closing_order, mark_requires_attention, mark_exited_broker_flat):
+        with pytest.raises(ReconciliationError):
+            resolve("IC-1", rec, report=other_account, actor="user", at=at(20), reason="why", audit=audit)
+    assert not rec.exited and rec.reconciliation_required and len(audit.events) == n
+
+
+def test_ac5_resolution_after_a_new_fill_waits_for_a_fresh_run():
+    """AC-5 guard M5: an execution result after the recorded run resets the observation, so a resolution on that
+    run is refused until a fresh run is recorded."""
+    from ofo.strategy.versions import ExecutionResult, ResultStatus
+    rec, audit, n, report = flagged()
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, Position.of(HEDGE_CLOSED), at(15), "late-fill"))
+    assert rec.last_observed_at is None
+    with pytest.raises(ReconciliationError):
+        mark_requires_attention("IC-1", rec, report=report, actor="user", at=at(20), reason="why", audit=audit)
+    fresh = compare(HEDGE_CLOSED, {"IC-1": rec}, at=at(16), clock=clock)
+    record_report(fresh, {"IC-1": rec}, audit=audit, run_id="run-2")
+    res = mark_requires_attention("IC-1", rec, report=fresh, actor="user", at=at(20), reason="why", audit=audit)
+    assert res.still_blocked
+
+
 def test_ac5_review_and_modify_is_recorded_and_keeps_the_block():
     """AC-5 (ADR-018 Q198 "Review and modify strategy"): the choice is audited, hands off to W-027, stays blocked."""
     rec, audit, n, report = flagged()

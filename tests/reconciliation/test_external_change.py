@@ -39,6 +39,50 @@ def test_ac4_q197_change_in_zerodha_detected_recorded_and_blocks():
         rec.edit(CONDOR, at=at(11))
 
 
+def _two_strategies():
+    from recon_fixtures import SC23400 as _sc  # noqa: F401 - same fixtures module
+    ic = executed()
+    q197 = executed(Q197, "exec-q197")
+    return ic, q197
+
+
+def test_ac4_recording_is_all_or_nothing_when_a_later_strategy_refuses():
+    """AC-4 fix round 2 (verifier attack): the run is computed at 10:00; strategy Q197 then records an event at
+    10:02, so it refuses the 10:00 run. Nothing may change: IC-1 not flagged, no picture refreshed, no audit
+    event, no reference kept. A retry of the same run id on a fresh run then succeeds and writes the audit."""
+    ic, q197 = _two_strategies()
+    broker = dict(CONDOR_UNITS) | {SC23400: -25, CE25000: -50}
+    report = compare(broker, {"IC-1": ic, "Q197": q197}, at=at(10), clock=clock)
+    assert report.blocked_strategy_ids == frozenset({"IC-1"})
+    q197.observe_broker_position(Position.of({CE25000: -50}), at=at(12), reference="later")
+    audit = audit_log()
+    before = (ic.actual_position, ic.last_observed_at, len(ic.outcomes), q197.actual_position, len(q197.outcomes))
+    with pytest.raises(ReconciliationError):
+        record_report(report, {"IC-1": ic, "Q197": q197}, audit=audit, run_id="runP")
+    assert not ic.reconciliation_required and audit.events == ()
+    assert (ic.actual_position, ic.last_observed_at, len(ic.outcomes), q197.actual_position,
+            len(q197.outcomes)) == before
+    retry = compare(broker, {"IC-1": ic, "Q197": q197}, at=at(13), clock=clock)
+    record_report(retry, {"IC-1": ic, "Q197": q197}, audit=audit, run_id="runP")       # same run id: allowed
+    assert ic.reconciliation_required and len(audit.events) == 1
+    assert audit.events[0].payload["strategy_ids"] == ("IC-1",)
+
+
+def test_ac4_recording_is_all_or_nothing_when_an_outcome_log_is_full(monkeypatch):
+    """AC-4 fix round 2: the second failure mode, a full outcome log on a later strategy, changes nothing either."""
+    import ofo.strategy.versions as versions
+    ic, q197 = _two_strategies()
+    broker = dict(CONDOR_UNITS) | {SC23400: -25, CE25000: -50}
+    q197.observe_broker_position(Position.of({CE25000: -25}), at=at(5), reference="earlier")   # one more outcome
+    report = compare(broker, {"IC-1": ic, "Q197": q197}, at=at(10), clock=clock)
+    assert (len(ic.outcomes), len(q197.outcomes)) == (1, 2)
+    monkeypatch.setattr(versions, "MAX_OUTCOMES", 2)       # IC-1 (sorted first) has room; Q197 is at capacity
+    audit = audit_log()
+    with pytest.raises(ReconciliationError):
+        record_report(report, {"IC-1": ic, "Q197": q197}, audit=audit, run_id="runF")
+    assert not ic.reconciliation_required and ic.last_observed_at is None and audit.events == ()
+
+
 def test_ac4_platform_fill_is_not_an_external_change():
     """AC-4 (negative): the same broker move explained by the platform's own fill is not external."""
     assert unexplained_changes({CE25000: -50}, {CE25000: -25}, {CE25000: 25}) == {}

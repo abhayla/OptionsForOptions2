@@ -287,12 +287,17 @@ class StrategyRecord:
     def _set(self, name: str, value: object) -> None:
         object.__setattr__(self, name, value)
 
-    def _stamp(self, at: object) -> datetime.datetime:
+    def _check_time(self, at: object) -> datetime.datetime:
+        """The checks of ``_stamp`` without recording the time."""
         _require_aware(at, "timestamp")
         if self._last_at is not None and at < self._last_at:
             raise VersionError(f"timestamp {at.isoformat()} is before the last recorded event {self._last_at.isoformat()}")
         if at > self._clock() + MAX_FUTURE_SKEW:
             raise VersionError(f"timestamp {at.isoformat()} is in the future")
+        return at
+
+    def _stamp(self, at: object) -> datetime.datetime:
+        self._check_time(at)
         self._set("_last_at", at)
         return at
 
@@ -517,14 +522,7 @@ class StrategyRecord:
         recorded, agreeing or not, so the stored broker picture is never older than the latest run (W-021 fix
         round: resolutions acted on a stale copy). Agreement never clears the flag; only an explicit resolution does.
         """
-        self._refuse_if_exited("record a broker position")
-        if not isinstance(position, Position):
-            raise VersionError(f"observe_broker_position needs a Position, got {position!r}")
-        _require_text(reference, "observation reference")
-        if reference in self._references:
-            raise VersionError(f"observation {reference!r} was already recorded")
-        if len(self._outcomes) >= MAX_OUTCOMES:
-            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self.check_observation(position, at=at, reference=reference)
         self._stamp(at)
         self._references.add(reference)
         was_flagged, before = self._reconcile, self._actual
@@ -540,6 +538,22 @@ class StrategyRecord:
         )
         self._outcomes.append(outcome)
         return outcome
+
+    def check_observation(self, position: Position, *, at: datetime.datetime, reference: str) -> None:
+        """Raise exactly when ``observe_broker_position`` would refuse; change nothing (two-phase recording).
+
+        Note (not built, W-021 fix round 2): every run adds one reference to ``_references``, so a persistent
+        store needs compaction (e.g. keep references newer than the last resolution) before it grows unbounded.
+        """
+        self._refuse_if_exited("record a broker position")
+        if not isinstance(position, Position):
+            raise VersionError(f"observe_broker_position needs a Position, got {position!r}")
+        _require_text(reference, "observation reference")
+        if reference in self._references:
+            raise VersionError(f"observation {reference!r} was already recorded")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._check_time(at)
 
     def mark_exited(self, *, at: datetime.datetime, actor: str, resolution: str) -> ExecutionOutcome:
         """Explicit, audited close of a strategy whose broker position is flat (ADR-019 Q200 Exited; issue #19).
