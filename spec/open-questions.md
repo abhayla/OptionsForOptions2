@@ -302,3 +302,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q252 — DECIDED (owner, 2026-09-29) — Default playbooks vs the "no user rule" case (REQ-045 AC-5/AC-7)
 - Decision: adopt-to-own — unadopted defaults are platform detections; adopted/edited defaults are the user's rules;
   edits create personal copies. Recorded in REQ-045.
+
+## Q253 — DECIDED (owner, 2026-09-29) — Platform "risk area" detection (REQ-045 AC-2)
+- Decision: 0.5% from a short strike/breakeven, or 50% of max loss, or ≤2 DTE with a short leg within 1%; all
+  admin-configurable. Recorded in REQ-045.
