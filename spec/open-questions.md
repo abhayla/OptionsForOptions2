@@ -294,3 +294,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q250 — DECIDED (owner, 2026-09-29) — Valid setup and effective range (REQ-069, REQ-068 AC-4)
 - Decision: valid = listed + within capital/max-loss + P&L ≥ 0 over the whole range (range-bound) or at the favourable
   end (directional); effective range = the breakeven band. Recorded in REQ-069.
+
+## Q251 — DECIDED (owner, 2026-09-29) — Strategy levels, market views, objectives (REQ-068 AC-2)
+- Decision: apply the level rules directly (Beginner / Intermediate / Advanced as listed in REQ-068), plus market view
+  and objective per strategy. Recorded in REQ-068 "Owner decision (Q251)".
