@@ -18,7 +18,7 @@ from ofo.strategy.definition import DefinitionLeg
 from ofo.strategy.versions import Position
 from recon_fixtures import (
     BC23600, BP22800, CONDOR, CONDOR_UNITS, EXPIRY, NEXT_EXPIRY, SC23400, SP23000, at, c, clock, executed, scaled,
-    with_legs,
+    single_leg, with_legs,
 )
 
 
@@ -255,3 +255,32 @@ def test_ac2_strike_move_to_a_lower_strike_still_blocks_the_holder():
     assert m.kind is MismatchKind.STRIKE_MISMATCH and m.strategy_ids == ("IC-1",)
     assert m.difference == ((lower, 75), (BP22800, -75))
     assert report.blocked_strategy_ids == frozenset({"IC-1"})
+
+
+def _all_mismatched(strategy_count: int, shared: bool):
+    """``strategy_count`` executed strategies, zero broker contracts, so every strategy is mismatched. ``shared``:
+    every strategy is the golden condor (4 contracts, each held by all of them: the Q224 case); otherwise each
+    strategy sells its own 23400+i CE x 75 (one contract per strategy)."""
+    if shared:
+        strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(strategy_count)}
+    else:
+        strategies = {
+            f"S{i}": executed(single_leg(Action.SELL, Instrument.CE, str(23400 + i), 75), f"e{i}")
+            for i in range(strategy_count)
+        }
+    return lambda: run({}, strategies)
+
+
+@pytest.mark.parametrize("shared", [True, False], ids=["shared-condor", "one-contract-each"])
+def test_ac2_work_is_linear_in_active_strategies(shared):
+    """AC-2 (W-037, issue #64): every run compares all non-exited strategies, and its work grows linearly in their
+    number: with every strategy mismatched and the broker flat, doubling the strategies (100 -> 200) costs at most
+    DOUBLING_LIMIT (2.5x) times the calls (was 3.5x: each differing contract re-scanned every strategy). Work is
+    counted, not timed (tests/work_count.py)."""
+    from work_count import assert_linear
+
+    assert_linear(lambda n: _all_mismatched(n, shared), 100)
+    report = _all_mismatched(200, shared)()
+    assert len(report.covered_strategy_ids) == 200 and len(report.blocked_strategy_ids) == 200
+    # Hand count: shared -> the condor's 4 contracts, each one mismatch held by all 200; else one per strategy.
+    assert len(report.mismatches) == (4 if shared else 200)
