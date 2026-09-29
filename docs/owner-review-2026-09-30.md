@@ -70,9 +70,12 @@ Every item: builder in its own worktree → independent verifier (fresh context)
 | W-025 (REQ-026) | Range input pick lists | **Merged** PR #36 — 3 rounds (my brief put values between strikes; fixed to the real strike grid) |
 | W-027 (REQ-037) | Strategy modification proposals + versions | **Merged** PR #35 — the flow runs the safety gate itself; a forged "passed" result can't be passed in |
 | W-026 (REQ-036) | Strategy-only execution + Strategy Guard (Tier A) | **Merged** PR #44 — 3 rounds: rounds 1-2 let a naked order reach the (fake) broker through public code; an independent review found the send point trusted the caller; round 3 rebuilds every order at the send point from the saved strategy + real contract list. Risk-changing actions need an acknowledgement. Gaps: deferred #45 |
+| W-028 (REQ-058) | Complete / Retry split large orders into whole-lot slices under the freeze limit | **Merged** PR #49 — verifier hand-checked 5 slice sets (e.g. 650 units at a 260 limit → 260, 260, 130; SENSEX lot 20) |
+| W-029 (REQ-036) | Tests that pin three backup safety checks | **Merged** PR #48 — test-only |
+| W-030 (REQ-053) | Guard: every contract symbol in the tests exists in the real instrument list with its paired expiry | **Merged** PR #52 — 7 files corrected; 3 more filed as #51 |
 | W-022 (REQ-056) | Multi-leg execution plan (Tier A) | **Merged** PR #42 — 2 rounds; protective legs first (a long future protects a covered call; later-expiry longs protect calendars), margin impact as tie-break when known, large legs split at a placeholder freeze limit; Complete now follows the plan. Gaps: deferred #43 |
 
-Issues filed: deferred #10 (small verifier findings), #29 (items 1-4 fixed in W-023; 5-6 left for integration), #43 (execution plan gaps), #45 (W-026 test gaps, price check), fixture symbols (see findings), parked #12, #21, #30; closed #19, #33, #37, #38 (filed in error); kit harvest Startup-Factory #39, #40.
+Issues filed: deferred #10 (small verifier findings), #29 (items 1-4 fixed in W-023; 5-6 left for integration), #43 (execution plan gaps), #45 (price check, first-entry path; test gaps fixed by W-029), #50 (Close Partial does not slice), #51 (3 remaining fixture symbols), fixture symbols (see findings), parked #12, #21, #30; closed #19, #33, #37, #38 (filed in error); kit harvest Startup-Factory #39, #40.
 
 ## 4. Still open (for you)
 - Q204, Q205 — shared vs per-user Zerodha feed; monitoring while the daily session is expired. Depend on Zerodha's answer.
