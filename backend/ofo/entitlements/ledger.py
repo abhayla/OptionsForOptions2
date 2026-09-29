@@ -249,6 +249,12 @@ class StoredHistory:
         return f"StoredHistory({self.user_id!r}, {len(self.events)} events)"
 
 
+def _check_stored_history(history: object) -> None:
+    """``load`` takes only a real StoredHistory (not a subclass, a raw sequence or a ledger)."""
+    if type(history) is not StoredHistory:
+        raise ValueError("load takes a StoredHistory from EntitlementLedger.stored(); append new events instead")
+
+
 def _restore(user_id: str, events: tuple[EntitlementEvent, ...]) -> StoredHistory:
     """The store adapter's entry point: rows read back from the append-only store (none is built yet).
 
@@ -265,7 +271,8 @@ class EntitlementLedger:
     """Every entitlement event of one user, in the order recorded.
 
     ``append`` returns a NEW ledger; nothing is ever edited or removed, so ``events`` is the complete
-    audit history. Settings: ``clock_skew`` (see module docstring), ``clock`` (returns an aware "now";
+    audit history. ``events`` given to the constructor are NEW events (appended one by one under these
+    settings); stored history is rebuilt with ``load`` instead (integrity checks only, Q225). Settings: ``clock_skew`` (see module docstring), ``clock`` (returns an aware "now";
     real UTC by default, fixed in tests) and ``max_free_days`` (admin cap on unused trial + referral
     days, REQ-021 AC-5; ``None`` = no cap, the default until the owner sets a number).
     """
@@ -327,8 +334,7 @@ class EntitlementLedger:
         and skew are NOT re-applied to stored events. Events appended afterwards get the full new-event
         checks under these settings.
         """
-        if type(history) is not StoredHistory:
-            raise ValueError("load takes a StoredHistory from EntitlementLedger.stored(); append new events instead")
+        _check_stored_history(history)
         empty = cls(history.user_id, clock_skew=clock_skew, clock=clock, max_free_days=max_free_days)
         index = _Index()
         for event in history.events:

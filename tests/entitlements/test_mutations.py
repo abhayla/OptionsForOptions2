@@ -228,3 +228,111 @@ def test_trial_early_end_ignored_is_caught(monkeypatch):
         suite.test_trial_is_ended_early_when_an_already_trialled_client_id_is_connected,
         suite.test_rule5_adr039_trial_end_pulls_a_queued_paid_period_forward,
     ])
+
+
+# ---------------------------------------------------------------- round 5: new vs stored (owner decision Q225)
+
+from . import test_stored_history as stored  # noqa: E402
+
+
+def test_removing_the_post_dating_guard_is_caught(monkeypatch):
+    """AC-4: without the post-dating bound, a revoke dated 2106 and a trial end 5 days ahead are accepted."""
+    tests = [
+        stored.test_post_dated_revoke_is_refused_so_a_real_revoke_still_lands,
+        stored.test_end_trial_early_five_days_ahead_is_refused,
+        *[lambda s=s, st=st: stored.test_status_change_post_dating_boundary_is_exactly_the_skew(s, st)
+          for s in (stored.FIVE_MIN, stored.ONE_MIN) for st in (Status.REVOKED, Status.ENDED)],
+    ]
+    _passes_then_fails_under(monkeypatch, "_check_change_not_postdated", _no_op, tests, module=ledger_module)
+
+
+def test_post_dating_bound_one_tick_loose_is_caught(monkeypatch):
+    """AC-4: a bound of skew + 1 microsecond (off by one) lets the +skew+1us change in."""
+    real = ledger_module._check_change_not_postdated
+    tests = [lambda: stored.test_status_change_post_dating_boundary_is_exactly_the_skew(stored.FIVE_MIN, Status.REVOKED)]
+    _passes_then_fails_under(
+        monkeypatch, "_check_change_not_postdated", lambda change, skew: real(change, skew + boundary_tick()),
+        tests, module=ledger_module,
+    )
+
+
+def boundary_tick():
+    from .helpers import TICK
+
+    return TICK
+
+
+def test_load_re_applying_the_current_policy_is_caught(monkeypatch):
+    """AC-3: if load re-judged stored events by today's settings, the 90->30 cap and 5->1 min skew histories break."""
+    def strict_integrity(index, event):
+        ledger_module._check_event_type(event)
+        ledger_module._check_order(index, event)
+        # a load that re-applies the policy: grant skew at the (lowered) 1-minute setting
+        if isinstance(event, events.EntitlementGrant):
+            ledger_module._check_not_future(event, timedelta(minutes=1))
+        real_integrity(index, event)
+
+    real_integrity = ledger_module._check_integrity
+    tests = [stored.test_history_legal_under_skew_5_min_loads_under_skew_1_min]
+    _passes_then_fails_under(monkeypatch, "_check_integrity", strict_integrity, tests, module=ledger_module)
+
+
+def test_load_through_the_new_event_path_is_caught(monkeypatch):
+    """AC-3: a load that replays stored events through append (the round-4 behaviour) fails the cap-lowering test."""
+    def load_via_append(cls, history, *, clock_skew=ledger_module.DEFAULT_CLOCK_SKEW, clock=ledger_module.utc_now,
+                        max_free_days=None):
+        return cls(history.user_id, history.events, clock_skew=clock_skew, clock=clock, max_free_days=max_free_days)
+
+    tests = [
+        stored.test_history_legal_under_cap_90_loads_under_cap_30_with_exact_access,
+        stored.test_history_legal_under_skew_5_min_loads_under_skew_1_min,
+    ]
+    _passes_then_fails_under(
+        monkeypatch, "load", classmethod(load_via_append), tests, module=ledger_module.EntitlementLedger
+    )
+
+
+def test_load_skipping_integrity_is_caught(monkeypatch):
+    """AC-3: a load with no integrity checks accepts a corrupted store (duplicate id)."""
+    def no_integrity_load(cls, history, *, clock_skew=ledger_module.DEFAULT_CLOCK_SKEW, clock=ledger_module.utc_now,
+                          max_free_days=None):
+        empty = cls(history.user_id, clock_skew=clock_skew, clock=clock, max_free_days=max_free_days)
+        index = ledger_module._Index()
+        for event in history.events:
+            index = index.with_event(event)
+        return empty._with(history.events, index)
+
+    duplicate = lambda: stored.test_corrupted_stored_history_is_refused_on_load(  # noqa: E731
+        lambda: stored._corrupt(stored._paid("a", stored.T0), stored._paid("a", stored.T1, "other")), "already granted"
+    )
+    _passes_then_fails_under(
+        monkeypatch, "load", classmethod(no_integrity_load), [duplicate], module=ledger_module.EntitlementLedger
+    )
+
+
+def test_removing_the_stored_history_type_check_is_caught(monkeypatch):
+    """AC-4: without the type check, load takes a forged subclass or any object with user_id/events, such as a
+    ledger built from new events (the back door). A raw tuple would still crash, so it is not the killing case."""
+    tests = [
+        stored.test_stored_history_cannot_be_built_or_edited_by_a_caller,
+        lambda: stored.test_load_refuses_raw_events("ledger"),
+    ]
+    _passes_then_fails_under(monkeypatch, "_check_stored_history", _no_op, tests, module=ledger_module)
+
+
+def test_stored_history_made_constructible_is_caught(monkeypatch):
+    """AC-4: if a caller could construct a StoredHistory, it could hand load any events it liked."""
+    def open_init(self, user_id, events):
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "events", tuple(events))
+
+    tests = [stored.test_stored_history_cannot_be_built_or_edited_by_a_caller]
+    _passes_then_fails_under(monkeypatch, "__init__", open_init, tests, module=ledger_module.StoredHistory)
+
+
+def test_stored_history_made_mutable_is_caught(monkeypatch):
+    """AC-4: if a StoredHistory's events could be reassigned, a ledger's stored history could be extended."""
+    tests = [stored.test_stored_history_cannot_be_built_or_edited_by_a_caller]
+    _passes_then_fails_under(
+        monkeypatch, "__setattr__", object.__setattr__, tests, module=ledger_module.StoredHistory
+    )
