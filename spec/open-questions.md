@@ -262,3 +262,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q244 — DECIDED (owner, 2026-09-29) — Catalogue truncation guard
 - Decision: contract-level — refuse any update that removes a not-yet-expired contract; the 50% per-index rule goes.
   Recorded in REQ-053 "Owner decision (Q244)".
+
+## Q245 — DECIDED (owner, 2026-09-29) — Adjustment with every order rejected, nothing filled
+- Decision: back to Adjustment Proposed with the rejection reasons; the original version stays active; the user may
+  execute the proposal again or withdraw it. Recorded in spec/data/domain-model.md §6.
