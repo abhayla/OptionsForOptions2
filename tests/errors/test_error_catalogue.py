@@ -23,7 +23,7 @@ import pytest
 import yaml
 
 from ofo.errors import CATALOGUE, ErrorClass, MessageTemplate, UserFacingError, render
-from ofo.errors.slots import ExternalText
+from ofo.errors.slots import ExternalSource, ExternalText
 from ofo.wording import (
     find_advice_wording,
     is_blank_after_normalising,
@@ -140,7 +140,7 @@ def test_every_template_four_parts_pass_the_core_checks() -> None:
 
 def test_direct_construction_with_free_text_raises() -> None:
     """AC-2 core: `UserFacingError("free text")`-shaped construction always raises."""
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         UserFacingError(
             error_class=ErrorClass.MARGIN,
             code="X",
@@ -202,7 +202,7 @@ def test_external_text_is_rendered_verbatim_even_containing_banned_wording() -> 
     NOT scanned for our ADR-003 wording and NOT merged into any of the four sentence parts."""
     error = render(
         "order_rejection_leg",
-        broker_message=ExternalText(source="Zerodha", text="This is a guaranteed rejection reason"),
+        broker_message=ExternalText(source=ExternalSource.ZERODHA, text="This is a guaranteed rejection reason"),
     )
     assert error.external_text == "Zerodha's message: «This is a guaranteed rejection reason»"
     combined_parts = " ".join(
@@ -379,24 +379,14 @@ def test_mutation_free_text_code_slot_is_caught() -> None:
 
 
 def test_mutation_skipping_the_runtime_wording_check_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mutation: if render() stopped running the wording check on the FINISHED text (item 2), this
-    injected template — never seen by the static per-template CI scan, since it is added only for
-    this test — would render clean text containing "must". Proves the check runs at every render()
-    call, not only once over the committed catalogue."""
-    from ofo.errors import templates as templates_mod
+    """Mutation: if render() stopped running the wording check on the FINISHED text (brief item 3),
+    a slot formatter that returned advice would reach a user. Here the Int formatter is forced to
+    return "0, you must buy more lots"; render() must refuse it."""
+    from ofo.errors.slots import Int
 
-    bad = MessageTemplate(
-        id="mutation_runtime_wording_check",
-        error_class=ErrorClass.USER_INPUT,
-        code="ERR-00000000",
-        what_happened="You must buy more lots to proceed.",
-        impact="Unrelated distinct sentence about impact.",
-        what_is_blocked="Unrelated distinct sentence about blocking.",
-        next_action="Unrelated distinct sentence about next steps.",
-    )
-    monkeypatch.setitem(templates_mod.CATALOGUE, "mutation_runtime_wording_check", bad)
-    with pytest.raises(ValueError):
-        templates_mod.render("mutation_runtime_wording_check")
+    monkeypatch.setattr(Int, "format", staticmethod(lambda value: "0; you must buy more lots"))
+    with pytest.raises(ValueError, match="banned wording"):
+        render("user_input_lot_size", entered=0)
 
 
 def test_mutation_subclassing_userfacingerror_is_caught() -> None:
@@ -421,14 +411,17 @@ def test_mutation_nan_and_infinity_money_is_caught() -> None:
 
 
 def test_build_without_the_render_sentinel_token_is_refused() -> None:
-    """`_build` itself refuses without the exact module-private token `render()` holds."""
+    """`_build` refuses without the exact token `render()` claimed; the token is not reachable."""
+    from ofo.errors import model
+
     with pytest.raises(ValueError):
-        UserFacingError._build(
-            _token=object(),
+        model._build(
+            object(),
             error_class=ErrorClass.MARGIN,
             code="ERR-00000000",
             what_happened="a",
             impact="b",
             what_is_blocked="c",
             next_action="d",
+            external_text=None,
         )

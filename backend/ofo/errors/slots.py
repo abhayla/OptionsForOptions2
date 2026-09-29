@@ -1,22 +1,45 @@
-"""Typed slots for `MessageTemplate` (W-024 round 3): every value that fills a template placeholder
-is validated and formatted by exactly one of these types — never a raw string interpolated by hand.
+"""Typed slots for `MessageTemplate`: every value that fills a template placeholder is validated and
+formatted by exactly one of these types, never a raw string interpolated by hand.
 
-RCA (round 3): rounds 1-2 let `UserFacingError` accept four free-text strings at runtime, so any
-caller could show any sentence; a denylist over that free text can never list every phrasing. Round
-3's fix is structural: no free text reaches a user at all — only a fixed, reviewed template with
-named, typed slots (`render(template_id, **slots)`), so the wording check runs once, over a finite
-set, in CI (`tests/errors/test_error_catalogue.py`).
+Spec basis: ADR-003 and owner decision Q226 ("every platform message comes from a fixed, reviewed
+template catalogue with typed slots ... Zerodha's or the user's own text is only quoted, word for
+word, in a labelled field and is never part of a template"); ADR-008 (money is exact decimal).
+
+Round 5 (issue #30) closes every way a slot value could carry words:
+- every slot needs the EXACT type (`type(v) is T`), never a subclass: a `str`/`int`/`Decimal`/
+  `datetime` subclass can override `__format__`/`__str__`/`strftime` and print anything while
+  comparing equal to an allowed value;
+- `Code`, `Underlying`, `Instrument` and `ExternalSource` are closed sets, never free words;
+- `Time` is printed from digits and a fixed month table in IST: a tz-aware datetime's zone NAME
+  (`%Z`) is free text chosen by whoever built the tzinfo, so it is never printed;
+- money is finite, capped, at most 2 decimal places, and signed only in a P&L slot.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from enum import Enum, unique
 
 from ofo.engine.legs import Instrument as _EngineInstrument
 from ofo.execution.safety import CheckCode
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+
+#: Input-domain cap (builder brief checklist "absurd sizes"): no rupee amount shown in an error
+#: exceeds ₹1 lakh crore (10^12). Anything larger is a bug upstream, refused rather than printed.
+MONEY_ABS_MAX = Decimal("1000000000000")
+#: Input-domain cap for plain integers shown in a message (lots, legs, minutes).
+INT_ABS_MAX = 1_000_000_000
+
+_PAISE = Decimal("0.01")
+_IST = timezone(timedelta(hours=5, minutes=30))
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _require_exact(value: object, expected: type, slot: str) -> None:
+    if type(value) is not expected:
+        raise TypeError(f"{slot} slot requires exactly {expected.__name__}, got {type(value).__name__}")
 
 
 class SlotType:
@@ -31,117 +54,136 @@ class SlotType:
         raise NotImplementedError
 
 
+def _validate_money(value: object, slot: str, *, signed: bool) -> None:
+    _require_exact(value, Decimal, slot)
+    assert isinstance(value, Decimal)
+    if not value.is_finite():
+        raise ValueError(f"{slot} slot requires a finite value, got {value!r} (NaN/Infinity refused)")
+    if not signed and value < 0:
+        raise ValueError(f"{slot} slot requires a non-negative amount, got {value!r}")
+    if abs(value) > MONEY_ABS_MAX:
+        raise ValueError(f"{slot} slot value {value!r} exceeds the cap {MONEY_ABS_MAX}")
+    if value != value.quantize(_PAISE):
+        raise ValueError(f"{slot} slot allows at most 2 decimal places (paise), got {value!r}")
+
+
+def _format_rupees(magnitude: Decimal) -> str:
+    """₹ + thousands separators; whole rupees without decimals, otherwise exactly 2 decimals."""
+    magnitude = magnitude.copy_abs()
+    if magnitude == magnitude.to_integral_value():
+        return f"₹{magnitude.quantize(Decimal('1')):,}"
+    return f"₹{magnitude.quantize(_PAISE):,}"
+
+
 class Money(SlotType):
-    """A non-negative rupee amount. Must be `decimal.Decimal` (ADR-008: money is exact decimal,
-    never float), finite (NaN/Infinity refused: round-4 verifier finding — a template once rendered
-    "₹NaN is below the ₹-5 this strategy needs"), and >= 0 — every current Money slot is an amount
-    (available/required margin), never a P&L; a slot that legitimately needs a sign uses `PnLMoney`.
-    """
+    """A rupee AMOUNT (available/required margin): exact `Decimal`, finite, >= 0, capped, paise at
+    most. A slot that is genuinely a signed profit/loss uses `PnLMoney` instead."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if isinstance(value, bool) or not isinstance(value, Decimal):
-            raise TypeError(f"Money slot requires decimal.Decimal, got {type(value).__name__}")
-        if not value.is_finite():
-            raise ValueError(f"Money slot requires a finite value, got {value!r} (NaN/Infinity refused)")
-        if value < 0:
-            raise ValueError(f"Money slot requires a non-negative amount, got {value!r}")
+        _validate_money(value, "Money", signed=False)
 
     @staticmethod
     def format(value: Decimal) -> str:
-        quantised = value.quantize(Decimal("1")) if value == value.to_integral_value() else value
-        return f"₹{quantised:,}"
+        # copy_abs in _format_rupees: Decimal("-0") is zero and prints as ₹0, never "₹-0".
+        return _format_rupees(value)
 
 
 class PnLMoney(SlotType):
-    """A profit/loss rupee amount: may be negative (a loss), but still `decimal.Decimal` and finite
-    (NaN/Infinity refused). Use only for a slot that is genuinely a signed P&L figure — every other
-    money slot is `Money` (amounts are never negative)."""
+    """A profit/loss rupee figure: may be negative (a loss), otherwise the same rules as `Money`."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if isinstance(value, bool) or not isinstance(value, Decimal):
-            raise TypeError(f"PnLMoney slot requires decimal.Decimal, got {type(value).__name__}")
-        if not value.is_finite():
-            raise ValueError(f"PnLMoney slot requires a finite value, got {value!r} (NaN/Infinity refused)")
+        _validate_money(value, "PnLMoney", signed=True)
 
     @staticmethod
     def format(value: Decimal) -> str:
-        quantised = value.quantize(Decimal("1")) if value == value.to_integral_value() else value
-        sign = "-" if quantised < 0 else ""
-        return f"{sign}₹{abs(quantised):,}"
+        sign = "-" if value < 0 else ""
+        return f"{sign}{_format_rupees(value)}"
 
 
 class Int(SlotType):
-    """A plain count (e.g. lots, legs). Must be `int`, never `bool` or `float`."""
+    """A whole number as the user entered it (may be zero or negative: that can be the error).
+    Exactly `int` (not `bool`, not a subclass), |value| capped."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise TypeError(f"Int slot requires int, got {type(value).__name__}")
+        _require_exact(value, int, "Int")
+        assert isinstance(value, int)
+        if abs(value) > INT_ABS_MAX:
+            raise ValueError(f"Int slot value {value} exceeds the cap {INT_ABS_MAX}")
 
     @staticmethod
     def format(value: int) -> str:
-        return str(value)
+        return str(int(value))
 
 
-class Time(SlotType):
-    """A timezone-aware point in time. A naive `datetime` is refused (input-domain checklist)."""
+class Count(SlotType):
+    """A count of real things (legs, lots, minutes): exactly `int`, 0 <= value <= cap."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, datetime):
-            raise TypeError(f"Time slot requires datetime.datetime, got {type(value).__name__}")
-        if value.tzinfo is None:
+        _require_exact(value, int, "Count")
+        assert isinstance(value, int)
+        if value < 0:
+            raise ValueError(f"Count slot requires a value >= 0, got {value}")
+        if value > INT_ABS_MAX:
+            raise ValueError(f"Count slot value {value} exceeds the cap {INT_ABS_MAX}")
+
+    @staticmethod
+    def format(value: int) -> str:
+        return str(int(value))
+
+
+class Time(SlotType):
+    """A timezone-aware point in time, shown in IST as "29 Sep 2026, 10:00 IST". A naive datetime is
+    refused. Only digits and a fixed month name are printed; the tzinfo's own name never is."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime, "Time")
+        assert isinstance(value, datetime)
+        if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Time slot requires a timezone-aware datetime (naive datetime refused)")
 
     @staticmethod
     def format(value: datetime) -> str:
-        return value.strftime("%d %b %Y, %H:%M %Z").strip()
+        ist = value.astimezone(_IST)
+        return f"{ist.day:02d} {_MONTHS[ist.month - 1]} {ist.year:04d}, {ist.hour:02d}:{ist.minute:02d} IST"
 
 
 class Instrument(SlotType):
-    """A leg's option/future type. Must be `ofo.engine.legs.Instrument` (CE/PE/FUT), never a string."""
+    """A leg's option/future type: exactly `ofo.engine.legs.Instrument` (CE/PE/FUT)."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, _EngineInstrument):
+        if type(value) is not _EngineInstrument:
             raise TypeError(f"Instrument slot requires ofo.engine.legs.Instrument, got {type(value).__name__}")
 
     @staticmethod
     def format(value: _EngineInstrument) -> str:
-        return value.name
+        return {_EngineInstrument.CE: "CE", _EngineInstrument.PE: "PE", _EngineInstrument.FUT: "FUT"}[value]
 
 
-#: Strict incident-reference format: "ERR-" + 8 hex digits, e.g. "ERR-1A2B3C4D". Chosen specifically
-#: because hex digits cannot spell a word: this closes off the round-4 verifier's injection ("free
-#: text with hyphens/underscores can spell an advice phrase") for any reference id, without relying
-#: on the wording checker to catch it.
-_REFERENCE_ID_PATTERN = re.compile(r"^ERR-[0-9A-Fa-f]{8}$")
+#: Strict incident-reference format: "ERR-" + 8 hex digits, e.g. "ERR-1A2B3C4D". Hex digits cannot
+#: spell any ADR-003/Q226 word. `fullmatch` (not `match` with `$`, which also accepts a trailing
+#: newline).
+_REFERENCE_ID_PATTERN = re.compile(r"ERR-[0-9A-F]{8}")
 
-#: The known check/error codes a Code slot may carry, alongside a strict reference id. Built from
-#: `CheckCode` (the safety-gate check codes, W-014) rather than hand-duplicated, so a new check code
-#: is automatically a valid Code value without a second list to keep in sync.
+#: The known check codes a Code slot may carry, built from `CheckCode` (W-014) so a new check code
+#: is valid without a second list to keep in sync.
 _KNOWN_CODES: frozenset[str] = frozenset(code.value for code in CheckCode)
 
 
 class Code(SlotType):
-    """A closed machine identifier: one of the known check/error codes (`CheckCode`), or a strict
-    incident reference id (`ERR-` + 8 hex digits). Round-4 fix (REQ-065/W-024 second parked round):
-    the old pattern accepted ANY hyphen/underscore-joined word ("risk-free", "GUARANTEED-PROFIT",
-    "you_should_buy") because it never checked meaning, only character class — so advice wording
-    reached a user through a slot the wording checker never looked at. A closed set has no room for
-    that: neither "risk-free" nor "GUARANTEED-PROFIT" is a `CheckCode` value or matches the reference
-    format, so both are refused at the slot boundary, before render() even reaches the wording check.
-    """
+    """A closed machine identifier: a known `CheckCode` value, or a strict reference id
+    (`ERR-` + 8 upper-case hex digits). Never a free word, however it is joined."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, str) or not value.strip():
-            raise TypeError("Code slot requires a non-empty str")
-        if value in _KNOWN_CODES:
-            return
-        if _REFERENCE_ID_PATTERN.match(value):
+        _require_exact(value, str, "Code")
+        assert isinstance(value, str)
+        if value in _KNOWN_CODES or _REFERENCE_ID_PATTERN.fullmatch(value):
             return
         raise ValueError(
             f"Code slot must be a known check code or match {_REFERENCE_ID_PATTERN.pattern!r}, got {value!r}"
@@ -149,47 +191,52 @@ class Code(SlotType):
 
     @staticmethod
     def format(value: str) -> str:
-        return value
+        return str.__str__(value)
 
 
 class Underlying(SlotType):
-    """A market symbol: closed to the underlyings this catalogue tracks (`SUPPORTED_UNDERLYINGS`,
-    i.e. NIFTY/SENSEX) — never a free word, for the same reason `Code` is now closed: an unchecked
-    string slot is a place advice wording (or anything else) can be smuggled into user-facing text."""
+    """A market symbol, closed to the catalogue's underlyings (`SUPPORTED_UNDERLYINGS`)."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, str) or not value.strip():
-            raise TypeError("Underlying slot requires a non-empty str")
+        _require_exact(value, str, "Underlying")
         if value not in SUPPORTED_UNDERLYINGS:
-            raise ValueError(
-                f"Underlying slot must be one of {sorted(SUPPORTED_UNDERLYINGS)}, got {value!r}"
-            )
+            raise ValueError(f"Underlying slot must be one of {sorted(SUPPORTED_UNDERLYINGS)}, got {value!r}")
 
     @staticmethod
     def format(value: str) -> str:
-        return value
+        return str.__str__(value)
+
+
+@unique
+class ExternalSource(Enum):
+    """Whose words an `ExternalText` quotes (Q226: "Zerodha's or the user's own text"). The value is
+    the label shown before the quote; a closed set, so the label itself can never carry words."""
+
+    ZERODHA = "Zerodha's message"
+    USER = "Your own text"
 
 
 @dataclass(frozen=True)
 class ExternalText(SlotType):
-    """A broker/vendor message, shown word for word in its own labelled field.
+    """Zerodha's or the user's own text, shown word for word in its own labelled field.
 
-    Never merged into a sentence part, never scanned for our ADR-003 wording, never re-worded — it is
-    someone else's text, clearly attributed. Round 3 replaces the paraphrased broker reason that used
-    to live in the ORDER_REJECTION catalogue example with this: the real Zerodha message, quoted.
+    Never merged into a sentence part, never scanned for our wording, never re-worded (Q226).
     """
 
-    source: str
+    source: ExternalSource
     text: str
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, ExternalText):
-            raise TypeError(f"ExternalText slot requires an ExternalText instance, got {type(value).__name__}")
-        if not value.source.strip() or not value.text.strip():
-            raise ValueError("ExternalText requires non-blank source and text")
+        _require_exact(value, ExternalText, "ExternalText")
+        assert isinstance(value, ExternalText)
+        if type(value.source) is not ExternalSource:
+            raise TypeError(f"ExternalText.source must be an ExternalSource, got {type(value.source).__name__}")
+        _require_exact(value.text, str, "ExternalText.text")
+        if not value.text.strip():
+            raise ValueError("ExternalText requires non-blank text")
 
     @staticmethod
     def format(value: "ExternalText") -> str:
-        return f"{value.source}'s message: «{value.text}»"
+        return f"{value.source.value}: «{value.text}»"
