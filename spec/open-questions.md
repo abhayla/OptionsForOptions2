@@ -278,3 +278,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q246 — DECIDED (owner, 2026-09-29) — Readings of unclear values in the reference video (REQ-071)
 - Decision: profit left = max profit − booked losses; capital = margin blocked; volatility = per-option IV; swing /
   trend out of V1. Recorded in spec/technical-design/adjustment-data-contract.md "Owner readings".
+
+## Q247 — DECIDED (owner, 2026-09-29) — Where a strategy goes after adopting Zerodha's position
+- Decision: adopt → Active on the adopted version (from any prior state); closing order executed or broker flat →
+  Exited. Found by the W-041 verifier (Partially Executed → RR → adopt got stuck). Recorded in domain-model §6.
