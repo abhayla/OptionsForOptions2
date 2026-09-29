@@ -61,3 +61,61 @@ def test_visible_text_is_not_blank() -> None:
 def test_find_advice_wording_is_case_insensitive_and_casefold_based() -> None:
     """Uses casefold (not just .lower()) so e.g. the German sharp s (ß) also normalises consistently."""
     assert find_advice_wording("GUARANTEED") == find_advice_wording("guaranteed")
+
+
+#: Owner decision Q235 (ADR-003): promise phrases are Forbidden, "in every word form".
+PROMISE_TEXTS: tuple[str, ...] = (
+    "assured returns",
+    "Assured return on every trade",
+    "Get assured returns",
+    "You cannot lose here",
+    "Cannot  lose",
+    "You can't lose",
+    "you can’t lose",
+    "You cant lose",
+    "You can not lose",
+    "There is no loss",
+    "No losses",
+    "no_loss",
+    "minimise losses",
+    "minimize your losses",
+    "Minimising the losses",
+    "Minimized loss",
+    "reduces your losses",
+    "reduce losses",
+    "reduce the losses",
+    "Zero risk",
+    "zero-risk trade",
+    "ZERO  RISK",
+    "no risk",
+    "certain profit",
+    "guaranteed profit",
+)
+
+
+@pytest.mark.parametrize("text", PROMISE_TEXTS)
+def test_promise_phrases_are_flagged_in_every_word_form(text: str) -> None:
+    """Q235: each promise phrase and its word-form variants is found by the ONE shared check."""
+    assert find_advice_wording(text), f"promise phrase not flagged: {text!r}"
+
+
+ALLOWED_NEAR_MISSES: tuple[str, ...] = (
+    "no loss of data",
+    "Loss",
+    "risk",
+    "Risk of loss is shown for every level",
+    "reduce the quantity",
+    "You can lose money",
+    "maximum loss",
+    "The loss is limited to the premium paid",
+    "We were assured of the timing",
+    "Zero quantity is not allowed",
+    "no risky legs",
+)
+
+
+@pytest.mark.parametrize("text", ALLOWED_NEAR_MISSES)
+def test_promise_phrase_patterns_do_not_catch_normal_text(text: str) -> None:
+    """Q235: ordinary words near a promise phrase ("no loss of data", "Loss", "risk", "reduce the
+    quantity") stay allowed."""
+    assert find_advice_wording(text) == [], text

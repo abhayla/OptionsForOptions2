@@ -271,6 +271,75 @@ def _names_user_facing_error(node: ast.AST) -> bool:
     )
 
 
+#: Owner decision Q235: the checks stop accidental misuse, and "are flagged in CI when code reaches
+#: into their internals". A module the checks live in: `ofo.wording`, `ofo.errors`, `ofo.errors.*`.
+def _is_checker_module_path(dotted: str) -> bool:
+    return dotted == "ofo.wording" or dotted == "ofo.errors" or dotted.startswith("ofo.errors.")
+
+
+def _dotted(node: ast.AST, aliases: dict[str, str]) -> str | None:
+    """`a.b.c` for a Name/Attribute chain, with the root name replaced by what an import bound it to."""
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    parts.append(aliases.get(node.id, node.id))
+    return ".".join(reversed(parts))
+
+
+def _checker_module_aliases(tree: ast.AST) -> dict[str, str]:
+    """Local names bound by an import to a checker module: `import ofo.wording as w`,
+    `from ofo import wording`, `from ofo.errors import slots`."""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and _is_checker_module_path(alias.name):
+                    aliases[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for alias in node.names:
+                full = f"{node.module}.{alias.name}"
+                if _is_checker_module_path(full) and (node.module == "ofo" or node.module.startswith("ofo.errors")):
+                    aliases[alias.asname or alias.name] = full
+    return aliases
+
+
+def _module_rebinding_offences(tree: ast.AST) -> list[str]:
+    """Q235: code that assigns to (`=`, `+=`, annotated, `del`) an attribute of `ofo.wording`,
+    `ofo.errors` or `ofo.errors.*`, or calls `setattr`/`delattr`/`monkeypatch.setattr` on such a
+    module (object or dotted-string target). Test code may patch; this runs on non-test code only."""
+    aliases = _checker_module_aliases(tree)
+
+    def reaches_checker(node: ast.AST) -> bool:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return _is_checker_module_path(node.value.rpartition(".")[0]) or _is_checker_module_path(node.value)
+        dotted = _dotted(node, aliases)
+        return dotted is not None and _is_checker_module_path(dotted)
+
+    found: list[str] = []
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        targets: list[ast.AST] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets = [node.target]
+        elif isinstance(node, ast.Delete):
+            targets = list(node.targets)
+        for target in targets:
+            for sub in ast.walk(target):
+                if isinstance(sub, ast.Attribute) and reaches_checker(sub.value):
+                    found.append(f"{line}: assigns to an attribute of a checker module (.{sub.attr})")
+        if isinstance(node, ast.Call) and node.args:
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name in {"setattr", "delattr"} and reaches_checker(node.args[0]):
+                found.append(f"{line}: {name}() on a checker module")
+    return found
+
+
 def _render_bypass_offences(tree: ast.AST) -> list[str]:
     """Every source-level way round `render()` in one module's AST (round 5, brief item 4):
     - a `_build` / other private-machinery name (as an attribute, or imported from ofo.errors);
@@ -283,6 +352,9 @@ def _render_bypass_offences(tree: ast.AST) -> list[str]:
       (`getattr(render, "__closure__")`);
     - the internal modules named as a string or reached through `sys.modules` (round 6:
       `sys.modules["ofo.errors.model"]`, `importlib.import_module("ofo.errors.model")`).
+    - round 7 (Q235): assigning/`setattr`/`monkeypatch.setattr` on an attribute of `ofo.wording`,
+      `ofo.errors` or `ofo.errors.*` (`_module_rebinding_offences`); tests/ may patch, and a
+      determined in-process caller is out of scope by Q235 (the scan flags it in CI).
     Not caught, and not claimed: a name assembled at run time (`"__clo" + "sure__"`); nothing in a
     Python process can stop code that rewrites closure cells, so this is a source-review aid."""
     found: list[str] = []
@@ -335,7 +407,7 @@ def _render_bypass_offences(tree: ast.AST) -> list[str]:
                 found.append(f"{line}: object.__new__(UserFacingError)")
         if isinstance(node, ast.ClassDef) and any(_names_user_facing_error(b) for b in node.bases):
             found.append(f"{line}: class {node.name} subclasses UserFacingError")
-    return found
+    return found + _module_rebinding_offences(tree)
 
 
 def test_ast_no_bypass_of_render_outside_the_catalogue_module() -> None:
@@ -376,6 +448,24 @@ _BYPASS_SAMPLES = {
     # One sample per new rule that no other rule also catches (each rule has its own killing case).
     "bare getclosurevars name": "from inspect import *\ngetclosurevars(render)",
     "sys.modules by variable": "import sys\nm = sys.modules[name]",
+    # Round 7 (Q235): the CI scan flags code that reaches into a checker's internals.
+    "rebind wording (round-6 probe)": "import ofo.wording\nofo.wording.find_advice_wording = lambda t: []",
+    "rebind errors.slots (round-6 probe)": (
+        "import ofo.errors.slots\nofo.errors.slots.SUPPORTED_UNDERLYINGS = frozenset({'X'})"
+    ),
+    "rebind via from-import": "from ofo import wording\nwording.find_advice_wording = lambda t: []",
+    "rebind via alias": "import ofo.wording as w\nw.check_platform_text = None",
+    "rebind via from-import submodule": "from ofo.errors import slots\nslots.SUPPORTED_UNDERLYINGS = 1",
+    "augmented assign": "import ofo.wording\nofo.wording.Q226_BARE_WORDS += ()",
+    "annotated assign": "import ofo.wording\nofo.wording.X: int = 1",
+    "delete attribute": "import ofo.wording\ndel ofo.wording.find_advice_wording",
+    "setattr module": "import ofo.wording\nsetattr(ofo.wording, 'find_advice_wording', f)",
+    "setattr aliased module": "from ofo import wording\nsetattr(wording, 'find_advice_wording', f)",
+    "delattr module": "import ofo.errors\ndelattr(ofo.errors, 'render')",
+    "monkeypatch.setattr module": "monkeypatch.setattr(ofo.wording, 'find_advice_wording', f)",
+    "monkeypatch.setattr string": "monkeypatch.setattr('ofo.wording.find_advice_wording', f)",
+    "monkeypatch.setattr errors string": "monkeypatch.setattr('ofo.errors.slots.SUPPORTED_UNDERLYINGS', f)",
+    "monkeypatch.setattr errors module": "monkeypatch.setattr(ofo.errors.slots, 'SUPPORTED_UNDERLYINGS', f)",
 }
 
 
@@ -389,6 +479,16 @@ def test_ast_bypass_detector_flags_each_bypass_shape(label: str) -> None:
 def test_ast_bypass_detector_passes_ordinary_code() -> None:
     """AC-2: public use of ofo.errors is not flagged (no false positive on the intended path)."""
     ok = "from ofo.errors import ErrorClass, render\nerr = render('user_input_lot_size', entered=0)\nerr.as_dict()"
+    assert _render_bypass_offences(ast.parse(ok)) == []
+
+
+def test_ast_bypass_detector_passes_unrelated_attribute_assignment() -> None:
+    """AC-2 (Q235): assigning attributes of unrelated objects/modules is not flagged."""
+    ok = (
+        "import os\nfrom ofo import engine\nos.environ_x = 1\nself.wording = 2\nobj.wording.x = 3\n"
+        "setattr(obj, 'a', 1)\nsetattr(engine, 'a', 1)\nmonkeypatch.setattr(engine, 'a', 1)\n"
+        "from ofo.wording import find_advice_wording\nfind_advice_wording('x')"
+    )
     assert _render_bypass_offences(ast.parse(ok)) == []
 
 
