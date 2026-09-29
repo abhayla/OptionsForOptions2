@@ -23,7 +23,15 @@ import pytest
 
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.strategy import Strategy
-from ofo.execution import DataHealth, DataInput, ExecutionAction, ExecutionContext, VersionState
+from ofo.execution import (
+    CheckCode,
+    DataHealth,
+    DataInput,
+    ExecutionAction,
+    ExecutionContext,
+    VersionState,
+    active_legs_hash,
+)
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.strategy.definition import StrategyDefinition
@@ -316,3 +324,49 @@ def test_ac4_reconciliation_required_refuses_a_new_proposal():
 
     with pytest.raises(VersionError):
         confirm_modification(rec, ROLL, at=at(13))
+
+
+def test_ac4_context_active_legs_identity_is_grounded_from_the_record_not_the_caller():
+    """Regression (2nd fix round): prepare_confirmed_modification must overwrite strategy_id and the active-leg
+    identity fields (active_legs/active_version_id/active_legs_hash) from the record itself, never trust the
+    caller's context for them. Exploit: a forged context claims the ACTIVE legs already equal the PROPOSED
+    (rolled) legs, with a self-consistent hash and pro_entitled=False -- faking a pure reduction to dodge Pro
+    entitlement. With the real (pre-roll) active legs correctly substituted in, the reduction claim is false and
+    the gate still blocks with ENTITLEMENT_REQUIRED."""
+    rec = executed_record()
+    confirm_modification(rec, ROLL, at=at(10))
+    catalogue = _make_catalogue()
+    eligibility = _make_eligibility(catalogue)
+
+    proposed_def = rec.proposed_version.definition
+    forged_active_legs = tuple(
+        Leg(d.action, d.instrument, d.strike, d.expiry, d.quantity, D("0.00")) for d in proposed_def.legs
+    )
+    forged_version_id = "v1"
+    forged_hash = active_legs_hash(STRATEGY_ID, forged_version_id, forged_active_legs)
+    forged_context = _context(
+        2, pro_entitled=False, active_legs=forged_active_legs, active_version_id=forged_version_id,
+        active_legs_hash=forged_hash, active_futures_entry_known=True,
+    )
+
+    safety = prepare_confirmed_modification(
+        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility,
+    )
+    assert safety.blocked
+    assert CheckCode.ENTITLEMENT_REQUIRED in safety.failed_codes
+
+
+def test_ac4_context_strategy_id_is_ignored_grounded_from_the_call():
+    """Regression: a context naming a DIFFERENT strategy_id is ignored -- the gate always runs for the strategy_id
+    this call actually names, never whatever the caller's context happened to carry."""
+    rec = executed_record()
+    confirm_modification(rec, ROLL, at=at(10))
+    catalogue = _make_catalogue()
+    eligibility = _make_eligibility(catalogue)
+    forged_context = _context(2, strategy_id="S-OTHER")
+
+    safety = prepare_confirmed_modification(
+        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility,
+    )
+    assert not safety.blocked
+    assert CheckCode.STRATEGY_MISMATCH not in safety.failed_codes
