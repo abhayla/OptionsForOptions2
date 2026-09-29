@@ -310,3 +310,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q254 — DECIDED (owner, 2026-09-29) — Expected move; "material" change
 - Decision: expected move = spot × ATM IV × √(days/365) (REQ-027); material = structure change or ≥5% move in max loss
   or a breakeven (REQ-068). The question's example said ±332; the correct value is ±383 (recorded).
+
+## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact configuration (REQ-046 AC-4)
+- Decision: keep widths, restore the short strikes' entry distance from spot (snapped to listed strikes); always an
+  editable proposal. Recorded in REQ-046.
