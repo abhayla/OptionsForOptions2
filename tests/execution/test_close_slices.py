@@ -163,12 +163,15 @@ def test_ac10_without_constraints_the_labelled_default_freeze_slices_a_large_clo
 
 
 def test_ac10_a_freeze_below_one_lot_is_refused(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-10 negative: a freeze of 64 units holds no whole lot of 65; refused, nothing prepared or held."""
+    """AC-10 negative: a freeze of 64 units holds no whole lot of 65; refused, nothing prepared or held. W-036 (#62):
+    the refusal is a "Nothing prepared: <reason>" result, not an exception, and the Close is not recorded."""
     book, broker = _state((QTY, QTY, QTY, 0))
-    with pytest.raises(ValueError, match="below one lot"):
-        close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                               constraints=FakeConstraints(freeze=64, per_batch=10))
+    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+                                  constraints=FakeConstraints(freeze=64, per_batch=10))
+    assert not prep.ready and prep.orders == ()
+    assert prep.reason.startswith("Nothing prepared: ") and "below one lot of 65" in prep.reason
     assert not book.has_live_preparation(STRATEGY_ID)
+    assert book.closing_read_at(STRATEGY_ID) is None
 
 
 @pytest.mark.parametrize("freeze,expected", [(259, [195, 195, 195, 65]), (200, [195, 195, 195, 65]),
@@ -273,9 +276,11 @@ def test_ac10_close_refuses_a_held_quantity_that_is_not_whole_lots(catalogue, el
                    version_id="v1"))
     book.transition("BRK-X", OrderState.SUBMITTED)
     broker.order_statuses.append(BrokerOrderStatus("BRK-X", CONTRACTS[1], OrderState.SUBMITTED, 0))
-    with pytest.raises(ValueError, match="whole number of lots"):
-        close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                               constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10))
+    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+                                  constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10))
+    assert not prep.ready and prep.orders == ()  # W-036 (#62): a refusal result, not an exception
+    assert prep.reason.startswith("Nothing prepared: ") and "whole number of lots" in prep.reason
+    assert book.closing_read_at(STRATEGY_ID) is None
 
 
 # -- SENSEX (lot 20) -------------------------------------------------------------------------------------------------
