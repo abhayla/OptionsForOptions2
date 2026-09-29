@@ -213,3 +213,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q231 — DECIDED (owner, 2026-09-29) — Is "safety" banned by the Q230 word-form rule?
 - Decision: no — "safety" (and "safety check/checks/gate") is a reviewed exception. Recorded in ADR-003 "Q231".
+
+## Q232 — DECIDED (owner, 2026-09-29) — Which UX level shows Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
+- Decision: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
