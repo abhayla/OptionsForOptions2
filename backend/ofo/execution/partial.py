@@ -178,7 +178,7 @@ class BrokerReader(Protocol):
 
 class OrderRefused(Exception):
     """Raised by the broker transport when the broker definitely refused the order (its text is the message). Any
-    other exception means the outcome is unknown (OD-l). The transport is private (``send_guard._Transport``)."""
+    other exception means the outcome is unknown (OD-l). The transport is private to ``ofo.execution.send_guard``."""
 
 
 @dataclass(frozen=True)

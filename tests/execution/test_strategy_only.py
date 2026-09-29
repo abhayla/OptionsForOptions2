@@ -381,7 +381,7 @@ def test_sink_refuses_an_unknown_strategy_and_never_calls_the_transport(catalogu
     """Round 3: Order('S-NOSUCH', ...) is refused at the sink; a sink for an unbound strategy cannot even open."""
     transport = CountingTransport()
     order = Order("S-NOSUCH", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="does not belong to this strategy"):
+    with pytest.raises(SendRefused, match="belong to this strategy; nothing"):  # the sink's own check
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     with pytest.raises(ValueError, match="no strategy record"):
         send_guard._BrokerSink(transport, book=book_with_three_filled(), strategy_id="S-NOSUCH", catalogue=catalogue,
@@ -468,6 +468,9 @@ def test_an_aliased_submit_confirmed_works_only_through_the_real_flow(catalogue,
 
 
 _SINK_NAMES = ("_BrokerRequest", "_Transport", "_BrokerSink")
+# Public names allowed to mention them: the one public route, and send-rule helpers that only raise.
+_SINK_OWNERS = {"ofo.execution.partial.submit_confirmed", "ofo.execution.send_guard.SendRefused",
+                "ofo.execution.send_guard.allowed_or_refuse", "ofo.execution.send_guard.executable_version"}
 
 
 def test_no_public_name_reaches_a_broker_request_transport_or_sink() -> None:
@@ -492,6 +495,13 @@ def test_no_public_name_reaches_a_broker_request_transport_or_sink() -> None:
                 continue
             if not callable(value) or getattr(value, "__module__", "") != info.name:
                 continue
+            try:  # a public function that builds or wraps a sink, request or transport, even unannotated
+                body = inspect.getsource(value)
+            except (OSError, TypeError):
+                body = ""
+            if any(t in body for t in _SINK_NAMES) and where not in _SINK_OWNERS:
+                offenders.append(f"{where} (source names {[t for t in _SINK_NAMES if t in body]})")
+                continue
             targets = [value] + ([m for _, m in inspect.getmembers(value, inspect.isfunction)]
                                  if inspect.isclass(value) else [])
             for fn in targets:
@@ -503,3 +513,21 @@ def test_no_public_name_reaches_a_broker_request_transport_or_sink() -> None:
                 if any(t in text for t in _SINK_NAMES) and where != "ofo.execution.partial.submit_confirmed":
                     offenders.append(f"{where}:{getattr(fn, '__name__', '')}")
     assert offenders == []
+
+
+def test_send_time_grounding_uses_the_catalogue(catalogue, eligibility) -> None:
+    """Round 3: at the send, the preparation's plan is grounded against the catalogue again; a reach-around plan that
+    swaps the 23,400 CE and 23,600 CE symbols is refused there with the catalogue reason, and nothing is sent."""
+    book = book_with_three_filled()
+    real = _complete(book, catalogue, eligibility)
+    legs = list(real.plan.legs)
+    legs[2], legs[3] = (PlannedLeg("leg-3", CONTRACTS[3], legs[2].leg), PlannedLeg("leg-4", CONTRACTS[2], legs[3].leg))
+    order = Order(STRATEGY_ID, "leg-4", CONTRACTS[2], Action.BUY, LOT, D("44.00"), version_id="v1")
+    discard_preparation(real)
+    prep = Preparation(real.choice, real.assessment, (order,), real.gate, "x", book, STRATEGY_ID, (), real.guard,
+                       ExecutionPlan(STRATEGY_ID, tuple(legs)), real.catalogue, _mint=getattr(partial, "_MINT"))
+    getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")((order,)))
+    transport = CountingTransport()
+    with pytest.raises(ValueError, match="not the catalogue instrument"):
+        submit_confirmed(prep, choice=prep.choice, confirmed_by="user:U-1", submitter=transport)
+    assert transport.calls == []
