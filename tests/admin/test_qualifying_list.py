@@ -43,26 +43,32 @@ def test_bulk_import_then_manual_add_edit_remove() -> None:
     assert svc.is_qualifying("EF9012") is True
 
 
-@pytest.mark.parametrize("raw", ["AB12", "AB", "A1234", "ABCD1234", "AB1234567", "12AB34", "AB-1234", "", "  ", "AB 1234"])
+@pytest.mark.parametrize("raw", ["AB12", "AB", "A1234", "ABCD1234", "AB1234567", "12AB34", "AB-1234", "", "  ", "AB 1234", "AB123", "AB12345", "A12345", "ABCD12", "AB12C4", "XYZ123456"])
 def test_malformed_ids_rejected(raw: str) -> None:
-    """AC-1: manual add refuses anything that is not 2-3 letters then 3-6 digits."""
+    """AC-1: manual add refuses anything that is not 6 characters: 2 letters + 4 digits or 3 letters + 3 digits (Q234)."""
     svc = new_service()
     with pytest.raises(MalformedClientIdError):
         svc.add(raw, ADMIN)
     assert svc.search() == ()
 
 
+@pytest.mark.parametrize("raw", ["AB1234", "ABC123", "ab1234", " abc123	"])
+def test_owner_format_shapes_accepted(raw: str) -> None:
+    """AC-1: Q234 - exactly 2 letters + 4 digits or 3 letters + 3 digits, any case, stored upper-case."""
+    assert normalise_client_id(raw) == raw.strip().upper()
+
+
 def test_normalisation_is_trim_and_upper_only() -> None:
     """AC-1: the only repair is trimming and upper-casing."""
     assert normalise_client_id("  ab1234\t") == "AB1234"
-    assert normalise_client_id("xyz123456") == "XYZ123456"
+    assert normalise_client_id("xyz123") == "XYZ123"
     with pytest.raises(MalformedClientIdError):
         normalise_client_id(1234)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("raw", ["\u0131b1234", "a\u00df123", "\u017ft12345", "AB\uff11\uff12\uff13\uff14"])
+@pytest.mark.parametrize("raw", ["\u0131b1234", "a\u00df123", "\u017ft1234", "AB\uff11\uff12\uff13\uff14"])
 def test_non_ascii_rejected_before_upper(raw: str) -> None:
-    """AC-1: non-ASCII input is malformed even when upper() would fold it into A-Z (IB1234, ASS123, ST12345)."""
+    """AC-1: non-ASCII input is malformed even when upper() would fold it into A-Z (IB1234, ASS123, ST1234)."""
     with pytest.raises(MalformedClientIdError):
         normalise_client_id(raw)
     svc = new_service()

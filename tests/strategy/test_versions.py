@@ -10,10 +10,10 @@ import dataclasses
 import datetime
 import itertools
 import random
-import time
 from decimal import Decimal as D
 
 import pytest
+from work_count import assert_linear
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
@@ -293,12 +293,22 @@ def test_input_domain_guards():
 
 
 def test_one_thousand_history_appends_stay_fast():
-    """AC-2: history append is O(1): 1,000 meaningful draft edits finish well under a second."""
-    rec = record()
-    start = time.perf_counter()
-    for i in range(1000):
-        rec.edit(scaled(CONDOR, 75 * (2 + i % 2)), at=at(1))
-    assert len(rec.history) == 1001 and time.perf_counter() - start < 1.0
+    """AC-2: history append is O(1): the calls made by 1,000 meaningful draft edits are twice those of 500 (work is
+    counted, not timed; a quadratic re-validation of the history would make it four times)."""
+    recs = []
+
+    def edits(n: int):
+        rec = record()
+        recs.append(rec)
+        defs = [scaled(CONDOR, 75 * (2 + i % 2)) for i in range(n)]  # built outside the measured work
+
+        def work() -> None:
+            for d in defs:
+                rec.edit(d, at=at(1))
+        return work
+
+    assert_linear(edits, 500)
+    assert [len(r.history) for r in recs] == [501, 1001]
 
 
 FUT = ("NIFTY", Instrument.FUT, None, EXPIRY)
