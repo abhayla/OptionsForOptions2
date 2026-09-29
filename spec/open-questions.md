@@ -290,3 +290,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q249 — DECIDED (owner, 2026-09-29) — Strike selection modes (REQ-027 AC-1)
 - Decision: short-strike delta bands — Conservative 0.10–0.15, Balanced 0.20–0.25, Aggressive 0.30–0.35; wings at
   template defaults; all strikes editable. Recorded in REQ-027.
+
+## Q250 — DECIDED (owner, 2026-09-29) — Valid setup and effective range (REQ-069, REQ-068 AC-4)
+- Decision: valid = listed + within capital/max-loss + P&L ≥ 0 over the whole range (range-bound) or at the favourable
+  end (directional); effective range = the breakeven band. Recorded in REQ-069.
