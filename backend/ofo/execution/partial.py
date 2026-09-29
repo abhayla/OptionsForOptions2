@@ -23,7 +23,7 @@ W-023 round 3 (independent review). Class: the platform's view of its own orders
 - Broker reads carry ``read_at``; the book refuses future-stamped or stale reads (its injected clock).
 
 Nothing here talks to Zerodha: positions, order status and margin come through ``BrokerReader`` (reconciliation, W-021,
-is not merged; its reader will implement this Protocol), orders go out through ``OrderSubmitter``. Every order passes
+is not merged; its reader will implement this Protocol), orders go out only through ``submit_confirmed`` and the private broker sink (W-026). Every order passes
 the W-014 gate ``check_pre_execution``.
 
 Orchestrator defaults (not stated by the spec; each also marked where it is used):
@@ -73,7 +73,7 @@ from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.execution.sequence import sequence_plan
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
-from ofo.execution.send_guard import SendCapability, allowed_or_refuse, executable_version, mint_capability
+from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
 from ofo.strategy.guard import GuardBinding, GuardDecision, GuardRefused, _decision, assess_risk_change, proposal_hash
 from ofo.strategy.versions import StrategyRecord, VersionError
 
@@ -177,17 +177,8 @@ class BrokerReader(Protocol):
 
 
 class OrderRefused(Exception):
-    """Raised by an ``OrderSubmitter`` when the broker definitely refused the order (its text is the message)."""
-
-
-class OrderSubmitter(Protocol):
-    """Sends one order to the broker. Every implementation MUST call ``SendCapability.redeem(capability, order)``
-    before anything else (W-026; trust boundary in ``ofo.execution.send_guard``)."""
-
-    """Sends ONE order (carrying its client tag) and returns the broker order id. Raises ``OrderRefused`` on a
-    definite refusal; any other exception means the outcome is unknown (OD-l)."""
-
-    def submit(self, order: Order, capability: SendCapability) -> str: ...
+    """Raised by the broker transport when the broker definitely refused the order (its text is the message). Any
+    other exception means the outcome is unknown (OD-l). The transport is private (``send_guard._Transport``)."""
 
 
 @dataclass(frozen=True)
@@ -389,19 +380,21 @@ class Preparation:
     """
 
     __slots__ = ("choice", "assessment", "orders", "gate", "reason", "book", "strategy_id", "cancels", "guard",
-                 "plan", "_seal", "_consumed")
+                 "plan", "catalogue", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
                  gate: SafetyResult | None, reason: str, book: OrderBook | None = None,
                  strategy_id: str | None = None, cancels: tuple[str, ...] = (),
-                 guard: GuardDecision | None = None, plan: ExecutionPlan | None = None, *,
+                 guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
+                 catalogue: Catalogue | None = None, *,
                  _mint: object = None) -> None:
         if _mint is not _MINT:
             raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
         orders = tuple(orders)
         for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
                             ("reason", reason), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
-                            ("guard", guard), ("plan", plan), ("_seal", (_orders_digest(orders), gate)),
+                            ("guard", guard), ("plan", plan), ("catalogue", catalogue),
+                            ("_seal", (_orders_digest(orders), gate)),
                             ("_consumed", False)):
             object.__setattr__(self, name, value)
         if self.ready:
@@ -558,7 +551,7 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     reason = f"{len(orders)} order(s) ready for your confirmation."
     if decision.changes_risk_profile:
         reason = f"{decision.message}. {reason}"
-    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan)
+    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan, catalogue)
 
 
 def _prepare_missing(
@@ -744,7 +737,7 @@ def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: s
     must be a permitted leg of the bound record's executable version (``send_guard.allowed_or_refuse``); a Strategy
     Guard change needs this preparation's own token (AC-5)."""
     orders = preparation.orders
-    if preparation.plan is None or not all(isinstance(o, Order) for o in orders):
+    if preparation.plan is None or preparation.catalogue is None or not all(isinstance(o, Order) for o in orders):
         raise ValueError("this preparation was not made by the strategy's execution flow; nothing was sent")
     digest = _orders_digest(orders)
     if preparation._seal[0] != digest or preparation._seal[1] is not preparation.gate:
@@ -753,7 +746,8 @@ def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: s
     if issued is None or issued[0] is not preparation.gate or issued[1] != digest:
         raise ValueError("the safety check result does not belong to these orders; nothing was sent")
     binding = _orders_binding(strategy_id, orders)
-    record = _grounded_plan(book, preparation.plan, binding.version_id)  # AC-1: bound record, executable version
+    # AC-1/AC-3: bound record, executable version, and every plan symbol is its leg's catalogue instrument
+    record = _grounded_plan(book, preparation.plan, binding.version_id, preparation.catalogue)
     allowed_or_refuse(
         choice=_SEND_KIND.get(preparation.choice, "none"), orders=orders,
         version=record.version(_version_number(binding.version_id)),
@@ -771,7 +765,7 @@ def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: s
 
 
 def submit_confirmed(
-    preparation: Preparation, *, choice: PartialChoice, confirmed_by: str, submitter: OrderSubmitter,
+    preparation: Preparation, *, choice: PartialChoice, confirmed_by: str, submitter: _Transport,
     acknowledgement: str | None = None,
 ) -> SubmissionResult:
     """Send a preparation's orders ONCE, only for the user's explicit choice (AC-6: never automatic, never retried).
@@ -795,16 +789,24 @@ def submit_confirmed(
     if book.is_submit_blocked(strategy_id):
         raise ValueError(f"strategy {strategy_id!r} has an unresolved reconciliation mismatch; nothing was sent")
     orders = _authorised_orders(preparation, book, strategy_id, acknowledgement)
+    # W-026 round 3: the sink re-derives every broker field from the record and the catalogue, BEFORE anything is
+    # registered or sent; a refusal here sends nothing.
+    sink = _BrokerSink(submitter, book=book, strategy_id=strategy_id, catalogue=preparation.catalogue,
+                       choice=_SEND_KIND[preparation.choice],
+                       leg_slots={p.leg_ref: (p.leg.instrument.value, p.leg.strike, p.leg.expiry)
+                                  for p in preparation.plan.legs})
+    tagged_orders = tuple(dataclasses.replace(o, client_tag=book.next_client_tag()) for o in orders)
+    requests = sink.resolve_all(tagged_orders)
     object.__setattr__(preparation, "_consumed", True)
     book.release_preparation(strategy_id, preparation)
     sent: list[tuple[str, str]] = []
     for index, order in enumerate(orders):
-        tag = book.next_client_tag()
-        tagged = dataclasses.replace(order, client_tag=tag)
+        tagged, request = tagged_orders[index], requests[index]
+        tag = tagged.client_tag
         book.add(tagged)  # registered BEFORE the broker sees it
         rest = tuple(o.leg_ref for o in orders[index + 1:])
         try:
-            broker_order_id = submitter.submit(tagged, mint_capability(tagged))  # one-shot capability
+            broker_order_id = sink.submit(request)
         except OrderRefused as exc:  # no retry: a definite refusal, recorded and shown with the broker's text
             book.mirror_broker_state(tag, OrderState.REJECTED)
             return SubmissionResult(tuple(sent), (order.leg_ref, str(exc)), rest)

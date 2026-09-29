@@ -12,7 +12,6 @@ from typing import Sequence
 
 from execution_inputs import AS_OF, LOT, all_true_context, condor_legs
 
-from ofo.execution.send_guard import SendCapability
 from ofo.engine import Action, Strategy
 from ofo.execution import ExecutionContext
 from ofo.execution.partial import OrderRefused, BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg
@@ -151,8 +150,7 @@ class FakeSubmitter:
         self.sent: list[Order] = []
         self.refuse = refuse
 
-    def submit(self, order, capability) -> str:
-        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
+    def submit(self, order) -> str:
         return self._send(order)
 
     def _send(self, order: Order) -> str:

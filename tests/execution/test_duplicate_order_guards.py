@@ -45,7 +45,6 @@ from partial_inputs import (
     three_positions,
 )
 
-from ofo.execution.send_guard import SendCapability
 from ofo.engine import Action
 from ofo.execution.partial import (
     BrokerOrderStatus,
@@ -67,8 +66,7 @@ LTPS = (D("40.00"), D("80.00"), D("120.00"))
 class _TimeoutSubmitter(FakeSubmitter):
     """Accepts the order onto the wire, then the broker call itself times out (outcome unknown, OD-l)."""
 
-    def submit(self, order, capability):  # noqa: ANN001, ANN201
-        SendCapability.redeem(capability, order)  # W-026: only submit_confirmed can reach the broker
+    def submit(self, order):  # noqa: ANN001, ANN201
         self.sent.append(order)
         raise TimeoutError("broker did not respond in time")
 

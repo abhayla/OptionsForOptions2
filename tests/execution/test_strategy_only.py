@@ -37,8 +37,8 @@ from partial_inputs import (
 )
 
 from ofo.engine import Action, Strategy
-from ofo.execution import partial
-from ofo.execution.send_guard import SendCapability, SendRefused, allowed_or_refuse, mint_capability
+from ofo.execution import partial, send_guard
+from ofo.execution.send_guard import SendRefused, allowed_or_refuse
 from ofo.execution.partial import (
     ExecutionPlan,
     PlannedLeg,
@@ -146,7 +146,7 @@ def _reach_around(real: Preparation, orders: tuple[Order, ...], forge_gate: bool
     """In-process bypass of the mint (the verifier's getattr route): used only to prove the LATER lines hold."""
     discard_preparation(real)
     prep = Preparation(real.choice, real.assessment, orders, real.gate, "x", real.book, STRATEGY_ID, (),
-                       real.guard, real.plan, _mint=getattr(partial, "_MINT"))
+                       real.guard, real.plan, real.catalogue, _mint=getattr(partial, "_MINT"))
     if forge_gate:  # also forge the gate-to-orders binding
         getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")(orders))
     return prep
@@ -182,23 +182,6 @@ def test_a_gate_result_from_other_orders_is_refused(catalogue, eligibility) -> N
     with pytest.raises(ValueError, match="does not belong to these orders"):
         submit_confirmed(prep, choice=prep.choice, confirmed_by="user:U-1", submitter=submitter)
     assert submitter.sent == []
-
-
-def test_the_broker_is_reachable_only_with_a_capability_from_submit_confirmed() -> None:
-    """AC-2/AC-3 runtime line: a submitter refuses a call without the one-shot capability submit_confirmed mints;
-    a capability cannot be built directly or spent twice."""
-    order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    submitter = FakeSubmitter()
-    for fake in (None, object(), "token"):
-        with pytest.raises(SendRefused):
-            submitter.submit(order, fake)
-    with pytest.raises(SendRefused):
-        SendCapability(order)
-    cap = mint_capability(order)
-    assert submitter.submit(order, cap) == "NEW-1"
-    with pytest.raises(SendRefused):
-        submitter.submit(order, cap)
-    assert len(submitter.sent) == 1
 
 
 def test_ac1_a_strategy_id_cannot_be_rebound_to_another_record() -> None:
@@ -270,13 +253,14 @@ def test_ac3_only_submit_confirmed_sends_and_only_the_owning_flows_issue_a_guard
     ``ofo.execution.partial`` are imported by no Builder / Option Chain / engine module; guard decisions are issued
     only by the execution flow and the modification flow."""
     modules = _modules()
-    assert {n for n, t in modules.items() if _calls(t, "submit")} == {"execution/partial.py"}
+    assert {n for n, t in modules.items() if _calls(t, "submit")} == {"execution/partial.py",
+                                                                       "execution/send_guard.py"}
     (fn,) = [n for n in modules["execution/partial.py"].body
              if isinstance(n, ast.FunctionDef) and n.name == "submit_confirmed"]
     assert len(_calls(fn, "submit")) == 1
     assert {n for n, t in modules.items() if _calls(t, "_issue")} == {"strategy/modification.py"}
     assert {n for n, t in modules.items() if _calls(t, "_decision")} == {"execution/partial.py", "strategy/guard.py"}
-    assert {n for n, t in modules.items() if _calls(t, "mint_capability")} == {"execution/partial.py"}
+    assert {n for n, t in modules.items() if _calls(t, "_BrokerSink")} == {"execution/partial.py"}
     public = {m for m in vars(StrategyGuard) if not m.startswith("_")}
     assert public == {"check", "redeem", "withdraw"}  # no public method accepts metrics or a verdict
     importers = set()
@@ -336,3 +320,186 @@ def test_a_plan_symbol_must_be_its_legs_catalogue_instrument(catalogue) -> None:
         getattr(partial, "_grounded_plan")(book_with_three_filled(), ExecutionPlan(STRATEGY_ID, tuple(legs)), "v1",
                                            catalogue)
     assert getattr(partial, "_grounded_plan")(book_with_three_filled(), good, "v1", catalogue) is not None
+
+
+
+# -- W-026 round 3: the broker sink ----------------------------------------------------------------------------------
+# Core: the sink re-derives every broker field (symbol, side, quantity, strategy, version) from the bound record and
+# the catalogue, and no public name reaches it except submit_confirmed. Private names below (_BrokerSink, _MINT) are
+# used ONLY to prove the sink's own checks hold behind the flow (R3: reach-arounds are out of scope, documented).
+
+class CountingTransport:
+    """The broker transport: counts every call; returns the broker id."""
+
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def submit(self, request: object) -> str:
+        self.calls.append(request)
+        return f"NEW-{len(self.calls)}"
+
+
+def _sink(book: OrderBook, catalogue, choice: str = "complete", leg_slots=None, transport=None):  # noqa: ANN001, ANN202
+    slots = leg_slots or {p.leg_ref: (p.leg.instrument.value, p.leg.strike, p.leg.expiry) for p in plan().legs}
+    return send_guard._BrokerSink(transport or CountingTransport(), book=book, strategy_id=STRATEGY_ID,
+                                  catalogue=catalogue, choice=choice, leg_slots=slots)
+
+
+def _tagged(order: Order) -> Order:
+    return dataclasses.replace(order, client_tag="OFO999999999")
+
+
+def test_core_sink_refuses_a_forged_plan_symbol_and_the_transport_is_never_called(catalogue, eligibility) -> None:
+    """Core (round 3): a reach-around preparation whose forged plan puts the 23,600 CE symbol on the strike-23,400
+    leg (leg-3) is refused AT THE SINK; the transport's call count stays 0."""
+    book = book_with_three_filled()
+    real = _complete(book, catalogue, eligibility)
+    forged_legs = list(plan().legs)
+    forged_legs[2] = PlannedLeg("leg-3", CONTRACTS[3], forged_legs[2].leg)  # 23600CE symbol on the 23400 leg
+    forged_legs[3] = PlannedLeg("leg-4", CONTRACTS[2], forged_legs[3].leg)
+    forged_plan = ExecutionPlan(STRATEGY_ID, tuple(forged_legs))
+    transport = CountingTransport()
+    order = Order(STRATEGY_ID, "leg-3", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
+    with pytest.raises(SendRefused, match="not the catalogue symbol"):
+        _sink(book, catalogue, transport=transport,
+              leg_slots={p.leg_ref: (p.leg.instrument.value, p.leg.strike, p.leg.expiry) for p in forged_plan.legs}
+              ).resolve_all((_tagged(order),))
+    assert transport.calls == []
+    discard_preparation(real)
+
+
+def test_sink_refuses_a_banknifty_symbol_on_a_nifty_record(catalogue) -> None:
+    """Round 3: a BANKNIFTY contract on the NIFTY record is refused at the sink; transport untouched."""
+    transport = CountingTransport()
+    order = Order(STRATEGY_ID, "leg-4", "BANKNIFTY26OCT50000CE", Action.BUY, 30, D("100.00"), version_id="v1")
+    with pytest.raises(SendRefused, match="not the catalogue symbol"):
+        _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
+    assert transport.calls == []
+
+
+def test_sink_refuses_an_unknown_strategy_and_never_calls_the_transport(catalogue) -> None:
+    """Round 3: Order('S-NOSUCH', ...) is refused at the sink; a sink for an unbound strategy cannot even open."""
+    transport = CountingTransport()
+    order = Order("S-NOSUCH", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
+    with pytest.raises(SendRefused, match="does not belong to this strategy"):
+        _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
+    with pytest.raises(ValueError, match="no strategy record"):
+        send_guard._BrokerSink(transport, book=book_with_three_filled(), strategy_id="S-NOSUCH", catalogue=catalogue,
+                               choice="complete", leg_slots={})
+    assert transport.calls == []
+
+
+def test_sink_derives_side_from_the_leg_never_from_the_order(catalogue) -> None:
+    """Round 3: leg-4 is a BUY; an order claiming SELL for it is refused at the sink (the side is derived)."""
+    transport = CountingTransport()
+    order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.SELL, LOT, D("44.00"), version_id="v1")
+    with pytest.raises(SendRefused, match="is not the side of leg"):
+        _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
+    assert transport.calls == []
+
+
+def test_sink_needs_the_catalogue(catalogue) -> None:
+    """Round 3: without the catalogue the sink cannot derive a symbol, so it refuses to open."""
+    with pytest.raises(SendRefused, match="needs the catalogue"):
+        _sink(book_with_three_filled(), None)
+
+
+def test_sink_room_counts_units_still_open_on_the_book(catalogue) -> None:
+    """Verifier's surviving M3: the 23,600 CE order still open at the broker (Submitted, 0 filled) leaves no room;
+    a second BUY of it is refused at the send rule and at the sink."""
+    book = book_with_three_filled(fourth=OrderState.SUBMITTED)
+    order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
+    planned = {CONTRACTS[3]: ("leg-4", Action.BUY, LOT)}
+    with pytest.raises(SendRefused, match="exceed what the strategy allows"):
+        allowed_or_refuse(choice="complete", orders=(order,), version=book.record_for(STRATEGY_ID).version(1),
+                          planned=planned, book=book, strategy_id=STRATEGY_ID)
+    transport = CountingTransport()
+    with pytest.raises(SendRefused, match="exceed"):
+        _sink(book, catalogue, transport=transport).resolve_all((_tagged(order),))
+    assert transport.calls == []
+
+
+def test_sink_sends_only_what_it_resolved_and_only_once(catalogue) -> None:
+    """Round 3: the happy path resolves the one missing leg to the record's own values; a request is sent once."""
+    transport = CountingTransport()
+    sink = _sink(book_with_three_filled(), catalogue, transport=transport)
+    order = _tagged(Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1"))
+    (request,) = sink.resolve_all((order,))
+    assert (request.strategy_id, request.version_id, request.contract, request.side, request.quantity) == (
+        STRATEGY_ID, "v1", "NIFTY26O0623600CE", Action.BUY, LOT)
+    assert sink.submit(request) == "NEW-1"
+    with pytest.raises(SendRefused):
+        sink.submit(request)
+    with pytest.raises(SendRefused):  # a request cannot be built outside the sink
+        send_guard._BrokerRequest(STRATEGY_ID, "v1", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44"), "T")
+    assert len(transport.calls) == 1
+
+
+def test_happy_path_sends_exactly_the_missing_leg_through_submit_confirmed(catalogue, eligibility) -> None:
+    """Round 3: Complete on three filled legs sends exactly BUY 65 x NIFTY26O0623600CE for S-1 v1."""
+    transport = CountingTransport()
+    prep = _complete(book_with_three_filled(), catalogue, eligibility)
+    submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1", submitter=transport)
+    assert [(r.strategy_id, r.version_id, r.contract, r.side, r.quantity) for r in transport.calls] == [
+        (STRATEGY_ID, "v1", "NIFTY26O0623600CE", Action.BUY, LOT)]
+
+
+def test_a_transport_handed_an_order_directly_has_no_public_route(catalogue) -> None:
+    """Round 3: the only public route to a transport is submit_confirmed, which refuses anything but a
+    flow-made preparation; the transport is never called."""
+    transport = CountingTransport()
+    order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
+    with pytest.raises(ValueError, match="needs a Preparation"):
+        submit_confirmed(order, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1",  # type: ignore[arg-type]
+                         submitter=transport)
+    assert transport.calls == []
+
+
+def test_an_aliased_submit_confirmed_works_only_through_the_real_flow(catalogue, eligibility) -> None:
+    """Round 3: importing submit_confirmed under another name changes nothing: a hand-made preparation is refused,
+    a flow-made one is sent."""
+    from ofo.execution.partial import submit_confirmed as send_it
+    transport = CountingTransport()
+    real = _complete(book_with_three_filled(), catalogue, eligibility)
+    with pytest.raises(ValueError, match="made only by the strategy's execution flow"):
+        Preparation(real.choice, real.assessment, real.orders, real.gate, "x", real.book, STRATEGY_ID)
+    send_it(real, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1", submitter=transport)
+    assert len(transport.calls) == 1
+
+
+_SINK_NAMES = ("_BrokerRequest", "_Transport", "_BrokerSink")
+
+
+def test_no_public_name_reaches_a_broker_request_transport_or_sink() -> None:
+    """R1 (runtime walk): import every ofo module; no public name is (or aliases) the request, transport or sink
+    type, no public name is a capability minter, and no public callable except submit_confirmed accepts or returns
+    a broker request, transport or sink."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import ofo
+    private_objects = {id(getattr(send_guard, n)) for n in _SINK_NAMES}
+    offenders = []
+    for info in pkgutil.walk_packages(ofo.__path__, "ofo."):
+        module = importlib.import_module(info.name)
+        for name, value in vars(module).items():
+            if name.startswith("_"):
+                continue
+            where = f"{info.name}.{name}"
+            if id(value) in private_objects or "capabilit" in name.lower() or name.lower().startswith("mint"):
+                offenders.append(where)
+                continue
+            if not callable(value) or getattr(value, "__module__", "") != info.name:
+                continue
+            targets = [value] + ([m for _, m in inspect.getmembers(value, inspect.isfunction)]
+                                 if inspect.isclass(value) else [])
+            for fn in targets:
+                try:
+                    sig = inspect.signature(fn)
+                except (TypeError, ValueError):
+                    continue
+                text = " ".join(str(p.annotation) for p in sig.parameters.values()) + " " + str(sig.return_annotation)
+                if any(t in text for t in _SINK_NAMES) and where != "ofo.execution.partial.submit_confirmed":
+                    offenders.append(f"{where}:{getattr(fn, '__name__', '')}")
+    assert offenders == []

@@ -36,3 +36,18 @@ entitlement, payments or admin code in any repo.
   survey; values never copied). Owner to regenerate the secret in the Kite developer console.
 - `algochanakya` recorded Upstox test fixtures contain the owner's email.
 - `OptionsForOptions` (private) has a Google client secret, a Telegram bot token and a MySQL password in code.
+
+## Broker adapter boundary (W-026, REQ-036 AC-1..AC-3, ADR-002; added 2026-09-29)
+Any broker adapter copied or adapted from `algochanakya` (or written new) plugs in at exactly one point:
+- It implements only the private transport `ofo.execution.send_guard._Transport.submit(request) -> broker order id`,
+  and it is constructed only inside `ofo/execution/send_guard.py`. It never receives an `Order`, a plan or a
+  preparation, only a `_BrokerRequest` built by the broker sink.
+- The sink (`_BrokerSink`) derives every broker field from the strategy's bound `StrategyRecord` and the instrument
+  catalogue: trading symbol (underlying, instrument type, expiry, strike to the one catalogue entry), side (the leg's
+  side; Close uses the opposite), quantity (within the room the record and the fill ledger leave), strategy and
+  version. It refuses anything else and then calls the transport.
+- The only public route to the sink is `ofo.execution.partial.submit_confirmed`. A runtime test walks every `ofo`
+  module and fails if any other public name returns or accepts a request, transport or sink.
+- Trust boundary: this stops accidental misuse by platform code. Code running in the same process can still reach
+  private names, or import a raw broker client, on purpose; that is out of scope and must be caught in review.
+  The adapter must not expose any public "place order" function of its own.
