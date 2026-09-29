@@ -234,3 +234,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q237 — DECIDED (owner, 2026-09-29) — CI for the API/web layers on a private repo
 - Decision: (a) a path-filtered project workflow `app-tests.yml`; usage reported after a week. Recorded in ADR-046.
+
+## Q238 — DECIDED (owner, 2026-09-29) — Order of exit orders (OD-e)
+- Decision: shorts bought back first, then longs sold, never in one batch. Recorded in REQ-058 "Owner decision (Q238)".
