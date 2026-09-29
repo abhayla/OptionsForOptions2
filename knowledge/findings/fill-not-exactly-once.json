@@ -9,7 +9,7 @@
   },
   "fix": "Round 3 (a885a1c..HEAD): removed the second store entirely. FillLedger is append-only, keyed by (broker_order_id, trade_id) -- the composite key is what stops a trade id that is only broker-unique-per-order from colliding across two orders. Order carries no filled_quantity field and no fill-implied state; OrderBook.apply_fill is the only writer, and OrderBook computes filled_quantity/effective state/position fresh from the ledger on every read (never cached). A same-key identical fill is an idempotent no-op; a same-key different fill raises FillConflictError; a genuinely new key is validated (known order, contract/side match, order open, cumulative <= ordered) before it is appended. Property-tested: tests/orders/test_ledger_property.py drives 5 x 400 randomized calls (fills, replays, reused trade ids across orders, conflicts, add/transition misuse) and asserts after every single call that every order's filled_quantity equals the sum of its own ledger rows and every position equals the signed sum of the matching ledger rows.",
   "detection": {
-    "status": "guarded",
+    "status": "unguarded",
     "checks": [
       "tests/orders/test_ledger_property.py::test_ledger_is_the_only_source_of_truth_under_random_misuse",
       "tests/orders/test_no_state_before_fill.py::test_two_orders_can_independently_reuse_the_same_trade_id",
@@ -18,7 +18,7 @@
       "tests/orders/test_lifecycle.py::test_transition_refuses_fill_implying_states",
       "tests/orders/test_no_state_before_fill.py::test_add_refuses_every_non_prepared_state"
     ],
-    "note": "Mutation-verified 2026-09-29 (monkeypatch, not a committed scratch copy): dropping broker_order_id from the ledger key, skipping the same-key copy comparison, letting add() accept a non-Prepared order, storing filled_quantity on the order instead of computing it, and skipping order-level validation on a new key were each independently confirmed to make their listed test fail before this fix; none of the five is possible in the merged code."
+    "note": "Mutation-verified 2026-09-29 (monkeypatch, not a committed scratch copy): dropping broker_order_id from the ledger key, skipping the same-key copy comparison, letting add() accept a non-Prepared order, storing filled_quantity on the order instead of computing it, and skipping order-level validation on a new key were each independently confirmed to make their listed test fail before this fix; none of the five is possible in the merged code. | 2026-09-29 detection gap: the existing guard covers order-level fills (W-019 fill ledger) but not results applied to a strategy record; a result for a non-current execution attempt was accepted (W-041 verifier). Status set back to unguarded until W-041 round 5 (attempt identity minted at confirm, stale results refused) is verified and merged."
   },
   "spec_ref": [
     "spec/requirements/REQ-057.md",
@@ -41,6 +41,11 @@
       "date": "2026-09-29",
       "where": "W-023 rounds 1-2 @ efd6908 / 0352215",
       "evidence": "double Complete sent 2x65; a rejected order stayed Submitted (lockout); an accepted order with a bad id went untracked and a second 65 was prepared"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-041 (strategy state machine) verification, branch build/W-041-state-machine @ df44e2f",
+      "evidence": "verifier probe P4b: after an all-rejected adjustment is re-confirmed, a late REJECTED message from attempt 1 (ref att1-order4) is accepted as attempt 2's result -> Adjustment Proposed while attempt 2's orders are live; P4c: re-confirm then sends attempt 3 (duplicate exposure). ExecutionResult carries no attempt identity. P2b': PARTIAL then REJECTED at baseline routed to Validated 'nothing filled'."
     }
   ]
 }
