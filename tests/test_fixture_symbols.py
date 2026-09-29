@@ -105,17 +105,6 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "REQ-064: the audit log stores a raw Kite-style broker-response payload EXACTLY as passed, "
         "with no secret filtering and no catalogue lookup; the payload's tradingsymbol is "
         "illustrative content the log must not alter, not a contract this test resolves.",
-    ("marketdata/test_quote.py", "NIFTY26O2823500CE"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "NormalizedQuote carries an illustrative instrument_id and performs no catalogue lookup; "
-        "corrected in a follow-up.",
-    ("marketdata/test_rule_health.py", "NIFTY26O2823500CE"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "same illustrative instrument_id as marketdata/test_quote.py; corrected in a follow-up.",
-    ("range/test_pick_lists.py", "NIFTY26NOV"):
-        "deferred (out of W-030's named scope, see github.com/abhayla/OptionsForOptions2/issues/51): "
-        "pick-list strike range fixture uses a monthly November head for which this catalogue slice "
-        "holds no options (only NIFTY26NOVFUT); corrected in a follow-up.",
 }
 
 
