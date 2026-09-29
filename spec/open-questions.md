@@ -81,16 +81,24 @@ party) · **DECIDED → ADR-###**.
   display); verify the Zerodha facts from their pages; build nothing that depends on the answer until it arrives.
 - Spec basis: ADR-014 (Q177 provisional), ADR-020 (Q178 setup guide).
 
-## Q211 — LEGAL — Compliance review before these features go live
+## Q211 — DECIDED (owner, 2026-09-29: not a blocker for building) — Compliance review before these features go live
 Strategy discovery and suggested setups; adjustment approaches; notification content; a paid subscription sold by a
 registered Zerodha Authorised Person; market-data display and derived data; Zerodha API terms; retention of the
 anti-abuse record after deletion (Q96, India's DPDP Act). The chats already flagged SEBI/exchange review as a product
 requirement (T1 #26). Nothing here is a conclusion; these features stay out of production until reviewed.
+- **Owner decision (2026-09-29):** asked whether Q211 blocks REQ-025/027/045/046/068/069, the owner answered "They
+  are not blocked. Proceed." Building these requirements goes ahead (they are marked Approved). Whether a compliance
+  review is still wanted before they reach production will be put to the owner in the release brief for the first
+  release that contains them (every production release needs the owner's approval anyway).
 
-## Q212 — EXTERNAL — Data used in the owner's YouTube adjustment video
+## Q212 — DECIDED / DONE (2026-09-29) — Data used in the owner's YouTube adjustment video
 The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer covers every value it uses; ChatGPT
 could not read the transcript and the owner will provide it later (T2 #95). Pending: the transcript, then a line-by-
 line data checklist (REQ "Adjustment data requirements from the owner's reference video").
+- **2026-09-29:** the owner said Q211/Q212 are "not blocked. Proceed." The link was already in the chat (T2 #93:
+  youtu.be/BpIyvYL5ahE); the transcript was extracted (30m46s, youtube-transcript-api) and the 30 values it uses are
+  listed in spec/technical-design/adjustment-data-contract.md. REQ-071 is Approved. Open: the meaning of 7 unclear
+  values (rows 10, 12, 13, 24, 25, 26, 28) — asked separately.
 
 ## Q213 — DECIDED (delegated overnight, ADR-045: recommendation A = both) — Breakeven columns: inserted, at the end, or both?
 Q33D inserts 0-P&L columns at their price position; the earlier locked column list (T1 #90) also has Lower BE /
@@ -266,3 +274,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q245 — DECIDED (owner, 2026-09-29) — Adjustment with every order rejected, nothing filled
 - Decision: back to Adjustment Proposed with the rejection reasons; the original version stays active; the user may
   execute the proposal again or withdraw it. Recorded in spec/data/domain-model.md §6.
+
+## Q246 — DECIDED (owner, 2026-09-29) — Readings of unclear values in the reference video (REQ-071)
+- Decision: profit left = max profit − booked losses; capital = margin blocked; volatility = per-option IV; swing /
+  trend out of V1. Recorded in spec/technical-design/adjustment-data-contract.md "Owner readings".

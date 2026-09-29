@@ -5,13 +5,14 @@ https://api.kite.trade/instruments captured 2026-09-29 (see that folder's README
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+import dataclasses
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from ofo.instruments.catalogue import DEFAULT_MAX_UNLIST_SHARE, Catalogue, ContractKind
+from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_csv
@@ -111,153 +112,128 @@ def test_tick_size_and_lot_size_hold_for_every_expiry_and_kind_in_fixture(
         assert lot > 0
 
 
-def test_update_marks_missing_contract_not_listed_never_deletes(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: a contract absent from a newer list is marked not currently listed, never deleted."""
-    before_count = len(catalogue.all_entries())
-
-    # Simulate a refresh where one NIFTY contract from the near expiry has expired off the list.
-    nifty_near = [
-        c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY
-    ]
-    assert nifty_near, "fixture must contain NIFTY near-expiry rows"
-    dropped_token = nifty_near[0].instrument_token
-    newer_list = [c for c in contracts if c.instrument_token != dropped_token]
-
-    result = catalogue.update(newer_list)
-
-    after_count = len(catalogue.all_entries())
-    assert after_count == before_count, "the entry must still be present (never deleted)"
-    assert result.newly_unlisted == 1
-
-    dropped_entry = next(
-        e for e in catalogue.all_entries() if e.contract.instrument_token == dropped_token
-    )
-    assert dropped_entry.currently_listed is False
+IST = timezone(timedelta(hours=5, minutes=30))
+# The fixture was captured 2026-09-29; its earliest expiry is that same day.
+ON_EXPIRY_DAY = datetime(2026, 9, 29, 15, 0, tzinfo=IST)
+DAY_AFTER_EXPIRY = datetime(2026, 9, 30, 9, 0, tzinfo=IST)
 
 
-def test_update_relists_a_contract_that_reappears(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2 negative case: a contract that disappears then reappears in a later list is relisted."""
-    nifty_near = [c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY]
-    token = nifty_near[0].instrument_token
-
-    catalogue.update([c for c in contracts if c.instrument_token != token])
-    entry = next(e for e in catalogue.all_entries() if e.contract.instrument_token == token)
-    assert entry.currently_listed is False
-
-    catalogue.update(contracts)  # full list again, including the previously dropped contract
-    entry = next(e for e in catalogue.all_entries() if e.contract.instrument_token == token)
-    assert entry.currently_listed is True
-
-
-# --- Fix round 1, defect 3: update() must refuse an empty or drastically incomplete source list ---
-
-
-def _listedness_snapshot(catalogue: Catalogue) -> dict[int, bool]:
+def _snapshot(catalogue: Catalogue) -> dict[int, bool]:
     return {e.contract.instrument_token: e.currently_listed for e in catalogue.all_entries()}
 
 
-def test_update_refuses_empty_list(catalogue: Catalogue) -> None:
-    """update() refuses an empty new list (would unlist everything); catalogue unchanged."""
-    before = _listedness_snapshot(catalogue)
+def _entry(catalogue: Catalogue, token: int):
+    return next(e for e in catalogue.all_entries() if e.contract.instrument_token == token)
+
+
+def test_core_update_refuses_dropping_one_live_contract(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: removing ONE unexpired NIFTY option row is refused, naming it; nothing changes."""
+    victim = next(c for c in contracts if c.name == "NIFTY" and c.instrument_type == "CE" and c.expiry == NIFTY_FAR_EXPIRY)
+    before = _snapshot(catalogue)
+    with pytest.raises(ValueError, match=victim.tradingsymbol):
+        catalogue.update([c for c in contracts if c.instrument_token != victim.instrument_token], as_of=ON_EXPIRY_DAY)
+    assert _snapshot(catalogue) == before, "a refused update must change nothing"
+
+
+def test_update_refuses_the_verifier_75_percent_truncation(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: the W-006 verifier's truncation (first 75% of NIFTY rows, all else kept) was ACCEPTED
+    under the old 50% rule; it must now be refused."""
+    nifty = [c for c in contracts if c.name == "NIFTY"]
+    kept_nifty = {c.instrument_token for c in nifty[: len(nifty) * 3 // 4]}
+    truncated = [c for c in contracts if c.name != "NIFTY" or c.instrument_token in kept_nifty]
+    before = _snapshot(catalogue)
+    with pytest.raises(ValueError, match="refused"):
+        catalogue.update(truncated, as_of=ON_EXPIRY_DAY)
+    assert _snapshot(catalogue) == before
+
+
+def test_update_accepts_roll_off_of_an_expired_expiry_never_deletes(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2: on 2026-09-30 IST every 2026-09-29 contract may roll off; they are marked not
+    listed (never deleted) and the rest stay listed."""
+    expired = {c.instrument_token for c in contracts if c.expiry == NIFTY_NEAR_EXPIRY}
+    assert expired
+    before_count = len(catalogue.all_entries())
+    result = catalogue.update([c for c in contracts if c.instrument_token not in expired], as_of=DAY_AFTER_EXPIRY)
+    assert len(catalogue.all_entries()) == before_count
+    in_scope_expired = {t for t in expired if t in _snapshot(catalogue)}
+    assert result.newly_unlisted == len(in_scope_expired) > 0
+    assert all(not _entry(catalogue, t).currently_listed for t in in_scope_expired)
+    assert all(e.currently_listed for e in catalogue.all_entries() if e.contract.expiry != NIFTY_NEAR_EXPIRY)
+
+
+def test_update_refuses_roll_off_on_the_expiry_day_itself(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: a contract expiring on the update date has NOT yet passed; dropping it that day is
+    refused (boundary), even at 23:59 IST."""
+    expired = {c.instrument_token for c in contracts if c.expiry == NIFTY_NEAR_EXPIRY}
+    late = datetime(2026, 9, 29, 23, 59, tzinfo=IST)
     with pytest.raises(ValueError):
-        catalogue.update([])
-    after = _listedness_snapshot(catalogue)
-    assert after == before, "a refused update must change nothing"
+        catalogue.update([c for c in contracts if c.instrument_token not in expired], as_of=late)
 
 
-def test_update_refuses_when_it_would_unlist_more_than_default_share_for_one_underlying(
-    catalogue: Catalogue, contracts: list[Contract]
-) -> None:
-    """update() refuses a source list that would unlist more than 50% of ONE underlying's
-    currently listed contracts, even with the OTHER underlying fully present (so this exercises
-    the per-underlying SHARE guard specifically, not the zero-rows guard)."""
-    before = _listedness_snapshot(catalogue)
-    # Keep only NIFTY CE near-expiry rows (~29% of all NIFTY) plus every SENSEX row: NIFTY would
-    # lose >50%, SENSEX loses nothing.
-    nifty_small_slice = [
-        c for c in contracts if c.name == "NIFTY" and c.instrument_type == "CE" and c.expiry == NIFTY_NEAR_EXPIRY
-    ]
-    sensex_full = [c for c in contracts if c.name == "SENSEX"]
-    truncated = nifty_small_slice + sensex_full
-    nifty_total = sum(1 for c in contracts if c.name == "NIFTY")
-    assert nifty_small_slice and len(nifty_small_slice) < nifty_total * 0.5
-
-    with pytest.raises(ValueError, match="NIFTY"):
-        catalogue.update(truncated)
-
-    after = _listedness_snapshot(catalogue)
-    assert after == before, "a refused update must change nothing"
+def test_update_date_is_judged_in_ist_not_utc(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: 2026-09-29 20:00 UTC is already 2026-09-30 01:30 IST, so the 09-29 expiry has
+    passed and may roll off; the same instant read as a UTC date would refuse it."""
+    expired = {c.instrument_token for c in contracts if c.expiry == NIFTY_NEAR_EXPIRY}
+    as_of = datetime(2026, 9, 29, 20, 0, tzinfo=timezone.utc)
+    catalogue.update([c for c in contracts if c.instrument_token not in expired], as_of=as_of)
 
 
-def test_update_refuses_a_nifty_less_slice_of_the_real_fixture(
-    catalogue: Catalogue, contracts: list[Contract]
-) -> None:
-    """AC-2 fix round 3 (real-data proof): dropping ALL NIFTY rows from the real fixture must be
-    refused per-underlying, even though NIFTY is only ~44% of the WHOLE catalogue (under the 50%
-    global threshold that let this through before). Catalogue is unchanged after the refusal."""
-    before = _listedness_snapshot(catalogue)
-    nifty_less = [c for c in contracts if c.name != "NIFTY"]
-    assert any(c.name == "SENSEX" for c in nifty_less)  # a real, non-empty, plausible feed
-
-    with pytest.raises(ValueError, match="NIFTY"):
-        catalogue.update(nifty_less)
-
-    after = _listedness_snapshot(catalogue)
-    assert after == before, "a refused update must change nothing"
+def test_update_rejects_a_naive_as_of(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: a timezone-naive update time is rejected, not guessed."""
+    with pytest.raises(ValueError, match="timezone-aware"):
+        catalogue.update(contracts, as_of=datetime(2026, 9, 30, 9, 0))
 
 
-def test_update_refuses_a_halfway_cut_of_the_real_fixture(
-    catalogue: Catalogue, contracts: list[Contract]
-) -> None:
-    """AC-2 fix round 3 (real-data proof): the fixture cut at its halfway row (as the real full
-    instrument list was, per the verifier's finding) drops NIFTY entirely — must be refused."""
-    before = _listedness_snapshot(catalogue)
-    half = len(contracts) // 2
-    halfway_cut = contracts[:half]
-    assert not any(c.name == "NIFTY" for c in halfway_cut), (
-        "fixture ordering assumption: the first half must contain zero NIFTY rows for this to "
-        "be the real scenario the verifier found"
+def test_update_treats_a_contract_with_no_expiry_as_unexpired(contracts: list[Contract]) -> None:
+    """AC-2: an in-scope contract with no expiry date can never be shown to have expired, so
+    dropping it is refused (fail closed)."""
+    odd = dataclasses.replace(next(c for c in contracts if c.name == "NIFTY"), expiry=None)
+    cat = Catalogue()
+    cat.load([odd])
+    with pytest.raises(ValueError, match="refused"):
+        cat.update([], as_of=DAY_AFTER_EXPIRY)
+
+
+def test_update_refuses_empty_list_while_unexpired_contracts_are_listed(catalogue: Catalogue) -> None:
+    """AC-2: an empty list would drop every live contract; refused, catalogue unchanged."""
+    before = _snapshot(catalogue)
+    with pytest.raises(ValueError):
+        catalogue.update([], as_of=ON_EXPIRY_DAY)
+    assert _snapshot(catalogue) == before
+
+
+def test_update_accepts_new_expiries_being_added(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: additions never trip the guard: load only the far expiries, then update with all."""
+    cat = Catalogue()
+    cat.load([c for c in contracts if c.expiry != NIFTY_FAR_EXPIRY])
+    result = cat.update(contracts, as_of=ON_EXPIRY_DAY)
+    assert result.added > 0 and result.newly_unlisted == 0
+
+
+def test_update_force_overrides_the_guard(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: force=True lets a real broker delisting through and marks (never deletes) the rows."""
+    victim = next(c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_FAR_EXPIRY)
+    result = catalogue.update(
+        [c for c in contracts if c.instrument_token != victim.instrument_token], as_of=ON_EXPIRY_DAY, force=True
     )
-
-    with pytest.raises(ValueError):
-        catalogue.update(halfway_cut)
-
-    after = _listedness_snapshot(catalogue)
-    assert after == before, "a refused update must change nothing"
+    assert result.newly_unlisted == 1
+    assert _entry(catalogue, victim.instrument_token).currently_listed is False
 
 
-def test_mutation_whole_catalogue_share_would_have_missed_dropping_all_nifty(
-    catalogue: Catalogue, contracts: list[Contract]
-) -> None:
-    """Mutation-style: prove the fix DISCRIMINATES. On the real fixture, NIFTY is 481/1085 (~44%)
-    of the whole catalogue — under the 50% default — so a whole-catalogue share check would NOT
-    have refused dropping all NIFTY rows. The per-underlying check (100% of NIFTY specifically)
-    correctly refuses it. If catalogue.update() ever reverts to a whole-catalogue share, this
-    test's own precondition proves the bug would go undetected by the old check, while the
-    refusal assertion below would then fail (the test goes red)."""
-    total_listed = len(catalogue.all_entries())
-    nifty_listed = sum(1 for e in catalogue.all_entries() if e.contract.name == "NIFTY")
-    whole_catalogue_share_if_nifty_dropped = nifty_listed / total_listed
-    assert whole_catalogue_share_if_nifty_dropped < DEFAULT_MAX_UNLIST_SHARE, (
-        "precondition: dropping all NIFTY must be UNDER the global threshold, proving a "
-        "whole-catalogue check would have missed it"
-    )
-
-    nifty_less = [c for c in contracts if c.name != "NIFTY"]
-    with pytest.raises(ValueError):
-        catalogue.update(nifty_less)  # the per-underlying check still catches it
-
-
-def test_update_force_overrides_the_unlist_share_guard(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """force=True lets a legitimately drastic update (e.g. a real broker delisting wave) through."""
-    truncated = [c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY]
-    result = catalogue.update(truncated, force=True)
-    assert result.newly_unlisted > 0
+def test_update_relists_a_contract_that_reappears(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2: a force-delisted contract that reappears in a later list is relisted."""
+    token = next(c for c in contracts if c.name == "NIFTY" and c.expiry == NIFTY_NEAR_EXPIRY).instrument_token
+    catalogue.update([c for c in contracts if c.instrument_token != token], as_of=ON_EXPIRY_DAY, force=True)
+    assert _entry(catalogue, token).currently_listed is False
+    catalogue.update(contracts, as_of=ON_EXPIRY_DAY)
+    assert _entry(catalogue, token).currently_listed is True
 
 
 def test_update_normal_refresh_still_works(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """A normal update (same list, or dropping a small minority) still succeeds without force."""
-    result = catalogue.update(contracts)
+    """AC-2: an identical list is accepted with nothing added or unlisted."""
+    result = catalogue.update(contracts, as_of=ON_EXPIRY_DAY)
     assert result.newly_unlisted == 0
     assert result.added == 0
 
