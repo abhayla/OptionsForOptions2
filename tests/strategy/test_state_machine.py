@@ -925,21 +925,41 @@ def test_ac1_q245_a_rejected_adjustment_with_nothing_filled_returns_to_adjustmen
 
 
 def test_ac1_q245_the_rejected_adjustment_can_be_executed_again_or_withdrawn():
-    """AC-1 (Q245): from Adjustment Proposed the user may execute again (a new confirmed proposal -> Execution in
-    Progress, then Active when it fills) or withdraw (-> Active, original version unchanged)."""
+    """AC-1 (Q245): from Adjustment Proposed the user may execute the SAME kept proposal again (a fresh confirm ->
+    Execution in Progress, then Active when it fills) or withdraw it (-> Active, original version unchanged); the
+    adjustment is never re-created."""
     ctx = _rejected_adjustment()
+    kept = ctx.record.proposed_version
     ctx.machine.follow_execution(at=ctx.tick())
-    version = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
-    ctx.record.confirm(version.number, at=ctx.tick())
-    assert ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1").to_state is S.EXECUTION_IN_PROGRESS
+    assert ctx.record.proposed_version == kept and kept.number == 2 and not ctx.record.proposal_confirmed
+    # Execute again needs the user's fresh confirmation of the kept version: no automatic retry.
+    with pytest.raises(StateMachineError, match="not confirmed"):
+        ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.ADJUSTMENT_PROPOSED
+    ctx.record.confirm(kept.number, at=ctx.tick())
+    step = ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+    assert (step.to_state, step.detail) == (S.EXECUTION_IN_PROGRESS, (("version", "2"),))
     ctx.result(ResultStatus.COMPLETE, full(ctx))
     assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.ACTIVE
-    assert ctx.record.active_version.number == 3
+    assert ctx.record.active_version.number == 2 and len(ctx.record.versions) == 2
+    # Rejected again with nothing filled: back to Adjustment Proposed, the same version still kept.
+    ctx = _rejected_adjustment()
+    ctx.machine.follow_execution(at=ctx.tick())
+    ctx.record.confirm(2, at=ctx.tick())
+    ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+    ctx.result(ResultStatus.REJECTED, ctx.record.proposed_version.baseline, ("second attempt refused",))
+    step = ctx.machine.follow_execution(at=ctx.tick())
+    assert (step.to_state, step.detail) == (S.ADJUSTMENT_PROPOSED, (("version", "2"),
+                                                                    ("reasons", "second attempt refused")))
+    assert ctx.record.proposed_version.number == 2 and len(ctx.record.versions) == 2
+    # Withdraw: the kept proposal is withdrawn in the record (WITHDRAWN outcome) and v1 stays active.
     ctx = _rejected_adjustment()
     ctx.machine.follow_execution(at=ctx.tick())
     step = ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
-    assert (step.to_state, step.trigger) == (S.ACTIVE, Trigger.USER_WITHDRAWS_PROPOSAL)
+    assert (step.to_state, step.trigger, step.detail) == (S.ACTIVE, Trigger.USER_WITHDRAWS_PROPOSAL,
+                                                          (("version", "2"),))
     assert ctx.record.active_version.number == 1 and ctx.record.proposed_version is None
+    assert ctx.record.outcomes[-1].kind is OutcomeKind.WITHDRAWN
 
 
 def test_ac1_q245_the_machine_reads_the_record_adjustment_vs_entry_and_fills():

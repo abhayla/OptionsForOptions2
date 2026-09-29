@@ -25,9 +25,10 @@ Readings of the table (spec words that needed a concrete meaning; each is report
 - "any live state" / "previous live state": the five states Q243 fix 5 lists (Active, Monitoring Paused, Adjustment
   Proposed, Execution in Progress, Partially Executed).
 - "no leg filled and every order is finally rejected/failed" (Q243 fix 1): the record's REJECTED or FAILED outcome
-  for the executing version with the broker still at the version's baseline (the record then closes the proposal).
-  The row returns an UN-executed strategy to Validated; for an adjustment of a strategy that already holds a position
-  the table has no row, so that case is refused loudly (owner question), never guessed.
+  for the executing version with the broker still at the version's baseline. The row returns an UN-executed strategy
+  to Validated (the record closes the proposal). For an ADJUSTMENT (the record holds an active version) Q245 moves it
+  to Adjustment Proposed: the record keeps the same proposal, unconfirmed, with the rejection reasons, so the user
+  confirms it again (``confirm_adjustment``) or withdraws it (``withdraw_adjustment``).
 - "some legs executed, the rest finally failed/rejected" (Q243 fix 4): the record's PARTIAL, REJECTED or FAILED
   outcome for the executing version whose broker position moved off the baseline but stayed inside baseline..intended
   (the record keeps the proposal open). "Zerodha's positions differ from the recorded fills": the record's own

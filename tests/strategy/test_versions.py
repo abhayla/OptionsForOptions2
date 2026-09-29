@@ -213,12 +213,14 @@ def test_activate_without_confirmation_is_refused():
 @pytest.mark.parametrize("status,kind", [(ResultStatus.REJECTED, OutcomeKind.REJECTED),
                                          (ResultStatus.FAILED, OutcomeKind.FAILED)])
 def test_failed_or_rejected_result_leaves_active_unchanged_and_records_outcome(status, kind):
-    """AC-3 red: a rejected/failed result never activates; the outcome is recorded and the proposal closes."""
+    """AC-3 red: a rejected/failed result never activates; the outcome is recorded. Nothing filled on an adjustment:
+    the proposal is kept, unconfirmed, for execute-again or withdraw (owner decision Q245 replaced "closes")."""
     rec = executed_record()
     rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(2, at=at(11))
     outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2"))
-    assert outcome.kind is kind and rec.active_version.number == 1 and rec.proposed_version is None
+    assert outcome.kind is kind and rec.active_version.number == 1
+    assert rec.proposed_version == rec.version(2) and not rec.proposal_confirmed
     assert rec.outcomes_for(2) == (outcome,) and outcome.intended == rec.version(2).intended_position
 
 
@@ -475,7 +477,7 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
     """AC-3/AC-4: after EVERY step, pending or reconciliation_required or actual == active intended; nothing
     activates while the flag is set. 500 seeded sequences, all statuses, overfills, unasked contracts, side flips."""
     rng = random.Random(20260929)
-    activations = reconciles = flagged_results = 0
+    activations = reconciles = flagged_results = kept = 0
     for _ in range(500):
         rec = StrategyRecord(CONDOR, at=T0, clock=clock)
         minutes, refs = itertools.count(1), itertools.count()
@@ -502,6 +504,13 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
                     proposal = rec.propose_execution(at=at(next(minutes)))
                 if proposal is not None:
                     rec.confirm(proposal.number, at=at(next(minutes)))
+            elif not rec.proposal_confirmed:  # an adjustment kept after a rejection (Q245): again or withdraw
+                pending = rec.proposed_version
+                if rng.random() < 0.5:
+                    rec.confirm(pending.number, at=at(next(minutes)))
+                else:
+                    rec.withdraw(pending.number, at=at(next(minutes)), actor="user")
+                kept += 1
             else:
                 pending = rec.proposed_version
                 outcome = rec.apply_result(ExecutionResult(
@@ -515,4 +524,67 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
             assert (rec.proposed_version is not None or rec.reconciliation_required
                     or rec.actual_position == active_intended)
     # A property test that never reaches a branch proves nothing: every branch must be exercised.
-    assert activations > 50 and reconciles > 50 and flagged_results > 50
+    assert activations > 50 and reconciles > 50 and flagged_results > 50 and kept > 50
+
+
+REJECT_REASONS = ("RMS: margin exceeds available funds", "Order price outside circuit limits")
+
+
+@pytest.mark.parametrize("status,kind", [(ResultStatus.REJECTED, OutcomeKind.REJECTED),
+                                         (ResultStatus.FAILED, OutcomeKind.FAILED)])
+def test_q245_rejected_adjustment_with_nothing_filled_keeps_the_same_proposal_for_a_fresh_confirm(status, kind):
+    """AC-3 (owner decision Q245, domain-model §6): an ADJUSTMENT whose every order is finally rejected/failed with
+    nothing filled keeps the original version active and KEEPS the proposal (same version number, not re-created)
+    with the rejection reasons; it is no longer confirmed, so a new broker attempt needs the user's confirm again."""
+    rec = executed_record()
+    proposal = rec.edit(scaled(CONDOR, 150), at=at(10))
+    rec.confirm(proposal.number, at=at(11))
+    outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2", REJECT_REASONS))
+    assert outcome.kind is kind and outcome.reasons == REJECT_REASONS
+    assert rec.active_version.number == 1 and rec.actual_position == broker(**FILLED_1_LOT)
+    assert rec.proposed_version == proposal and rec.proposed_version.number == 2 and len(rec.versions) == 2
+    assert not rec.proposal_confirmed and not rec.reconciliation_required
+    assert rec.outcomes_for(2) == (outcome,)  # the rejection, with its reasons, recorded on the kept proposal
+    # A result without a fresh confirm is refused: no automatic retry (CLAUDE.md hard rule; ADR-017).
+    two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
+    with pytest.raises(VersionError, match="never confirmed"):
+        rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(13), "exec-2b"))
+    # Nothing else can start while it is kept: execute again or withdraw.
+    with pytest.raises(VersionError, match="awaiting its execution result"):
+        rec.edit(scaled(CONDOR, 225), at=at(13))
+    # Execute again: confirm the SAME version, and a complete fill activates it.
+    rec.confirm(2, at=at(14))
+    assert rec.proposal_confirmed
+    done = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(15), "exec-2c"))
+    assert done.kind is OutcomeKind.ACTIVATED and rec.active_version.number == 2 and len(rec.versions) == 2
+    assert rec.proposed_version is None
+
+
+def test_q245_kept_adjustment_can_be_withdrawn_and_can_be_rejected_again():
+    """AC-3 (Q245): the kept proposal can be withdrawn (WITHDRAWN outcome, v1 stays active, edits free again), and a
+    second rejection of the re-confirmed attempt keeps it again with the second attempt's reasons."""
+    rec = executed_record()
+    rec.edit(scaled(CONDOR, 150), at=at(10))
+    rec.confirm(2, at=at(11))
+    rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, broker(**FILLED_1_LOT), at(12), "exec-2", ("first",)))
+    rec.confirm(2, at=at(13))
+    second = rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, broker(**FILLED_1_LOT), at(14), "exec-2b",
+                                              ("second",)))
+    assert rec.proposed_version.number == 2 and not rec.proposal_confirmed and second.reasons == ("second",)
+    assert [o.reasons for o in rec.outcomes_for(2)] == [("first",), ("second",)]
+    withdrawn = rec.withdraw(2, at=at(15), actor="user-1")
+    assert withdrawn.kind is OutcomeKind.WITHDRAWN and rec.proposed_version is None
+    assert rec.active_version.number == 1 and not rec.reconciliation_required
+    assert rec.edit(scaled(CONDOR, 225), at=at(16)).number == 3
+
+
+def test_q245_the_first_entry_rejected_with_nothing_filled_still_clears_the_proposal():
+    """AC-2 (Q243 fix 1 unchanged by Q245): with no active version, a rejection with nothing filled closes the
+    proposal; the strategy returns to draft history mode and cannot be confirmed again without a new proposal."""
+    rec = record()
+    rec.propose_execution(at=at(1))
+    rec.confirm(1, at=at(2))
+    rec.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), at(3), "exec-1", REJECT_REASONS))
+    assert rec.proposed_version is None and not rec.proposal_confirmed and rec.active_version is None
+    with pytest.raises(VersionError, match="not the pending"):
+        rec.confirm(1, at=at(4))

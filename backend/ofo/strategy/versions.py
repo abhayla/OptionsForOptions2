@@ -22,8 +22,10 @@ Rules implemented:
   baseline..intended makes the outcome MISMATCH, whatever the word. ``Version.baseline`` is the previous active
   version's intended position, fixed when the proposal is created: the window never slides with later reports.
 - Every result replaces the recorded actual position with the broker's position: the broker wins.
-- MISMATCH closes the proposal. REJECTED and FAILED close it when nothing moved off the baseline (nothing filled);
-  with some legs filled (inside the path) the proposal stays open and confirmed: a partially executed strategy whose
+- MISMATCH closes the proposal. REJECTED and FAILED with nothing moved off the baseline (nothing filled) close a
+  FIRST-entry proposal (Q243 fix 1); for an ADJUSTMENT (an active version exists) the same proposal is kept with the
+  rejection outcome and its reasons, UNconfirmed, so the user may confirm it again (a new broker attempt) or
+  withdraw it (Q245, domain-model §6); with some legs filled (inside the path) the proposal stays open and confirmed: a partially executed strategy whose
   missing legs the user may complete or retry, not a reconciliation (Q243 fix 4, domain-model §6). The broker's
   reason texts ride on the result (``reasons``) and are kept on the outcome (Q243 fix 1). Standing invariant, re-checked after every result: either a
   proposal is pending, or the broker's position equals the active version's intended position, or the sticky
@@ -36,7 +38,8 @@ Rules implemented:
   flag through the same invariant; ``mark_exited()`` closes a strategy whose broker position is flat (ADR-019 Q200
   Exited; deferred issue #19: a flat broker position cannot be adopted as a definition, so without this the
   strategy stayed blocked forever). An exited strategy accepts no further change.
-- ``withdraw()`` (Q243 fix 3): the user withdraws a proposed version they have NOT confirmed; a WITHDRAWN outcome
+- ``withdraw()`` (Q243 fix 3): the user withdraws a proposed version they have NOT confirmed (including an adjustment
+  kept after a rejection, Q245); a WITHDRAWN outcome
   (actor, time) is appended to the history and the version is kept. A confirmed proposal (orders may be out) cannot
   be withdrawn.
 """
@@ -488,9 +491,12 @@ class StrategyRecord:
         elif kind is OutcomeKind.ACTIVATED:
             self._set("_active", proposal.number)
             self._set("_executed", True)
-        still_open = kind is OutcomeKind.PARTIAL or (
-            kind in (OutcomeKind.REJECTED, OutcomeKind.FAILED) and actual != proposal.baseline)  # Q243 fix 4
-        if not still_open:
+        final_failure = kind in (OutcomeKind.REJECTED, OutcomeKind.FAILED)
+        still_open = kind is OutcomeKind.PARTIAL or (final_failure and actual != proposal.baseline)  # Q243 fix 4
+        kept_for_retry = final_failure and not still_open and self._active is not None  # Q245
+        if kept_for_retry:
+            self._set("_confirmed", False)  # a new broker attempt needs the user's confirmation again
+        elif not still_open:
             self._set("_pending", None)
             self._set("_confirmed", False)
         outcome = ExecutionOutcome(proposal.number, kind, intended, actual, result.at, result.reference,
