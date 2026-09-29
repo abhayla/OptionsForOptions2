@@ -7,11 +7,15 @@
     "where": "W-021 @ a838015",
     "evidence": "verifier: 'HOLE: exited while broker holds 4 contracts'; 'adopted active SP -50 while broker -75'"
   },
-  "fix": "Every run refreshes every covered strategy; each resolution checks its premise against the latest recorded report; record_report is two-phase (validate all, then write audit, then apply). W-021 parked (#33) with two residuals: named-scope runs on shared contracts, payload validation in phase 1.",
+  "fix": "Merged in W-021 (PR #40): every run refreshes every non-exited strategy; resolutions check the latest recorded report; record_report is two-phase; shared-contract resolutions needing attribution refused (Q224).",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Tests on the W-021 branch (not merged) cover the instances; guarded once W-021 merges with those tests."
+    "status": "guarded",
+    "checks": [
+      "tests/reconciliation/test_resolution.py",
+      "tests/reconciliation/test_external_change.py",
+      "tests/reconciliation/test_triggers.py"
+    ],
+    "note": "Guarded by the merged W-021 tests; >20 mutants killed across verifier rounds."
   },
   "spec_ref": [
     "spec/requirements/REQ-060.md",
@@ -32,6 +36,11 @@
       "date": "2026-09-29",
       "where": "W-021 fix 2 @ 66bbce0",
       "evidence": "named-strategy run falsely blocks a strategy sharing a contract; hand-built report leaves 1 audit event and no flag"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-021 @ 1e2d056",
+      "evidence": "shared contract A,B x50 with broker 0: share rule invented +50 for A; adopt wrote it and the closing order proposed SELL 100 (fixed fail-closed, Q224)"
     }
   ]
 }
