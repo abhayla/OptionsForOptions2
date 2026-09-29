@@ -66,9 +66,11 @@
   ],
   "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Process mechanism, not automatable today: a possible check would scan work items and briefs for rule sentences without a spec citation. Measured tonight: all 5 occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004)."
+    "status": "guarded",
+    "checks": [
+      "tests/orchestrator/test_check_brief.py"
+    ],
+    "note": "scripts/orchestrator/check_brief.py (W-040) checks every quoted spec citation in a brief verbatim against the cited REQ AC / ADR / Q text, before dispatch. It cannot see a paraphrase without quotes, a rule with no citation (reported UNCITED, fails only with --strict), or a correct quote used to support a wrong conclusion. Measured earlier: all 5 first occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004)."
   },
   "spec_ref": [
     "spec/decisions/ADR-045.md"

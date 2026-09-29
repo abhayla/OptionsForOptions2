@@ -31,6 +31,8 @@ Every product rule in your specific brief should quote the spec text it rests on
 or given without a spec quote is NOT settled: check it against the spec and the owner-reviewed transcripts, and if
 the source says otherwise, build to the source and report the conflict (finding brief-rule-from-memory: 5 brief
 rules were wrong tonight).
+The orchestrator runs `python scripts/orchestrator/check_brief.py <brief-file>` on every brief before dispatch; a quote
+that is not verbatim in the spec text it cites fails the brief (work item W-040).
 
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
