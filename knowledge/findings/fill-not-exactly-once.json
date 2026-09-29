@@ -46,6 +46,11 @@
       "date": "2026-09-29",
       "where": "W-041 (strategy state machine) verification, branch build/W-041-state-machine @ df44e2f",
       "evidence": "verifier probe P4b: after an all-rejected adjustment is re-confirmed, a late REJECTED message from attempt 1 (ref att1-order4) is accepted as attempt 2's result -> Adjustment Proposed while attempt 2's orders are live; P4c: re-confirm then sends attempt 3 (duplicate exposure). ExecutionResult carries no attempt identity. P2b': PARTIAL then REJECTED at baseline routed to Validated 'nothing filled'."
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-041 verification round 2 (after round 5 added attempt identity), build/W-041-state-machine @ 4e91a27",
+      "evidence": "probe X1: a NON-final PARTIAL result moved the strategy to Partially Executed while attempt 1 was still live; continue_execution/start_close minted attempt 2; attempt 1's later COMPLETE was recorded STALE and its fills never applied -> missing legs could be ordered twice. E1/E2: the acknowledgement token was spent on a stale other-version result and on a never-minted attempt. Second red of this class on W-041 -> independent review dispatched."
     }
   ]
 }
