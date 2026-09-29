@@ -227,7 +227,7 @@ def test_attack_build_is_unreachable_from_outside() -> None:
             impact="b",
             what_is_blocked="c",
             next_action="d",
-            external_text=None,
+            external=None,
         )
 
 
