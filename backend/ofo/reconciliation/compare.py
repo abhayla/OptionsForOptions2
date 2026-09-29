@@ -205,6 +205,9 @@ class ReconciliationReport:
             seen.add(sid)
             if not isinstance(position, Position):
                 raise ReconciliationError(f"report shares[{sid!r}] must be a Position, got {position!r}")
+        # Not a field (no effect on equality or repr): a per-strategy lookup, so recording a run that covers every
+        # strategy reads each share once instead of scanning all shares per strategy (W-037).
+        object.__setattr__(self, "_share_by_id", dict(self.shares))
 
     @property
     def blocked_strategy_ids(self) -> frozenset[str]:
@@ -217,9 +220,9 @@ class ReconciliationReport:
 
     def share(self, strategy_id: str) -> Position:
         """The strategy's broker position according to THIS run (what a resolution's premise is checked against)."""
-        for sid, position in self.shares:
-            if sid == strategy_id:
-                return position
+        position = self._share_by_id.get(strategy_id) if isinstance(strategy_id, str) else None
+        if position is not None:
+            return position
         raise ReconciliationError(f"strategy {strategy_id!r} was not covered by this reconciliation run")
 
 
@@ -309,16 +312,48 @@ def expected_units(
     return {c: v for c, v in expected.items() if v}
 
 
-def holders_of(
-    contract: Contract,
+def holders_by_contract(
+    contracts: list[Contract],
     actives: Mapping[str, Mapping[Contract, int]],
     proposals: Mapping[str, Mapping[Contract, int] | None],
-) -> tuple[str, ...]:
-    """Every strategy holding ``contract`` in its active version or its pending proposed version."""
-    return tuple(sorted(
-        sid for sid in actives
-        if contract in actives[sid] or contract in (proposals.get(sid) or {})
-    ))
+) -> dict[Contract, tuple[str, ...]]:
+    """For each of ``contracts``: every strategy holding it in its active version or its pending proposed version.
+
+    One pass over the strategies' lines (W-037, issue #64): work is linear in strategies + contracts, never a scan of
+    every strategy per contract.
+    """
+    found: dict[Contract, set[str]] = {contract: set() for contract in contracts}
+    for sid, units in actives.items():
+        for contract in units.keys() | (proposals.get(sid) or {}).keys():
+            if contract in found:
+                found[contract].add(sid)
+    return {contract: tuple(sorted(sids)) for contract, sids in found.items()}
+
+
+@dataclass(frozen=True)
+class _ActiveIndex:
+    """The strategies' ACTIVE units on the differing contracts, built once per run (W-037).
+
+    ``lines[c]``: (strategy id, units) for every strategy whose active version holds ``c``, sorted by id.
+    ``totals[c]``: the sum of every strategy's active units on ``c`` (the strategies' part of ``expected``).
+    Independent of ``holders_by_contract``: the breakdown and the shares read the active versions themselves.
+    """
+
+    lines: dict[Contract, list[tuple[str, int]]]
+    totals: dict[Contract, int]
+
+    @classmethod
+    def build(cls, contracts: list[Contract], actives: Mapping[str, Mapping[Contract, int]]) -> "_ActiveIndex":
+        lines: dict[Contract, list[tuple[str, int]]] = {contract: [] for contract in contracts}
+        for sid in sorted(actives):
+            for contract, value in actives[sid].items():
+                if contract in lines:
+                    lines[contract].append((sid, value))
+        return cls(lines, {contract: sum(v for _, v in held) for contract, held in lines.items()})
+
+    def others(self, sid: str, contract: Contract, actives: Mapping[str, Mapping[Contract, int]]) -> int:
+        """Every OTHER strategy's active units on ``contract`` (``contract`` must be one the index was built for)."""
+        return self.totals[contract] - actives[sid].get(contract, 0)
 
 
 def compare(
@@ -348,7 +383,8 @@ def compare(
         (c for c in broker.keys() | expected.keys() if broker.get(c, 0) != expected.get(c, 0)), key=contract_sort_key
     )
     diff = {c: broker.get(c, 0) - expected.get(c, 0) for c in differing}
-    held = {c: holders_of(c, actives, proposals) for c in differing}
+    held = holders_by_contract(differing, actives, proposals)
+    index = _ActiveIndex.build(differing, actives)
 
     groups = _pair_moved_contracts(differing, diff, held)
     mismatches = []
@@ -357,7 +393,7 @@ def compare(
         owners = tuple(sorted({sid for contract in contracts for sid in held[contract]}))
         if owners:
             anchor = next(contract for contract in contracts if held[contract])
-            kind = kind_hint or _classify_held(anchor, owners, broker, alone, actives, proposals, outside)
+            kind = kind_hint or _classify_held(anchor, owners, broker, alone, actives, proposals, index)
         else:
             kind = MismatchKind.STANDALONE_CHANGED if alone.get(contracts[0]) else MismatchKind.UNEXPECTED_BROKER_POSITION
         if owners and any(outside.get(c) for c in contracts):
@@ -365,7 +401,7 @@ def compare(
         breakdown = tuple(
             (holder, c, units)
             for c in contracts
-            for holder, units in [(STANDALONE, alone.get(c, 0))] + [(sid, actives[sid].get(c, 0)) for sid in sorted(actives)]
+            for holder, units in [(STANDALONE, alone.get(c, 0))] + index.lines[c]
             if units
         )
         mismatches.append(Mismatch(
@@ -380,7 +416,11 @@ def compare(
         ))
 
     covered = sorted(sid for sid, record in records.items() if not record.exited)
-    shares = tuple((sid, broker_share(sid, broker, alone, actives, proposals, mismatches)) for sid in covered)
+    involved: dict[str, set[Contract]] = {}
+    for m in mismatches:
+        for sid in m.strategy_ids:
+            involved.setdefault(sid, set()).update(c for c, _ in m.difference)
+    shares = tuple((sid, broker_share(sid, broker, alone, actives, involved.get(sid, set()), index)) for sid in covered)
     broker_lines = tuple(sorted(broker.items(), key=lambda item: contract_sort_key(item[0])))
     return ReconciliationReport(at, broker_lines, tuple(mismatches), shares)
 
@@ -393,34 +433,37 @@ def _pair_moved_contracts(
     Pairs only when exactly one unheld contract has the same underlying and instrument, the opposite difference,
     and differs in strike only (STRIKE) or expiry only (EXPIRY). Anything ambiguous stays separate, so an unheld
     contract is never silently attributed to a strategy it may not belong to.
+
+    Candidates are looked up in two buckets built once (W-037): unheld contracts by (underlying, instrument,
+    difference, expiry) -- a strike move -- and by (underlying, instrument, difference, strike) -- an expiry move. A
+    bucket never holds the held contract itself (it is held), so every entry left in it differs in exactly the other
+    field; a paired unheld contract is taken out of both buckets, exactly as it was skipped as "used" before.
     """
     used: set[Contract] = set()
     groups: list[tuple[tuple[Contract, ...], MismatchKind | None]] = []
-    unheld = [c for c in differing if not held[c]]
+    by_expiry: dict[tuple, dict[Contract, None]] = {}  # dict as an insertion-ordered set
+    by_strike: dict[tuple, dict[Contract, None]] = {}
+    for other in differing:
+        if not held[other]:
+            by_expiry.setdefault((other[:2], diff[other], other[3]), {})[other] = None
+            by_strike.setdefault((other[:2], diff[other], other[2]), {})[other] = None
     for contract in differing:
         if contract in used or not held[contract]:
             continue
-        candidates = []
-        for other in unheld:
-            if other in used or other[:2] != contract[:2] or diff[other] != -diff[contract]:
-                continue
-            if other[3] == contract[3] and other[2] != contract[2]:
-                candidates.append((other, MismatchKind.STRIKE_MISMATCH))
-            elif other[2] == contract[2] and other[3] != contract[3]:
-                candidates.append((other, MismatchKind.EXPIRY_MISMATCH))
-        if len(candidates) == 1:
-            other, kind = candidates[0]
+        strike_moves = by_expiry.get((contract[:2], -diff[contract], contract[3]), {})
+        expiry_moves = by_strike.get((contract[:2], -diff[contract], contract[2]), {})
+        if len(strike_moves) + len(expiry_moves) == 1:
+            other, kind = ((next(iter(strike_moves)), MismatchKind.STRIKE_MISMATCH) if strike_moves
+                           else (next(iter(expiry_moves)), MismatchKind.EXPIRY_MISMATCH))
             used.update((contract, other))
+            del by_expiry[(other[:2], diff[other], other[3])][other]
+            del by_strike[(other[:2], diff[other], other[2])][other]
             groups.append((tuple(sorted((contract, other), key=contract_sort_key)), kind))
         else:
             used.add(contract)
             groups.append(((contract,), None))
     groups.extend(((c,), None) for c in differing if c not in used)
     return groups
-
-
-def _others_units(sid: str, contract: Contract, actives: Mapping[str, Mapping[Contract, int]]) -> int:
-    return sum(units.get(contract, 0) for other, units in actives.items() if other != sid)
 
 
 def _classify_held(
@@ -430,14 +473,14 @@ def _classify_held(
     alone: Mapping[Contract, int],
     actives: Mapping[str, Mapping[Contract, int]],
     proposals: Mapping[str, Mapping[Contract, int] | None],
-    outside: Mapping[Contract, int],
+    index: _ActiveIndex,
 ) -> MismatchKind:
     """Kind of a mismatch on a strategy contract whose quantity moved (not to another strike or expiry)."""
     for sid in owners:
         proposal = proposals.get(sid)
         if proposal is None:
             continue
-        share = broker.get(contract, 0) - alone.get(contract, 0) - _others_units(sid, contract, actives)
+        share = broker.get(contract, 0) - alone.get(contract, 0) - index.others(sid, contract, actives)
         low, high = sorted((actives[sid].get(contract, 0), proposal.get(contract, 0)))
         if low <= share <= high:
             return MismatchKind.PARTIAL_EXECUTION
@@ -458,14 +501,16 @@ def broker_share(
     broker: Mapping[Contract, int],
     alone: Mapping[Contract, int],
     actives: Mapping[str, Mapping[Contract, int]],
-    proposals: Mapping[str, Mapping[Contract, int] | None],
-    mismatches: tuple[Mismatch, ...] | list[Mismatch],
+    involved: set[Contract],
+    index: _ActiveIndex,
 ) -> Position:
-    """The strategy's broker share: its active units where the broker agrees; elsewhere broker minus the rest."""
+    """The strategy's broker share: its active units where the broker agrees; elsewhere broker minus the rest.
+
+    ``involved`` is every contract of every mismatch that names this strategy (collected once per run, W-037).
+    """
     units = dict(actives[sid])
-    involved = {c for m in mismatches if sid in m.strategy_ids for c, _ in m.difference}
     for contract in involved:
-        units[contract] = broker.get(contract, 0) - alone.get(contract, 0) - _others_units(sid, contract, actives)
+        units[contract] = broker.get(contract, 0) - alone.get(contract, 0) - index.others(sid, contract, actives)
     try:
         return Position.of(units)
     except VersionError as exc:

@@ -167,6 +167,12 @@ def _holders_active_only(contract, actives, proposals):
     return tuple(sorted(sid for sid in actives if contract in actives[sid]))
 
 
+def per_contract(mutant):
+    """Lift a one-contract holders rule onto compare's seam ``holders_by_contract(contracts, actives, proposals)``
+    (W-037 indexed holders once per run; the mutants keep their one-contract meaning)."""
+    return lambda contracts, actives, proposals: {c: mutant(c, actives, proposals) for c in contracts}
+
+
 def test_ac6_contract_held_only_in_a_pending_proposal_blocks_that_strategy(monkeypatch):
     """AC-6 (mutant M20): the first execution is in flight (no active version); the broker filled the long put only.
     The contract is held only by the pending proposal, so the mismatch is that strategy's partial execution and
@@ -181,7 +187,7 @@ def test_ac6_contract_held_only_in_a_pending_proposal_blocks_that_strategy(monke
     (m,) = report.mismatches
     assert m.kind is MismatchKind.PARTIAL_EXECUTION and m.strategy_ids == ("IC-1",)
     assert m.difference == ((BP22800, 75),) and blocked_strategy_ids(report, {"IC-1": rec}) == frozenset({"IC-1"})
-    monkeypatch.setattr(compare_module, "holders_of", _holders_active_only)
+    monkeypatch.setattr(compare_module, "holders_by_contract", per_contract(_holders_active_only))
     mutated = compare({BP22800: 75}, {"IC-1": rec}, at=at(10), clock=clock)
     assert mutated.blocked_strategy_ids == frozenset()          # the mutant is visible: nobody blocked
 
@@ -189,9 +195,9 @@ def test_ac6_contract_held_only_in_a_pending_proposal_blocks_that_strategy(monke
 @pytest.mark.parametrize("name, mutant", [
     ("expected_units", _expected_first_strategy_only),
     ("expected_units", _expected_last_writer_wins),
-    ("holders_of", _holders_everyone),
-    ("holders_of", _holders_first_only),
-    ("holders_of", _holders_none),
+    ("holders_by_contract", per_contract(_holders_everyone)),
+    ("holders_by_contract", per_contract(_holders_first_only)),
+    ("holders_by_contract", per_contract(_holders_none)),
 ])
 def test_ac6_mutants_of_allocation_and_blocking_scope_are_caught(monkeypatch, name, mutant):
     """AC-6 mutation: each plausible wrong allocation rule or blocking scope makes the checks fail."""
