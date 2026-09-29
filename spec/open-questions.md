@@ -227,3 +227,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q235 — DECIDED (owner, 2026-09-29) — Trust boundary for the advice-wording check (W-024 round 6)
 - Decision: same boundary as W-026 (accidental misuse by own code, CI-flagged internals; runtime sabotage out of scope);
   promise phrases added to the checker. Recorded in ADR-003 "Q235".
+
+## Q236 — DECIDED (owner, 2026-09-29) — TOTAL Entry Value: net or plain sum?
+- Decision: NET entry premium (sells − buys) × quantity, Cr/Dr labelled; golden condor ₹6,825 Cr. Corrects the
+  orchestrator's ambiguous "signed as the legs" in REQ-035 "Owner decision (Q233)".
