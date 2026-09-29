@@ -210,7 +210,7 @@ def test_unlisted_contract_is_reported_with_alternatives_not_replaced(condor, ca
     """AC-5: a contract missing from a newer list stays in the catalogue, is reported, alternatives are offered,
     and the strategy still holds the original strike."""
     token = find_token(catalogue, "PE", "23000")
-    catalogue.update([c for c in parse_instruments_csv(FIXTURE) if c.instrument_token != token])
+    catalogue.update([c for c in parse_instruments_csv(FIXTURE) if c.instrument_token != token], as_of=AS_OF, force=True)
     result = check(condor, all_true_context(), catalogue, eligibility)
     (failure,) = result.failures
     assert failure.code is CheckCode.CONTRACT_NOT_LISTED
