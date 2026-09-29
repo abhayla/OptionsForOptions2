@@ -240,3 +240,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q239 — DECIDED (owner, 2026-09-29) — Gate checks on exits (W-014)
 - Decision: keep all five checks on exits. Recorded in REQ-059 "Owner decision (Q239)".
+
+## Q240 — DECIDED (owner, 2026-09-29) — REQ-039 strategy state transition table
+- Decision: the proposed table in spec/data/domain-model.md §6 is approved with two fixes: Reconciliation Required is
+  left only by a recorded manual resolution (Q222); Active ↔ Monitoring Paused only on the user's pause/resume.
+  REQ-039 is now Approved.
