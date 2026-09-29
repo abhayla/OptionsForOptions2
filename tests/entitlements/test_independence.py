@@ -17,10 +17,10 @@ import pytest
 import ofo.entitlements
 from ofo.entitlements import engine
 from ofo.entitlements.engine import access_at, trial_grant
-from ofo.entitlements.events import AccessLevel, EntitlementGrant, Source
+from ofo.entitlements.events import AccessLevel, NewGrant, Source
 from ofo.entitlements.ledger import EntitlementLedger
 
-from .helpers import audit, ist, ledger_for
+from .helpers import ist, ledger_for, note, record
 
 PACKAGE_DIR = Path(ofo.entitlements.__file__).parent
 
@@ -85,10 +85,10 @@ def test_access_takes_only_a_ledger_and_an_instant():
 def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliation_required():
     """AC-5: the three REQ-017 scenarios resolve from entitlement events alone, and Access carries no such state."""
     registered = ist(2026, 9, 29, 10)
-    pro_user = ledger_for("u-pro").append(
-        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1)))
+    pro_user = record(
+        ledger_for("u-pro"), NewGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", note())
     )
-    trial_user = ledger_for("u-trial").append(trial_grant("t", registered, "reg", audit(registered)))
+    trial_user = record(ledger_for("u-trial"), trial_grant("t", registered, "reg", note()))
 
     # "A Pro user can be disconnected from Zerodha" and "a strategy can be Reconciliation Required while the
     # subscription is active": the Pro user's ledger holds no session or strategy, and stays Pro.
@@ -100,9 +100,8 @@ def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliat
 
 def test_user_id_does_not_change_access():
     """AC-5: the same events under a different user id (identity) give the same access at every instant."""
-    events = (
-        EntitlementGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", audit(ist(2026, 9, 1))),
-    )
-    a, b = ledger_for("user-a", events), ledger_for("user-b", events)
+    paid = NewGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", note())
+    a, b = record(ledger_for("user-a"), paid), record(ledger_for("user-b"), paid)
+    assert a.events == b.events
     for at in (ist(2026, 8, 31), ist(2026, 9, 1), ist(2026, 9, 30, 23, 59, 59), ist(2026, 10, 1)):
         assert access_at(a, at) == access_at(b, at)

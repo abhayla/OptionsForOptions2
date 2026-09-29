@@ -91,6 +91,7 @@ class Placement(Enum):
 class EntitlementGrant:
     """One entitlement as granted: the grant time and HOW MUCH Pro, not fixed dates.
 
+    This is the RECORDED form, with the ``recorded_at`` the ledger stamped; a caller builds a ``NewGrant``.
     ``granted_at`` is when the platform grants it (within the ledger's clock skew of recording);
     ``paid_at`` optionally keeps the payment gateway's time for audit and never moves the schedule.
 
@@ -110,31 +111,9 @@ class EntitlementGrant:
     paid_at: datetime | None = None  # payment gateway's own time, audit only (a late webhook keeps it here)
 
     def __post_init__(self) -> None:
-        _require_text("entitlement_id", self.entitlement_id)
-        if not isinstance(self.source, Source):
-            raise ValueError(f"source must be a Source, got {self.source!r}")
-        _require_aware("granted_at", self.granted_at)
-        _require_text("reference", self.reference)
+        _check_grant_fields(self)
         if not isinstance(self.audit, Audit):
             raise ValueError("audit must be an Audit record")
-        if not isinstance(self.placement, Placement):
-            raise ValueError(f"placement must be a Placement, got {self.placement!r}")
-        if self.paid_at is not None:
-            if self.source not in (Source.PAID_MONTHLY, Source.PAID_ANNUAL):
-                raise ValueError("paid_at is only for a paid entitlement")
-            _require_aware("paid_at", self.paid_at)
-        if self.placement is Placement.FROM_GRANT_TIME and self.source is not Source.REFERRAL:
-            raise ValueError("only a referral can run from its grant time (stacking switched off)")
-        if self.duration is None:
-            if self.source is not Source.DIRECT_ZERODHA_CUSTOMER:
-                raise ValueError(f"{self.source.value} entitlement needs a duration; only direct customers have none")
-            return
-        if self.source is Source.DIRECT_ZERODHA_CUSTOMER:
-            raise ValueError("a direct customer entitlement is open-ended; it takes no duration")
-        if not isinstance(self.duration, timedelta) or self.duration <= timedelta(0):
-            raise ValueError(f"duration must be a positive timedelta, got {self.duration!r}")
-        if self.duration > MAX_DURATION:
-            raise ValueError(f"duration {self.duration} is over the {MAX_DAYS}-day maximum")
 
 
 @dataclass(frozen=True)
@@ -147,12 +126,102 @@ class EntitlementStatusChange:
     audit: Audit
 
     def __post_init__(self) -> None:
-        _require_text("entitlement_id", self.entitlement_id)
-        if self.status not in (Status.REVOKED, Status.ENDED):
-            raise ValueError(f"a status change must be REVOKED or ENDED, got {self.status!r}")
-        _require_aware("effective_at", self.effective_at)
+        _check_change_fields(self)
         if not isinstance(self.audit, Audit):
             raise ValueError("audit must be an Audit record")
 
 
 EntitlementEvent = EntitlementGrant | EntitlementStatusChange
+"""A RECORDED event: carries its ``Audit`` with the ``recorded_at`` the ledger stamped. Only stored history
+(``EntitlementLedger.load``) takes these; a new event is a ``NewGrant`` / ``NewStatusChange``."""
+
+
+# ------------------------------------------------------------------ new events: no recorded_at (ADR-023 Q225)
+
+
+@dataclass(frozen=True)
+class AuditNote:
+    """The caller's part of an audit record: who and why. WHEN it is recorded is never the caller's to say:
+    the ledger stamps ``recorded_at`` from its own clock (owner clarification to ADR-023 Q225, 2026-09-29)."""
+
+    actor: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        _require_text("actor", self.actor)
+        _require_text("reason", self.reason)
+
+
+@dataclass(frozen=True)
+class NewGrant:
+    """A grant to be recorded: every field of ``EntitlementGrant`` except the recording time.
+
+    ``EntitlementLedger.append`` stamps it with the ledger clock and refuses it unless ``granted_at`` lies
+    within the clock skew of that stamp, both ways.
+    """
+
+    entitlement_id: str
+    source: Source
+    granted_at: datetime
+    duration: timedelta | None
+    reference: str
+    note: AuditNote
+    placement: Placement = Placement.STACKED
+    paid_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        _check_grant_fields(self)
+        if not isinstance(self.note, AuditNote):
+            raise ValueError("note must be an AuditNote (who and why; the ledger stamps when)")
+
+
+@dataclass(frozen=True)
+class NewStatusChange:
+    """A revocation or early end to be recorded; the ledger stamps it and bounds ``effective_at`` by the skew."""
+
+    entitlement_id: str
+    status: Status
+    effective_at: datetime
+    note: AuditNote
+
+    def __post_init__(self) -> None:
+        _check_change_fields(self)
+        if not isinstance(self.note, AuditNote):
+            raise ValueError("note must be an AuditNote (who and why; the ledger stamps when)")
+
+
+NewEvent = NewGrant | NewStatusChange
+
+
+def _check_grant_fields(grant: EntitlementGrant | NewGrant) -> None:
+    """Every grant field except the audit, shared by the recorded and the new form."""
+    _require_text("entitlement_id", grant.entitlement_id)
+    if not isinstance(grant.source, Source):
+        raise ValueError(f"source must be a Source, got {grant.source!r}")
+    _require_aware("granted_at", grant.granted_at)
+    _require_text("reference", grant.reference)
+    if not isinstance(grant.placement, Placement):
+        raise ValueError(f"placement must be a Placement, got {grant.placement!r}")
+    if grant.paid_at is not None:
+        if grant.source not in (Source.PAID_MONTHLY, Source.PAID_ANNUAL):
+            raise ValueError("paid_at is only for a paid entitlement")
+        _require_aware("paid_at", grant.paid_at)
+    if grant.placement is Placement.FROM_GRANT_TIME and grant.source is not Source.REFERRAL:
+        raise ValueError("only a referral can run from its grant time (stacking switched off)")
+    if grant.duration is None:
+        if grant.source is not Source.DIRECT_ZERODHA_CUSTOMER:
+            raise ValueError(f"{grant.source.value} entitlement needs a duration; only direct customers have none")
+        return
+    if grant.source is Source.DIRECT_ZERODHA_CUSTOMER:
+        raise ValueError("a direct customer entitlement is open-ended; it takes no duration")
+    if not isinstance(grant.duration, timedelta) or grant.duration <= timedelta(0):
+        raise ValueError(f"duration must be a positive timedelta, got {grant.duration!r}")
+    if grant.duration > MAX_DURATION:
+        raise ValueError(f"duration {grant.duration} is over the {MAX_DAYS}-day maximum")
+
+
+def _check_change_fields(change: EntitlementStatusChange | NewStatusChange) -> None:
+    _require_text("entitlement_id", change.entitlement_id)
+    if change.status not in (Status.REVOKED, Status.ENDED):
+        raise ValueError(f"a status change must be REVOKED or ENDED, got {change.status!r}")
+    _require_aware("effective_at", change.effective_at)

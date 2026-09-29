@@ -25,10 +25,12 @@ from datetime import datetime, timedelta
 
 from ofo.entitlements.events import (
     AccessLevel,
-    Audit,
+    AuditNote,
     EntitlementGrant,
     MAX_DAYS,
     EntitlementStatusChange,
+    NewGrant,
+    NewStatusChange,
     Placement,
     Source,
     Status,
@@ -261,36 +263,40 @@ def pro_end(ledger: EntitlementLedger, at: datetime) -> datetime | None:
 
 
 def trial_grant(
-    entitlement_id: str, registered_at: datetime, reference: str, audit: Audit, days: int = TRIAL_DAYS_DEFAULT
-) -> EntitlementGrant:
-    """The registration trial: ``days`` of Pro (7 by default, ADR-023 Q88) granted at registration."""
+    entitlement_id: str, registered_at: datetime, reference: str, note: AuditNote, days: int = TRIAL_DAYS_DEFAULT
+) -> NewGrant:
+    """The registration trial: ``days`` of Pro (7 by default, ADR-023 Q88) granted at registration.
+
+    A new event: the ledger stamps when it is recorded, and ``registered_at`` must lie within its clock skew."""
     _require_days(days)
-    return EntitlementGrant(entitlement_id, Source.TRIAL, registered_at, timedelta(days=days), reference, audit)
+    return NewGrant(entitlement_id, Source.TRIAL, registered_at, timedelta(days=days), reference, note)
 
 
 def referral_grant(
     entitlement_id: str,
     granted_at: datetime,
     reference: str,
-    audit: Audit,
+    note: AuditNote,
     days: int = REFERRAL_DAYS_DEFAULT,
     stacking: bool = True,
-) -> EntitlementGrant:
+) -> NewGrant:
     """A referral reward of ``days`` days (ADR-038), stacked unless the admin switched stacking off."""
     _require_days(days)
     if not isinstance(stacking, bool):
         raise ValueError(f"stacking must be True or False, got {stacking!r}")
-    return EntitlementGrant(
-        entitlement_id, Source.REFERRAL, granted_at, timedelta(days=days), reference, audit, _placement(stacking)
+    return NewGrant(
+        entitlement_id, Source.REFERRAL, granted_at, timedelta(days=days), reference, note, _placement(stacking)
     )
 
 
-def revoke(ledger: EntitlementLedger, entitlement_id: str, effective_at: datetime, audit: Audit) -> EntitlementLedger:
-    """Revoke an entitlement from ``effective_at``: a new event, the grant stays in the history."""
-    return ledger.append(EntitlementStatusChange(entitlement_id, Status.REVOKED, effective_at, audit))
+def revoke(ledger: EntitlementLedger, entitlement_id: str, effective_at: datetime, note: AuditNote) -> EntitlementLedger:
+    """Revoke an entitlement from ``effective_at``: a new event, the grant stays in the history.
+
+    The ledger stamps when it is recorded; ``effective_at`` must lie within its clock skew of that stamp."""
+    return ledger.append(NewStatusChange(entitlement_id, Status.REVOKED, effective_at, note))
 
 
-def end_trial_early(ledger: EntitlementLedger, trial_id: str, at: datetime, audit: Audit) -> EntitlementLedger:
+def end_trial_early(ledger: EntitlementLedger, trial_id: str, at: datetime, note: AuditNote) -> EntitlementLedger:
     """End a trial that still owes Pro at ``at`` (ADR-039: an already-trialled Client ID was connected).
 
     Covers a running trial and one whose days are banked behind open-ended Pro: either way its
@@ -303,4 +309,4 @@ def end_trial_early(ledger: EntitlementLedger, trial_id: str, at: datetime, audi
     (trial,) = [r for r in resolve(ledger) if r.grant.entitlement_id == trial_id]
     if at < grant.granted_at or not _owes_pro(trial, at):
         raise ValueError(f"trial {trial_id!r} is not running at {at.isoformat()}")
-    return ledger.append(EntitlementStatusChange(trial_id, Status.ENDED, at, audit))
+    return ledger.append(NewStatusChange(trial_id, Status.ENDED, at, note))

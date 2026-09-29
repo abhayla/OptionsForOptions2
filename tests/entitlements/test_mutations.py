@@ -15,7 +15,9 @@ from ofo.entitlements import engine, events, ledger as ledger_module
 from ofo.entitlements.events import Placement, Status
 
 from . import test_boundary as boundary
+from . import test_clock_stamp as clock
 from . import test_engine as suite
+from .helpers import TICK
 
 
 # A mutant is "caught" when the protecting test fails: an assertion, a pytest.raises that did not
@@ -52,14 +54,20 @@ def _no_op(*args):
         ("_check_not_future", [
             boundary.test_grant_time_far_after_its_recording_is_refused,
             boundary.test_grant_time_skew_is_five_minutes_by_default_and_configurable,
-        ]),
-        ("_check_not_backdated", [boundary.test_backdated_revocation_is_refused]),
-        ("_check_ended_only_for_trial", [boundary.test_ended_is_only_for_a_trial]),
-        ("_check_grant_not_backdated", [boundary.test_backdated_open_ended_grant_is_refused]),
-        ("_check_recorded_not_future", [
-            boundary.test_recorded_at_after_the_clock_is_refused_so_the_ledger_never_freezes,
+            boundary.test_a_grant_dated_after_the_clock_is_refused_so_the_ledger_never_freezes,
             boundary.test_default_clock_is_the_real_utc_now,
         ]),
+        ("_check_not_backdated", [
+            boundary.test_backdated_revocation_is_refused,
+            clock.test_attack_1_revoke_dated_25_days_back_is_refused,
+        ]),
+        ("_check_ended_only_for_trial", [boundary.test_ended_is_only_for_a_trial]),
+        ("_check_grant_not_backdated", [
+            boundary.test_backdated_open_ended_grant_is_refused,
+            clock.test_attack_2_paid_grant_dated_8_sep_is_refused_and_a_late_webhook_keeps_its_full_month,
+            clock.test_attack_3_backdated_direct_cannot_give_back_used_trial_days,
+        ]),
+        ("_check_paid_at_not_future", [clock.test_paid_at_may_be_earlier_but_never_after_the_stamp_plus_skew]),
         ("_check_free_day_cap", [
             boundary.test_maximum_accumulated_free_days_cap_of_90,
             boundary.test_free_day_cap_counts_trial_days_and_defaults_to_no_cap,
@@ -257,8 +265,6 @@ def test_post_dating_bound_one_tick_loose_is_caught(monkeypatch):
 
 
 def boundary_tick():
-    from .helpers import TICK
-
     return TICK
 
 
@@ -303,7 +309,7 @@ def test_load_skipping_integrity_is_caught(monkeypatch):
         return empty._with(history.events, index)
 
     duplicate = lambda: stored.test_corrupted_stored_history_is_refused_on_load(  # noqa: E731
-        lambda: stored._corrupt(stored._paid("a", stored.T0), stored._paid("a", stored.T1, "other")), "already granted"
+        lambda: stored._corrupt(stored._stored_paid("a", stored.T0), stored._stored_paid("a", stored.T1, "other")), "already granted"
     )
     _passes_then_fails_under(
         monkeypatch, "load", classmethod(no_integrity_load), [duplicate], module=ledger_module.EntitlementLedger
@@ -336,3 +342,101 @@ def test_stored_history_made_mutable_is_caught(monkeypatch):
     _passes_then_fails_under(
         monkeypatch, "__setattr__", object.__setattr__, tests, module=ledger_module.StoredHistory
     )
+
+
+# ---------------------------------------------------------------- round 6: recorded_at stamped by the ledger clock
+
+
+def test_trusting_a_stamped_event_on_append_is_caught(monkeypatch):
+    """AC-4: an append that accepts a recorded-form event with its own (caller-chosen) recorded_at, the round-5
+    hole, must fail all three verifier attacks and the load back-door test."""
+    real_stamp = ledger_module._stamp
+
+    def keep_callers_stamp(draft, recorded_at):
+        if isinstance(draft, (events.EntitlementGrant, events.EntitlementStatusChange)):
+            return draft
+        return real_stamp(draft, recorded_at)
+
+    tests = [
+        clock.test_attack_1_revoke_dated_25_days_back_is_refused,
+        clock.test_attack_2_paid_grant_dated_8_sep_is_refused_and_a_late_webhook_keeps_its_full_month,
+        clock.test_attack_3_backdated_direct_cannot_give_back_used_trial_days,
+        stored.test_a_caller_chosen_recorded_at_cannot_ride_in_after_load,
+    ]
+    for test in tests:
+        test()
+    monkeypatch.setattr(ledger_module, "_stamp", keep_callers_stamp)
+    monkeypatch.setattr(ledger_module, "_check_new_event_type", _no_op)
+    for test in tests:
+        with pytest.raises(CAUGHT):
+            test()
+
+
+def test_removing_the_new_event_type_check_is_caught(monkeypatch):
+    """AC-4: without the type check a stamped event or a non-event reaches the stamping step and fails with an
+    AttributeError instead of the clear refusal the tests require."""
+    tests = [
+        clock.test_attack_1_revoke_dated_25_days_back_is_refused,
+        lambda: clock.test_append_refuses_anything_but_a_new_event("not an event"),
+    ]
+    for test in tests:
+        test()
+    monkeypatch.setattr(ledger_module, "_check_new_event_type", _no_op)
+    for test in tests:
+        with pytest.raises((AttributeError, *CAUGHT)):
+            test()
+
+
+def test_stamping_with_the_events_own_date_is_caught(monkeypatch):
+    """AC-3/AC-4: a stamp taken from the event's own date instead of the clock (recorded_at = granted/effective)
+    makes every backdated event look on time; the attacks and the stamp test must fail."""
+    real_stamp = ledger_module._stamp
+
+    def own_date(draft, recorded_at):
+        return real_stamp(draft, draft.granted_at if isinstance(draft, events.NewGrant) else draft.effective_at)
+
+    _passes_then_fails_under(monkeypatch, "_stamp", own_date, [
+        clock.test_attack_1_revoke_dated_25_days_back_is_refused,
+        clock.test_attack_2_paid_grant_dated_8_sep_is_refused_and_a_late_webhook_keeps_its_full_month,
+        clock.test_attack_3_backdated_direct_cannot_give_back_used_trial_days,
+        clock.test_recorded_at_is_the_ledger_clock_reading_for_every_new_event,
+    ], module=ledger_module)
+
+
+def test_removing_the_empty_constructor_check_is_caught(monkeypatch):
+    """AC-4: a constructor that kept given events would let stamped events with any recorded_at in unchecked."""
+    _passes_then_fails_under(monkeypatch, "_check_constructed_empty", _no_op, [
+        stored.test_a_new_event_cannot_skip_the_policy_by_riding_on_stored_history,
+    ], module=ledger_module)
+
+
+def _loosened(guard: str, delta: timedelta):
+    real = getattr(ledger_module, guard)
+    return lambda event, skew: real(event, skew + delta)
+
+
+FIVE_MIN, ONE_MIN, ZERO = timedelta(minutes=5), timedelta(minutes=1), timedelta(0)
+
+
+@pytest.mark.parametrize("guard, delta, tests", [
+    ("_check_not_future", TICK, [lambda: clock.test_grant_time_boundaries_are_exactly_plus_and_minus_the_skew(FIVE_MIN)]),
+    ("_check_grant_not_backdated", TICK,
+     [lambda: clock.test_grant_time_boundaries_are_exactly_plus_and_minus_the_skew(FIVE_MIN)]),
+    ("_check_change_not_postdated", TICK,
+     [lambda: clock.test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(ZERO, Status.REVOKED)]),
+    ("_check_not_backdated", TICK,
+     [lambda: clock.test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(ZERO, Status.ENDED)]),
+    ("_check_paid_at_not_future", TICK, [clock.test_paid_at_may_be_earlier_but_never_after_the_stamp_plus_skew]),
+    ("_check_not_future", -TICK, [lambda: clock.test_grant_time_boundaries_are_exactly_plus_and_minus_the_skew(ONE_MIN)]),
+    ("_check_grant_not_backdated", -TICK,
+     [lambda: clock.test_grant_time_boundaries_are_exactly_plus_and_minus_the_skew(ONE_MIN)]),
+    ("_check_change_not_postdated", -TICK,
+     [lambda: clock.test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(ONE_MIN, Status.ENDED)]),
+    ("_check_not_backdated", -TICK,
+     [lambda: clock.test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(ONE_MIN, Status.REVOKED)]),
+], ids=["grant-future-loose", "grant-backdated-loose", "change-postdated-loose", "change-backdated-loose",
+        "paid_at-loose", "grant-future-tight", "grant-backdated-tight", "change-postdated-tight",
+        "change-backdated-tight"])
+def test_a_skew_bound_off_by_one_tick_is_caught(monkeypatch, guard, delta, tests):
+    """AC-4: each skew bound one microsecond too loose or too tight fails its exact-boundary test."""
+    _passes_then_fails_under(monkeypatch, guard, _loosened(guard, delta), tests, module=ledger_module)

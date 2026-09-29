@@ -5,11 +5,15 @@ skew, no backdating, no post-dating). STORED history is loaded with integrity ch
 references) and is never re-judged by today's settings: lowering the free-day cap from 90 to 30 does not
 break a history of 7 + 30 + 30 days that was legal when written. No status change (revoke, early end)
 may be dated more than the allowed clock skew after the time it is recorded."
+Clarification (owner, 2026-09-29, after round 5): '"recorded at" is stamped by the ledger from its own clock;
+a caller can never supply it.' So new events here are recorded by setting the ledger clock (``record`` /
+``at``); stamped events are built by hand only where they stand in for the store adapter's rows.
 
 Expected dates are hand-computed from the ADR-023 rules: a 7-day trial from 1 Sep 00:00 IST ends 8 Sep;
 a 30-day referral stacked on it runs 8 Sep - 8 Oct; the next 8 Oct - 7 Nov (October has 31 days).
 """
 
+import dataclasses
 import time
 from datetime import timedelta
 
@@ -17,27 +21,43 @@ import pytest
 
 from ofo.entitlements import engine
 from ofo.entitlements.engine import access_at, end_trial_early, referral_grant, resolve, revoke, trial_grant
-from ofo.entitlements.events import AccessLevel, EntitlementGrant, EntitlementStatusChange, Source, Status
+from ofo.entitlements.events import (
+    AccessLevel,
+    EntitlementGrant,
+    EntitlementStatusChange,
+    NewGrant,
+    NewStatusChange,
+    Source,
+    Status,
+)
 from ofo.entitlements.ledger import EntitlementLedger, StoredHistory, _restore
 
 from . import test_engine as rules
-from .helpers import TEST_NOW, TICK, audit, fixed_clock, ist, ledger_for
+from .helpers import TICK, StepClock, at, fixed_clock, ist, ledger_for, note, record, stamped
 
 PRO = AccessLevel.PRO
 LIMITED = AccessLevel.LIMITED
 FIVE_MIN = timedelta(minutes=5)
 ONE_MIN = timedelta(minutes=1)
+DAYS_30 = timedelta(days=30)
 
 
-def _paid(entitlement_id: str, granted_at, reference: str | None = None, recorded_at=None) -> EntitlementGrant:
+def _paid(entitlement_id: str, granted_at, reference: str | None = None) -> NewGrant:
+    return NewGrant(
+        entitlement_id, Source.PAID_MONTHLY, granted_at, DAYS_30, reference or f"razorpay:{entitlement_id}", note()
+    )
+
+
+def _stored_paid(entitlement_id: str, recorded_at, reference: str | None = None) -> EntitlementGrant:
+    """A paid grant as the store hands it back: already stamped (granted when recorded)."""
     return EntitlementGrant(
-        entitlement_id, Source.PAID_MONTHLY, granted_at, timedelta(days=30),
-        reference or f"razorpay:{entitlement_id}", audit(recorded_at or granted_at),
+        entitlement_id, Source.PAID_MONTHLY, recorded_at, DAYS_30, reference or f"razorpay:{entitlement_id}",
+        stamped(recorded_at),
     )
 
 
 def _load(history: StoredHistory, **settings) -> EntitlementLedger:
-    settings.setdefault("clock", fixed_clock(TEST_NOW))
+    settings.setdefault("clock", StepClock(ist(2026, 9, 30)))
     return EntitlementLedger.load(history, **settings)
 
 
@@ -46,9 +66,9 @@ def _seven_plus_thirty_plus_thirty() -> EntitlementLedger:
     + 30 queued referral days are unused, so 35 + 30 = 65 <= 90."""
     t0, t1, t2 = ist(2026, 9, 1), ist(2026, 9, 2), ist(2026, 9, 3)
     led = ledger_for("u", max_free_days=90)
-    led = led.append(trial_grant("t", t0, "reg", audit(t0)))
-    led = led.append(referral_grant("r1", t1, "ref-1", audit(t1)))
-    return led.append(referral_grant("r2", t2, "ref-2", audit(t2)))
+    led = record(led, trial_grant("t", t0, "reg", note()))
+    led = record(led, referral_grant("r1", t1, "ref-1", note()))
+    return record(led, referral_grant("r2", t2, "ref-2", note()))
 
 
 # ---------------------------------------------------------------- defect 1: post-dated status changes
@@ -56,10 +76,10 @@ def _seven_plus_thirty_plus_thirty() -> EntitlementLedger:
 
 def test_post_dated_revoke_is_refused_so_a_real_revoke_still_lands():
     """AC-4: a revoke dated 2106 is refused; the real fraud revoke on 3 Oct is then accepted and cuts Pro there."""
-    led = ledger_for("u").append(_paid("p", ist(2026, 9, 20)))  # Pro 20 Sep - 20 Oct
+    led = record(ledger_for("u"), _paid("p", ist(2026, 9, 20)))  # Pro 20 Sep - 20 Oct
     with pytest.raises(ValueError, match="post-dated"):
-        revoke(led, "p", ist(2106, 1, 1), audit(ist(2026, 9, 25)))
-    led = revoke(led, "p", ist(2026, 10, 3), audit(ist(2026, 10, 3)))
+        revoke(at(led, ist(2026, 9, 25)), "p", ist(2106, 1, 1), note())
+    led = revoke(at(led, ist(2026, 10, 3)), "p", ist(2026, 10, 3), note())
     assert access_at(led, ist(2026, 10, 3) - TICK).level is PRO
     assert access_at(led, ist(2026, 10, 3)).level is LIMITED
     assert led.status_change("p").effective_at == ist(2026, 10, 3)
@@ -68,11 +88,11 @@ def test_post_dated_revoke_is_refused_so_a_real_revoke_still_lands():
 def test_end_trial_early_five_days_ahead_is_refused():
     """AC-4: ending a trial 5 days after the moment it is recorded is refused; ending it now is accepted."""
     t = ist(2026, 9, 1)
-    led = ledger_for("u").append(trial_grant("t", t, "reg", audit(t)))
+    led = record(ledger_for("u"), trial_grant("t", t, "reg", note()))
     recorded = ist(2026, 9, 1, 1)
     with pytest.raises(ValueError, match="post-dated"):
-        end_trial_early(led, "t", recorded + timedelta(days=5), audit(recorded))
-    ended = end_trial_early(led, "t", recorded, audit(recorded))
+        end_trial_early(at(led, recorded), "t", recorded + timedelta(days=5), note())
+    ended = end_trial_early(at(led, recorded), "t", recorded, note())
     assert access_at(ended, recorded - TICK).level is PRO
     assert access_at(ended, recorded).level is LIMITED
 
@@ -82,11 +102,11 @@ def test_end_trial_early_five_days_ahead_is_refused():
 def test_status_change_post_dating_boundary_is_exactly_the_skew(skew, status):
     """AC-4: effective_at == recorded_at + skew is accepted; one microsecond more is refused (revoke and early end)."""
     t = ist(2026, 9, 1)
-    led = ledger_for("u", clock_skew=skew).append(trial_grant("t", t, "reg", audit(t)))
+    led = record(ledger_for("u", clock_skew=skew), trial_grant("t", t, "reg", note()))
     recorded = ist(2026, 9, 2)
     with pytest.raises(ValueError, match="post-dated"):
-        led.append(EntitlementStatusChange("t", status, recorded + skew + TICK, audit(recorded)))
-    changed = led.append(EntitlementStatusChange("t", status, recorded + skew, audit(recorded)))
+        record(led, NewStatusChange("t", status, recorded + skew + TICK, note()), recorded)
+    changed = record(led, NewStatusChange("t", status, recorded + skew, note()), recorded)
     assert changed.status_change("t").effective_at == recorded + skew
 
 
@@ -115,19 +135,19 @@ def test_a_new_free_grant_on_the_loaded_history_meets_the_new_cap():
     """AC-4: the lowered cap still binds NEW events: at 4 Sep 4 trial + 60 referral days are unused, so a
     new 30-day referral (94 > 30) is refused, while a paid grant (not free) is accepted."""
     loaded = _load(_seven_plus_thirty_plus_thirty().stored(), max_free_days=30)
-    at = ist(2026, 9, 4)
+    when = ist(2026, 9, 4)
     with pytest.raises(ValueError, match="maximum accumulated free days is 30: 64 unused"):
-        loaded.append(referral_grant("r3", at, "ref-3", audit(at)))
-    assert loaded.append(_paid("p", at)).grant("p").source is Source.PAID_MONTHLY
+        record(loaded, referral_grant("r3", when, "ref-3", note()))
+    assert record(loaded, _paid("p", when)).grant("p").source is Source.PAID_MONTHLY
 
 
 def test_history_legal_under_skew_5_min_loads_under_skew_1_min():
     """AC-3: a grant 3 min after its recording and a revoke 3 min before its recording (legal under a
     5-minute skew) load after the skew is lowered to 1 minute; new events then meet the 1-minute skew."""
     rec = ist(2026, 9, 1)
-    led = ledger_for("u").append(_paid("p", rec + timedelta(minutes=3), recorded_at=rec))
+    led = record(ledger_for("u"), _paid("p", rec + timedelta(minutes=3)), rec)
     revoke_rec = ist(2026, 9, 10)
-    led = revoke(led, "p", revoke_rec - timedelta(minutes=3), audit(revoke_rec))
+    led = revoke(at(led, revoke_rec), "p", revoke_rec - timedelta(minutes=3), note())
     loaded = _load(led.stored(), clock_skew=ONE_MIN)
     assert access_at(loaded, rec + timedelta(minutes=3) - TICK).level is LIMITED
     assert access_at(loaded, rec + timedelta(minutes=3)).level is PRO
@@ -135,18 +155,19 @@ def test_history_legal_under_skew_5_min_loads_under_skew_1_min():
     assert access_at(loaded, revoke_rec - timedelta(minutes=3)).level is LIMITED
     late = ist(2026, 9, 11)
     with pytest.raises(ValueError, match="more than 0:01:00 after"):
-        loaded.append(_paid("p2", late + timedelta(minutes=3), recorded_at=late))
+        record(loaded, _paid("p2", late + timedelta(minutes=3)), late)
 
 
 def test_loaded_ledger_ignores_the_clock_for_stored_events_but_not_for_new_ones():
-    """AC-4: stored events recorded after a (misset) clock still load; a new event after it is refused."""
+    """AC-4: stored events recorded after a (misset) clock still load; a new event is stamped with that clock,
+    which is behind the stored history, so it is refused rather than recorded out of order."""
     t = ist(2026, 9, 1)
-    written = ledger_for("u").append(_paid("p", t))
+    written = record(ledger_for("u"), _paid("p", t))
     early_clock = fixed_clock(ist(2020, 1, 1))
     loaded = EntitlementLedger.load(written.stored(), clock=early_clock)
     assert loaded.events == written.events
-    with pytest.raises(ValueError, match="after the ledger clock"):
-        loaded.append(_paid("p2", ist(2026, 9, 2)))
+    with pytest.raises(ValueError, match="recorded_at order"):
+        loaded.append(_paid("p2", ist(2020, 1, 1)))
 
 
 def test_new_events_after_load_follow_the_stored_order():
@@ -154,9 +175,9 @@ def test_new_events_after_load_follow_the_stored_order():
     loaded = _load(_seven_plus_thirty_plus_thirty().stored())
     earlier = ist(2026, 9, 2, 12)
     with pytest.raises(ValueError, match="recorded_at order"):
-        loaded.append(_paid("p", earlier))
+        record(loaded, _paid("p", earlier))
     with pytest.raises(ValueError, match="already granted"):
-        loaded.append(_paid("r1", ist(2026, 9, 4)))
+        record(loaded, _paid("r1", ist(2026, 9, 4)))
 
 
 # ---------------------------------------------------------------- the load path is not a back door
@@ -191,21 +212,35 @@ def test_load_refuses_raw_events(raw):
 
 
 def test_a_new_event_cannot_skip_the_policy_by_riding_on_stored_history():
-    """AC-4: stored events + a post-dated revoke or an over-cap referral, fed back in, get the NEW-event checks.
-
-    The constructor replays its events as NEW ones (under the 90-day cap they were written with; at 4 Sep
-    4 + 60 unused + 30 new = 94 > 90); a loaded ledger applies the lowered 30-day cap to the new event."""
+    """AC-4: stored events + a post-dated revoke or an over-cap referral cannot enter a ledger without the
+    NEW-event checks: the constructor takes no events at all, ``dataclasses.replace`` cannot carry them, and
+    on a loaded ledger the lowered 30-day cap binds the new event (at 4 Sep 4 + 60 unused + 30 new = 94 > 30)."""
     written = _seven_plus_thirty_plus_thirty()
     rec = ist(2026, 9, 4)
-    post_dated = EntitlementStatusChange("r1", Status.REVOKED, ist(2106, 1, 1), audit(rec))
-    over_cap = referral_grant("r3", rec, "ref-3", audit(rec))
+    post_dated = NewStatusChange("r1", Status.REVOKED, ist(2106, 1, 1), note())
+    over_cap = referral_grant("r3", rec, "ref-3", note())
     for smuggled, message in ((post_dated, "post-dated"), (over_cap, "maximum accumulated free days")):
         with pytest.raises(ValueError, match=message):
-            ledger_for("u", written.stored().events + (smuggled,), max_free_days=90)
-        with pytest.raises(ValueError, match=message):
-            _load(written.stored(), max_free_days=30).append(smuggled)
+            record(_load(written.stored(), max_free_days=30), smuggled, rec)
+    with pytest.raises(ValueError, match="constructed empty"):
+        EntitlementLedger("u", written.stored().events, clock=fixed_clock(rec), max_free_days=90)
+    with pytest.raises(ValueError, match="constructed empty"):
+        dataclasses.replace(written, max_free_days=1000)
     # the only public path from stored history to a ledger is load(StoredHistory), and it adds nothing
     assert _load(written.stored()).events == written.events
+
+
+def test_a_caller_chosen_recorded_at_cannot_ride_in_after_load():
+    """AC-4 (round 6): a recorded-form event carrying a caller-chosen recorded_at (3 Sep, 30 days before the
+    3 Oct clock) is refused by append on a loaded ledger; the same change as a new event is stamped 3 Oct
+    and refused as backdated."""
+    loaded = _load(_seven_plus_thirty_plus_thirty().stored(), clock=fixed_clock(ist(2026, 10, 3)))
+    forged = EntitlementStatusChange("r1", Status.REVOKED, ist(2026, 9, 3), stamped(ist(2026, 9, 3)))
+    with pytest.raises(ValueError, match="append takes a NewGrant or NewStatusChange"):
+        loaded.append(forged)
+    with pytest.raises(ValueError, match="backdated"):
+        loaded.append(NewStatusChange("r1", Status.REVOKED, ist(2026, 9, 3), note()))
+    assert loaded.status_change("r1") is None
 
 
 # ---------------------------------------------------------------- integrity checks on stored history
@@ -217,24 +252,25 @@ def _corrupt(*events) -> StoredHistory:
 
 
 T0, T1, T2 = ist(2026, 9, 1), ist(2026, 9, 2), ist(2026, 9, 3)
+SEVEN_DAYS = timedelta(days=7)
 
 
 @pytest.mark.parametrize(
     "history, message",
     [
-        (lambda: _corrupt(_paid("a", T1), _paid("b", T0)), "recorded_at order"),
-        (lambda: _corrupt(_paid("a", T0), _paid("a", T1, "other")), "already granted"),
-        (lambda: _corrupt(_paid("a", T0, " Pay-1 "), _paid("b", T1, "pay-1")), "one fact grants once"),
-        (lambda: _corrupt(trial_grant("t1", T0, "reg-1", audit(T0)), trial_grant("t2", T1, "reg-2", audit(T1))),
+        (lambda: _corrupt(_stored_paid("a", T1), _stored_paid("b", T0)), "recorded_at order"),
+        (lambda: _corrupt(_stored_paid("a", T0), _stored_paid("a", T1, "other")), "already granted"),
+        (lambda: _corrupt(_stored_paid("a", T0, " Pay-1 "), _stored_paid("b", T1, "pay-1")), "one fact grants once"),
+        (lambda: _corrupt(EntitlementGrant("t1", Source.TRIAL, T0, SEVEN_DAYS, "reg-1", stamped(T0)), EntitlementGrant("t2", Source.TRIAL, T1, SEVEN_DAYS, "reg-2", stamped(T1))),
          "already has a trial"),
-        (lambda: _corrupt(EntitlementStatusChange("x", Status.REVOKED, T0, audit(T0))), "no entitlement 'x'"),
-        (lambda: _corrupt(_paid("a", T0), EntitlementStatusChange("a", Status.REVOKED, T1, audit(T1)),
-                          EntitlementStatusChange("a", Status.REVOKED, T2, audit(T2))), "already revoked or ended"),
-        (lambda: _corrupt(_paid("a", T0), EntitlementStatusChange("a", Status.ENDED, T1, audit(T1))),
+        (lambda: _corrupt(EntitlementStatusChange("x", Status.REVOKED, T0, stamped(T0))), "no entitlement 'x'"),
+        (lambda: _corrupt(_stored_paid("a", T0), EntitlementStatusChange("a", Status.REVOKED, T1, stamped(T1)),
+                          EntitlementStatusChange("a", Status.REVOKED, T2, stamped(T2))), "already revoked or ended"),
+        (lambda: _corrupt(_stored_paid("a", T0), EntitlementStatusChange("a", Status.ENDED, T1, stamped(T1))),
          "ENDED is only a trial"),
-        (lambda: _corrupt(_paid("a", T0), "not an event"), "not an entitlement event"),
+        (lambda: _corrupt(_stored_paid("a", T0), "not an event"), "not an entitlement event"),
         (lambda: _corrupt(*[
-            EntitlementGrant(f"a{i}", Source.PAID_ANNUAL, T0, timedelta(days=3650), f"pay-{i}", audit(T0))
+            EntitlementGrant(f"a{i}", Source.PAID_ANNUAL, T0, timedelta(days=3650), f"pay-{i}", stamped(T0))
             for i in range(800)
         ]), "past the last representable date"),
     ],
@@ -249,7 +285,7 @@ def test_corrupted_stored_history_is_refused_on_load(history, message):
 
 def test_load_of_1000_stored_events_is_fast():
     """AC-4: loading re-checks each event against an index, not the whole history (1,000 events well under 1 s)."""
-    stored = _restore("u", tuple(_paid(f"p{i}", T0 + timedelta(seconds=i)) for i in range(1000)))
+    stored = _restore("u", tuple(_stored_paid(f"p{i}", T0 + timedelta(seconds=i)) for i in range(1000)))
     started = time.perf_counter()
     loaded = _load(stored)
     assert time.perf_counter() - started < 1.0

@@ -2,8 +2,8 @@
 
 Two ways in, with different checks (owner decision Q225, 2026-09-29):
 
-- A NEW event (``append``, or the constructor's ``events``, which appends them one by one) is checked
-  against the CURRENT settings: integrity (order, unique ids and references, one trial, a change
+- A NEW event (``append`` of a ``NewGrant`` / ``NewStatusChange``) is stamped with ``recorded_at`` from the
+  ledger's own clock and checked against the CURRENT settings: integrity (order, unique ids and references, one trial, a change
   names a grant not yet changed, ENDED only for a trial, representable dates) plus policy (clock,
   clock skew both ways, the free-day cap).
 - STORED history (``EntitlementLedger.load``) is loaded with the integrity checks only and is never
@@ -12,11 +12,15 @@ Two ways in, with different checks (owner decision Q225, 2026-09-29):
   which only ``EntitlementLedger.stored()`` (or the store adapter, via ``_restore``) produces, so the
   load path is not a way to add a new event without the policy checks.
 
-Time rules for a new event (``clock_skew``, 5 minutes by default):
-- nothing may be recorded after the ledger's clock (``clock``, real UTC now by default), so one bad
-  timestamp can never freeze the ledger against later appends;
-- a grant's ``granted_at`` and a status change's ``effective_at`` must lie within the skew of the
-  moment they are recorded: nothing is backdated and nothing is post-dated into the future.
+Time rules for a new event (owner clarification to ADR-023 Q225, 2026-09-29: '"recorded at" is stamped by
+the ledger from its own clock; a caller can never supply it. Every new event's own date (granted/effective)
+must lie within the clock-skew window of that stamp, both ways.'):
+- ``recorded_at`` = the ledger's ``clock()`` (real UTC now by default) at append; no public append path takes
+  a recorded time, and ``append`` refuses an already-stamped ``EntitlementGrant`` / ``EntitlementStatusChange``;
+- a grant's ``granted_at`` and a status change's ``effective_at`` must lie within ``clock_skew`` (5 minutes by
+  default) of that stamp, both ways: nothing is backdated and nothing is post-dated;
+- ``paid_at`` (the gateway's time, audit only, never moves the schedule) may be earlier than the stamp (a late
+  webhook) but not later than stamp + skew.
 A late payment webhook is recorded with ``granted_at`` = when we record it (the full duration runs
 from then) and the gateway's own time in ``paid_at``, kept for audit; it never rewrites history.
 Backdated corrections are refused; if one is ever needed it must be a separate, explicit correction
@@ -33,7 +37,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from ofo.entitlements.events import EntitlementEvent, EntitlementGrant, EntitlementStatusChange, Source, Status
+from ofo.entitlements.events import (
+    Audit,
+    EntitlementEvent,
+    EntitlementGrant,
+    EntitlementStatusChange,
+    NewEvent,
+    NewGrant,
+    NewStatusChange,
+    Source,
+    Status,
+)
 
 DEFAULT_CLOCK_SKEW = timedelta(minutes=5)
 FREE_SOURCES = (Source.TRIAL, Source.REFERRAL)
@@ -94,11 +108,42 @@ def _check_order(index: _Index, event: EntitlementEvent) -> None:
         raise ValueError("events must be appended in recorded_at order; the ledger is append-only")
 
 
-def _check_recorded_not_future(event: EntitlementEvent, now: datetime, skew: timedelta) -> None:
-    if event.audit.recorded_at > now + skew:
+def _check_new_event_type(draft: object) -> None:
+    """``append`` takes only a NEW event; a recorded event carries a caller-chosen ``recorded_at`` (Q225)."""
+    if isinstance(draft, (EntitlementGrant, EntitlementStatusChange)):
         raise ValueError(
-            f"recorded_at {event.audit.recorded_at.isoformat()} is after the ledger clock ({now.isoformat()}) "
-            f"plus {skew}"
+            "append takes a NewGrant or NewStatusChange: recorded_at is stamped by the ledger's clock, "
+            "never supplied by the caller"
+        )
+    if not isinstance(draft, (NewGrant, NewStatusChange)):
+        raise ValueError(f"not a new entitlement event: {draft!r}")
+
+
+def _check_constructed_empty(events: object) -> None:
+    """A ledger's constructor takes no events: events carry a recorded_at, and only the ledger stamps one."""
+    if events != ():
+        raise ValueError(
+            "a ledger is constructed empty: append new events (the ledger stamps recorded_at) or load stored history"
+        )
+
+
+def _stamp(draft: NewEvent, recorded_at: datetime) -> EntitlementEvent:
+    """Turn a new event into its recorded form, stamped with the ledger clock's reading (``Audit`` refuses a
+    reading that is not a timezone-aware datetime)."""
+    audit = Audit(draft.note.actor, recorded_at, draft.note.reason)
+    if isinstance(draft, NewGrant):
+        return EntitlementGrant(
+            draft.entitlement_id, draft.source, draft.granted_at, draft.duration, draft.reference, audit,
+            draft.placement, draft.paid_at,
+        )
+    return EntitlementStatusChange(draft.entitlement_id, draft.status, draft.effective_at, audit)
+
+
+def _check_paid_at_not_future(grant: EntitlementGrant, skew: timedelta) -> None:
+    if grant.paid_at is not None and grant.paid_at > grant.audit.recorded_at + skew:
+        raise ValueError(
+            f"paid_at {grant.paid_at.isoformat()} is more than {skew} after it was recorded "
+            f"({grant.audit.recorded_at.isoformat()}); a payment cannot be in the future"
         )
 
 
@@ -207,12 +252,14 @@ def _check_integrity(index: _Index, event: EntitlementEvent) -> None:
 
 
 def _check_policy(ledger: EntitlementLedger, event: EntitlementEvent) -> None:
-    """Checks against the CURRENT settings; applied to a new event only, never to stored history (Q225)."""
+    """Checks against the CURRENT settings; applied to a new event only, never to stored history (Q225).
+
+    ``event`` is already stamped with the ledger clock, so every bound below is relative to that stamp."""
     skew = ledger.clock_skew
-    _check_recorded_not_future(event, ledger.clock(), skew)
     if isinstance(event, EntitlementGrant):
         _check_not_future(event, skew)
         _check_grant_not_backdated(event, skew)
+        _check_paid_at_not_future(event, skew)
         _check_free_day_cap(ledger, event)
     else:
         _check_change_not_postdated(event, skew)
@@ -220,7 +267,7 @@ def _check_policy(ledger: EntitlementLedger, event: EntitlementEvent) -> None:
 
 
 def _check_next(ledger: EntitlementLedger, event: EntitlementEvent) -> None:
-    """Raise ``ValueError`` unless ``event`` may follow what ``ledger`` holds as a NEW event."""
+    """Raise ``ValueError`` unless the stamped ``event`` may follow what ``ledger`` holds as a NEW event."""
     _check_integrity(ledger._index, event)
     _check_policy(ledger, event)
 
@@ -229,7 +276,7 @@ class StoredHistory:
     """A user's recorded events, as stored. Produced only by ``EntitlementLedger.stored()`` or ``_restore``.
 
     It cannot be built, extended or edited by a caller, so ``EntitlementLedger.load`` never receives an
-    event that did not pass the new-event checks when it was recorded.
+    event that was not stamped and checked by a ledger when it was recorded.
     """
 
     __slots__ = ("user_id", "events")
@@ -271,9 +318,10 @@ class EntitlementLedger:
     """Every entitlement event of one user, in the order recorded.
 
     ``append`` returns a NEW ledger; nothing is ever edited or removed, so ``events`` is the complete
-    audit history. ``events`` given to the constructor are NEW events (appended one by one under these
-    settings); stored history is rebuilt with ``load`` instead (integrity checks only, Q225). Settings: ``clock_skew`` (see module docstring), ``clock`` (returns an aware "now";
-    real UTC by default, fixed in tests) and ``max_free_days`` (admin cap on unused trial + referral
+    audit history. A ledger is constructed EMPTY: new events come in through ``append`` (stamped by the
+    ledger clock) and stored history through ``load`` (integrity checks only, Q225); the constructor
+    refuses ``events``. Settings: ``clock_skew`` (see module docstring), ``clock`` (returns an aware "now";
+    real UTC by default, injected in tests) and ``max_free_days`` (admin cap on unused trial + referral
     days, REQ-021 AC-5; ``None`` = no cap, the default until the owner sets a number).
     """
 
@@ -287,8 +335,7 @@ class EntitlementLedger:
     def __post_init__(self) -> None:
         if not isinstance(self.user_id, str) or not self.user_id.strip():
             raise ValueError("user_id must be a non-empty string")
-        if not isinstance(self.events, tuple):
-            raise ValueError("events must be a tuple")
+        _check_constructed_empty(self.events)
         if not isinstance(self.clock_skew, timedelta) or self.clock_skew < timedelta(0):
             raise ValueError(f"clock_skew must be a non-negative timedelta, got {self.clock_skew!r}")
         if not callable(self.clock):
@@ -296,10 +343,6 @@ class EntitlementLedger:
         cap = self.max_free_days
         if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 1):
             raise ValueError(f"max_free_days must be a positive whole number or None, got {cap!r}")
-        current = self._with(events=(), index=_Index())
-        for event in self.events:  # same checks as append, event by event
-            current = current.append(event)
-        object.__setattr__(self, "_index", current._index)
 
     def _with(self, events: tuple[EntitlementEvent, ...], index: _Index) -> EntitlementLedger:
         built = object.__new__(EntitlementLedger)
@@ -310,8 +353,13 @@ class EntitlementLedger:
             object.__setattr__(built, name, value)
         return built
 
-    def append(self, event: EntitlementEvent) -> EntitlementLedger:
-        """Return a new ledger with ``event`` added; raise ``ValueError`` if it is not a valid next event."""
+    def append(self, draft: NewEvent) -> EntitlementLedger:
+        """Stamp ``draft`` with the ledger clock and return a new ledger with it added.
+
+        Raise ``ValueError`` if it is not a new event, or not a valid next event under the current settings.
+        """
+        _check_new_event_type(draft)
+        event = _stamp(draft, self.clock())
         _check_next(self, event)
         return self._with(self.events + (event,), self._index.with_event(event))
 
