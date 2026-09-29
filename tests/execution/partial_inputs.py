@@ -45,6 +45,14 @@ class Clock:
 VERSION_ID = "v1"  # the record's own id of the version the plan executes (REQ-036 AC-1)
 
 
+def record_for_legs(legs: tuple) -> StrategyRecord:
+    """A record whose version 1 is exactly ``legs`` (proposed for execution)."""
+    record = StrategyRecord(StrategyDefinition.from_engine("NIFTY", Strategy(tuple(legs))),
+                            at=FILL_AT - datetime.timedelta(minutes=10), clock=lambda: READ_AT)
+    record.propose_execution(at=FILL_AT - datetime.timedelta(minutes=9))
+    return record
+
+
 def condor_record(quantity: int = LOT) -> StrategyRecord:
     """The strategy's record: version 1 is exactly the plan's legs (proposed for execution)."""
     record = StrategyRecord(StrategyDefinition.from_engine("NIFTY", Strategy(condor_legs(quantity))),

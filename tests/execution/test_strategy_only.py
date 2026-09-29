@@ -235,6 +235,7 @@ _ALLOWED_LEG_SHAPES = {
     "strategy/modification.py:LegChange": "resolved only against a record's active version (apply_changes)",
     "orders/model.py:FillEvent": "an inbound broker fact, keyed to a broker order that belongs to a strategy",
     "engine/inputs.py:LegInput": "a calculation input",
+    "execution/review.py:ReviewLine": "a display row of the pre-execution review; it has no route to the broker",
 }
 
 
