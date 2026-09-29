@@ -46,6 +46,8 @@ be a catalogue instrument, and every leg quantity and every quantity to order mu
 instrument's catalogue lot size, else refused. ORCHESTRATOR DEFAULT (W-028, the spec is silent): a freeze quantity
 that is not a whole number of lots is rounded DOWN to whole lots (freeze 200, lot 65 -> 195), so every slice is
 lot-aligned; a freeze below one lot is refused.
+ONE SLICING RULE (W-032, deferred #50): ``slice_quantity`` is the only place a leg is split at the freeze quantity;
+the plan (Complete / Retry) and Close Partial Strategy (``exit_orders``, REQ-056 AC-10) both go through it.
 REMAINING ORDERS (W-028): ``quantities`` names the units still to order per leg (Complete / Retry); steps, dependencies
 and margin order stay those of the FULL plan, only the named legs get orders.
 
