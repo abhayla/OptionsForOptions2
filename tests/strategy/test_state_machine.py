@@ -41,7 +41,17 @@ from ofo.strategy.state_machine import (
     Trigger,
     allowed_triggers,
 )
-from ofo.strategy.versions import ExecutionResult, OutcomeKind, Position, ResultStatus, StrategyRecord, VersionError
+from ofo.strategy.versions import (
+    AttemptKind,
+    ExecutionAttempt,
+    ExecutionOutcome,
+    ExecutionResult,
+    OutcomeKind,
+    Position,
+    ResultStatus,
+    StrategyRecord,
+    VersionError,
+)
 from ofo.strategy.wording import find_banned_phrases
 
 S = StrategyState
@@ -93,7 +103,12 @@ SPEC_ROWS: dict[tuple[StrategyState, StrategyState], set[Trigger]] = {
 for _live in LIVE:
     SPEC_ROWS.setdefault((_live, S.RECONCILIATION_REQUIRED), set()).add(Trigger.BROKER_DIFFERS)
     SPEC_ROWS[(S.RECONCILIATION_REQUIRED, _live)] = {Trigger.MANUAL_RESOLUTION}
+# Q247: "adopt -> Active on the adopted version, whatever the state before".
+SPEC_ROWS[(S.RECONCILIATION_REQUIRED, S.ACTIVE)].add(Trigger.MANUAL_ADOPT)
 SPEC_PAIRS = frozenset(SPEC_ROWS)
+# Q247: "any other recorded resolution -> the previous live state". The record has no resolution besides adopt and
+# broker-flat exit that clears its flag (W-012/W-021), so these approved rows exist but no event reaches them.
+UNREACHABLE = {(S.RECONCILIATION_REQUIRED, live): {Trigger.MANUAL_RESOLUTION} for live in LIVE}
 
 
 # ---- building a real machine in each state ----------------------------------------------------------------------
@@ -114,10 +129,14 @@ class Ctx:
     def ref(self) -> str:
         return f"r{next(self.refs)}"
 
-    def result(self, status: ResultStatus, position: Position, reasons: tuple[str, ...] = ()) -> None:
-        pending = self.record.proposed_version
-        number = pending.number if pending is not None else len(self.record.versions) or 1
-        self.record.apply_result(ExecutionResult(number, status, position, self.tick(), self.ref(), reasons))
+    def result(self, status: ResultStatus, position: Position, reasons: tuple[str, ...] = (),
+               attempt: ExecutionAttempt | None = None, reference: str | None = None) -> ExecutionOutcome:
+        """A broker message for ``attempt`` (default: the record's live attempt, else its latest one)."""
+        attempts = self.record.attempts
+        attempt = attempt or self.record.live_attempt or (attempts[-1] if attempts else None)
+        number = attempt.version_number if attempt is not None else 1
+        return self.record.apply_result(ExecutionResult(number, status, position, self.tick(), reference or self.ref(),
+                                                        reasons, attempt=attempt))  # type: ignore[arg-type]
 
     def observe(self, position: Position) -> None:
         self.record.observe_broker_position(position, at=self.tick(), reference=self.ref())
@@ -294,8 +313,13 @@ def ev_withdraw_proposal(ctx: Ctx) -> None:
 
 
 def ev_close_partial(ctx: Ctx) -> None:
-    if ctx.record.proposed_version is not None:  # the closing orders executed: the broker is flat again
-        _try(lambda: ctx.result(ResultStatus.REJECTED, Position()))
+    """Close Partial: the record mints a close attempt, its orders execute and the broker is back at the baseline."""
+    pending = ctx.record.proposed_version
+    if pending is not None:
+        def close() -> None:
+            ctx.record.start_close(pending.number, at=ctx.tick())
+            ctx.result(ResultStatus.COMPLETE, pending.baseline)
+        _try(close)
     ctx.machine.close_partial(at=ctx.tick(), actor="user-1")
 
 
@@ -389,17 +413,35 @@ def test_ac1_every_from_to_pair_of_the_12_states():
             assert pair in SPEC_PAIRS, f"{label} + {event} made the unapproved move {pair}"
             assert step.trigger in SPEC_ROWS[pair], (label, event, step.trigger)
             observed.setdefault(pair, set()).add(step.trigger)
-    assert set(observed) == SPEC_PAIRS, f"approved pairs never reached: {sorted(SPEC_PAIRS - set(observed), key=str)}"
-    assert observed == SPEC_ROWS
+    reachable: dict[tuple[StrategyState, StrategyState], set[Trigger]] = {}
+    for pair, triggers in SPEC_ROWS.items():
+        left = triggers - UNREACHABLE.get(pair, set())
+        if left:
+            reachable[pair] = left
+    assert observed == reachable, f"approved rows never reached: {sorted(set(reachable) - set(observed), key=str)}"
 
 
-def test_ac1_reconciliation_required_returns_only_to_the_state_it_came_from():
-    """AC-1: "Reconciliation Required -> previous live state" -- never to another live state."""
+def test_ac1_q247_adopt_goes_to_active_on_the_adopted_version_whatever_the_state_before():
+    """AC-1 (Q247): "adopt -> Active on the adopted version, whatever the state before (the adopted position is the
+    strategy, nothing is left partial)". From each of the five live states, adopting leaves the strategy Active on
+    the version the record made active, and every Active move is then allowed (P3c: Partially Executed -> RR -> adopt
+    was left Partially Executed with no pending version, so none of its four choices worked)."""
     for previous in LIVE:
         ctx = to_reconciliation(previous)
         ev_resolve_adopt(ctx)
-        assert ctx.machine.state is previous
-        assert ctx.machine.transitions[-1].trigger is Trigger.MANUAL_RESOLUTION
+        adopted = ctx.record.active_version
+        step = ctx.machine.transitions[-1]
+        assert (step.from_state, step.to_state, step.trigger) == (S.RECONCILIATION_REQUIRED, S.ACTIVE,
+                                                                 Trigger.MANUAL_ADOPT), previous
+        assert step.detail == (("version", str(adopted.number)),)
+        assert adopted.intended_position == ctx.record.actual_position
+        assert ctx.record.outcomes[-1].kind is OutcomeKind.RECONCILED
+        assert ctx.machine.explain() is None  # Active is a normal state: nothing left to explain
+        ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1")  # an Active move works
+        assert ctx.machine.state is S.ADJUSTMENT_PROPOSED
+    # The "previous live state" rows stay approved (any other recorded resolution) but no event reaches them.
+    for pair, triggers in UNREACHABLE.items():
+        assert triggers <= allowed_triggers(*pair)
 
 
 def test_ac1_an_agreeing_run_or_no_resolution_never_leaves_reconciliation_required():
@@ -501,18 +543,21 @@ def test_ac1_guards_read_the_record_not_the_caller():
 
 
 def test_ac1_after_adopting_during_execution_the_strategy_becomes_active_only_through_the_table():
-    """AC-1: a mismatch during execution -> Reconciliation Required -> (adopt) Execution in Progress -> Active,
-    each step an approved row; the adopted version is what the broker holds, reconciled."""
+    """AC-1 (Q247): a mismatch during execution -> Reconciliation Required -> (adopt) Active, each step an approved
+    row; the adopted version is what the broker holds, reconciled; a late message of the attempt that was in flight
+    is stale and changes nothing."""
     ctx = to_reconciliation(S.EXECUTION_IN_PROGRESS)
+    in_flight = ctx.record.attempts[-1]
     ev_resolve_adopt(ctx)
-    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
-    ctx.machine.follow_execution(at=ctx.tick())
     assert ctx.machine.state is S.ACTIVE
-    assert [(t.from_state, t.to_state) for t in ctx.machine.transitions[-3:]] == [
+    assert [(t.from_state, t.to_state) for t in ctx.machine.transitions[-2:]] == [
         (S.EXECUTION_IN_PROGRESS, S.RECONCILIATION_REQUIRED),
-        (S.RECONCILIATION_REQUIRED, S.EXECUTION_IN_PROGRESS),
-        (S.EXECUTION_IN_PROGRESS, S.ACTIVE),
+        (S.RECONCILIATION_REQUIRED, S.ACTIVE),
     ]
+    held = ctx.record.actual_position
+    late = ctx.result(ResultStatus.COMPLETE, Position(), attempt=in_flight)
+    assert late.kind is OutcomeKind.STALE and ctx.record.actual_position == held
+    assert not ctx.record.reconciliation_required and ctx.machine.state is S.ACTIVE
 
 
 def test_ac2_every_state_change_is_an_explicit_recorded_and_audited_transition():
@@ -618,7 +663,8 @@ EXPECTED_EXPLANATIONS = {
         "Zerodha's position differs from this strategy's (1 contract differs).",
         ("new execution", "adjustment execution", "exit orders", "modification", "archive"),
         "Reconcile: adopt actual broker position, close/reconcile through a prepared order, or mark as requiring "
-        "attention. If Zerodha shows no position, the strategy can be marked exited.",
+        "attention. Adopting makes Zerodha's position the active strategy. If Zerodha shows no position, the "
+        "strategy can be marked exited.",
     ),
     S.MONITORING_PAUSED: (
         "Monitoring of this strategy was paused by user-1.",
@@ -733,7 +779,7 @@ def test_ac1_q243_fix1_nothing_filled_and_every_order_rejected_returns_to_valida
     # Execute again: a new proposed version, back to Execution in Progress through the approved row.
     ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
     assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
-    assert ctx.machine.transitions[-1].detail == (("version", "2"),)
+    assert ctx.machine.transitions[-1].detail == (("version", "2"), ("attempt", "2"))  # a new attempt, minted by the record
     # A FAILED result with no broker text says so instead of inventing a reason.
     ctx.result(ResultStatus.FAILED, Position())
     assert ctx.machine.follow_execution(at=ctx.tick()).detail == (("version", "2"),
@@ -859,7 +905,7 @@ def test_ac1_q243_fix3_the_withdrawal_log_is_capped(monkeypatch):
 def test_ac1_q243_rejection_reasons_are_checked(reasons):
     """AC-1 (Q243 fix 1): the broker's reason texts are a bounded tuple of non-empty strings (fail closed)."""
     with pytest.raises(VersionError, match="reasons"):
-        ExecutionResult(1, ResultStatus.REJECTED, Position(), T0, "r1", reasons)
+        ExecutionResult(1, ResultStatus.REJECTED, Position(), T0, "r1", reasons, attempt=to_executing().record.live_attempt)
 
 
 def test_ac1_q243_fix5_any_live_state_is_exactly_the_five_listed():
@@ -938,7 +984,7 @@ def test_ac1_q245_the_rejected_adjustment_can_be_executed_again_or_withdrawn():
     assert ctx.machine.state is S.ADJUSTMENT_PROPOSED
     ctx.record.confirm(kept.number, at=ctx.tick())
     step = ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
-    assert (step.to_state, step.detail) == (S.EXECUTION_IN_PROGRESS, (("version", "2"),))
+    assert (step.to_state, step.detail) == (S.EXECUTION_IN_PROGRESS, (("version", "2"), ("attempt", "3")))  # attempt 2 was rejected
     ctx.result(ResultStatus.COMPLETE, full(ctx))
     assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.ACTIVE
     assert ctx.record.active_version.number == 2 and len(ctx.record.versions) == 2
@@ -989,3 +1035,184 @@ def test_ac1_q245_adjustment_proposed_is_entered_only_by_the_approved_triggers()
                 S.RECONCILIATION_REQUIRED: {Trigger.MANUAL_RESOLUTION}}
     for state in StrategyState:
         assert set(allowed_triggers(state, S.ADJUSTMENT_PROPOSED)) == expected.get(state, set()), state
+
+
+# ---- W-041 round 5: execution attempts (verifier probes P4b, P4c, P2b') -----------------------------------------
+DOUBLE_POSITION = Position.of(DOUBLE.intended_position())
+
+
+def _second_attempt_live() -> tuple[Ctx, ExecutionAttempt, ExecutionAttempt]:
+    """A rejected adjustment (attempt 2, nothing filled) re-confirmed by the user: attempt 3's orders are live."""
+    ctx = _rejected_adjustment()
+    ctx.machine.follow_execution(at=ctx.tick())
+    first = ctx.record.attempts[-1]
+    second = ctx.record.confirm(2, at=ctx.tick())
+    ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+    return ctx, first, second
+
+
+def test_ac1_p4b_a_late_result_of_an_earlier_attempt_is_stale_and_changes_nothing():
+    """AC-1 (core, ADR-016/ADR-017, W-041 verifier P4b): after a rejected adjustment is re-confirmed, a late REJECTED
+    message of the FIRST attempt (ref att1-order4) is recorded as STALE and cannot change the state, the recorded
+    fills, the broker position, the confirmation or the explanation of the live attempt."""
+    ctx, first, second = _second_attempt_live()
+    assert (first.number, second.number, second.version_number) == (2, 3, 2)  # v1's entry was attempt 1
+    assert second.kind is AttemptKind.EXECUTE and ctx.record.live_attempt == second
+    before = (ctx.machine.state, ctx.machine.transitions, ctx.record.actual_position, ctx.record.recorded_fills,
+              ctx.record.proposal_confirmed, ctx.machine.explain(), ctx.audit.events)
+    late = ctx.result(ResultStatus.REJECTED, ctx.record.proposed_version.baseline, ("late",), attempt=first,
+                      reference="att1-order4")
+    assert (late.kind, late.attempt, late.reference, late.version_number) == (OutcomeKind.STALE, 2, "att1-order4", 2)
+    assert ctx.machine.follow_execution(at=ctx.tick()) is None
+    assert (ctx.machine.state, ctx.machine.transitions, ctx.record.actual_position, ctx.record.recorded_fills,
+            ctx.record.proposal_confirmed, ctx.machine.explain(), ctx.audit.events) == before
+    assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
+    # A stale message with a DIFFERENT broker picture changes nothing either.
+    ctx.result(ResultStatus.PARTIAL, some_legs(ctx), attempt=first)
+    assert ctx.record.actual_position == before[2] and ctx.record.recorded_fills == before[3]
+    # The same stale message twice is refused as a duplicate; a stale message from the future is refused.
+    with pytest.raises(VersionError, match="already applied"):
+        ctx.result(ResultStatus.REJECTED, Position(), attempt=first, reference="att1-order4")
+    with pytest.raises(VersionError, match="future"):
+        ctx.record.apply_result(ExecutionResult(2, ResultStatus.REJECTED, Position(), FAR + datetime.timedelta(days=1),
+                                                "att1-future", attempt=first))
+    # The live attempt still decides: it fills and the strategy becomes Active on version 2.
+    ctx.result(ResultStatus.COMPLETE, full(ctx))
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.ACTIVE
+    assert ctx.record.active_version.number == 2
+
+
+def test_ac1_p4c_no_further_attempt_while_one_is_live():
+    """AC-1 (ADR-017 no automatic retry; W-041 verifier P4c): with attempt 3 live and a late attempt-2 rejection
+    received, neither the machine nor the record lets the user confirm again (a duplicate set of orders)."""
+    ctx, first, second = _second_attempt_live()
+    ctx.result(ResultStatus.REJECTED, ctx.record.proposed_version.baseline, attempt=first)
+    with pytest.raises(VersionError, match="already confirmed"):
+        ctx.record.confirm(2, at=ctx.tick())
+    with pytest.raises(StateMachineError, match="not an approved transition"):
+        ctx.machine.confirm_adjustment(at=ctx.tick(), actor="user-1")
+    assert ctx.record.attempts[-1] == second and ctx.record.live_attempt == second
+
+
+def test_ac1_results_of_a_superseded_or_closed_attempt_are_stale():
+    """AC-1: every result path checks the attempt -- entry, Complete/Retry, Close Partial, and a kept (unconfirmed)
+    adjustment before the user re-confirms."""
+    ctx = to_partial()
+    first = ctx.record.live_attempt
+    step = ctx.machine.continue_execution(at=ctx.tick(), actor="user-1")
+    retry = ctx.record.live_attempt
+    assert (retry.number, retry.kind, step.detail) == (2, AttemptKind.RETRY, (("version", "1"), ("attempt", "2")))
+    assert ctx.result(ResultStatus.COMPLETE, full(ctx), attempt=first).kind is OutcomeKind.STALE
+    assert ctx.machine.follow_execution(at=ctx.tick()) is None and ctx.record.active_version is None
+    ctx.result(ResultStatus.FAILED, some_legs(ctx))  # the retry failed finally: Partially Executed again
+    assert ctx.machine.follow_execution(at=ctx.tick()).to_state is S.PARTIALLY_EXECUTED
+    ctx.record.start_close(1, at=ctx.tick())
+    assert ctx.record.live_attempt.kind is AttemptKind.CLOSE
+    assert ctx.result(ResultStatus.COMPLETE, full(ctx), attempt=retry).kind is OutcomeKind.STALE
+    assert ctx.result(ResultStatus.COMPLETE, Position()).kind is OutcomeKind.CLOSED
+    assert ctx.record.proposed_version is None and ctx.record.live_attempt is None
+    ctx.machine.close_partial(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.EXITED
+    ctx = _rejected_adjustment()
+    ctx.machine.follow_execution(at=ctx.tick())
+    assert ctx.record.live_attempt is None
+    assert ctx.result(ResultStatus.COMPLETE, DOUBLE_POSITION).kind is OutcomeKind.STALE
+    assert ctx.record.active_version.number == 1 and ctx.machine.state is S.ADJUSTMENT_PROPOSED
+
+
+def test_ac1_an_attempt_the_record_never_minted_is_refused():
+    """AC-1 (finding caller-supplied-verdict-trusted): the attempt is minted by the record; a hand-built attempt (an
+    unminted number, another record's attempt, a changed kind) or a result naming no attempt is refused outright and
+    records nothing."""
+    ctx = to_executing()
+    live = ctx.record.live_attempt
+    other = to_executing().record.live_attempt
+    count = len(ctx.record.outcomes)
+    for forged in (dataclasses.replace(live, number=2), other, dataclasses.replace(live, kind=AttemptKind.CLOSE)):
+        with pytest.raises(VersionError, match="not minted"):
+            ctx.result(ResultStatus.COMPLETE, full(ctx), attempt=forged)
+    with pytest.raises(VersionError, match="attempt"):
+        ExecutionResult(1, ResultStatus.COMPLETE, full(ctx), ctx.tick(), "x", attempt=None)  # type: ignore[arg-type]
+    with pytest.raises(VersionError, match="attempt of version"):
+        ExecutionResult(2, ResultStatus.COMPLETE, full(ctx), ctx.tick(), "x", attempt=live)
+    assert len(ctx.record.outcomes) == count and ctx.record.live_attempt == live
+
+
+def test_ac1_retry_and_close_need_a_pending_confirmed_partly_filled_proposal():
+    """AC-1: the record mints a Complete/Retry or Close attempt only for the pending, confirmed proposal with
+    something recorded as filled, never while reconciliation is required or after exit."""
+    ctx = to_executing()
+    for mint in (ctx.record.retry, ctx.record.start_close):
+        with pytest.raises(VersionError, match="nothing of version 1"):
+            mint(1, at=ctx.tick())
+        with pytest.raises(VersionError, match="pending, confirmed"):
+            mint(2, at=ctx.tick())
+    ctx = to_partial()
+    ctx.result(ResultStatus.COMPLETE, overfilled(ctx))
+    with pytest.raises(VersionError, match="reconciliation required"):
+        ctx.record.retry(1, at=ctx.tick())
+    ctx = to_adjusting()
+    version = ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    with pytest.raises(VersionError, match="pending, confirmed"):
+        ctx.record.start_close(version.number, at=ctx.tick())
+    ctx = to_exited()
+    with pytest.raises(VersionError, match="exited"):
+        ctx.record.retry(1, at=ctx.tick())
+
+
+def test_ac1_the_attempt_list_is_capped(monkeypatch):
+    """AC-1: absurd sizes are refused; the attempt list has a hard cap (lowered here so the test is quick)."""
+    import ofo.strategy.versions as versions
+    ctx = to_partial()
+    monkeypatch.setattr(versions, "MAX_ATTEMPTS", 1)
+    with pytest.raises(VersionError, match="attempt list is full"):
+        ctx.machine.continue_execution(at=ctx.tick(), actor="user-1")
+    assert ctx.machine.state is S.PARTIALLY_EXECUTED and len(ctx.record.attempts) == 1
+    ctx = to_validated()
+    monkeypatch.setattr(versions, "MAX_ATTEMPTS", 0)
+    with pytest.raises(VersionError, match="attempt list is full"):
+        ctx.machine.confirm_execute(at=ctx.tick(), actor="user-1")
+
+
+@pytest.mark.parametrize("first", [ResultStatus.PARTIAL, ResultStatus.REJECTED, ResultStatus.FAILED])
+@pytest.mark.parametrize("second", [ResultStatus.REJECTED, ResultStatus.FAILED, ResultStatus.PARTIAL])
+def test_ac1_p2b_fills_that_went_back_to_the_baseline_are_reconciliation_required(first, second):
+    """AC-1 (Q243 fix 4: "Reconciliation Required only if Zerodha's positions differ from the recorded fills"; W-041
+    verifier P2b'): some legs recorded as filled, then a result with the broker back at the baseline is NOT "nothing
+    filled" (Validated) -- Zerodha differs from the recorded fills, so the strategy is Reconciliation Required and
+    the explanation counts the contracts that differ from the recorded fills (2: the two filled legs)."""
+    ctx = to_executing()
+    ctx.result(first, some_legs(ctx))
+    filled = ctx.record.recorded_fills
+    assert filled == some_legs(ctx) and ctx.machine.follow_execution(at=ctx.tick()).to_state is S.PARTIALLY_EXECUTED
+    if first is not ResultStatus.PARTIAL:  # a final result closed the attempt: the user chose Retry
+        ctx.machine.continue_execution(at=ctx.tick(), actor="user-1")
+    assert ctx.result(second, Position()).kind is OutcomeKind.MISMATCH
+    assert ctx.record.reconciliation_required and ctx.record.expected_position == filled
+    assert ctx.record.proposed_version is None
+    moved = ctx.machine.sync_broker(at=ctx.tick()) or ctx.machine.follow_execution(at=ctx.tick())
+    assert moved.to_state is S.RECONCILIATION_REQUIRED
+    assert Trigger.NOTHING_FILLED not in {t.trigger for t in ctx.machine.transitions}
+    assert ctx.machine.explain().what_happened == "Zerodha's position differs from this strategy's (2 contracts differ)."
+
+
+def test_ac1_p2b_the_same_holds_for_an_adjustment_and_a_close():
+    """AC-1 (Q243 fix 4): an adjustment whose recorded fills went back to the baseline is Reconciliation Required,
+    not Adjustment Proposed; a close refused with the broker at the baseline is a mismatch too; a close refused with
+    the fills still held keeps the partial open."""
+    ctx = to_adjusting()
+    _confirmed_adjustment(ctx)
+    ctx.result(ResultStatus.PARTIAL, some_legs(ctx))
+    ctx.machine.follow_execution(at=ctx.tick())
+    ctx.result(ResultStatus.REJECTED, ctx.record.version(2).baseline)
+    assert ctx.record.reconciliation_required
+    assert ctx.machine.sync_broker(at=ctx.tick()).to_state is S.RECONCILIATION_REQUIRED
+    ctx = to_partial()
+    ctx.record.start_close(1, at=ctx.tick())
+    assert ctx.result(ResultStatus.REJECTED, Position()).kind is OutcomeKind.MISMATCH
+    assert ctx.record.reconciliation_required
+    ctx = to_partial()
+    ctx.record.start_close(1, at=ctx.tick())
+    assert ctx.result(ResultStatus.REJECTED, some_legs(ctx)).kind is OutcomeKind.REJECTED
+    assert ctx.record.proposed_version.number == 1 and ctx.record.live_attempt is None
+    assert not ctx.record.reconciliation_required

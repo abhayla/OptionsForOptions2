@@ -36,8 +36,17 @@ Readings of the table (spec words that needed a concrete meaning; each is report
   found a broker position no fill of this version explains; the record sets its sticky flag and the move is
   Reconciliation Required. The machine cannot read the order book (``ofo.orders`` may be imported only by the
   execution flow, tests/execution/test_strategy_only.py AC-3), so the record's results are its fill records.
-- "every leg confirmed executed by the broker and reconciled": the record ACTIVATED the executing version, or (after
-  returning from Reconciliation Required) a manual adoption made the broker's position the active version.
+- "every leg confirmed executed by the broker and reconciled": the record ACTIVATED the executing version.
+- "adopt -> Active on the adopted version, whatever the state before" (Q247): the record holds a RECONCILED outcome
+  (``StrategyRecord.reconcile``) since the strategy entered Reconciliation Required. The record offers no other
+  resolution that clears its flag (a prepared closing order that executes leaves the broker flat -> ``mark_exited``),
+  so the "any other recorded resolution -> the previous live state" rows stay approved but no event reaches them.
+- Execution attempts (W-041 round 5): the record mints an attempt on every user confirmation, Complete/Retry and
+  Close Partial; every result names its attempt and a result of any other attempt is recorded STALE and changes
+  nothing, so ``follow_execution`` only ever reads outcomes of the live attempt (a late message of attempt 1 can
+  never move a strategy whose attempt 2 is live). "Nothing filled" is decided by the record from the proposal's
+  recorded fills AND the broker position: a broker that went back to the baseline after recorded fills is a
+  MISMATCH (Reconciliation Required), never "nothing filled".
 - "all legs expired": every contract of the active version and of the broker position expired before ``at``'s
   India date.
 """
@@ -106,6 +115,7 @@ class Trigger(Enum):
     USER_RESUMES_MONITORING = "the user resumes monitoring of this strategy"
     BROKER_DIFFERS = "broker state differs from platform state"
     MANUAL_RESOLUTION = "a recorded manual resolution on the latest run"
+    MANUAL_ADOPT = "a recorded manual resolution: adopt -> Active on the adopted version"  # Q247
     MANUAL_RESOLUTION_BROKER_FLAT = "a recorded manual resolution: broker flat -> Exited"
     EXIT_ORDERS_EXECUTED = "exit orders confirmed executed"
     ALL_LEGS_EXPIRED = "all legs expired or closed at expiry"
@@ -151,6 +161,7 @@ def _table() -> dict[tuple[StrategyState, StrategyState], frozenset[Trigger]]:
     for live in LIVE_STATES:
         rows[(live, _S.RECONCILIATION_REQUIRED)] = {_T.BROKER_DIFFERS}
         rows[(_S.RECONCILIATION_REQUIRED, live)] = {_T.MANUAL_RESOLUTION}
+    rows[(_S.RECONCILIATION_REQUIRED, _S.ACTIVE)].add(_T.MANUAL_ADOPT)  # Q247: whatever the state before
     return {pair: frozenset(triggers) for pair, triggers in rows.items()}
 
 
@@ -209,7 +220,8 @@ def _differs(n: int) -> str:
 
 _RECONCILE_NEXT: Final = (
     f"Reconcile: {ResolutionKind.ADOPT_BROKER_POSITION.value}, {ResolutionKind.PREPARE_CLOSING_ORDER.value}, or "
-    f"{ResolutionKind.MARK_REQUIRES_ATTENTION.value}. If Zerodha shows no position, the strategy can be marked exited."
+    f"{ResolutionKind.MARK_REQUIRES_ATTENTION.value}. Adopting makes Zerodha's position the active strategy. If "
+    f"Zerodha shows no position, the strategy can be marked exited."
 )
 _BLOCKED: Final[Mapping[StrategyState, tuple[str, ...]]] = MappingProxyType({
     _S.EXECUTION_IN_PROGRESS: ("new execution", "modification", "exit", "archive"),
@@ -296,7 +308,7 @@ class StrategyStateMachine:
             happened = f"Some legs of version {self._executing} executed and others did not."
             next_action = "Choose one: " + ", ".join(PARTIAL_CHOICES) + "."
         elif state is _S.RECONCILIATION_REQUIRED:
-            count = len(self._record.actual_position.differences(self._active_intended()))
+            count = len(self._record.actual_position.differences(self._record.expected_position))
             happened = f"Zerodha's position differs from this strategy's ({_differs(count)})."
             next_action = _RECONCILE_NEXT
         elif state is _S.MONITORING_PAUSED:
@@ -334,10 +346,10 @@ class StrategyStateMachine:
         if self._record.definition != self._validated:
             raise StateMachineError("the strategy changed after validation; this draft was never validated")
         version = self._record.propose_execution(at=at, initiator=actor)
-        self._record.confirm(version.number, at=at)
+        attempt = self._record.confirm(version.number, at=at)
         self._set("_executing", version.number)
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_CONFIRMS_EXECUTE, actor, at,
-                            (("version", str(version.number)),))
+                            (("version", str(version.number)), ("attempt", str(attempt.number))))
 
     def follow_execution(self, *, at: datetime.datetime) -> StateTransition | None:
         """Read the record's execution outcomes since this state began and move as the table says; None if nothing
@@ -347,7 +359,8 @@ class StrategyStateMachine:
             raise StateMachineError(f"no execution is in progress (state is {state.value})")
         if self._record.reconciliation_required:
             return self._broker_differs(at)
-        outcomes = self._record.outcomes[self._mark:]
+        # A STALE outcome is a message of an attempt that is no longer live: it changed nothing and decides nothing.
+        outcomes = [o for o in self._record.outcomes[self._mark:] if o.kind is not OutcomeKind.STALE]
         if not outcomes:
             return None
         last, record = outcomes[-1], self._record
@@ -376,14 +389,16 @@ class StrategyStateMachine:
 
     def continue_execution(self, *, at: datetime.datetime, actor: str) -> StateTransition:
         """Partially Executed: the user chose Complete Strategy or Retry Failed Leg (W-023). The executing version must
-        still be pending and confirmed in the record; W-023 prepares and sends the missing orders."""
+        still be pending and confirmed in the record; the record mints a NEW attempt (results of the earlier one are
+        stale from now on) and W-023 prepares and sends the missing orders under it."""
         self._precheck(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, at, actor)
         pending = self._record.proposed_version  # a set reconciliation flag always means no proposal (W-012)
         if pending is None or pending.number != self._executing or not self._record.proposal_confirmed:
             raise StateMachineError(f"version {self._executing} is no longer pending and confirmed; nothing to "
                                     "complete or retry")
+        attempt = self._record.retry(pending.number, at=at)
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, actor, at,
-                            (("version", str(pending.number)),))
+                            (("version", str(pending.number)), ("attempt", str(attempt.number))))
 
     def review_partial(self) -> StateExplanation:
         """Partially Executed: the user chose Review Manually. A view, not a transition (Q243 fix 2): the state stays
@@ -419,11 +434,12 @@ class StrategyStateMachine:
         pending = self._record.proposed_version  # a set reconciliation flag always means no proposal (W-012)
         if pending is None:
             raise StateMachineError("no proposal was created since the modification started")
-        if not self._record.proposal_confirmed:
+        attempt = self._record.live_attempt
+        if not self._record.proposal_confirmed or attempt is None:
             raise StateMachineError(f"proposed version {pending.number} is not confirmed by the user")
         self._set("_executing", pending.number)
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_CONFIRMS_PROPOSAL, actor, at,
-                            (("version", str(pending.number)),))
+                            (("version", str(pending.number)), ("attempt", str(attempt.number))))
 
     def withdraw_adjustment(self, *, at: datetime.datetime, actor: str) -> StateTransition:
         """Adjustment Proposed -> Active (Q243 fix 3). An unconfirmed proposed version is withdrawn in the record,
@@ -479,19 +495,22 @@ class StrategyStateMachine:
 
     def resolve_reconciliation(self, *, at: datetime.datetime) -> StateTransition:
         """Leave Reconciliation Required only on a manual resolution the record holds since this state began (Q222):
-        an adoption (RECONCILED, flag cleared) returns to the previous live state; a broker-flat exit goes to Exited."""
+        an adoption (RECONCILED, flag cleared) goes to Active on the adopted version whatever the state before
+        (Q247); a broker-flat exit goes to Exited."""
         state = self.state
         if state is not _S.RECONCILIATION_REQUIRED:
             raise StateMachineError(f"no reconciliation is required (state is {state.value})")
         if self._record.exited:  # mark_exited: an explicit, audited resolution that needs a flat broker
             self._precheck(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, at, "system")
             return self._commit(_S.EXITED, _T.MANUAL_RESOLUTION_BROKER_FLAT, "system", at)
-        # Entered only with the record's flag set (sync_broker / follow_execution), and only reconcile() -- which
-        # appends a RECONCILED outcome -- or mark_exited (above) clears it (W-012): a cleared flag IS the resolution.
-        if not self._record.reconciliation_required:
-            previous = self._transitions[-1].from_state
-            self._precheck(previous, _T.MANUAL_RESOLUTION, at, "system")
-            return self._commit(previous, _T.MANUAL_RESOLUTION, "system", at)
+        # Entered only with the record's flag set (sync_broker / follow_execution); only reconcile() -- which appends
+        # a RECONCILED outcome and makes the adopted version active -- or mark_exited (above) clears it (W-012).
+        window = self._record.outcomes[self._mark:]
+        adopted = self._record.active_version
+        if (not self._record.reconciliation_required and adopted is not None
+                and any(o.kind is OutcomeKind.RECONCILED and o.version_number == adopted.number for o in window)):
+            self._precheck(_S.ACTIVE, _T.MANUAL_ADOPT, at, "system")
+            return self._commit(_S.ACTIVE, _T.MANUAL_ADOPT, "system", at, (("version", str(adopted.number)),))
         raise StateMachineError("no recorded manual resolution since reconciliation was required; an agreeing run "
                                 "alone never unblocks the strategy (Q222)")
 

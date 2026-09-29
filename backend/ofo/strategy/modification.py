@@ -386,7 +386,15 @@ def execute_confirmed_modification(
 
     A blocked gate is refused before ``StrategyRecord.apply_result`` is ever called: no order is treated as
     prepared, and the active version (v1, or whichever version is currently active) is left exactly as it was.
+
+    A result for an attempt that is not the record's live one (a late message of an earlier attempt, W-041 round 5)
+    is handed straight to the record, which records it as STALE and changes nothing; it neither runs the gate nor
+    spends the acknowledgement.
     """
+    if not isinstance(record, StrategyRecord):
+        raise ModificationError(f"record must be a StrategyRecord, got {record!r}")
+    if isinstance(result, ExecutionResult) and result.attempt != record.live_attempt:
+        return record.apply_result(result)
     safety = prepare_confirmed_modification(
         record, version_number, strategy_id=strategy_id, context=context, catalogue=catalogue, eligibility=eligibility,
         acknowledgement=acknowledgement,

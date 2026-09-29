@@ -30,8 +30,21 @@ Rules implemented:
   reason texts ride on the result (``reasons``) and are kept on the outcome (Q243 fix 1). Standing invariant, re-checked after every result: either a
   proposal is pending, or the broker's position equals the active version's intended position, or the sticky
   ``reconciliation_required`` flag is set (ADR-018: an unresolved mismatch blocks execution). While it is set,
-  edit/restore/propose/confirm refuse, and a late result is recorded (``BLOCKED`` or ``MISMATCH``) but activates
-  nothing. Only ``reconcile()`` - explicit, audited, and only to a definition equal to the broker's position
+  edit/restore/propose/confirm refuse, and a late result of the latest attempt is recorded (``BLOCKED`` or
+  ``MISMATCH``) but activates nothing. Every MISMATCH sets the flag, even when the broker happens to equal the active
+  version (a claim the positions cannot explain is never left silent).
+- Execution attempts (W-041 round 5; ADR-016..ADR-018): each time the user confirms a proposal (``confirm``), chooses
+  Complete/Retry after a partial (``retry``) or Close Partial (``start_close``), the RECORD mints a new
+  ``ExecutionAttempt``; the caller never supplies one as a free value. Every ``ExecutionResult`` names the attempt it
+  belongs to; a result for any attempt other than the live one is STALE: recorded as a ``STALE`` outcome and nothing
+  else changes (state, broker position, recorded fills, confirmation). An attempt this record never minted is
+  refused outright. Mapping to Zerodha (not built here): the order flow sends each attempt's orders under a platform
+  tag derived from ``ExecutionAttempt.tag`` and maps each broker message back to the attempt through it; which Kite
+  field carries that tag is unverified (issues #43/#45) and no Kite field name is assumed here.
+- Recorded fills (Q243 fix 4, W-041 round 5): the proposal keeps the broker position its accepted results reported
+  (``recorded_fills``, the baseline before any). A later result must lie between the recorded fills and the target;
+  a broker position that moved BACK from the recorded fills (e.g. PARTIAL then REJECTED with the broker at baseline)
+  is a MISMATCH -- Zerodha differs from the recorded fills -- never "nothing filled". Only ``reconcile()`` - explicit, audited, and only to a definition equal to the broker's position
   (ADR-018 Q198 "adopt actual broker position") - clears it.
 - Reconciliation (REQ-060, W-021) adds two entry points: ``observe_broker_position()`` records a broker position
   seen outside an execution result (a reconciliation run, e.g. a change made in Zerodha) and sets the same sticky
@@ -46,7 +59,8 @@ Rules implemented:
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
+import secrets
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
 
@@ -67,6 +81,7 @@ MAX_HISTORY = 10_000
 MAX_VERSIONS = 1_000
 MAX_OUTCOMES = 10_000
 MAX_POSITION_LINES = 100
+MAX_ATTEMPTS = 10_000
 MAX_REASONS = 50  # broker reason texts on one result (one per order at most; a condor has 4)
 #: How far ahead of the clock a timestamp may be (clock skew between services), never more.
 MAX_FUTURE_SKEW = datetime.timedelta(seconds=60)
@@ -159,6 +174,29 @@ class Version:
         return Position.of(self.definition.intended_position())
 
 
+class AttemptKind(Enum):
+    """Why the record minted an attempt: what the attempt's orders aim at."""
+
+    EXECUTE = "execute"  # the user confirmed the proposal: orders towards its intended position
+    RETRY = "complete or retry"  # Partially Executed, the user chose Complete/Retry: the missing legs (W-023)
+    CLOSE = "close partial"  # Partially Executed, the user chose Close Partial: back to the baseline (W-023)
+
+
+@dataclass(frozen=True)
+class ExecutionAttempt:
+    """One broker attempt for one proposed version, minted only by ``StrategyRecord`` (never built by a caller)."""
+
+    record_token: str
+    number: int
+    version_number: int
+    kind: AttemptKind
+
+    @property
+    def tag(self) -> str:
+        """The platform's identity for this attempt, to be carried by its orders (Kite field unverified, #43/#45)."""
+        return f"{self.record_token}-a{self.number}"
+
+
 class ResultStatus(Enum):
     """What the execution/reconciliation result reports. COMPLETE = every required order executed and reconciled."""
 
@@ -170,7 +208,7 @@ class ResultStatus(Enum):
 
 @dataclass(frozen=True)
 class ExecutionResult:
-    """Input object: the broker's execution + reconciliation outcome for one proposed version."""
+    """Input object: the broker's execution + reconciliation outcome for one attempt of one proposed version."""
 
     version_number: int
     status: ResultStatus
@@ -178,8 +216,14 @@ class ExecutionResult:
     at: datetime.datetime
     reference: str
     reasons: tuple[str, ...] = ()  # the broker's own rejection/failure texts, shown as is (Q243 fix 1)
+    attempt: ExecutionAttempt = field(kw_only=True)  # the attempt whose orders this message is about
 
     def __post_init__(self) -> None:
+        if not isinstance(self.attempt, ExecutionAttempt):
+            raise VersionError(f"a result must name the execution attempt it belongs to, got {self.attempt!r}")
+        if self.attempt.version_number != self.version_number:
+            raise VersionError(f"result for version {self.version_number!r} names an attempt of version "
+                               f"{self.attempt.version_number}")
         if isinstance(self.version_number, bool) or not isinstance(self.version_number, int):
             raise VersionError(f"version_number must be an int, got {self.version_number!r}")
         if not isinstance(self.status, ResultStatus):
@@ -205,6 +249,8 @@ class OutcomeKind(Enum):
     OBSERVED = "observed"  # a broker position recorded by a reconciliation run, outside any execution result
     EXITED = "exited"  # the broker position is flat and the strategy was closed (ADR-019 Q200)
     WITHDRAWN = "withdrawn"  # the user withdrew an unconfirmed proposed version (Q243 fix 3)
+    STALE = "stale"  # a result for an attempt that is no longer live: recorded, changes nothing (W-041 round 5)
+    CLOSED = "closed"  # a Close Partial attempt brought the broker back to the baseline: the proposal is closed
 
 
 @dataclass(frozen=True)
@@ -219,11 +265,15 @@ class ExecutionOutcome:
     reference: str
     reasons: tuple[str, ...] = ()  # the broker's texts from the result (Q243 fix 1)
     actor: str | None = None  # who acted, for a user action recorded here (WITHDRAWN)
+    attempt: int | None = None  # the attempt number a result named (results only)
 
     @property
     def differences(self) -> tuple[tuple[Contract, int, int], ...]:
         """(contract, intended units, actual units) wherever the broker's actual differs from the version."""
         return self.intended.differences(self.actual)
+
+
+_FINAL_FAILURES = (OutcomeKind.REJECTED, OutcomeKind.FAILED)
 
 
 def _within_path(previous: Position, intended: Position, actual: Position) -> bool:
@@ -271,7 +321,7 @@ class StrategyRecord:
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
         "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
-        "_observed_at", "_guard",
+        "_observed_at", "_guard", "_token", "_attempts", "_attempt_open", "_fills", "_expected",
     )
 
     def __init__(
@@ -300,6 +350,11 @@ class StrategyRecord:
         self._set("_exited", False)
         self._set("_observed_at", None)
         self._set("_guard", StrategyGuard())  # REQ-036 AC-5: this strategy's own guard; never supplied by a caller
+        self._set("_token", secrets.token_hex(6))  # names this record's attempts; an attempt of another is refused
+        self._set("_attempts", [])
+        self._set("_attempt_open", False)
+        self._set("_fills", Position())  # the pending proposal's recorded fills (its baseline until a result)
+        self._set("_expected", Position())  # what the records explained when the flag was set
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"StrategyRecord is changed only through its methods; cannot set {name!r}")
@@ -373,6 +428,29 @@ class StrategyRecord:
         return self._pending is not None and self._confirmed
 
     @property
+    def live_attempt(self) -> ExecutionAttempt | None:
+        """The one attempt whose results are applied (the latest minted, while open); None when none is live."""
+        return self._attempts[-1] if self._attempts and self._attempt_open else None
+
+    @property
+    def attempts(self) -> tuple[ExecutionAttempt, ...]:
+        return tuple(self._attempts)
+
+    @property
+    def recorded_fills(self) -> Position:
+        """The broker position the pending proposal's accepted results reported (its baseline before any)."""
+        return self._fills
+
+    @property
+    def expected_position(self) -> Position:
+        """What the platform's records explain: while reconciliation is required, what they explained when the
+        difference was found (the recorded fills of a proposal in flight, or the active version); otherwise the
+        pending proposal's recorded fills, or the active version's intended position."""
+        if self._reconcile:
+            return self._expected
+        return self._fills if self._pending is not None else self._active_intended()
+
+    @property
     def actual_position(self) -> Position:
         """The broker's position as last reported. It wins over any version's intended position."""
         return self._actual
@@ -443,8 +521,8 @@ class StrategyRecord:
         self._stamp(at)
         return self._add_version(self._draft, None, at, initiator, reason, ("execution requested",))
 
-    def confirm(self, number: int, *, at: datetime.datetime) -> None:
-        """The user's explicit confirmation of the pending proposed version."""
+    def confirm(self, number: int, *, at: datetime.datetime) -> ExecutionAttempt:
+        """The user's explicit confirmation of the pending proposed version: mints the attempt its orders belong to."""
         self._refuse_if_exited("confirm")
         if self._reconcile:
             raise VersionError("cannot confirm: reconciliation required (broker position differs from the active version)")
@@ -452,8 +530,32 @@ class StrategyRecord:
             raise VersionError(f"version {number!r} is not the pending proposed version")
         if self._confirmed:
             raise VersionError(f"version {number} is already confirmed")
+        self._check_attempt_room()
         self._stamp(at)
         self._set("_confirmed", True)
+        return self._mint(AttemptKind.EXECUTE)
+
+    def retry(self, number: int, *, at: datetime.datetime) -> ExecutionAttempt:
+        """Partially Executed, the user chose Complete Strategy / Retry Failed Leg (W-023): a NEW attempt for the same
+        confirmed proposal; results of the earlier attempt are stale from now on. Needs something already filled."""
+        return self._follow_up(number, at, AttemptKind.RETRY)
+
+    def start_close(self, number: int, *, at: datetime.datetime) -> ExecutionAttempt:
+        """Partially Executed, the user chose Close Partial Strategy (W-023): a NEW attempt whose orders take the
+        broker back to the proposal's baseline. A COMPLETE result at the baseline closes the proposal (CLOSED)."""
+        return self._follow_up(number, at, AttemptKind.CLOSE)
+
+    def _follow_up(self, number: int, at: datetime.datetime, kind: AttemptKind) -> ExecutionAttempt:
+        self._refuse_if_exited(kind.value)
+        if self._reconcile:
+            raise VersionError(f"cannot {kind.value}: reconciliation required")
+        if self._pending is None or number != self._pending or not self._confirmed:
+            raise VersionError(f"version {number!r} is not the pending, confirmed proposed version")
+        if self._fills == self._versions[number - 1].baseline:
+            raise VersionError(f"nothing of version {number} is recorded as filled; nothing to {kind.value}")
+        self._check_attempt_room()
+        self._stamp(at)
+        return self._mint(kind)
 
     def apply_result(self, result: ExecutionResult) -> ExecutionOutcome:
         """Record an execution/reconciliation result. Activates the proposal only on a reconciled COMPLETE.
@@ -464,22 +566,31 @@ class StrategyRecord:
         if not isinstance(result, ExecutionResult):
             raise VersionError(f"apply_result needs an ExecutionResult, got {result!r}")
         self._refuse_if_exited("apply a result")
-        if self._reconcile:
-            if result.version_number != len(self._versions):
-                raise VersionError(f"version {result.version_number} is not the latest version; late result refused")
-        else:
-            if self._pending is None or result.version_number != self._pending:
-                raise VersionError(f"version {result.version_number} is not the pending proposed version")
-            if not self._confirmed:
-                raise VersionError(f"version {result.version_number} was never confirmed by the user; it cannot activate")
+        attempt = result.attempt
+        if (attempt.record_token != self._token or not 1 <= attempt.number <= len(self._attempts)
+                or self._attempts[attempt.number - 1] != attempt):
+            raise VersionError(f"attempt {attempt.tag!r} was not minted by this strategy record; result refused")
         if result.reference in self._references:
             raise VersionError(f"result {result.reference!r} was already applied")
         if len(self._outcomes) >= MAX_OUTCOMES:
             raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
-        self._stamp(result.at)
         proposal = self._versions[result.version_number - 1]
         intended, actual = proposal.intended_position, result.broker_position
-        kind = self._classify(result.status, proposal.baseline, intended, actual)
+        if attempt != self.live_attempt:  # a late or superseded message: recorded, changes nothing else
+            self._check_time(result.at)  # it may predate the last event; only the future is refused
+            self._references.add(result.reference)
+            stale = ExecutionOutcome(proposal.number, OutcomeKind.STALE, intended, actual, result.at,
+                                     result.reference, result.reasons, attempt=attempt.number)
+            self._outcomes.append(stale)
+            return stale
+        self._stamp(result.at)
+        fills, baseline = self._fills, proposal.baseline
+        closing = attempt.kind is AttemptKind.CLOSE
+        kind = self._classify(result.status, fills, baseline if closing else intended, actual)
+        if closing and kind is OutcomeKind.ACTIVATED:
+            kind = OutcomeKind.CLOSED
+        elif closing and kind in _FINAL_FAILURES and actual == baseline:
+            kind = OutcomeKind.MISMATCH  # a refused close cannot have taken the broker back to the baseline
         self._references.add(result.reference)
         self._set("_actual", actual)
         self._set("_observed_at", None)
@@ -488,19 +599,27 @@ class StrategyRecord:
         if self._reconcile:
             if kind is not OutcomeKind.MISMATCH:
                 kind = OutcomeKind.BLOCKED
-        elif kind is OutcomeKind.ACTIVATED:
-            self._set("_active", proposal.number)
-            self._set("_executed", True)
-        final_failure = kind in (OutcomeKind.REJECTED, OutcomeKind.FAILED)
-        still_open = kind is OutcomeKind.PARTIAL or (final_failure and actual != proposal.baseline)  # Q243 fix 4
-        kept_for_retry = final_failure and not still_open and self._active is not None  # Q245
-        if kept_for_retry:
-            self._set("_confirmed", False)  # a new broker attempt needs the user's confirmation again
-        elif not still_open:
+        elif kind is OutcomeKind.MISMATCH:  # Zerodha differs from what the recorded fills explain (Q243 fix 4)
             self._set("_pending", None)
             self._set("_confirmed", False)
+            self._flag(fills)
+        elif kind in (OutcomeKind.ACTIVATED, OutcomeKind.CLOSED):
+            if kind is OutcomeKind.ACTIVATED:
+                self._set("_active", proposal.number)
+                self._set("_executed", True)
+            self._close_proposal()
+        elif kind in _FINAL_FAILURES and actual == baseline:  # nothing filled at all (fills == baseline, see path)
+            if self._active is not None:  # an ADJUSTMENT: kept, unconfirmed, for execute-again or withdraw (Q245)
+                self._set("_confirmed", False)
+                self._set("_attempt_open", False)
+            else:  # a first entry: back to un-executed (Q243 fix 1)
+                self._close_proposal()
+        else:  # PARTIAL, or a final failure with some legs filled: the proposal stays open (Q243 fix 4)
+            self._set("_fills", actual)
+            if kind in _FINAL_FAILURES:
+                self._set("_attempt_open", False)
         outcome = ExecutionOutcome(proposal.number, kind, intended, actual, result.at, result.reference,
-                                   result.reasons)
+                                   result.reasons, attempt=attempt.number)
         self._outcomes.append(outcome)
         self._recheck_invariant()
         return outcome
@@ -542,6 +661,7 @@ class StrategyRecord:
         self._set("_active", version.number)
         self._set("_executed", True)
         self._set("_reconcile", False)
+        self._set("_attempt_open", False)  # results of the attempt in flight are stale from now on
         self._outcomes.append(ExecutionOutcome(
             version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
         return version
@@ -641,6 +761,7 @@ class StrategyRecord:
         self._references.add(reference)
         self._set("_exited", True)
         self._set("_reconcile", False)
+        self._set("_attempt_open", False)
         outcome = ExecutionOutcome(
             0 if active is None else active.number, OutcomeKind.EXITED, self._active_intended(), self._actual, at,
             reference,
@@ -651,14 +772,15 @@ class StrategyRecord:
     # ---- internals -------------------------------------------------------------------------------------------
 
     @staticmethod
-    def _classify(status: ResultStatus, baseline: Position, intended: Position, actual: Position) -> OutcomeKind:
+    def _classify(status: ResultStatus, fills: Position, intended: Position, actual: Position) -> OutcomeKind:
         """Positions decide, the status word never does (ADR-018: an unresolved mismatch blocks execution).
 
-        First, for EVERY status: each contract's actual units must lie between the version's FIXED baseline and
-        its intended units (inclusive). An unasked contract, a side flip or an overfill falls outside -> MISMATCH.
-        Only then does the status word choose between the outcomes it is consistent with.
+        First, for EVERY status: each contract's actual units must lie between the proposal's RECORDED FILLS (its
+        fixed baseline before any result) and the attempt's target (inclusive). An unasked contract, a side flip, an
+        overfill, or a fill that went back towards the baseline falls outside -> MISMATCH. Only then does the status
+        word choose between the outcomes it is consistent with.
         """
-        if not _within_path(baseline, intended, actual):
+        if not _within_path(fills, intended, actual):
             return OutcomeKind.MISMATCH
         if status is ResultStatus.COMPLETE:
             return OutcomeKind.ACTIVATED if actual == intended else OutcomeKind.MISMATCH
@@ -672,8 +794,27 @@ class StrategyRecord:
 
     def _recheck_invariant(self) -> None:
         """No proposal pending and the broker differs from the active version -> reconciliation required (sticky)."""
-        if self._pending is None and self._actual != self._active_intended():
-            self._set("_reconcile", True)
+        if self._pending is None and not self._reconcile and self._actual != self._active_intended():
+            self._flag(self._active_intended())
+
+    def _flag(self, expected: Position) -> None:
+        self._set("_reconcile", True)
+        self._set("_expected", expected)
+
+    def _close_proposal(self) -> None:
+        self._set("_pending", None)
+        self._set("_confirmed", False)
+        self._set("_attempt_open", False)
+
+    def _check_attempt_room(self) -> None:
+        if len(self._attempts) >= MAX_ATTEMPTS:
+            raise VersionError(f"attempt list is full ({MAX_ATTEMPTS})")
+
+    def _mint(self, kind: AttemptKind) -> ExecutionAttempt:
+        attempt = ExecutionAttempt(self._token, len(self._attempts) + 1, self._pending, kind)  # type: ignore[arg-type]
+        self._attempts.append(attempt)
+        self._set("_attempt_open", True)
+        return attempt
 
     def _refuse_if_exited(self, what: str) -> None:
         if self._exited:
@@ -718,6 +859,7 @@ class StrategyRecord:
         if pending:
             self._set("_pending", version.number)
             self._set("_confirmed", False)
+            self._set("_fills", version.baseline)
         return version
 
 
