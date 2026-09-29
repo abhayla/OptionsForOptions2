@@ -70,7 +70,7 @@ manual resolution (Q222), and Monitoring Paused is entered and left only by the 
 | Active | Monitoring Paused | the user explicitly pauses monitoring of this strategy (Q240) |
 | Monitoring Paused | Active | the user resumes monitoring of this strategy (Q240). A lost data feed or an expired Zerodha session does **not** change the strategy state: the strategy stays Active and its monitoring status shows paused ("Monitoring paused — reconnect Zerodha", Q182). Reason: REQ-043 AC-4 keeps monitoring status separate from this state machine, §5 allows Active + expired session, and the Zerodha session expires every morning (T1 #265), which would otherwise flip every Active strategy daily. Clarification recorded 2026-09-29 (audit item C-8). |
 | any live state (Active, Monitoring Paused, Adjustment Proposed, Execution in Progress, Partially Executed — Q243 fix 5) | Reconciliation Required | broker state differs from platform state |
-| Reconciliation Required | previous live state | a recorded manual resolution on the latest run (adopt, prepared closing order, broker flat → Exited); an agreeing run alone never unblocks (Q222, Q240) |
+| Reconciliation Required | Active / Exited / previous live state | a recorded manual resolution on the latest run: **adopt → Active** on the adopted version, whatever the state before (Q247 — the adopted position is the strategy, nothing is left partial); a prepared closing order that executes, or broker flat → Exited; any other recorded resolution → the previous live state. An agreeing run alone never unblocks (Q222, Q240) |
 | Active | Exited | exit orders confirmed executed |
 | Active | Completed | all legs expired or closed at expiry |
 | Completed / Exited / Draft | Archived | user archives |
