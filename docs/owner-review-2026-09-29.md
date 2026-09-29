@@ -1,4 +1,4 @@
-# Owner review — morning of 2026-09-30
+# Owner review — morning of 2026-09-29 (first written as "2026-09-30" from memory; the clock and git history say 2026-09-29)
 
 Everything decided or built while you were away (ADR-045). Each delegated decision can be reversed: say "reverse <id>".
 

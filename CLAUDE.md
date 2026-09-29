@@ -9,9 +9,9 @@ strategies, see the outcome at every market level, then execute through their ow
 strategy monitored against their rules (`spec/vision/vision.md`). Built on the Startup-Factory kit (version in
 `KIT_VERSION`); the kit's rules in `.claude/rules/kit/` always apply.
 
-**Current state (2026-09-30):** spec of 45 ADRs and 71 requirements; a standard-library domain layer under
+**Current state (2026-09-29):** spec of 46 ADRs and 71 requirements; a standard-library domain layer under
 `backend/ofo/` (engine, rules, strategy versions, orders, execution gate/plan/partial, reconciliation, timeline,
-market-data health) with ~1,200 tests, all against fakes — no API, DB, UI or real Zerodha yet. **Start with
+market-data health, strategy table) with ~1,300 tests, all against fakes — no API, DB, UI or real Zerodha yet. **Start with
 `docs/HANDOVER.md`**: it lists what is done, parked, blocked and deferred. Nothing pending there is closed until it
 is implemented and independently verified. Open items: `spec/open-questions.md`. Do not write requirements or code
 before the ADRs they rest on exist, and prove the Zerodha core first (`docs/HANDOVER.md` NEXT).
