@@ -194,3 +194,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Decision: strict — ban bare "best", "sure", "safe", "guarantee*", "recommend*" in platform templates, with the named
   exceptions "best bid", "best ask", "best-case", "make sure"; broker/user text quoted only. Recorded in ADR-003
   "Owner decision (Q226)".
+
+## Q227 — DECIDED (owner, 2026-09-29 morning) — Guided scenario column headings (W-004, issue #21)
+- Decision: each scenario column is headed by its level (CURRENT and 0-P&L marked); "NIFTY at expiry | You make/lose"
+  is the scenario section's caption. Recorded in REQ-035 "Owner clarification (Q227)".
