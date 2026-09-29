@@ -1,0 +1,26 @@
+{
+  "id": "fixture-symbol-not-in-catalogue",
+  "class": "Any test fixture that types a broker tradingsymbol (or a symbol/expiry pair) from memory instead of taking it from the real instrument catalogue can pass for months while encoding a contract Zerodha does not list; the defect surfaces only when some later code checks the catalogue, and every test built on the fixture then has to change.",
+  "mechanism": "W-023's partial-execution fixtures used NIFTY26OCT<strike>CE/PE symbols with the weekly 2026-10-06 expiry; the real catalogue slice lists that expiry as NIFTY26O06<strike>.. (NIFTY26OCT.. is the monthly 2026-10-27 format, e.g. NIFTY26OCTFUT). Nothing checked the catalogue until W-026's send-time sink did.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-026 round 2 @ 0b04329 (tests/execution/partial_inputs.py)",
+    "evidence": "builder: catalogue check refused NIFTY26OCT… for expiry 2026-10-06; real symbols NIFTY26O06…; fixture fixed; verifier confirmed no assertion weakened"
+  },
+  "fix": "W-026 switched the execution fixtures to catalogue symbols. Sweep 2026-09-29 (grep NIFTY26OCT|SENSEX26OCT in tests/): 20 uses in 14 files remain (tests/orders x5 files, tests/engine x3, tests/scenario x2, tests/execution x3, plus the fixture CSV's real NIFTY26OCTFUT); not yet checked against the catalogue; deferred issue filed.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Guarded when a test asserts every tradingsymbol literal in tests/ resolves in tests/fixtures/instruments/instruments_slice.csv with the expiry it is paired with."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-053.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-023 fixtures, found by W-026",
+      "evidence": "NIFTY26OCT23400CE etc. paired with expiry 2026-10-06"
+    }
+  ]
+}

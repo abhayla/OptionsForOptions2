@@ -2,7 +2,7 @@
 
 # Findings index
 
-17 finding(s), generated from `knowledge/findings/*.json`.
+18 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -14,6 +14,7 @@
 | duplicate-acceptance-criterion-id | Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous. | guarded | spec_ref |
 | duplicate-test-basename-collision | Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time. | guarded | spec_ref |
 | fill-not-exactly-once | Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills. | guarded | occurrences, spec_ref |
+| fixture-symbol-not-in-catalogue | Any test fixture that types a broker tradingsymbol (or a symbol/expiry pair) from memory instead of taking it from the real instrument catalogue can pass for months while encoding a contract Zerodha does not list; the defect surfaces only when some later code checks the catalogue, and every test built on the fixture then has to change. | unguarded | occurrences, spec_ref |
 | guard-without-killing-test | Any safety guard (an if-refuse/block/raise that protects money or state) with no test that fails when the guard is removed can be deleted or weakened in a later change with the suite still green; the guard's protection then depends on nobody touching that line. | unguarded | occurrences, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | spec_ref |
 | normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | guarded | occurrences, spec_ref |
