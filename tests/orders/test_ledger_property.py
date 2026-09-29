@@ -104,7 +104,7 @@ def test_ledger_is_the_only_source_of_truth_under_random_misuse(seed: int) -> No
 
             elif action == "reconcile" and registered:
                 broker_order_id = rng.choice(list(registered))
-                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]), read_at=READ_AT)
+                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]), read_at=datetime.datetime.now(UTC))
 
         except ValueError:
             pass  # a refused call must change nothing; checked by the invariant below regardless

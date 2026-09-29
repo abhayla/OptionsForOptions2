@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -171,6 +171,7 @@ class Order:
     price: Decimal
     broker_order_id: str | None = None
     version_id: str | None = None  # the strategy version this order executes (W-023 fix (a))
+    client_tag: str | None = None  # the platform's own id, set before the broker sees the order
     _state: OrderState = field(default=OrderState.PREPARED, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -185,6 +186,8 @@ class Order:
             _non_empty_str(self.broker_order_id, "broker_order_id")
         if self.version_id is not None:
             _non_empty_str(self.version_id, "version_id")
+        if self.client_tag is not None:
+            _non_empty_str(self.client_tag, "client_tag")
 
     @property
     def state(self) -> OrderState:
@@ -302,6 +305,11 @@ class OrderView:
     state: OrderState
 
     @property
+    def key(self) -> str:
+        """The book's key: the platform client tag when the platform sent it, else the broker id."""
+        return self.order.client_tag or self.order.broker_order_id  # type: ignore[return-value]
+
+    @property
     def strategy_id(self) -> str:
         return self.order.strategy_id
 
@@ -332,105 +340,209 @@ def _effective_state(order: Order, filled: int) -> OrderState:
     return order.state
 
 
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+#: Orchestrator defaults (W-023 round 3): how far ahead of the platform clock a broker read may be stamped, and how
+#: old a read may be, before it is refused. A refused read sets no block time and clears no block.
+MAX_READ_FUTURE_SKEW: Final = datetime.timedelta(seconds=5)
+MAX_READ_AGE: Final = datetime.timedelta(seconds=60)
+
+
 class OrderBook:
     """Owns registered orders and the :class:`FillLedger` together. A fill is applied ONLY
     through :meth:`apply_fill`, which is the single writer of fill facts; ``filled_quantity`` and
     the effective state are always computed from the ledger, never cached on the order.
+
+    W-023 round 3: orders are keyed by the platform's client tag when the platform sent them (registered BEFORE the
+    broker sees them; the broker id is attached when the broker accepts), else by the broker id. The ledger stays
+    keyed by ``(broker_order_id, trade_id)``. The broker's order-status read is mirrored onto the book's own orders
+    by :meth:`mirror_broker_state`, so a rejected order never stays Submitted.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, *, clock: Callable[[], datetime.datetime] = _utc_now,
+        max_read_age: datetime.timedelta = MAX_READ_AGE, max_future_skew: datetime.timedelta = MAX_READ_FUTURE_SKEW,
+    ) -> None:
+        self._clock = clock
+        self._max_read_age = max_read_age
+        self._max_future_skew = max_future_skew
         self._orders: dict[str, Order] = {}
+        self._by_broker: dict[str, str] = {}
+        self._registered_at: dict[str, datetime.datetime] = {}
+        self._tag_counter = 0
         self._ledger = FillLedger()
         self._blocked_strategies: set[str] = set()
         self._reconciliation_events: list[ReconciliationEvent] = []
-        self._blocked_at: dict[str, datetime.datetime] = {}  # latest broker read that set/renewed each block
+        self._blocked_at: dict[str, datetime.datetime] = {}  # latest accepted read/time that set each block
         self._live_preparation: dict[str, object] = {}  # strategy -> the one unconsumed preparation (its owner)
         self._closing_read_at: dict[str, datetime.datetime] = {}  # strategy -> read on which Close was chosen
 
+    # -- clock & read freshness -----------------------------------------------------------
+
+    def now(self) -> datetime.datetime:
+        return _aware(self._clock(), "clock")
+
+    def check_read(self, read_at: object) -> datetime.datetime:
+        """Refuse a broker read stamped in the future (beyond the skew) or older than the age limit."""
+        _aware(read_at, "read_at")
+        now = self.now()
+        if read_at > now + self._max_future_skew:
+            raise ValueError(f"broker read stamped in the future ({read_at.isoformat()}, now {now.isoformat()})")
+        if read_at < now - self._max_read_age:
+            raise ValueError(f"stale broker read ({read_at.isoformat()}, now {now.isoformat()})")
+        return read_at
+
     # -- registration & views -------------------------------------------------------------
 
+    def next_client_tag(self) -> str:
+        """Orchestrator default: platform client tags ``OFO`` + 9 digits (Kite allows short alphanumeric tags)."""
+        self._tag_counter += 1
+        return f"OFO{self._tag_counter:09d}"
+
     def add(self, order: Order) -> None:
-        """Register an order. Refuses anything that is not freshly ``Prepared`` (round-3 item 3)
-        -- an order already Submitted/etc. must have reached that state through this same book.
-        """
+        """Register an order. Refuses anything that is not freshly ``Prepared`` (round-3 item 3). The order needs a
+        client tag (platform-sent, registered before sending) or a broker id."""
         if not isinstance(order, Order):
             raise ValueError(f"add needs an Order, got {order!r}")
         if order.state is not OrderState.PREPARED:
             raise ValueError(f"add() only accepts a Prepared order, got {order.state.value}")
-        if order.broker_order_id is None:
-            raise ValueError("an order needs a broker_order_id before it can be added to the book")
-        if order.broker_order_id in self._orders:
+        if order.client_tag is None and order.broker_order_id is None:
+            raise ValueError("an order needs a client_tag or a broker_order_id before it can be added to the book")
+        key = order.client_tag or order.broker_order_id
+        if key in self._orders:
+            raise ValueError(f"order {key!r} is already registered")
+        if order.broker_order_id is not None and order.broker_order_id in self._by_broker:
             raise ValueError(f"broker_order_id {order.broker_order_id!r} is already registered")
-        self._orders[order.broker_order_id] = order
+        self._orders[key] = order
+        if order.broker_order_id is not None:
+            self._by_broker[order.broker_order_id] = key
+        self._registered_at[key] = self.now()
+
+    def attach_broker_id(self, client_tag: str, broker_order_id: object) -> OrderView:
+        """The broker accepted the order sent under ``client_tag``: record its id. Refuses an empty, padded or
+        already-used id, or a tag that already has a different id."""
+        order = self._by_key(client_tag)
+        boid = _non_empty_str(broker_order_id, "broker_order_id")
+        if order.broker_order_id == boid:
+            return self._view(order)
+        if order.broker_order_id is not None:
+            raise ValueError(f"order {client_tag!r} already has broker id {order.broker_order_id!r}")
+        if boid in self._by_broker:
+            raise ValueError(f"broker_order_id {boid!r} is already registered to another order")
+        updated = order._copy_with(state=order.state)
+        object.__setattr__(updated, "broker_order_id", boid)
+        self._orders[client_tag] = updated
+        self._by_broker[boid] = client_tag
+        return self._view(updated)
+
+    def _by_key(self, key: str) -> Order:
+        try:
+            return self._orders[key]
+        except KeyError:
+            raise ValueError(f"unknown order {key!r}") from None
+
+    def _key_for_broker(self, broker_order_id: str) -> str:
+        try:
+            return self._by_broker[broker_order_id]
+        except KeyError:
+            raise ValueError(f"unknown broker order id {broker_order_id!r}") from None
 
     def _view(self, order: Order) -> OrderView:
         filled = self._ledger.filled_for(order.broker_order_id) if order.broker_order_id else 0
         return OrderView(order, filled, _effective_state(order, filled))
 
     def order_for(self, broker_order_id: str) -> OrderView:
-        try:
-            order = self._orders[broker_order_id]
-        except KeyError:
-            raise ValueError(f"unknown broker order id {broker_order_id!r}") from None
-        return self._view(order)
+        return self._view(self._orders[self._key_for_broker(broker_order_id)])
+
+    def order_for_key(self, key: str) -> OrderView:
+        return self._view(self._by_key(key))
+
+    def find(self, broker_order_id: str | None, client_tag: str | None) -> OrderView | None:
+        """The book's order a broker status line refers to: by broker id, else by the platform's client tag."""
+        if broker_order_id is not None and broker_order_id in self._by_broker:
+            return self._view(self._orders[self._by_broker[broker_order_id]])
+        if client_tag is not None and client_tag in self._orders:
+            return self._view(self._orders[client_tag])
+        return None
+
+    def registered_at(self, key: str) -> datetime.datetime:
+        return self._registered_at[key]
 
     # -- non-fill transitions ---------------------------------------------------------------
 
     def transition(self, broker_order_id: str, new_state: OrderState) -> OrderView:
+        """A non-fill transition, by broker id. See :meth:`transition_key`."""
+        return self.transition_key(self._key_for_broker(broker_order_id), new_state)
+
+    def transition_key(self, key: str, new_state: OrderState, *, from_broker: bool = False) -> OrderView:
         """A non-fill transition (Submitted, Pending, Rejected, a manual Cancel). Checked against
         the ledger-computed EFFECTIVE state (so a fully filled order can never be Cancelled, even
         though its own base state might still read Submitted) -- not the order's raw base state.
+        A platform SEND (``Submitted``, not ``from_broker``) is refused while the strategy is blocked.
         """
         if new_state in _FILL_IMPLIED_STATES:
             raise ValueError(f"{new_state.value} is reached only via a confirmed fill, not transition()")
-        view = self.order_for(broker_order_id)
+        view = self._view(self._by_key(key))
         allowed = ALLOWED_TRANSITIONS.get(view.state, frozenset())
         if new_state not in allowed:
             raise ValueError(f"{view.state.value} -> {new_state.value} is not an allowed order transition")
-        if new_state is OrderState.SUBMITTED and view.strategy_id in self._blocked_strategies:
+        if new_state is OrderState.SUBMITTED and not from_broker and view.strategy_id in self._blocked_strategies:
             raise ValueError(
                 f"strategy {view.strategy_id!r} has an unresolved reconciliation mismatch "
                 "(ADR-018); submission is blocked until it is resolved"
             )
         updated = view.order._copy_with(state=new_state)  # permission already checked above
-        self._orders[broker_order_id] = updated
+        self._orders[key] = updated
         return self._view(updated)
+
+    def mirror_broker_state(self, key: str, broker_state: OrderState) -> OrderView:
+        """Bring one book order in line with the broker's status for it (W-023 round 3, step 0).
+
+        Prepared -> Submitted first when the broker has it at all; then Pending / Rejected / Cancelled as reported.
+        Executed / Partially Executed come only from the ledger (fills), never from this call. A broker state the
+        book cannot reach from its own (e.g. Rejected after a fill, or anything after a terminal state) raises.
+        """
+        view = self._view(self._by_key(key))
+        if view.state is broker_state:
+            return view
+        if view.state in TERMINAL_STATES:
+            raise ValueError(f"book has {key!r} {view.state.value}; the broker reports {broker_state.value}")
+        if view.state is OrderState.PREPARED and broker_state is not OrderState.PREPARED:
+            view = self.transition_key(key, OrderState.SUBMITTED, from_broker=True)
+        if broker_state in (OrderState.PENDING, OrderState.REJECTED, OrderState.CANCELLED) \
+                and view.state is not broker_state:
+            view = self.transition_key(key, broker_state, from_broker=True)
+        return view
 
     # -- fills: the one entry point -----------------------------------------------------------
 
     def apply_fill(self, fill: FillEvent) -> OrderView:
         """The one checked entry point for a broker-confirmed fill (AC-2, AC-3, round-3 item 1).
 
-        The (broker_order_id, trade_id) KEY is resolved first, against the ledger alone -- this is
-        what makes an identical replay an idempotent no-op REGARDLESS of the order's current
-        state (even once it is Executed), and what makes a same-key-but-different fill a
-        :class:`FillConflictError` on every one of its differing fields (quantity, contract, side,
-        price), not a generic mismatch: the comparison is always against the exact copy already
-        recorded at that key, never against the order.
-
-        Only for a genuinely NEW key does order-level validation run -- known order, contract and
-        side match, the order open, cumulative filled quantity within the ordered quantity -- and
-        only then is the row appended. A fill that completes the order is reflected as
-        ``Executed`` on the very next read, computed, never chosen by the caller.
+        The (broker_order_id, trade_id) KEY is resolved first, against the ledger alone -- an identical replay is an
+        idempotent no-op regardless of the order's state; a same-key-but-different fill is a
+        :class:`FillConflictError`. Only for a genuinely NEW key does order-level validation run -- known order,
+        contract and side match, the order open, cumulative filled quantity within the ordered quantity.
         """
         if not isinstance(fill, FillEvent):
             raise ValueError(f"apply_fill needs a FillEvent, got {fill!r}")
 
         existing = self._ledger.get(fill.broker_order_id, fill.trade_id)
         if existing is not None:
-            order = self._orders.get(fill.broker_order_id)
+            order = self._orders[self._by_broker[fill.broker_order_id]]
             if existing == fill:
-                # order is guaranteed non-None here: a row can only exist for a broker_order_id
-                # that was a known, registered order at the time it was first appended.
                 return self._view(order)  # exact replay: documented no-op, nothing moves twice
             raise FillConflictError(
                 f"trade_id {fill.trade_id!r} for order {fill.broker_order_id} was already recorded "
                 f"with a different fill ({existing}); refusing the conflicting copy ({fill})"
             )
 
-        order = self._orders.get(fill.broker_order_id)
-        if order is None:
+        key = self._by_broker.get(fill.broker_order_id)
+        if key is None:
             raise ValueError(f"unknown broker order id {fill.broker_order_id!r}")
+        order = self._orders[key]
         if fill.contract != order.contract:
             raise ValueError(
                 f"fill is for contract {fill.contract!r}, order {order.broker_order_id} is for {order.contract!r}"
@@ -451,8 +563,11 @@ class OrderBook:
 
     # -- reads: always computed --------------------------------------------------------------
 
+    def _orders_by_broker(self) -> dict[str, Order]:
+        return {boid: self._orders[key] for boid, key in self._by_broker.items()}
+
     def position(self, strategy_id: str, contract: str) -> int:
-        return self._ledger.position(strategy_id, contract, self._orders)
+        return self._ledger.position(strategy_id, contract, self._orders_by_broker())
 
     def positions_for(self, strategy_id: str) -> Mapping[str, int]:
         contracts = {o.contract for o in self._orders.values() if o.strategy_id == strategy_id}
@@ -463,7 +578,17 @@ class OrderBook:
         """Every fill row ever appended -- for property tests and reconciliation reads only."""
         return self._ledger.rows()
 
+    def views_for(self, strategy_id: str) -> tuple[OrderView, ...]:
+        """Every registered order of one strategy, with ledger-computed state and filled quantity."""
+        return tuple(self._view(o) for o in self._orders.values() if o.strategy_id == strategy_id)
+
     # -- reconciliation (ADR-016/ADR-018) -----------------------------------------------------
+
+    def _block(self, strategy_id: str, at: datetime.datetime, event: ReconciliationEvent) -> None:
+        self._blocked_strategies.add(strategy_id)
+        previous = self._blocked_at.get(strategy_id)
+        self._blocked_at[strategy_id] = at if previous is None else max(previous, at)
+        self._reconciliation_events.append(event)
 
     def reconcile_cumulative(
         self, broker_order_id: str, broker_filled_qty: int, *, read_at: datetime.datetime,
@@ -472,24 +597,19 @@ class OrderBook:
         is recorded locally (ADR-018: an unresolved mismatch blocks execution).
 
         - Equal: ``"ok"``.
-        - Broker HIGHER: trades are missing locally -- records a mismatch that blocks the next
-          ``Submitted`` transition for this order's strategy, and returns ``"missing_trades"``
-          (never silently passes an unequal cumulative).
+        - Broker HIGHER: trades are missing locally -- blocks the strategy, returns ``"missing_trades"``.
         - Broker LOWER: irreconcilable -- blocks the strategy exactly as HIGHER does (issue #29 item 1,
           core invariant 6), THEN raises :class:`FillConflictError`.
 
-        Either block stays until :meth:`clear_reconciliation_block` succeeds with a LATER read. ``read_at`` is the
-        time of the broker read (tz-aware); the block remembers the latest read that set or renewed it.
+        ``read_at`` must pass :meth:`check_read` (not future-stamped, not stale); a refused read sets nothing.
+        Either block stays until :meth:`clear_reconciliation_block` succeeds with a LATER read.
         """
-        _aware(read_at, "read_at")
+        self.check_read(read_at)
         view = self.order_for(broker_order_id)
         _non_negative_int(broker_filled_qty, "broker_filled_qty")
         if broker_filled_qty == view.filled_quantity:
             return "ok"
-        self._blocked_strategies.add(view.strategy_id)
-        previous = self._blocked_at.get(view.strategy_id)
-        self._blocked_at[view.strategy_id] = read_at if previous is None else max(previous, read_at)
-        self._reconciliation_events.append(ReconciliationEvent(
+        self._block(view.strategy_id, read_at, ReconciliationEvent(
             view.strategy_id, "blocked", broker_order_id, broker_filled_qty, view.filled_quantity, None, None,
             read_at))
         if broker_filled_qty > view.filled_quantity:
@@ -498,6 +618,14 @@ class OrderBook:
             f"broker reports {broker_filled_qty} filled for order {broker_order_id}, but "
             f"{view.filled_quantity} trades are already recorded locally for it -- irreconcilable"
         )
+
+    def block_strategy(self, strategy_id: str, reason: str) -> None:
+        """Block a strategy for a mismatch found outside a fill count (e.g. an unusable broker id after
+        acceptance, a broker order unknown to the book). Stamped with the platform clock."""
+        _non_empty_str(strategy_id, "strategy_id")
+        _non_empty_str(reason, "reason")
+        now = self.now()
+        self._block(strategy_id, now, ReconciliationEvent(strategy_id, "blocked", None, None, None, None, reason, now))
 
     def is_submit_blocked(self, strategy_id: str) -> bool:
         return strategy_id in self._blocked_strategies
@@ -508,27 +636,27 @@ class OrderBook:
     ) -> ReconciliationEvent:
         """The one way to lift a reconciliation block (issue #29 item 1; ADR-018 "until it is resolved").
 
-        ``broker_filled`` is a FRESH broker read: the cumulative filled quantity of EVERY order of this strategy in
-        the book, keyed by broker order id. Refused (block kept) when the strategy is not blocked, when any order of
-        the strategy is missing from the read, when the read names an order that is not this strategy's, or when any
-        count differs from the ledger (a lower count raises :class:`FillConflictError`), or when the read is stale:
-        ``read_at`` must be strictly LATER than the read that set the block (W-023 fix (e)). Only then is the block
-        lifted, with an audit event naming the actor, reason and time.
+        ``broker_filled`` is a FRESH broker read: the cumulative filled quantity of EVERY order of this strategy that
+        has a broker id, keyed by broker order id. Refused (block kept) when the strategy is not blocked, when the
+        read is future-stamped or stale (:meth:`check_read`), when it is not strictly LATER than the read that set
+        the block, when any order is missing from the read, when the read names an order that is not this
+        strategy's, or when any count differs from the ledger. Only then is the block lifted, with an audit event.
         """
         _non_empty_str(strategy_id, "strategy_id")
         _non_empty_str(actor, "actor")
         _non_empty_str(reason, "reason")
         _aware(at, "at")
-        _aware(read_at, "read_at")
+        self.check_read(read_at)
         if strategy_id not in self._blocked_strategies:
             raise ValueError(f"strategy {strategy_id!r} is not blocked; there is nothing to clear")
         blocked_at = self._blocked_at[strategy_id]
         if read_at <= blocked_at:
-            raise ValueError(f"stale broker read ({read_at.isoformat()}); the block was set by a read at "
+            raise ValueError(f"stale broker read ({read_at.isoformat()}); the block was set at "
                              f"{blocked_at.isoformat()} and only a later read can clear it")
         if not isinstance(broker_filled, Mapping):
             raise ValueError("broker_filled must be a mapping of broker order id to filled quantity")
-        mine = {boid for boid, o in self._orders.items() if o.strategy_id == strategy_id}
+        mine = {o.broker_order_id for o in self._orders.values()
+                if o.strategy_id == strategy_id and o.broker_order_id is not None}
         unknown = sorted(set(broker_filled) - mine)
         if unknown:
             raise ValueError(f"broker read names orders that are not this strategy's: {unknown}")
@@ -537,7 +665,7 @@ class OrderBook:
             raise ValueError(f"a fresh broker read must cover every order of the strategy; missing {missing}")
         disagreeing = []
         for boid in sorted(mine):
-            if self.reconcile_cumulative(boid, broker_filled[boid], read_at=read_at) != "ok":  # a lower count raises here
+            if self.reconcile_cumulative(boid, broker_filled[boid], read_at=read_at) != "ok":  # lower raises here
                 disagreeing.append(boid)
         if disagreeing:
             raise FillConflictError(f"broker read still disagrees with the ledger for {disagreeing}; block kept")
@@ -547,11 +675,7 @@ class OrderBook:
         self._reconciliation_events.append(event)
         return event
 
-    # -- per-strategy execution locks (W-023 fix round) ---------------------------------------------
-
-    def views_for(self, strategy_id: str) -> tuple[OrderView, ...]:
-        """Every registered order of one strategy, with ledger-computed state and filled quantity."""
-        return tuple(self._view(o) for o in self._orders.values() if o.strategy_id == strategy_id)
+    # -- per-strategy execution locks (W-023) ---------------------------------------------
 
     def hold_preparation(self, strategy_id: str, owner: object) -> None:
         """Record ``owner`` as the strategy's one live (unconsumed) preparation; refuse if another holds it."""
@@ -569,8 +693,8 @@ class OrderBook:
         return strategy_id in self._live_preparation
 
     def mark_closing(self, strategy_id: str, read_at: datetime.datetime) -> None:
-        """Close Partial Strategy was chosen on the broker read taken at ``read_at``."""
-        _aware(read_at, "read_at")
+        """Close Partial Strategy was chosen on the (accepted) broker read taken at ``read_at``."""
+        self.check_read(read_at)
         self._closing_read_at[strategy_id] = read_at
 
     def closing_read_at(self, strategy_id: str) -> datetime.datetime | None:
