@@ -64,23 +64,25 @@ Every item: builder in its own worktree → independent verifier (fresh context)
 | W-018 (REQ-049) | Market data model + health (stale / delayed / unhealthy / unavailable; per-strategy monitoring pause) | **Merged** PR #25 — 2 rounds. AC-4 and the AC-6 badge are screen work, so REQ-049 stays open |
 | W-020 (REQ-040) | Strategy timeline + rule-trigger records + "Why did this trigger?" | **Merged** PR #27 — 3 rounds (one was my brief's mistake, reversed) |
 | W-019 (REQ-057) | Order lifecycle: 7 states; nothing changes until Zerodha confirms a fill | **Merged** PR #28 — failed twice, then an independent review found the real defect (two copies of the fill count); rebuilt on one fill ledger, passed |
-| W-021 (REQ-060) | Reconciliation with Zerodha positions (Tier A) | **PARKED** — issue #33. 5 of 7 checks pass and every serious attack is refused (exit while the broker holds, adopting a stale quantity); two small defects left: a check after a fill looks only at that strategy and falsely blocks it when another strategy holds the same contract, and a hand-built report can half-write its audit. One short round with your OK |
-| W-024 (REQ-065) | Error messages | **PARKED** — issue #30. Failed 3 times; the fixed message catalogue is right, but a code slot can still carry words like "risk-free", and three back doors skip the catalogue. One short round with your OK (fix list in the issue) |
-| W-023 (REQ-058) | Partial execution, no automatic retry (Tier A) | Third and last round building: failed twice (double order on double click; a rejected order locked the strategy so even Close was refused); an independent review found the cause (the app's copy of its own orders never updated from Zerodha's order status) |
-| W-025 (REQ-026) | Range input pick lists | In verification — my brief's default put values between strikes (SENSEX 81,422 → 81,322); fixed to the strike grid; one edge case left |
-| W-027 (REQ-037) | Strategy modification proposals + versions | Passed verification; one regression test being added before merge |
-| W-026 (REQ-036) | Strategy-only execution + Strategy Guard (Tier A) | Waits for W-023 |
-| W-022 (REQ-056) | Multi-leg execution plan (Tier A) | Blocked by W-021 |
+| W-021 (REQ-060) | Reconciliation with Zerodha positions (Tier A) | **Merged** PR #40 — parked after 2 failed fix rounds, then unparked under your "go with the recommendation" and finished in 3 short rounds; every run now compares all non-exited strategies; a shared contract that disagrees with Zerodha blocks all its holders and refuses guess-based fixes (Q224, delegated) |
+| W-024 (REQ-065) | Error messages | **PARKED** — issue #30. Unparked once overnight; failed a 4th time. Needs your call on how strict the advice-word ban is (see §4) |
+| W-023 (REQ-058) | Partial execution, no automatic retry (Tier A) | **Merged** PR #39 — 6 rounds: redesign after an independent review (one record of the app's own orders, synced from Zerodha before every action), then 3 test-only rounds until every duplicate-order guard had a test that fails without it |
+| W-025 (REQ-026) | Range input pick lists | **Merged** PR #36 — 3 rounds (my brief put values between strikes; fixed to the real strike grid) |
+| W-027 (REQ-037) | Strategy modification proposals + versions | **Merged** PR #35 — the flow runs the safety gate itself; a forged "passed" result can't be passed in |
+| W-026 (REQ-036) | Strategy-only execution + Strategy Guard (Tier A) | Building |
+| W-022 (REQ-056) | Multi-leg execution plan (Tier A) | Building — also makes partial-execution's Complete follow the plan instead of hard-coded buys-first (REQ-056 AC-3) |
 
-Issues filed: deferred #10 (small verifier findings), #29 (order-ledger and gate hardening; items 1-4 are being fixed inside W-023), parked #12, #21; kit harvest Startup-Factory #39, #40.
+Issues filed: deferred #10 (small verifier findings), #29 (items 1-4 fixed in W-023; 5-6 left for integration), parked #12, #21, #30; closed #19, #33, #37, #38 (filed in error); kit harvest Startup-Factory #39, #40.
 
 ## 4. Still open (for you)
 - Q204, Q205 — shared vs per-user Zerodha feed; monitoring while the daily session is expired. Depend on Zerodha's answer.
 - Q211 — legal/compliance review before advice-like features, billing and data display go live.
 - Q212 — the YouTube adjustment video transcript (you said you'd provide it).
-- **Q222 — does a fresh agreeing reconciliation run unblock a strategy by itself?** Built: no, someone must resolve it explicitly (adopt / exit / close). ADR-018 and REQ-060 AC-5 allow either. Recommended: keep explicit (you see what happened in your account before trading resumes); cost: one extra click after an external change.
+- **Overnight I unparked three parked items (W-021, W-023, W-024) under your "go with my recommendation" instruction** instead of waiting for you. W-021 and W-023 are now merged; W-024 failed again and is parked. Say if you want parked items to wait for you in future.
+- **Q224 (delegated, reversible) — a contract held by two strategies disagrees with Zerodha.** Built: every holder stays blocked; adopt / prepared closing order / broker-flat exit are refused, because nothing says which strategy's leg changed (splitting the difference invented a +50 long on a flat account and proposed SELL 100). You resolve by trading in Kite and re-running. Open: do you want a rule where you pick which strategy absorbs the change?
+- **W-024 wording strictness (issue #30).** Recommended: every platform message is a fixed reviewed template; ban bare "best", "sure", "safe", "guarantee*", "recommend*" in templates with named exceptions reviewed once ("best bid", "best ask", "best-case", "make sure"); broker/user text only quoted. Reply "go with the recommendation" or your rule.
+- **Q222 (delegated, reversible) — does a fresh agreeing reconciliation run unblock a strategy by itself?** Built: no, someone must resolve it explicitly (adopt / exit / close). ADR-018 and REQ-060 AC-5 allow either. Recommended: keep explicit (you see what happened in your account before trading resumes); cost: one extra click after an external change.
 - **Q223 — Close Partial Strategy and still-open entry orders.** If an entry order (e.g. a sell) is still open when you choose Close, it could fill after the exits and leave a naked short. Built (orchestrator default, W-023 round 3): the Close preparation also lists cancel requests for the strategy's own open entry orders, shown to you before you confirm. The spec says nothing on this.
-- W-021 (reconciliation) is parked, issue #33 — say "unpark W-021" for one short round.
 - W-024 (error messages) is parked, issue #30 — say "unpark W-024" for one short round (closed code lists, a runtime check on the finished message, back doors closed).
 - W-007 (entitlement engine) is parked, issue #12 — decide the recommended fix (separate "validate a new event" from "load stored history"; bound future-dated status changes).
 - The state-machine transition table in `spec/data/domain-model.md` §6 is still a proposal for your review.

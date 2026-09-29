@@ -47,6 +47,11 @@
       "date": "2026-09-29",
       "where": "W-025 builder brief default (a)",
       "evidence": "brief said 'include the exact current level as the first value, then 100-point multiples away from it'; built as offsets from an unaligned level, so SENSEX 81,422 gave 81,322 (not a strike) and the REQ-026 note 'every value is a real strike' became false; verifier failed AC-5"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-021 fix brief (account-wide coverage)",
+      "evidence": "brief named only AFTER_EXECUTION and ORDER_EVENT for account-wide coverage; the PERIODIC trigger still compared active ids only, so a Monitoring Paused holder of a shared contract caused a false block and a corrupting adopt (verifier W-021e)"
     }
   ],
   "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
