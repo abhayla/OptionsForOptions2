@@ -25,13 +25,14 @@ from work_count import assert_linear
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
 from ofo.engine import Action, Instrument, Leg, Strategy
-from ofo.execution.partial import CHOICE_ORDER, PartialChoice
+from ofo.execution.partial import CHOICE_ORDER
 from ofo.reconciliation.compare import ReconciliationError
 from ofo.reconciliation.resolution import ResolutionKind
 from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.state_machine import (
     LIVE_STATES,
     NON_NORMAL_STATES,
+    PARTIAL_CHOICES,
     TRANSITIONS,
     StateExplanation,
     StateMachineError,
@@ -273,7 +274,7 @@ def ev_confirm_adjustment(ctx: Ctx) -> None:
 def ev_close_partial(ctx: Ctx) -> None:
     if ctx.record.proposed_version is not None:  # the closing orders executed: the broker is flat again
         _try(lambda: ctx.result(ResultStatus.REJECTED, Position()))
-    ctx.machine.choose_partial(PartialChoice.CLOSE_PARTIAL_STRATEGY, at=ctx.tick(), actor="user-1")
+    ctx.machine.close_partial(at=ctx.tick(), actor="user-1")
 
 
 def ev_resolve_adopt(ctx: Ctx) -> None:
@@ -310,12 +311,8 @@ EVENTS = {
     "fill_partial": ev_fill(ResultStatus.PARTIAL, some_legs),
     "fill_mismatch": ev_fill(ResultStatus.COMPLETE, overfilled),
     "broker_differs": ev_broker_differs,
-    "partial_complete": lambda ctx: ctx.machine.choose_partial(
-        PartialChoice.COMPLETE_STRATEGY, at=ctx.tick(), actor="user-1"),
-    "partial_retry": lambda ctx: ctx.machine.choose_partial(
-        PartialChoice.RETRY_FAILED_LEG, at=ctx.tick(), actor="user-1"),
-    "partial_review": lambda ctx: ctx.machine.choose_partial(
-        PartialChoice.REVIEW_MANUALLY, at=ctx.tick(), actor="user-1"),
+    "partial_complete_or_retry": lambda ctx: ctx.machine.continue_execution(at=ctx.tick(), actor="user-1"),
+    "partial_review": lambda ctx: ctx.machine.review_partial(at=ctx.tick(), actor="user-1"),
     "partial_close": ev_close_partial,
     "start_adjustment": lambda ctx: ctx.machine.start_adjustment(at=ctx.tick(), actor="user-1"),
     "confirm_adjustment": ev_confirm_adjustment,
@@ -404,7 +401,7 @@ def test_ac1_a_resolution_recorded_before_the_mismatch_does_not_count():
     ev_confirm_adjustment(ctx)
     ctx.result(ResultStatus.PARTIAL, some_legs(ctx))
     ctx.machine.follow_execution(at=ctx.tick())
-    ctx.machine.choose_partial(PartialChoice.REVIEW_MANUALLY, at=ctx.tick(), actor="user-1")
+    ctx.machine.review_partial(at=ctx.tick(), actor="user-1")
     assert ctx.machine.state is S.RECONCILIATION_REQUIRED and not ctx.record.reconciliation_required
     with pytest.raises(StateMachineError, match="manual resolution"):
         ctx.machine.resolve_reconciliation(at=ctx.tick())
@@ -476,7 +473,7 @@ def test_ac1_guards_read_the_record_not_the_caller():
     ctx = to_partial()
     ctx.result(ResultStatus.REJECTED, Position())
     with pytest.raises(StateMachineError, match="pending"):
-        ctx.machine.choose_partial(PartialChoice.COMPLETE_STRATEGY, at=ctx.tick(), actor="user-1")
+        ctx.machine.continue_execution(at=ctx.tick(), actor="user-1")
 
 
 def test_ac1_after_adopting_during_execution_the_strategy_becomes_active_only_through_the_table():
@@ -625,6 +622,7 @@ def test_ac3_every_non_normal_state_says_what_happened_when_what_is_blocked_and_
         text = " ".join((explanation.what_happened, explanation.next_action, *explanation.blocked))
         assert find_banned_phrases(text) == [], state
         assert "went wrong" not in text.lower()
+    assert PARTIAL_CHOICES == tuple(c.value for c in CHOICE_ORDER)  # W-023's words, in its order
     assert ", ".join(c.value for c in CHOICE_ORDER) in EXPECTED_EXPLANATIONS[S.PARTIALLY_EXECUTED][2]
     for kind in (ResolutionKind.ADOPT_BROKER_POSITION, ResolutionKind.PREPARE_CLOSING_ORDER,
                  ResolutionKind.MARK_REQUIRES_ATTENTION):
@@ -655,12 +653,10 @@ def test_ac1_each_guard_refuses_on_the_records_facts():
     ctx.result(ResultStatus.REJECTED, ctx.record.active_version.intended_position)
     assert ctx.machine.follow_execution(at=ctx.tick()) is None
     assert ctx.machine.state is S.EXECUTION_IN_PROGRESS
-    # Choices are W-023's enum, never free text; closing needs the record to exit (a proposal still pending: no).
+    # Closing needs the record to exit: with a proposal still pending (orders may be working) it refuses.
     ctx = to_partial()
-    with pytest.raises(StateMachineError, match="PartialChoice"):
-        ctx.machine.choose_partial("Close Partial Strategy", at=ctx.tick(), actor="user-1")  # type: ignore[arg-type]
     with pytest.raises(VersionError, match="awaiting"):
-        ctx.machine.choose_partial(PartialChoice.CLOSE_PARTIAL_STRATEGY, at=ctx.tick(), actor="user-1")
+        ctx.machine.close_partial(at=ctx.tick(), actor="user-1")
     # Discard, resume and expiry refuse while the record says the broker differs.
     ctx = to_adjusting()
     ctx.observe(odd(ctx))

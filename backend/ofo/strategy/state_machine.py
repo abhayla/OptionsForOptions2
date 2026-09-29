@@ -39,7 +39,6 @@ from typing import Callable, Final, Mapping, Protocol, Sequence
 
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
-from ofo.execution.partial import CHOICE_ORDER, PartialChoice
 from ofo.reconciliation.resolution import ResolutionKind
 from ofo.strategy.definition import MAX_TEXT, StrategyDefinition
 from ofo.strategy.versions import OutcomeKind, Position, StrategyRecord
@@ -49,6 +48,9 @@ MAX_TRANSITIONS: Final = 100_000
 MAX_REASONS: Final = 50
 MAX_ID_CHARS: Final = 200
 MAX_FUTURE_SKEW: Final = datetime.timedelta(seconds=60)
+#: REQ-058 AC-2's four choices in W-023's ``CHOICE_ORDER``. Not imported: only the execution flow may import
+#: ``ofo.execution.partial`` (tests/execution/test_strategy_only.py AC-3); test_state_machine asserts they are equal.
+PARTIAL_CHOICES: Final = ("Complete Strategy", "Retry Failed Leg", "Review Manually", "Close Partial Strategy")
 
 
 class StateMachineError(ValueError):
@@ -264,10 +266,10 @@ class StrategyStateMachine:
             next_action = "Wait for Zerodha to confirm the orders. Nothing is retried automatically."
         elif state is _S.PARTIALLY_EXECUTED:
             happened = f"Some legs of version {self._executing} executed and others did not."
-            next_action = "Choose one: " + ", ".join(choice.value for choice in CHOICE_ORDER) + "."
+            next_action = "Choose one: " + ", ".join(PARTIAL_CHOICES) + "."
         elif state is _S.RECONCILIATION_REQUIRED:
             if entry.trigger is _T.USER_REVIEWS:
-                happened = f"{entry.actor} chose {PartialChoice.REVIEW_MANUALLY.value} after a partial execution."
+                happened = f"{entry.actor} chose {PARTIAL_CHOICES[2]} after a partial execution."
             else:
                 count = len(self._record.actual_position.differences(self._active_intended()))
                 happened = f"Zerodha's position differs from this strategy's ({_differs(count)})."
@@ -339,25 +341,29 @@ class StrategyStateMachine:
                                 (("version", str(pending.number)),))
         return None
 
-    def choose_partial(self, choice: PartialChoice, *, at: datetime.datetime, actor: str) -> StateTransition:
-        """The user's choice in Partially Executed (W-023's four choices)."""
-        if not isinstance(choice, PartialChoice):
-            raise StateMachineError(f"choice must be a PartialChoice, got {choice!r}")
-        if choice is PartialChoice.REVIEW_MANUALLY:
-            self._precheck(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, at, actor)
-            return self._commit(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, actor, at)
-        if choice is PartialChoice.CLOSE_PARTIAL_STRATEGY:
-            self._precheck(_S.EXITED, _T.USER_CLOSES_PARTIAL, at, actor)
-            if not self._record.exited:
-                self._record.mark_exited(at=at, actor=actor, resolution=choice.value)
-            return self._commit(_S.EXITED, _T.USER_CLOSES_PARTIAL, actor, at)
+    def continue_execution(self, *, at: datetime.datetime, actor: str) -> StateTransition:
+        """Partially Executed: the user chose Complete Strategy or Retry Failed Leg (W-023). The executing version must
+        still be pending and confirmed in the record; W-023 prepares and sends the missing orders."""
         self._precheck(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, at, actor)
-        pending = self._record.proposed_version
+        pending = self._record.proposed_version  # a set reconciliation flag always means no proposal (W-012)
         if pending is None or pending.number != self._executing or not self._record.proposal_confirmed:
             raise StateMachineError(f"version {self._executing} is no longer pending and confirmed; nothing to "
                                     "complete or retry")
         return self._commit(_S.EXECUTION_IN_PROGRESS, _T.USER_COMPLETES_OR_RETRIES, actor, at,
-                            (("choice", choice.value),))
+                            (("version", str(pending.number)),))
+
+    def review_partial(self, *, at: datetime.datetime, actor: str) -> StateTransition:
+        """Partially Executed: the user chose Review Manually."""
+        self._precheck(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, at, actor)
+        return self._commit(_S.RECONCILIATION_REQUIRED, _T.USER_REVIEWS, actor, at)
+
+    def close_partial(self, *, at: datetime.datetime, actor: str) -> StateTransition:
+        """Partially Executed: the user chose Close Partial Strategy and the closing orders left the broker flat
+        (the record's ``mark_exited`` checks flat, executed and nothing pending)."""
+        self._precheck(_S.EXITED, _T.USER_CLOSES_PARTIAL, at, actor)
+        if not self._record.exited:
+            self._record.mark_exited(at=at, actor=actor, resolution=PARTIAL_CHOICES[3])
+        return self._commit(_S.EXITED, _T.USER_CLOSES_PARTIAL, actor, at)
 
     # ---- events: an active strategy ------------------------------------------------------------------------------
 
