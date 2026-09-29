@@ -4,7 +4,10 @@ Finding brief-rule-from-memory: orchestrators wrote spec rules into briefs from 
 Usage: python scripts/orchestrator/check_brief.py <brief-file> [--strict] [--root <repo root>]
 Exit 0: every cited quote is verbatim.  Exit 1: a quote is not in its cited spec text (FAIL), or with --strict
 a quote has no citation (UNCITED).  Exit 2: bad usage.
-Citation = the nearest REQ-### [AC-n] / ADR-### / Q### id in front of the quote, within the same paragraph.
+Citation = the nearest REQ-### [AC-n] / ADR-### / Q### id in front of the quote, within the same paragraph;
+when a REQ+AC cite and another id both precede the quote, the REQ+AC cite wins.
+A Q### quote passes if the id's open-questions section or any spec/ file mentioning the id contains it.
+A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ QUOTE_RE = re.compile(r'"([^"]+)"|“([^”]+)”')
 ID_RE = re.compile(r"(REQ-\d{3})(?:[\s,]*(AC-\d+))?|(ADR-\d{3})|\b(Q\d{2,3})\b")
 ELLIPSIS_RE = re.compile(r"…|\.\.\.")
 MAX_PREFIX = 200
+MIN_QUOTE = 12
 INHERIT_PREFIX = 20  # "and", ",", "or" between two quotes that share one citation
 
 
@@ -27,7 +31,7 @@ class Result:
     line: int
     quote: str
     cite: str | None
-    status: str  # OK | FAIL | UNCITED
+    status: str  # OK | FAIL | UNCITED | TOO-SHORT
     detail: str = ""
 
 
@@ -48,9 +52,39 @@ def _q_text(raw: str, q: str) -> str:
     return m.group(1) if m else raw
 
 
-def scope_text(root: Path, cite: str) -> tuple[str | None, str]:
-    """Return (text the quote must be in, error) for a citation like 'REQ-060 AC-2', 'ADR-010', 'Q237'."""
+def _q_texts(root: Path, q: str) -> tuple[list[str] | None, str]:
+    """A Q-id's text: its open-questions section, plus every other spec/ file that mentions the id."""
+    oq = root / "spec" / "open-questions.md"
+    texts: list[str] = []
+    if oq.is_file():
+        texts.append(_q_text(oq.read_text(encoding="utf-8"), q))
+    pat = re.compile(r"(?<![0-9A-Za-z])" + re.escape(q) + r"(?![0-9A-Za-z])")
+    for f in sorted((root / "spec").rglob("*.md")):
+        if f == oq:
+            continue
+        raw = f.read_text(encoding="utf-8")
+        if pat.search(raw):
+            texts.append(raw)
+    if not texts:
+        return None, f"{q} not found in spec/"
+    return texts, ""
+
+
+def _in_order(text: str, fragments: list[str]) -> bool:
+    hay, pos = norm(text), 0
+    for f in fragments:
+        i = hay.find(f, pos)
+        if i < 0:
+            return False
+        pos = i + len(f)
+    return True
+
+
+def scope_text(root: Path, cite: str) -> tuple[list[str] | None, str]:
+    """Return (candidate texts, any one of which may hold the quote; error) for 'REQ-060 AC-2', 'ADR-010', 'Q237'."""
     head = cite.split()[0]
+    if head.startswith("Q"):
+        return _q_texts(root, head)
     if head.startswith("REQ-"):
         path = root / "spec" / "requirements" / f"{head}.md"
     elif head.startswith("ADR-"):
@@ -64,10 +98,8 @@ def scope_text(root: Path, cite: str) -> tuple[str | None, str]:
         ac = _ac_text(raw, cite.split()[1])
         if ac is None:
             return None, f"{cite.split()[1]} not found in {head}"
-        return ac, ""
-    if head.startswith("Q"):
-        return _q_text(raw, head), ""
-    return raw, ""
+        return [ac], ""
+    return [raw], ""
 
 
 def nearest_line(text: str, quote: str) -> str:
@@ -93,7 +125,8 @@ def check_text(brief: str, root: Path) -> list[Result]:
         ids = list(ID_RE.finditer(prefix))
         cite: str | None = None
         if ids:
-            cite = _cite_from(ids[-1])
+            with_ac = [i for i in ids if i.group(1) and i.group(2)]
+            cite = _cite_from((with_ac or ids)[-1])
         elif prev_cite and len(prefix.strip()) <= INHERIT_PREFIX and m.start() - prev_end <= INHERIT_PREFIX:
             cite = prev_cite
         prev_end, prev_cite = m.end(), cite
@@ -101,14 +134,16 @@ def check_text(brief: str, root: Path) -> list[Result]:
         if cite is None:
             results.append(Result(line, quote, None, "UNCITED"))
             continue
-        text, err = scope_text(root, cite)
-        if text is None:
+        texts, err = scope_text(root, cite)
+        if texts is None:
             results.append(Result(line, quote, cite, "FAIL", err))
             continue
-        hay = norm(text)
-        missing = [f for f in ELLIPSIS_RE.split(quote) if norm(f) and norm(f).strip(" .,;:") not in hay]
-        if missing:
-            results.append(Result(line, quote, cite, "FAIL", "nearest spec line: " + nearest_line(text, missing[0])))
+        frags = [norm(f).strip(" .,;:") for f in ELLIPSIS_RE.split(quote) if norm(f).strip(" .,;:")]
+        if not any(_in_order(t, frags) for t in texts):
+            results.append(Result(line, quote, cite, "FAIL", "nearest spec line: "
+                                  + nearest_line(texts[0], frags[0] if frags else quote)))
+        elif len(norm(quote)) < MIN_QUOTE:
+            results.append(Result(line, quote, cite, "TOO-SHORT", f"under {MIN_QUOTE} characters: proves little"))
         else:
             results.append(Result(line, quote, cite, "OK"))
     return results
@@ -133,9 +168,11 @@ def main(argv: list[str] | None = None) -> int:
             out.append(f"        {r.detail}")
     fails = sum(r.status == "FAIL" for r in results)
     uncited = sum(r.status == "UNCITED" for r in results)
-    out.append(f"{len(results)} quotes: {len(results) - fails - uncited} OK, {fails} FAIL, {uncited} UNCITED")
+    short = sum(r.status == "TOO-SHORT" for r in results)
+    ok = len(results) - fails - uncited - short
+    out.append(f"{len(results)} quotes: {ok} OK, {fails} FAIL, {uncited} UNCITED, {short} TOO-SHORT")
     sys.stdout.write("\n".join(out) + "\n")
-    return 1 if fails or (args.strict and uncited) else 0
+    return 1 if fails or (args.strict and (uncited or short)) else 0
 
 
 if __name__ == "__main__":

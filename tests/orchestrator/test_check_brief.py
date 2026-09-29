@@ -79,3 +79,35 @@ def test_ac1_missing_spec_file_or_ac_fails(tmp_path, capsys):
 def test_ac1_missing_brief_file_is_usage_error(tmp_path):
     """AC-1: a brief path that does not exist exits 2, never 0."""
     assert check_brief.main([str(tmp_path / "nope.md"), "--root", str(ROOT)]) == 2
+
+
+def test_w040_ac_cite_beats_trailing_q_id(tmp_path, capsys):
+    """AC-1: 'REQ-058 AC-6 (Q193): "..."' checks against AC-6; the Q-id after it does not override the AC cite."""
+    text = 'REQ-058 AC-6 (Q193): "V1 never resubmits a failed order automatically; the failure is shown with its reason"'
+    assert run(tmp_path, text) == 0
+    assert "REQ-058 AC-6" in capsys.readouterr().out
+    bad = 'REQ-058 AC-6 (Q193): "V1 always resubmits a failed order automatically"'
+    assert run(tmp_path, bad) == 1
+
+
+def test_w040_q_quote_found_in_adr_owner_decision_section(tmp_path, capsys):
+    """AC-1: a Q230 quote whose text lives in spec/decisions/ADR-003.md (not open-questions) checks OK."""
+    text = 'Q230: "the ban covers every word form of the five words"'
+    assert run(tmp_path, text) == 0
+    assert "1 OK" in capsys.readouterr().out
+    assert run(tmp_path, 'Q230: "the ban covers only the exact word best"') == 1
+
+
+def test_w040_short_quote_is_too_short_not_ok(tmp_path, capsys):
+    """AC-1: a quote under 12 chars is TOO-SHORT: exit 0 normally, exit 1 with --strict, never reported OK."""
+    text = 'REQ-058 AC-6 "V1 never"'
+    assert run(tmp_path, text) == 0
+    out = capsys.readouterr().out
+    assert "TOO-SHORT" in out and "1 OK" not in out
+    assert run(tmp_path, text, "--strict") == 1
+
+
+def test_w040_ellipsis_fragments_must_be_in_order(tmp_path):
+    """AC-1: '"the user chooses the next action ... V1 never resubmits"' has both fragments but reversed -> FAIL."""
+    assert run(tmp_path, 'REQ-058 AC-6 "the user chooses the next action ... V1 never resubmits"') == 1
+    assert run(tmp_path, 'REQ-058 AC-6 "V1 never resubmits ... the user chooses the next action"') == 0
