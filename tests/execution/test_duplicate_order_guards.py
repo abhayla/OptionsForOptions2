@@ -11,6 +11,15 @@ Mutants named by the verifier, each with the test below that must turn red again
   ``test_grace_boundary_exact_60s_still_in_flight_then_one_tick_over_is_mismatch``.
 - M6: the 5 s clock-skew comparison in ``OrderBook.check_read`` moves by one tick ->
   ``test_skew_boundary_exact_5s_accepted_then_one_tick_over_is_refused``.
+
+W-023 round 5 (issue #37 follow-up), three more mutants with no killing test:
+- M10: the ``submit_confirmed`` branch for a definite ``OrderRefused`` stops marking the order Rejected and instead
+  leaves it non-terminal -> ``test_refused_retry_frees_the_strategy_for_a_second_retry`` (the round-2 lockout class:
+  Retry would see IN_PROGRESS with 0 orders forever instead of PARTIAL_EXCEPTION with 1).
+- M13: ``_sync_book`` silently ignores a broker status line for another strategy's order instead of raising a
+  mismatch -> ``test_broker_status_for_another_strategys_order_is_a_mismatch``.
+- M16: the 60 s stale-read comparison in ``OrderBook.check_read`` moves by one tick ->
+  ``test_stale_read_boundary_exact_60s_accepted_then_one_tick_older_is_refused``.
 """
 from __future__ import annotations
 
@@ -41,9 +50,10 @@ from ofo.execution.partial import (
     close_partial_strategy,
     complete_strategy,
     discard_preparation,
+    retry_failed_leg,
     submit_confirmed,
 )
-from ofo.orders import FillEvent, OrderState
+from ofo.orders import FillEvent, Order, OrderState
 
 COMPLETE = PartialChoice.COMPLETE_STRATEGY
 LTPS = (D("40.00"), D("80.00"), D("120.00"))
@@ -143,4 +153,56 @@ def test_skew_boundary_exact_5s_accepted_then_one_tick_over_is_refused(catalogue
     over = FakeBroker(three_positions(), statuses(),
                       read_at=clock.t + datetime.timedelta(seconds=5, milliseconds=1))
     refused = complete_strategy(plan(), over, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    assert refused.orders == () and "could not re-read" in refused.reason
+
+
+def test_refused_retry_frees_the_strategy_for_a_second_retry(catalogue, eligibility) -> None:  # noqa: ANN001
+    """M10: a definite OrderRefused must mark the order Rejected (terminal) immediately -- never left non-terminal,
+    which would lock the strategy at IN_PROGRESS with 0 orders forever (the round-2 lockout class). A Retry right
+    after the refusal must show PARTIAL_EXCEPTION and prepare exactly 1 order for the same leg."""
+    book = book_with_three_filled()
+    broker = FakeBroker(three_positions(), statuses())
+    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    result = submit_confirmed(prep, choice=COMPLETE, confirmed_by="user:U-42", submitter=FakeSubmitter(refuse=1))
+    assert result.submitted == () and result.failed is not None and "Margin Exceeds" in result.failed[1]
+
+    view = book.order_for_key("OFO000000001")
+    assert view.state is OrderState.REJECTED  # a definite refusal is terminal at once, not left in flight
+
+    retry = retry_failed_leg(plan(), "leg-4", broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    assert retry.assessment.status is ExecutionStatus.PARTIAL_EXCEPTION
+    assert [(o.contract, o.side, o.quantity) for o in retry.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
+
+
+def test_broker_status_for_another_strategys_order_is_a_mismatch(catalogue, eligibility) -> None:  # noqa: ANN001
+    """M13: ``_sync_book`` -- a broker order-status line whose id belongs to ANOTHER strategy's order in this same
+    book is flagged ("belongs to another strategy") and blocks with RECONCILIATION_REQUIRED, never silently
+    ignored (which would let this strategy's assessment go on as if that line never arrived)."""
+    book = book_with_three_filled()
+    other = Order("S-9", "other-leg", CONTRACTS[3], Action.BUY, LOT, D("44.00"), broker_order_id="BRK-OTHER")
+    book.add(other)
+    book.transition("BRK-OTHER", OrderState.SUBMITTED)
+
+    foreign_status = BrokerOrderStatus("BRK-OTHER", CONTRACTS[3], OrderState.EXECUTED, LOT)
+    prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses() + [foreign_status]), book,
+                             FakePlanner(), entry_context(), catalogue, eligibility)
+    assert prep.orders == ()
+    assert prep.assessment.status is ExecutionStatus.RECONCILIATION_REQUIRED
+    assert any("belongs to another strategy" in m for m in prep.assessment.mismatches)
+
+
+def test_stale_read_boundary_exact_60s_accepted_then_one_tick_older_is_refused(catalogue, eligibility) -> None:  # noqa: ANN001
+    """M16: a broker read stamped exactly 60 s old is accepted; one tick (1 ms) older is refused. Locks the ``<``
+    (not ``<=``) in ``OrderBook.check_read``'s stale-read comparison ("older than the age limit" is refused)."""
+    clock = Clock(t=READ_AT + datetime.timedelta(seconds=10))
+    book = book_with_three_filled(clock=clock)
+
+    exact = FakeBroker(three_positions(), statuses(), read_at=clock.t - datetime.timedelta(seconds=60))
+    ok = complete_strategy(plan(), exact, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    assert [(o.contract, o.side, o.quantity) for o in ok.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
+    discard_preparation(ok)
+
+    stale = FakeBroker(three_positions(), statuses(),
+                       read_at=clock.t - datetime.timedelta(seconds=60, milliseconds=1))
+    refused = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert refused.orders == () and "could not re-read" in refused.reason
