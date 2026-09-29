@@ -7,11 +7,13 @@
     "where": "W-014 backend/ofo/execution (active-legs hash)",
     "evidence": "final verifier: exit of 650 units against a fake 'SELL 650' position with a self-computed hash -> blocked=False"
   },
-  "fix": "Per instance: W-020 reads versions from the exact StrategyRecord type; W-027 calls check_pre_execution itself with inputs grounded from the record (no public verdict parameter); W-014 residual in deferred #29 item 5 (integration must read legs from the store). Mechanism: builder brief quality-bar line 'Never trust a caller-supplied verdict or identity' with a required forged-result test.",
+  "fix": "Per instance: W-020 reads versions from the exact StrategyRecord type; W-027 calls check_pre_execution itself with inputs grounded from the record (no public verdict parameter); W-014 residual in deferred #29 item 5 (integration must read legs from the store). Mechanism: builder brief quality-bar line 'Never trust a caller-supplied verdict or identity' with a required forged-result test. W-026 (PR #44): the broker sink re-derives symbol, side, quantity, strategy and version from the bound record and catalogue; no public route except submit_confirmed; runtime public-API walk test.",
   "detection": {
     "status": "unguarded",
-    "checks": [],
-    "note": "Brief line is prose; guarded only when a lint/AST test flags public functions in backend/ofo taking *Result/*Verdict/hash parameters, or every gate-dependent module has a forged-input test. Not built."
+    "checks": [
+      "tests/execution/test_strategy_only.py (runtime public-API walk, send path only)"
+    ],
+    "note": "The W-026 public-API walk guards the send path only; other gate-dependent modules still rely on the builder brief line and per-item forged-input tests."
   },
   "spec_ref": [
     "spec/requirements/REQ-059.md",
@@ -33,6 +35,11 @@
       "date": "2026-09-29",
       "where": "W-027 @ 2512751",
       "evidence": "execute_confirmed_modification(rec, SafetyResult((),(),(),(),(),None,None,None,None), ...) -> ACTIVATED v2"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-026 rounds 1-2 @ 85e11ba / 0b04329",
+      "evidence": "direct Preparation + public guard.issue(binding, None, None, 0, 0) sent a naked SELL 325 NIFTY 23400CE and a BANKNIFTY buy; then public mint_capability sent a sell for a non-existent strategy and a forged plan reached the broker; fixed by a private sink that re-derives every broker field (PR #44)"
     }
   ]
 }
