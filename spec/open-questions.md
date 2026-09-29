@@ -183,3 +183,14 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Spec basis: ADR-016/ADR-018 (Zerodha is the authority; a mismatch blocks); ADR-018 Q198 resolution list; REQ-060
   AC-5, AC-7 (AC-7 covers one strategy plus a standalone, not two strategies). No spec text defines attribution across
   strategies.
+
+## Q225 — DECIDED (owner, 2026-09-29 morning) — Entitlement history after a setting changes; post-dated status changes
+- Situation (W-007 round 4, issue #12): a revoke dated 2106 was accepted and then blocked a real revoke; lowering
+  `max_free_days` 90 → 30 made a legal stored history fail to load.
+- Decision: A — validate new events against current settings; load stored history with integrity checks only; every
+  status change bounded to effective_at ≤ recorded_at + clock skew. Recorded in ADR-023 "Owner decision (Q225)".
+
+## Q226 — DECIDED (owner, 2026-09-29 morning) — Strictness of the advice-word check (W-024, issue #30)
+- Decision: strict — ban bare "best", "sure", "safe", "guarantee*", "recommend*" in platform templates, with the named
+  exceptions "best bid", "best ask", "best-case", "make sure"; broker/user text quoted only. Recorded in ADR-003
+  "Owner decision (Q226)".
