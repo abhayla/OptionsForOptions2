@@ -71,7 +71,7 @@ from ofo.execution.context import ExecutionAction, ExecutionContext, MarginPlann
 from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, ident
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
-from ofo.execution.sequence import BrokerConstraints, PlannedOrder, sequence_plan
+from ofo.execution.sequence import BrokerConstraints, PlannedOrder, exit_orders, sequence_plan
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
@@ -668,12 +668,16 @@ def review_manually(assessment: Assessment) -> Preparation:
 
 def close_partial_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: EligibilityRegistry,
+    catalogue: Catalogue, eligibility: EligibilityRegistry, *, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """Close Partial Strategy: reduce-only exits for exactly the filled legs, through the gate as an EXIT.
 
     Exit quantity per leg = held (broker-confirmed) - exits already open in the reconciled book. The platform's own
     open ENTRY orders are listed as cancel requests (OD-m). Not offered under a reconciliation mismatch.
+
+    W-032 (REQ-056 AC-10, deferred #50): each exit is sent as the same lot-aligned freeze slices Complete and Retry
+    use (``sequence.exit_orders`` -> ``slice_quantity``; ``constraints`` as for them, default the labelled UNVERIFIED
+    placeholder). Step 1 = buy-backs of shorts, step 2 = sells of longs (OD-e); a batch never spans the two.
     """
     choice = PartialChoice.CLOSE_PARTIAL_STRATEGY
     waiting = _live(choice, book, plan)
@@ -710,15 +714,19 @@ def close_partial_strategy(
         return _not_prepared(choice, a, "Exit orders for every filled leg are already in flight. No order has been "
                                         "prepared.")
     pairs.sort(key=lambda pl: 0 if pl[1].action is Action.BUY else 1)  # OD-e: buy back shorts first
-    orders = tuple(Order(plan.strategy_id, p.leg_ref, p.contract, e.action, e.quantity, e.entry_price,
-                         version_id=context.version_id) for p, e in pairs)
+    groups = [[(p.leg_ref, e.quantity) for p, e in pairs if e.action is side] for side in (Action.BUY, Action.SELL)]
+    slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
+    exits = {p.leg_ref: e for p, e in pairs}
+    orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
+                         s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id) for s in slices)
     legs = tuple(e for _, e in pairs)
     # The held legs come from THIS call's fresh broker read (the authority, ADR-016), not from a caller.
     ctx = dataclasses.replace(
         context, action=ExecutionAction.EXIT, active_legs=a.actual_legs, active_version_id=context.version_id,
         active_legs_hash=active_legs_hash(plan.strategy_id, context.version_id, a.actual_legs),
     )
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels))
+    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels),
+                 slices)
 
 
 @dataclass(frozen=True)
