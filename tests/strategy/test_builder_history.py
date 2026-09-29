@@ -393,14 +393,20 @@ def test_red_futures_leg_has_no_strike_to_change():
 
 
 def test_one_by_one_append_of_1000_meaningful_changes_stays_fast():
-    """Input-domain checklist: appending 1,000 entries one at a time must not re-validate the whole history."""
-    import time
+    """AC-2: appending 1,000 entries one at a time must not re-validate the whole history: the calls made by 1,000
+    appends are twice those of 500 (work is counted, not timed)."""
+    from work_count import assert_linear
 
-    session = BuilderSession((LEG1, LEG2))
-    start = time.perf_counter()
-    for i in range(1000):
-        session.change_quantity(0, QTY + (i % 50) + 1)
-    elapsed = time.perf_counter() - start
+    sessions = []
 
-    assert len(session.history()) == 1001  # original + 1000 meaningful changes
-    assert elapsed < 2.0, f"1000 appends took {elapsed:.2f}s - looks like O(n) or worse per append"
+    def appends(n: int):
+        session = BuilderSession((LEG1, LEG2))
+        sessions.append(session)
+
+        def work() -> None:
+            for i in range(n):
+                session.change_quantity(0, QTY + (i % 50) + 1)
+        return work
+
+    assert_linear(appends, 500)
+    assert [len(s.history()) for s in sessions] == [501, 1001]  # original + 500 / 1000 meaningful changes
