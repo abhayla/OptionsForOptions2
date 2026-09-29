@@ -57,6 +57,11 @@
       "date": "2026-09-29",
       "where": "W-022 builder brief",
       "evidence": "brief said protection needs a strike 'beyond' the sold strike (false for a bull call spread) and futures protect 'only if the spec defines it' (REQ-059's covered-call example already does); round 1 then shipped a covered call that sent the short call first (verifier W-022)"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-037 builder brief (day session)",
+      "evidence": "brief said REQ-060 AC-2 is 'every run compares all non-exited strategies' (recalled from the W-021 PR); REQ-060 AC-2 actually reads 'It detects: missing platform position, unexpected broker position, quantity/strike/side/expiry mismatch, external broker modification, and partially executed strategy'. Caught by the builder (class 1)."
     }
   ],
   "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",

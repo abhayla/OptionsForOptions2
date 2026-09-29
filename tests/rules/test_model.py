@@ -153,13 +153,31 @@ def test_futures_only_strategy_has_zero_net_premium_not_missing():
 PRICE_FIELDS = {"ltp", "entry_price"}
 
 
+def _reads_price_field(node: ast.AST) -> bool:
+    """True for ``x.ltp``, ``getattr(x, 'ltp'[, default])`` and ``attrgetter('ltp')`` / ``operator.attrgetter('ltp')``."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in PRICE_FIELDS
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+    if name == "getattr":
+        names = node.args[1:2]
+    elif name == "attrgetter":
+        names = node.args
+    else:
+        return False
+    return any(isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.split(".")[-1] in PRICE_FIELDS
+               for a in names)
+
+
 def price_math(source: str) -> list[int]:
     """Line numbers where rules code touches a leg price other than an ``is None`` / ``is not None`` check."""
     tree = ast.parse(source)
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     bad = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr in PRICE_FIELDS:
+        if _reads_price_field(node):
             parent = parents.get(node)
             is_none_check = (isinstance(parent, ast.Compare) and len(parent.ops) == 1
                              and isinstance(parent.ops[0], (ast.Is, ast.IsNot))
@@ -177,6 +195,12 @@ def test_no_money_arithmetic_on_leg_prices_in_rules():
     assert price_math(old) == [1, 1]
     assert price_math("y = (leg.ltp - leg.entry_price) * leg.quantity") == [1, 1]
     assert price_math("ok = all(leg.ltp is not None for leg in legs)") == []
+    # Indirect reads with a literal name are the same read (issue #10 item 3).
+    assert price_math("x = getattr(leg, 'ltp') * 2") == [1]
+    assert price_math("x = getattr(leg, 'entry_price', None)") == [1]
+    assert price_math("f = operator.attrgetter('ltp')") == [1]
+    assert price_math("f = attrgetter('entry_price')") == [1]
+    assert price_math("ok = getattr(leg, 'quantity') * 2") == []
 
     rules_dir = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo" / "rules"
     files = sorted(rules_dir.glob("*.py"))

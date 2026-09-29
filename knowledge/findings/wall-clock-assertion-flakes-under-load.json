@@ -13,7 +13,7 @@
     "checks": [
       "tests/test_no_wall_clock_asserts.py"
     ],
-    "note": "W-033 (2026-09-29): the five threshold asserts now count work (tests/work_count.py). The guard does NOT flag timeit, datetime.now() differences, 'import time as t', or thresholds held in a named constant (verifier, W-033); call counting cannot see quadratic work without function calls."
+    "note": "W-033 (2026-09-29): the five threshold asserts now count work (tests/work_count.py). W-038 (2026-09-29, issue #65) closed the guard's shape gaps: timeit readings, datetime.now() differences, aliased timer imports ('import time as t', 'from time import perf_counter as pc') and thresholds held in a module-level numeric constant are now flagged, each with a self-test snippet that was silent on the W-033 guard. Still NOT covered: call counting (tests/work_count.py) cannot see quadratic work with no function calls (an inline list comprehension); a threshold in a function-local or imported constant; a clock reading passed through a helper function's return value."
   },
   "spec_ref": [
     "spec/testing/core-invariants.md"

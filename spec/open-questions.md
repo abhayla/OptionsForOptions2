@@ -234,3 +234,21 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q237 — DECIDED (owner, 2026-09-29) — CI for the API/web layers on a private repo
 - Decision: (a) a path-filtered project workflow `app-tests.yml`; usage reported after a week. Recorded in ADR-046.
+
+## Q238 — DECIDED (owner, 2026-09-29) — Order of exit orders (OD-e)
+- Decision: shorts bought back first, then longs sold, never in one batch. Recorded in REQ-058 "Owner decision (Q238)".
+
+## Q239 — DECIDED (owner, 2026-09-29) — Gate checks on exits (W-014)
+- Decision: keep all five checks on exits. Recorded in REQ-059 "Owner decision (Q239)".
+
+## Q240 — DECIDED (owner, 2026-09-29) — REQ-039 strategy state transition table
+- Decision: the proposed table in spec/data/domain-model.md §6 is approved with two fixes: Reconciliation Required is
+  left only by a recorded manual resolution (Q222); Active ↔ Monitoring Paused only on the user's pause/resume.
+  REQ-039 is now Approved.
+
+## Q241 — DECIDED (owner, 2026-09-29) — Moneyness column in the strategy table
+- Decision: no — leave it out; the locked column order stays. Recorded in REQ-035.
+
+## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption at every level; TOTAL P&L % "—" cases
+- Decision: caption at all three UX levels; TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
+  Recorded in REQ-035.

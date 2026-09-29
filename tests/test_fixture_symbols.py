@@ -20,6 +20,14 @@ just enforced):
    ``NIFTY26OCT`` -- the catalogue's only 2026-10-27 NIFTY row is the future, ``NIFTY26OCTFUT``; it
    holds no NIFTY options at that expiry, so no template built on that head can ever produce a real
    option symbol).
+   **Built strikes (rule 2b).** The head check alone passes ``f"NIFTY26O06{strike}CE"`` for ANY strike, so
+   the strikes are checked too (issue #61): for every f-string whose head is a real catalogue head, the
+   interpolated expression (``strike``, ``int(s)``) is resolved through the file's own assignments and ``for`` targets (list/tuple literals,
+   ``range(a, b, c)`` with literal arguments, comprehensions, ``enumerate``, tuple positions) to the integers it
+   can take, and every integer must give a symbol that exists in the catalogue (``CE`` or ``PE`` as written).
+   A name that cannot be resolved (a function parameter) is left unchecked, never guessed. A test that builds
+   its own synthetic catalogue on purpose is excused per FUNCTION in ``SYNTHETIC_CATALOGUE_ALLOWLIST`` with the
+   reason, so the exemption is as narrow as the test.
 3. **Pairing (AST-based).** A full literal being a real catalogue symbol does NOT by itself prove it is
    paired with the right expiry: a real symbol (``NIFTY26O0623400CE``, catalogue expiry 2026-10-06) can
    still be attached to the WRONG separately-declared expiry (e.g. ``expiry=date(2026, 10, 13)``) --
@@ -108,6 +116,19 @@ ALLOWLIST: dict[tuple[str, str], str] = {
         "REQ-064: the audit log stores a raw Kite-style broker-response payload EXACTLY as passed, "
         "with no secret filtering and no catalogue lookup; the payload's tradingsymbol is "
         "illustrative content the log must not alter, not a contract this test resolves.",
+}
+HEAD_ONLY_RE = re.compile(rf"(?:NIFTY|BANKNIFTY|FINNIFTY|SENSEX)[0-9]{{2}}{MONTH}")
+
+#: (relative file path, function name) -> reason. Functions that build their OWN in-memory Catalogue with strikes
+#: chosen for the scenario (a current level far beyond every strike), so the strikes
+#: are deliberately not the real slice's. Their assertions read the synthetic Catalogue, never the CSV.
+SYNTHETIC_CATALOGUE_ALLOWLIST: dict[tuple[str, str], str] = {
+    ("range/test_pick_lists.py", "test_reviewer_repro_synthetic_upper_list_never_appends_the_wrong_side_strike"):
+        "exact verifier reproduction: synthetic Catalogue with strikes 20000..21000 and current 100,000; the "
+        "meaning (every listed strike far below the current level) does not exist in the real slice.",
+    ("range/test_pick_lists.py", "test_mutation_side_check_must_reject_a_wrong_side_bound"):
+        "same verifier reproduction (strikes 20000..21000, current 100,000) used as a mutation probe of the "
+        "side check; synthetic Catalogue by design.",
 }
 
 
@@ -240,10 +261,109 @@ def _pairing_violations(rel: str, text: str, cat_expiries: dict[str, date],
     return violations
 
 
+Defs = dict[str, list[tuple[ast.AST, "int | None"]]]
+
+
+def _is_int(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool)
+
+
+def _int_values(node: ast.AST, defs: Defs, seen: frozenset[str]) -> set[int]:
+    """Integers an expression can take: literals, ``range(literal, ...)`` expanded, names resolved through
+    ``defs`` (assignment values and ``for`` iterables). Unknown pieces contribute nothing (never guessed)."""
+    if _is_int(node):
+        return {node.value}  # type: ignore[attr-defined]
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+        args = [a.value for a in node.args if _is_int(a)]  # type: ignore[attr-defined]
+        if len(args) == len(node.args) and 1 <= len(args) <= 3 and (len(args) < 3 or args[2] != 0):
+            return set(range(*args))
+        return set()
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "enumerate" and node.args:
+        return _int_values(node.args[0], defs, seen)
+    if isinstance(node, ast.Name):
+        if node.id in seen:
+            return set()
+        out: set[int] = set()
+        for value, position in defs.get(node.id, []):
+            rows = value.elts if isinstance(value, (ast.Tuple, ast.List)) else []
+            if position is not None and rows and all(isinstance(r, (ast.Tuple, ast.List)) for r in rows):
+                for row in rows:
+                    if position < len(row.elts):  # type: ignore[attr-defined]
+                        out |= _int_values(row.elts[position], defs, seen | {node.id})  # type: ignore[attr-defined]
+            else:
+                out |= _int_values(value, defs, seen | {node.id})
+        return out
+    found: set[int] = set()
+    for child in ast.iter_child_nodes(node):
+        found |= _int_values(child, defs, seen)
+    return found
+
+
+def _name_definitions(scope: ast.AST) -> Defs:
+    """name -> [(value expression, tuple position or None)] from assignments, ``for`` loops and comprehensions."""
+    defs: Defs = {}
+
+    def bind(target: ast.AST, value: ast.AST, offset: int = 0) -> None:
+        if isinstance(target, ast.Name):
+            defs.setdefault(target.id, []).append((value, None))
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for i, t in enumerate(target.elts):
+                if isinstance(t, ast.Name):
+                    defs.setdefault(t.id, []).append((value, i - offset))
+
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                bind(t, node.value)
+        elif isinstance(node, (ast.For, ast.comprehension)):
+            enum = (isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name)
+                    and node.iter.func.id == "enumerate")
+            bind(node.target, node.iter, 1 if enum else 0)
+    return defs
+
+
+def _fstring_strike_violations(rel: str, tree: ast.AST, catalogue_symbols: set[str],
+                                synthetic: dict[tuple[str, str], str]) -> list[tuple[str, int, str, str]]:
+    """Rule 2b: the strikes an f-string tradingsymbol can be built from must exist in the catalogue."""
+    violations: list[tuple[str, int, str, str]] = []
+    module_defs = _name_definitions(tree)
+    scope_of: dict[int, ast.AST] = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for n in ast.walk(fn):
+                scope_of[id(n)] = fn  # inner functions are walked later and overwrite: innermost wins
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.JoinedStr) and len(node.values) >= 2):
+            continue
+        first, second = node.values[0], node.values[1]
+        if not (isinstance(first, ast.Constant) and isinstance(first.value, str)
+                and HEAD_ONLY_RE.fullmatch(first.value)
+                and isinstance(second, ast.FormattedValue)):
+            continue
+        head = first.value
+        if not any(s.startswith(head) and s.endswith(("CE", "PE")) for s in catalogue_symbols):
+            continue  # no option at this head at all: reported by the head check
+        third = node.values[2] if len(node.values) > 2 else None
+        literal = third.value if isinstance(third, ast.Constant) else None
+        suffixes = (literal,) if literal in ("CE", "PE") else ("CE", "PE")
+        fn = scope_of.get(id(node))
+        if fn is not None and (rel, fn.name) in synthetic:  # type: ignore[attr-defined]
+            continue
+        defs = {**module_defs, **(_name_definitions(fn) if fn is not None else {})}
+        missing = sorted(k for k in _int_values(second.value, defs, frozenset())
+                         if not any(f"{head}{k}{sfx}" in catalogue_symbols for sfx in suffixes))
+        if missing:
+            shown = ", ".join(str(k) for k in missing[:6]) + (" ..." if len(missing) > 6 else "")
+            violations.append((rel, node.lineno, f"{head}{{{ast.unparse(second.value)}}}",
+                               f"{len(missing)} built strike(s) not in the catalogue for this head: {shown}"))
+    return violations
+
+
 def find_violations(paths: list[Path], catalogue_symbols: set[str],
                      allowlist: dict[tuple[str, str], str] | None = None,
                      base: Path = TESTS_DIR,
-                     catalogue_expiries: dict[str, date] | None = None) -> list[tuple[str, int, str, str]]:
+                     catalogue_expiries: dict[str, date] | None = None,
+                     synthetic: dict[tuple[str, str], str] | None = None) -> list[tuple[str, int, str, str]]:
     """Return (relative_path, line_number, matched_text, reason) for every literal that is neither a
     real catalogue symbol/head nor allowlisted, plus every real symbol paired (same call or a single
     module expiry constant) with an expiry the catalogue does not agree with. Pure function of its
@@ -270,6 +390,11 @@ def find_violations(paths: list[Path], catalogue_symbols: set[str],
                 line = text.count("\n", 0, m.start()) + 1
                 violations.append((rel, line, head, "no catalogue option starts with this head"))
         violations.extend(_pairing_violations(rel, text, catalogue_expiries, allowlist))
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        violations.extend(_fstring_strike_violations(rel, tree, catalogue_symbols, synthetic or {}))
     return violations
 
 
@@ -284,7 +409,7 @@ def test_every_tradingsymbol_literal_in_tests_resolves_in_the_catalogue() -> Non
     catalogue_symbols = _load_catalogue_symbols()
     catalogue_expiries = _load_catalogue_expiries()
     violations = find_violations(_real_test_files(), catalogue_symbols, ALLOWLIST,
-                                  catalogue_expiries=catalogue_expiries)
+                                  catalogue_expiries=catalogue_expiries, synthetic=SYNTHETIC_CATALOGUE_ALLOWLIST)
     assert violations == [], "tradingsymbol literal(s) not in the catalogue (see ALLOWLIST to accept):\n" + "\n".join(
         f"  {path}:{line}: {sym!r} ({reason})" for path, line, sym, reason in violations
     )
@@ -369,3 +494,34 @@ def test_allowlist_entries_are_not_stale() -> None:
         assert literal in full_path.read_text(encoding="utf-8"), (
             f"allowlist entry {rel_path!r}/{literal!r} no longer matches the file's contents"
         )
+
+
+def test_guard_catches_an_fstring_whose_built_strikes_are_not_in_the_catalogue() -> None:
+    """AC-1 (issue #61): ``f"NIFTY26O06{s}CE"`` has a real head, but strikes 20000..20200 are in no catalogue
+    row at 2026-10-06; the head-only check passed it. Built through a comprehension over ``range``, as the real
+    test_pick_lists.py does. A listed strike (23400, real NIFTY26O0623400CE) in the same shape passes."""
+    bad = ("def make():\n"
+           "    strikes = [v for v in range(20000, 20201, 100)]\n"
+           "    return [f'NIFTY26O06{s}CE' for s in strikes]\n")
+    good = ("def make():\n"
+            "    return [f'NIFTY26O06{s}CE' for s in (23400, 23500)]\n")
+    violations = _run_on_scratch(bad)
+    assert len(violations) == 1 and "3 built strike(s)" in violations[0][3] and "20000, 20100, 20200" in violations[0][3]
+    assert _run_on_scratch(good) == []
+    tuple_rows = ("LEGS = ((1, 20000, 5), (2, 23400, 7))\n"
+                  "def make():\n"
+                  "    return [f'NIFTY26O06{k}PE' for a, k, p in LEGS]\n")
+    assert len(_run_on_scratch(tuple_rows)) == 1  # only column 1 (strikes) is read, not the prices 5 and 7
+
+
+def test_synthetic_catalogue_allowlist_entries_are_not_stale() -> None:
+    """AC-1: each excused function still exists in its file and still builds an f-string symbol, so a rename
+    or a cleanup forces the entry out."""
+    for (rel_path, function), _reason in SYNTHETIC_CATALOGUE_ALLOWLIST.items():
+        tree = ast.parse((TESTS_DIR / rel_path).read_text(encoding="utf-8"))
+        funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == function]
+        assert funcs, f"{rel_path}: function {function} no longer exists"
+        assert any(isinstance(n, ast.JoinedStr) for n in ast.walk(funcs[0])), f"{rel_path}:{function} has no f-string"
+        lines = range(funcs[0].lineno, funcs[0].end_lineno + 1)  # type: ignore[operator]
+        own = [v for v in _fstring_strike_violations(rel_path, tree, _load_catalogue_symbols(), {}) if v[1] in lines]
+        assert own, f"{rel_path}:{function} no longer builds strikes missing from the catalogue; drop the entry"
