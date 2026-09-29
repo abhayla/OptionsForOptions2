@@ -336,6 +336,14 @@ _BYPASS_SAMPLES = {
     "bare attribute _build": "errors_mod._build(tok)",
     "bare attribute claim": "x = pkg._claim_render_token()",
     "bare attribute fields_of": "pkg._fields_of(obj)",
+    # Round 6: the four shapes the round-5 verifier used or named.
+    "getattr __closure__": "from ofo.errors import render\ncells = getattr(render, '__closure__')",
+    "inspect.getclosurevars": "import inspect\nfrom ofo.errors import render\ninspect.getclosurevars(render)",
+    "from inspect import getclosurevars": "from inspect import getclosurevars as g\ng(f)",
+    "sys.modules": "import sys\nm = sys.modules['ofo.errors.model']",
+    "importlib.import_module": "import importlib\nm = importlib.import_module('ofo.errors.model')",
+    "importlib templates": "import importlib\nm = importlib.import_module('ofo.errors.templates')",
+    "__import__": "m = __import__('ofo.errors.model', fromlist=['x'])",
 }
 
 
@@ -362,11 +370,13 @@ def test_ast_bypass_detector_passes_ordinary_code() -> None:
 #  6. render re-wording ExternalText                      -> test_external_text_is_rendered_verbatim_... (above)
 
 def test_mutation_must_phrase_is_caught() -> None:
+    """Mutation 1 (round 6): "must" is allowed by owner decision Q230, so the advice template this
+    test adds now uses a Q230 word form ("safest") instead."""
     bad = MessageTemplate(
         id="mutation_must",
         error_class=ErrorClass.USER_INPUT,
         code="X",
-        what_happened="You must buy more lots to proceed.",
+        what_happened="The safest move is more lots.",
         impact="x",
         what_is_blocked="x",
         next_action="x",
