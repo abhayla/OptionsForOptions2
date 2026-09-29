@@ -245,3 +245,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Decision: the proposed table in spec/data/domain-model.md §6 is approved with two fixes: Reconciliation Required is
   left only by a recorded manual resolution (Q222); Active ↔ Monitoring Paused only on the user's pause/resume.
   REQ-039 is now Approved.
+
+## Q241 — DECIDED (owner, 2026-09-29) — Moneyness column in the strategy table
+- Decision: no — leave it out; the locked column order stays. Recorded in REQ-035.
