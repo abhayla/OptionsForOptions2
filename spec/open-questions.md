@@ -206,3 +206,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q229 — DECIDED (owner, 2026-09-29 morning) — Entitlement evaluation rules 2-3
 - Decision: both confirmed as written in ADR-023 "Evaluation rules". Recorded in ADR-023 "Q229".
+
+## Q230 — DECIDED (owner, 2026-09-29) — Q226 edge cases (W-024 round 5)
+- Decision: ban all word forms of the five words; do not ban "must"/"have to"/"ought to"; exceptions match exactly as
+  spelled. Recorded in ADR-003 "Q230".
