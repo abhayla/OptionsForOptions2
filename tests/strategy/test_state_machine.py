@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import inspect
 import itertools
 from decimal import Decimal as D
 
@@ -292,7 +293,10 @@ def ev_exit(ctx: Ctx) -> None:
 
 
 def ev_broker_differs(ctx: Ctx) -> None:
-    if ctx.record.actual_position.lines:
+    """A reconciliation run (or, with a proposal in flight, a broker result outside the plan) shows a difference."""
+    if ctx.record.proposed_version is not None:
+        _try(lambda: ctx.result(ResultStatus.COMPLETE, overfilled(ctx)))
+    elif ctx.record.actual_position.lines:
         _try(lambda: ctx.observe(odd(ctx)))
     ctx.machine.sync_broker(at=ctx.tick())
 
@@ -405,8 +409,8 @@ def test_ac1_a_resolution_recorded_before_the_mismatch_does_not_count():
     with pytest.raises(StateMachineError, match="manual resolution"):
         ctx.machine.resolve_reconciliation(at=ctx.tick())
     for name in ("resolve_reconciliation", "sync_broker", "follow_execution"):
-        params = getattr(StrategyStateMachine, name).__code__.co_varnames
-        assert not {"resolved", "resolution", "verdict", "outcome"} & set(params), name
+        params = inspect.signature(getattr(StrategyStateMachine, name)).parameters
+        assert set(params) == {"self", "at"}, name  # nothing but the time: the verdict is read, never passed
 
 
 def test_ac1_monitoring_paused_is_entered_and_left_only_by_the_user():

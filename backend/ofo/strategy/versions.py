@@ -5,8 +5,8 @@ meaningful modification after execution is a new version; Q191 a proposed versio
 confirmation and execution + reconciliation); ADR-016..ADR-018 (Zerodha is the authority; submitted is not
 executed; no silent rewrite of what the user asked for); spec/data/domain-model.md §3.
 
-Scope: this module does NOT implement the 12-state machine of domain-model §6 (that transition table is a
-proposal awaiting owner review). It tracks only what REQ-038 needs: whether anything has executed, the active
+Scope: this module does NOT implement the 12-state machine of domain-model §6; ``ofo.strategy.state_machine``
+(W-041, REQ-039) does, and reads its facts from this record. This module tracks only what REQ-038 needs: whether anything has executed, the active
 version, the one pending proposed version, and the broker's actual position. No broker call happens here: an
 execution/reconciliation result is an input object (``ExecutionResult``).
 
@@ -348,6 +348,11 @@ class StrategyRecord:
     @property
     def proposed_version(self) -> Version | None:
         return None if self._pending is None else self._versions[self._pending - 1]
+
+    @property
+    def proposal_confirmed(self) -> bool:
+        """True while a proposed version is pending AND the user has confirmed it (read by W-041's state machine)."""
+        return self._pending is not None and self._confirmed
 
     @property
     def actual_position(self) -> Position:
