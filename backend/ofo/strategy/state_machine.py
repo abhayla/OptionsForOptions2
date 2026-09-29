@@ -355,7 +355,7 @@ class StrategyStateMachine:
             self._precheck(_S.PARTIALLY_EXECUTED, _T.SOME_LEGS_EXECUTED, at, "system")
             return self._commit(_S.PARTIALLY_EXECUTED, _T.SOME_LEGS_EXECUTED, "system", at,
                                 (("version", str(pending.number)),))
-        if last.kind in _FINAL_FAILURES and pending is None:  # nothing filled: the record closed the proposal
+        if last.kind in _FINAL_FAILURES:  # nothing filled (a fill kept the proposal open, caught above)
             if active is not None:
                 raise StateMachineError(
                     f"every order of adjustment version {last.version_number} was rejected and nothing was filled; "

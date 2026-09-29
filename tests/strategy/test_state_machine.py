@@ -869,3 +869,15 @@ def test_ac1_q243_fix5_any_live_state_is_exactly_the_five_listed():
         assert set(allowed_triggers(state, S.RECONCILIATION_REQUIRED)) == expected, state
     for previous in LIVE:
         assert to_reconciliation(previous).machine.transitions[-1].from_state is previous
+
+
+def test_ac1_q243_fix3_a_withdrawal_that_leaves_the_broker_differing_requires_reconciliation():
+    """AC-1 (Q243 fix 3, ADR-018): while a proposal is pending a broker change is not judged; once it is withdrawn
+    the broker is compared with the active version again, and a difference blocks (Reconciliation Required)."""
+    ctx = to_adjusting()
+    ctx.record.edit(DOUBLE, at=ctx.tick(), based_on=1)
+    ctx.observe(odd(ctx))  # a change in Kite while the proposal waits
+    assert not ctx.record.reconciliation_required
+    ctx.machine.withdraw_adjustment(at=ctx.tick(), actor="user-1")
+    assert ctx.record.reconciliation_required
+    assert ctx.machine.sync_broker(at=ctx.tick()).to_state is S.RECONCILIATION_REQUIRED
