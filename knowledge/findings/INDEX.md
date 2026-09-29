@@ -2,7 +2,7 @@
 
 # Findings index
 
-20 finding(s), generated from `knowledge/findings/*.json`.
+21 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -22,6 +22,7 @@
 | pre-existing-failure-claim-not-checked-on-base | Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes. | unguarded | occurrences, spec_ref |
 | resolution-on-stale-broker-copy | Any manual resolution or state change whose premise (what the broker holds) is read from a stored copy rather than from the latest reconciliation, or any multi-strategy recording that mutates some records before validating all of them, lets the platform act on a broker picture that is no longer true or leave a half-recorded run. | guarded | occurrences, spec_ref |
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | spec_ref |
+| state-with-no-working-exit | Any non-terminal state of a lifecycle (strategy, order, proposal) from which every action the system offers is refused leaves the user stuck with no path forward except acting outside the platform; the explanation shown for that state then points at actions that do not work. A transition table checked only pair-by-pair (is each allowed move allowed?) cannot see this: it needs a reachability check that every reachable non-terminal state has at least one action that succeeds. | unguarded | occurrences, spec_ref |
 | test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, spec_ref |
 | trust-broker-status-word | Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position. | unguarded | occurrences, spec_ref |
 | verifier-writes-outside-sandbox | Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it. | guarded | occurrences, spec_ref |
