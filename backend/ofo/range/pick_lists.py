@@ -122,7 +122,14 @@ def build_pick_list(
     listed strike binds and is not itself a 100-multiple, it is appended as the final value anyway,
     so the list genuinely reaches it.
     AC-6: a lower list never contains a value above `current_level`; an upper list never contains
-    one below it — guaranteed by construction (every step moves away from current_level).
+    one below it. Fix round 2 finding: this was NOT actually guaranteed "by construction" — the
+    final-value append (above) used to fire unconditionally, so a strike-bound list whose furthest
+    listed strike sat on the WRONG side of current_level (e.g. current_level 100,000 with every
+    listed strike below 21,000) appended that strike into the UPPER list, giving [100000, 21000].
+    It is now guarded (only appended when strictly beyond current_level in this direction) and,
+    as a fail-closed backstop, the whole list is asserted strictly monotonic away from
+    current_level before it is returned — any future bug of this shape raises instead of shipping
+    a silently wrong list.
     """
     current_level = _require_decimal(current_level, "current_level")
     if direction not in ("lower", "upper"):
@@ -141,6 +148,7 @@ def build_pick_list(
         # the strike floor if strikes run out before the cap, else the cap.
         bound = max(min_strike, current_level - cap)
         strike_bound = bound == min_strike
+        bound_beyond_current = bound < current_level
         start = _snap_floor_100(current_level)
         if start == current_level:
             start -= STEP
@@ -154,6 +162,7 @@ def build_pick_list(
     else:
         bound = min(max_strike, current_level + cap)
         strike_bound = bound == max_strike
+        bound_beyond_current = bound > current_level
         start = _snap_ceil_100(current_level)
         if start == current_level:
             start += STEP
@@ -163,10 +172,33 @@ def build_pick_list(
                 values.append(value)
             value += STEP
 
-    if strike_bound and values[-1] != bound:
+    # Fix round 2: only append the binding bound as a final value when it genuinely lies beyond
+    # current_level in THIS direction — a furthest listed strike that happens to sit on the wrong
+    # side (e.g. current_level far beyond every listed strike) must never be appended (it produced
+    # [100000, 21000] for an upper list before this guard existed).
+    if strike_bound and bound_beyond_current and values[-1] != bound:
         values.append(bound)
 
+    _assert_monotonic_away_from_current(values, current_level, direction)
     return values
+
+
+def _assert_monotonic_away_from_current(
+    values: list[Decimal], current_level: Decimal, direction: str
+) -> None:
+    """Fail-closed backstop (fix round 2): the list must start at current_level and be strictly
+    monotonic moving away from it — decreasing for "lower", increasing for "upper". Never repaired
+    silently: any violation raises, because a claim that this holds "by construction" already
+    proved false once (see the module docstring)."""
+    if not values or values[0] != current_level:
+        raise ValueError(f"pick list must start at current_level {current_level}, got {values!r}")
+    for prev, nxt in zip(values, values[1:]):
+        ok = nxt < prev if direction == "lower" else nxt > prev
+        if not ok:
+            raise ValueError(
+                f"pick list is not strictly monotonic away from current_level {current_level} "
+                f"for direction={direction!r}: {values!r}"
+            )
 
 
 @dataclass(frozen=True)

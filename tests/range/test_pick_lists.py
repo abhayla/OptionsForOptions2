@@ -533,3 +533,153 @@ def test_mutation_lower_choice_above_current_must_never_be_constructible(
             lower_choice=NIFTY_CURRENT + Decimal("500"),
             upper_choice=NIFTY_CURRENT,
         )
+
+
+# --- Fix round 2: current level beyond every listed strike (wrong-side bound bug) ---
+
+
+def test_current_level_beyond_every_strike_nifty_gives_current_only(
+    catalogue: Catalogue, caps: RangeCaps
+) -> None:
+    """AC-5/AC-6 (fix round 2 verifier finding): NIFTY current level far beyond every listed
+    strike in BOTH directions — the reported bug appended a furthest strike from the wrong side
+    into the upper list ([100000, 21000]); both lists must now be just [current]."""
+    current = Decimal("100000")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction="lower")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction="upper")
+    assert lower == [current]
+    assert upper == [current]
+
+
+def test_current_level_beyond_every_strike_sensex_gives_current_only(
+    catalogue: Catalogue, caps: RangeCaps
+) -> None:
+    """AC-5/AC-6 (fix round 2 verifier finding), second index: SENSEX current level far beyond
+    every listed strike — both lists must be just [current]."""
+    current = Decimal("200000")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, direction="lower")
+    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, direction="upper")
+    assert lower == [current]
+    assert upper == [current]
+
+
+def test_reviewer_repro_synthetic_upper_list_never_appends_the_wrong_side_strike() -> None:
+    """AC-5/AC-6 (fix round 2, exact verifier reproduction): current=100,000, listed strikes
+    20,000..21,000. The upper list must be exactly [100000], never [100000, 21000]."""
+    expiry = date(2026, 11, 3)
+    strikes = [Decimal(v) for v in range(20000, 21001, 100)]
+    contracts = [
+        Contract(
+            instrument_token=50000 + i,
+            exchange_token=5000 + i,
+            tradingsymbol=f"NIFTY26NOV{int(s)}CE",
+            name="NIFTY",
+            expiry=expiry,
+            strike=s,
+            tick_size=Decimal("0.05"),
+            lot_size=65,
+            instrument_type="CE",
+            segment="NFO-OPT",
+            exchange="NFO",
+        )
+        for i, s in enumerate(strikes)
+    ]
+    cat = Catalogue()
+    cat.load(contracts)
+    upper = build_pick_list(cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.defaults(), direction="upper")
+    assert upper == [Decimal("100000")]
+    assert Decimal("21000") not in upper
+
+
+def test_current_level_exactly_at_the_furthest_strike(catalogue: Catalogue, caps: RangeCaps) -> None:
+    """AC-5/AC-6 (fix round 2): when current_level itself equals the furthest listed strike in a
+    direction, there is nothing beyond it to offer in that direction — the bound is not "strictly
+    beyond current", so no final value is appended; the list is just [current]."""
+    upper_at_max = build_pick_list(
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("34500"), caps, direction="upper"
+    )
+    lower_at_min = build_pick_list(
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("15000"), caps, direction="lower"
+    )
+    assert upper_at_max == [Decimal("34500")]
+    assert lower_at_min == [Decimal("15000")]
+
+
+def test_property_every_current_level_across_and_beyond_the_fixture_range(
+    catalogue: Catalogue, caps: RangeCaps
+) -> None:
+    """AC-5/AC-6 (fix round 2 property test): sweep current_level every 37 points from well below
+    NIFTY 2026-09-29's lowest strike to well above its highest, for both directions. Every
+    resulting list must (a) start at current_level, (b) be strictly monotonic away from it with no
+    duplicates, and (c) contain, after the first value, only strikes the catalogue actually lists
+    for this expiry."""
+    listed = {
+        c.strike
+        for c in catalogue.contracts_for("NIFTY", NIFTY_NEAR_EXPIRY, instrument_types=frozenset({"CE", "PE"}))
+    }
+    current = Decimal("13000")  # well below the lowest listed strike (15000)
+    stop = Decimal("37000")  # well above the highest listed strike (34500)
+    step = Decimal("37")
+    checked = 0
+    while current <= stop:
+        for direction in ("lower", "upper"):
+            values = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction=direction)
+            assert values[0] == current
+            assert len(values) == len(set(values)), f"duplicates in {values!r}"
+            for prev, nxt in zip(values, values[1:]):
+                assert (nxt < prev) if direction == "lower" else (nxt > prev)
+            for v in values[1:]:
+                assert v in listed
+        current += step
+        checked += 1
+    assert checked > 500  # sanity: the sweep actually ran across the whole range
+
+
+# --- Fix round 2 mutation tests: drop the side check; drop the monotonic assertion ---
+
+
+def test_mutation_side_check_must_reject_a_wrong_side_bound() -> None:
+    """Mutation-style (discriminates a dropped side check on the final-value append): using the
+    verifier's exact reproduction (current 100,000, strikes 20,000..21,000), if the
+    `bound_beyond_current` guard were dropped, the upper list would become [100000, 21000] — this
+    test's exact-list assertion goes red under that mutation."""
+    expiry = date(2026, 11, 3)
+    strikes = [Decimal(v) for v in range(20000, 21001, 100)]
+    contracts = [
+        Contract(
+            instrument_token=60000 + i,
+            exchange_token=6000 + i,
+            tradingsymbol=f"NIFTY26NOV{int(s)}CE",
+            name="NIFTY",
+            expiry=expiry,
+            strike=s,
+            tick_size=Decimal("0.05"),
+            lot_size=65,
+            instrument_type="CE",
+            segment="NFO-OPT",
+            exchange="NFO",
+        )
+        for i, s in enumerate(strikes)
+    ]
+    cat = Catalogue()
+    cat.load(contracts)
+    upper = build_pick_list(cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.defaults(), direction="upper")
+    assert upper == [Decimal("100000")]
+
+
+def test_mutation_monotonic_assertion_must_fire_on_a_wrong_side_value(
+    catalogue: Catalogue, caps: RangeCaps
+) -> None:
+    """Mutation-style (discriminates a dropped fail-closed backstop): directly exercise the
+    assertion helper with a hand-built list that violates monotonicity (mimics the original bug's
+    output, [100000, 21000] for an "upper" list) — it must raise, never pass through silently."""
+    from ofo.range.pick_lists import _assert_monotonic_away_from_current
+
+    with pytest.raises(ValueError, match="not strictly monotonic"):
+        _assert_monotonic_away_from_current(
+            [Decimal("100000"), Decimal("21000")], Decimal("100000"), "upper"
+        )
+    with pytest.raises(ValueError, match="must start at current_level"):
+        _assert_monotonic_away_from_current(
+            [Decimal("99900"), Decimal("100000")], Decimal("100000"), "lower"
+        )
