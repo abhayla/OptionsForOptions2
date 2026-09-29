@@ -81,11 +81,15 @@ party) · **DECIDED → ADR-###**.
   display); verify the Zerodha facts from their pages; build nothing that depends on the answer until it arrives.
 - Spec basis: ADR-014 (Q177 provisional), ADR-020 (Q178 setup guide).
 
-## Q211 — LEGAL — Compliance review before these features go live
+## Q211 — DECIDED (owner, 2026-09-29: not a blocker for building) — Compliance review before these features go live
 Strategy discovery and suggested setups; adjustment approaches; notification content; a paid subscription sold by a
 registered Zerodha Authorised Person; market-data display and derived data; Zerodha API terms; retention of the
 anti-abuse record after deletion (Q96, India's DPDP Act). The chats already flagged SEBI/exchange review as a product
 requirement (T1 #26). Nothing here is a conclusion; these features stay out of production until reviewed.
+- **Owner decision (2026-09-29):** asked whether Q211 blocks REQ-025/027/045/046/068/069, the owner answered "They
+  are not blocked. Proceed." Building these requirements goes ahead (they are marked Approved). Whether a compliance
+  review is still wanted before they reach production will be put to the owner in the release brief for the first
+  release that contains them (every production release needs the owner's approval anyway).
 
 ## Q212 — EXTERNAL — Data used in the owner's YouTube adjustment video
 The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer covers every value it uses; ChatGPT
