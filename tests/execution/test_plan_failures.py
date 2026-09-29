@@ -66,6 +66,22 @@ def test_ac4_withholding_is_transitive_a_withheld_leg_counts_as_failed() -> None
     assert set(sim.sent) & set(sim.withheld) == set()
 
 
+def test_ac4_withholding_propagates_through_a_withheld_leg_on_a_deeper_graph() -> None:
+    """AC-4: the withhold walk itself is transitive. No spec rule yields a two-level graph (a sold leg protects
+    nothing), so this builds one directly with the builder's private key: A protects B, B protects C. A fails ->
+    B and C are both withheld; C must not be sent although its own protector was never 'failed', only withheld."""
+    from ofo.execution.sequence import _BUILDER_KEY, OrderSequence, PlanStep, StepKind
+
+    seq = OrderSequence("S-1", (PlanStep(StepKind.OTHER, ("A", "B", "C")),), (("B", ("A",)), ("C", ("B",))), (), (),
+                        "test", _BUILDER_KEY)
+    sim = seq.simulate({"A"})
+    assert sim.sent == ("A",)
+    assert sim.withheld == ("B", "C")
+    # A bare string would otherwise be read letter by letter: "AB" would silently mean legs A and B failed.
+    with pytest.raises(ValueError, match="not a single string"):
+        seq.simulate("AB")
+
+
 @pytest.mark.parametrize("bad", [{"leg-9"}, "leg-1", ["leg-1", "leg-1"]])
 def test_ac4_unknown_duplicate_or_bare_string_failures_are_refused(bad: object) -> None:
     """AC-4 (input domain): an unknown leg, a duplicate, or a bare string instead of a collection raises."""
