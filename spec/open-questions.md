@@ -252,3 +252,9 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption at every level; TOTAL P&L % "—" cases
 - Decision: caption at all three UX levels; TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
   Recorded in REQ-035.
+
+## Q243 — DECIDED (owner, 2026-09-29) — Five gaps in the approved state table (found building W-041)
+- Decision: apply all five fixes, written into spec/data/domain-model.md §6: (1) nothing filled → back to Validated
+  with reasons; (2) Review Manually is not a transition; (3) an adjustment proposal can be withdrawn (recorded) → Active;
+  (4) partial fills → Partially Executed, Reconciliation Required only on a real broker mismatch; (5) "any live state"
+  = Active, Monitoring Paused, Adjustment Proposed, Execution in Progress, Partially Executed.
