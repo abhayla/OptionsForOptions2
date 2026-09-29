@@ -12,6 +12,8 @@ from decimal import Decimal as D
 
 import pytest
 
+from book_helpers import bound_book
+
 from ofo.engine.legs import Action
 from ofo.orders.model import FillConflictError, FillEvent, Order, OrderBook, OrderState
 
@@ -24,7 +26,7 @@ READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 def make_order(**overrides: object) -> Order:
     fields = dict(
         strategy_id="STRAT-9", leg_ref="leg-0", contract=CONTRACT,
-        side=Action.SELL, quantity=75, price=D("86.00"), broker_order_id="BRK-9",
+        side=Action.SELL, quantity=75, price=D("86.00"), broker_order_id="BRK-9", version_id="v1",
     )
     fields.update(overrides)
     return Order(**fields)  # type: ignore[arg-type]
@@ -40,7 +42,7 @@ def fill(trade_id: str, quantity: int, *, broker_order_id: str = "BRK-9", contra
 
 def test_submitted_and_pending_change_nothing() -> None:
     """AC-2: moving to Submitted, then Pending, leaves the ledger untouched."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     assert book.position("STRAT-9", CONTRACT) == 0
@@ -52,7 +54,7 @@ def test_submitted_and_pending_change_nothing() -> None:
 def test_rejected_and_cancelled_never_touch_the_ledger() -> None:
     """AC-2 negative case: a rejected/cancelled order never moves the ledger, and cannot be
     resubmitted (ADR-017: no automatic or manual retry)."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.transition("BRK-9", OrderState.REJECTED)
@@ -68,7 +70,7 @@ def test_rejected_and_cancelled_never_touch_the_ledger() -> None:
 def test_a_completing_fill_always_moves_to_executed() -> None:
     """AC-2/Core positive case: a fill that fully covers the order drives it straight to
     Executed, and the position moves by exactly the confirmed quantity."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=75))
     book.transition("BRK-9", OrderState.SUBMITTED)
     view = book.apply_fill(fill("T-1", 75))
@@ -78,7 +80,7 @@ def test_a_completing_fill_always_moves_to_executed() -> None:
 
 def test_fill_for_an_unknown_broker_order_id_is_refused() -> None:
     """Round-3 (b): a fill naming a broker_order_id that was never registered is refused."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     with pytest.raises(ValueError):
@@ -88,7 +90,7 @@ def test_fill_for_an_unknown_broker_order_id_is_refused() -> None:
 
 def test_fill_for_the_wrong_contract_is_refused() -> None:
     """Round-3 (c): a fill's contract must match the order it claims to fill."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     with pytest.raises(ValueError):
@@ -98,7 +100,7 @@ def test_fill_for_the_wrong_contract_is_refused() -> None:
 
 def test_fill_for_the_wrong_side_is_refused() -> None:
     """Round-3 (c): a fill's side must match the order it claims to fill."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(side=Action.SELL))
     book.transition("BRK-9", OrderState.SUBMITTED)
     with pytest.raises(ValueError):
@@ -108,7 +110,7 @@ def test_fill_for_the_wrong_side_is_refused() -> None:
 
 def test_fill_for_a_closed_order_is_refused() -> None:
     """Round-3: a fill against an order that is not open (Rejected here) is refused."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order())
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.transition("BRK-9", OrderState.REJECTED)
@@ -120,7 +122,7 @@ def test_fill_for_a_closed_order_is_refused() -> None:
 def test_over_fill_is_refused_and_nothing_is_appended() -> None:
     """Round-3: a cumulative fill above the ordered quantity is refused, and the ledger gains no
     row for the refused attempt."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=10))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 8))
@@ -135,7 +137,7 @@ def test_two_orders_can_independently_reuse_the_same_trade_id() -> None:
     A trade_id reused across two different orders must fill BOTH independently -- the ledger key
     is (broker_order_id, trade_id), not trade_id alone.
     """
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(broker_order_id="BRK-A", quantity=10))
     book.add(make_order(leg_ref="leg-1", broker_order_id="BRK-B", quantity=20))
     book.transition("BRK-A", OrderState.SUBMITTED)
@@ -155,7 +157,7 @@ def test_a_replayed_identical_fill_is_a_no_op_even_after_completion() -> None:
     """Round-3 (a): the exact same fill message (same key, same copy) applied twice is a no-op
     the second time, EVEN once the order has become Executed (proves validation-before-replay-
     lookup does not re-run the "must be open" check on a genuine replay)."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     completing = fill("T-1", 30)
@@ -180,7 +182,7 @@ def test_a_replayed_identical_fill_is_a_no_op_even_after_completion() -> None:
 def test_same_key_different_copy_conflicts(conflicting: dict) -> None:
     """Round-3 (a): the same (broker_order_id, trade_id) key with a DIFFERENT fill (a different
     quantity, contract, side or price) raises FillConflictError, and nothing moves."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 5))
@@ -215,14 +217,14 @@ def test_fill_needs_a_trade_id() -> None:
 def test_add_refuses_every_non_prepared_state(seed_state: OrderState) -> None:
     """Round-3 item 3: OrderBook.add() only accepts a freshly Prepared order."""
     seeded = make_order()._copy_with(state=seed_state)  # test-only seed
-    book = OrderBook()
+    book = bound_book()
     with pytest.raises(ValueError):
         book.add(seeded)
 
 
 def test_reconcile_cumulative_equal_passes() -> None:
     """ADR-016/018: broker's cumulative equals ours -- reconciliation passes cleanly."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))
@@ -233,7 +235,7 @@ def test_reconcile_cumulative_equal_passes() -> None:
 def test_reconcile_cumulative_higher_blocks_next_submit() -> None:
     """ADR-018: broker reports MORE filled than we have -- trades are missing locally; this
     blocks the strategy's next Submitted transition until resolved."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))
@@ -247,7 +249,7 @@ def test_reconcile_cumulative_higher_blocks_next_submit() -> None:
 
 def test_reconcile_cumulative_lower_is_a_conflict() -> None:
     """ADR-016: broker reports FEWER filled than we already recorded -- irreconcilable."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=30))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(fill("T-1", 10))

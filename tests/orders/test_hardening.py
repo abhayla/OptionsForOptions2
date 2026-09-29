@@ -13,6 +13,8 @@ from decimal import Decimal as D
 
 import pytest
 
+from book_helpers import bound_book
+
 from ofo.engine.legs import Action
 from ofo.orders.model import (
     ALLOWED_TRANSITIONS,
@@ -34,15 +36,15 @@ NOW = AT + datetime.timedelta(minutes=10)
 
 
 def _book_with_fill(filled: int = 10) -> OrderBook:
-    book = OrderBook(clock=lambda: NOW, max_read_age=datetime.timedelta(days=1))
-    book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9"))
+    book = bound_book(clock=lambda: NOW, max_read_age=datetime.timedelta(days=1))
+    book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9", version_id="v1"))
     book.transition("BRK-9", OrderState.SUBMITTED)
     book.apply_fill(FillEvent("T-1", "BRK-9", CONTRACT, Action.BUY, filled, D("91.50"), AT))
     return book
 
 
 def _second_order(book: OrderBook) -> None:
-    book.add(Order("STRAT-9", "leg-1", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-10"))
+    book.add(Order("STRAT-9", "leg-1", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-10", version_id="v1"))
 
 
 # -- item 1 -------------------------------------------------------------------------------------------------------
@@ -149,8 +151,8 @@ def test_future_stamped_read_neither_clears_nor_sets_a_block() -> None:
 
 def test_stale_read_older_than_age_limit_refused() -> None:
     """W-023 round 3: a read older than the book's age limit (default 60 s) is refused."""
-    book = OrderBook(clock=lambda: NOW)
-    book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9"))
+    book = bound_book(clock=lambda: NOW)
+    book.add(Order("STRAT-9", "leg-0", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-9", version_id="v1"))
     with pytest.raises(ValueError, match="stale"):
         book.reconcile_cumulative("BRK-9", 0, read_at=NOW - datetime.timedelta(seconds=61))
     assert book.reconcile_cumulative("BRK-9", 0, read_at=NOW - datetime.timedelta(seconds=59)) == "ok"
@@ -182,7 +184,7 @@ def test_other_identifiers_with_whitespace_are_refused(field: str) -> None:
     values[field] = values[field] + " "
     with pytest.raises(ValueError, match="whitespace"):
         Order(values["strategy_id"], values["leg_ref"], values["contract"], Action.BUY, 75, D("1.00"),
-              broker_order_id=values["broker_order_id"])
+              broker_order_id=values["broker_order_id"], version_id="v1")
 
 
 # -- item 3 -------------------------------------------------------------------------------------------------------

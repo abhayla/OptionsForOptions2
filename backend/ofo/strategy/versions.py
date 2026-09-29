@@ -51,6 +51,7 @@ from ofo.strategy.definition import (
     describe_contract,
 )
 from ofo.engine.legs import Action, Instrument, require_price
+from ofo.strategy.guard import StrategyGuard
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 MAX_HISTORY = 10_000
@@ -252,7 +253,7 @@ class StrategyRecord:
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
         "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
-        "_observed_at",
+        "_observed_at", "_guard",
     )
 
     def __init__(
@@ -280,6 +281,7 @@ class StrategyRecord:
         self._set("_reconcile", False)
         self._set("_exited", False)
         self._set("_observed_at", None)
+        self._set("_guard", StrategyGuard())  # REQ-036 AC-5: this strategy's own guard; never supplied by a caller
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"StrategyRecord is changed only through its methods; cannot set {name!r}")
@@ -302,6 +304,10 @@ class StrategyRecord:
         return at
 
     # ---- read side -------------------------------------------------------------------------------------------
+
+    @property
+    def guard(self) -> StrategyGuard:
+        return self._guard
 
     @property
     def has_executed(self) -> bool:

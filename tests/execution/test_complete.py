@@ -6,6 +6,7 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import (
+    condor_record,
     new_book,
     READ_AT,
     CONTRACTS,
@@ -119,11 +120,11 @@ def test_ac4_only_the_missing_part_of_a_partly_filled_leg(catalogue, eligibility
     legs = condor_legs(quantity=2 * LOT)
     two_lot = ExecutionPlan("S-1", tuple(PlannedLeg(f"leg-{i + 1}", c, leg) for i, (c, leg) in
                                          enumerate(zip(CONTRACTS, legs))))
-    book = new_book()
+    book = new_book(record=condor_record(2 * LOT))  # the plan is v1 of its own record (REQ-036 AC-1)
     positions, sts = [], []
     for i, (c, leg) in enumerate(zip(CONTRACTS, legs)):
         boid = f"BRK-{i + 1}"
-        book.add(Order("S-1", f"leg-{i + 1}", c, leg.action, leg.quantity, leg.entry_price, broker_order_id=boid))
+        book.add(Order("S-1", f"leg-{i + 1}", c, leg.action, leg.quantity, leg.entry_price, broker_order_id=boid, version_id="v1"))
         book.transition(boid, OrderState.SUBMITTED)
         filled = leg.quantity if i < 3 else LOT
         book.apply_fill(FillEvent(f"T-{i}", boid, c, leg.action, filled, leg.entry_price, FILL_AT))

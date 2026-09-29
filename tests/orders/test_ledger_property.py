@@ -15,6 +15,8 @@ from decimal import Decimal as D
 
 import pytest
 
+from book_helpers import bound_book
+
 from ofo.engine.legs import Action
 from ofo.orders.model import FillEvent, Order, OrderBook, OrderState
 
@@ -63,14 +65,14 @@ def _new_order(rng: random.Random, broker_order_id: str, registered: dict[str, O
     return Order(
         strategy_id=rng.choice(STRATEGIES), leg_ref=f"leg-{broker_order_id}",
         contract=rng.choice(CONTRACTS), side=rng.choice([Action.BUY, Action.SELL]),
-        quantity=rng.choice([10, 20, 30]), price=D("100.00"), broker_order_id=broker_order_id,
+        quantity=rng.choice([10, 20, 30]), price=D("100.00"), broker_order_id=broker_order_id, version_id="v1",
     )
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
 def test_ledger_is_the_only_source_of_truth_under_random_misuse(seed: int) -> None:
     rng = random.Random(seed)
-    book = OrderBook()
+    book = bound_book()
     registered: dict[str, Order] = {}
 
     for _ in range(400):

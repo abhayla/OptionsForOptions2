@@ -27,7 +27,7 @@ BUY_PE, SELL_PE, SELL_CE, BUY_CE = REFS
 def test_core_golden_condor_wing_before_its_sell_and_a_put_wing_failure_stops_only_the_put_sale() -> None:
     """AC-2: the golden Iron Condor's plan has each bought wing before the sold leg it protects; a failure of the
     22,800 PE purchase stops the 23,000 PE sale while the call side (23,600 CE buy, 23,400 CE sell) proceeds."""
-    assert CONTRACTS == ("NIFTY26OCT22800PE", "NIFTY26OCT23000PE", "NIFTY26OCT23400CE", "NIFTY26OCT23600CE")
+    assert CONTRACTS == ("NIFTY26O0622800PE", "NIFTY26O0623000PE", "NIFTY26O0623400CE", "NIFTY26O0623600CE")
     seq = sequence_plan(plan())
     assert seq.dependencies == ((SELL_PE, (BUY_PE,)), (SELL_CE, (BUY_CE,)))
     assert seq.steps == (PlanStep(StepKind.PROTECTION, (BUY_PE, BUY_CE)),
@@ -264,7 +264,7 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
     rejected). The sold put depends on the filled put wing (step 2); the bought call protects nothing (step 3). So
     Complete prepares SELL 23,000 PE then BUY 23,600 CE; a buys-first sort would reverse them."""
     from partial_inputs import (BROKER_IDS, FILL_AT, REJECT_TEXT, STRATEGY_ID, FakeBroker, FakePlanner,
-                                entry_context, new_book)
+                                entry_context, new_book, record_for_legs)
 
     from ofo.execution.partial import BrokerOrderStatus, BrokerPositionLine, complete_strategy
     from ofo.orders import FillEvent, Order, OrderState
@@ -272,10 +272,10 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
     full = plan().legs
     three = ExecutionPlan(STRATEGY_ID, (full[0], full[1], full[3]))
     assert sequence_plan(three).sequence == (BUY_PE, SELL_PE, BUY_CE)
-    book = new_book()
+    book = new_book(record=record_for_legs(tuple(p.leg for p in three.legs)))  # W-026: the plan is v1 of its record
     ids = (BROKER_IDS[0], BROKER_IDS[1], BROKER_IDS[3])
     for p, bid in zip(three.legs, ids):
-        book.add(Order(STRATEGY_ID, p.leg_ref, p.contract, p.leg.action, p.leg.quantity, p.leg.entry_price,
+        book.add(Order(STRATEGY_ID, p.leg_ref, p.contract, p.leg.action, p.leg.quantity, p.leg.entry_price, version_id="v1",
                        broker_order_id=bid))
         book.transition(bid, OrderState.SUBMITTED)
     book.apply_fill(FillEvent("T-1", ids[0], full[0].contract, BUY, LOT, D("42.50"), FILL_AT))
@@ -288,4 +288,4 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
          BrokerOrderStatus(ids[2], full[3].contract, OrderState.REJECTED, 0, REJECT_TEXT)])
     prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [
-        ("NIFTY26OCT23000PE", SELL, LOT), ("NIFTY26OCT23600CE", BUY, LOT)]
+        ("NIFTY26O0623000PE", SELL, LOT), ("NIFTY26O0623600CE", BUY, LOT)]

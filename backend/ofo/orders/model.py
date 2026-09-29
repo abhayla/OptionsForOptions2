@@ -42,6 +42,7 @@ from types import MappingProxyType
 from typing import Final, Literal, NoReturn
 
 from ofo.engine.legs import Action, require_price
+from ofo.strategy.versions import StrategyRecord
 
 
 class OrderState(Enum):
@@ -170,7 +171,7 @@ class Order:
     quantity: int
     price: Decimal
     broker_order_id: str | None = None
-    version_id: str | None = None  # the strategy version this order executes (W-023 fix (a))
+    version_id: str | None = None  # REQUIRED (REQ-036 AC-1): None is refused; the default only keeps field order
     client_tag: str | None = None  # the platform's own id, set before the broker sees the order
     _state: OrderState = field(default=OrderState.PREPARED, init=False, repr=False)
 
@@ -184,8 +185,10 @@ class Order:
         require_price(self.price, "price", allow_zero=False)
         if self.broker_order_id is not None:
             _non_empty_str(self.broker_order_id, "broker_order_id")
-        if self.version_id is not None:
-            _non_empty_str(self.version_id, "version_id")
+        # REQ-036 AC-1 / ADR-002: every order references a strategy AND the strategy version it executes.
+        if self.version_id is None:
+            raise ValueError("every order belongs to a strategy version (REQ-036 AC-1); version_id is required")
+        _non_empty_str(self.version_id, "version_id")
         if self.client_tag is not None:
             _non_empty_str(self.client_tag, "client_tag")
 
@@ -378,6 +381,38 @@ class OrderBook:
         self._blocked_at: dict[str, datetime.datetime] = {}  # latest accepted read/time that set each block
         self._live_preparation: dict[str, object] = {}  # strategy -> the one unconsumed preparation (its owner)
         self._closing_read_at: dict[str, datetime.datetime] = {}  # strategy -> read on which Close was chosen
+        self._records: dict[str, StrategyRecord] = {}  # strategy id -> its record (REQ-036 AC-1)
+
+    # -- strategies (REQ-036 AC-1) ----------------------------------------------------------
+
+    def bind_strategy(self, strategy_id: str, record: StrategyRecord) -> None:
+        """Tie a strategy id to its ``StrategyRecord``. An order is only ever prepared or sent for a bound strategy
+        and a version that exists in that record. A binding is permanent: re-binding an id to another record is
+        refused (the strategy behind an id cannot be swapped)."""
+        _non_empty_str(strategy_id, "strategy_id")
+        if not isinstance(record, StrategyRecord):
+            raise ValueError(f"bind_strategy needs a StrategyRecord, got {record!r}")
+        current = self._records.get(strategy_id)
+        if current is not None and current is not record:
+            raise ValueError(f"strategy {strategy_id!r} is already bound to another record")
+        if current is None and any(r is record for r in self._records.values()):
+            raise ValueError("this record is already bound to another strategy id")
+        self._records[strategy_id] = record
+
+    def require_version(self, strategy_id: str, version_id: object) -> StrategyRecord:
+        """REQ-036 AC-1: the strategy is bound to a record AND ``version_id`` ('v<n>') is a version in it."""
+        record = self.record_for(strategy_id)
+        if (not isinstance(version_id, str) or not version_id.startswith("v") or not version_id[1:].isdigit()
+                or not 1 <= int(version_id[1:]) <= len(record.versions)):
+            raise ValueError(f"strategy {strategy_id!r} has no version {version_id!r} (REQ-036 AC-1)")
+        return record
+
+    def record_for(self, strategy_id: str) -> StrategyRecord:
+        try:
+            return self._records[strategy_id]
+        except KeyError:
+            raise ValueError(f"strategy {strategy_id!r} has no strategy record; no order can be prepared or sent "
+                             "for it (REQ-036 AC-1)") from None
 
     # -- clock & read freshness -----------------------------------------------------------
 
@@ -408,6 +443,7 @@ class OrderBook:
             raise ValueError(f"add needs an Order, got {order!r}")
         if order.state is not OrderState.PREPARED:
             raise ValueError(f"add() only accepts a Prepared order, got {order.state.value}")
+        self.require_version(order.strategy_id, order.version_id)  # REQ-036 AC-1: bound strategy, real version
         if order.client_tag is None and order.broker_order_id is None:
             raise ValueError("an order needs a client_tag or a broker_order_id before it can be added to the book")
         key = order.client_tag or order.broker_order_id

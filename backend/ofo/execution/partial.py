@@ -23,7 +23,7 @@ W-023 round 3 (independent review). Class: the platform's view of its own orders
 - Broker reads carry ``read_at``; the book refuses future-stamped or stale reads (its injected clock).
 
 Nothing here talks to Zerodha: positions, order status and margin come through ``BrokerReader`` (reconciliation, W-021,
-is not merged; its reader will implement this Protocol), orders go out through ``OrderSubmitter``. Every order passes
+is not merged; its reader will implement this Protocol), orders go out only through ``submit_confirmed`` and the private broker sink (W-026). Every order passes
 the W-014 gate ``check_pre_execution``.
 
 Orchestrator defaults (not stated by the spec; each also marked where it is used):
@@ -46,6 +46,10 @@ Orchestrator defaults (not stated by the spec; each also marked where it is used
 - OD-m (owner question Q223) a Close preparation also LISTS cancel requests for the platform's own still-open ENTRY
   orders of the strategy, shown before confirmation, so a late fill cannot leave a naked short. Listed only; nothing
   is sent by this module.
+- OD-n (W-026) Strategy Guard on execution: "before" is the strategy version being executed (the plan, which must
+  equal that version's legs), "after" is the position the strategy holds if every prepared order fills, both priced
+  at the PLAN's entry prices, so a fill price alone never flags. Completing the plan is not a change; a retry that
+  still leaves a leg missing, or a close, is. Margin before/after comes from the same ``MarginPlanner``.
 - Close is offered in PARTIAL_EXCEPTION and IN_PROGRESS (something filled), never under a mismatch: ADR-018 Q198 makes
   reconciliation the path there, and REQ-059 requires no unresolved mismatch for an exit.
 """
@@ -53,6 +57,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import hmac
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -68,6 +73,9 @@ from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.execution.sequence import sequence_plan
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
+from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
+from ofo.strategy.guard import GuardBinding, GuardDecision, GuardRefused, _decision, assess_risk_change, proposal_hash
+from ofo.strategy.versions import StrategyRecord, VersionError
 
 MAX_POSITION_LINES: Final = 100  # orchestrator default OD-g
 MAX_ORDER_STATUSES: Final = 200  # orchestrator default OD-g
@@ -169,14 +177,8 @@ class BrokerReader(Protocol):
 
 
 class OrderRefused(Exception):
-    """Raised by an ``OrderSubmitter`` when the broker definitely refused the order (its text is the message)."""
-
-
-class OrderSubmitter(Protocol):
-    """Sends ONE order (carrying its client tag) and returns the broker order id. Raises ``OrderRefused`` on a
-    definite refusal; any other exception means the outcome is unknown (OD-l)."""
-
-    def submit(self, order: Order) -> str: ...
+    """Raised by the broker transport when the broker definitely refused the order (its text is the message). Any
+    other exception means the outcome is unknown (OD-l). The transport is private to ``ofo.execution.send_guard``."""
 
 
 @dataclass(frozen=True)
@@ -350,30 +352,56 @@ def assess(
     )
 
 
+_MINT: Final = object()  # module-private: only this module's flow mints a Preparation (W-026)
+_GATE_ORDERS: dict[int, tuple[SafetyResult, str]] = {}  # gate result -> the orders it was run for (W-026)
+_MAX_OPEN_GATES: Final = 1000  # orchestrator default: oldest dropped first (a dropped one must be prepared again)
+
+
+def _orders_digest(orders: Sequence[Order]) -> str:
+    rows = sorted([o.strategy_id, str(o.version_id), o.leg_ref, o.contract, o.side.value, str(o.quantity),
+                   format(o.price.normalize(), "f")] for o in orders)
+    return proposal_hash(rows)
+
+
+def _prep(*args: object, **kwargs: object) -> Preparation:
+    return Preparation(*args, _mint=_MINT, **kwargs)  # type: ignore[arg-type]
+
+
 class Preparation:
     """Orders prepared for one user choice. Nothing is sent until ``submit_confirmed``; usable once.
 
     A ready preparation is the strategy's ONE live preparation (held on the ``OrderBook``) until it is sent or the
     user discards it (orchestrator default OD-h). ``cancels`` lists book keys of the platform's own open entry orders
     a Close asks the user to cancel (OD-m; listed only).
+
+    W-026 (REQ-036 AC-2/AC-3, finding caller-supplied-verdict-trusted): only this module's flow mints one (a
+    module-private sentinel; a direct construction is refused), it is immutable, and it is sealed to its own orders
+    and gate result. ``plan`` is the flow's grounded plan; ``guard`` the Strategy Guard decision shown to the user.
     """
 
-    __slots__ = ("choice", "assessment", "orders", "gate", "reason", "book", "strategy_id", "cancels", "_consumed")
+    __slots__ = ("choice", "assessment", "orders", "gate", "reason", "book", "strategy_id", "cancels", "guard",
+                 "plan", "catalogue", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
                  gate: SafetyResult | None, reason: str, book: OrderBook | None = None,
-                 strategy_id: str | None = None, cancels: tuple[str, ...] = ()) -> None:
-        self.choice = choice
-        self.assessment = assessment
-        self.orders = orders
-        self.gate = gate
-        self.reason = reason
-        self.book = book
-        self.strategy_id = strategy_id
-        self.cancels = cancels
-        self._consumed = False
+                 strategy_id: str | None = None, cancels: tuple[str, ...] = (),
+                 guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
+                 catalogue: Catalogue | None = None, *,
+                 _mint: object = None) -> None:
+        if _mint is not _MINT:
+            raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
+        orders = tuple(orders)
+        for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
+                            ("reason", reason), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
+                            ("guard", guard), ("plan", plan), ("catalogue", catalogue),
+                            ("_seal", (_orders_digest(orders), gate)),
+                            ("_consumed", False)):
+            object.__setattr__(self, name, value)
         if self.ready:
             book.hold_preparation(strategy_id, self)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("a Preparation cannot be changed after the flow made it")
 
     @property
     def ready(self) -> bool:
@@ -385,7 +413,9 @@ def discard_preparation(preparation: Preparation) -> None:
     """The user drops a waiting preparation: it can no longer be sent and the strategy is free for a new one."""
     if not isinstance(preparation, Preparation):
         raise ValueError("discard_preparation needs a Preparation")
-    preparation._consumed = True
+    object.__setattr__(preparation, "_consumed", True)
+    if preparation.gate is not None:
+        _GATE_ORDERS.pop(id(preparation.gate), None)
     if preparation.book is not None and preparation.strategy_id is not None:
         preparation.book.release_preparation(preparation.strategy_id, preparation)
 
@@ -404,10 +434,10 @@ def _refetch(plan: ExecutionPlan, reader: BrokerReader, book: OrderBook,
 
 def _not_prepared(choice: PartialChoice, a: Assessment | str | None, reason: str | None = None) -> Preparation:
     if isinstance(a, str):
-        return Preparation(choice, None, (), None, a)
+        return _prep(choice, None, (), None, a)
     if a is None:
-        return Preparation(choice, None, (), None, reason or "Nothing prepared.")
-    return Preparation(choice, a, (), None, reason or f"Nothing prepared: the strategy is {a.status.value}.")
+        return _prep(choice, None, (), None, reason or "Nothing prepared.")
+    return _prep(choice, a, (), None, reason or f"Nothing prepared: the strategy is {a.status.value}.")
 
 
 WAITING = ("Another preparation for this strategy is waiting for your confirmation. Confirm or discard it first. "
@@ -418,17 +448,110 @@ NEEDS_FRESH_READ = ("You chose Close Partial Strategy. Completing or retrying ne
                     "positions taken after that choice. No order has been prepared.")
 
 
+def _version_number(version_id: object) -> int:
+    """The record's own version id convention, ``v<n>`` (``gate_inputs_from_record``, ``modification``)."""
+    if not isinstance(version_id, str) or not version_id.startswith("v") or not version_id[1:].isdigit():
+        raise ValueError(f"version_id must name a version of the strategy's record as 'v<n>', got {version_id!r}")
+    return int(version_id[1:])
+
+
+def _record_with_version(book: OrderBook, strategy_id: str, version_id: object) -> StrategyRecord:
+    """REQ-036 AC-1: the strategy must have a record and ``version_id`` must be a version in it, else refuse."""
+    record = book.record_for(strategy_id)
+    try:
+        record.version(_version_number(version_id))
+    except VersionError as exc:
+        raise ValueError(f"strategy {strategy_id!r} has no version {version_id!r}; no order is prepared or sent "
+                         "(REQ-036 AC-1)") from exc
+    return record
+
+
+def _grounded_plan(book: OrderBook, plan: ExecutionPlan, version_id: str,
+                   catalogue: Catalogue | None = None) -> StrategyRecord:
+    """The plan must BE the named version of the strategy's record: same legs (side, type, strike, expiry, units),
+    the version must be the record's active or pending one, and (when a catalogue is given, at preparation) every
+    contract symbol must be that leg's instrument in the catalogue."""
+    record = _record_with_version(book, plan.strategy_id, version_id)
+    version = executable_version(record, _version_number(version_id))
+    if catalogue is not None:
+        symbols = {e.contract.tradingsymbol: e.contract for e in catalogue.all_entries()}
+        for p in plan.legs:
+            c = symbols.get(p.contract)
+            if (c is None or c.name != version.definition.underlying or c.instrument_type != p.leg.instrument.value
+                    or c.expiry != p.leg.expiry or (p.leg.strike is not None and c.strike != p.leg.strike)):
+                raise ValueError(f"plan contract {p.contract!r} is not the catalogue instrument of its leg "
+                                 "(REQ-036 AC-3); nothing is prepared")
+    planned = sorted((p.leg.action.value, p.leg.instrument.value, str(p.leg.strike), p.leg.expiry.isoformat(),
+                      p.leg.quantity) for p in plan.legs)
+    stored = sorted((d.action.value, d.instrument.value, str(d.strike), d.expiry.isoformat(), d.quantity)
+                    for d in version.definition.legs)
+    if planned != stored:
+        raise ValueError(f"the execution plan is not version {version_id!r} of strategy {plan.strategy_id!r}; "
+                         "only the strategy's own version can be executed (REQ-036 AC-3)")
+    return record
+
+
+def _orders_binding(strategy_id: str, orders: tuple[Order, ...]) -> GuardBinding:
+    """Strategy Guard binding of an execution: strategy, version and the exact orders (leg, contract, side, qty,
+    price). Recomputed at submit from the orders as they stand then."""
+    versions = {o.version_id for o in orders}
+    if len(versions) != 1 or any(o.strategy_id != strategy_id for o in orders):
+        raise ValueError("every order of one submission must belong to the same strategy and version")
+    rows = sorted([o.leg_ref, o.contract, o.side.value, str(o.quantity), format(o.price.normalize(), "f")]
+                  for o in orders)
+    (version_id,) = versions
+    return GuardBinding(strategy_id, version_id, proposal_hash({"strategy_id": strategy_id, "version_id": version_id,
+                                                                "orders": rows}))
+
+
+def _after_legs(plan: ExecutionPlan, a: Assessment, orders: tuple[Order, ...]) -> tuple[Leg, ...]:
+    """Orchestrator default OD-n: the position if every order fills, per planned contract, at the plan's prices."""
+    held = {(leg.instrument, leg.strike, leg.expiry): leg.quantity for leg in a.actual_legs}
+    units = {p.contract: held.get((p.leg.instrument, p.leg.strike, p.leg.expiry), 0) for p in plan.legs}
+    for order in orders:
+        planned = plan.by_contract(order.contract)
+        if planned is None:
+            raise ValueError(f"order for {order.contract!r} is not a leg of the strategy's plan")
+        units[order.contract] += order.quantity if order.side is planned.leg.action else -order.quantity
+    if any(u < 0 for u in units.values()):
+        raise ValueError("these orders would flip a leg of the strategy; nothing is prepared")
+    return tuple(dataclasses.replace(p.leg, quantity=units[p.contract], ltp=None) for p in plan.legs
+                 if units[p.contract] > 0)
+
+
+def _margin_or_unknown(planner: MarginPlanner, legs: tuple[Leg, ...]) -> Decimal | None:
+    if not legs:
+        return Decimal("0")  # guard OD-G3: no position, no margin
+    try:
+        return require_decimal(planner.required_margin(Strategy(legs)), "margin_required")
+    except Exception:  # a failing planner is unknown, never 0 (the guard treats unknown as a change)
+        return None
+
+
 def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContext, book: OrderBook,
           plan: ExecutionPlan, catalogue: Catalogue, eligibility: EligibilityRegistry, choice: PartialChoice,
-          a: Assessment, cancels: tuple[str, ...] = ()) -> Preparation:
+          a: Assessment, record: StrategyRecord, planner: MarginPlanner,
+          cancels: tuple[str, ...] = ()) -> Preparation:
     blocked = ctx.reconciliation_blocked_strategy_ids
     if blocked is not None and book.is_submit_blocked(plan.strategy_id):
         ctx = dataclasses.replace(ctx, reconciliation_blocked_strategy_ids=blocked | {plan.strategy_id})
     result = check_pre_execution(Strategy(legs), ctx, catalogue, eligibility, strategy_id=plan.strategy_id)
     if result.blocked:
-        return Preparation(choice, a, (), result, "The safety checks blocked this. No order has been prepared.")
-    return Preparation(choice, a, orders, result, f"{len(orders)} order(s) ready for your confirmation.", book,
-                       plan.strategy_id, cancels)
+        return _prep(choice, a, (), result, "The safety checks blocked this. No order has been prepared.")
+    # REQ-036 AC-5 (Strategy Guard), run only after the gate passed, on this flow's own grounded inputs (OD-n).
+    before = tuple(p.leg for p in plan.legs)
+    after = _after_legs(plan, a, orders)
+    decision = _decision(_orders_binding(plan.strategy_id, orders), assess_risk_change(
+        Strategy(before), Strategy(after) if after else None,
+        _margin_or_unknown(planner, before), _margin_or_unknown(planner, after),
+    ))
+    if len(_GATE_ORDERS) >= _MAX_OPEN_GATES:  # one in, one out: the store never grows past the cap
+        del _GATE_ORDERS[next(iter(_GATE_ORDERS))]
+    _GATE_ORDERS[id(result)] = (result, _orders_digest(orders))  # this gate result belongs to THESE orders
+    reason = f"{len(orders)} order(s) ready for your confirmation."
+    if decision.changes_risk_profile:
+        reason = f"{decision.message}. {reason}"
+    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan, catalogue)
 
 
 def _prepare_missing(
@@ -446,6 +569,7 @@ def _prepare_missing(
     # In flight = non-terminal in the reconciled book. While anything is, nothing is prepared.
     if a.open_orders:
         return _not_prepared(choice, a, IN_FLIGHT)
+    record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
     # ADR-017 Q26 / REQ-056 AC-3 (W-022): the missing legs go in the full plan's dependency-aware sequence, never
     # "all buys first"; protectors come before the sells that depend on them.
     position = {ref: i for i, ref in enumerate(sequence_plan(plan).sequence)}
@@ -464,7 +588,7 @@ def _prepare_missing(
                                         "prepared.")
     required = require_decimal(planner.required_margin(Strategy(legs)), "margin_required")  # OD-d
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a)
+    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner)
 
 
 def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Preparation | None:
@@ -524,7 +648,7 @@ def review_manually(assessment: Assessment) -> Preparation:
     """Review Manually: show the state and the broker's reasons; prepare nothing."""
     if not isinstance(assessment, Assessment):
         raise ValueError("review_manually needs an Assessment")
-    return Preparation(PartialChoice.REVIEW_MANUALLY, assessment, (), None,
+    return _prep(PartialChoice.REVIEW_MANUALLY, assessment, (), None,
                        "Review the filled and failed legs below. No order has been prepared.")
 
 
@@ -546,6 +670,7 @@ def close_partial_strategy(
         return _not_prepared(choice, a)
     if a.status not in (ExecutionStatus.PARTIAL_EXCEPTION, ExecutionStatus.IN_PROGRESS) or not a.actual_legs:
         return _not_prepared(choice, a)
+    record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
     book.mark_closing(plan.strategy_id, a.read_at)  # Complete/Retry now need a read newer than this one
     if any(leg.ltp is None for leg in a.actual_legs):  # orchestrator default OD-e: fail closed without a price
         return _not_prepared(choice, a, "Zerodha did not give a current price for every filled leg. No order has "
@@ -579,7 +704,7 @@ def close_partial_strategy(
         context, action=ExecutionAction.EXIT, active_legs=a.actual_legs, active_version_id=context.version_id,
         active_legs_hash=active_legs_hash(plan.strategy_id, context.version_id, a.actual_legs),
     )
-    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, tuple(cancels))
+    return _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels))
 
 
 @dataclass(frozen=True)
@@ -601,14 +726,57 @@ def _mark_sent(book: OrderBook, client_tag: str) -> None:
         return
 
 
+_SEND_KIND: Final = {PartialChoice.COMPLETE_STRATEGY: "complete", PartialChoice.RETRY_FAILED_LEG: "retry",
+                     PartialChoice.CLOSE_PARTIAL_STRATEGY: "close"}
+
+
+def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: str,
+                       acknowledgement: str | None) -> tuple[Order, ...]:
+    """W-026: permission to send is RE-DERIVED here, never taken from the preparation's word. The preparation must
+    be the flow's own, unchanged since it was sealed, with a gate result run for exactly these orders; every order
+    must be a permitted leg of the bound record's executable version (``send_guard.allowed_or_refuse``); a Strategy
+    Guard change needs this preparation's own token (AC-5)."""
+    orders = preparation.orders
+    if preparation.plan is None or preparation.catalogue is None or not all(isinstance(o, Order) for o in orders):
+        raise ValueError("this preparation was not made by the strategy's execution flow; nothing was sent")
+    digest = _orders_digest(orders)
+    if preparation._seal[0] != digest or preparation._seal[1] is not preparation.gate:
+        raise ValueError("this preparation changed after it was checked; nothing was sent")
+    issued = _GATE_ORDERS.get(id(preparation.gate))
+    if issued is None or issued[0] is not preparation.gate or issued[1] != digest:
+        raise ValueError("the safety check result does not belong to these orders; nothing was sent")
+    binding = _orders_binding(strategy_id, orders)
+    # AC-1/AC-3: bound record, executable version, and every plan symbol is its leg's catalogue instrument
+    record = _grounded_plan(book, preparation.plan, binding.version_id, preparation.catalogue)
+    allowed_or_refuse(
+        choice=_SEND_KIND.get(preparation.choice, "none"), orders=orders,
+        version=record.version(_version_number(binding.version_id)),
+        planned={p.contract: (p.leg_ref, p.leg.action, p.leg.quantity) for p in preparation.plan.legs},
+        book=book, strategy_id=strategy_id,
+    )
+    guard = preparation.guard
+    if guard is None or guard.binding != binding:
+        raise GuardRefused("Strategy Guard has not checked this exact action; nothing was sent")
+    if guard.acknowledgement is not None and (
+            not isinstance(acknowledgement, str) or not hmac.compare_digest(acknowledgement, guard.acknowledgement)):
+        raise GuardRefused(f"{guard.message}. Acknowledge it to proceed. Nothing was sent.")
+    _GATE_ORDERS.pop(id(preparation.gate), None)
+    return orders
+
+
 def submit_confirmed(
-    preparation: Preparation, *, choice: PartialChoice, confirmed_by: str, submitter: OrderSubmitter,
+    preparation: Preparation, *, choice: PartialChoice, confirmed_by: str, submitter: _Transport,
+    acknowledgement: str | None = None,
 ) -> SubmissionResult:
     """Send a preparation's orders ONCE, only for the user's explicit choice (AC-6: never automatic, never retried).
 
     Each order is registered in the book (Prepared, under a new client tag) BEFORE it is sent, so it is in flight from
     that moment. On acceptance its broker id is attached; an unusable id (empty, padded, already used) blocks the
     strategy for reconciliation and stops the rest. The first refusal stops the rest (invariant 21); nothing is resent.
+
+    REQ-036: every order must belong to this strategy and a version in its record (AC-1), and the strategy's own
+    Strategy Guard must have checked exactly these orders; when they change the risk profile, ``acknowledgement``
+    must be that decision's own token (AC-5). The decision is consumed: a token never works twice.
     """
     if not isinstance(preparation, Preparation):
         raise ValueError("submit_confirmed needs a Preparation")
@@ -620,16 +788,25 @@ def submit_confirmed(
     book, strategy_id = preparation.book, preparation.strategy_id
     if book.is_submit_blocked(strategy_id):
         raise ValueError(f"strategy {strategy_id!r} has an unresolved reconciliation mismatch; nothing was sent")
-    preparation._consumed = True
+    orders = _authorised_orders(preparation, book, strategy_id, acknowledgement)
+    # W-026 round 3: the sink re-derives every broker field from the record and the catalogue, BEFORE anything is
+    # registered or sent; a refusal here sends nothing.
+    sink = _BrokerSink(submitter, book=book, strategy_id=strategy_id, catalogue=preparation.catalogue,
+                       choice=_SEND_KIND[preparation.choice],
+                       leg_slots={p.leg_ref: (p.leg.instrument.value, p.leg.strike, p.leg.expiry)
+                                  for p in preparation.plan.legs})
+    tagged_orders = tuple(dataclasses.replace(o, client_tag=book.next_client_tag()) for o in orders)
+    requests = sink.resolve_all(tagged_orders)
+    object.__setattr__(preparation, "_consumed", True)
     book.release_preparation(strategy_id, preparation)
     sent: list[tuple[str, str]] = []
-    for index, order in enumerate(preparation.orders):
-        tag = book.next_client_tag()
-        tagged = dataclasses.replace(order, client_tag=tag)
+    for index, order in enumerate(orders):
+        tagged, request = tagged_orders[index], requests[index]
+        tag = tagged.client_tag
         book.add(tagged)  # registered BEFORE the broker sees it
-        rest = tuple(o.leg_ref for o in preparation.orders[index + 1:])
+        rest = tuple(o.leg_ref for o in orders[index + 1:])
         try:
-            broker_order_id = submitter.submit(tagged)
+            broker_order_id = sink.submit(request)
         except OrderRefused as exc:  # no retry: a definite refusal, recorded and shown with the broker's text
             book.mirror_broker_state(tag, OrderState.REJECTED)
             return SubmissionResult(tuple(sent), (order.leg_ref, str(exc)), rest)

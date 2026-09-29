@@ -10,6 +10,8 @@ from decimal import Decimal as D
 
 import pytest
 
+from book_helpers import bound_book
+
 from ofo.engine.legs import Action
 from ofo.orders.model import (
     ALLOWED_TRANSITIONS,
@@ -27,7 +29,7 @@ CONTRACT = "NIFTY26OCT23000CE"
 def make_order(**overrides: object) -> Order:
     fields = dict(
         strategy_id="STRAT-1", leg_ref="leg-0", contract=CONTRACT,
-        side=Action.BUY, quantity=75, price=D("120.50"), broker_order_id="BRK-1",
+        side=Action.BUY, quantity=75, price=D("120.50"), broker_order_id="BRK-1", version_id="v1",
     )
     fields.update(overrides)
     return Order(**fields)  # type: ignore[arg-type]
@@ -62,7 +64,7 @@ def test_full_happy_path_submitted_to_executed_via_partial_fills() -> None:
     move only on confirmed fills, and only by the confirmed quantity, never by the order's own
     state change. filled_quantity/state are always the ledger-computed OrderView values.
     """
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=100))
 
     view = book.transition("BRK-1", OrderState.SUBMITTED)
@@ -120,7 +122,7 @@ def test_transition_refuses_fill_implying_states(target: OrderState) -> None:
 
 def test_partial_fill_cannot_exceed_ordered_quantity() -> None:
     """AC-1: filled quantity accumulates but never above the ordered quantity."""
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=50))
     book.transition("BRK-1", OrderState.SUBMITTED)
     view = book.apply_fill(make_fill("T-1", 40))
@@ -135,7 +137,7 @@ def test_a_fully_filled_order_cannot_be_cancelled() -> None:
     and Executed is terminal -- it can never be recorded as Cancelled, even though the order's own
     base state is still Submitted.
     """
-    book = OrderBook()
+    book = bound_book()
     book.add(make_order(quantity=25))
     book.transition("BRK-1", OrderState.SUBMITTED)
     view = book.apply_fill(make_fill("T-1", 25))

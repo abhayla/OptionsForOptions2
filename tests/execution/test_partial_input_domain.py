@@ -92,7 +92,7 @@ def test_nothing_filled_is_not_a_partial_exception() -> None:
 
     book = new_book()
     for i, (c, leg) in enumerate(zip(CONTRACTS, condor_legs())):
-        book.add(Order("S-1", f"leg-{i + 1}", c, leg.action, leg.quantity, leg.entry_price, broker_order_id=f"B{i}"))
+        book.add(Order("S-1", f"leg-{i + 1}", c, leg.action, leg.quantity, leg.entry_price, broker_order_id=f"B{i}", version_id="v1"))
         book.transition(f"B{i}", OrderState.SUBMITTED)
         book.transition(f"B{i}", OrderState.REJECTED)
     sts = [BrokerOrderStatus(f"B{i}", c, OrderState.REJECTED, 0, "rejected") for i, c in enumerate(CONTRACTS)]

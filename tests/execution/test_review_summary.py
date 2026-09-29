@@ -45,10 +45,10 @@ def test_ac5_golden_condor_review_shows_every_field_from_the_engine() -> None:
     assert review.leg_count == 4
     assert review.broker == "Zerodha"
     assert review.sequence == (
-        ReviewLine(1, "Establish protection", "leg-1", BUY, "NIFTY26OCT22800PE", 75),
-        ReviewLine(1, "Establish protection", "leg-4", BUY, "NIFTY26OCT23600CE", 75),
-        ReviewLine(2, "Establish short positions", "leg-2", SELL, "NIFTY26OCT23000PE", 75, batch=2),
-        ReviewLine(2, "Establish short positions", "leg-3", SELL, "NIFTY26OCT23400CE", 75, batch=2),
+        ReviewLine(1, "Establish protection", "leg-1", BUY, "NIFTY26O0622800PE", 75),
+        ReviewLine(1, "Establish protection", "leg-4", BUY, "NIFTY26O0623600CE", 75),
+        ReviewLine(2, "Establish short positions", "leg-2", SELL, "NIFTY26O0623000PE", 75, batch=2),
+        ReviewLine(2, "Establish short positions", "leg-3", SELL, "NIFTY26O0623400CE", 75, batch=2),
     )  # a batch never spans two steps
     assert review.unknown == () and review.notes == ()
     assert "unverified against real Zerodha margin behaviour" in review.margin_basis
