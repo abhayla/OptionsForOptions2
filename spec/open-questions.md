@@ -154,3 +154,32 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Spec basis: ADR-017 Q27 (Close Partial Strategy is a user choice; executed legs never unwound automatically), ADR-018
   Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
   None of these says what happens to an open entry order when the user closes.
+
+## Q222 — DECIDED (delegated overnight, ADR-045; reversible) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
+- Situation: a mismatch blocked a strategy (ADR-018); a later run finds the broker agreeing again.
+- Decision (recommendation A, applied overnight): NO automatic unblock. The block lifts only through a recorded manual
+  resolution on the latest run (adopt, prepared closing order, broker flat → exited), so the user sees what happened in
+  the account before trading resumes. Cost: one extra action after an external change.
+- Alternative B: an agreeing run clears the block automatically (and records it).
+- Spec basis: ADR-018 "allows recorded manual reconciliation, and blocks ... while a mismatch is unresolved"; REQ-060
+  AC-5 "Manual reconciliation is allowed". Neither requires nor forbids an automatic clear; the independent verifier of
+  W-021 judged A the safer default.
+- Built in W-021 (`backend/ofo/reconciliation/`).
+
+## Q224 — DECIDED (delegated overnight, ADR-045; reversible) — A contract held by more than one strategy disagrees with Zerodha
+- Situation: strategies A and B each SELL 23400 CE x50; Zerodha nets them per contract. If the user squares off in Kite
+  (broker 0) or partly (broker −50), nothing tells the platform which strategy's leg changed.
+- Finding (W-021 verifier, 2026-09-29): splitting by "broker minus the other holders' platform quantity" invented a
+  +50 long for A on a flat account; adopt wrote it into A, and the prepared closing order proposed SELL 100 (would OPEN
+  a −100 short).
+- Decision (recommendation, applied overnight — SPEC CHANGE to the ADR-018 Q198 resolution list for this case only):
+  for a contract held by two or more non-exited strategies whose broker quantity disagrees, the per-strategy
+  resolutions that need an attribution (adopt broker position, prepared closing order, broker flat → exited) are
+  REFUSED and every holder stays blocked; "mark as requiring attention" and "review and modify" stay available. The
+  user resolves by trading in Kite (or by later modifying a strategy) and running reconciliation again. Single-holder
+  contracts (with or without a recorded standalone) are unchanged.
+- Open for the owner: an attribution rule for shared contracts (e.g. the user picks which strategy absorbs the change,
+  recorded and audited), which would restore adopt/close/exit for this case.
+- Spec basis: ADR-016/ADR-018 (Zerodha is the authority; a mismatch blocks); ADR-018 Q198 resolution list; REQ-060
+  AC-5, AC-7 (AC-7 covers one strategy plus a standalone, not two strategies). No spec text defines attribution across
+  strategies.
