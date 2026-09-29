@@ -78,9 +78,56 @@ for _kind in (MismatchKind.STRIKE_MISMATCH, MismatchKind.SIDE_MISMATCH, Mismatch
     _NEXT_ACTION[_kind] = _NEXT_ACTION[MismatchKind.QUANTITY_MISMATCH]
 
 
+def _check_aware_datetime(value: object, label: str) -> None:
+    if not isinstance(value, datetime.datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ReconciliationError(f"{label} must be a timezone-aware datetime, got {value!r}")
+
+
+def _check_units(value: object, label: str) -> None:
+    """The audit and the domain both store units as a plain int (never Decimal/float/str; ADR-008 is money only)."""
+    if isinstance(value, bool) or not isinstance(value, int) or abs(value) > MAX_UNITS:
+        raise ReconciliationError(f"{label} must be an int within +/-{MAX_UNITS}, got {value!r}")
+
+
+def _check_contract_pairs(value: object, label: str) -> None:
+    if not isinstance(value, tuple):
+        raise ReconciliationError(f"{label} must be a tuple of (contract, units) pairs, got {value!r}")
+    for item in value:
+        if not isinstance(item, tuple) or len(item) != 2:
+            raise ReconciliationError(f"{label}: each entry must be a (contract, units) pair, got {item!r}")
+        contract, units = item
+        try:
+            check_contract(contract)
+        except VersionError as exc:
+            raise ReconciliationError(f"{label}: {exc}") from exc
+        _check_units(units, f"{label} units")
+
+
+def _check_breakdown(value: object, label: str) -> None:
+    if not isinstance(value, tuple):
+        raise ReconciliationError(f"{label} must be a tuple of (holder, contract, units) triples, got {value!r}")
+    for item in value:
+        if not isinstance(item, tuple) or len(item) != 3:
+            raise ReconciliationError(f"{label}: each entry must be a (holder, contract, units) triple, got {item!r}")
+        holder, contract, units = item
+        if not isinstance(holder, str) or not holder.strip():
+            raise ReconciliationError(f"{label}: holder must be a non-empty string, got {holder!r}")
+        try:
+            check_contract(contract)
+        except VersionError as exc:
+            raise ReconciliationError(f"{label}: {exc}") from exc
+        _check_units(units, f"{label} units")
+
+
 @dataclass(frozen=True)
 class Mismatch:
-    """One recorded mismatch (AC-3): time, broker state, platform state, difference and required next action."""
+    """One recorded mismatch (AC-3): time, broker state, platform state, difference and required next action.
+
+    Validated on construction (W-021 fix round, class: an audit write not validated before commit) so a hand-built
+    or reloaded Mismatch carrying a value the audit cannot store (a Decimal/float/str where units must be a plain
+    int, a malformed contract, an empty holder) is refused HERE, immediately, rather than surfacing later as a
+    ``PayloadValidationError`` mid-way through writing several audit events.
+    """
 
     kind: MismatchKind
     strategy_ids: tuple[str, ...]  # every strategy it blocks; empty = blocks none
@@ -90,6 +137,25 @@ class Mismatch:
     platform_breakdown: tuple[tuple[str, Contract, int], ...]  # (strategy id or "standalone", contract, units)
     difference: tuple[tuple[Contract, int], ...]  # broker minus expected, per contract
     next_action: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, MismatchKind):
+            raise ReconciliationError(f"mismatch kind must be a MismatchKind, got {self.kind!r}")
+        if not isinstance(self.strategy_ids, tuple) or not all(
+            isinstance(sid, str) and sid.strip() for sid in self.strategy_ids
+        ):
+            raise ReconciliationError(f"mismatch strategy_ids must be a tuple of non-empty strings, got "
+                                      f"{self.strategy_ids!r}")
+        if len(set(self.strategy_ids)) != len(self.strategy_ids):
+            raise ReconciliationError(f"mismatch strategy_ids has duplicates: {self.strategy_ids!r}")
+        _check_aware_datetime(self.at, "mismatch at")
+        _check_contract_pairs(self.broker_state, "mismatch broker_state")
+        _check_contract_pairs(self.platform_state, "mismatch platform_state")
+        _check_contract_pairs(self.difference, "mismatch difference")
+        _check_breakdown(self.platform_breakdown, "mismatch platform_breakdown")
+        if not isinstance(self.next_action, str) or not self.next_action.strip() or len(self.next_action) > MAX_TEXT:
+            raise ReconciliationError(f"mismatch next_action must be a non-empty string of at most {MAX_TEXT} "
+                                      f"chars, got {self.next_action!r}")
 
     @property
     def blocks(self) -> bool:
@@ -102,12 +168,36 @@ class Mismatch:
 
 @dataclass(frozen=True)
 class ReconciliationReport:
-    """The result of one comparison run. ``mismatches`` is empty when the broker agrees on every contract."""
+    """The result of one comparison run. ``mismatches`` is empty when the broker agrees on every contract.
+
+    Validated on construction, same class as ``Mismatch`` above: a hand-built or reloaded report with a wrong-typed
+    field is refused here, not partway through recording it.
+    """
 
     at: datetime.datetime
     broker: tuple[tuple[Contract, int], ...]  # the broker's whole net-position map as compared
     mismatches: tuple[Mismatch, ...]
     shares: tuple[tuple[str, Position], ...]  # EVERY covered strategy's broker share, blocked or not
+
+    def __post_init__(self) -> None:
+        _check_aware_datetime(self.at, "report at")
+        _check_contract_pairs(self.broker, "report broker")
+        if not isinstance(self.mismatches, tuple) or not all(isinstance(m, Mismatch) for m in self.mismatches):
+            raise ReconciliationError(f"report mismatches must be a tuple of Mismatch, got {self.mismatches!r}")
+        if not isinstance(self.shares, tuple):
+            raise ReconciliationError(f"report shares must be a tuple of (strategy id, Position), got {self.shares!r}")
+        seen: set[str] = set()
+        for item in self.shares:
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise ReconciliationError(f"report shares: each entry must be (strategy id, Position), got {item!r}")
+            sid, position = item
+            if not isinstance(sid, str) or not sid.strip():
+                raise ReconciliationError(f"report shares: strategy id must be a non-empty string, got {sid!r}")
+            if sid in seen:
+                raise ReconciliationError(f"report shares has duplicate strategy id {sid!r}")
+            seen.add(sid)
+            if not isinstance(position, Position):
+                raise ReconciliationError(f"report shares[{sid!r}] must be a Position, got {position!r}")
 
     @property
     def blocked_strategy_ids(self) -> frozenset[str]:

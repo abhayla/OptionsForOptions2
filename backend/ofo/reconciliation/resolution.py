@@ -24,6 +24,7 @@ from typing import Mapping
 
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
+from ofo.audit.models import canonical_json, check_payload_safe
 from ofo.engine.legs import Action
 from ofo.reconciliation.compare import (
     MismatchKind,
@@ -128,14 +129,16 @@ def record_report(
     ``StrategyRecord.observe_broker_position`` a differing share with no proposal in flight puts the strategy into
     Reconciliation Required (the sticky flag in versions.py; not duplicated here).
 
-    All or nothing (W-021 fix round 2; class: a multi-strategy recording that mutates some strategies before
-    validating all of them). Phase 1 validates every covered strategy (exited, time order, capacity, duplicate
-    reference, share) and builds every audit payload, changing nothing. Only if all pass does phase 2 write the
-    audit records, then apply the observations. A refused run leaves no strategy, audit event or reference behind,
-    so the same run id can be recorded again once the state allows it.
-
-    Note (not built): a run started for one named strategy (``Scope.NAMED_STRATEGY``) should compare only that
-    strategy's contracts, not the whole account map; this function records whatever ``compare`` was given.
+    All or nothing (W-021 fix rounds 2 and 3; class: a multi-strategy recording that mutates some strategies, or
+    writes some audit events, before validating all of them). Phase 1 validates every covered strategy (exited,
+    time order, capacity, duplicate reference, share) AND builds+validates every audit payload for audit-safety
+    (``check_payload_safe`` / ``canonical_json`` — the same check ``AuditLog.append`` runs, run here first so it
+    can never fail partway through phase 2), changing nothing. Only if all pass does phase 2 write the audit
+    records, then apply the observations. A refused run leaves no strategy, audit event or reference behind, so the
+    same run id can be recorded again once the state allows it. (``ReconciliationReport``/``Mismatch`` also validate
+    their own field types on construction — see ``compare.py`` — so most bad reports are refused even earlier; this
+    phase-1 payload check is defense in depth for a report reconstructed without going through that constructor,
+    e.g. a mismatch field corrupted after loading from storage.)
     """
     if not isinstance(report, ReconciliationReport):
         raise ReconciliationError(f"record_report needs a ReconciliationReport, got {report!r}")
@@ -160,14 +163,23 @@ def record_report(
     for mismatch in report.mismatches:
         event = (EventType.EXTERNAL_BROKER_CHANGE_DETECTED if mismatch.kind is MismatchKind.EXTERNAL_MODIFICATION
                  else EventType.RECONCILIATION_RECORDED)
-        events.append((event, {
+        payload = {
             "kind": mismatch.kind.value,
             "strategy_ids": list(mismatch.strategy_ids),
             "broker_state": [[describe_contract(c), u] for c, u in mismatch.broker_state],
             "platform_state": [[describe_contract(c), u] for c, u in mismatch.platform_state],
             "difference": [[describe_contract(c), u] for c, u in mismatch.difference],
             "next_action": mismatch.next_action,
-        }))
+        }
+        try:
+            check_payload_safe(payload)
+            canonical_json({"payload": payload})
+        except Exception as exc:  # PayloadValidationError or anything canonical_json/check_payload_safe raises
+            raise ReconciliationError(
+                f"mismatch {mismatch.kind.value!r} for {mismatch.strategy_ids!r} has a payload the audit cannot "
+                f"store: {exc}; nothing was recorded for this run"
+            ) from exc
+        events.append((event, payload))
 
     # Phase 2: audit first, then the observations (each re-checks what phase 1 proved, so none can refuse now).
     for event, payload in events:

@@ -1,7 +1,13 @@
 """REQ-060 AC-4: changes made directly in Zerodha are detected, recorded, and put the strategy into Reconciliation
-Required (ADR-018 Q197: strategy says Sell 25,000 CE x 50, Zerodha shows x 25)."""
+Required (ADR-018 Q197: strategy says Sell 25,000 CE x 50, Zerodha shows x 25).
+
+Class (W-021 fix round, 2026-09-29): an audit write not validated before commit. A hand-built or reloaded
+``ReconciliationReport`` whose (second) mismatch holds a value the audit can't store must be refused before any
+audit event is written and before any strategy is flagged -- never partway through, as ``PayloadValidationError``
+raised from inside ``AuditLog.append`` used to leave the first event written and the second strategy unflagged."""
 from __future__ import annotations
 
+import dataclasses
 from decimal import Decimal as D
 
 import pytest
@@ -129,3 +135,68 @@ def test_ac4_observation_rejects_backdated_and_raw_state_change():
         rec.observe_broker_position({SC23400: -75}, at=at(5), reference="dict")
     with pytest.raises(AttributeError):
         rec._reconcile = True  # noqa: SLF001 - the raw state change must be impossible
+
+
+def test_ac4_mismatch_construction_rejects_a_value_the_audit_cannot_store():
+    """AC-4: a hand-built Mismatch with a Decimal (not int) unit -- the value an audit payload can't
+    canonicalise as a quantity -- is refused at construction, before it can ever reach an audit write."""
+    rec = executed()
+    report = compare(dict(CONDOR_UNITS) | {SC23400: -25}, {"IC-1": rec}, at=at(10), clock=clock)
+    (good,) = report.mismatches
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(good, difference=((SC23400, D("25")),))  # Decimal, not int
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(good, broker_state=((SC23400, 25.0),))  # float, not int
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(good, strategy_ids=("IC-1", "IC-1"))  # duplicate
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(good, next_action="")
+
+
+def test_ac4_report_construction_rejects_bad_mismatches_and_shares():
+    """AC-4: a hand-built ReconciliationReport with a malformed mismatches/shares tuple is refused, not stored."""
+    rec = executed()
+    report = compare(dict(CONDOR_UNITS) | {SC23400: -25}, {"IC-1": rec}, at=at(10), clock=clock)
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(report, mismatches=("not-a-mismatch",))
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(report, shares=(("IC-1", "not-a-position"),))
+    with pytest.raises(ReconciliationError):
+        dataclasses.replace(report, shares=(("IC-1", report.share("IC-1")), ("IC-1", report.share("IC-1"))))
+
+
+def test_ac4_a_payload_the_audit_cannot_store_is_refused_with_nothing_written_and_retry_succeeds():
+    """AC-4 core defect: IC-1's mismatch is fine; Q197's mismatch carries a value the audit can't store (simulating
+    a report reconstructed from storage outside the normal, validating constructor -- ``object.__setattr__``
+    bypasses ``Mismatch.__post_init__`` the same way a naive deserialiser would). record_report must refuse before
+    writing IC-1's event or flagging IC-1: audit unchanged, IC-1 not flagged. A retry with a clean report succeeds
+    and writes exactly once."""
+    Q197 = StrategyDefinition("NIFTY", (DefinitionLeg(Action.SELL, Instrument.CE, D("25000"), EXPIRY, 50),))
+    CE25000 = ("NIFTY", Instrument.CE, D("25000"), EXPIRY)
+    ic = executed()
+    q197 = executed(Q197, "exec-q197-2")
+    broker = dict(CONDOR_UNITS) | {SC23400: -25, CE25000: -25}
+    report = compare(broker, {"IC-1": ic, "Q197": q197}, at=at(10), clock=clock)
+    assert report.blocked_strategy_ids == frozenset({"IC-1", "Q197"})
+    by_sid = {m.strategy_ids: m for m in report.mismatches}
+    bad_mismatch = by_sid[("Q197",)]
+
+    class _NotJsonSerialisable:  # a value canonical_json cannot store, whatever it tags
+        def __repr__(self) -> str:
+            return "<unstorable>"
+
+    # Bypass the constructor's own validation (__post_init__ never runs via object.__setattr__), simulating a
+    # reload path that produced a value the audit cannot canonicalise as a quantity.
+    object.__setattr__(bad_mismatch, "difference", tuple((c, _NotJsonSerialisable()) for c, _ in bad_mismatch.difference))
+    audit = audit_log()
+    before = (ic.reconciliation_required, ic.last_observed_at, q197.reconciliation_required, q197.last_observed_at)
+    with pytest.raises(ReconciliationError):
+        record_report(report, {"IC-1": ic, "Q197": q197}, audit=audit, run_id="runB")
+    assert audit.events == ()
+    assert (ic.reconciliation_required, ic.last_observed_at, q197.reconciliation_required,
+            q197.last_observed_at) == before
+
+    clean = compare(broker, {"IC-1": ic, "Q197": q197}, at=at(11), clock=clock)
+    record_report(clean, {"IC-1": ic, "Q197": q197}, audit=audit, run_id="runB")
+    assert len(audit.events) == 2
+    assert ic.reconciliation_required and q197.reconciliation_required
