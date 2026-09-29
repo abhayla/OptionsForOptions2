@@ -619,7 +619,7 @@ def check_pre_execution(
         logger.exception("pre-execution checks raised strategy=%s action=%s", strategy_id, context.action.value)
         failures = [CheckFailure(
             CheckCode.INTERNAL_ERROR,
-            "An internal error stopped the pre-execution checks. Execution is blocked and no order has been submitted.",
+            "An internal error stopped the safety checks. Execution is blocked and no order has been submitted.",
         )]
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 

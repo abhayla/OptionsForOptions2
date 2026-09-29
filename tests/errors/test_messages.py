@@ -400,7 +400,10 @@ def test_q226_named_exceptions_are_one_constant_exactly_as_the_owner_wrote_them(
     exceptions, and the bare-word list is exactly the five Q226 words."""
     from ofo.wording import Q226_BARE_WORDS, Q226_NAMED_EXCEPTIONS
 
-    assert Q226_NAMED_EXCEPTIONS == ("best bid", "best ask", "best-case", "make sure")
+    assert Q226_NAMED_EXCEPTIONS == (
+        "best bid", "best ask", "best-case", "make sure",  # Q226
+        "safety", "safety check", "safety checks", "safety gate",  # Q231
+    )
     assert Q226_BARE_WORDS == ("best", "sure", "safe", "guarantee*", "recommend*")
 
 
@@ -453,10 +456,10 @@ def test_q226_an_exception_covers_only_its_own_words(text: str) -> None:
     assert find_advice_wording(text) != []
 
 
-@pytest.mark.parametrize("text", ["the second-best bid", "ensure", "unsafe", "insurer", "assured"])
+@pytest.mark.parametrize("text", ["the second-best bid", "ensure", "insurer", "assured"])
 def test_q226_only_words_that_start_with_the_word_are_banned(text: str) -> None:
     """AC-2 / Q226+Q230: a word form STARTS with the banned word ("safely", "surely"); a word that
-    merely contains the letters later on ("unsafe", "ensure", "insurer", "assured") is another word.
+    merely contains the letters later on ("ensure", "insurer", "assured") is another word.
     A hyphen splits, so "second-best" is caught unless it is one of the exceptions. Hand-worked:
     "the second-best bid" -> "best bid" appears exactly as spelled -> masked -> clean.
     (Round 6: "safely" and "bestow" moved out of this list: Q230 bans "safely" by name, and every
@@ -729,3 +732,28 @@ def test_round6_strategy_loader_runs_the_shared_check_function() -> None:
         check_wording(dataclasses.replace(template, name="Spread \u043en NIFTY"))
     with pytest.raises(TemplateError, match="banned wording"):
         check_wording(dataclasses.replace(template, description="The safest spread."))
+
+
+# --- Q231 (owner, 2026-09-29): "safety" names a platform check and is a reviewed exception ------
+
+
+@pytest.mark.parametrize("text", ["safety", "Safety check", "Run the safety checks.", "The safety gate blocked this.",
+                                  "An internal error stopped the safety checks. Execution is blocked and no order "
+                                  "has been submitted."])
+def test_q231_safety_terms_are_allowed(text: str) -> None:
+    """Q231: "safety", "safety check", "safety checks", "safety gate" are allowed."""
+    from ofo.wording import find_advice_wording
+
+    assert find_advice_wording(text) == []
+
+
+@pytest.mark.parametrize("text", ["safeguard your capital", "a safer exit", "the safest leg", "exit safely",
+                                  "safe", "unsafe", "Unsafe-looking", "unsure", "safetys", "safe safety check"])
+def test_q231_other_safe_word_forms_stay_banned(text: str) -> None:
+    """Q231: "safe", "safer", "safest", "safely", "safeguard" and every other word form stay banned.
+    The negated forms "unsafe"/"unsure" are word forms too and are banned. "safetys" is not the
+    exception as spelled; in "safe safety check" only the second phrase is excused."""
+    from ofo.wording import find_advice_wording
+
+    hits = find_advice_wording(text)
+    assert ("sure" if "sure" in text.lower() else "safe") in hits, (text, hits)
