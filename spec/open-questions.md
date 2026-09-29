@@ -306,3 +306,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q253 — DECIDED (owner, 2026-09-29) — Platform "risk area" detection (REQ-045 AC-2)
 - Decision: 0.5% from a short strike/breakeven, or 50% of max loss, or ≤2 DTE with a short leg within 1%; all
   admin-configurable. Recorded in REQ-045.
+
+## Q254 — DECIDED (owner, 2026-09-29) — Expected move; "material" change
+- Decision: expected move = spot × ATM IV × √(days/365) (REQ-027); material = structure change or ≥5% move in max loss
+  or a breakeven (REQ-068). The question's example said ±332; the correct value is ±383 (recorded).
