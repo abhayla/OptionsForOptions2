@@ -216,3 +216,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 
 ## Q232 — DECIDED (owner, 2026-09-29) — Which UX level shows Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
 - Decision: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
+
+## Q233 — DECIDED (owner, 2026-09-29) — Strategy table TOTAL row: P&L % and Entry Value
+- Decision: TOTAL P&L % = unrealized P&L ÷ max loss ("—" if unlimited); Entry Value only for options-only strategies.
+  Recorded in REQ-035 "Owner decision (Q233)".
