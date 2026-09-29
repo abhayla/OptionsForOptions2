@@ -198,3 +198,6 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q227 — DECIDED (owner, 2026-09-29 morning) — Guided scenario column headings (W-004, issue #21)
 - Decision: each scenario column is headed by its level (CURRENT and 0-P&L marked); "NIFTY at expiry | You make/lose"
   is the scenario section's caption. Recorded in REQ-035 "Owner clarification (Q227)".
+
+## Q228 — DECIDED (owner, 2026-09-29 morning) — Length of a paid month / year
+- Decision: 30 days / 365 days, fixed; not calendar months. Recorded in ADR-023 "Q228". (Was owner-review item 3b.)
