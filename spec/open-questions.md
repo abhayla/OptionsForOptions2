@@ -91,10 +91,14 @@ requirement (T1 #26). Nothing here is a conclusion; these features stay out of p
   review is still wanted before they reach production will be put to the owner in the release brief for the first
   release that contains them (every production release needs the owner's approval anyway).
 
-## Q212 — EXTERNAL — Data used in the owner's YouTube adjustment video
+## Q212 — DECIDED / DONE (2026-09-29) — Data used in the owner's YouTube adjustment video
 The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer covers every value it uses; ChatGPT
 could not read the transcript and the owner will provide it later (T2 #95). Pending: the transcript, then a line-by-
 line data checklist (REQ "Adjustment data requirements from the owner's reference video").
+- **2026-09-29:** the owner said Q211/Q212 are "not blocked. Proceed." The link was already in the chat (T2 #93:
+  youtu.be/BpIyvYL5ahE); the transcript was extracted (30m46s, youtube-transcript-api) and the 30 values it uses are
+  listed in spec/technical-design/adjustment-data-contract.md. REQ-071 is Approved. Open: the meaning of 7 unclear
+  values (rows 10, 12, 13, 24, 25, 26, 28) — asked separately.
 
 ## Q213 — DECIDED (delegated overnight, ADR-045: recommendation A = both) — Breakeven columns: inserted, at the end, or both?
 Q33D inserts 0-P&L columns at their price position; the earlier locked column list (T1 #90) also has Lower BE /
