@@ -143,9 +143,11 @@ def test_ac4_a_freeze_limit_that_is_not_a_lot_multiple_is_rounded_down(freeze, e
 
 
 def test_ac4_a_freeze_below_one_lot_is_refused(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 negative: a freeze of 64 units holds no whole lot of 65, so no order can be sized; refused."""
-    with pytest.raises(ValueError, match="below one lot"):
-        _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
+    """AC-4 negative (W-043, #71): a freeze of 64 units holds no whole lot of 65, so no order can be sized; refused as
+    a "Nothing prepared: <reason>" result (was a raised ValueError), with no order and no held preparation."""
+    prep = _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
+    assert not prep.ready and prep.orders == () and prep.gate is None
+    assert prep.reason.startswith("Nothing prepared: ") and "below one lot of 65" in prep.reason
 
 
 def test_ac4_a_missing_quantity_that_is_not_a_whole_number_of_lots_is_refused(catalogue) -> None:  # noqa: ANN001
