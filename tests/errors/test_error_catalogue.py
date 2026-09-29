@@ -332,6 +332,10 @@ _BYPASS_SAMPLES = {
     "closure": "from ofo.errors import render\ntok = render.__closure__[0].cell_contents",
     "gc": "import gc\nfrom ofo.errors import render\ngc.get_referents(render)",
     "templates internals": "from ofo.errors.templates import _make_render",
+    # No import in these three: only the private-name rule can flag them.
+    "bare attribute _build": "errors_mod._build(tok)",
+    "bare attribute claim": "x = pkg._claim_render_token()",
+    "bare attribute fields_of": "pkg._fields_of(obj)",
 }
 
 
