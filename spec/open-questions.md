@@ -157,7 +157,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
   None of these says what happens to an open entry order when the user closes.
 
-## Q222 — DECIDED (delegated overnight, ADR-045; reversible) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
+## Q222 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
 - Situation: a mismatch blocked a strategy (ADR-018); a later run finds the broker agreeing again.
 - Decision (recommendation A, applied overnight): NO automatic unblock. The block lifts only through a recorded manual
   resolution on the latest run (adopt, prepared closing order, broker flat → exited), so the user sees what happened in
@@ -168,7 +168,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   W-021 judged A the safer default.
 - Built in W-021 (`backend/ofo/reconciliation/`).
 
-## Q224 — DECIDED (delegated overnight, ADR-045; reversible) — A contract held by more than one strategy disagrees with Zerodha
+## Q224 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — A contract held by more than one strategy disagrees with Zerodha
 - Situation: strategies A and B each SELL 23400 CE x50; Zerodha nets them per contract. If the user squares off in Kite
   (broker 0) or partly (broker −50), nothing tells the platform which strategy's leg changed.
 - Finding (W-021 verifier, 2026-09-29): splitting by "broker minus the other holders' platform quantity" invented a
