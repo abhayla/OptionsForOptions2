@@ -63,11 +63,12 @@ from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
 from ofo.execution.context import ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash
+from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, ident
 from ofo.execution.safety import SafetyResult, check_pre_execution
+from ofo.execution.sequence import sequence_plan
 from ofo.instruments import Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 
-MAX_PLAN_LEGS: Final = 20  # orchestrator default OD-g
 MAX_POSITION_LINES: Final = 100  # orchestrator default OD-g
 MAX_ORDER_STATUSES: Final = 200  # orchestrator default OD-g
 UNCONFIRMED_GRACE: Final = datetime.timedelta(seconds=60)  # orchestrator default OD-i
@@ -98,10 +99,7 @@ class ExecutionStatus(Enum):
     RECONCILIATION_REQUIRED = "reconciliation_required"  # broker and book/plan disagree (ADR-018)
 
 
-def _ident(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip() or value != value.strip():
-        raise ValueError(f"{name} must be a non-empty string without surrounding whitespace, got {value!r}")
-    return value
+_ident = ident
 
 
 def _int(value: object, name: str, *, signed: bool = False) -> int:
@@ -114,43 +112,6 @@ def _aware(value: object, name: str) -> datetime.datetime:
     if not isinstance(value, datetime.datetime) or value.utcoffset() is None:
         raise ValueError(f"{name} must be a timezone-aware datetime, got {value!r}")
     return value
-
-
-@dataclass(frozen=True)
-class PlannedLeg:
-    """One leg the user confirmed: ``contract`` is the broker's trading symbol, ``leg`` the engine leg."""
-
-    leg_ref: str
-    contract: str
-    leg: Leg
-
-    def __post_init__(self) -> None:
-        _ident(self.leg_ref, "leg_ref")
-        _ident(self.contract, "contract")
-        if not isinstance(self.leg, Leg):
-            raise ValueError(f"leg must be an engine Leg, got {self.leg!r}")
-
-
-@dataclass(frozen=True)
-class ExecutionPlan:
-    strategy_id: str
-    legs: tuple[PlannedLeg, ...]
-
-    def __post_init__(self) -> None:
-        _ident(self.strategy_id, "strategy_id")
-        legs = tuple(self.legs)
-        if not legs or len(legs) > MAX_PLAN_LEGS:
-            raise ValueError(f"a plan needs 1..{MAX_PLAN_LEGS} legs, got {len(legs)}")
-        if not all(isinstance(p, PlannedLeg) for p in legs):
-            raise ValueError("every plan leg must be a PlannedLeg")
-        for attr in ("leg_ref", "contract"):
-            values = [getattr(p, attr) for p in legs]
-            if len(set(values)) != len(values):
-                raise ValueError(f"duplicate {attr} in the plan: {values}")
-        object.__setattr__(self, "legs", legs)
-
-    def by_contract(self, contract: str) -> PlannedLeg | None:
-        return next((p for p in self.legs if p.contract == contract), None)
 
 
 @dataclass(frozen=True)
@@ -485,8 +446,10 @@ def _prepare_missing(
     # In flight = non-terminal in the reconciled book. While anything is, nothing is prepared.
     if a.open_orders:
         return _not_prepared(choice, a, IN_FLIGHT)
-    # ADR-017 Q26: protective buys before the sells that depend on them.
-    ordered = sorted(remaining, key=lambda r: 0 if r.planned.leg.action is Action.BUY else 1)
+    # ADR-017 Q26 / REQ-056 AC-3 (W-022): the missing legs go in the full plan's dependency-aware sequence, never
+    # "all buys first"; protectors come before the sells that depend on them.
+    position = {ref: i for i, ref in enumerate(sequence_plan(plan).sequence)}
+    ordered = sorted(remaining, key=lambda r: position[r.planned.leg_ref])
     legs = tuple(dataclasses.replace(r.planned.leg, quantity=r.missing_quantity) for r in ordered)
     orders = tuple(
         # orchestrator default OD-c: the planned leg's price, reviewed by the user before confirming
