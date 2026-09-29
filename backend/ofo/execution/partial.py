@@ -576,7 +576,10 @@ def _prepare_missing(
     # plan's own margin planner and broker constraints: protectors before the sells that depend on them, never "all
     # buys first"; freeze-limit slices, each a whole number of catalogue lots; batches never span a step.
     missing = {r.planned.leg_ref: r.missing_quantity for r in remaining}
-    seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
+    try:
+        seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
+    except ValueError as exc:  # W-043 (#71): a slicing refusal is shown with its reason, never raised (as Close, W-036)
+        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
     legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
                  for ref in dict.fromkeys(o.leg_ref for o in seq.orders))
     orders = tuple(

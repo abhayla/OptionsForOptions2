@@ -238,12 +238,14 @@ def test_ac6_a_ready_close_still_marks_closing_and_holds_complete_on_the_same_re
 
 def test_ac6_complete_refusal_on_a_later_read_keeps_the_close_marker(catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-6: after a ready Close (marker = READ_AT), Complete on a later read with freeze 64 is refused (below one lot
-    of 65) and the Close marker is NOT cleared by the refused attempt; a later Complete that does prepare clears it."""
+    of 65) and returns a refusal result; the Close marker is NOT cleared by the refused attempt; a later Complete that does prepare clears it."""
     plan, book, broker, ctx = _state()
     discard_preparation(_close(plan, book, broker, ctx, catalogue, eligibility))
     broker.read_at = LATER
-    with pytest.raises(ValueError, match="below one lot of 65"):
-        _complete(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
+    refused = _complete(plan, book, broker, ctx, catalogue, eligibility,
+                        constraints=FakeConstraints(freeze=64, per_batch=10))  # W-043 (#71): a result, not a raise
+    assert not refused.ready and refused.orders == ()
+    assert refused.reason.startswith("Nothing prepared: ") and "below one lot of 65" in refused.reason
     assert book.closing_read_at(STRATEGY_ID) == READ_AT
     ok = _complete(plan, book, broker, ctx, catalogue, eligibility)
     assert ok.ready, ok.reason
