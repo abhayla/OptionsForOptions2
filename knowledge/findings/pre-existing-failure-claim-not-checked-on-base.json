@@ -1,0 +1,26 @@
+{
+  "id": "pre-existing-failure-claim-not-checked-on-base",
+  "class": "Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes.",
+  "mechanism": "The W-024 builder 'proved' the failure pre-existing by loading HEAD:backend/ofo/wording.py - HEAD being its own branch, which already contained the change - and filed deferred issue #38.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-024 round (short) @ 4209e94",
+    "evidence": "builder: '1 failed ... pre-existing'; orchestrator on main 83e7263: tests/timeline/test_why.py -> 7 passed; #38 closed as filed in error"
+  },
+  "fix": "Builder brief line: 'pre-existing' is proven on origin/main, never on your branch; the orchestrator re-runs any such claim on main before accepting it.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Orchestrator habit plus brief line; no automated check."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-024 @ 4209e94",
+      "evidence": "deferred #38 filed for the branch's own regression"
+    }
+  ]
+}

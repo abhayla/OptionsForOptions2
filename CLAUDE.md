@@ -9,9 +9,16 @@ strategies, see the outcome at every market level, then execute through their ow
 strategy monitored against their rules (`spec/vision/vision.md`). Built on the Startup-Factory kit (version in
 `KIT_VERSION`); the kit's rules in `.claude/rules/kit/` always apply.
 
-**Current state:** spec built from the owner's two full ChatGPT chats (32 ADRs, 71 requirements, every Q1–Q203 in
-`spec/traceability/question-register.md`); no product code, no `tests/`. Open items: `spec/open-questions.md`. Do not write requirements or code before the ADRs
-they rest on exist, and prove the Zerodha core first (`docs/HANDOVER.md` NEXT).
+**Current state (2026-09-30):** spec of 45 ADRs and 71 requirements; a standard-library domain layer under
+`backend/ofo/` (engine, rules, strategy versions, orders, execution gate/plan/partial, reconciliation, timeline,
+market-data health) with ~1,200 tests, all against fakes — no API, DB, UI or real Zerodha yet. **Start with
+`docs/HANDOVER.md`**: it lists what is done, parked, blocked and deferred. Nothing pending there is closed until it
+is implemented and independently verified. Open items: `spec/open-questions.md`. Do not write requirements or code
+before the ADRs they rest on exist, and prove the Zerodha core first (`docs/HANDOVER.md` NEXT).
+Orchestration: briefs in `docs/process/`, helpers in `scripts/orchestrator/`. Builder worktrees live under the
+`.claude` folder, a path the kit guard blocks in Bash, so reach them through the helpers: `agit.py <agent-id> <git
+args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|release`, `ev_agent.py` /
+`record_evidence.py` (verifier JSON → evidence files), `gh_issue.py kit|app` (issues, incl. `harvest`).
 
 ## Read first
 1. `spec/decisions/ADR-*.md` — the owner's decisions. They win over everything else. Each carries the Q-numbers and
@@ -76,10 +83,11 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_settings.py . --check`
 - `python tools/factory_lint.py .`
 - `python tools/trace_check.py .` (never `--strict` in CI — it fails on any legitimately unfinished item)
-- `python tools/build_findings_index.py . --check` (once `knowledge/findings/*.json` exists; drop `--check` to regenerate)
+- `python tools/build_findings_index.py . --check` (drop `--check` to regenerate `knowledge/findings/INDEX.md`)
 - `python tools/check_spec_refs.py .`
-- `python -m pytest -q -p no:cacheprovider` (once `tests/` exists); one test:
-  `python -m pytest -q -p no:cacheprovider tests/<file>.py::<test_name>`
+- `python -m pytest -q -p no:cacheprovider` — `pytest.ini` sets `testpaths = tests` and `pythonpath = backend`, so
+  tests import `ofo.<package>` directly; `tests/<package>/` mirrors `backend/ofo/<package>/`. One test:
+  `python -m pytest -q -p no:cacheprovider tests/<package>/<file>.py::<test_name>`
 - `python tools/kit_selftest.py .`
 - `python tools/kit_drift.py . --ci` (add `--base <sha>` when checking a pull request against its base)
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)

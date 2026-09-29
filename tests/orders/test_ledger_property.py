@@ -15,12 +15,15 @@ from decimal import Decimal as D
 
 import pytest
 
+from book_helpers import bound_book
+
 from ofo.engine.legs import Action
 from ofo.orders.model import FillEvent, Order, OrderBook, OrderState
 
 UTC = datetime.timezone.utc
+READ_AT = datetime.datetime(2026, 9, 29, 10, 5, tzinfo=UTC)
 STRATEGIES = ("STRAT-1", "STRAT-2")
-CONTRACTS = ("NIFTY26OCT23000CE", "NIFTY26OCT23000PE")
+CONTRACTS = ("NIFTY26O0623000CE", "NIFTY26O0623000PE")
 BROKER_ORDER_IDS = ("BRK-1", "BRK-2", "BRK-3", "BRK-4")
 TRADE_IDS = ("t1", "t2", "t3")  # deliberately few, so ids collide across orders (round-2 bug)
 
@@ -62,14 +65,14 @@ def _new_order(rng: random.Random, broker_order_id: str, registered: dict[str, O
     return Order(
         strategy_id=rng.choice(STRATEGIES), leg_ref=f"leg-{broker_order_id}",
         contract=rng.choice(CONTRACTS), side=rng.choice([Action.BUY, Action.SELL]),
-        quantity=rng.choice([10, 20, 30]), price=D("100.00"), broker_order_id=broker_order_id,
+        quantity=rng.choice([10, 20, 30]), price=D("100.00"), broker_order_id=broker_order_id, version_id="v1",
     )
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
 def test_ledger_is_the_only_source_of_truth_under_random_misuse(seed: int) -> None:
     rng = random.Random(seed)
-    book = OrderBook()
+    book = bound_book()
     registered: dict[str, Order] = {}
 
     for _ in range(400):
@@ -103,7 +106,7 @@ def test_ledger_is_the_only_source_of_truth_under_random_misuse(seed: int) -> No
 
             elif action == "reconcile" and registered:
                 broker_order_id = rng.choice(list(registered))
-                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]))
+                book.reconcile_cumulative(broker_order_id, rng.choice([0, 1, 5, 100]), read_at=datetime.datetime.now(UTC))
 
         except ValueError:
             pass  # a refused call must change nothing; checked by the invariant below regardless

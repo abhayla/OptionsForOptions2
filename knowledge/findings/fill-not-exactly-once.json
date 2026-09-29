@@ -36,6 +36,11 @@
       "date": "2026-09-29",
       "where": "W-019 round 2 @ a885a1c",
       "evidence": "OrderBook.apply_fill added the checks but kept Order._filled_quantity as a second, separately-written store; independent review found the two-store duplication was itself the root cause (see mechanism)."
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-023 rounds 1-2 @ efd6908 / 0352215",
+      "evidence": "double Complete sent 2x65; a rejected order stayed Submitted (lockout); an accepted order with a bad id went untracked and a second 65 was prepared"
     }
   ]
 }

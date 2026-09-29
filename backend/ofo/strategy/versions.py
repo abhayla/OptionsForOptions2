@@ -28,6 +28,11 @@ Rules implemented:
   edit/restore/propose/confirm refuse, and a late result is recorded (``BLOCKED`` or ``MISMATCH``) but activates
   nothing. Only ``reconcile()`` - explicit, audited, and only to a definition equal to the broker's position
   (ADR-018 Q198 "adopt actual broker position") - clears it.
+- Reconciliation (REQ-060, W-021) adds two entry points: ``observe_broker_position()`` records a broker position
+  seen outside an execution result (a reconciliation run, e.g. a change made in Zerodha) and sets the same sticky
+  flag through the same invariant; ``mark_exited()`` closes a strategy whose broker position is flat (ADR-019 Q200
+  Exited; deferred issue #19: a flat broker position cannot be adopted as a definition, so without this the
+  strategy stayed blocked forever). An exited strategy accepts no further change.
 """
 from __future__ import annotations
 
@@ -46,6 +51,7 @@ from ofo.strategy.definition import (
     describe_contract,
 )
 from ofo.engine.legs import Action, Instrument, require_price
+from ofo.strategy.guard import StrategyGuard
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 MAX_HISTORY = 10_000
@@ -89,7 +95,7 @@ class Position:
             if not isinstance(line, tuple) or len(line) != 2:
                 raise VersionError(f"a position line must be (contract, units), got {line!r}")
             contract, units = line
-            _check_contract(contract)
+            check_contract(contract)
             if contract in seen:
                 raise VersionError(f"duplicate position line for {describe_contract(contract)}")
             seen.add(contract)
@@ -181,6 +187,8 @@ class OutcomeKind(Enum):
     MISMATCH = "mismatch"  # the result's claim and the broker position disagree: reconcile before anything else
     BLOCKED = "blocked"  # a late result recorded while reconciliation is required; it activates nothing
     RECONCILED = "reconciled"  # an explicit, audited manual reconciliation (ADR-018 Q198)
+    OBSERVED = "observed"  # a broker position recorded by a reconciliation run, outside any execution result
+    EXITED = "exited"  # the broker position is flat and the strategy was closed (ADR-019 Q200)
 
 
 @dataclass(frozen=True)
@@ -214,7 +222,7 @@ def _within_path(previous: Position, intended: Position, actual: Position) -> bo
     return True
 
 
-def _check_contract(contract: object) -> None:
+def check_contract(contract: object) -> None:
     """A position contract passes the same guards as a definition leg (engine money guard on the strike)."""
     if not isinstance(contract, tuple) or len(contract) != 4:
         raise VersionError(f"a contract must be (underlying, Instrument, strike, expiry), got {contract!r}")
@@ -244,7 +252,8 @@ class StrategyRecord:
 
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
-        "_confirmed", "_actual", "_executed", "_references", "_reconcile",
+        "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
+        "_observed_at", "_guard",
     )
 
     def __init__(
@@ -270,6 +279,9 @@ class StrategyRecord:
         self._set("_executed", False)
         self._set("_references", set())
         self._set("_reconcile", False)
+        self._set("_exited", False)
+        self._set("_observed_at", None)
+        self._set("_guard", StrategyGuard())  # REQ-036 AC-5: this strategy's own guard; never supplied by a caller
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"StrategyRecord is changed only through its methods; cannot set {name!r}")
@@ -277,16 +289,25 @@ class StrategyRecord:
     def _set(self, name: str, value: object) -> None:
         object.__setattr__(self, name, value)
 
-    def _stamp(self, at: object) -> datetime.datetime:
+    def _check_time(self, at: object) -> datetime.datetime:
+        """The checks of ``_stamp`` without recording the time."""
         _require_aware(at, "timestamp")
         if self._last_at is not None and at < self._last_at:
             raise VersionError(f"timestamp {at.isoformat()} is before the last recorded event {self._last_at.isoformat()}")
         if at > self._clock() + MAX_FUTURE_SKEW:
             raise VersionError(f"timestamp {at.isoformat()} is in the future")
+        return at
+
+    def _stamp(self, at: object) -> datetime.datetime:
+        self._check_time(at)
         self._set("_last_at", at)
         return at
 
     # ---- read side -------------------------------------------------------------------------------------------
+
+    @property
+    def guard(self) -> StrategyGuard:
+        return self._guard
 
     @property
     def has_executed(self) -> bool:
@@ -296,6 +317,17 @@ class StrategyRecord:
     def reconciliation_required(self) -> bool:
         """Sticky: the broker's position differs from the active version with no proposal pending (ADR-018)."""
         return self._reconcile
+
+    @property
+    def last_observed_at(self) -> datetime.datetime | None:
+        """Time of the reconciliation run that last set ``actual_position``; None if anything else set it since
+        (an execution result), so a resolution must wait for a fresh run (W-021 fix round)."""
+        return self._observed_at
+
+    @property
+    def exited(self) -> bool:
+        """The strategy was closed because the broker position went flat; it accepts no further change."""
+        return self._exited
 
     @property
     def history(self) -> tuple[HistoryEntry, ...]:
@@ -390,6 +422,7 @@ class StrategyRecord:
 
     def confirm(self, number: int, *, at: datetime.datetime) -> None:
         """The user's explicit confirmation of the pending proposed version."""
+        self._refuse_if_exited("confirm")
         if self._reconcile:
             raise VersionError("cannot confirm: reconciliation required (broker position differs from the active version)")
         if self._pending is None or number != self._pending:
@@ -407,6 +440,7 @@ class StrategyRecord:
         """
         if not isinstance(result, ExecutionResult):
             raise VersionError(f"apply_result needs an ExecutionResult, got {result!r}")
+        self._refuse_if_exited("apply a result")
         if self._reconcile:
             if result.version_number != len(self._versions):
                 raise VersionError(f"version {result.version_number} is not the latest version; late result refused")
@@ -425,6 +459,7 @@ class StrategyRecord:
         kind = self._classify(result.status, proposal.baseline, intended, actual)
         self._references.add(result.reference)
         self._set("_actual", actual)
+        self._set("_observed_at", None)
         if actual.lines:
             self._set("_executed", True)
         if self._reconcile:
@@ -456,6 +491,7 @@ class StrategyRecord:
         preferences), makes it active, and logs a RECONCILED outcome with actor, time and resolution. Refused when
         nothing needs reconciling, or when the recorded resolution would still differ from the broker's position.
         """
+        self._refuse_if_exited("reconcile")
         if not self._reconcile:
             raise VersionError("no reconciliation required: the broker position matches the active version")
         _require_text(actor, "actor")
@@ -480,6 +516,80 @@ class StrategyRecord:
         self._outcomes.append(ExecutionOutcome(
             version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
         return version
+
+    def observe_broker_position(
+        self, position: Position, *, at: datetime.datetime, reference: str
+    ) -> ExecutionOutcome | None:
+        """Record this strategy's broker position as seen by a reconciliation run (REQ-060 AC-4; ADR-016).
+
+        The broker wins: the recorded actual position is replaced. With no proposal pending, a position that
+        differs from the active version sets the sticky ``reconciliation_required`` flag (the same invariant
+        ``apply_result`` keeps) and logs an OBSERVED outcome when the picture or the flag changed. EVERY run is
+        recorded, agreeing or not, so the stored broker picture is never older than the latest run (W-021 fix
+        round: resolutions acted on a stale copy). Agreement never clears the flag; only an explicit resolution does.
+        """
+        self.check_observation(position, at=at, reference=reference)
+        self._stamp(at)
+        self._references.add(reference)
+        was_flagged, before = self._reconcile, self._actual
+        self._set("_actual", position)
+        self._set("_observed_at", at)
+        self._recheck_invariant()
+        if not self._reconcile or (was_flagged and before == position):
+            return None
+        active = self.active_version
+        outcome = ExecutionOutcome(
+            0 if active is None else active.number, OutcomeKind.OBSERVED, self._active_intended(), position, at,
+            reference,
+        )
+        self._outcomes.append(outcome)
+        return outcome
+
+    def check_observation(self, position: Position, *, at: datetime.datetime, reference: str) -> None:
+        """Raise exactly when ``observe_broker_position`` would refuse; change nothing (two-phase recording).
+
+        Note (not built, W-021 fix round 2): every run adds one reference to ``_references``, so a persistent
+        store needs compaction (e.g. keep references newer than the last resolution) before it grows unbounded.
+        """
+        self._refuse_if_exited("record a broker position")
+        if not isinstance(position, Position):
+            raise VersionError(f"observe_broker_position needs a Position, got {position!r}")
+        _require_text(reference, "observation reference")
+        if reference in self._references:
+            raise VersionError(f"observation {reference!r} was already recorded")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._check_time(at)
+
+    def mark_exited(self, *, at: datetime.datetime, actor: str, resolution: str) -> ExecutionOutcome:
+        """Explicit, audited close of a strategy whose broker position is flat (ADR-019 Q200 Exited; issue #19).
+
+        Allowed only when the recorded broker position is flat, something was executed, and no proposal is in
+        flight. Clears ``reconciliation_required``: nothing is left at the broker to disagree with.
+        """
+        self._refuse_if_exited("exit")
+        _require_text(actor, "actor")
+        _require_text(resolution, "resolution")
+        if not self._executed:
+            raise VersionError("nothing was ever executed; a strategy that never traded cannot exit")
+        if self._pending is not None:
+            raise VersionError(f"cannot exit: proposed version {self._pending} is awaiting its execution result")
+        if self._actual.lines:
+            raise VersionError("cannot mark exited: the broker still holds a position for this strategy")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._stamp(at)
+        active = self.active_version
+        reference = f"exited:{len(self._outcomes)}"
+        self._references.add(reference)
+        self._set("_exited", True)
+        self._set("_reconcile", False)
+        outcome = ExecutionOutcome(
+            0 if active is None else active.number, OutcomeKind.EXITED, self._active_intended(), self._actual, at,
+            reference,
+        )
+        self._outcomes.append(outcome)
+        return outcome
 
     # ---- internals -------------------------------------------------------------------------------------------
 
@@ -508,7 +618,12 @@ class StrategyRecord:
         if self._pending is None and self._actual != self._active_intended():
             self._set("_reconcile", True)
 
+    def _refuse_if_exited(self, what: str) -> None:
+        if self._exited:
+            raise VersionError(f"cannot {what}: the strategy has exited")
+
     def _refuse_while_blocked(self, what: str) -> None:
+        self._refuse_if_exited(what)
         if self._reconcile:
             raise VersionError(f"cannot {what}: reconciliation required (broker position differs from the active version)")
         if self._pending is not None:

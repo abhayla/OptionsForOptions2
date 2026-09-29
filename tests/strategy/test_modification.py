@@ -43,7 +43,9 @@ from ofo.strategy.modification import (
     confirm_modification,
     execute_confirmed_modification,
     prepare_confirmed_modification,
+    propose_modification,
 )
+from ofo.engine.interfaces import ChargesBreakdown, MarginRequirement
 from ofo.strategy.versions import (
     ExecutionResult,
     OutcomeKind,
@@ -72,6 +74,29 @@ ROLL = (
     LegChange(ChangeKind.REMOVE, Instrument.PE, D("23000"), EXPIRY),
     LegChange(ChangeKind.ADD, Instrument.PE, D("22900"), EXPIRY, action=Action.SELL, quantity=QTY),
 )
+
+
+class _Margin:
+    def margin_for(self, strategy: Strategy) -> MarginRequirement:
+        return MarginRequirement(total=D("50000.00"), source="test")
+
+
+class _Charges:
+    def charges_for(self, strategy: Strategy) -> ChargesBreakdown:
+        return ChargesBreakdown(items=(("brokerage", D("236.40")),))
+
+
+_PRICES = {(leg.instrument, leg.strike, leg.expiry): leg.entry_price for leg in GOLDEN.legs}
+_PRICES[(Instrument.PE, D("22900"), EXPIRY)] = D("70.00")
+
+
+def roll_ack(rec: StrategyRecord) -> str:
+    """W-026 (REQ-036 AC-5): the Before/After step runs the Strategy Guard; the roll changes the risk profile, so the
+    gate step needs that decision's own acknowledgement."""
+    decision = propose_modification(rec, ROLL, strategy_id=STRATEGY_ID, entry_prices=_PRICES, ltps=None,
+                                    margin_planner=_Margin(), charges_model=_Charges()).guard
+    assert decision.changes_risk_profile and decision.acknowledgement
+    return decision.acknowledgement
 
 
 def at(minutes: int) -> datetime.datetime:
@@ -208,7 +233,7 @@ def test_ac4_nothing_prepared_before_confirmation():
     premature = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(10), "premature")
     with pytest.raises(ModificationError):
         execute_confirmed_modification(
-            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility,
+            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
             result=premature,
         )
     assert rec.active_version.number == 1
@@ -221,7 +246,8 @@ def test_ac4_forged_safety_result_is_impossible_via_the_api():
     import inspect
     params = inspect.signature(execute_confirmed_modification).parameters
     assert "safety" not in params
-    assert set(params) == {"record", "version_number", "strategy_id", "context", "catalogue", "eligibility", "result"}
+    assert set(params) == {"record", "version_number", "strategy_id", "context", "catalogue", "eligibility", "result",
+                           "acknowledgement"}  # W-026: the guard's own token, never a verdict
     with pytest.raises(TypeError):
         execute_confirmed_modification(safety="forged", result=None)  # not an accepted keyword at all
 
@@ -236,13 +262,13 @@ def test_ac4_gate_is_actually_run_a_missing_contract_blocks_and_leaves_v1_active
     result = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(11), "adj-blocked")
 
     safety = prepare_confirmed_modification(
-        rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility,
+        rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
     )
     assert safety.blocked  # the gate really ran and really found the missing contract
 
     with pytest.raises(ModificationError):
         execute_confirmed_modification(
-            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility,
+            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
             result=result,
         )
     assert rec.active_version.number == 1
@@ -265,7 +291,7 @@ def test_ac4_gate_passing_activates_v2_and_runs_exactly_once():
         ).check_pre_execution,
     ) as spy:
         outcome = execute_confirmed_modification(
-            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility,
+            rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
             result=result,
         )
         assert spy.call_count == 1
@@ -284,7 +310,7 @@ def test_ac4_a_result_for_another_version_cannot_be_injected():
     eligibility = _make_eligibility(catalogue)
     with pytest.raises(ModificationError):
         prepare_confirmed_modification(
-            rec, 99, strategy_id=STRATEGY_ID, context=_context(99), catalogue=catalogue, eligibility=eligibility,
+            rec, 99, strategy_id=STRATEGY_ID, context=_context(99), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
         )
     assert rec.active_version.number == 1
     assert rec.proposed_version.number == 2
@@ -350,7 +376,7 @@ def test_ac4_context_active_legs_identity_is_grounded_from_the_record_not_the_ca
     )
 
     safety = prepare_confirmed_modification(
-        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility,
+        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
     )
     assert safety.blocked
     assert CheckCode.ENTITLEMENT_REQUIRED in safety.failed_codes
@@ -366,7 +392,7 @@ def test_ac4_context_strategy_id_is_ignored_grounded_from_the_call():
     forged_context = _context(2, strategy_id="S-OTHER")
 
     safety = prepare_confirmed_modification(
-        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility,
+        rec, 2, strategy_id=STRATEGY_ID, context=forged_context, catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
     )
     assert not safety.blocked
     assert CheckCode.STRATEGY_MISMATCH not in safety.failed_codes
