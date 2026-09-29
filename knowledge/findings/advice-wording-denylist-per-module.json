@@ -27,6 +27,11 @@
       "date": "2026-09-29",
       "where": "W-024 round 3 @ 63e8d08 (fixed template catalogue after independent review)",
       "evidence": "catalogue itself holds, but Code slot carried 'risk-free' / 'GUARANTEED-PROFIT' / 'you_should_buy' into rendered text (no runtime check); _build, object.__new__ and a subclass bypassed render with the AST test green (57 passed); Money accepted NaN and -5"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-046 verification (shared checker on main), branch build/W-046-wording-checker @ f6cac29",
+      "evidence": "check_platform_text passed 'Your losses will be reduced', 'returns are assured', \"won't lose\", 'lower your losses', 'Adjustments reduce risk' - ADR-003 forbids promises of reduced losses and risk-reduction claims; Q235 patterns matched only the listed word order. Same residual the W-024 round-7 verifier reported. Round 2 adds sentence-level co-occurrence rules; the durable control remains the fixed reviewed template catalogue (Q226)."
     }
   ],
   "fix": "Not landed: W-024 parked (#30) after the third red. Recommended: closed-enum Code/Instrument slots, a runtime wording check on the rendered text (fail closed), render made the only reachable constructor (no _build, no subclassing, __new__ guarded) with the AST test extended, finite signed Money slots.",
