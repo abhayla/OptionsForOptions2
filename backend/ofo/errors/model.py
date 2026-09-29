@@ -27,17 +27,6 @@ from typing import Any
 
 from .classes import ErrorClass
 
-_FIELD_NAMES: tuple[str, ...] = (
-    "error_class",
-    "code",
-    "what_happened",
-    "impact",
-    "what_is_blocked",
-    "next_action",
-    "external_text",
-)
-
-
 class UserFacingError:
     """An error shown to a user: classified, with all four REQ-065 AC-2 parts filled, plus an
     optional `external_text` (Zerodha's or the user's own words, quoted in a labelled field).
@@ -58,15 +47,6 @@ class UserFacingError:
             "UserFacingError must not be subclassed (W-024): the only way to build an instance is "
             "ofo.errors.render(template_id, **slots)"
         )
-
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError(f"UserFacingError is immutable; cannot set {name!r}")
-
-    def __delattr__(self, name: str) -> None:
-        raise AttributeError(f"UserFacingError is immutable; cannot delete {name!r}")
-
-    def __reduce__(self) -> Any:
-        raise TypeError("UserFacingError cannot be pickled or copied; render() a new one")
 
     @property
     def error_class(self) -> ErrorClass:
@@ -137,8 +117,6 @@ def _make_machinery() -> tuple[
     def build(_token: object, **fields: Any) -> UserFacingError:
         if _token is not token:
             raise ValueError("_build requires render()'s token; build a message with ofo.errors.render()")
-        if set(fields) != set(_FIELD_NAMES):
-            raise ValueError(f"_build requires exactly the fields {_FIELD_NAMES}, got {sorted(fields)}")
         obj = object.__new__(UserFacingError)
         issued[obj] = MappingProxyType(dict(fields))
         return obj
