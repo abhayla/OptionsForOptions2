@@ -114,7 +114,7 @@ def test_ac2_total_row_values_exact(golden, golden_scenario):
     level_set, values = golden_scenario
     table = build_table(golden, level_set=level_set, scenario=values)
     total = table.rows[-1]
-    assert total.cell(ColumnId.ENTRY_VALUE).value == D("19800.00")
+    assert total.cell(ColumnId.ENTRY_VALUE).value == D("6825.00")
     assert total.cell(ColumnId.UNREALIZED_PNL).value == D("1365.00")
     assert total.cell(ColumnId.LOWER_BE).value == D("22909")
     assert total.cell(ColumnId.UPPER_BE).value == D("23491")

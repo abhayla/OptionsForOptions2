@@ -37,9 +37,11 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
   29-30, the owner's exact labels: "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
-- **TOTAL Entry Value is options-only** (Q233): the plain sum of the legs' Entry Value cells (the same unsigned
-  ``entry_price x quantity`` each leg cell shows). A strategy with any futures leg shows "—", because a premium and
-  a futures notional cannot be added.
+- **TOTAL Entry Value is options-only and NET** (Q233, Q236): sells minus buys, each premium x its own leg's
+  quantity. The cell's ``value`` is the non-negative magnitude, its ``side`` is "Cr" (net credit) or "Dr" (net
+  debit) and ``display`` is e.g. "₹6,825.00 Cr". A net of exactly zero has ``side`` None and displays "₹0.00"
+  (neither a credit nor a debit). A strategy with any futures leg shows "—", because a premium and a futures
+  notional cannot be added. Leg rows keep their unsigned ``entry_price x quantity``.
 - **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
   at every UX level, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
   is the section caption (:func:`scenario_caption`), not a per-column label.
@@ -111,6 +113,7 @@ class Cell:
     reason: str | None = None
     vendor: Decimal | None = None
     per_unit: Decimal | None = None
+    side: str | None = None  # TOTAL Entry Value only: "Cr" (net credit) or "Dr" (net debit); None otherwise
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, CellKind):
@@ -160,6 +163,16 @@ def _money(value: Decimal | None, reason: str | None = None) -> Cell:
     if value is None:
         return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
     return Cell(value, format_rupees(value), CellKind.MONEY)
+
+
+def _net_premium_cell(net: Decimal | None, reason: str | None = None) -> Cell:
+    """TOTAL Entry Value: the net premium as a magnitude plus an explicit Cr/Dr side (Q236)."""
+    if net is None:
+        return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
+    if net == 0:
+        return Cell(net, format_rupees(net), CellKind.MONEY)
+    side = "Cr" if net > 0 else "Dr"
+    return Cell(abs(net), f"{format_rupees(abs(net))} {side}", CellKind.MONEY, side=side)
 
 
 def _points(value: Decimal | None, reason: str | None = None) -> Cell:
@@ -326,7 +339,8 @@ def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns:
                scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
     legs = inputs.legs
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
-    entry_value = None if has_futures else sum((leg.premium * leg.quantity for leg in legs), Decimal(0))
+    net_entry = None if has_futures else sum(
+        ((leg.premium if leg.action is Action.SELL else -leg.premium) * leg.quantity for leg in legs), Decimal(0))
     have_all_ltp = all(leg.ltp is not None for leg in legs)
     if have_all_ltp:
         current_value = sum((leg.ltp * leg.quantity for leg in legs), Decimal(0))
@@ -363,7 +377,7 @@ def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns:
         ColumnId.QUANTITY: _text(None),
         ColumnId.ENTRY_PRICE: _text(None),
         ColumnId.LTP: _text(None),
-        ColumnId.ENTRY_VALUE: _money(entry_value, "a premium and a futures notional cannot be added"),
+        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, "a premium and a futures notional cannot be added"),
         ColumnId.CURRENT_VALUE: _money(current_value, "not every leg has an LTP"),
         ColumnId.UNREALIZED_PNL: _money(unrealized, "not every leg has an LTP"),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),

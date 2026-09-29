@@ -23,14 +23,16 @@ def _long_call(ltp):
 
 def test_core_golden_condor_total_pnl_percent_and_entry_value(golden, golden_scenario):
     """AC-2 (core): golden condor credit 91, wings 200, max loss (200-91) x 75 = 8,175; unrealized (91-72.80) x 75
-    = 1,365; 1,365 / 8,175 = 16.697..% -> +16.7%. Entry Value = 3,187.50 + 6,450 + 6,862.50 + 3,300 = 19,800."""
+    = 1,365; 1,365 / 8,175 = 16.697..% -> +16.7%. Entry Value (Q236, net premium) = (86 + 91.50 - 42.50 - 44) x 75 = 6,825 Cr."""
     level_set, values = golden_scenario
     total = build_table(golden, level_set=level_set, scenario=values).rows[-1]
     pct = total.cell(ColumnId.PNL_PERCENT)
     assert pct.value == D("16.7")
     assert pct.display == "+16.7%"
     assert total.cell(ColumnId.UNREALIZED_PNL).value == D("1365.00")
-    assert total.cell(ColumnId.ENTRY_VALUE).value == D("19800.00")
+    entry = total.cell(ColumnId.ENTRY_VALUE)
+    assert entry.value == D("6825.00") and entry.side == "Cr"
+    assert entry.display == "₹6,825.00 Cr"
 
 
 def test_ac2_total_pnl_percent_loss_case_is_negative():
@@ -54,12 +56,13 @@ def test_ac2_total_pnl_percent_rounds_half_up_at_one_decimal():
 
 def test_ac2_total_pnl_percent_dash_when_max_loss_unlimited():
     """AC-2: naked short 23400 CE has an unbounded upside loss -> P&L % is '—' (reason names it), while
-    Entry Value is still shown (options-only): 91.50 x 75 = 6,862.50."""
+    Entry Value is still shown (options-only): net = +91.50 x 75 = 6,862.50 Cr."""
     total = _total(nifty_input([nifty_leg(Action.SELL, Instrument.CE, "23400", "91.50", "78.00")]))
     cell = total.cell(ColumnId.PNL_PERCENT)
     assert (cell.value, cell.display) == (None, "—")
     assert "unlimited" in cell.reason
     assert total.cell(ColumnId.ENTRY_VALUE).value == D("6862.50")
+    assert total.cell(ColumnId.ENTRY_VALUE).side == "Cr"
 
 
 def test_ac2_total_pnl_percent_dash_when_max_loss_zero():
@@ -105,3 +108,30 @@ def test_ac2_leg_rows_entry_value_is_unaffected_by_a_futures_leg():
     table = build_table(nifty_input([fut]))
     assert table.rows[0].cell(ColumnId.ENTRY_VALUE).value == D("1728750.00")
     assert table.rows[-1].cell(ColumnId.ENTRY_VALUE).value is None
+
+
+def test_ac2_total_entry_value_debit_spread_is_dr():
+    """AC-2 (Q236): BUY 23000 CE @120 + SELL 23200 CE @60, 75 units: net = (60 - 120) x 75 = -4,500 -> 4,500 Dr."""
+    legs = [nifty_leg(Action.BUY, Instrument.CE, "23000", "120.00"),
+            nifty_leg(Action.SELL, Instrument.CE, "23200", "60.00")]
+    entry = _total(nifty_input(legs)).cell(ColumnId.ENTRY_VALUE)
+    assert entry.value == D("4500.00") and entry.side == "Dr"
+    assert entry.display == "₹4,500.00 Dr"
+
+
+def test_ac2_total_entry_value_uses_each_legs_own_quantity():
+    """AC-2 (Q236): SELL 150 x @100 = 15,000; BUY 75 x @40 = 3,000; net = 12,000 Cr (a shared-quantity or
+    unsigned sum would give 18,000 or 13,000)."""
+    legs = [nifty_leg(Action.SELL, Instrument.CE, "23000", "100.00", quantity=150),
+            nifty_leg(Action.BUY, Instrument.CE, "23400", "40.00", quantity=75)]
+    entry = _total(nifty_input(legs)).cell(ColumnId.ENTRY_VALUE)
+    assert entry.value == D("12000.00") and entry.side == "Cr"
+
+
+def test_ac2_total_entry_value_zero_net_has_no_side():
+    """AC-2 (Q236 convention): BUY @50 and SELL @50, 75 units each: net 0 -> neither credit nor debit: side None,
+    value 0, display '₹0.00' (no Cr/Dr)."""
+    legs = [nifty_leg(Action.BUY, Instrument.CE, "23000", "50.00"),
+            nifty_leg(Action.SELL, Instrument.CE, "23200", "50.00")]
+    entry = _total(nifty_input(legs)).cell(ColumnId.ENTRY_VALUE)
+    assert entry.value == D("0") and entry.side is None and entry.display == "₹0.00"
