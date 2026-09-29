@@ -65,7 +65,15 @@ ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\brisk ?free\b", "risk-free"),
     (r"\bcertain (profit|return)s?\b", "certain profit/return"),
     (r"\bno risk\b", "no risk"),
-    (r"\breduc\w* (your )?loss(es)?\b", "reduce loss(es)"),
+    (r"\breduc\w* (your |the |any |all )?loss(es)?\b", "reduce loss(es)"),
+    # Owner decision Q235 (ADR-003): promise phrases, "in every word form". Tokens are letters and
+    # digits only, so "can't" arrives as "can t". "no loss of data" is a technical phrase: allowed.
+    # ("guaranteed profit" is already covered by the Q226 word "guarantee*".)
+    (r"\bassured (return|profit|gain)s?\b", "assured return(s)"),
+    (r"\bcan ?(not|never|t) lose\b", "cannot lose"),
+    (r"\bno loss(es)?\b(?! of data\b)", "no loss"),
+    (r"\bminimi[sz]\w* (your |the |my |all |any )?loss(es)?\b", "minimise loss(es)"),
+    (r"\bzero risk\b", "zero risk"),
     (r"\bavoid\w* (a )?loss(es)?\b", "avoid loss(es)"),
     (r"\bnever los\w*\b", "never lose"),
 )
