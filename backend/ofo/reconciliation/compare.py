@@ -84,7 +84,13 @@ def _check_aware_datetime(value: object, label: str) -> None:
 
 
 def _check_units(value: object, label: str) -> None:
-    """The audit and the domain both store units as a plain int (never Decimal/float/str; ADR-008 is money only)."""
+    """Units are a domain quantity (lots x lot size), always a plain int -- never Decimal/float/str.
+
+    This is a DOMAIN rule, not an audit-storage limit: the audit CAN store a Decimal (tagged ``{"$decimal": ...}``)
+    or a float (json.dumps serialises it, lossily). Money is exact Decimal by ADR-008, but a reconciliation
+    quantity is not money, and keeping it a plain int end to end (never re-typed to Decimal by a reload path) is
+    what lets every downstream int arithmetic (differences, shares) stay exact and comparable.
+    """
     if isinstance(value, bool) or not isinstance(value, int) or abs(value) > MAX_UNITS:
         raise ReconciliationError(f"{label} must be an int within +/-{MAX_UNITS}, got {value!r}")
 
@@ -124,9 +130,10 @@ class Mismatch:
     """One recorded mismatch (AC-3): time, broker state, platform state, difference and required next action.
 
     Validated on construction (W-021 fix round, class: an audit write not validated before commit) so a hand-built
-    or reloaded Mismatch carrying a value the audit cannot store (a Decimal/float/str where units must be a plain
-    int, a malformed contract, an empty holder) is refused HERE, immediately, rather than surfacing later as a
-    ``PayloadValidationError`` mid-way through writing several audit events.
+    or reloaded Mismatch carrying a wrong-typed field (a Decimal/float/str where a unit must be a plain int -- a
+    domain rule, not an audit-storage limit; see ``_check_units`` -- a malformed contract, an empty holder) is
+    refused HERE, immediately, rather than surfacing later as a ``PayloadValidationError`` mid-way through writing
+    several audit events.
     """
 
     kind: MismatchKind
