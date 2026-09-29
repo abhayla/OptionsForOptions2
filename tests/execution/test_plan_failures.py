@@ -73,7 +73,7 @@ def test_ac4_withholding_propagates_through_a_withheld_leg_on_a_deeper_graph() -
     from ofo.execution.sequence import _BUILDER_KEY, OrderSequence, PlanStep, StepKind
 
     seq = OrderSequence("S-1", (PlanStep(StepKind.OTHER, ("A", "B", "C")),), (("B", ("A",)), ("C", ("B",))), (), (),
-                        "test", _BUILDER_KEY)
+                        "test", _key=_BUILDER_KEY)
     sim = seq.simulate({"A"})
     assert sim.sent == ("A",)
     assert sim.withheld == ("B", "C")
