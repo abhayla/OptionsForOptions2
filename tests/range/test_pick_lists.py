@@ -87,13 +87,13 @@ def _synthetic_catalogue_with_offgrid_furthest_strike() -> Catalogue:
     happens to land on a round hundred), so this scenario is exercised with a small synthetic
     contract set, the same pattern used by the existing instruments test suite for a
     single-strike expiry."""
-    expiry = date(2026, 11, 3)
+    expiry = date(2026, 10, 6)
     strikes = [Decimal(v) for v in (20850, 20900, 20950, 21000, 21050, 21100, 21150, 21200)]
     contracts = [
         Contract(
             instrument_token=90000 + i,
             exchange_token=9000 + i,
-            tradingsymbol=f"NIFTY26NOV{int(strike)}CE",
+            tradingsymbol=f"NIFTY26O06{int(strike)}CE",
             name="NIFTY",
             expiry=expiry,
             strike=strike,
@@ -566,13 +566,13 @@ def test_current_level_beyond_every_strike_sensex_gives_current_only(
 def test_reviewer_repro_synthetic_upper_list_never_appends_the_wrong_side_strike() -> None:
     """AC-5/AC-6 (fix round 2, exact verifier reproduction): current=100,000, listed strikes
     20,000..21,000. The upper list must be exactly [100000], never [100000, 21000]."""
-    expiry = date(2026, 11, 3)
+    expiry = date(2026, 10, 6)
     strikes = [Decimal(v) for v in range(20000, 21001, 100)]
     contracts = [
         Contract(
             instrument_token=50000 + i,
             exchange_token=5000 + i,
-            tradingsymbol=f"NIFTY26NOV{int(s)}CE",
+            tradingsymbol=f"NIFTY26O06{int(s)}CE",
             name="NIFTY",
             expiry=expiry,
             strike=s,
@@ -643,13 +643,13 @@ def test_mutation_side_check_must_reject_a_wrong_side_bound() -> None:
     verifier's exact reproduction (current 100,000, strikes 20,000..21,000), if the
     `bound_beyond_current` guard were dropped, the upper list would become [100000, 21000] — this
     test's exact-list assertion goes red under that mutation."""
-    expiry = date(2026, 11, 3)
+    expiry = date(2026, 10, 6)
     strikes = [Decimal(v) for v in range(20000, 21001, 100)]
     contracts = [
         Contract(
             instrument_token=60000 + i,
             exchange_token=6000 + i,
-            tradingsymbol=f"NIFTY26NOV{int(s)}CE",
+            tradingsymbol=f"NIFTY26O06{int(s)}CE",
             name="NIFTY",
             expiry=expiry,
             strike=s,
