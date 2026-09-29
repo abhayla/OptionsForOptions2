@@ -2,7 +2,7 @@
 
 # Findings index
 
-18 finding(s), generated from `knowledge/findings/*.json`.
+19 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -24,3 +24,4 @@
 | test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, spec_ref |
 | trust-broker-status-word | Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position. | unguarded | occurrences, spec_ref |
 | verifier-writes-outside-sandbox | Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it. | guarded | occurrences, spec_ref |
+| wall-clock-assertion-flakes-under-load | Any test that asserts elapsed wall-clock time against a fixed threshold (time.perf_counter() - start < N) measures the machine's load, not the code's cost; it fails whenever other work shares the CPU (parallel agents, CI neighbours) and passes on re-run, so a red run carries no information and trains readers to ignore reds. | guarded | occurrences, spec_ref |

@@ -143,7 +143,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   provenance (`spec/technical-design/legacy-reuse.md`).
 - Spec basis: none before this (the spec had no stack decision); hard rules ADR-008, ADR-012, ADR-029.
 
-## Q223 — OPEN — Close Partial Strategy while the platform's own entry order is still open (W-023 orchestrator default OD-m)
+## Q223 — DECIDED (owner, 2026-09-29 morning: keep A) — Close Partial Strategy while the platform's own entry order is still open (W-023 orchestrator default OD-m)
 - Situation: some legs filled, one entry order (e.g. BUY 23,600 CE) is still open at Zerodha, and the user picks Close
   Partial Strategy. If that entry order fills after the exits, it leaves a new position; for a condor's short call the
   mirror case is a naked short.
@@ -151,6 +151,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   platform's own still-open entry orders on that strategy, shown to the user before confirmation. Nothing is sent
   without the user's confirmation; W-023 builds the list only (`backend/ofo/execution/partial.py`, OD-m).
 - Recommendation: keep it (A). Alternative (B): do not offer Close until the open entry order is terminal.
+- **Owner decision (2026-09-29): A.** The Close preparation lists a cancel request for each of the strategy's own
+  still-open entry orders, shown with the exits and confirmed by the user together; nothing is sent without that confirm.
 - Spec basis: ADR-017 Q27 (Close Partial Strategy is a user choice; executed legs never unwound automatically), ADR-018
   Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
   None of these says what happens to an open entry order when the user closes.
@@ -183,3 +185,28 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Spec basis: ADR-016/ADR-018 (Zerodha is the authority; a mismatch blocks); ADR-018 Q198 resolution list; REQ-060
   AC-5, AC-7 (AC-7 covers one strategy plus a standalone, not two strategies). No spec text defines attribution across
   strategies.
+
+## Q225 — DECIDED (owner, 2026-09-29 morning) — Entitlement history after a setting changes; post-dated status changes
+- Situation (W-007 round 4, issue #12): a revoke dated 2106 was accepted and then blocked a real revoke; lowering
+  `max_free_days` 90 → 30 made a legal stored history fail to load.
+- Decision: A — validate new events against current settings; load stored history with integrity checks only; every
+  status change bounded to effective_at ≤ recorded_at + clock skew. Recorded in ADR-023 "Owner decision (Q225)".
+
+## Q226 — DECIDED (owner, 2026-09-29 morning) — Strictness of the advice-word check (W-024, issue #30)
+- Decision: strict — ban bare "best", "sure", "safe", "guarantee*", "recommend*" in platform templates, with the named
+  exceptions "best bid", "best ask", "best-case", "make sure"; broker/user text quoted only. Recorded in ADR-003
+  "Owner decision (Q226)".
+
+## Q227 — DECIDED (owner, 2026-09-29 morning) — Guided scenario column headings (W-004, issue #21)
+- Decision: each scenario column is headed by its level (CURRENT and 0-P&L marked); "NIFTY at expiry | You make/lose"
+  is the scenario section's caption. Recorded in REQ-035 "Owner clarification (Q227)".
+
+## Q228 — DECIDED (owner, 2026-09-29 morning) — Length of a paid month / year
+- Decision: 30 days / 365 days, fixed; not calendar months. Recorded in ADR-023 "Q228". (Was owner-review item 3b.)
+
+## Q229 — DECIDED (owner, 2026-09-29 morning) — Entitlement evaluation rules 2-3
+- Decision: both confirmed as written in ADR-023 "Evaluation rules". Recorded in ADR-023 "Q229".
+
+## Q230 — DECIDED (owner, 2026-09-29) — Q226 edge cases (W-024 round 5)
+- Decision: ban all word forms of the five words; do not ban "must"/"have to"/"ought to"; exceptions match exactly as
+  spelled. Recorded in ADR-003 "Q230".
