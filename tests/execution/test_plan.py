@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-import time
 from decimal import Decimal as D
 
 import pytest
 from partial_inputs import CONTRACTS, LOT, REFS, plan
 from plan_inputs import BUY, CE, EXP, FUT, NEXT, PE, PREV, SELL, FakeConstraints, FakeMargin, leg, mk
 
+from ofo.execution import sequence as sequence_module
 from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg
 from ofo.execution.sequence import OrderSequence, PlanStep, StepKind, Undetermined, Unprotected, sequence_plan
 
@@ -232,18 +232,21 @@ def test_ac2_default_constraints_are_labelled_unverified() -> None:
     assert UnverifiedDefaultConstraints().freeze_quantity("NIFTY26O0623000PE") == DEFAULT_FREEZE_UNITS == 27 * 65
 
 
-def test_ac2_twenty_legs_plan_fast_and_twenty_one_refused() -> None:
-    """AC-2: broker/plan-size constraint: a 20-leg plan (5 condors on different expiries) sequences in well under
-    50 ms with each condor's wings first; 21 legs are refused."""
+def test_ac2_twenty_legs_plan_fast_and_twenty_one_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2: broker/plan-size constraint: a 20-leg plan (5 condors on different expiries) sequences with each
+    condor's wings first and does exactly one protection check per ordered leg pair (20 x 20 = 400, the spec's
+    plan-size cap keeps this bounded); work is counted, not timed. 21 legs are refused."""
     legs = []
     for week in range(5):
         exp = EXP + datetime.timedelta(days=7 * week)
         legs += [leg(BUY, PE, "22800", expiry=exp), leg(SELL, PE, "23000", expiry=exp),
                  leg(SELL, CE, "23400", expiry=exp), leg(BUY, CE, "23600", expiry=exp)]
     big = mk(*legs)
-    start = time.perf_counter()
+    checks = []
+    real_protects = sequence_module.protects
+    monkeypatch.setattr(sequence_module, "protects", lambda a, b: checks.append(1) or real_protects(a, b))
     seq = sequence_plan(big)
-    assert time.perf_counter() - start < 0.05
+    assert len(checks) == 20 * 20
     assert len(seq.sequence) == MAX_PLAN_LEGS == 20
     assert len(seq.dependencies) == 10
     assert all(lg.action is BUY for lg in (big.by_ref(r).leg for r in seq.steps[0].leg_refs))

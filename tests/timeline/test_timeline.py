@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-import time
 
 import pytest
 
@@ -90,15 +89,24 @@ def test_backdated_future_naive_and_bypass_entries_are_refused():
 
 
 def test_same_time_entries_are_allowed_and_1000_appends_stay_fast():
-    """AC-1: two events in the same instant keep their append order; 1,000 one-by-one appends take well under 2 s
-    (append never re-verifies the whole history)."""
-    tl = timeline()
-    started = time.perf_counter()
-    for i in range(1000):
-        tl.append(EntryType.MODIFIED, at=at(i // 10), actor="user-1", detail={"i": i})
-    assert time.perf_counter() - started < 2.0
-    assert [e.content["i"] for e in tl.entries] == list(range(1000))
-    assert tl.verify().ok
+    """AC-1: two events in the same instant keep their append order; the calls made by 1,000 one-by-one appends are
+    twice those of 500 (append never re-verifies the whole history; work is counted, not timed)."""
+    from work_count import assert_linear
+
+    timelines = []
+
+    def appends(n: int):
+        tl = timeline()
+        timelines.append(tl)
+
+        def work() -> None:
+            for i in range(n):
+                tl.append(EntryType.MODIFIED, at=at(i // 10), actor="user-1", detail={"i": i})
+        return work
+
+    assert_linear(appends, 500)
+    assert [e.content["i"] for e in timelines[1].entries] == list(range(1000))
+    assert timelines[1].verify().ok
 
 
 # ---- AC-2 ----------------------------------------------------------------------------------------------------

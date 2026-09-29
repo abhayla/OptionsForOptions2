@@ -229,13 +229,19 @@ def test_ac2_exited_strategy_expects_nothing():
 
 
 def test_ac2_large_account_is_fast():
-    """AC-2: 1,000 broker contracts and 200 strategies compare quickly (no quadratic blow-up per contract)."""
-    import time
-    broker = {c(Instrument.CE, str(20000 + i)): -1 for i in range(1000)}
-    strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(200)}
-    start = time.perf_counter()
-    report = run(broker, strategies)
-    assert time.perf_counter() - start < 5.0
+    """AC-2: 1,000 broker contracts and 200 strategies compare with linear work in the contracts: doubling the
+    contracts (against 10 strategies) at most doubles the calls made (no quadratic blow-up per contract; work is
+    counted, not timed). Work also grows with the number of strategies holding a mismatched contract (each strategy is
+    checked against each owner list), which the spec's account sizes keep small; that is not asserted here."""
+    from work_count import assert_linear
+
+    def compare_at(contracts: int, strategy_count: int):
+        broker = {c(Instrument.CE, str(20000 + i)): -1 for i in range(contracts)}
+        strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(strategy_count)}
+        return lambda: run(broker, strategies)
+
+    assert_linear(lambda n: compare_at(n, 10), 500)
+    report = compare_at(1000, 200)()
     assert len(report.mismatches) == 1004     # 1000 unexpected + 4 condor contracts (200 x 75 expected, 0 held)
 
 
