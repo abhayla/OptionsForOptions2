@@ -298,3 +298,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q251 — DECIDED (owner, 2026-09-29) — Strategy levels, market views, objectives (REQ-068 AC-2)
 - Decision: apply the level rules directly (Beginner / Intermediate / Advanced as listed in REQ-068), plus market view
   and objective per strategy. Recorded in REQ-068 "Owner decision (Q251)".
+
+## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact configuration (REQ-046 AC-4)
+- Decision: keep widths, restore the short strikes' entry distance from spot (snapped to listed strikes); always an
+  editable proposal. Recorded in REQ-046.
