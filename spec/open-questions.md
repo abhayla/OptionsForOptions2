@@ -298,3 +298,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q251 — DECIDED (owner, 2026-09-29) — Strategy levels, market views, objectives (REQ-068 AC-2)
 - Decision: apply the level rules directly (Beginner / Intermediate / Advanced as listed in REQ-068), plus market view
   and objective per strategy. Recorded in REQ-068 "Owner decision (Q251)".
+
+## Q252 — DECIDED (owner, 2026-09-29) — Default playbooks vs the "no user rule" case (REQ-045 AC-5/AC-7)
+- Decision: adopt-to-own — unadopted defaults are platform detections; adopted/edited defaults are the user's rules;
+  edits create personal copies. Recorded in REQ-045.
