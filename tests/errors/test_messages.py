@@ -304,6 +304,45 @@ def test_decimal_subclass_is_refused_for_money() -> None:
         Money.validate(EvilDecimal("5"))
 
 
+def test_money_more_than_two_decimal_places_is_refused() -> None:
+    """AC-2: rupees carry at most paise; ₹1.005 is refused, ₹1.50 (hand-worked) shows as ₹1.50."""
+    with pytest.raises(ValueError):
+        Money.validate(Decimal("1.005"))
+    assert Money.format(Decimal("1.5")) == "₹1.50"
+    assert Money.format(Decimal("1.500")) == "₹1.50"
+
+
+def test_int_slot_caps_absurd_values() -> None:
+    """AC-2: an entered number may be zero or negative (that can be the error) but not absurd."""
+    Int.validate(-3)  # ok
+    with pytest.raises(ValueError):
+        Int.validate(10**10)
+    with pytest.raises(ValueError):
+        Int.validate(-(10**10))
+
+
+def test_formatter_returning_a_non_str_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2: a slot formatter must return an exact `str`; an object with its own `__format__`
+    (which could print anything) is refused before it reaches the template."""
+    monkeypatch.setattr(Int, "format", staticmethod(lambda value: _EvilStr("0")))
+    with pytest.raises(TypeError):
+        render("user_input_lot_size", entered=0)
+
+
+def test_runtime_check_refuses_non_latin_finished_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2: finished text with a Cyrillic look-alike letter (U+043E) is refused at runtime."""
+    monkeypatch.setattr(Int, "format", staticmethod(lambda value: "0 lоts"))
+    with pytest.raises(ValueError, match="non-Latin"):
+        render("user_input_lot_size", entered=0)
+
+
+def test_template_ids_are_unique() -> None:
+    """AC-2: no template id appears twice (a duplicate would silently shadow a reviewed template)."""
+    from ofo.errors.templates import _TEMPLATES
+
+    assert len({t.id for t in _TEMPLATES}) == len(_TEMPLATES) == len(CATALOGUE)
+
+
 def test_count_slots_refuse_negative_and_absurd() -> None:
     """AC-2: a count (legs, lots, minutes) is never negative, and absurd sizes are capped."""
     with pytest.raises(ValueError):

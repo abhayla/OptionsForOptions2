@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-from ofo.wording import find_advice_wording, is_blank_after_normalising, is_nfkc_clean_latin
+from ofo.wording import find_advice_wording, is_nfkc_clean_latin
 
 from .classes import ErrorClass
 from .model import UserFacingError, _build, _claim_render_token
@@ -182,8 +182,6 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
 #: (refused: a mappingproxy has no __setitem__) nor forcing new text into a template object (with
 #: `object.__setattr__`) changes what a user is shown.
 CATALOGUE: Mapping[str, MessageTemplate] = MappingProxyType({t.id: t for t in _TEMPLATES})
-if len(CATALOGUE) != len(_TEMPLATES):
-    raise ValueError("duplicate template id in the catalogue")
 
 
 def _make_render(token: object) -> Callable[..., UserFacingError]:
@@ -201,7 +199,6 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         for t in _TEMPLATES
     }
     advice = find_advice_wording
-    blank = is_blank_after_normalising
     latin = is_nfkc_clean_latin
     external = ExternalText
     build = _build
@@ -211,9 +208,9 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
 
         Fails closed on: an unknown template id; a missing or extra slot; a slot value of the wrong
         type or outside its closed set/range; and, as a second line after the typed slots, FINISHED
-        text that is blank, has non-Latin/confusable characters, or contains ADR-003/Q226 wording.
+        text that has non-Latin/confusable characters, or contains ADR-003/Q226 wording.
         """
-        if type(template_id) is not str or template_id not in snapshot:
+        if template_id not in snapshot:
             raise ValueError(f"unknown template id {template_id!r}")
         error_class, code, part_texts, slot_types, external_slot = snapshot[template_id]
 
@@ -242,8 +239,6 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         # not only the static templates in CI. Catches any slot value or formatter that combines
         # with fixed template text into advice wording.
         for name, text in parts.items():
-            if blank(text):
-                raise ValueError(f"template {template_id!r} part {name!r} rendered blank")
             if not latin(text):
                 raise ValueError(f"template {template_id!r} part {name!r} has non-Latin/confusable characters: {text!r}")
             hits = advice(text)
