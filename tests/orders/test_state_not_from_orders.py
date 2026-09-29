@@ -28,19 +28,32 @@ def make_order() -> Order:
 
 
 def test_executed_order_row_without_a_fill_event_changes_nothing() -> None:
-    """AC-3: an Executed order row, on its own, is not a source of position -- the derived
-    position for the strategy stays empty until a confirmed FillEvent lands in the book."""
+    """AC-3: an Executed order row, on its own, is not a source of position. In ONE book holding a
+    submitted order, every way of producing an "Executed" row without a fill is refused (book
+    transition, order transition, a forged Executed row added to the book), and the derived position
+    stays empty; only a confirmed FillEvent in that same book moves it (issue #29 item 4)."""
     book = OrderBook()
     book.add(make_order())
     book.transition("BRK-5", OrderState.SUBMITTED)
+    assert derive_strategy_position(book, "STRAT-5") == {}
+
+    with pytest.raises(ValueError):
+        book.transition("BRK-5", OrderState.EXECUTED)
+    with pytest.raises(ValueError):
+        book.order_for("BRK-5").order.transition(OrderState.EXECUTED)
+    forged = Order("STRAT-5", "leg-1", CONTRACT, Action.BUY, 75, D("91.50"), broker_order_id="BRK-6")
+    object.__setattr__(forged, "_state", OrderState.EXECUTED)  # a raw state change bypassing every method
+    with pytest.raises(ValueError):
+        book.add(forged)
+    assert book.order_for("BRK-5").state is OrderState.SUBMITTED
+    assert derive_strategy_position(book, "STRAT-5") == {}
+
     view = book.apply_fill(
         FillEvent("T-1", "BRK-5", CONTRACT, Action.BUY, 75, D("91.50"),
                   datetime.datetime(2026, 9, 29, 10, 0, tzinfo=UTC))
     )
     assert view.state is OrderState.EXECUTED
-
-    empty_book = OrderBook()  # never told about the fill above
-    assert derive_strategy_position(empty_book, "STRAT-5") == {}
+    assert derive_strategy_position(book, "STRAT-5") == {CONTRACT: 75}
 
 
 def test_derived_position_matches_confirmed_fills_only() -> None:
