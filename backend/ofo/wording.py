@@ -31,9 +31,13 @@ ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     # ADR-003: "You should take this trade" -> generalised to the imperative word itself.
     (r"\bshould\b", "should"),
     # W-024 round-3 verifier finding: "you must buy more lots" makes the same imperative claim.
-    (r"\bmust\b", "must"),
+    # Negative lookahead excludes the compound "must-have" (round-4 false-positive finding: an
+    # ordinary word, not an imperative), while "must buy"/"must sell"/bare "must" stay caught.
+    (r"\bmust\b(?!-have)", "must"),
     # W-024 round-3 verifier finding: "you ought to close this leg" makes the same imperative claim.
     (r"\bought\s+to\b", "ought to"),
+    # W-024 round-4 verifier finding: "you'll have to exit" makes the same imperative claim as "must".
+    (r"\bhave\s+to\b", "have to"),
     # ADR-003: "This is the best trade" / "Best adjustment" -> best + a trade-like noun. Deliberately
     # NOT a bare \bbest\b (round-3 design constraint: that would block "best-case", an ordinary word).
     (r"\bbest\s+(trade|strategy|option|choice|adjustment|strike|entry|time|pick|level)s?\b",
@@ -77,6 +81,10 @@ def normalise_for_wording_scan(text: str) -> str:
     text = "".join(ch for ch in text if unicodedata.category(ch) != _FORMAT_CATEGORY)
     text = text.casefold()
     text = "".join(" " if ch.isspace() else ch for ch in text)
+    # W-024 round-4 verifier finding: "_" is a `\w` character, so "you_should_buy" was ONE
+    # contiguous word to a `\bshould\b` pattern (no boundary appears around an underscore) and
+    # the imperative slipped through. Folding underscores to spaces first gives the boundary back.
+    text = text.replace("_", " ")
     text = re.sub(r" {2,}", " ", text).strip()
     return text
 

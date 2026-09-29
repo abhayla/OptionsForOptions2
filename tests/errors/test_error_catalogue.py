@@ -218,6 +218,17 @@ def test_external_text_slot_requires_an_externaltext_instance() -> None:
 
 # --- AST: no direct UserFacingError(...) call, no f-string passed to render() -------------------
 
+#: Files allowed to hold the internal construction machinery (`_build`, `object.__new__`) because
+#: they ARE that machinery: `model.py` defines `_build`; `templates.py`'s `render` is the only
+#: caller. Anywhere else, any of these three shapes is a bypass of `render()` (round-4 fix,
+#: REQ-065/W-024 second parked round: the independent reviewer found `_build`, `object.__new__` and
+#: a subclass all unguarded).
+_CATALOGUE_MODULE_FILES = {
+    BACKEND_OFO_DIR / "errors" / "model.py",
+    BACKEND_OFO_DIR / "errors" / "templates.py",
+}
+
+
 def test_ast_no_direct_userfacingerror_calls_and_no_fstring_arguments_to_render() -> None:
     """No `UserFacingError(` construction anywhere in backend/ofo, and `render()` is never called
     with an f-string — the only path to error text is a typed slot value into a fixed template."""
@@ -238,6 +249,52 @@ def test_ast_no_direct_userfacingerror_calls_and_no_fstring_arguments_to_render(
                     if isinstance(arg, ast.JoinedStr):
                         offenders.append(
                             f"{path.relative_to(REPO_ROOT)}:{node.lineno}: render() called with an f-string"
+                        )
+    assert not offenders, "\n".join(offenders)
+
+
+def test_ast_no_bypass_of_render_outside_the_catalogue_module() -> None:
+    """Round-4 fix: `_build(...)`, `object.__new__(...)` and any `UserFacingError` subclass are only
+    legitimate inside `errors/model.py` (defines `_build`) and `errors/templates.py` (`render`, the
+    only caller). Anywhere else in `backend/ofo`, any of the three is a way round `render()` that the
+    independent reviewer found unguarded in round 3."""
+    offenders: list[str] = []
+    for path in BACKEND_OFO_DIR.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        if path in _CATALOGUE_MODULE_FILES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "_build":
+                    offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}: call to _build(...)")
+                if (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "__new__"
+                    and isinstance(func.value, ast.Name)
+                    and func.value.id == "object"
+                ):
+                    # Only `object.__new__(UserFacingError)`-shaped calls are a bypass of render();
+                    # `object.__new__(SomeOtherClass)` is an unrelated, legitimate pattern elsewhere
+                    # in the codebase (e.g. `Order._copy_with`) and is not this test's concern.
+                    args = list(node.args) + [kw.value for kw in node.keywords]
+                    mentions_target = any(
+                        (isinstance(a, ast.Name) and a.id == "UserFacingError")
+                        or (isinstance(a, ast.Attribute) and a.attr == "UserFacingError")
+                        for a in args
+                    )
+                    if mentions_target:
+                        offenders.append(
+                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}: call to object.__new__(UserFacingError)"
+                        )
+            if isinstance(node, ast.ClassDef):
+                for base in node.bases:
+                    base_name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", None)
+                    if base_name == "UserFacingError":
+                        offenders.append(
+                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}: class {node.name} subclasses UserFacingError"
                         )
     assert not offenders, "\n".join(offenders)
 
@@ -297,3 +354,81 @@ def test_mutation_cyrillic_lookalike_is_caught() -> None:
     )
     with pytest.raises(AssertionError):
         _check_template(bad)
+
+
+# --- Round-4 fix (second parked round, issue #30): Core/Proof + the four named mutation tests ----
+
+def test_core_proof_reference_risk_free_is_refused() -> None:
+    """Core/Proof: `render("internal_system_save_failed", reference="risk-free")` is refused. The
+    Code slot now closes off "risk-free" before render() even reaches the wording check (it is
+    neither a known check code nor an `ERR-` + 8 hex digits reference id)."""
+    with pytest.raises(ValueError):
+        render("internal_system_save_failed", reference="risk-free")
+
+
+def test_mutation_free_text_code_slot_is_caught() -> None:
+    """Mutation: a free-text Code slot ("risk-free", "GUARANTEED-PROFIT", "you_should_buy") must be
+    refused, not accepted the way the old hyphen/underscore character-class pattern accepted it."""
+    from ofo.errors.slots import Code
+
+    for bad in ("risk-free", "GUARANTEED-PROFIT", "you_should_buy", "ORDER-REF-001"):
+        with pytest.raises(ValueError):
+            Code.validate(bad)
+    Code.validate("ERR-1A2B3C4D")  # ok: strict reference id format
+    Code.validate("MARGIN_INSUFFICIENT")  # ok: a known CheckCode value
+
+
+def test_mutation_skipping_the_runtime_wording_check_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mutation: if render() stopped running the wording check on the FINISHED text (item 2), this
+    injected template — never seen by the static per-template CI scan, since it is added only for
+    this test — would render clean text containing "must". Proves the check runs at every render()
+    call, not only once over the committed catalogue."""
+    from ofo.errors import templates as templates_mod
+
+    bad = MessageTemplate(
+        id="mutation_runtime_wording_check",
+        error_class=ErrorClass.USER_INPUT,
+        code="ERR-00000000",
+        what_happened="You must buy more lots to proceed.",
+        impact="Unrelated distinct sentence about impact.",
+        what_is_blocked="Unrelated distinct sentence about blocking.",
+        next_action="Unrelated distinct sentence about next steps.",
+    )
+    monkeypatch.setitem(templates_mod.CATALOGUE, "mutation_runtime_wording_check", bad)
+    with pytest.raises(ValueError):
+        templates_mod.render("mutation_runtime_wording_check")
+
+
+def test_mutation_subclassing_userfacingerror_is_caught() -> None:
+    """Mutation: allowing a subclass of `UserFacingError` must be refused at class-definition time
+    (`__init_subclass__`), closing the round-3 verifier's bypass path."""
+    with pytest.raises(TypeError):
+
+        class EvilError(UserFacingError):  # noqa: F841  (never reached: raises at class body exec)
+            pass
+
+
+def test_mutation_nan_and_infinity_money_is_caught() -> None:
+    """Mutation: NaN/Infinity must be refused for a Money slot (round-4 verifier finding: a template
+    once rendered "₹NaN is below the ₹-5 this strategy needs"; Infinity used to crash instead of
+    being refused cleanly)."""
+    from ofo.errors.slots import Money
+
+    for bad in (Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity"), Decimal("-5")):
+        with pytest.raises(ValueError):
+            Money.validate(bad)
+    Money.validate(Decimal("41200"))  # ok
+
+
+def test_build_without_the_render_sentinel_token_is_refused() -> None:
+    """`_build` itself refuses without the exact module-private token `render()` holds."""
+    with pytest.raises(ValueError):
+        UserFacingError._build(
+            _token=object(),
+            error_class=ErrorClass.MARGIN,
+            code="ERR-00000000",
+            what_happened="a",
+            impact="b",
+            what_is_blocked="c",
+            next_action="d",
+        )

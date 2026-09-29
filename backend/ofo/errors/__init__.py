@@ -9,12 +9,12 @@ Public surface:
   `external_text`); no public constructor.
 - `MessageTemplate`, `CATALOGUE`: the fixed, reviewed template catalogue.
 - `render`: the only way to build a `UserFacingError`.
-- Slot types: `Money`, `Int`, `Time`, `Instrument`, `Code`, `ExternalText`.
+- Slot types: `Money`, `PnLMoney`, `Int`, `Time`, `Instrument`, `Underlying`, `Code`, `ExternalText`.
 """
 
 from .classes import ErrorClass
 from .model import UserFacingError
-from .slots import Code, ExternalText, Instrument, Int, Money, SlotType, Time
+from .slots import Code, ExternalText, Instrument, Int, Money, PnLMoney, SlotType, Time, Underlying
 from .templates import CATALOGUE, MessageTemplate, render
 
 __all__ = [
@@ -24,9 +24,11 @@ __all__ = [
     "CATALOGUE",
     "render",
     "Money",
+    "PnLMoney",
     "Int",
     "Time",
     "Instrument",
+    "Underlying",
     "Code",
     "ExternalText",
     "SlotType",
