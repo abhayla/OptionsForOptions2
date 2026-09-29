@@ -131,7 +131,7 @@ def executed_record() -> StrategyRecord:
     rec = StrategyRecord(CONDOR, at=T0, clock=clock)
     v1 = rec.propose_execution(at=at(1))
     rec.confirm(v1.number, at=at(2))
-    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1"))
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.ACTIVATED
     return rec
 
@@ -230,7 +230,8 @@ def test_ac4_nothing_prepared_before_confirmation():
     rec = executed_record()
     catalogue = _make_catalogue()
     eligibility = _make_eligibility(catalogue)
-    premature = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(10), "premature")
+    premature = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(10), "premature",  # a hand-built attempt
+                               attempt=dataclasses.replace(rec.attempts[-1], number=2, version_number=2))
     with pytest.raises(ModificationError):
         execute_confirmed_modification(
             rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
@@ -259,7 +260,7 @@ def test_ac4_gate_is_actually_run_a_missing_contract_blocks_and_leaves_v1_active
     confirm_modification(rec, ROLL, at=at(10))
     catalogue = _make_catalogue(missing=frozenset({(Instrument.PE, "22900")}))
     eligibility = _make_eligibility(catalogue)
-    result = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(11), "adj-blocked")
+    result = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(11), "adj-blocked", attempt=rec.live_attempt)
 
     safety = prepare_confirmed_modification(
         rec, 2, strategy_id=STRATEGY_ID, context=_context(2), catalogue=catalogue, eligibility=eligibility, acknowledgement=roll_ack(rec),
@@ -283,7 +284,7 @@ def test_ac4_gate_passing_activates_v2_and_runs_exactly_once():
     confirm_modification(rec, ROLL, at=at(10))
     catalogue = _make_catalogue()
     eligibility = _make_eligibility(catalogue)
-    result = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(12), "adj-1")
+    result = ExecutionResult(2, ResultStatus.COMPLETE, ROLLED_FILLED, at(12), "adj-1", attempt=rec.live_attempt)
 
     with mock.patch(
         "ofo.strategy.modification.check_pre_execution", wraps=__import__(
@@ -344,7 +345,7 @@ def test_ac4_reconciliation_required_refuses_a_new_proposal():
         (contract_tuple(Instrument.CE, "23400"), -QTY),
         (contract_tuple(Instrument.CE, "23600"), 2 * QTY),
     ))
-    outcome = rec.apply_result(ExecutionResult(v2.number, ResultStatus.COMPLETE, mismatched, at(12), "mismatch-1"))
+    outcome = rec.apply_result(ExecutionResult(v2.number, ResultStatus.COMPLETE, mismatched, at(12), "mismatch-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.MISMATCH
     assert rec.reconciliation_required
 

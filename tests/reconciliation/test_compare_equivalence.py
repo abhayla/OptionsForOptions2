@@ -48,7 +48,7 @@ def _record(rng: random.Random, state: str, reference: str) -> StrategyRecord:
     rec.confirm(v1.number, at=at(2))
     if state == "proposal-only":
         return rec
-    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, v1.intended_position, at(3), reference))
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, v1.intended_position, at(3), reference, attempt=rec.live_attempt))
     if state == "active+pending":
         proposal = None
         while proposal is None:  # an edit identical to the active version proposes nothing; draw again

@@ -108,7 +108,7 @@ def test_ac5_exited_record_refuses_every_later_change():
     rec, audit, _, report = flagged(broker={})
     rec.mark_exited(at=at(20), actor="user", resolution="flat in Kite")
     for attempt in (
-        lambda: rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, Position(), at(21), "late")),
+        lambda: rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, Position(), at(21), "late", attempt=rec.live_attempt)),
         lambda: rec.confirm(1, at=at(21)),
         lambda: rec.observe_broker_position(Position.of({SC23400: -75}), at=at(21), reference="again"),
         lambda: rec.reconcile(at=at(21), actor="user", resolution="x"),
@@ -221,11 +221,24 @@ def test_ac5_same_time_report_from_another_account_is_refused():
 
 def test_ac5_resolution_after_a_new_fill_waits_for_a_fresh_run():
     """AC-5 guard M5: an execution result after the recorded run resets the observation, so a resolution on that
-    run is refused until a fresh run is recorded."""
+    run is refused until a fresh run is recorded. Since W-041 round 5 only the LIVE attempt's results are applied (an
+    earlier attempt's are stale and change nothing), so the late fill here belongs to an adjustment attempt that was
+    still live when its mismatch set the flag."""
+    from recon_fixtures import scaled
     from ofo.strategy.versions import ExecutionResult, ResultStatus
-    rec, audit, n, report = flagged()
-    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, Position.of(HEDGE_CLOSED), at(15), "late-fill"))
-    assert rec.last_observed_at is None
+    rec, audit = executed(), audit_log()
+    v2 = rec.edit(scaled(CONDOR, 150), at=at(4), based_on=1)
+    attempt = rec.confirm(v2.number, at=at(5))
+    rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, Position.of(HEDGE_CLOSED), at(6), "adj-1",
+                                     attempt=attempt))  # the long call went to 0: outside 75..150 -> MISMATCH
+    assert rec.reconciliation_required and rec.live_attempt == attempt
+    report = compare(HEDGE_CLOSED, {"IC-1": rec}, at=at(10), clock=clock)
+    record_report(report, {"IC-1": rec}, audit=audit, run_id="run-1")
+    n = len(audit.events)
+    assert rec.last_observed_at == at(10)
+    late = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, Position.of(HEDGE_CLOSED), at(15), "late-fill",
+                                            attempt=attempt))
+    assert late.kind is OutcomeKind.MISMATCH and rec.last_observed_at is None
     with pytest.raises(ReconciliationError):
         mark_requires_attention("IC-1", rec, report=report, actor="user", at=at(20), reason="why", audit=audit)
     fresh = compare(HEDGE_CLOSED, {"IC-1": rec}, at=at(16), clock=clock)

@@ -48,7 +48,7 @@ def _executed(broker: Position | None = None) -> StrategyRecord:
     v1 = rec.propose_execution(at=_at(1))
     rec.confirm(v1.number, at=_at(2))
     rec.apply_result(ExecutionResult(v1.number, ResultStatus.COMPLETE,
-                                     broker or Position.of(CONDOR.intended_position()), _at(3), "fill-1"))
+                                     broker or Position.of(CONDOR.intended_position()), _at(3), "fill-1", attempt=rec.live_attempt))
     return rec
 
 
@@ -154,7 +154,7 @@ def _executed_covered_call() -> StrategyRecord:
     v1 = rec.propose_execution(at=_at(1))
     rec.confirm(v1.number, at=_at(2))
     rec.apply_result(ExecutionResult(v1.number, ResultStatus.COMPLETE,
-                                     Position.of(COVERED_CALL.intended_position()), _at(3), "fill-cc"))
+                                     Position.of(COVERED_CALL.intended_position()), _at(3), "fill-cc", attempt=rec.live_attempt))
     return rec
 
 

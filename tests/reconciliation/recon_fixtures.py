@@ -62,7 +62,7 @@ def executed(definition: StrategyDefinition = CONDOR, reference: str = "exec-1")
     rec = StrategyRecord(definition, at=T0, clock=clock)
     v1 = rec.propose_execution(at=at(1))
     rec.confirm(v1.number, at=at(2))
-    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, v1.intended_position, at(3), reference))
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, v1.intended_position, at(3), reference, attempt=rec.live_attempt))
     assert rec.active_version == v1 and not rec.reconciliation_required
     return rec
 

@@ -393,8 +393,9 @@ def execute_confirmed_modification(
     """
     if not isinstance(record, StrategyRecord):
         raise ModificationError(f"record must be a StrategyRecord, got {record!r}")
-    if isinstance(result, ExecutionResult) and result.attempt != record.live_attempt:
-        return record.apply_result(result)
+    if (isinstance(result, ExecutionResult) and result.version_number == version_number
+            and result.attempt in record.attempts and result.attempt != record.live_attempt):
+        return record.apply_result(result)  # STALE: recorded, nothing else changes
     safety = prepare_confirmed_modification(
         record, version_number, strategy_id=strategy_id, context=context, catalogue=catalogue, eligibility=eligibility,
         acknowledgement=acknowledgement,

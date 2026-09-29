@@ -304,7 +304,7 @@ def test_only_the_active_or_pending_version_executes(catalogue, eligibility) -> 
     record = condor_record()
     record.confirm(1, at=FILL_AT - datetime.timedelta(minutes=8))
     record.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), FILL_AT - datetime.timedelta(minutes=7),
-                                        "rejected-1"))
+                                        "rejected-1", attempt=record.live_attempt))
     assert record.active_version is None and record.proposed_version is None
     with pytest.raises(SendRefused, match="neither the active nor the pending"):
         _complete(book_with_three_filled(record=record), catalogue, eligibility)

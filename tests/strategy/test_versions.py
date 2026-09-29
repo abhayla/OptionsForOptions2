@@ -78,7 +78,7 @@ def executed_record() -> StrategyRecord:
     rec = record()
     v1 = rec.propose_execution(at=at(1))
     rec.confirm(v1.number, at=at(2))
-    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(3), "exec-1"))
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(3), "exec-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.ACTIVATED
     return rec
 
@@ -103,7 +103,7 @@ def test_core_golden_iron_condor_history_then_versions_then_partial_fill():
     v1 = rec.propose_execution(at=at(3))
     assert rec.active_version is None and rec.proposed_version == v1
     rec.confirm(1, at=at(4))
-    first = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(5), "exec-1"))
+    first = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(5), "exec-1", attempt=rec.live_attempt))
     assert first.kind is OutcomeKind.ACTIVATED and rec.active_version == v1 and rec.has_executed
 
     # The same kind of edit now creates proposed version 2 (2 lots per leg), not a history entry.
@@ -115,7 +115,7 @@ def test_core_golden_iron_condor_history_then_versions_then_partial_fill():
     # Partial broker result: the short put filled 1 of 2 lots.
     rec.confirm(2, at=at(7))
     partial = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
-    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, partial, at(8), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, partial, at(8), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.PARTIAL
     assert rec.active_version == v1                     # AC-3: active unchanged
     assert rec.actual_position == partial               # AC-4: broker actual wins
@@ -150,7 +150,7 @@ def test_after_first_execution_every_meaningful_change_is_a_new_preserved_versio
     v2 = rec.edit(scaled(CONDOR, 150), at=at(10), based_on=1)
     rec.confirm(2, at=at(11))
     rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE,
-                                     broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150), at(12), "exec-2"))
+                                     broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150), at(12), "exec-2", attempt=rec.live_attempt))
     v3 = rec.edit(dataclasses.replace(scaled(CONDOR, 150), rules_ref="exit-rules-2"), at=at(13))
     assert [v.number for v in rec.versions] == [1, 2, 3]
     assert rec.active_version == v2 and rec.proposed_version == v3 and v3.based_on == 2
@@ -166,7 +166,7 @@ def test_version_is_immutable_and_an_old_version_cannot_be_edited():
     rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(2, at=at(11))
     rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE,
-                                     broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150), at(12), "exec-2"))
+                                     broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150), at(12), "exec-2", attempt=rec.live_attempt))
     with pytest.raises(VersionError, match="old versions are read-only"):
         rec.edit(scaled(CONDOR, 225), at=at(13), based_on=1)
     with pytest.raises(VersionError, match="restore by proposing"):
@@ -193,7 +193,7 @@ def test_proposed_activates_only_after_confirmation_and_complete_reconciled_resu
     rec.confirm(2, at=at(11))
     assert rec.active_version.number == 1  # confirmation alone does not activate
     two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(12), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(12), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.ACTIVATED and outcome.differences == ()
     assert rec.active_version == v2 and rec.proposed_version is None and rec.definition == scaled(CONDOR, 150)
 
@@ -203,8 +203,10 @@ def test_activate_without_confirmation_is_refused():
     rec = executed_record()
     rec.edit(scaled(CONDOR, 150), at=at(10))
     two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    with pytest.raises(VersionError, match="never confirmed"):
-        rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(11), "exec-2"))
+    # Unconfirmed: the record minted no attempt for version 2, so no result can name one (W-041 round 5).
+    assert rec.live_attempt is None
+    with pytest.raises(VersionError, match="must name the execution attempt"):
+        rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(11), "exec-2", attempt=rec.live_attempt))
     assert rec.active_version.number == 1 and rec.actual_position == broker(**FILLED_1_LOT)
     with pytest.raises(VersionError, match="not the pending"):
         rec.confirm(1, at=at(11))
@@ -218,7 +220,7 @@ def test_failed_or_rejected_result_leaves_active_unchanged_and_records_outcome(s
     rec = executed_record()
     rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(2, at=at(11))
-    outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is kind and rec.active_version.number == 1
     assert rec.proposed_version == rec.version(2) and not rec.proposal_confirmed
     assert rec.outcomes_for(2) == (outcome,) and outcome.intended == rec.version(2).intended_position
@@ -230,11 +232,11 @@ def test_complete_claim_that_disagrees_with_broker_position_is_a_mismatch_not_ac
     rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(2, at=at(11))
     short = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=75)
-    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, short, at(12), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, short, at(12), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.MISMATCH and rec.active_version.number == 1
     assert rec.actual_position == short and rec.proposed_version is None and rec.reconciliation_required
     moved = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    late = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, moved, at(13), "exec-2b"))
+    late = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, moved, at(13), "exec-2b", attempt=rec.live_attempt))
     assert late.kind is OutcomeKind.BLOCKED and rec.actual_position == moved and rec.active_version.number == 1
     assert rec.reconciliation_required
 
@@ -245,7 +247,7 @@ def test_first_execution_partial_fill_counts_as_executed_and_broker_actual_wins(
     rec.propose_execution(at=at(1))
     rec.confirm(1, at=at(2))
     fill = broker(bp22800=75, sp23000=-75, sc23400=-75, bc23600=75)
-    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.PARTIAL, fill, at(3), "exec-1"))
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.PARTIAL, fill, at(3), "exec-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.PARTIAL and rec.has_executed and rec.active_version is None
     assert rec.actual_position == fill and len(outcome.differences) == 4
     assert rec.version(1).definition == scaled(CONDOR, 150)
@@ -258,7 +260,7 @@ def test_first_execution_rejected_with_nothing_filled_keeps_draft_history_mode()
     rec = record()
     rec.propose_execution(at=at(1))
     rec.confirm(1, at=at(2))
-    rec.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), at(3), "exec-1"))
+    rec.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), at(3), "exec-1", attempt=rec.live_attempt))
     assert not rec.has_executed and rec.active_version is None
     entry = rec.edit(scaled(CONDOR, 150), at=at(4))
     assert entry.seq == 1 and len(rec.versions) == 1
@@ -276,17 +278,22 @@ def test_input_domain_guards():
     with pytest.raises(VersionError, match="already confirmed"):
         rec.confirm(2, at=at(11))
     with pytest.raises(VersionError, match="already applied"):
-        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**FILLED_1_LOT), at(12), "exec-1"))
-    with pytest.raises(VersionError, match="not the pending"):
-        rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(12), "x"))
+        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**FILLED_1_LOT), at(12), "exec-1", attempt=rec.live_attempt))
+    # A message of version 1's (finished) attempt is stale: recorded, nothing else changes (W-041 round 5).
+    before = (rec.actual_position, rec.proposed_version, rec.proposal_confirmed, rec.live_attempt)
+    stale = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, broker(**FILLED_1_LOT), at(12), "x",
+                                             attempt=rec.attempts[0]))
+    assert stale.kind is OutcomeKind.STALE
+    assert (rec.actual_position, rec.proposed_version, rec.proposal_confirmed, rec.live_attempt) == before
     with pytest.raises(AttributeError, match="only through its methods"):
         rec._active = 2
     with pytest.raises(VersionError, match="timezone-aware"):
-        ExecutionResult(2, ResultStatus.COMPLETE, Position(), datetime.datetime(2026, 10, 1, 10, 0), "r")
+        ExecutionResult(2, ResultStatus.COMPLETE, Position(), datetime.datetime(2026, 10, 1, 10, 0), "r",
+                        attempt=rec.live_attempt)
     with pytest.raises(VersionError, match="in the future"):
-        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, Position(), clock() + datetime.timedelta(hours=1), "f"))
+        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, Position(), clock() + datetime.timedelta(hours=1), "f", attempt=rec.live_attempt))
     with pytest.raises(VersionError, match="before the last recorded event"):
-        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, Position(), at(5), "b"))
+        rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, Position(), at(5), "b", attempt=rec.live_attempt))
     with pytest.raises(VersionError, match="duplicate position line"):
         Position(((contract(Instrument.PE, "23000"), -75), (contract(Instrument.PE, "23000"), -75)))
     with pytest.raises(VersionError, match="within"):
@@ -328,7 +335,7 @@ def test_partial_with_unrequested_futures_position_is_a_mismatch():
     rec = pending_two_lots()
     held = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
     extra = Position(held.lines + ((FUT, 75),))
-    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, extra, at(12), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, extra, at(12), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.MISMATCH and rec.actual_position == extra
     assert (FUT, 0, 75) in outcome.differences and rec.active_version.number == 1
 
@@ -337,7 +344,7 @@ def test_partial_with_an_overfilled_leg_is_a_mismatch():
     """AC-4 red: one leg filled 300 against 150 intended under a PARTIAL status is a MISMATCH."""
     rec = pending_two_lots()
     over = broker(bp22800=300, sp23000=-75, sc23400=-150, bc23600=150)
-    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, over, at(12), "exec-2"))
+    outcome = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, over, at(12), "exec-2", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.MISMATCH and rec.actual_position == over
 
 
@@ -347,7 +354,7 @@ def test_partial_with_a_side_flip_is_a_mismatch():
     rec.propose_execution(at=at(1))
     rec.confirm(1, at=at(2))
     flipped = broker(bp22800=-75)
-    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.PARTIAL, flipped, at(3), "exec-1"))
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.PARTIAL, flipped, at(3), "exec-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.MISMATCH
 
 
@@ -356,9 +363,9 @@ def test_genuine_partial_stays_partial_and_complete_equal_activates():
     is PARTIAL; a later COMPLETE equal to the intended position activates."""
     rec = pending_two_lots()
     partial = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=75)
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, partial, at(12), "exec-2")).kind is OutcomeKind.PARTIAL
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, partial, at(12), "exec-2", attempt=rec.live_attempt)).kind is OutcomeKind.PARTIAL
     full = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, full, at(13), "exec-2b")).kind is OutcomeKind.ACTIVATED
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, full, at(13), "exec-2b", attempt=rec.live_attempt)).kind is OutcomeKind.ACTIVATED
     assert rec.active_version.number == 2
 
 
@@ -368,11 +375,11 @@ def test_partial_on_a_reduction_between_previous_and_intended_stays_partial():
     rec.propose_execution(at=at(1))
     rec.confirm(1, at=at(2))
     two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, two, at(3), "exec-1"))
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, two, at(3), "exec-1", attempt=rec.live_attempt))
     rec.edit(CONDOR, at=at(4))
     rec.confirm(2, at=at(5))
     part = broker(bp22800=100, sp23000=-150, sc23400=-150, bc23600=150)
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, part, at(6), "exec-2")).kind is OutcomeKind.PARTIAL
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, part, at(6), "exec-2", attempt=rec.live_attempt)).kind is OutcomeKind.PARTIAL
 
 
 @pytest.mark.parametrize("strike", [23000.0, D(23000.1), D("23000.001"), D("0"), "23000"])
@@ -400,9 +407,9 @@ def test_sequence_a_overfill_then_failed_unmoved_requires_reconciliation():
     """AC-4 red: overfill 300 -> MISMATCH; a later FAILED with the broker unmoved cannot clear it; edit/confirm refuse."""
     rec = pending_two_lots()
     assert rec.version(2).baseline == broker(**FILLED_1_LOT)
-    first = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1"))
+    first = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1", attempt=rec.live_attempt))
     assert first.kind is OutcomeKind.MISMATCH
-    rec.apply_result(ExecutionResult(2, ResultStatus.FAILED, broker(**OVER), at(13), "r2"))
+    rec.apply_result(ExecutionResult(2, ResultStatus.FAILED, broker(**OVER), at(13), "r2", attempt=rec.live_attempt))
     assert rec.reconciliation_required and rec.proposed_version is None and rec.active_version.number == 1
     with pytest.raises(VersionError, match="reconciliation required"):
         rec.edit(scaled(CONDOR, 225), at=at(14))
@@ -416,8 +423,8 @@ def test_sequence_b_partial_then_rejected_with_fills_stays_a_partial_execution()
     pending and confirmed for Complete/Retry, no flag is set, and nothing else can start meanwhile."""
     rec = pending_two_lots()
     half = broker(bp22800=150, sp23000=-75, sc23400=-150, bc23600=150)
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, half, at(12), "r1")).kind is OutcomeKind.PARTIAL
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, half, at(13), "r2")).kind is OutcomeKind.REJECTED
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, half, at(12), "r1", attempt=rec.live_attempt)).kind is OutcomeKind.PARTIAL
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, half, at(13), "r2", attempt=rec.live_attempt)).kind is OutcomeKind.REJECTED
     assert not rec.reconciliation_required and rec.proposed_version.number == 2 and rec.proposal_confirmed
     assert rec.active_version.number == 1 and rec.actual_position == half
     for action in (lambda: rec.edit(scaled(CONDOR, 225), at=at(14)), lambda: rec.propose_execution(at=at(14)),
@@ -425,8 +432,11 @@ def test_sequence_b_partial_then_rejected_with_fills_stays_a_partial_execution()
         with pytest.raises(VersionError, match="awaiting its execution result"):
             action()
     # Outside the path (the broker holds what no fill of version 2 explains) is still a reconciliation.
+    # The final rejection ended that attempt; the user chose Retry, a new attempt (W-041 round 5).
+    retry = rec.retry(2, at=at(14))
     over = broker(bp22800=300, sp23000=-150, sc23400=-150, bc23600=150)
-    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, over, at(14), "r3")).kind is OutcomeKind.MISMATCH
+    assert rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, over, at(15), "r3", attempt=retry)).kind \
+        is OutcomeKind.MISMATCH
     assert rec.reconciliation_required and rec.proposed_version is None
 
 
@@ -434,9 +444,9 @@ def test_sequence_c_window_does_not_slide_and_reconcile_is_the_only_way_out():
     """AC-4 red: after a MISMATCH at 300, a PARTIAL at 200 is judged against the fixed baseline 75..150 (not the
     last report 300), so it is not PARTIAL; the flag stays until an explicit, audited reconcile(); edits then work."""
     rec = pending_two_lots()
-    rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1"))
+    rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, broker(**OVER), at(12), "r1", attempt=rec.live_attempt))
     at_200 = broker(bp22800=200, sp23000=-150, sc23400=-150, bc23600=150)
-    second = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, at_200, at(13), "r2"))
+    second = rec.apply_result(ExecutionResult(2, ResultStatus.PARTIAL, at_200, at(13), "r2", attempt=rec.live_attempt))
     assert second.kind is OutcomeKind.MISMATCH and rec.reconciliation_required
     with pytest.raises(VersionError, match="still differs"):
         rec.reconcile(at=at(14), actor="user", resolution="adopt", definition=scaled(CONDOR, 150))
@@ -477,7 +487,7 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
     """AC-3/AC-4: after EVERY step, pending or reconciliation_required or actual == active intended; nothing
     activates while the flag is set. 500 seeded sequences, all statuses, overfills, unasked contracts, side flips."""
     rng = random.Random(20260929)
-    activations = reconciles = flagged_results = kept = 0
+    activations = reconciles = flagged_results = kept = stale = 0
     for _ in range(500):
         rec = StrategyRecord(CONDOR, at=T0, clock=clock)
         minutes, refs = itertools.count(1), itertools.count()
@@ -488,12 +498,13 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
                 if rec.actual_position.lines and rng.random() < 0.4:
                     rec.reconcile(at=at(next(minutes)), actor="user", resolution="adopt actual broker position")
                     reconciles += 1
-                else:
-                    latest = rec.versions[-1]
+                elif rec.attempts:
+                    attempt = rec.live_attempt or rec.attempts[-1]  # a late message: live, or stale
+                    latest = rec.version(attempt.version_number)
                     outcome = rec.apply_result(ExecutionResult(
                         latest.number, rng.choice(list(ResultStatus)),
                         _random_position(rng, latest.baseline, latest.intended_position),
-                        at(next(minutes)), f"r{next(refs)}"))
+                        at(next(minutes)), f"r{next(refs)}", attempt=attempt))
                     flagged_results += 1
             elif rec.proposed_version is None:
                 if rec.has_executed and rec.active_version is None:
@@ -513,10 +524,23 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
                 kept += 1
             else:
                 pending = rec.proposed_version
+                if len(rec.attempts) > 1 and rng.random() < 0.2:  # a late message of an earlier attempt
+                    old = rec.attempts[rng.randrange(len(rec.attempts) - 1)]
+                    snapshot = (rec.actual_position, rec.recorded_fills, rec.proposed_version, rec.live_attempt,
+                                rec.proposal_confirmed, rec.active_version, rec.reconciliation_required)
+                    late = rec.apply_result(ExecutionResult(
+                        old.version_number, rng.choice(list(ResultStatus)),
+                        _random_position(rng, pending.baseline, pending.intended_position),
+                        at(next(minutes)), f"r{next(refs)}", attempt=old))
+                    assert late.kind is OutcomeKind.STALE
+                    assert snapshot == (rec.actual_position, rec.recorded_fills, rec.proposed_version, rec.live_attempt,
+                                        rec.proposal_confirmed, rec.active_version, rec.reconciliation_required)
+                    stale += 1
+                attempt = rec.live_attempt or rec.retry(pending.number, at=at(next(minutes)))  # the user chose Retry
                 outcome = rec.apply_result(ExecutionResult(
                     pending.number, rng.choice(list(ResultStatus)),
                     _random_position(rng, pending.baseline, pending.intended_position),
-                    at(next(minutes)), f"r{next(refs)}"))
+                    at(next(minutes)), f"r{next(refs)}", attempt=attempt))
                 activations += outcome.kind is OutcomeKind.ACTIVATED
             if flagged and outcome is not None:
                 assert outcome.kind is not OutcomeKind.ACTIVATED and rec.active_version == active_before
@@ -524,7 +548,7 @@ def test_property_invariant_holds_after_every_step_over_500_random_sequences():
             assert (rec.proposed_version is not None or rec.reconciliation_required
                     or rec.actual_position == active_intended)
     # A property test that never reaches a branch proves nothing: every branch must be exercised.
-    assert activations > 50 and reconciles > 50 and flagged_results > 50 and kept > 50
+    assert activations > 50 and reconciles > 50 and flagged_results > 50 and kept > 25 and stale > 50
 
 
 REJECT_REASONS = ("RMS: margin exceeds available funds", "Order price outside circuit limits")
@@ -539,7 +563,7 @@ def test_q245_rejected_adjustment_with_nothing_filled_keeps_the_same_proposal_fo
     rec = executed_record()
     proposal = rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(proposal.number, at=at(11))
-    outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2", REJECT_REASONS))
+    outcome = rec.apply_result(ExecutionResult(2, status, broker(**FILLED_1_LOT), at(12), "exec-2", REJECT_REASONS, attempt=rec.live_attempt))
     assert outcome.kind is kind and outcome.reasons == REJECT_REASONS
     assert rec.active_version.number == 1 and rec.actual_position == broker(**FILLED_1_LOT)
     assert rec.proposed_version == proposal and rec.proposed_version.number == 2 and len(rec.versions) == 2
@@ -547,15 +571,18 @@ def test_q245_rejected_adjustment_with_nothing_filled_keeps_the_same_proposal_fo
     assert rec.outcomes_for(2) == (outcome,)  # the rejection, with its reasons, recorded on the kept proposal
     # A result without a fresh confirm is refused: no automatic retry (CLAUDE.md hard rule; ADR-017).
     two = broker(bp22800=150, sp23000=-150, sc23400=-150, bc23600=150)
-    with pytest.raises(VersionError, match="never confirmed"):
-        rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(13), "exec-2b"))
+    # The rejected attempt is over; a late message of it is stale and changes nothing (W-041 round 5, P4b).
+    assert rec.live_attempt is None
+    late = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(13), "exec-2b", attempt=rec.attempts[-1]))
+    assert late.kind is OutcomeKind.STALE and rec.active_version.number == 1 and not rec.proposal_confirmed
+    assert rec.actual_position == broker(**FILLED_1_LOT)
     # Nothing else can start while it is kept: execute again or withdraw.
     with pytest.raises(VersionError, match="awaiting its execution result"):
         rec.edit(scaled(CONDOR, 225), at=at(13))
     # Execute again: confirm the SAME version, and a complete fill activates it.
     rec.confirm(2, at=at(14))
     assert rec.proposal_confirmed
-    done = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(15), "exec-2c"))
+    done = rec.apply_result(ExecutionResult(2, ResultStatus.COMPLETE, two, at(15), "exec-2c", attempt=rec.live_attempt))
     assert done.kind is OutcomeKind.ACTIVATED and rec.active_version.number == 2 and len(rec.versions) == 2
     assert rec.proposed_version is None
 
@@ -566,10 +593,10 @@ def test_q245_kept_adjustment_can_be_withdrawn_and_can_be_rejected_again():
     rec = executed_record()
     rec.edit(scaled(CONDOR, 150), at=at(10))
     rec.confirm(2, at=at(11))
-    rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, broker(**FILLED_1_LOT), at(12), "exec-2", ("first",)))
+    rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, broker(**FILLED_1_LOT), at(12), "exec-2", ("first",), attempt=rec.live_attempt))
     rec.confirm(2, at=at(13))
     second = rec.apply_result(ExecutionResult(2, ResultStatus.REJECTED, broker(**FILLED_1_LOT), at(14), "exec-2b",
-                                              ("second",)))
+                                              ("second",), attempt=rec.live_attempt))
     assert rec.proposed_version.number == 2 and not rec.proposal_confirmed and second.reasons == ("second",)
     assert [o.reasons for o in rec.outcomes_for(2)] == [("first",), ("second",)]
     withdrawn = rec.withdraw(2, at=at(15), actor="user-1")
@@ -584,7 +611,7 @@ def test_q245_the_first_entry_rejected_with_nothing_filled_still_clears_the_prop
     rec = record()
     rec.propose_execution(at=at(1))
     rec.confirm(1, at=at(2))
-    rec.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), at(3), "exec-1", REJECT_REASONS))
+    rec.apply_result(ExecutionResult(1, ResultStatus.REJECTED, Position(), at(3), "exec-1", REJECT_REASONS, attempt=rec.live_attempt))
     assert rec.proposed_version is None and not rec.proposal_confirmed and rec.active_version is None
     with pytest.raises(VersionError, match="not the pending"):
         rec.confirm(1, at=at(4))

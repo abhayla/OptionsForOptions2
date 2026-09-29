@@ -82,7 +82,7 @@ def executed_record() -> StrategyRecord:
     rec = StrategyRecord(CONDOR, at=T0, clock=clock)
     v1 = rec.propose_execution(at=at(1))
     rec.confirm(v1.number, at=at(2))
-    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1"))
+    outcome = rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1", attempt=rec.live_attempt))
     assert outcome.kind is OutcomeKind.ACTIVATED
     return rec
 

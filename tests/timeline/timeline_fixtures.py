@@ -62,7 +62,7 @@ def executed_record() -> StrategyRecord:
 
     filled = Position(((c(Instrument.PE, "22800"), 75), (c(Instrument.PE, "23000"), -75),
                        (c(Instrument.CE, "23400"), -75), (c(Instrument.CE, "23600"), 75)))
-    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, filled, T0 + datetime.timedelta(minutes=3), "exec-1"))
+    rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, filled, T0 + datetime.timedelta(minutes=3), "exec-1", attempt=rec.live_attempt))
     assert rec.active_version is not None and rec.active_version.number == 1
     return rec
 

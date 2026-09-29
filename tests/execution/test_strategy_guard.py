@@ -96,7 +96,7 @@ def executed_record() -> StrategyRecord:
     rec = StrategyRecord(StrategyDefinition.from_engine("NIFTY", GOLDEN), at=T0,
                          clock=lambda: T0 + datetime.timedelta(days=10))
     rec.confirm(rec.propose_execution(at=at(1)).number, at=at(2))
-    assert rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1")).kind \
+    assert rec.apply_result(ExecutionResult(1, ResultStatus.COMPLETE, FILLED, at(3), "exec-1", attempt=rec.live_attempt)).kind \
         is OutcomeKind.ACTIVATED
     return rec
 
@@ -176,7 +176,7 @@ def test_core_removing_the_bought_23600_ce_is_a_risk_profile_change_needing_ackn
     assert isinstance(decision.acknowledgement, str) and len(decision.acknowledgement) >= 40
 
     confirm_modification(rec, REMOVE_LONG_CALL, at=at(10))
-    result = ExecutionResult(2, ResultStatus.COMPLETE, WITHOUT_LONG_CALL, at(12), "adj-1")
+    result = ExecutionResult(2, ResultStatus.COMPLETE, WITHOUT_LONG_CALL, at(12), "adj-1", attempt=rec.live_attempt)
     with pytest.raises(GuardRefused, match="This action changes your strategy's risk profile"):
         prepare_confirmed_modification(rec, 2, **_gate_kwargs())
     with pytest.raises(GuardRefused):
@@ -339,10 +339,10 @@ def test_ac5_a_modification_token_is_consumed_by_execution():
     rec = executed_record()
     token = propose(rec, REMOVE_LONG_CALL).guard.acknowledgement
     confirm_modification(rec, REMOVE_LONG_CALL, at=at(10))
-    partial = ExecutionResult(2, ResultStatus.PARTIAL, FILLED, at(12), "adj-partial")
+    partial = ExecutionResult(2, ResultStatus.PARTIAL, FILLED, at(12), "adj-partial", attempt=rec.live_attempt)
     outcome = execute_confirmed_modification(rec, 2, result=partial, acknowledgement=token, **_gate_kwargs())
     assert outcome.kind is OutcomeKind.PARTIAL and rec.proposed_version.number == 2
-    again = ExecutionResult(2, ResultStatus.COMPLETE, WITHOUT_LONG_CALL, at(13), "adj-2")
+    again = ExecutionResult(2, ResultStatus.COMPLETE, WITHOUT_LONG_CALL, at(13), "adj-2", attempt=rec.live_attempt)
     with pytest.raises(GuardRefused):
         execute_confirmed_modification(rec, 2, result=again, acknowledgement=token, **_gate_kwargs())
 
