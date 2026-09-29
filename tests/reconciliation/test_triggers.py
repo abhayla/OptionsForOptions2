@@ -119,3 +119,12 @@ def test_ac1_periodic_does_not_fire_when_no_strategy_is_active():
     """Scheduling: PERIODIC only fires when something is active; coverage itself is unaffected by that gate."""
     records = _records(("A", "B"))
     assert plan_run(Trigger.PERIODIC, records=records, active_ids=()) is None
+
+
+def test_ac1_an_exited_strategy_cannot_be_the_triggering_strategy():
+    """Minor (fix round 6): plan_run refuses an exited id as the triggering strategy, the same as an unknown one."""
+    a = executed(single_leg(Action.SELL, Instrument.CE, "23400", 50), "exec-a")
+    a.observe_broker_position(Position.of({}), at=at(4), reference="flat-2")
+    a.mark_exited(at=at(5), actor="tester", resolution="closed flat")
+    with pytest.raises(ReconciliationError):
+        plan_run(Trigger.AFTER_EXECUTION, records={"A": a}, strategy_id="A")

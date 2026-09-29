@@ -228,13 +228,36 @@ def _resolve(
     return Resolution(strategy_id, kind, actor, at, reason, before_broker, before_platform, after, blocked, proposal)
 
 
+def _joint_holders(report: ReconciliationReport, strategy_id: str) -> tuple[str, ...]:
+    """Every OTHER strategy this strategy shares a jointly-blocked mismatch with (W-021 fix round 6; class:
+    per-strategy resolutions that need an attribution rule the spec does not define, flagged for owner question
+    Q224). ``compare()`` attributes a shared contract's non-zero difference to EVERY holder when it cannot tell
+    which one's quantity moved (``Mismatch.strategy_ids`` has more than one id) -- exactly the case where a
+    per-strategy broker share cannot be trusted: it is computed as "broker minus the other holders' PLATFORM
+    units", which silently assumes every other holder is exactly at its own intended quantity. When the broker
+    itself disagrees across the group (Zerodha nets per contract, not per strategy), that assumption is exactly
+    the thing in dispute, so the computed share can show an impossible position (e.g. two SELLers, broker flat,
+    computed share +50 -- a LONG that was never opened)."""
+    others: set[str] = set()
+    for m in report.mismatches:
+        if strategy_id in m.strategy_ids and len(m.strategy_ids) > 1:
+            others.update(sid for sid in m.strategy_ids if sid != strategy_id)
+    return tuple(sorted(others))
+
+
 def _start(
     strategy_id: str, record: object, report: object, at: object, actor: object, reason: object, audit: object,
-    *, blocked: bool = True,
+    *, blocked: bool = True, refuse_shared: bool = True,
 ):
     """Validate a resolution and check its premise against the latest recorded run. Returns (record, broker, platform).
 
     The broker picture returned is the REPORT's share for this strategy, never a stored copy on its own.
+
+    ``refuse_shared`` (default True): refuse when this strategy shares a jointly-blocked mismatch with another
+    non-exited strategy (see ``_joint_holders``) -- the spec has no rule for splitting a shared contract's broker
+    quantity between strategies (owner question Q224), so adopt/prepare-closing-order/mark-exited-broker-flat
+    refuse rather than invent one; only "mark as requiring attention" and "review and modify" (record only, invent
+    nothing) pass ``refuse_shared=False``.
     """
     require_id(strategy_id)
     rec = _require_record(record)
@@ -247,6 +270,13 @@ def _start(
         raise ReconciliationError(f"strategy {strategy_id!r} has exited; nothing to reconcile")
     if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None or at < report.at:
         raise ReconciliationError(f"resolution time must be timezone-aware and not before the run, got {at!r}")
+    if refuse_shared:
+        others = _joint_holders(report, strategy_id)
+        if others:
+            raise ReconciliationError(
+                f"strategy {strategy_id!r} shares a contract with {list(others)} whose broker quantity cannot be "
+                "split between them (no spec rule for attribution, Q224); resolve jointly (Review manually)"
+            )
     share = report.share(strategy_id)
     observed = rec.last_observed_at
     if observed is None or report.at > observed:
@@ -328,8 +358,12 @@ def mark_requires_attention(
     reason: str,
     audit: AuditLog,
 ) -> Resolution:
-    """Q198 "Mark as requiring attention": recorded and audited; the strategy stays blocked."""
-    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
+    """Q198 "Mark as requiring attention": recorded and audited; the strategy stays blocked.
+
+    Allowed even when this strategy shares a contract with another jointly-blocked strategy (Q224): it invents no
+    attribution, just records the choice.
+    """
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit, refuse_shared=False)
     return _resolve(strategy_id, rec, ResolutionKind.MARK_REQUIRES_ATTENTION, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform)
 
@@ -371,7 +405,10 @@ def review_and_modify(
 
     Builds no modification. The strategy stays blocked; it is unblocked only through the existing paths once a
     fresh run agrees (an adopted or executed version the broker matches).
+
+    Allowed even when this strategy shares a contract with another jointly-blocked strategy (Q224): it invents no
+    attribution, just records the choice.
     """
-    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit)
+    rec, broker, platform = _start(strategy_id, record, report, at, actor, reason, audit, refuse_shared=False)
     return _resolve(strategy_id, rec, ResolutionKind.REVIEW_AND_MODIFY, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform)

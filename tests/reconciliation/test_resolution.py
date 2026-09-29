@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from ofo.audit.catalogue import EventType
-from ofo.engine import Action
+from ofo.engine import Action, Instrument
 from ofo.reconciliation.blocking import blocked_strategy_ids
 from ofo.reconciliation.compare import ReconciliationError, compare
 from ofo.reconciliation.resolution import (
@@ -21,7 +21,9 @@ from ofo.reconciliation.resolution import (
     review_and_modify,
 )
 from ofo.strategy.versions import OutcomeKind, Position, VersionError
-from recon_fixtures import BC23600, BP22800, CONDOR, CONDOR_UNITS, SC23400, SP23000, at, audit_log, clock, executed
+from recon_fixtures import (
+    BC23600, BP22800, CONDOR, CONDOR_UNITS, SC23400, SP23000, at, audit_log, c, clock, executed, single_leg,
+)
 
 # The user closed the 23600 CE hedge in Kite: broker = condor without it.
 HEDGE_CLOSED = {BP22800: 75, SP23000: -75, SC23400: -75}
@@ -252,3 +254,76 @@ def test_ac5_mutant_refreshing_only_blocked_strategies_is_caught(monkeypatch):
     _run(rec, dict(CONDOR_UNITS), 11, "run-2", audit)
     res = mark_exited_broker_flat("IC-1", rec, report=run1, actor="user", at=at(20), reason="exit", audit=audit)
     assert res.kind is ResolutionKind.BROKER_FLAT_EXITED       # the defect reappears under the mutant
+
+
+# ---- AC-5 shared-contract attribution: no spec rule -> fail closed (Q224) --------------------------------------
+
+def _ab_flat_broker():
+    """A and B each SELL the same contract x50; Zerodha shows 0 (squared off). No spec rule can attribute which
+    strategy's leg closed, so per-strategy resolutions must refuse (verifier's example)."""
+    contract = c(Instrument.CE, "23400")
+    a = executed(single_leg(Action.SELL, Instrument.CE, "23400", 50), "exec-a")
+    b = executed(single_leg(Action.SELL, Instrument.CE, "23400", 50), "exec-b")
+    records = {"A": a, "B": b}
+    report = compare({contract: 0}, records, at=at(10), clock=clock)
+    audit = audit_log()
+    record_report(report, records, audit=audit, run_id="run-ab")
+    assert a.reconciliation_required and b.reconciliation_required
+    return a, b, audit, report
+
+
+def test_ac5_shared_contract_flat_broker_refuses_adopt_closing_order_and_exit_both_stay_blocked():
+    """The verifier's flat-broker case: adopt, prepare_closing_order and mark_exited_broker_flat are ALL refused
+    for both A and B; nothing unblocks, and no closing order proposes SELL 100 (which would OPEN a -100 short)."""
+    a, b, audit, report = _ab_flat_broker()
+    for sid, rec in (("A", a), ("B", b)):
+        with pytest.raises(ReconciliationError, match="resolve jointly"):
+            adopt_broker_position(sid, rec, report=report, actor="user", at=at(20), reason="adopt", audit=audit)
+        with pytest.raises(ReconciliationError, match="resolve jointly"):
+            prepare_closing_order(sid, rec, report=report, actor="user", at=at(20), reason="close", audit=audit)
+        with pytest.raises(ReconciliationError, match="resolve jointly"):
+            mark_exited_broker_flat(sid, rec, report=report, actor="user", at=at(20), reason="exit", audit=audit)
+    assert a.reconciliation_required and b.reconciliation_required and not a.exited and not b.exited
+    # "mark as requiring attention" and "review and modify" invent no attribution, so they are still allowed.
+    res = mark_requires_attention("A", a, report=report, actor="user", at=at(20), reason="review", audit=audit)
+    assert res.still_blocked
+    res2 = review_and_modify("B", b, report=report, actor="user", at=at(20), reason="review", audit=audit)
+    assert res2.still_blocked
+
+
+def test_ac5_shared_contract_negative_broker_refuses_exit_that_assumes_the_other_leg_closed():
+    """With the broker at -50 (one leg's worth), B's exit would rely on assuming B's own leg was the one closed --
+    refused for the same reason as the flat case."""
+    contract = c(Instrument.CE, "23400")
+    a = executed(single_leg(Action.SELL, Instrument.CE, "23400", 50), "exec-a")
+    b = executed(single_leg(Action.SELL, Instrument.CE, "23400", 50), "exec-b")
+    records = {"A": a, "B": b}
+    report = compare({contract: -50}, records, at=at(10), clock=clock)
+    audit = audit_log()
+    record_report(report, records, audit=audit, run_id="run-ab2")
+    with pytest.raises(ReconciliationError, match="resolve jointly"):
+        mark_exited_broker_flat("B", b, report=report, actor="user", at=at(20), reason="exit", audit=audit)
+    with pytest.raises(ReconciliationError, match="resolve jointly"):
+        adopt_broker_position("A", a, report=report, actor="user", at=at(20), reason="adopt", audit=audit)
+
+
+def test_ac5_single_holder_with_standalone_resolution_unchanged():
+    """A contract held by ONE strategy (plus a recorded standalone) keeps today's behaviour: adopt still succeeds,
+    unaffected by the shared-contract refusal (the standalone quantity is not a second strategy holder)."""
+    rec, audit, n, report = flagged()  # IC-1 alone; HEDGE_CLOSED has no other strategy on any of IC-1's contracts
+    res = adopt_broker_position("IC-1", rec, report=report, actor="user", at=at(20), reason="adopt", audit=audit)
+    assert res.kind is ResolutionKind.ADOPT_BROKER_POSITION and not res.still_blocked
+
+
+def test_ac5_mutant_removing_the_shared_contract_refusal_is_caught():
+    """Mutation: without the joint-holder refusal, adopt would succeed and write A's definition to a broker share
+    computed from an unattributable shared contract (the defect this round fixes)."""
+    from ofo.reconciliation import resolution as resolution_module
+    a, b, audit, report = _ab_flat_broker()
+    original = resolution_module._joint_holders
+    resolution_module._joint_holders = lambda report, strategy_id: ()
+    try:
+        res = adopt_broker_position("A", a, report=report, actor="user", at=at(20), reason="adopt", audit=audit)
+        assert res.kind is ResolutionKind.ADOPT_BROKER_POSITION  # the defect reappears under the mutant
+    finally:
+        resolution_module._joint_holders = original

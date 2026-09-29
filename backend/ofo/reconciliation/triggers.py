@@ -114,6 +114,8 @@ def plan_run(
     if trigger in NAMES_TRIGGERING_STRATEGY:
         if strategy_id is None or require_id(strategy_id) not in everyone:
             raise ReconciliationError(f"{trigger.value} must name a known strategy, got {strategy_id!r}")
+        if all_records[strategy_id].exited:
+            raise ReconciliationError(f"{trigger.value} names strategy {strategy_id!r}, which has exited")
     elif strategy_id is not None:
         raise ReconciliationError(f"{trigger.value} names no single strategy")
     if trigger is Trigger.PERIODIC and not active:
