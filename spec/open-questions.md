@@ -282,3 +282,11 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q247 — DECIDED (owner, 2026-09-29) — Where a strategy goes after adopting Zerodha's position
 - Decision: adopt → Active on the adopted version (from any prior state); closing order executed or broker flat →
   Exited. Found by the W-041 verifier (Partially Executed → RR → adopt got stuck). Recorded in domain-model §6.
+
+## Q248 — DECIDED (owner, 2026-09-29) — Pricing model and rate for delta / IV values (REQ-071 rows 4, 26)
+- Decision: use the existing §4 Black-Scholes model; risk-free rate is an admin setting, default 6.5% p.a., recorded
+  with each calculation. Rows 4 and 26 → pass. Recorded in adjustment-data-contract.md.
+
+## Q249 — DECIDED (owner, 2026-09-29) — Strike selection modes (REQ-027 AC-1)
+- Decision: short-strike delta bands — Conservative 0.10–0.15, Balanced 0.20–0.25, Aggressive 0.30–0.35; wings at
+  template defaults; all strikes editable. Recorded in REQ-027.
