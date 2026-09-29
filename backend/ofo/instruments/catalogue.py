@@ -15,6 +15,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Iterable
 
+from ofo.audit import AuditLog, EventType
 from ofo.instruments.models import FUTURE_TYPE, OPTION_TYPES, Contract
 
 # The two underlyings this catalogue tracks (ADR-007 / REQ-053 scope: NIFTY on NFO, SENSEX on BFO).
@@ -93,6 +94,9 @@ class Catalogue:
         *,
         as_of: datetime,
         force: bool = False,
+        reason: str | None = None,
+        actor: str | None = None,
+        audit_log: AuditLog | None = None,
     ) -> "CatalogueUpdateResult":
         """Refresh from a newer instrument list.
 
@@ -106,7 +110,13 @@ class Catalogue:
         hidden clock), converted to its India (IST) calendar date: a contract expiring ON that
         date has not yet passed. Contracts of an already-passed expiry may roll off, and new
         contracts may be added. An empty list therefore refuses while any unexpired contract is
-        listed. Pass `force=True` to override (a real broker delisting).
+        listed.
+
+        `force=True` overrides the guard (a real broker delisting) but ONLY with a non-empty
+        `reason`, a non-empty `actor` and an explicit `audit_log` (no hidden global): a forced
+        update is refused otherwise, and every forced update appends one ADMIN_CHANGE_RECORDED
+        event (who, when = `as_of`, reason, exact dropped contract ids) before anything changes
+        (REQ-064; issue #80). `reason`/`actor`/`audit_log` are rejected without `force`.
         """
         if as_of.tzinfo is None or as_of.utcoffset() is None:
             raise ValueError("Catalogue.update() requires a timezone-aware as_of")
@@ -116,24 +126,48 @@ class Catalogue:
         in_scope_new = [c for c in contracts if self._in_scope(c)]
         new_tokens = {c.instrument_token for c in in_scope_new}
 
-        if not force:
-            dropped_live = sorted(
-                (
-                    e.contract
-                    for token, e in self._entries.items()
-                    if e.currently_listed
-                    and token not in new_tokens
-                    and (e.contract.expiry is None or e.contract.expiry >= update_date)
-                ),
-                key=lambda c: c.instrument_token,
+        if not force and (reason is not None or actor is not None or audit_log is not None):
+            raise ValueError("Catalogue.update(): reason/actor/audit_log are only valid with force=True")
+        if force:
+            if reason is None or not reason.strip():
+                raise ValueError("Catalogue.update(force=True) refused: a non-empty reason is required")
+            if actor is None or not actor.strip():
+                raise ValueError("Catalogue.update(force=True) refused: a non-empty actor is required")
+            if audit_log is None:
+                raise ValueError("Catalogue.update(force=True) refused: an audit_log is required")
+
+        dropped_live = sorted(
+            (
+                e.contract
+                for token, e in self._entries.items()
+                if e.currently_listed
+                and token not in new_tokens
+                and (e.contract.expiry is None or e.contract.expiry >= update_date)
+            ),
+            key=lambda c: c.instrument_token,
+        )
+        if force:
+            assert audit_log is not None and reason is not None and actor is not None
+            audit_log.append(
+                EventType.ADMIN_CHANGE_RECORDED,
+                actor=actor.strip(),
+                timestamp=as_of,
+                correlation_id=f"catalogue-force-update-{as_of.isoformat()}",
+                payload={
+                    "action": "catalogue_force_update",
+                    "reason": reason.strip(),
+                    "dropped_instrument_tokens": [c.instrument_token for c in dropped_live],
+                    "dropped_tradingsymbols": [c.tradingsymbol for c in dropped_live],
+                },
             )
+        else:
             if dropped_live:
                 first = dropped_live[0]
                 raise ValueError(
                     f"Catalogue.update() refused: would drop {len(dropped_live)} contract(s) "
                     f"that have not expired as of {update_date} (first: {first.tradingsymbol}, "
                     f"expiry {first.expiry}) — the source list may be incomplete or truncated; "
-                    f"pass force=True to override"
+                    f"override needs force=True with a reason, actor and audit_log"
                 )
 
         added = 0
