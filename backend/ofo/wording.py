@@ -35,7 +35,9 @@ _FORMAT_CATEGORY = "Cf"
 #: (e.g. "best", "safest", "safely", "safer", "surely", "guaranteed", "recommended",
 #: "recommendation")." So every one of the five is matched as a word START: any token that begins
 #: with it ("safest", "surely", "bests", and, as a consequence, "bestow"/"safeguard"). A token that
-#: merely contains the letters later ("unsafe", "ensure", "insurer") is another word.
+#: merely contains the letters later ("ensure", "insurer", "assured") is another word, EXCEPT the
+#: negated form: "un" + the word ("unsafe", "unsure") is a word form of it and is banned too
+#: (coordinator ruling with Q231, 2026-09-29).
 Q226_BARE_WORDS: tuple[str, ...] = ("best", "sure", "safe", "guarantee*", "recommend*")
 
 #: Owner decision Q226: "Named exceptions, reviewed once: "best bid", "best ask", "best-case",
@@ -43,7 +45,14 @@ Q226_BARE_WORDS: tuple[str, ...] = ("best", "sure", "safe", "guarantee*", "recom
 #: spelled ... "best case" with a space is not an exception." The ONE place exceptions live. An
 #: exception matches only its exact characters (letter case aside: "Best bid" opens a sentence),
 #: as a whole word, and excuses only the words it covers.
-Q226_NAMED_EXCEPTIONS: tuple[str, ...] = ("best bid", "best ask", "best-case", "make sure")
+#: Owner decision Q231 (2026-09-29, ADR-003): ""safety" is a reviewed exception to the Q230
+#: word-form ban, because it names a check the platform runs (REQ-059 "Pre-execution safety
+#: gate"), not a promise about a trade. Allowed: "safety", "safety check", "safety checks",
+#: "safety gate"." "safeguard", "safer", "safest", "safely" stay banned.
+Q226_NAMED_EXCEPTIONS: tuple[str, ...] = (
+    "best bid", "best ask", "best-case", "make sure",
+    "safety", "safety check", "safety checks", "safety gate",
+)
 
 #: (regex, label) pairs run over the TOKENS joined by single spaces (so `_` and `-` are word
 #: breaks). ADR-003's Forbidden phrases ("You should take this trade", "This is the best trade",
@@ -98,6 +107,10 @@ def _without_exceptions(prepared: str) -> str:
     return prepared
 
 
+#: A negated word form ("unsafe", "unsure") is a word form of the word it negates.
+_NEGATION = "un"
+
+
 def find_q226_bare_words(text: str) -> list[str]:
     """Every Q226/Q230 banned word present in `text` (any word form: a token starting with it) and
     not inside an exact named exception, as its Q226 label (e.g. "guarantee*"), in
@@ -106,7 +119,7 @@ def find_q226_bare_words(text: str) -> list[str]:
     found: list[str] = []
     for word in Q226_BARE_WORDS:
         stem = word.rstrip("*")
-        if any(token.startswith(stem) for token in tokens):
+        if any(token.startswith(stem) or token.startswith(_NEGATION + stem) for token in tokens):
             found.append(word)
     return found
 

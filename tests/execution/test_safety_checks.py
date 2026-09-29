@@ -102,7 +102,7 @@ def _internal_error(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs
     return s, all_true_context(), c, _BrokenEligibility()
 
 
-INTERNAL_REASON = "An internal error stopped the pre-execution checks. Execution is blocked and no order has been submitted."
+INTERNAL_REASON = "An internal error stopped the safety checks. Execution is blocked and no order has been submitted."
 EXIT_REASON = (
     "This exit includes an order that would open or add to a position instead of closing one. An exit can only close "
     "or reduce positions this strategy holds."
