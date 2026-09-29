@@ -257,6 +257,37 @@ def test_ac2_strike_move_to_a_lower_strike_still_blocks_the_holder():
     assert report.blocked_strategy_ids == frozenset({"IC-1"})
 
 
+def test_ac2_one_moved_leg_pairs_with_only_one_held_contract():
+    """AC-2 (W-037): S1 sells 23400 CE x75, S2 sells 23200 CE x75; Zerodha shows only 23000 CE -75. The 23000 CE is
+    the one strike-move candidate for BOTH held contracts. It pairs once, with the first held contract in contract
+    order (23200 -> S2, a strike mismatch); the 23400 CE is then a plain missing position for S1. It is never
+    attributed twice. Hand-computed: differences 23000 -75, 23200 +75, 23400 +75."""
+    ce23000, ce23200 = c(Instrument.CE, "23000"), c(Instrument.CE, "23200")
+    s1 = executed(single_leg(Action.SELL, Instrument.CE, "23400", 75), "e1")
+    s2 = executed(single_leg(Action.SELL, Instrument.CE, "23200", 75), "e2")
+    report = run({ce23000: -75}, {"S1": s1, "S2": s2})
+    moved, missing = report.mismatches
+    assert moved.kind is MismatchKind.STRIKE_MISMATCH and moved.strategy_ids == ("S2",)
+    assert moved.difference == ((ce23000, -75), (ce23200, 75))
+    assert missing.kind is MismatchKind.MISSING_PLATFORM_POSITION and missing.strategy_ids == ("S1",)
+    assert missing.difference == ((SC23400, 75),)
+    assert report.blocked_strategy_ids == frozenset({"S1", "S2"})
+
+
+def test_ac2_holders_by_contract_answers_exactly_the_contracts_asked():
+    """AC-2 (W-037): the holders index returns one entry per requested contract, in the order asked -- active and
+    pending-proposal holders sorted by id, () for a contract nobody holds -- and nothing for contracts not asked."""
+    from ofo.reconciliation.compare import holders_by_contract
+
+    ce24000 = c(Instrument.CE, "24000")
+    actives = {"B": {SC23400: -75, BC23600: 75}, "A": {SC23400: -50}, "C": {}}
+    proposals = {"B": None, "A": None, "C": {BC23600: 75, SP23000: -75}}
+    assert holders_by_contract([ce24000, BC23600, SC23400], actives, proposals) == {
+        ce24000: (), BC23600: ("B", "C"), SC23400: ("A", "B"),
+    }
+    assert list(holders_by_contract([ce24000, BC23600], actives, proposals)) == [ce24000, BC23600]
+
+
 def test_ac2_share_of_a_strategy_the_run_did_not_cover_is_refused():
     """AC-2 (W-037 indexed ``share``): only a covered strategy has a share; an exited one, an unknown id and a
     non-string id are refused with ReconciliationError, never answered from another strategy or a stale index."""
