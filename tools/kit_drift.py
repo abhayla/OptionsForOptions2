@@ -275,11 +275,20 @@ def _generated_entry_drift(project_path: Path, rel_path: str) -> str | None:
     tools/kit_settings.py --check (imported, never re-implemented). Returns None (clean),
     "MISSING" or "EDITED IN PROJECT"."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import kit_settings  # noqa: E402  (project mode may run inside a shipped copy too)
-
     target = project_path / rel_path
     if not target.exists():
         return "MISSING"
+
+    if rel_path == "views/build-order.md":
+        # Written by tools/build_order.py (kit 1.3.0); same comparison as its --check. It changes with
+        # every requirement edit, so a difference means "regenerate it" (STALE), not a hand edit.
+        import build_order  # noqa: E402
+
+        current = target.read_text(encoding="utf-8").replace("\r\n", "\n")
+        return None if current == build_order.render(project_path) else "STALE"
+
+    import kit_settings  # noqa: E402  (project mode may run inside a shipped copy too)
+
     try:
         expected = kit_settings.render(project_path)
     except kit_settings.BadInput:
@@ -349,6 +358,7 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
 
     missing: list[str] = []
     edited: list[str] = []
+    stale: list[str] = []
     moved_on: list[str] = []
     opted_out: list[str] = []
     clean: list[str] = []
@@ -381,6 +391,8 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
                 missing.append(rel_path)
             elif verdict == "EDITED IN PROJECT":
                 edited.append(rel_path)
+            elif verdict == "STALE":
+                stale.append(rel_path)
             else:
                 clean.append(rel_path)
             continue
@@ -450,6 +462,8 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
         print(f"MISSING: {', '.join(missing)}")
     if edited:
         print(f"EDITED IN PROJECT: {', '.join(edited)}")
+    if stale:
+        print(f"STALE (generated; regenerate with python tools/build_order.py . and commit): {', '.join(stale)}")
     if moved_on:
         print(f"FACTORY MOVED ON: {', '.join(moved_on)}")
     if opted_out:
@@ -457,7 +471,7 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
     for rel_path in owner_changed:
         print(f"OWNER FILE CHANGED: {rel_path} — only the owner edits this; confirm in the PR")
 
-    rc = 1 if (missing or edited or moved_on) else 0
+    rc = 1 if (missing or edited or stale or moved_on) else 0
 
     if base:
         lock_change_error = check_lock_change(project_path, lock_path, base)

@@ -10,14 +10,22 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 
 | kit copy | Factory source | sha256 |
 |---|---|---|
+| `tools/ac_fp.py` | `tools/ac_fp.py` | `1b654dd4c3d0673158e23d6110173362912b308684d62d5c27699e17ac29adc5` |
 | `tools/build_findings_index.py` | `tools/build_findings_index.py` | `f078ea7989691f2d0ba3ced02b094731d94aa6d595bcd2f81e02d69a81ce0fc9` |
+| `tools/build_order.py` | `tools/build_order.py` | `0b9e7c64ab35861fb7d42f3b1b32d65822f4508a62d9c8a09157d1ca43ee3160` |
+| `tools/build_spec_index.py` | `tools/build_spec_index.py` | `4c72f2f9a11ffb0230eb871ab9ad4f179fa8137803561709f3b402cf55037822` |
+| `tools/spec_dupes.py` | `tools/spec_dupes.py` | `17ead09c1677c6388eb1e91962ac1de0677583fb6f4ccf8d37c533386f803b32` |
+| `tools/spec_similar.py` | `tools/spec_similar.py` | `cf2d23fa2fbe90285731d8e4e730e0f7eeef5b1ad2b4a9a63bb85cbbf81bd06d` |
+| `tools/spec_text.py` | `tools/spec_text.py` | `714d236b3328bb7883d74aab3e52b026e3d92470a61ba75ee9a8c98889ba3b2f` |
+| `tools/build_status_page.py` | `tools/build_status_page.py` | `01e594b22a6359e23a6e5758d884322196d227cc926061c4d49833e0519b4953` |
 | `tools/check_pr_spec_block.py` | `tools/check_pr_spec_block.py` | `6c5ecef79141802094fa85ea738eeb037bf6aea7fe471ebd7a7b599f9ee13973` |
 | `tools/check_spec_refs.py` | `tools/check_spec_refs.py` | `14a4592dd4fcd92b6e035f5d1f18c0ba1866e61a5ef09282731155e37db9eb33` |
-| `tools/factory_lint.py` | `tools/factory_lint.py` | `016a03d661414ed587023b8bdd1d37304fe95f2f7185f772d01d40180adcc2ec` |
-| `tools/kit_settings.py` | `tools/kit_settings.py` | `2a33abcb201cddbc70b981ec7a6a656a3bab5700ba9b82313ffb631b28724b25` |
-| `tools/kit_drift.py` | `tools/kit_drift.py` | `dfad6f6e7389a779e502886b5fd0481f92c530d3e270a66e01cdcd045e55e151` |
-| `tools/kit_selftest.py` | `tools/kit_selftest.py` | `f97dec7846ff207e2d87e10e869b3029ca7470910cfc422cafed382b3e070376` |
+| `tools/factory_lint.py` | `tools/factory_lint.py` | `0cce2aa5973612e8f047c5f3a0a81194fc05543d50ddcc57071081aef22da5b1` |
+| `tools/kit_settings.py` | `tools/kit_settings.py` | `ce10f28f99639ddba1316b4485767d92fce5244322cdb2fb57e94d5ee3a24c03` |
+| `tools/kit_drift.py` | `tools/kit_drift.py` | `d2da0200501ed10dae1b3b3274c968d7c0f09fdf19eea8ab748c0dc48366afad` |
+| `tools/kit_selftest.py` | `tools/kit_selftest.py` | `6832f2b7db5d76a4e73a57be483b3dcf6f893ef9dd4970ae89df9671b8ff7a8a` |
 | `tools/kithash.py` | `tools/kithash.py` | `9897059e8ed6133393f4bdf7fe4dca1bc9795f25a90fe450b833a4d3c63ccb4c` |
 | `tools/merge_when_green.py` | `tools/merge_when_green.py` | `f9ebefce2e381903e2a2819c25a473fee806a03ebd5589e163cf9f7d9f0fe5a5` |
 | `tools/pathsafe.py` | `tools/pathsafe.py` | `1aecb7d961f51a99bd2e2c98bba453f6c244bb9e4e62b6d44d1b0dac93ae7a87` |
-| `tools/trace_check.py` | `tools/trace_check.py` | `48b1474e3ad26395a2b408df55c2b0c52e1dae30478751f444e9b1d233e46e86` |
+| `tools/run_smoke.py` | `tools/run_smoke.py` | `af5d1d41194e7fdcca73149df18876890808bd50268e93faeeea27e9d079d5cc` |
+| `tools/trace_check.py` | `tools/trace_check.py` | `4bd03cc53cd8d157fbe1f9c2ad1f2f37bcf45372231f2994f1ab05910a160064` |

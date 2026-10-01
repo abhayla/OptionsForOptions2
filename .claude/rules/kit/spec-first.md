@@ -2,10 +2,10 @@
 
 # Spec first: every question and recommendation is built on the spec, and every owner answer goes back into it
 
-version: "1.2.1" (generalized for the project kit)
+version: "1.3.0" (generalized for the project kit)
 
-Why: owner questions went out after reading only the section that seemed to own the subject (one offered a timer
-another section forbade), and answers kept only in chat were lost.
+Why: questions went out after reading one section while another constrained the subject, and answers kept only in
+chat were lost.
 
 The spec is `spec/`; decisions are rows in `spec/decisions/`. If the project has no spec yet, say so, and say the
 recommendation rests on best practice, not on a requirement.
@@ -14,7 +14,9 @@ recommendation rests on best practice, not on a requirement.
 
 Before any question, recommendation or plan, grep the spec for every KEY TERM of the subject (field names, states,
 codes, job names, labels), plus the decision rows, per-type exceptions and label definitions. Read every hit that
-could constrain the answer.
+could constrain the answer. Before writing any new spec line, run `python tools/spec_similar.py . "<text>"`: extend
+or cite a match, never restate it (CI's `spec_dupes.py` blocks a same-kind match >= 0.40 without a real
+`distinct_from` difference).
 
 ## R2: Every question and recommendation carries a Spec basis
 
@@ -27,15 +29,14 @@ first — one that contradicts a decision row is dropped or labelled `SPEC CHANG
 
 ## R3: Real cases in the options
 
-Each option shows real rows from the system (names, numbers, dates), or says "no real case in N days" — placed
-INSIDE the question text, same as the Spec basis line.
+Each option shows real rows (names, numbers, dates) or says "no real case in N days", INSIDE the question text.
 
 ## R3b: Design an action from its actor's intent
 
 Before recommending how a user action behaves (delete, clear, hide, undo, override, accept, retry), write a small
 table: each reason the actor takes the action, what they want then, whether each option gives it. Recommend what
-serves the real reasons, not what the mechanism makes easiest (e.g. "admin clears a value, so show the source's
-value again" was wrong — the admin cleared it BECAUSE it was wrong, so the source's value is what they removed).
+serves the real reasons, not what the mechanism makes easiest (an admin clears a value BECAUSE it is wrong, so
+re-showing the source's value undoes them).
 
 ## R4: Every owner answer goes back into the spec, same change or before the code
 
@@ -51,10 +52,15 @@ recommendation stating what changed.
 
 ## R6: Research findings go into the spec and the findings registry, same turn
 
-A finding is anything measured on real data that changes what we know (research, web search, review, reading code,
-or answering the owner). In the SAME turn it is proven, record it in the spec section it bears on (real values,
+A finding is anything measured on real data that changes what we know (research, review, code, owner answers).
+In the SAME turn it is proven, record it in the spec section it bears on (real values,
 source, date; "open for owner decision" when it implies a rule change — a finding never changes a decision by
 itself), and in `knowledge/findings/` when it's a defect class.
+
+## Build order
+
+Order: `layer`, `depends_on`, `risk`, `skeleton`; no scoring. Start if `build_order.py . --may-start REQ-###`
+exits 0 (or `order_override`). Re-run it; re-read layers per milestone and decision change.
 
 ## CRITICAL RULES
 

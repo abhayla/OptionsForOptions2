@@ -17,8 +17,9 @@ anything before the decision that shapes it exists.
 
 1. **Take the idea in the owner's words.** Write down what they said before asking anything;
    do not paraphrase it into a decision yet.
-2. **One question per turn**, until every choice a real input could not settle on its own has an
-   answer. Each question:
+2. **One question per turn, asked with the interactive question tool** (never buried in a report,
+   never a stop that only says the owner is blocking you), until every choice a real input could
+   not settle on its own has an answer. Each question:
    - opens with `*Sync-check:*`;
    - carries a `Spec basis:` line naming what already constrains the answer (an existing
      decision, a stated constraint), or, when the spec is silent on it,

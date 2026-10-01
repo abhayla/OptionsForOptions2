@@ -90,7 +90,8 @@ ADDENDUM_KEYS = {"hooks", "permissions"}
 
 # Hook events Claude Code documents; the kit's own wiring uses a subset (a test asserts that).
 KNOWN_EVENTS = (
-    "PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop", "SessionStart",
+    "PreToolUse", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "Stop", "SubagentStop",
+    "SessionStart",
     "SessionEnd", "Notification", "PreCompact", "InstructionsLoaded",
 )
 

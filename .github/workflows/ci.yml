@@ -28,6 +28,18 @@ jobs:
       - name: Check requirement trace is not broken
         run: python tools/trace_check.py .
 
+      - name: Check generated build order is current
+        run: python tools/build_order.py . --check
+
+      - name: Keep the walking skeleton working (smoke commands of skeleton requirements)
+        run: python tools/run_smoke.py .
+
+      - name: Check the requirements-by-section index is current
+        run: python tools/build_spec_index.py . --check
+
+      - name: Block restated spec text and missing or stale decision pins (full scan on every PR and push)
+        run: python tools/spec_dupes.py .
+
       - name: Check findings index is current
         run: |
           if compgen -G "knowledge/findings/*.json" > /dev/null; then
