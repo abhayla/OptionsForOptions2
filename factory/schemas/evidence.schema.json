@@ -12,6 +12,16 @@
     "verified_by": { "type": "string", "minLength": 1 },
     "builder": { "type": "string" },
     "date": { "type": "string", "minLength": 1 },
+    "ac_fp": {
+      "description": "first 12 hex of spec_text.fingerprint(<the proved criterion's text>): python tools/ac_fp.py REQ AC",
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "requirement": {
+      "description": "the requirement this evidence proves; required with ac_fp (python tools/ac_fp.py REQ AC --yaml)",
+      "type": "string",
+      "pattern": "^REQ-\\d{3,}$"
+    },
     "commands": {
       "anyOf": [
         { "type": "string" },
@@ -19,5 +29,7 @@
       ]
     }
   },
+  "if": { "required": ["ac_fp"] },
+  "then": { "required": ["requirement"] },
   "additionalProperties": true
 }

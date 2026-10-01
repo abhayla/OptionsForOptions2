@@ -15,7 +15,14 @@
     "consequences": { "type": "array", "items": { "type": "string" } },
     "status": { "type": "string", "enum": ["proposed", "accepted", "superseded", "rejected"] },
     "supersedes": { "type": "string" },
-    "source": { "type": "string" }
+    "source": { "type": "string" },
+    "changes": {
+      "description": "Relations (REQ-013 AC-1): ';'-separated `<verb> <targets>` entries, verb in amends, supersedes, refines, extends, narrows, approves, starts, closes, applies, none; targets are decision or requirement ids, milestones (M4, M4.1) or `handoff §N`; `none — <reason>` stands alone. Checked by tools/spec_dupes.py; optional in the schema so older records still load (spec_dupes reports a missing field in report mode and blocks it in block mode).",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+      ]
+    }
   },
   "additionalProperties": true
 }

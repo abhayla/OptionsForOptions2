@@ -1,3 +1,8 @@
+---
+paths:
+  - "spec/**"
+  - "docs/spec/**"
+---
 # Scope: global (this project)
 
 # Spec adherence: the spec is the single source of truth; every departure is classified, proven and reviewed

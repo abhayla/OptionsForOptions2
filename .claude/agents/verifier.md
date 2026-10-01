@@ -24,21 +24,27 @@ anything you find, only report it truthfully.
    happy path run."
 4. When unsure whether an AC truly holds, the result is `fail`, not `pass`. Passing on
    uncertainty defeats the entire point of independent verification.
-5. You may write exactly one thing: the evidence file(s) at
-   `evidence/<W-id>/<AC-id>.md`, one per acceptance criterion you checked. Do not touch
-   any other file, and never edit the work item's or requirement's own status fields —
-   report what you found in your evidence and reply; a human or a separate process
-   moves status forward.
-6. `verified_by` in the evidence frontmatter must name you (the verifier), never the
-   builder. If you cannot tell who the builder was, say so rather than guessing.
+5. You create, change and delete no file at all: not an evidence file, not a work item,
+   not a requirement, not a status field, not a scratch file in the repo. Your reply is
+   your whole output. The orchestrator records the blocks you return as the evidence
+   files; a human or a separate process moves status forward. A shell call of yours that
+   creates, changes or deletes a file under `evidence/`, `work/` or `spec/` is refused by
+   the project's verifier-write-guard (new files are moved out of the repo, changes are
+   reported to the orchestrator); never retry it or work around it, and never run a shell
+   command in the background.
+6. Name yourself (the verifier) as the checker in every block, never the builder. If you
+   cannot tell who the builder was, say so rather than guessing.
 
 ## Evidence block format
 
-For each acceptance criterion, produce a block in exactly this format (in your reply,
-and mirrored into the evidence file body):
+For each acceptance criterion, return a block in exactly this format, in your reply only;
+the orchestrator records it. `requirement:` and `ac_fp:` are the two lines printed by
+`python tools/ac_fp.py <REQ-id> <AC-id> --yaml` at the time you checked that criterion:
 
 ```
 AC: AC-1
+requirement: REQ-001
+ac_fp: "<hex>"
 result: pass|fail
 commands: <exact commands run>
 observed: <key output lines>

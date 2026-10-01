@@ -43,6 +43,7 @@ _OPTOUTS_REL = f"{_CLAUDE_DIR_NAME}/project/optouts.json"
 _BUDGET_REL = f"{_CLAUDE_DIR_NAME}/kit/budget.json"
 _CHANGELOG_REL = f"{_CLAUDE_DIR_NAME}/kit/CHANGELOG.md"
 _CLAUDE_MD_REL = "CLAUDE.md"
+_GUIDE_REL = f"{_CLAUDE_DIR_NAME}/kit/GUIDE.md"
 _HANDOVER_REL = "docs/HANDOVER.md"
 
 RULE_DIRS = ("rules/kit", "rules/project")
@@ -277,6 +278,14 @@ def check_session_entry_point(root: Path, failures: list[str]) -> None:
         _fail(f"(f) session entry point missing or empty: {', '.join(missing)}", failures)
     else:
         print("ok: (f) session entry point present")
+        claude_md = (root / _CLAUDE_MD_REL).read_text(encoding="utf-8", errors="replace")
+        if _GUIDE_REL not in claude_md:
+            _fail(f"(f) {_CLAUDE_MD_REL} has no pointer to the kit guide `{_GUIDE_REL}` "
+                  "(add one line telling a session to read it before pushing)", failures)
+        elif not (root / _GUIDE_REL).is_file():
+            _fail(f"(f) {_CLAUDE_MD_REL} points to {_GUIDE_REL}, which is missing", failures)
+        else:
+            print("ok: (f) CLAUDE.md points to the kit guide")
 
 
 def main(argv: list[str] | None = None) -> int:

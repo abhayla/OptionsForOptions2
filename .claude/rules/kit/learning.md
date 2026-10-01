@@ -1,3 +1,7 @@
+---
+paths:
+  - "knowledge/**"
+---
 # Scope: global (this project)
 
 # Learning: every proven finding is a class in the registry, and every repeat becomes a mechanism
