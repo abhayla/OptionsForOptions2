@@ -110,9 +110,10 @@ def test_grant_time_far_after_its_recording_is_refused():
         record(ledger_for("u"), NewGrant("p", Source.PAID_MONTHLY, ist(2030, 1, 1), timedelta(days=30), "pay", note()), NOW)
 
 
-def test_grant_time_skew_is_five_minutes_by_default_and_configurable():
-    """AC-4: up to 5 minutes of clock skew is accepted, one microsecond more is not; the skew is configurable."""
-    skew = timedelta(minutes=5)
+def test_grant_time_skew_is_sixty_seconds_by_default_and_configurable():
+    """AC-4: up to 60 seconds of clock skew is accepted (ADR-023 Q256: "the clock-skew window is 60 seconds, both
+    ways."), one microsecond more is not; the skew is configurable."""
+    skew = timedelta(seconds=60)
     ok = NewGrant("p", Source.PAID_MONTHLY, NOW + skew, timedelta(days=30), "pay", note())
     late = NewGrant("p", Source.PAID_MONTHLY, NOW + skew + TICK, timedelta(days=30), "pay", note())
     record(ledger_for("u"), ok, NOW)
@@ -135,8 +136,8 @@ def test_backdated_revocation_is_refused():
     with pytest.raises(ValueError, match="backdated"):
         revoke(at(led, day0 + timedelta(days=100)), "direct-1", day0 + timedelta(days=5), note("deactivated"))
     with pytest.raises(ValueError, match="backdated"):
-        record(led, NewStatusChange("direct-1", Status.REVOKED, NOW - timedelta(minutes=5) - TICK, note()), NOW)
-    later = record(led, NewStatusChange("direct-1", Status.REVOKED, NOW - timedelta(minutes=5), note()), NOW)
+        record(led, NewStatusChange("direct-1", Status.REVOKED, NOW - timedelta(seconds=60) - TICK, note()), NOW)
+    later = record(led, NewStatusChange("direct-1", Status.REVOKED, NOW - timedelta(seconds=60), note()), NOW)
     assert banked_days(later) == 0
 
 
@@ -243,7 +244,7 @@ def test_backdated_open_ended_grant_is_refused():
         record(led, backdated, ist(2026, 10, 31))
     # Within the skew it is accepted (same rule as a revocation).
     ok = NewGrant(
-        "direct-1", Source.DIRECT_ZERODHA_CUSTOMER, ist(2026, 10, 31) - timedelta(minutes=5), None, "eligibility:row-42",
+        "direct-1", Source.DIRECT_ZERODHA_CUSTOMER, ist(2026, 10, 31) - timedelta(seconds=60), None, "eligibility:row-42",
         note(),
     )
     record(led, ok, ist(2026, 10, 31))
@@ -277,7 +278,7 @@ def test_a_grant_dated_after_the_clock_is_refused_so_the_ledger_never_freezes():
     far = ist(2106, 1, 1)
     with pytest.raises(ValueError, match="after it was recorded"):
         led.append(NewGrant("p", Source.PAID_MONTHLY, far, timedelta(days=30), "pay_1", note()))
-    skew = timedelta(minutes=5)
+    skew = timedelta(seconds=60)  # ADR-023 Q256
     led = led.append(_paid("p1", now + skew, "pay_1"))
     with pytest.raises(ValueError, match="after it was recorded"):
         led.append(_paid("p2", now + skew + TICK, "pay_2"))

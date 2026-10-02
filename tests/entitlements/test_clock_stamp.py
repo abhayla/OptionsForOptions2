@@ -106,11 +106,11 @@ def test_attack_3_backdated_direct_cannot_give_back_used_trial_days():
 
 
 def test_recorded_at_is_the_ledger_clock_reading_for_every_new_event():
-    """AC-3: a grant dated 09:57 and a revoke effective 10:02 appended at clock 10:00 are both recorded at
+    """AC-3: a grant dated 09:59:30 and a revoke effective 10:00:30 appended at clock 10:00 are both recorded at
     10:00, the clock's reading, not their own dates."""
     clock = fixed_clock(ist(2026, 10, 1, 10))
-    led = EntitlementLedger("u", clock=clock).append(_paid("p", ist(2026, 10, 1, 9, 57)))
-    led = led.append(NewStatusChange("p", Status.REVOKED, ist(2026, 10, 1, 10, 2), note("refund")))
+    led = EntitlementLedger("u", clock=clock).append(_paid("p", ist(2026, 10, 1, 9, 59, 30)))
+    led = led.append(NewStatusChange("p", Status.REVOKED, ist(2026, 10, 1, 10, 0, 30), note("refund")))
     assert [e.audit.recorded_at for e in led.events] == [ist(2026, 10, 1, 10), ist(2026, 10, 1, 10)]
     assert led.events[1].audit.reason == "refund"
 
@@ -186,7 +186,7 @@ def test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(skew, sta
 
 def test_paid_at_may_be_earlier_but_never_after_the_stamp_plus_skew():
     """AC-4: paid_at (audit only) may be 25 days before the stamp (late webhook) or stamp + skew, never later."""
-    skew = timedelta(minutes=5)
+    skew = timedelta(seconds=60)  # ADR-023 Q256
     for paid_at in (STAMP - timedelta(days=25), STAMP + skew):
         led = ledger_for("u", clock=fixed_clock(STAMP)).append(_paid("p", STAMP, paid_at=paid_at))
         assert led.grant("p").paid_at == paid_at

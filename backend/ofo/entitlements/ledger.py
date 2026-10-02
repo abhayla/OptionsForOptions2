@@ -49,7 +49,7 @@ from ofo.entitlements.events import (
     Status,
 )
 
-DEFAULT_CLOCK_SKEW = timedelta(minutes=5)
+DEFAULT_CLOCK_SKEW = timedelta(seconds=60)  # ADR-023 Q256 (owner, 2026-10-02): "60 seconds, both ways"
 FREE_SOURCES = (Source.TRIAL, Source.REFERRAL)
 PAID_SOURCES = (Source.PAID_MONTHLY, Source.PAID_ANNUAL)
 

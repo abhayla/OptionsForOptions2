@@ -53,7 +53,7 @@ def _no_op(*args):
         ("_check_single_trial", [boundary.test_second_trial_in_one_ledger_is_refused]),
         ("_check_not_future", [
             boundary.test_grant_time_far_after_its_recording_is_refused,
-            boundary.test_grant_time_skew_is_five_minutes_by_default_and_configurable,
+            boundary.test_grant_time_skew_is_sixty_seconds_by_default_and_configurable,
             boundary.test_a_grant_dated_after_the_clock_is_refused_so_the_ledger_never_freezes,
             boundary.test_default_clock_is_the_real_utc_now,
         ]),
@@ -440,3 +440,21 @@ FIVE_MIN, ONE_MIN, ZERO = timedelta(minutes=5), timedelta(minutes=1), timedelta(
 def test_a_skew_bound_off_by_one_tick_is_caught(monkeypatch, guard, delta, tests):
     """AC-4: each skew bound one microsecond too loose or too tight fails its exact-boundary test."""
     _passes_then_fails_under(monkeypatch, guard, _loosened(guard, delta), tests, module=ledger_module)
+
+
+def test_load_re_applying_the_current_free_day_cap_is_caught(monkeypatch):
+    """AC-3 (issue #12 defect 2, ADR-023 Q225): if load re-judged stored grants by today's free-day cap, the 7 + 30
+    + 30 history built under cap 90 would fail to load under cap 30."""
+    real_integrity = ledger_module._check_integrity
+
+    def integrity_plus_cap(index, event):
+        real_integrity(index, event)
+        if isinstance(event, events.EntitlementGrant) and event.source in ledger_module.FREE_SOURCES:
+            free = sum(
+                (g.duration for g in index.grants.values() if g.source in ledger_module.FREE_SOURCES), timedelta(0)
+            )
+            if free + event.duration > timedelta(days=30):
+                raise ValueError("maximum accumulated free days is 30 (re-applied on load)")
+
+    tests = [stored.test_history_legal_under_cap_90_loads_under_cap_30_with_exact_access]
+    _passes_then_fails_under(monkeypatch, "_check_integrity", integrity_plus_cap, tests, module=ledger_module)

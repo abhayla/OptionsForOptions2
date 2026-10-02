@@ -56,9 +56,9 @@ def _new_grant(**overrides) -> NewGrant:
 
 def test_entitlement_stores_source_start_expiry_status_reference_and_audit():
     """AC-3: the recorded grant keeps source/reference as given and an audit of who/why from the caller plus
-    WHEN from the ledger clock (00:03 IST 1 Oct, not the 00:00 grant time); the resolved record gives start, expiry
+    WHEN from the ledger clock (00:00:30 IST 1 Oct, not the 00:00 grant time); the resolved record gives start, expiry
     and status."""
-    recorded = ist(2026, 10, 1, 0, 3)  # the ledger clock, 3 minutes after the grant time (inside the 5-minute skew)
+    recorded = ist(2026, 10, 1, 0, 0, 30)  # the ledger clock, 30 s after the grant time (inside the 60 s skew, Q256)
     led = record(ledger_for("u-1"), _new_grant(), recorded)
     grant = led.grant("paid-1")
     assert isinstance(grant, EntitlementGrant)

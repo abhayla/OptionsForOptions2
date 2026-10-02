@@ -145,7 +145,7 @@ def test_history_legal_under_skew_5_min_loads_under_skew_1_min():
     """AC-3: a grant 3 min after its recording and a revoke 3 min before its recording (legal under a
     5-minute skew) load after the skew is lowered to 1 minute; new events then meet the 1-minute skew."""
     rec = ist(2026, 9, 1)
-    led = record(ledger_for("u"), _paid("p", rec + timedelta(minutes=3)), rec)
+    led = record(ledger_for("u", clock_skew=FIVE_MIN), _paid("p", rec + timedelta(minutes=3)), rec)
     revoke_rec = ist(2026, 9, 10)
     led = revoke(at(led, revoke_rec), "p", revoke_rec - timedelta(minutes=3), note())
     loaded = _load(led.stored(), clock_skew=ONE_MIN)
