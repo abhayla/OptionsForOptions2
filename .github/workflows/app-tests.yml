@@ -104,7 +104,7 @@ jobs:
   # W-054: frontend skeleton. Core proof: browser -> Vite preview /api proxy -> FastAPI (ofo_app) -> PostgreSQL.
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PGHOST: localhost
       PGPORT: '5432'
@@ -175,9 +175,26 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Install Playwright Chromium
+      # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the
+      # @playwright/test version), and cap the step.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright Chromium (cache miss, browser and system deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 12
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 12
+        working-directory: frontend
+        run: npx playwright install-deps chromium
 
       - name: Start the API (uvicorn factory) as ofo_app
         env:
