@@ -78,15 +78,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-app.txt
 
+      # Timeouts, the TEMPORARY/CREATE revokes and the privilege allowlist live in migration 0001 (every host).
       - name: Create the application role (ADR-048 attributes)
         run: |
           psql -v ON_ERROR_STOP=1 \
             -c "CREATE ROLE ofo_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 5 PASSWORD '${APP_ROLE_PW}'" \
-            -c "ALTER ROLE ofo_app SET statement_timeout = '30s'" \
-            -c "ALTER ROLE ofo_app SET idle_in_transaction_session_timeout = '60s'" \
             -c "REVOKE CONNECT ON DATABASE ofo_test FROM PUBLIC" \
-            -c "GRANT CONNECT ON DATABASE ofo_test TO ofo_app" \
-            -c "REVOKE CREATE ON SCHEMA public FROM PUBLIC"
+            -c "GRANT CONNECT ON DATABASE ofo_test TO ofo_app"
 
       - name: Run database migrations as the owner role
         env:

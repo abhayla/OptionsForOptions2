@@ -131,27 +131,129 @@ async def check_disable_trigger_refused(conn: AsyncConnection) -> None:
 # ---- the proof, as the application role ----
 
 
-async def test_app_role_is_not_superuser_and_not_owner(app_engine: AsyncEngine) -> None:
-    """Precondition: without it every privilege test below would prove nothing."""
+APP_ROLE_VIEW = text(
+    """
+    WITH me AS (SELECT * FROM pg_roles WHERE rolname = current_user)
+    SELECT
+        me.rolsuper, me.rolcreatedb, me.rolcreaterole, me.rolreplication, me.rolbypassrls, me.rolcanlogin,
+        EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = me.oid) AS member_of_any,
+        EXISTS (SELECT 1 FROM pg_database d WHERE d.datname = current_database() AND d.datdba = me.oid) AS owns_db,
+        EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspowner = me.oid) AS owns_schema,
+        EXISTS (SELECT 1 FROM pg_class c WHERE c.relowner = me.oid) AS owns_relation,
+        EXISTS (SELECT 1 FROM pg_proc p WHERE p.proowner = me.oid) AS owns_function,
+        EXISTS (SELECT 1 FROM pg_type t WHERE t.typowner = me.oid) AS owns_type,
+        has_database_privilege(me.oid, current_database(), 'CREATE') AS db_create,
+        has_database_privilege(me.oid, current_database(), 'TEMPORARY') AS db_temp,
+        has_schema_privilege(me.oid, 'public', 'CREATE') AS public_create,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'SELECT') AS t_select,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'INSERT') AS t_insert_all,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'UPDATE') AS t_update,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'DELETE') AS t_delete,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'TRUNCATE') AS t_truncate,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'REFERENCES') AS t_references,
+        has_table_privilege(me.oid, 'public.ledger_entries', 'TRIGGER') AS t_trigger,
+        has_column_privilege(me.oid, 'public.ledger_entries', 'id', 'INSERT') AS c_id_insert,
+        has_column_privilege(me.oid, 'public.ledger_entries', 'kind', 'INSERT')
+          AND has_column_privilege(me.oid, 'public.ledger_entries', 'event_at', 'INSERT')
+          AND has_column_privilege(me.oid, 'public.ledger_entries', 'recorded_at', 'INSERT')
+          AND has_column_privilege(me.oid, 'public.ledger_entries', 'payload', 'INSERT') AS c_allowed_insert,
+        has_sequence_privilege(me.oid, 'public.ledger_entries_id_seq', 'USAGE') AS s_usage,
+        has_sequence_privilege(me.oid, 'public.ledger_entries_id_seq', 'UPDATE') AS s_update,
+        (SELECT setting FROM pg_settings WHERE name = 'statement_timeout') AS statement_timeout_ms,
+        (SELECT setting FROM pg_settings WHERE name = 'idle_in_transaction_session_timeout') AS idle_timeout_ms
+    FROM me
+    """
+)
+
+
+async def test_app_role_privileges_equal_the_allowlist(app_engine: AsyncEngine) -> None:
+    """Precondition, as ofo_app sees itself: without it every privilege test below would prove nothing."""
     async with app_engine.connect() as conn:
-        row = (
-            await conn.execute(
-                text(
-                    "SELECT r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb, t.tableowner, current_user, "
-                    "       pg_has_role(current_user, t.tableowner, 'MEMBER') AS member_of_owner, "
-                    "       EXISTS (SELECT 1 FROM pg_roles p WHERE p.rolname IN ('pg_write_all_data', 'pg_maintain') "
-                    "               AND pg_has_role(current_user, p.oid, 'MEMBER')) AS member_of_writer "
-                    "FROM pg_roles r, pg_tables t "
-                    "WHERE r.rolname = current_user AND t.schemaname = 'public' AND t.tablename = 'ledger_entries'"
+        v = (await conn.execute(APP_ROLE_VIEW)).mappings().one()
+    # 1. attributes
+    assert (v["rolsuper"], v["rolcreatedb"], v["rolcreaterole"], v["rolreplication"], v["rolbypassrls"]) == (
+        False, False, False, False, False,
+    ), dict(v)
+    assert v["rolcanlogin"] is True
+    # 2. membership: none at all
+    assert v["member_of_any"] is False
+    # 3. ownership: nothing
+    assert not any(v[k] for k in ("owns_db", "owns_schema", "owns_relation", "owns_function", "owns_type")), dict(v)
+    # 4-5. database and schema privileges
+    assert (v["db_create"], v["db_temp"], v["public_create"]) == (False, False, False), dict(v)
+    # 6. exactly SELECT + column INSERT(kind, event_at, recorded_at, payload); sequence USAGE only
+    assert v["t_select"] is True and v["c_allowed_insert"] is True
+    assert not any(
+        v[k] for k in ("t_insert_all", "t_update", "t_delete", "t_truncate", "t_references", "t_trigger", "c_id_insert")
+    ), dict(v)
+    assert v["s_usage"] is True and v["s_update"] is False
+    # 7. ADR-048 timeouts (pg_settings reports milliseconds): 30 s statement, 60 s idle in transaction
+    assert v["statement_timeout_ms"] == "30000"
+    assert v["idle_timeout_ms"] == "60000"
+
+
+# ---- the migration's allowlist function, called directly ----
+
+ALLOWLIST_SQLSTATE = "OF002"
+
+
+async def check_allowlist(conn: AsyncConnection, role: str) -> None:
+    """Run public.ofo_assert_app_role_allowlist(role, 'post'); its refusal becomes an AssertionError with its text."""
+    try:
+        async with conn.begin_nested():
+            await conn.execute(text("SELECT public.ofo_assert_app_role_allowlist(:r, 'post')"), {"r": role})
+    except DBAPIError as exc:
+        assert _sqlstate(exc) == ALLOWLIST_SQLSTATE, f"unexpected error {_sqlstate(exc)}: {exc}"
+        raise AssertionError(str(exc.orig)) from None
+
+
+async def _allowlist_after(admin_engine: AsyncEngine, app_engine: AsyncEngine, mutation_sql: list[str], match: str) -> None:
+    role = app_engine.url.username
+    assert role and re.fullmatch(r"[a-z_][a-z0-9_]*", role), role
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            db = (await conn.execute(text("SELECT current_database()"))).scalar_one()
+            owner = (
+                await conn.execute(
+                    text("SELECT tableowner FROM pg_tables WHERE schemaname = 'public' AND tablename = 'ledger_entries'")
                 )
-            )
-        ).one()
-    rolsuper, bypassrls, createrole, createdb, owner, me, member_of_owner, member_of_writer = row
-    assert rolsuper is False and bypassrls is False, f"{me} must be NOSUPERUSER NOBYPASSRLS (ADR-048)"
-    assert createrole is False and createdb is False, f"{me} must be NOCREATEROLE NOCREATEDB (ADR-048)"
-    assert owner != me, f"{me} owns ledger_entries; migrations must run as the owner role"
-    assert member_of_owner is False, f"{me} inherits the owner role {owner}'s privileges"
-    assert member_of_writer is False, f"{me} is a member of pg_write_all_data / pg_maintain"
+            ).scalar_one()
+            assert re.fullmatch(r"[a-z_][a-z0-9_]*", db) and re.fullmatch(r"[a-z_][a-z0-9_]*", owner), (db, owner)
+            await check_allowlist(conn, role)  # holds before the mutation
+            for sql in mutation_sql:
+                await conn.execute(text(sql.format(role=role, db=db, owner=owner)))
+            with pytest.raises(AssertionError, match=match):
+                await check_allowlist(conn, role)
+        finally:
+            await trans.rollback()
+
+
+async def test_allowlist_holds_on_the_real_setup(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
+    async with admin_engine.connect() as conn, conn.begin():
+        await check_allowlist(conn, app_engine.url.username)
+
+
+async def test_allowlist_refuses_role_owning_the_database(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
+    await _allowlist_after(admin_engine, app_engine, ['ALTER DATABASE "{db}" OWNER TO "{role}"'], "owns the database")
+
+
+async def test_allowlist_refuses_create_on_public(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
+    await _allowlist_after(
+        admin_engine, app_engine, ['GRANT CREATE ON SCHEMA public TO "{role}"'], "has CREATE on schema public"
+    )
+
+
+async def test_allowlist_refuses_temporary(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
+    await _allowlist_after(
+        admin_engine, app_engine, ['GRANT TEMPORARY ON DATABASE "{db}" TO "{role}"'], "has TEMPORARY on the database"
+    )
+
+
+async def test_allowlist_refuses_membership_of_the_table_owner(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
+    await _allowlist_after(
+        admin_engine, app_engine, ['GRANT "{owner}" TO "{role}"'], "is a member of another role"
+    )
 
 
 async def test_temp_table_cannot_be_created_to_shadow_the_ledger(app_engine: AsyncEngine) -> None:
