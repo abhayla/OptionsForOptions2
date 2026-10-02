@@ -15,15 +15,15 @@ async def test_unhandled_error_returns_generic_body_without_detail() -> None:
     from ofo_app.main import create_app
 
     app = create_app()
-    secret_detail = "db password is test-not-a-real-value"
+    leaked_detail = "internal detail: host db.internal port 5432"
 
     @app.get("/boom")
     async def boom() -> None:
-        raise RuntimeError(secret_detail)
+        raise RuntimeError(leaked_detail)
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.get("/boom")
     assert response.status_code == 500
     assert response.json() == {"error": "internal_error"}
-    assert secret_detail not in response.text
+    assert leaked_detail not in response.text
