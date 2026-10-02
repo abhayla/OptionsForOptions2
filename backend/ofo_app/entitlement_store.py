@@ -26,6 +26,15 @@ Ledger row and audit event commit or roll back together.
 load(conn, user_id) reads the user's rows ordered by id and rebuilds the ledger with integrity checks only
 (``EntitlementLedger.load``): today's caps and skew are never re-applied to stored rows. A row the loader cannot
 decode, or one that breaks integrity, fails closed with ``EntitlementStoreError`` naming the row id.
+
+Known limits (not handled here):
+- A database clock jump FORWARD stalls the user's appends until real time catches up: events are dated by the
+  caller's real time, the stamp by the jumped clock, so the 60 s window refuses them; and stored order requires
+  non-decreasing stamps. There is no recovery path yet.
+- Audit fields ``price`` (subscriptions) and ``referred_platform_user_id`` (referrals) are not filled until the
+  payment and referral items supply them.
+- ``user_id`` normalisation and one trial per Client ID (ADR-022) are owned upstream (W-008); this store keys on the
+  ``user_id`` string it is given.
 """
 
 from __future__ import annotations
@@ -212,6 +221,15 @@ class DatabaseStamp:
 # ---------------------------------------------------------------- audit mapping (REQ-017 AC-4)
 
 
+_ACTION_FAMILY = {
+    Source.TRIAL: "trial",
+    Source.REFERRAL: "referral",
+    Source.PAID_MONTHLY: "paid",
+    Source.PAID_ANNUAL: "paid",
+    Source.DIRECT_ZERODHA_CUSTOMER: "direct",
+}
+
+
 def audit_record(ledger: EntitlementLedger, event: EntitlementEvent) -> tuple[EventType, dict[str, Any]]:
     """The audit event type and payload for a newly recorded event (fields per ``ofo_app.audit_allowlist``)."""
     by_id = {r.grant.entitlement_id: r for r in resolve(ledger)}
@@ -228,14 +246,13 @@ def audit_record(ledger: EntitlementLedger, event: EntitlementEvent) -> tuple[Ev
             return EventType.DIRECT_CUSTOMER_ELIGIBILITY_GRANTED, {**user, "action": "granted",
                                                                    "reason": event.audit.reason}
         return EventType.SUBSCRIPTION_STARTED, {**user, "plan": grant.source.value, **dates}
-    if grant.source is Source.TRIAL:
-        return EventType.TRIAL_EXPIRED, {**user, **dates}
     if grant.source is Source.DIRECT_ZERODHA_CUSTOMER:
         return EventType.DIRECT_CUSTOMER_ELIGIBILITY_REVOKED, {**user, "action": "revoked",
                                                                "reason": event.audit.reason}
-    if grant.source in (Source.PAID_MONTHLY, Source.PAID_ANNUAL):
-        return EventType.SUBSCRIPTION_EXPIRED, {**user, "plan": grant.source.value, **dates}
-    return EventType.ENTITLEMENT_CHANGED, {**user, "action": f"{grant.source.value.lower()}_{event.status.value}"}
+    # Every other status change is a revoke or an early end, never an expiry: ENTITLEMENT_CHANGED with action
+    # "<source>_<status>" (trial_revoked, trial_ended, paid_revoked, referral_revoked). ENTITLEMENT_CHANGED declares
+    # no reason field, so the reason stays in the ledger row's payload, linked by correlation_id "ledger:<row id>".
+    return EventType.ENTITLEMENT_CHANGED, {**user, "action": f"{_ACTION_FAMILY[grant.source]}_{event.status.value}"}
 
 
 # ---------------------------------------------------------------- public API
@@ -291,7 +308,11 @@ async def append(
             correlation_id=f"ledger:{row_id}",
             payload=audit_payload,
         )
-    return after, row_id
+    # The returned ledger gets a fresh, unset stamp: it can never stamp (and so never hold) an event that was not
+    # persisted through this store.
+    fresh = EntitlementLedger.load(after.stored(), clock_skew=Q256_CLOCK_SKEW, clock=DatabaseStamp(),
+                                   max_free_days=max_free_days)
+    return fresh, row_id
 
 
 __all__ = [

@@ -18,7 +18,6 @@ import ofo.entitlements
 from ofo.entitlements import engine
 from ofo.entitlements.engine import access_at, trial_grant
 from ofo.entitlements.events import AccessLevel, NewGrant, Source
-from ofo.entitlements.ledger import EntitlementLedger
 
 from .helpers import ist, ledger_for, note, record
 

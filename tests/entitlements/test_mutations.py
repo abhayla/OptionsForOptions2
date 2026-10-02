@@ -28,13 +28,14 @@ CAUGHT = (AssertionError, pytest.fail.Exception, OverflowError, ValueError)
 
 
 def _passes_then_fails_under(
-    monkeypatch: pytest.MonkeyPatch, name: str, mutant, tests: list[Callable[[], None]], module=engine
+    monkeypatch: pytest.MonkeyPatch, name: str, mutant, tests: list[Callable[[], None]], module=engine,
+    match: str | None = None,
 ):
     for test in tests:
         test()  # baseline: the guard is intact, the test passes
     monkeypatch.setattr(module, name, mutant)
     for test in tests:
-        with pytest.raises(CAUGHT):
+        with pytest.raises(CAUGHT, match=match):
             test()
 
 
@@ -76,7 +77,7 @@ def _no_op(*args):
 )
 def test_removing_a_ledger_guard_is_caught(monkeypatch, guard, tests):
     """AC-4: each ledger input guard is load-bearing: turning it into a no-op fails its red test."""
-    _passes_then_fails_under(monkeypatch, guard, _no_op, tests, module=ledger_module)
+    _passes_then_fails_under(monkeypatch, guard, _no_op, tests, module=ledger_module, match=r"DID NOT RAISE")
 
 
 def test_removing_the_duration_cap_is_caught(monkeypatch):
@@ -251,7 +252,8 @@ def test_removing_the_post_dating_guard_is_caught(monkeypatch):
         *[lambda s=s, st=st: stored.test_status_change_post_dating_boundary_is_exactly_the_skew(s, st)
           for s in (stored.FIVE_MIN, stored.ONE_MIN) for st in (Status.REVOKED, Status.ENDED)],
     ]
-    _passes_then_fails_under(monkeypatch, "_check_change_not_postdated", _no_op, tests, module=ledger_module)
+    _passes_then_fails_under(monkeypatch, "_check_change_not_postdated", _no_op, tests, module=ledger_module,
+                             match=r"DID NOT RAISE")
 
 
 def test_post_dating_bound_one_tick_loose_is_caught(monkeypatch):
@@ -260,7 +262,7 @@ def test_post_dating_bound_one_tick_loose_is_caught(monkeypatch):
     tests = [lambda: stored.test_status_change_post_dating_boundary_is_exactly_the_skew(stored.FIVE_MIN, Status.REVOKED)]
     _passes_then_fails_under(
         monkeypatch, "_check_change_not_postdated", lambda change, skew: real(change, skew + boundary_tick()),
-        tests, module=ledger_module,
+        tests, module=ledger_module, match=r"DID NOT RAISE",
     )
 
 
@@ -280,7 +282,8 @@ def test_load_re_applying_the_current_policy_is_caught(monkeypatch):
 
     real_integrity = ledger_module._check_integrity
     tests = [stored.test_history_legal_under_skew_5_min_loads_under_skew_1_min]
-    _passes_then_fails_under(monkeypatch, "_check_integrity", strict_integrity, tests, module=ledger_module)
+    _passes_then_fails_under(monkeypatch, "_check_integrity", strict_integrity, tests, module=ledger_module,
+                             match=r"after it was recorded")
 
 
 def test_load_through_the_new_event_path_is_caught(monkeypatch):
@@ -439,7 +442,9 @@ FIVE_MIN, ONE_MIN, ZERO = timedelta(minutes=5), timedelta(minutes=1), timedelta(
         "change-backdated-tight"])
 def test_a_skew_bound_off_by_one_tick_is_caught(monkeypatch, guard, delta, tests):
     """AC-4: each skew bound one microsecond too loose or too tight fails its exact-boundary test."""
-    _passes_then_fails_under(monkeypatch, guard, _loosened(guard, delta), tests, module=ledger_module)
+    # one tick too loose: the refusal test sees no error; one tick too tight: the accepted boundary is refused
+    match = r"DID NOT RAISE" if delta > timedelta(0) else r"after it was recorded|backdated before it was recorded"
+    _passes_then_fails_under(monkeypatch, guard, _loosened(guard, delta), tests, module=ledger_module, match=match)
 
 
 def test_load_re_applying_the_current_free_day_cap_is_caught(monkeypatch):
@@ -457,4 +462,5 @@ def test_load_re_applying_the_current_free_day_cap_is_caught(monkeypatch):
                 raise ValueError("maximum accumulated free days is 30 (re-applied on load)")
 
     tests = [stored.test_history_legal_under_cap_90_loads_under_cap_30_with_exact_access]
-    _passes_then_fails_under(monkeypatch, "_check_integrity", integrity_plus_cap, tests, module=ledger_module)
+    _passes_then_fails_under(monkeypatch, "_check_integrity", integrity_plus_cap, tests, module=ledger_module,
+                             match=r"maximum accumulated free days is 30 \(re-applied on load\)")

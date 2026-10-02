@@ -17,6 +17,7 @@ Expected values come from the spec: a 7-day trial (ADR-023 Q88), 30 referral day
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -46,7 +47,6 @@ from ofo_app.entitlement_store import (
     DatabaseStamp,
     EntitlementStoreError,
     audit_record,
-    decode_row,
     encode,
     ledger_from_rows,
 )
@@ -175,12 +175,33 @@ def test_every_audit_payload_stays_inside_its_allowlist():
         led = led.append(draft)
         event_type, payload = audit_record(led, led.events[-1])
         assert filter_payload(event_type, payload) == payload
-        seen.append(event_type)
+        seen.append((event_type, payload.get("action")))
+    changed = EventType.ENTITLEMENT_CHANGED
     assert seen == [
-        EventType.TRIAL_STARTED, EventType.REFERRAL_REWARD_GRANTED, EventType.SUBSCRIPTION_STARTED,
-        EventType.DIRECT_CUSTOMER_ELIGIBILITY_GRANTED, EventType.TRIAL_EXPIRED, EventType.SUBSCRIPTION_EXPIRED,
-        EventType.DIRECT_CUSTOMER_ELIGIBILITY_REVOKED, EventType.ENTITLEMENT_CHANGED,
+        (EventType.TRIAL_STARTED, None), (EventType.REFERRAL_REWARD_GRANTED, None),
+        (EventType.SUBSCRIPTION_STARTED, None), (EventType.DIRECT_CUSTOMER_ELIGIBILITY_GRANTED, "granted"),
+        (changed, "trial_ended"), (changed, "paid_revoked"),
+        (EventType.DIRECT_CUSTOMER_ELIGIBILITY_REVOKED, "revoked"), (changed, "referral_revoked"),
     ]
+
+
+@pytest.mark.parametrize("source, duration", [
+    (Source.TRIAL, 7 * DAY), (Source.PAID_MONTHLY, 30 * DAY), (Source.PAID_ANNUAL, 365 * DAY),
+    (Source.REFERRAL, 30 * DAY),
+])
+@pytest.mark.parametrize("status", [Status.REVOKED, Status.ENDED])
+def test_a_status_change_is_never_audited_as_an_expiry(source, duration, status):
+    """Orchestrator decision (round 7 review): a revoke or early end is ENTITLEMENT_CHANGED "<source>_<status>",
+    never TRIAL_EXPIRED / SUBSCRIPTION_EXPIRED."""
+    if status is Status.ENDED and source is not Source.TRIAL:
+        pytest.skip("ENDED is only a trial's early end (ADR-039)")
+    stamp = DatabaseStamp()
+    stamp.recorded_at = T0
+    led = ledger_from_rows("u", [], clock=stamp).append(NewGrant("e", source, T0, duration, "ref-e", note()))
+    led = led.append(NewStatusChange("e", status, T0, note("why")))
+    event_type, payload = audit_record(led, led.events[-1])
+    family = {"TRIAL": "trial", "REFERRAL": "referral"}.get(source.value, "paid")
+    assert (event_type, payload["action"]) == (EventType.ENTITLEMENT_CHANGED, f"{family}_{status.value}")
 
 
 # ================================================================ database (real PostgreSQL as ofo_app)
@@ -390,3 +411,84 @@ async def test_mutant_store_skipping_the_new_event_policy_is_caught(app_engine: 
         monkeypatch.setattr(ledger_module, "_check_policy", lambda ledger, event: None)
         with pytest.raises(AssertionError, match="over-cap grant was accepted"):
             await _over_cap_grant_is_refused(conn, user)
+
+
+async def test_a_paid_revoke_is_audited_as_entitlement_changed_with_the_reason_in_the_ledger_row(
+    app_engine: AsyncEngine,
+) -> None:
+    """A paid revoke writes ENTITLEMENT_CHANGED action paid_revoked (not SUBSCRIPTION_EXPIRED); its reason is read
+    back from the ledger row the audit event's correlation_id names."""
+    user = _user()
+    async with app_engine.connect() as conn, conn.begin():
+        t0 = await _db_now(conn)
+        await entitlement_store.append(conn, user, NewGrant("p", Source.PAID_MONTHLY, t0, 30 * DAY, "pay_1", note()))
+        _, row_id = await entitlement_store.append(
+            conn, user, NewStatusChange("p", Status.REVOKED, await _db_now(conn), note("refund requested")))
+        audit = (await conn.execute(
+            text("SELECT event_type, payload::text AS payload FROM public.audit_events WHERE correlation_id = :c"),
+            {"c": f"ledger:{row_id}"})).one()
+        assert audit.event_type == EventType.ENTITLEMENT_CHANGED.value
+        assert json.loads(audit.payload)["action"] == "paid_revoked"
+        reason = (await conn.execute(text("SELECT payload->>'reason' FROM public.ledger_entries WHERE id = :i"),
+                                     {"i": row_id})).scalar_one()  # the id the audit event's correlation_id names
+        assert reason == "refund requested"
+
+
+async def test_the_ledger_returned_by_append_cannot_stamp_an_unpersisted_event(app_engine: AsyncEngine) -> None:
+    """The ledger append returns carries a fresh, unset stamp: appending to it outside the store is refused."""
+    user = _user()
+    async with app_engine.connect() as conn, conn.begin():
+        led, _ = await entitlement_store.append(conn, user, trial_grant("trial", await _db_now(conn), "reg", note()))
+        with pytest.raises(EntitlementStoreError, match="only from the database clock"):
+            led.append(referral_grant("ref-1", await _db_now(conn), "referral:a", note()))
+
+
+# ---------------------------------------------------------------- the per-user lock (two connections)
+
+
+async def _waiting_on_a_lock(conn: AsyncConnection, pid: int) -> bool:
+    return bool((await conn.execute(text("SELECT count(*) FROM pg_locks WHERE pid = :p AND NOT granted"),
+                                    {"p": pid})).scalar_one())
+
+
+async def _concurrent_trials_yield_one(app_engine: AsyncEngine) -> None:
+    """A appends a trial and holds its transaction open; B's trial append for the same user waits; after A commits B
+    is refused (already has a trial) and exactly one trial row exists."""
+    user = _user()
+    async with app_engine.connect() as conn_a, app_engine.connect() as conn_b, app_engine.connect() as observer:
+        pid_b = (await conn_b.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        await conn_b.commit()
+        trans_a = await conn_a.begin()
+        await entitlement_store.append(conn_a, user, trial_grant("trial-a", await _db_now(conn_a), "reg-a", note()))
+
+        async def b_appends():
+            async with conn_b.begin():
+                return await entitlement_store.append(
+                    conn_b, user, trial_grant("trial-b", await _db_now(observer), "reg-b", note()))
+
+        task = asyncio.create_task(b_appends())
+        for _ in range(200):  # until B waits on a lock or finishes (bounded by count, not by elapsed time)
+            if task.done() or await _waiting_on_a_lock(observer, pid_b):
+                break
+            await asyncio.sleep(0.01)
+        await trans_a.commit()
+        try:
+            await task
+        except EntitlementStoreError as exc:
+            assert "already has a trial" in str(exc)
+        else:
+            raise AssertionError("both concurrent trial appends succeeded")
+        assert await _row_count(observer, user) == 1
+
+
+async def test_two_concurrent_trial_appends_for_one_user_record_one_trial(app_engine: AsyncEngine) -> None:
+    """MAJOR (round 7 review): the per-user advisory lock serialises appends; the second trial is refused."""
+    await _concurrent_trials_yield_one(app_engine)
+
+
+async def test_mutant_without_the_per_user_lock_is_caught(app_engine: AsyncEngine, monkeypatch) -> None:
+    """Without the lock, B reads the history before A commits and both trials are recorded."""
+    await _concurrent_trials_yield_one(app_engine)  # baseline: green
+    monkeypatch.setattr(entitlement_store, "_LOCK", text("SELECT CAST(:cls AS bigint), CAST(:user_id AS text)"))
+    with pytest.raises(AssertionError, match="both concurrent trial appends succeeded"):
+        await _concurrent_trials_yield_one(app_engine)
