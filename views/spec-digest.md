@@ -60,8 +60,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 ## Requirements (71)
 
 - REQ-001 [Specified]: V1 scope: underlyings, leg types, broker
-- REQ-002 [Specified]: Account boundaries
-- REQ-003 [Specified]: Public multi-user SaaS
+- REQ-002 [Approved]: Account boundaries
+- REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
 - REQ-005 [Specified]: Product language and positioning
 - REQ-006 [Specified]: Three UX levels
@@ -70,9 +70,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-009 [Approved]: Primary navigation and account menu
 - REQ-010 [Specified]: Public site and live-data access
 - REQ-011 [Specified]: Learn section
-- REQ-012 [Specified]: Registration and identity layers
-- REQ-013 [Specified]: Email change and account deletion
-- REQ-014 [Specified]: Zerodha Client ID binding and anti-abuse
+- REQ-012 [Approved]: Registration and identity layers
+- REQ-013 [Approved]: Email change and account deletion
+- REQ-014 [Approved]: Zerodha Client ID binding and anti-abuse
 - REQ-015 [Specified]: Zerodha connection
 - REQ-016 [Specified]: Strategies without Zerodha
 - REQ-017 [Approved]: Entitlement engine
