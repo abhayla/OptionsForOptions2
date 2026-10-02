@@ -26,6 +26,14 @@ describe('lint rule banning literal vendor hosts (ADR-012)', () => {
     expect((await messages(code, 'src/x.vue')).length).toBeGreaterThan(0)
   })
 
+  it('flags the dhan API host', async () => {
+    expect((await messages("export const u = 'https://api.dhan.co/v2'\n", 'src/x.js')).length).toBeGreaterThan(0)
+  })
+
+  it('passes an ordinary word that contains the letters dhan', async () => {
+    expect(await messages("export const u = 'Sudhanshu and Madhana'\n", 'src/x.js')).toEqual([])
+  })
+
   it('passes a same-origin call', async () => {
     expect(await messages("export const u = '/api/health'\n", 'src/x.js')).toEqual([])
   })
