@@ -1,0 +1,24 @@
+{
+  "id": "privilege-guard-as-denylist",
+  "scope": "generic",
+  "class": "Any guard that protects data by refusing a list of forbidden privilege paths (superuser, a named role membership, table ownership) misses every path not on the list, because a database grants power through many routes (database ownership, schema ownership, role membership, default PUBLIC grants); the guard must instead assert that the role's effective privileges are exactly an allowed set. Wider shape of secret-filter-by-key-name: a denylist over an open-ended space is never complete.",
+  "mechanism": "W-051 round 1 checked only rolsuper/rolbypassrls and table ownership; review found temp-table shadowing (PUBLIC keeps TEMPORARY), caller-chosen ids (table-wide INSERT) and inherited privileges via membership. Round 2 added those three and review found two more: the app role as database owner owns schema public on PostgreSQL 15+ (can DROP and recreate the table without its trigger), and REVOKE TEMPORARY FROM PUBLIC only warns when run by a non-owner, so it fails open.",
+  "first_seen": {
+    "date": "2026-10-02",
+    "where": "W-051 trusted database clock, PR #102, adversarial reviews rounds 1-2 (commits 606d91f, 08d81a8)",
+    "evidence": "Round 1: 3 MAJOR paths; round 2: 2 new MAJOR paths of the same class after round 1's fixes. Fix (bd95e32): allowlist function ofo_assert_app_role_allowlist checked before and after the migration's grants. CI run 36973761266 (postgres:16, as ofo_app): 39 passed; the allowlist refused each mutation with its own message: 'owns the database', 'has CREATE on schema public', 'has TEMPORARY on the database', 'is a member of another role', and passed the real setup."
+  },
+  "fix": "Assert the positive set: role attributes, no role membership at all, owns nothing, no CREATE/TEMPORARY on the database, no CREATE on schema public, exactly SELECT + column INSERT on the ledger, sequence USAGE only, trigger present and enabled; refuse (SQLSTATE OF002) listing every violation.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "backend/ofo_app/alembic/versions/0001_baseline_ledger_clock.py ofo_assert_app_role_allowlist (pre and post phase)",
+      "tests_app/test_ledger_clock.py allowlist mutation tests (run in .github/workflows/app-tests.yml with OFO_REQUIRE_DB_TESTS=1)"
+    ],
+    "note": "Covers the ledger_entries table; every new append-only table (W-052, W-053) must be added to the allowlist's table checks. Does not cover privileges granted after the migration ran (a later manual GRANT): re-running the function is the check."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-064.md",
+    "spec/decisions/ADR-048.md"
+  ]
+}

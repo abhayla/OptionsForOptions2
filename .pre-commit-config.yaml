@@ -1,0 +1,48 @@
+# Pre-commit hooks for the API/DB/web layers.
+# Adapted from abhayla/algochanakya@bf9faf7:.pre-commit-config.yaml (ADR-047): file hygiene, ruff, detect-secrets
+# with a baseline, no .env commits. Dropped: the legacy production-path check.
+# Opt-in per developer (pip install pre-commit && pre-commit install); nothing installs these hooks automatically.
+# Run manually: pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        exclude: ^docs/reference/
+      - id: end-of-file-fixer
+        exclude: ^docs/reference/
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.7
+    hooks:
+      # Lint only (ruff's default rules); no auto-format until the project picks a line length.
+      - id: ruff
+        files: ^(backend/ofo_app/|tests_app/|scripts/alembic_migration_guard\.py|scripts/generate_openapi\.py)
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            .*package-lock\.json$|
+            .*\.env\.example$|
+            frontend/node_modules/.*
+          )$
+
+  - repo: local
+    hooks:
+      - id: no-env-files
+        name: Prevent .env file commits
+        entry: python -c "import sys; print('ERROR - .env files must not be committed:', *sys.argv[1:]); sys.exit(1)"
+        language: system
+        files: '(^|/)\.env(\.local)?$'
