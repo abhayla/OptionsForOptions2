@@ -1,5 +1,6 @@
 {
   "id": "pre-existing-failure-claim-not-checked-on-base",
+  "scope": "generic",
   "class": "Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes.",
   "mechanism": "The W-024 builder 'proved' the failure pre-existing by loading HEAD:backend/ofo/wording.py - HEAD being its own branch, which already contained the change - and filed deferred issue #38.",
   "first_seen": {

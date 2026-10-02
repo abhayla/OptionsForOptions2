@@ -1,5 +1,6 @@
 {
   "id": "caller-supplied-verdict-trusted",
+  "scope": "generic",
   "class": "Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing.",
   "mechanism": "Public functions took a SafetyResult / Version / legs-hash argument and trusted it: W-027 execute_confirmed_modification checked only `.blocked` on a caller-built SafetyResult; W-020 from_evaluation recorded a caller-passed Version as active; W-014 accepted a legs hash the caller computed over its own legs.",
   "first_seen": {

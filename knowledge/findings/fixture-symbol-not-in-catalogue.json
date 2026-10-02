@@ -1,5 +1,6 @@
 {
   "id": "fixture-symbol-not-in-catalogue",
+  "scope": "project",
   "class": "Any test fixture that types a broker tradingsymbol (or a symbol/expiry pair) from memory instead of taking it from the real instrument catalogue can pass for months while encoding a contract Zerodha does not list; the defect surfaces only when some later code checks the catalogue, and every test built on the fixture then has to change.",
   "mechanism": "W-023's partial-execution fixtures used NIFTY26OCT<strike>CE/PE symbols with the weekly 2026-10-06 expiry; the real catalogue slice lists that expiry as NIFTY26O06<strike>.. (NIFTY26OCT.. is the monthly 2026-10-27 format, e.g. NIFTY26OCTFUT). Nothing checked the catalogue until W-026's send-time sink did.",
   "first_seen": {

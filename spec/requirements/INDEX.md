@@ -4,80 +4,165 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 71; sections: 0
+Requirements: 71; sections: 18
 
-## (no section) (71)
+## Accounts and identity (4)
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-001 | V1 scope: underlyings, leg types, broker | — | Specified |
-| REQ-002 | Account boundaries | — | Specified |
-| REQ-003 | Public multi-user SaaS | — | Specified |
-| REQ-004 | Responsive web, desktop and mobile priorities | — | Specified |
-| REQ-005 | Product language and positioning | — | Specified |
-| REQ-006 | Three UX levels | — | Specified |
-| REQ-007 | Strategy information density | — | Specified |
-| REQ-008 | Home dashboard | — | Specified |
-| REQ-009 | Primary navigation and account menu | — | Specified |
-| REQ-010 | Public site and live-data access | — | Specified |
-| REQ-011 | Learn section | — | Specified |
-| REQ-012 | Registration and identity layers | — | Specified |
-| REQ-013 | Email change and account deletion | — | Specified |
-| REQ-014 | Zerodha Client ID binding and anti-abuse | — | Specified |
-| REQ-015 | Zerodha connection | — | Specified |
-| REQ-016 | Strategies without Zerodha | — | Specified |
-| REQ-017 | Entitlement engine | — | Approved |
-| REQ-018 | Trial and Limited/Read-Only mode | — | Approved |
-| REQ-019 | Complimentary Pro for qualifying Zerodha customers | — | Approved |
-| REQ-020 | Admin: qualifying Client ID management | — | Verified |
-| REQ-021 | Referral rewards | — | Approved |
-| REQ-022 | Free-eligibility loop | — | Specified |
-| REQ-023 | Paid Pro and billing | — | Specified |
-| REQ-024 | Guided strategy creation | — | Specified |
-| REQ-025 | Strategy discovery and preferences | — | Approved |
-| REQ-026 | Expected market range input | — | Approved |
-| REQ-027 | Strike selection modes | — | Approved |
-| REQ-028 | Generic strategy engine and templates | — | Approved |
-| REQ-029 | Option Chain display and live data | — | Specified |
-| REQ-030 | Option Chain leg selection and import | — | Specified |
-| REQ-031 | Option Chain live strategy preview | — | Specified |
-| REQ-032 | Calculation engine | — | Verified |
-| REQ-033 | Expiry scenario and live P&L formulas | — | Verified |
-| REQ-034 | Outcome view and scenario levels | — | Approved |
-| REQ-035 | Single strategy table | — | Approved |
-| REQ-036 | Strategy-only execution | — | Approved |
-| REQ-037 | Strategy modification | — | Approved |
-| REQ-038 | Strategy definition, live state and versions | — | Verified |
-| REQ-039 | Strategy state machine and exception states | — | Approved |
-| REQ-040 | Activity timeline and rule-trigger audit | — | Verified |
-| REQ-041 | Rule engine: entry, exit and rule defaults | — | Approved |
-| REQ-042 | Automation: Alert + Prepare Orders | — | Specified |
-| REQ-043 | Live monitoring and status colours | — | Specified |
-| REQ-044 | Strategy control center and Positions screen | — | Specified |
-| REQ-045 | Adjustment detection and triggers | — | Approved |
-| REQ-046 | Adjustment Opportunity panel and Before/After | — | Approved |
-| REQ-047 | Adjustment-relevant data collection | — | Specified |
-| REQ-048 | Market-data pipeline and browser boundary | — | Specified |
-| REQ-049 | Normalized market data and data health | — | Approved |
-| REQ-050 | Shared computation and scale | — | Specified |
-| REQ-051 | Historical storage tiers and simulation | — | Specified |
-| REQ-052 | Market-data sourcing and licensing | — | Specified |
-| REQ-053 | Broker authority and contract eligibility | — | Approved |
-| REQ-054 | Broker adapter | — | Specified |
-| REQ-055 | Margin checks | — | Specified |
-| REQ-056 | Multi-leg execution plan and review | — | Approved |
-| REQ-057 | Order lifecycle | — | Verified |
-| REQ-058 | Partial execution and no automatic retry | — | Verified |
-| REQ-059 | Pre-execution safety checks and validation | — | Verified |
-| REQ-060 | Reconciliation with Zerodha | — | Verified |
-| REQ-061 | Existing positions on connect | — | Specified |
-| REQ-062 | Notifications | — | Specified |
-| REQ-063 | Security boundaries | — | Specified |
-| REQ-064 | Audit log | — | Approved |
-| REQ-065 | Error classification and messages | — | Approved |
-| REQ-066 | Compliance gates | — | Specified |
-| REQ-067 | Delivery controls | — | Specified |
-| REQ-068 | Strategy preferences | — | Approved |
-| REQ-069 | Suggested setups in the Guided Builder | — | Approved |
-| REQ-070 | Builder history and restore | — | Verified |
-| REQ-071 | Adjustment data requirements from the owner's reference video | — | Approved |
+| REQ-002 | Account boundaries | foundation | Specified |
+| REQ-012 | Registration and identity layers | foundation | Specified |
+| REQ-013 | Email change and account deletion | feature | Specified |
+| REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Specified |
+
+## Adjustments (4)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-045 | Adjustment detection and triggers | feature | Approved |
+| REQ-046 | Adjustment Opportunity panel and Before/After | feature | Approved |
+| REQ-047 | Adjustment-relevant data collection | feature | Specified |
+| REQ-071 | Adjustment data requirements from the owner's reference video | feature | Approved |
+
+## Broker and execution (7)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-053 | Broker authority and contract eligibility | core | Approved |
+| REQ-054 | Broker adapter | core | Specified |
+| REQ-055 | Margin checks | foundation | Specified |
+| REQ-056 | Multi-leg execution plan and review | foundation | Approved |
+| REQ-057 | Order lifecycle | foundation | Verified |
+| REQ-058 | Partial execution and no automatic retry | foundation | Verified |
+| REQ-059 | Pre-execution safety checks and validation | foundation | Verified |
+
+## Calculations and outcome (4)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-032 | Calculation engine | core | Verified |
+| REQ-033 | Expiry scenario and live P&L formulas | core | Verified |
+| REQ-034 | Outcome view and scenario levels | foundation | Approved |
+| REQ-035 | Single strategy table | foundation | Approved |
+
+## Delivery (1)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-067 | Delivery controls | feature | Specified |
+
+## Entitlements and billing (7)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-017 | Entitlement engine | feature | Approved |
+| REQ-018 | Trial and Limited/Read-Only mode | feature | Approved |
+| REQ-019 | Complimentary Pro for qualifying Zerodha customers | feature | Approved |
+| REQ-020 | Admin: qualifying Client ID management | feature | Verified |
+| REQ-021 | Referral rewards | feature | Approved |
+| REQ-022 | Free-eligibility loop | feature | Specified |
+| REQ-023 | Paid Pro and billing | feature | Specified |
+
+## Market data (5)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-048 | Market-data pipeline and browser boundary | core | Specified |
+| REQ-049 | Normalized market data and data health | core | Approved |
+| REQ-050 | Shared computation and scale | feature | Specified |
+| REQ-051 | Historical storage tiers and simulation | feature | Specified |
+| REQ-052 | Market-data sourcing and licensing | core | Specified |
+
+## Monitoring (2)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-043 | Live monitoring and status colours | foundation | Specified |
+| REQ-044 | Strategy control center and Positions screen | feature | Specified |
+
+## Navigation and public site (4)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-008 | Home dashboard | feature | Specified |
+| REQ-009 | Primary navigation and account menu | feature | Specified |
+| REQ-010 | Public site and live-data access | feature | Specified |
+| REQ-011 | Learn section | polish | Specified |
+
+## Notifications (1)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-062 | Notifications | feature | Specified |
+
+## Option chain (3)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-029 | Option Chain display and live data | feature | Specified |
+| REQ-030 | Option Chain leg selection and import | feature | Specified |
+| REQ-031 | Option Chain live strategy preview | feature | Specified |
+
+## Product scope and platform (6)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Specified |
+| REQ-003 | Public multi-user SaaS | foundation | Specified |
+| REQ-004 | Responsive web, desktop and mobile priorities | polish | Specified |
+| REQ-005 | Product language and positioning | foundation | Specified |
+| REQ-006 | Three UX levels | feature | Specified |
+| REQ-007 | Strategy information density | polish | Specified |
+
+## Reconciliation (2)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-060 | Reconciliation with Zerodha | foundation | Verified |
+| REQ-061 | Existing positions on connect | feature | Specified |
+
+## Rules and automation (2)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-041 | Rule engine: entry, exit and rule defaults | feature | Approved |
+| REQ-042 | Automation: Alert + Prepare Orders | feature | Specified |
+
+## Security, audit and compliance (4)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-063 | Security boundaries | foundation | Specified |
+| REQ-064 | Audit log | foundation | Approved |
+| REQ-065 | Error classification and messages | foundation | Approved |
+| REQ-066 | Compliance gates | feature | Specified |
+
+## Strategy building (8)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-024 | Guided strategy creation | feature | Specified |
+| REQ-025 | Strategy discovery and preferences | feature | Approved |
+| REQ-026 | Expected market range input | feature | Approved |
+| REQ-027 | Strike selection modes | feature | Approved |
+| REQ-028 | Generic strategy engine and templates | core | Approved |
+| REQ-068 | Strategy preferences | feature | Approved |
+| REQ-069 | Suggested setups in the Guided Builder | feature | Approved |
+| REQ-070 | Builder history and restore | feature | Verified |
+
+## Strategy lifecycle (5)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-036 | Strategy-only execution | foundation | Approved |
+| REQ-037 | Strategy modification | feature | Approved |
+| REQ-038 | Strategy definition, live state and versions | core | Verified |
+| REQ-039 | Strategy state machine and exception states | foundation | Approved |
+| REQ-040 | Activity timeline and rule-trigger audit | foundation | Verified |
+
+## Zerodha connection (2)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-015 | Zerodha connection | core | Specified |
+| REQ-016 | Strategies without Zerodha | feature | Specified |

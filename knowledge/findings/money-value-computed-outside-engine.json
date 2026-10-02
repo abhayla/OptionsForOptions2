@@ -1,5 +1,6 @@
 {
   "id": "money-value-computed-outside-engine",
+  "scope": "project",
   "class": "Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree.",
   "mechanism": "The rule engine summed signed per-unit LTPs itself to build its PREMIUM input and never multiplied by each leg's quantity, so strategies whose legs have different quantities (ratio spreads) got a wrong premium while equal-quantity strategies looked right.",
   "first_seen": {

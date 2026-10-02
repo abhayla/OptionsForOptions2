@@ -1,5 +1,6 @@
 {
   "id": "test-asserts-implementation-output",
+  "scope": "generic",
   "class": "Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green.",
   "mechanism": "Builders wrote the implementation first, then asserted the values it returned; independent verifiers who recomputed the values from the spec found the mismatch.",
   "first_seen": {

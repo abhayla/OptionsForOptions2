@@ -1,5 +1,6 @@
 {
   "id": "advice-wording-denylist-per-module",
+  "scope": "project",
   "class": "Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another.",
   "mechanism": "Each builder wrote a fresh list of exact phrases ('guaranteed', 'recommended trade', 'risk-free', 'you should'); the scans compared lowercased substrings without normalising spaces or stems.",
   "first_seen": {

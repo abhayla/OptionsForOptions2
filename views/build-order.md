@@ -8,30 +8,30 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
-| REQ-017 | Entitlement engine | (none) | normal | blocked: its own work item W-007 blocked: PARKED issue #12 - rounds 5-6 done; waits for the DB layer (trusted clock), owner 2026-09-29 |
-| REQ-018 | Trial and Limited/Read-Only mode | (none) | normal | blocked: its own work item W-008 blocked: blocked by W-007 (parked, issue #12) |
-| REQ-019 | Complimentary Pro for qualifying Zerodha customers | (none) | normal | blocked: its own work item W-011 blocked: blocked by W-007 (parked, issue #12) |
-| REQ-021 | Referral rewards | (none) | normal | blocked: its own work item W-009 blocked: blocked by W-007 (parked, issue #12) |
-| REQ-025 | Strategy discovery and preferences | (none) | normal | next |
-| REQ-026 | Expected market range input | (none) | normal | next |
-| REQ-027 | Strike selection modes | (none) | normal | next |
-| REQ-028 | Generic strategy engine and templates | (none) | normal | next |
-| REQ-034 | Outcome view and scenario levels | (none) | normal | next |
-| REQ-035 | Single strategy table | (none) | normal | next |
-| REQ-036 | Strategy-only execution | (none) | normal | next |
-| REQ-037 | Strategy modification | (none) | normal | next |
-| REQ-039 | Strategy state machine and exception states | (none) | normal | next |
-| REQ-041 | Rule engine: entry, exit and rule defaults | (none) | normal | next |
-| REQ-045 | Adjustment detection and triggers | (none) | normal | next |
-| REQ-046 | Adjustment Opportunity panel and Before/After | (none) | normal | next |
-| REQ-049 | Normalized market data and data health | (none) | normal | next |
-| REQ-053 | Broker authority and contract eligibility | (none) | normal | next |
-| REQ-056 | Multi-leg execution plan and review | (none) | normal | next |
-| REQ-064 | Audit log | (none) | normal | next |
-| REQ-065 | Error classification and messages | (none) | normal | blocked: its own work item W-024 blocked: PARKED #30 after rounds 5-7 (2026-09-29; owner set round 7 as the last); allowlist design recommended in the issue if unparked |
-| REQ-068 | Strategy preferences | (none) | normal | next |
-| REQ-069 | Suggested setups in the Guided Builder | (none) | normal | next |
-| REQ-071 | Adjustment data requirements from the owner's reference video | (none) | normal | next |
+| REQ-028 | Generic strategy engine and templates | core | normal | next |
+| REQ-049 | Normalized market data and data health | core | normal | next |
+| REQ-053 | Broker authority and contract eligibility | core | normal | next |
+| REQ-034 | Outcome view and scenario levels | foundation | normal | next |
+| REQ-035 | Single strategy table | foundation | normal | next |
+| REQ-036 | Strategy-only execution | foundation | normal | next |
+| REQ-039 | Strategy state machine and exception states | foundation | normal | next |
+| REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
+| REQ-064 | Audit log | foundation | normal | next |
+| REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-024 blocked: PARKED #30 after rounds 5-7 (2026-09-29; owner set round 7 as the last); allowlist design recommended in the issue if unparked |
+| REQ-017 | Entitlement engine | feature | normal | blocked: its own work item W-007 blocked: PARKED issue #12 - rounds 5-6 done; waits for the DB layer (trusted clock), owner 2026-09-29 |
+| REQ-018 | Trial and Limited/Read-Only mode | feature | normal | blocked: its own work item W-008 blocked: blocked by W-007 (parked, issue #12) |
+| REQ-019 | Complimentary Pro for qualifying Zerodha customers | feature | normal | blocked: its own work item W-011 blocked: blocked by W-007 (parked, issue #12) |
+| REQ-021 | Referral rewards | feature | normal | blocked: its own work item W-009 blocked: blocked by W-007 (parked, issue #12) |
+| REQ-025 | Strategy discovery and preferences | feature | normal | next |
+| REQ-026 | Expected market range input | feature | normal | next |
+| REQ-027 | Strike selection modes | feature | normal | next |
+| REQ-037 | Strategy modification | feature | normal | next |
+| REQ-041 | Rule engine: entry, exit and rule defaults | feature | normal | next |
+| REQ-045 | Adjustment detection and triggers | feature | normal | next |
+| REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
+| REQ-068 | Strategy preferences | feature | normal | next |
+| REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
+| REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
 
 ## Recorded, not approved to build
 

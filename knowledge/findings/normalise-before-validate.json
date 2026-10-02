@@ -1,5 +1,6 @@
 {
   "id": "normalise-before-validate",
+  "scope": "generic",
   "class": "Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported.",
   "mechanism": "Python's str.upper() maps some non-ASCII letters to ASCII (U+0131 dotless i -> I, U+00DF sharp s -> SS, U+017F long s -> S), so validating after upper-casing sees a valid ASCII ID that the user never typed.",
   "first_seen": {
