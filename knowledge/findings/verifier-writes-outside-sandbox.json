@@ -1,5 +1,6 @@
 {
   "id": "verifier-writes-outside-sandbox",
+  "scope": "generic",
   "class": "Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it.",
   "mechanism": "The verifier agent has a shell; told it cannot edit, it still wrote evidence/<W-id>/AC-*.md into the main checkout with its own frontmatter, bypassing the orchestrator step that records evidence from the verifier's returned block.",
   "first_seen": {

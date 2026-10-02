@@ -18,7 +18,7 @@ from ofo.strategy.definition import DefinitionLeg
 from ofo.strategy.versions import Position
 from recon_fixtures import (
     BC23600, BP22800, CONDOR, CONDOR_UNITS, EXPIRY, NEXT_EXPIRY, SC23400, SP23000, at, c, clock, executed, scaled,
-    with_legs,
+    single_leg, with_legs,
 )
 
 
@@ -229,13 +229,19 @@ def test_ac2_exited_strategy_expects_nothing():
 
 
 def test_ac2_large_account_is_fast():
-    """AC-2: 1,000 broker contracts and 200 strategies compare quickly (no quadratic blow-up per contract)."""
-    import time
-    broker = {c(Instrument.CE, str(20000 + i)): -1 for i in range(1000)}
-    strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(200)}
-    start = time.perf_counter()
-    report = run(broker, strategies)
-    assert time.perf_counter() - start < 5.0
+    """AC-2: 1,000 broker contracts and 200 strategies compare with linear work in the contracts: doubling the
+    contracts (against 10 strategies) at most doubles the calls made (no quadratic blow-up per contract; work is
+    counted, not timed). Work also grows with the number of strategies holding a mismatched contract (each strategy is
+    checked against each owner list), which the spec's account sizes keep small; that is not asserted here."""
+    from work_count import assert_linear
+
+    def compare_at(contracts: int, strategy_count: int):
+        broker = {c(Instrument.CE, str(20000 + i)): -1 for i in range(contracts)}
+        strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(strategy_count)}
+        return lambda: run(broker, strategies)
+
+    assert_linear(lambda n: compare_at(n, 10), 500)
+    report = compare_at(1000, 200)()
     assert len(report.mismatches) == 1004     # 1000 unexpected + 4 condor contracts (200 x 75 expected, 0 held)
 
 
@@ -249,3 +255,84 @@ def test_ac2_strike_move_to_a_lower_strike_still_blocks_the_holder():
     assert m.kind is MismatchKind.STRIKE_MISMATCH and m.strategy_ids == ("IC-1",)
     assert m.difference == ((lower, 75), (BP22800, -75))
     assert report.blocked_strategy_ids == frozenset({"IC-1"})
+
+
+def test_ac2_one_moved_leg_pairs_with_only_one_held_contract():
+    """AC-2 (W-037): S1 sells 23400 CE x75, S2 sells 23200 CE x75; Zerodha shows only 23000 CE -75. The 23000 CE is
+    the one strike-move candidate for BOTH held contracts. It pairs once, with the first held contract in contract
+    order (23200 -> S2, a strike mismatch); the 23400 CE is then a plain missing position for S1. It is never
+    attributed twice. Hand-computed: differences 23000 -75, 23200 +75, 23400 +75."""
+    ce23000, ce23200 = c(Instrument.CE, "23000"), c(Instrument.CE, "23200")
+    s1 = executed(single_leg(Action.SELL, Instrument.CE, "23400", 75), "e1")
+    s2 = executed(single_leg(Action.SELL, Instrument.CE, "23200", 75), "e2")
+    report = run({ce23000: -75}, {"S1": s1, "S2": s2})
+    moved, missing = report.mismatches
+    assert moved.kind is MismatchKind.STRIKE_MISMATCH and moved.strategy_ids == ("S2",)
+    assert moved.difference == ((ce23000, -75), (ce23200, 75))
+    assert missing.kind is MismatchKind.MISSING_PLATFORM_POSITION and missing.strategy_ids == ("S1",)
+    assert missing.difference == ((SC23400, 75),)
+    assert report.blocked_strategy_ids == frozenset({"S1", "S2"})
+
+
+def test_ac2_holders_by_contract_answers_exactly_the_contracts_asked():
+    """AC-2 (W-037): the holders index returns one entry per requested contract, in the order asked -- active and
+    pending-proposal holders sorted by id, () for a contract nobody holds -- and nothing for contracts not asked."""
+    from ofo.reconciliation.compare import holders_by_contract
+
+    ce24000 = c(Instrument.CE, "24000")
+    actives = {"B": {SC23400: -75, BC23600: 75}, "A": {SC23400: -50}, "C": {}}
+    proposals = {"B": None, "A": None, "C": {BC23600: 75, SP23000: -75}}
+    assert holders_by_contract([ce24000, BC23600, SC23400], actives, proposals) == {
+        ce24000: (), BC23600: ("B", "C"), SC23400: ("A", "B"),
+    }
+    assert list(holders_by_contract([ce24000, BC23600], actives, proposals)) == [ce24000, BC23600]
+
+
+def test_ac2_share_of_a_strategy_the_run_did_not_cover_is_refused():
+    """AC-2 (W-037 indexed ``share``): only a covered strategy has a share; an exited one, an unknown id and a
+    non-string id are refused with ReconciliationError, never answered from another strategy or a stale index."""
+    import dataclasses
+
+    gone = executed(reference="e-gone")
+    gone.observe_broker_position(Position(), at=at(5), reference="flat")
+    gone.mark_exited(at=at(6), actor="user", resolution="closed in Kite")
+    report = run(dict(CONDOR_UNITS), {"IC-1": executed(), "GONE": gone})
+    assert report.covered_strategy_ids == frozenset({"IC-1"})
+    assert report.share("IC-1").as_dict() == CONDOR_UNITS
+    for bad in ("GONE", "IC-2", ["IC-1"], None):
+        with pytest.raises(ReconciliationError, match="not covered"):
+            report.share(bad)
+    # A report rebuilt with other shares answers from ITS shares, not the original's.
+    flat = dataclasses.replace(report, shares=(("IC-9", Position()),))
+    assert flat.share("IC-9") == Position()
+    with pytest.raises(ReconciliationError, match="not covered"):
+        flat.share("IC-1")
+
+
+def _all_mismatched(strategy_count: int, shared: bool):
+    """``strategy_count`` executed strategies, zero broker contracts, so every strategy is mismatched. ``shared``:
+    every strategy is the golden condor (4 contracts, each held by all of them: the Q224 case); otherwise each
+    strategy sells its own 23400+i CE x 75 (one contract per strategy)."""
+    if shared:
+        strategies = {f"S{i}": executed(reference=f"e{i}") for i in range(strategy_count)}
+    else:
+        strategies = {
+            f"S{i}": executed(single_leg(Action.SELL, Instrument.CE, str(23400 + i), 75), f"e{i}")
+            for i in range(strategy_count)
+        }
+    return lambda: run({}, strategies)
+
+
+@pytest.mark.parametrize("shared", [True, False], ids=["shared-condor", "one-contract-each"])
+def test_ac2_work_is_linear_in_active_strategies(shared):
+    """AC-2 (W-037, issue #64): every run compares all non-exited strategies, and its work grows linearly in their
+    number: with every strategy mismatched and the broker flat, doubling the strategies (100 -> 200) costs at most
+    DOUBLING_LIMIT (2.5x) times the calls (was 3.5x: each differing contract re-scanned every strategy). Work is
+    counted, not timed (tests/work_count.py)."""
+    from work_count import assert_linear
+
+    assert_linear(lambda n: _all_mismatched(n, shared), 100)
+    report = _all_mismatched(200, shared)()
+    assert len(report.covered_strategy_ids) == 200 and len(report.blocked_strategy_ids) == 200
+    # Hand count: shared -> the condor's 4 contracts, each one mismatch held by all 200; else one per strategy.
+    assert len(report.mismatches) == (4 if shared else 200)

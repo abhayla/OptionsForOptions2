@@ -27,6 +27,11 @@ MAX_STEPS = 50
 #: Sign of a leg's strike offset from ATM. ``positive`` = above ATM, ``negative`` = below ATM.
 SIGNS: tuple[str, ...] = ("negative", "non_positive", "zero", "non_negative", "positive")
 
+#: Library labels (REQ-068 AC-2, owner decision Q251): one level, one or more views, one or more objectives.
+LEVELS: tuple[str, ...] = ("Beginner", "Intermediate", "Advanced")
+MARKET_VIEWS: tuple[str, ...] = ("bullish", "bearish", "range-bound", "volatile")
+OBJECTIVES: tuple[str, ...] = ("income", "directional", "hedge", "volatility")
+
 
 class TemplateError(ValueError):
     """A template file, a template definition, or a resolve/match call is invalid."""
@@ -138,6 +143,9 @@ class Template:
     id: str
     name: str
     description: str
+    level: str
+    views: tuple[str, ...]
+    objectives: tuple[str, ...]
     params: tuple[Param, ...]
     constraints: tuple[Constraint, ...]
     legs: tuple[TemplateLeg, ...]
@@ -148,6 +156,18 @@ class Template:
         for label in ("id", "name", "description"):
             if not isinstance(getattr(self, label), str) or not getattr(self, label):
                 raise TemplateError(f"template needs a non-empty string {label}")
+        if self.level not in LEVELS:
+            raise TemplateError(f"template {self.id!r}: level {self.level!r} is not one of {LEVELS}")
+        for label, allowed in (("views", MARKET_VIEWS), ("objectives", OBJECTIVES)):
+            values = getattr(self, label)
+            if isinstance(values, str):
+                raise TemplateError(f"template {self.id!r}: {label} must be a list, not a string")
+            values = tuple(values)
+            if not values or len(set(values)) != len(values) or not set(values) <= set(allowed):
+                raise TemplateError(
+                    f"template {self.id!r}: {label} must be one or more distinct values of {allowed}, got {values}"
+                )
+            object.__setattr__(self, label, values)
         params, legs, constraints = tuple(self.params), tuple(self.legs), tuple(self.constraints)
         object.__setattr__(self, "params", params)
         object.__setattr__(self, "legs", legs)

@@ -20,6 +20,9 @@ templates:
   - id: bull_call_spread
     name: "Bull Call Spread"
     description: Buy a call and sell a call at a higher strike, both the same expiry.
+    level: Beginner
+    views: [bullish]
+    objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -31,6 +34,9 @@ templates:
   - id: bull_put_spread
     name: "Bull Put Spread"
     description: Sell a put and buy a put at a lower strike, both the same expiry.
+    level: Beginner
+    views: [bullish]
+    objectives: [income, directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -44,6 +50,9 @@ templates:
     description: >-
       Buy a call and sell a put at the same strike and expiry; the combined payoff moves like the
       underlying.
+    level: Advanced
+    views: [bullish]
+    objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
     constraints: []
@@ -54,6 +63,9 @@ templates:
   - id: bear_put_spread
     name: "Bear Put Spread"
     description: Buy a put and sell a put at a lower strike, both the same expiry.
+    level: Beginner
+    views: [bearish]
+    objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -65,6 +77,9 @@ templates:
   - id: bear_call_spread
     name: "Bear Call Spread"
     description: Sell a call and buy a call at a higher strike, both the same expiry.
+    level: Beginner
+    views: [bearish]
+    objectives: [income, directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -78,6 +93,9 @@ templates:
     description: >-
       Buy a put and sell a call at the same strike and expiry; the combined payoff moves opposite the
       underlying.
+    level: Advanced
+    views: [bearish]
+    objectives: [directional]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
     constraints: []
@@ -91,6 +109,9 @@ templates:
       Sell a put and a call at two different strikes, the put below the call, and buy a put and a call the
       same number of steps further out on each side, all the same expiry: a bull put spread plus a bear
       call spread.
+    level: Intermediate
+    views: [range-bound]
+    objectives: [income]
     params:
       - {name: p, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
       - {name: q, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
@@ -110,6 +131,9 @@ templates:
     description: >-
       Sell a call and a put at the at-the-money strike, and buy a put and a call the same number of steps
       away on each side, all the same expiry.
+    level: Intermediate
+    views: [range-bound]
+    objectives: [income]
     params:
       - {name: w_put, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
       - {name: w_call, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -124,6 +148,9 @@ templates:
   - id: short_straddle
     name: "Straddle (Short)"
     description: Sell a call and a put at the at-the-money strike, the same expiry.
+    level: Intermediate
+    views: [range-bound]
+    objectives: [income]
     params: []
     constraints: []
     legs:
@@ -133,6 +160,9 @@ templates:
   - id: short_strangle
     name: "Strangle (Short)"
     description: Sell an out-of-the-money call and an out-of-the-money put, both the same expiry.
+    level: Intermediate
+    views: [range-bound]
+    objectives: [income]
     params:
       - {name: c, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
       - {name: k, unit: steps, default: -2, min: -20, max: 20, must_be_positive: false}
@@ -148,6 +178,9 @@ templates:
     description: >-
       Sell an out-of-the-money put, sell an out-of-the-money call and buy a call at a higher strike, all the
       same expiry; there is no upside breakeven when the combined credit exceeds the call spread's width.
+    level: Advanced
+    views: [range-bound, bullish]
+    objectives: [income]
     params:
       - {name: k, unit: steps, default: -2, min: -20, max: 20, must_be_positive: false}
       - {name: c, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
@@ -163,6 +196,9 @@ templates:
   - id: long_straddle
     name: "Straddle (Long)"
     description: Buy a call and a put at the at-the-money strike, the same expiry.
+    level: Intermediate
+    views: [volatile]
+    objectives: [volatility]
     params: []
     constraints: []
     legs:
@@ -172,6 +208,9 @@ templates:
   - id: long_strangle
     name: "Strangle (Long)"
     description: Buy an out-of-the-money call and an out-of-the-money put, both the same expiry.
+    level: Intermediate
+    views: [volatile]
+    objectives: [volatility]
     params:
       - {name: c, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
       - {name: k, unit: steps, default: -2, min: -20, max: 20, must_be_positive: false}
@@ -187,6 +226,9 @@ templates:
     description: >-
       Buy a put and a call at two different strikes, the put below the call, and sell a put and a call the
       same number of steps further out on each side, all the same expiry.
+    level: Intermediate
+    views: [volatile]
+    objectives: [volatility]
     params:
       - {name: p, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
       - {name: q, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
@@ -206,6 +248,9 @@ templates:
     description: >-
       Hold a futures position and sell an out-of-the-money call against it, the same expiry (this platform
       models "own the underlying" as a futures leg, ADR-041; no single-stock leg exists here).
+    level: Intermediate
+    views: [range-bound, bullish]
+    objectives: [income]
     params:
       - {name: c, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
     constraints:
@@ -219,6 +264,9 @@ templates:
     description: >-
       Sell an out-of-the-money put, holding cash or margin against the full exposure; cash-settled at expiry
       (no shares are bought or delivered on NIFTY/SENSEX index options).
+    level: Intermediate
+    views: [bullish, range-bound]
+    objectives: [income]
     params:
       - {name: k, unit: steps, default: -2, min: -20, max: 20, must_be_positive: false}
     constraints:
@@ -229,6 +277,9 @@ templates:
   - id: calendar_spread
     name: "Calendar Spread"
     description: Sell a near-expiry call and buy a call at the same strike on a later expiry.
+    level: Advanced
+    views: [range-bound]
+    objectives: [income, volatility]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
     constraints: []
@@ -239,6 +290,9 @@ templates:
   - id: diagonal_spread
     name: "Diagonal Spread"
     description: Buy a call on a later expiry and sell a near-expiry call at a higher strike.
+    level: Advanced
+    views: [range-bound]
+    objectives: [income, volatility]
     params:
       - {name: k, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -252,6 +306,9 @@ templates:
     description: >-
       Buy a call, sell two calls a number of strike steps above it, and buy a call the same number of steps
       above those, all the same expiry.
+    level: Intermediate
+    views: [range-bound]
+    objectives: [income]
     params:
       - {name: m, unit: steps, default: 0, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -264,6 +321,9 @@ templates:
   - id: ratio_backspread_call
     name: "Call Ratio Backspread"
     description: Sell one call and buy two calls at a higher strike, all the same expiry.
+    level: Advanced
+    views: [bullish, volatile]
+    objectives: [directional, volatility]
     params:
       - {name: k, unit: steps, default: -2, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}
@@ -275,6 +335,9 @@ templates:
   - id: ratio_backspread_put
     name: "Put Ratio Backspread"
     description: Sell one put and buy two puts at a lower strike, all the same expiry.
+    level: Advanced
+    views: [bearish, volatile]
+    objectives: [directional, volatility]
     params:
       - {name: k, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
       - {name: w, unit: steps, default: 2, min: 1, max: 20, must_be_positive: true}

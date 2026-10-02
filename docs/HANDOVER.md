@@ -1,7 +1,15 @@
 # Handover
 
-Updated 2026-09-30 (end of the overnight build session 2026-09-29/30). Main at the merge of this file's PR.
-Read this first, then `docs/owner-review-2026-09-30.md` (the owner's morning list), then `spec/open-questions.md`.
+**2026-10-02 09:34 IST — the build plan changed.** Kit 1.5.1 is merged (#99). The owner approved an end-to-end build
+plan after an independent review: `docs/process/build-plan-2026-10-02.md` (phases P0-P6, copy-first from algochanakya
+per ADR-047, the full module map in `spec/technical-design/legacy-reuse.md`). It supersedes "NEXT" below; the DEFERRED,
+PARKED and BLOCKED lists stay valid and are mapped into its phases (P0.5 = NEXT item 1).
+
+Updated 2026-09-29 16:40 IST (end of the owner-present day session; the overnight session before it ran
+2026-09-28 20:42 → 2026-09-29 09:16 — its "2026-09-30" stamps were wrong and are corrected, finding
+`date-stamp-typed-from-memory`). Main at the merge of this file's PR.
+Read this first, then `spec/open-questions.md`. The overnight owner list is `docs/owner-review-2026-09-29.md`; most of
+it is answered (see "Answered today").
 
 ## Rule for the next session: nothing pending is closed until it is implemented and verified
 Every item under PENDING, PARKED, BLOCKED and DEFERRED below stays open (issue open, work item not `done`) until
@@ -11,13 +19,14 @@ because it "looks done", because a builder said so, or with a partial-fix PR: Gi
 
 ## DONE (merged, independently verified, evidence recorded)
 Product code is standard-library Python under `backend/ofo/` (domain layer only: no API, DB, UI or real Zerodha yet),
-tests under `tests/` — **1218 tests pass** on main.
+tests under `tests/` — **1295 tests** collected on main.
 
 | Work item | Requirement | What it is | PR |
 |---|---|---|---|
 | W-001 | REQ-033 | Calculation engine core (P&L, breakevens, max profit/loss) | #5 |
 | W-002 | REQ-032 | Engine inputs, Black-Scholes, Greeks, money precision | #8 |
 | W-003 | REQ-034 | Scenario level set, two views | #16 |
+| W-004 | REQ-035 | Strategy table model; Guided headings per Q227 (2026-09-29) | #58 |
 | W-005 | REQ-028 | Parametric strategy templates + matcher | #15 |
 | W-006 | REQ-053 | Instrument catalogue from Zerodha's public list | #7 |
 | W-010 | REQ-020 | Admin qualifying Client ID list | #13 |
@@ -38,63 +47,75 @@ tests under `tests/` — **1218 tests pass** on main.
 | W-028 | REQ-058 | Complete/Retry split into lot-aligned freeze slices | #49 |
 | W-029 | REQ-036 | Tests pinning W-026 backup checks | #48 |
 | W-030 | REQ-053 | Guard: test fixtures use real catalogue symbols | #52 |
+| W-031 | REQ-053 | Last three fixture symbols on the real catalogue (closed #51) | #56 |
+| W-032 | REQ-056 | Close Partial slices exits at the freeze limit (closed #50) | #57 |
+| W-033 | REQ-038 | Performance tests count work, not wall-clock time (+ guard) | #60 |
+| W-034 | REQ-035 | TOTAL row: P&L % = unrealized ÷ max loss; net Entry Value Cr/Dr (Q233, Q236) | #67 |
+| W-035 | REQ-020 | Client ID format per owner Q234 (AB1234 / ABC123) | #66 |
 
-Requirements VERIFIED end to end (`python tools/trace_check.py .`): REQ-020, 032, 033, 038, 040, 057, 058, 059, 060,
-064, 070. Others are partly built (their UI or later-stage ACs are not in any work item yet).
+Requirements VERIFIED end to end (`python tools/trace_check.py .`, run 2026-09-29 ~16:35 IST): REQ-020, 032, 033, 038,
+040, 057, 058, 059, 060, 064, 070 (11). Others are partly built (UI or later-stage ACs not in any work item yet).
+
+## Answered today (owner, all written into the spec)
+Q223 (Close lists cancels for own open entry orders), Q225 (+ clarification: ledger stamps recorded_at), Q226, Q227,
+Q228 (paid month 30 days / year 365), Q229 (entitlement rules 2-3 confirmed), Q230, Q231 ("safety" allowed), Q232
+(Greeks from Advanced only; REQ-006 AC-3 corrected), Q233 + Q236 (TOTAL row), Q234 (Client ID format), Q235 (wording
+trust boundary = W-026's; promise phrases), Q237 / ADR-046 (path-filtered `app-tests.yml` for API/web CI); Q222 and
+Q224 confirmed. Findings-index wrapper approved until kit #40 is fixed (memory `findings-index-wrapper`).
 
 ## PARKED (owner decision needed — do NOT resume without it)
-- **W-024 error messages — issue #30.** Failed 4 times. Needs the owner's call on how strict the advice-word ban is
-  (recommendation in the issue). Branch `build/W-024-error-catalogue` @ adda683 holds the last round (not merged; it
-  also narrowed strategy-template wording coverage — REQ-028 AC-3 — which must NOT merge as is).
-- **W-004 strategy table — issue #21** (AC-7 Guided headers; the failure came from the orchestrator's brief).
-- **W-007 entitlement engine — issue #12** (owner decision on the recommended fix). Blocks W-008, W-009, W-011.
+- **W-007 entitlement engine — issue #12.** Rounds 5-6 today. Parked until the DB layer exists (owner's choice): any
+  in-memory ledger lets its creator choose the clock, so backdating stays possible until a trusted time source (DB
+  insert time / server clock at the application boundary) exists. Branch `build/W-007-entitlements` @ a459ac0.
+  Blocks W-008, W-009, W-011.
+- **W-024 error messages — issue #30.** Rounds 5-7 today; owner set round 7 as the last. Round 7 failed on the CI scan
+  missing relative-import rebinding of the checker. Recommended if unparked: an allowlist rule (no attribute
+  assignment on any imported module in `backend/ofo`) + a runtime identity check. Branch
+  `build/W-024-error-catalogue` @ a3ef79a.
 
 ## BLOCKED (external)
+- **Zerodha core proof (ADR-034, Q210):** the owner sent the email; Zerodha asked for additional information; the
+  owner will discuss it later. All order/position code runs against fakes; Kite field names are unverified.
 - **W-017 audit payload allowlist (REQ-063 AC-5):** needs real Kite Connect responses.
-- **Core proof with real Zerodha (ADR-034, Q210):** waits for Zerodha's written answer and the owner's Kite credentials.
-  All order/position code so far runs against fakes; Kite field names (order_id, trade_id, filled_quantity,
-  tradingsymbol formats) are **unverified** until then.
 
 ## DEFERRED (open issues — each must be implemented, not closed)
-- **#43** execution plan: item 4 open — freeze 1,755 units, 10 orders/batch and "margin impact" meaning are unverified
-  placeholders until the Kite adapter build (REQ-056 AC-10). Items 1-3 done in W-028.
-- **#45** price is passed through unchecked (price protection = REQ-056 AC-7, Q28); no first-entry execution path yet
-  (when built it must go through the broker sink + Strategy Guard). Item 1 done in W-029.
-- **#50** Close Partial Strategy does not slice at the freeze limit (a large close would be rejected as one order).
-- **#51** 3 fixture symbols in tests/marketdata and tests/range still not in the catalogue (allowlisted in
-  `tests/test_fixture_symbols.py` with the issue link — remove each entry when fixed).
-- **#29** items 5-6 (active-legs hash is a consistency tie; integration must read legs from the store; forged
-  alternative strike recorded to history).
-- **#10** small verifier findings from W-002/W-006/W-013.
+- **#43** item 4: freeze 1,755, 10 orders/batch, "margin impact" meaning are unverified placeholders until the Kite build.
+- **#45** price passed through unchecked (REQ-056 AC-7, Q28); no first-entry execution path yet.
+- **#63** two ProposedOrder builders (reconciliation/resolution.py:343, rules/actions.py:45) don't slice — unreachable
+  to the broker today; depends on the #43 freeze placeholder, so it moves to build plan P4.
+- Corrected 2026-10-02: #10, #29, #61, #62, #64, #65 are CLOSED (W-036 #69, W-037 #70, W-038 #72, W-039 #73; `gh issue
+  view` state CLOSED); this list had not been updated after those merges.
 
-## OPEN QUESTIONS for the owner (`spec/open-questions.md`, `docs/owner-review-2026-09-30.md` §4)
-Q204, Q205 (Zerodha feed model), Q211 (legal — gates discovery/advice-like features REQ-025/027/045/046/068/069),
-Q212 (YouTube transcript — REQ-071), **Q223** (Close also lists cancels for the strategy's own open entry orders —
-built as orchestrator default OD-m, list only), REQ-039's state-machine table (awaiting owner review), W-024 wording
-strictness. Delegated overnight and reversible (ADR-045): **Q222** (agreeing reconciliation run does not unblock by
-itself), **Q224** (shared contract disagreeing with Zerodha blocks all holders; no guess-based fixes). The owner's own
-actions from the morning list: send the Zerodha email; rotate the Kite secret exposed in public `abhayla/algochanakya`.
+## OPEN QUESTIONS still for the owner
+Q204, Q205 (Zerodha feed model — wait for Zerodha), Q211 (legal review), Q212 (YouTube transcript), REQ-039's
+state-machine transition table (`spec/data/domain-model.md` §6), extra checks kept on exits (W-014), a moneyness
+column, OD-e ("buy-backs of shorts go first", a code default not in the spec), the scenario caption shown at all
+three UX levels (W-004 builder's call), the TOTAL P&L % "—" cases for missing LTP / multi-expiry (REQ-035
+clarification), "safety net" passing the wording check, the W-024 residual reworded promises.
 
-## NEXT (in order)
-1. Owner answers: W-024 wording rule, W-007 fix, W-004 OK, Q223, and whether Q222/Q224 stand.
-2. Deferred issues that need no decision: #51, #50, then #45 item 3 when an entry path is designed.
-3. Once Zerodha answers (Q210) and credentials exist: the core proof (throwaway script, real login, 3 real option
-   quotes per index + margin), then W-017 and the Kite adapter behind `send_guard` (see
-   `spec/technical-design/legacy-reuse.md` "Broker adapter boundary").
+## NEXT (in order) — superseded by `docs/process/build-plan-2026-10-02.md`
+Current step: P1 = W-051 (platform + trusted clock, Tier A) -> W-052 (audit store) and W-053 (catalogue store) ->
+W-007 unpark. Owner decisions taken 2026-10-02: Q256 (skew 60 s), ADR-048 (test DB on the VPS, isolated and capped).
+Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to create ofo_test + ofo_app).
+1. (Done before 2026-10-02) Deferred issues that need no decision: #62, #64, #61, #65, #10 (items 1, 3, 4).
+2. API/web layers: the first work item adds `app-tests.yml` (ADR-046) with the first API code — but prove its core
+   first (CLAUDE.md, run-discipline): the Zerodha core proof is still the project's real core and is blocked.
+3. When Zerodha answers: the core proof (throwaway script, real login, 3 real option quotes per index + margin),
+   then W-017 and the Kite adapter behind `send_guard`.
 
-## How the overnight session worked (reuse it)
+## How the sessions work (reuse it)
 - Flow per item: builder (own worktree, `isolation: worktree`) → independent verifier (fresh context, read-only) →
-  orchestrator records evidence with `scripts/orchestrator/ev_agent.py` → CI mirror → PR → `tools/merge_when_green.py`.
-- Brief templates: `docs/process/builder-brief.md` (quality bar grows with every finding) and
-  `docs/process/verifier-brief.md`. Every brief carries Budget, Core/Proof, Spec basis (quoted from the spec — never
-  from memory: 10 overnight brief errors, finding `brief-rule-from-memory`).
-- `scripts/orchestrator/`: helpers for agent worktrees, whose path contains the kit folder name that the kit guard
-  blocks in Bash — `agentwt.py` (status/release), `agit.py` (git in an agent worktree), `atool.py` (CI mirror),
-  `ev_agent.py` + `record_evidence.py` (evidence from verifier JSON), `aregen.py` (regenerate the findings index
-  during a rebase), `gh_issue.py` (issues; the kit repo name trips the guard).
-- Before every dispatch: `git pull --ff-only` in the main checkout (agents branch from LOCAL main — finding
-  `agent-worktree-from-stale-local-main`).
-- Repeat failures: second red of the same class → independent reviewer before round 3; third red → park (issue with
-  the `parked` label). Verifiers keep finding smaller gaps; agree the bar with a reviewer first (W-026 R1-R3).
-- Never trust a builder's "all green" or "pre-existing": re-run on main (two false claims overnight).
-- Findings registry: `knowledge/findings/` (18 classes, index regenerated by the kit script); read it before designing.
+  orchestrator records evidence (`scripts/orchestrator/record_evidence.py <worktree> <W-id> <builder> <verifier>
+  <json>`) → CI mirror → PR → `tools/merge_when_green.py` run as its OWN command (the kit guard blocks it after `&&`).
+- Brief templates: `docs/process/builder-brief.md`, `docs/process/verifier-brief.md`. Every brief carries Budget
+  (builder ≤ 80 tool calls, verifier ≤ 32 — hook-enforced), Core/Proof, Spec basis quoted from the spec, and
+  Class/Proof lines on fixes (hook-enforced).
+- Verifiers run `git worktree remove` from the MAIN checkout; one left a half-removed folder when run from inside.
+- Commit messages with "Claude" in a `-m` string trip the prod-gate hook; use `-F <file>` or a heredoc.
+- `sed` patterns containing `.*` trip the prod-gate "dot-directory wildcard" rule; use the Edit tool.
+- `scripts/orchestrator/` helpers reach agent worktrees (whose path names the kit folder the guard blocks).
+- Before every dispatch: `git pull --ff-only` in the main checkout (finding `agent-worktree-from-stale-local-main`).
+- Repeat failures: second red of a class → independent reviewer; third red → park. The owner may choose "one more
+  round"; say plainly when a class keeps failing because of the bar or the design (W-007 clock, W-024 denylist).
+- Never trust a builder's "all green": re-run on the merge candidate (CI mirror) before the PR.
+- Findings registry: `knowledge/findings/` (20 classes); read it before designing.

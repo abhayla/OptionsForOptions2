@@ -1,5 +1,6 @@
 {
   "id": "agent-worktree-from-stale-local-main",
+  "scope": "generic",
   "class": "Any isolated agent worktree created from the orchestrator's LOCAL main starts from whatever that checkout last pulled; if merges landed on origin since, the agent builds on a stale base, misses files the work depends on (its own work item) and invents substitutes that conflict later.",
   "mechanism": "The main checkout was last pulled before PRs #31/#32; W-025's builder did not find work/W-025.md (added in #32), wrote its own with status in_progress, and the conflict surfaced only at rebase.",
   "first_seen": {

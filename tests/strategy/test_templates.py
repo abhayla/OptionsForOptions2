@@ -31,6 +31,9 @@ NAKED_CALL = """
   - id: naked_call
     name: "Naked Call"
     description: "Sell a call."
+    level: Advanced
+    views: [bearish]
+    objectives: [directional]
     params:
       - {name: c, unit: steps, default: 2, min: -20, max: 20, must_be_positive: false}
     constraints: []

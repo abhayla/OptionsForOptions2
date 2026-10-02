@@ -58,6 +58,10 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_stash_worktree_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          },
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       },
@@ -76,6 +80,37 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/secret_scan.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       }

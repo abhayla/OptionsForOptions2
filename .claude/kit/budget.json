@@ -1,4 +1,4 @@
 {
-  "always_loaded_max_bytes": 30000,
-  "why": "OD-23 item 3: keeps every always-loaded rule under the context-budget rule's ~45k-token prelude target; path-scoped rules are excluded."
+  "always_loaded_max_bytes": 22407,
+  "why": "OD-23 item 3, re-set by REQ-043 (OD-59): measured always-loaded kit rule bytes 13407 (evidence-and-proof, run-discipline, spec-first) + project headroom 9000 (2 x 4500 bytes for two project rules) = 22407; path-scoped rules are excluded. A later always-on kit rule must raise this cap on purpose."
 }

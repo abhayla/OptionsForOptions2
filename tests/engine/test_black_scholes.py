@@ -18,6 +18,7 @@ from ofo.engine.black_scholes import (
     _solve_iv,
     bs_greeks,
     bs_price,
+    forward_price,
     implied_volatility,
     year_fraction,
 )
@@ -95,6 +96,35 @@ def test_invalid_model_input_is_rejected(kwargs, message):
     args = dict(option=CE, vol=D("0.20"), **HULL) | kwargs
     with pytest.raises(ValueError, match=message):
         bs_price(**args)
+
+
+@pytest.mark.parametrize("field", ["spot", "strike", "years", "vol", "rate"])
+def test_bs_price_refuses_nan_in_every_input(field):
+    """AC-4 (issue #10 item 4): a NaN in any Black-Scholes input is refused, never propagated into a price."""
+    args = dict(option=CE, vol=D("0.20"), **HULL) | {field: D("NaN")}
+    with pytest.raises(ValueError):
+        bs_price(**args)
+
+
+@pytest.mark.parametrize("field", ["spot", "years", "rate"])
+def test_forward_price_refuses_nan(field):
+    """AC-4: forward_price refuses NaN spot, years and rate."""
+    args = dict(spot=D("42"), years=D("0.5"), rate=D("0.10")) | {field: D("NaN")}
+    with pytest.raises(ValueError):
+        forward_price(**args)
+
+
+@pytest.mark.parametrize("spot", [D(23047.3), 23047.3])
+def test_forward_price_refuses_float_built_spot(spot):
+    """AC-4: -322.50 must not become -322.4999999 - a Decimal built from a float (23047.3 is inexact in binary)
+    and a raw float are both refused."""
+    with pytest.raises(ValueError):
+        forward_price(spot, D("0.5"), D("0.10"))
+
+
+def test_forward_price_accepts_exact_decimal():
+    """AC-4 positive control: S e^(rT) with S=42, r=10%, T=0.5 is 42 x 1.051271 = 44.15 (hand: e^0.05 = 1.0512711)."""
+    assert forward_price(D("42"), D("0.5"), D("0.10")) == D("44.15")
 
 
 def test_year_fraction_is_calendar_days_over_explicit_day_count():

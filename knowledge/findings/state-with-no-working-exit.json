@@ -1,0 +1,28 @@
+{
+  "id": "state-with-no-working-exit",
+  "scope": "generic",
+  "class": "Any non-terminal state of a lifecycle (strategy, order, proposal) from which every action the system offers is refused leaves the user stuck with no path forward except acting outside the platform; the explanation shown for that state then points at actions that do not work. A transition table checked only pair-by-pair (is each allowed move allowed?) cannot see this: it needs a reachability check that every reachable non-terminal state has at least one action that succeeds.",
+  "mechanism": "W-041 strategy state machine: the transition table matched the spec exactly (31 pairs), but guards on the underlying record (version store) refused every offered action in some reachable states.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-041 verification round 1, build/W-041-state-machine @ df44e2f",
+    "evidence": "probe P3c: Partially Executed -> Reconciliation Required -> manual adopt returned to Partially Executed with version 2 active; Complete/Retry refused 'version 1 is no longer pending', Close refused 'the broker still holds a position'; explain() still offered all four choices"
+  },
+  "fix": "Pending: independent review dispatched 2026-09-29 (learning.md R1, second red). Round 5 fixed P3c (adopt -> Active, owner Q247) but not the class.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Needed: a reachability test that walks every reachable (state, record) combination and asserts at least one offered action succeeds, and that explain() offers only actions that succeed."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-039.md",
+    "spec/data/domain-model.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-041 verification round 2 (after round 5), build/W-041-state-machine @ 4e91a27",
+      "evidence": "probe X2: adjustment FAILED with some fills -> Partially Executed -> start_close -> CLOSED -> close_partial RAISED 'cannot mark exited: the broker still holds a position'; retry RAISED 'no longer pending'; explain() offered four choices, three refuse"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 {
   "id": "trust-broker-status-word",
+  "scope": "project",
   "class": "Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position.",
   "mechanism": "The classifier returned PARTIAL for every PARTIAL status without checking the positions, so an extra futures line or a leg filled at 300 against 150 intended was recorded as an ordinary partial fill.",
   "first_seen": {

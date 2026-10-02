@@ -81,16 +81,24 @@ party) · **DECIDED → ADR-###**.
   display); verify the Zerodha facts from their pages; build nothing that depends on the answer until it arrives.
 - Spec basis: ADR-014 (Q177 provisional), ADR-020 (Q178 setup guide).
 
-## Q211 — LEGAL — Compliance review before these features go live
+## Q211 — DECIDED (owner, 2026-09-29: not a blocker for building) — Compliance review before these features go live
 Strategy discovery and suggested setups; adjustment approaches; notification content; a paid subscription sold by a
 registered Zerodha Authorised Person; market-data display and derived data; Zerodha API terms; retention of the
 anti-abuse record after deletion (Q96, India's DPDP Act). The chats already flagged SEBI/exchange review as a product
 requirement (T1 #26). Nothing here is a conclusion; these features stay out of production until reviewed.
+- **Owner decision (2026-09-29):** asked whether Q211 blocks REQ-025/027/045/046/068/069, the owner answered "They
+  are not blocked. Proceed." Building these requirements goes ahead (they are marked Approved). Whether a compliance
+  review is still wanted before they reach production will be put to the owner in the release brief for the first
+  release that contains them (every production release needs the owner's approval anyway).
 
-## Q212 — EXTERNAL — Data used in the owner's YouTube adjustment video
+## Q212 — DECIDED / DONE (2026-09-29) — Data used in the owner's YouTube adjustment video
 The owner shared an Iron Condor adjustment video (T2 #93) so that the data layer covers every value it uses; ChatGPT
 could not read the transcript and the owner will provide it later (T2 #95). Pending: the transcript, then a line-by-
 line data checklist (REQ "Adjustment data requirements from the owner's reference video").
+- **2026-09-29:** the owner said Q211/Q212 are "not blocked. Proceed." The link was already in the chat (T2 #93:
+  youtu.be/BpIyvYL5ahE); the transcript was extracted (30m46s, youtube-transcript-api) and the 30 values it uses are
+  listed in spec/technical-design/adjustment-data-contract.md. REQ-071 is Approved. Open: the meaning of 7 unclear
+  values (rows 10, 12, 13, 24, 25, 26, 28) — asked separately.
 
 ## Q213 — DECIDED (delegated overnight, ADR-045: recommendation A = both) — Breakeven columns: inserted, at the end, or both?
 Q33D inserts 0-P&L columns at their price position; the earlier locked column list (T1 #90) also has Lower BE /
@@ -143,7 +151,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   provenance (`spec/technical-design/legacy-reuse.md`).
 - Spec basis: none before this (the spec had no stack decision); hard rules ADR-008, ADR-012, ADR-029.
 
-## Q223 — OPEN — Close Partial Strategy while the platform's own entry order is still open (W-023 orchestrator default OD-m)
+## Q223 — DECIDED (owner, 2026-09-29 morning: keep A) — Close Partial Strategy while the platform's own entry order is still open (W-023 orchestrator default OD-m)
 - Situation: some legs filled, one entry order (e.g. BUY 23,600 CE) is still open at Zerodha, and the user picks Close
   Partial Strategy. If that entry order fills after the exits, it leaves a new position; for a condor's short call the
   mirror case is a naked short.
@@ -151,11 +159,13 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   platform's own still-open entry orders on that strategy, shown to the user before confirmation. Nothing is sent
   without the user's confirmation; W-023 builds the list only (`backend/ofo/execution/partial.py`, OD-m).
 - Recommendation: keep it (A). Alternative (B): do not offer Close until the open entry order is terminal.
+- **Owner decision (2026-09-29): A.** The Close preparation lists a cancel request for each of the strategy's own
+  still-open entry orders, shown with the exits and confirmed by the user together; nothing is sent without that confirm.
 - Spec basis: ADR-017 Q27 (Close Partial Strategy is a user choice; executed legs never unwound automatically), ADR-018
   Q198 (a mismatch is reconciled through a prepared order), REQ-058 AC-3, REQ-059 (exits require no unresolved mismatch).
   None of these says what happens to an open entry order when the user closes.
 
-## Q222 — DECIDED (delegated overnight, ADR-045; reversible) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
+## Q222 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — Does a fresh agreeing reconciliation run unblock a strategy by itself?
 - Situation: a mismatch blocked a strategy (ADR-018); a later run finds the broker agreeing again.
 - Decision (recommendation A, applied overnight): NO automatic unblock. The block lifts only through a recorded manual
   resolution on the latest run (adopt, prepared closing order, broker flat → exited), so the user sees what happened in
@@ -166,7 +176,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   W-021 judged A the safer default.
 - Built in W-021 (`backend/ofo/reconciliation/`).
 
-## Q224 — DECIDED (delegated overnight, ADR-045; reversible) — A contract held by more than one strategy disagrees with Zerodha
+## Q224 — DECIDED (delegated overnight, ADR-045; CONFIRMED by the owner 2026-09-29) — A contract held by more than one strategy disagrees with Zerodha
 - Situation: strategies A and B each SELL 23400 CE x50; Zerodha nets them per contract. If the user squares off in Kite
   (broker 0) or partly (broker −50), nothing tells the platform which strategy's leg changed.
 - Finding (W-021 verifier, 2026-09-29): splitting by "broker minus the other holders' platform quantity" invented a
@@ -183,3 +193,130 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Spec basis: ADR-016/ADR-018 (Zerodha is the authority; a mismatch blocks); ADR-018 Q198 resolution list; REQ-060
   AC-5, AC-7 (AC-7 covers one strategy plus a standalone, not two strategies). No spec text defines attribution across
   strategies.
+
+## Q225 — DECIDED (owner, 2026-09-29 morning) — Entitlement history after a setting changes; post-dated status changes
+- Situation (W-007 round 4, issue #12): a revoke dated 2106 was accepted and then blocked a real revoke; lowering
+  `max_free_days` 90 → 30 made a legal stored history fail to load.
+- Decision: A — validate new events against current settings; load stored history with integrity checks only; every
+  status change bounded to effective_at ≤ recorded_at + clock skew. Recorded in ADR-023 "Owner decision (Q225)".
+
+## Q226 — DECIDED (owner, 2026-09-29 morning) — Strictness of the advice-word check (W-024, issue #30)
+- Decision: strict — ban bare "best", "sure", "safe", "guarantee*", "recommend*" in platform templates, with the named
+  exceptions "best bid", "best ask", "best-case", "make sure"; broker/user text quoted only. Recorded in ADR-003
+  "Owner decision (Q226)".
+
+## Q227 — DECIDED (owner, 2026-09-29 morning) — Guided scenario column headings (W-004, issue #21)
+- Decision: each scenario column is headed by its level (CURRENT and 0-P&L marked); "NIFTY at expiry | You make/lose"
+  is the scenario section's caption. Recorded in REQ-035 "Owner clarification (Q227)".
+
+## Q228 — DECIDED (owner, 2026-09-29 morning) — Length of a paid month / year
+- Decision: 30 days / 365 days, fixed; not calendar months. Recorded in ADR-023 "Q228". (Was owner-review item 3b.)
+
+## Q229 — DECIDED (owner, 2026-09-29 morning) — Entitlement evaluation rules 2-3
+- Decision: both confirmed as written in ADR-023 "Evaluation rules". Recorded in ADR-023 "Q229".
+
+## Q230 — DECIDED (owner, 2026-09-29) — Q226 edge cases (W-024 round 5)
+- Decision: ban all word forms of the five words; do not ban "must"/"have to"/"ought to"; exceptions match exactly as
+  spelled. Recorded in ADR-003 "Q230".
+
+## Q231 — DECIDED (owner, 2026-09-29) — Is "safety" banned by the Q230 word-form rule?
+- Decision: no — "safety" (and "safety check/checks/gate") is a reviewed exception. Recorded in ADR-003 "Q231".
+
+## Q232 — DECIDED (owner, 2026-09-29) — Which UX level shows Greeks (REQ-006 AC-3 vs REQ-035 AC-7)
+- Decision: Advanced only (REQ-035 wins); REQ-006 AC-3 corrected. No code change (W-004 already follows REQ-035).
+
+## Q233 — DECIDED (owner, 2026-09-29) — Strategy table TOTAL row: P&L % and Entry Value
+- Decision: TOTAL P&L % = unrealized P&L ÷ max loss ("—" if unlimited); Entry Value only for options-only strategies.
+  Recorded in REQ-035 "Owner decision (Q233)".
+
+## Q234 — DECIDED (owner, 2026-09-29) — Zerodha Client ID format
+- Decision: 6 characters, 2–3 letters then digits (AB1234 or ABC123). Recorded in REQ-020 "Owner decision (Q234)".
+
+## Q235 — DECIDED (owner, 2026-09-29) — Trust boundary for the advice-wording check (W-024 round 6)
+- Decision: same boundary as W-026 (accidental misuse by own code, CI-flagged internals; runtime sabotage out of scope);
+  promise phrases added to the checker. Recorded in ADR-003 "Q235".
+
+## Q236 — DECIDED (owner, 2026-09-29) — TOTAL Entry Value: net or plain sum?
+- Decision: NET entry premium (sells − buys) × quantity, Cr/Dr labelled; golden condor ₹6,825 Cr. Corrects the
+  orchestrator's ambiguous "signed as the legs" in REQ-035 "Owner decision (Q233)".
+
+## Q237 — DECIDED (owner, 2026-09-29) — CI for the API/web layers on a private repo
+- Decision: (a) a path-filtered project workflow `app-tests.yml`; usage reported after a week. Recorded in ADR-046.
+
+## Q238 — DECIDED (owner, 2026-09-29) — Order of exit orders (OD-e)
+- Decision: shorts bought back first, then longs sold, never in one batch. Recorded in REQ-058 "Owner decision (Q238)".
+
+## Q239 — DECIDED (owner, 2026-09-29) — Gate checks on exits (W-014)
+- Decision: keep all five checks on exits. Recorded in REQ-059 "Owner decision (Q239)".
+
+## Q240 — DECIDED (owner, 2026-09-29) — REQ-039 strategy state transition table
+- Decision: the proposed table in spec/data/domain-model.md §6 is approved with two fixes: Reconciliation Required is
+  left only by a recorded manual resolution (Q222); Active ↔ Monitoring Paused only on the user's pause/resume.
+  REQ-039 is now Approved.
+
+## Q241 — DECIDED (owner, 2026-09-29) — Moneyness column in the strategy table
+- Decision: no — leave it out; the locked column order stays. Recorded in REQ-035.
+
+## Q242 — DECIDED (owner, 2026-09-29) — Scenario caption at every level; TOTAL P&L % "—" cases
+- Decision: caption at all three UX levels; TOTAL P&L % "—" also for a missing live price or a multi-expiry strategy.
+  Recorded in REQ-035.
+
+## Q243 — DECIDED (owner, 2026-09-29) — Five gaps in the approved state table (found building W-041)
+- Decision: apply all five fixes, written into spec/data/domain-model.md §6: (1) nothing filled → back to Validated
+  with reasons; (2) Review Manually is not a transition; (3) an adjustment proposal can be withdrawn (recorded) → Active;
+  (4) partial fills → Partially Executed, Reconciliation Required only on a real broker mismatch; (5) "any live state"
+  = Active, Monitoring Paused, Adjustment Proposed, Execution in Progress, Partially Executed.
+
+## Q244 — DECIDED (owner, 2026-09-29) — Catalogue truncation guard
+- Decision: contract-level — refuse any update that removes a not-yet-expired contract; the 50% per-index rule goes.
+  Recorded in REQ-053 "Owner decision (Q244)".
+
+## Q245 — DECIDED (owner, 2026-09-29) — Adjustment with every order rejected, nothing filled
+- Decision: back to Adjustment Proposed with the rejection reasons; the original version stays active; the user may
+  execute the proposal again or withdraw it. Recorded in spec/data/domain-model.md §6.
+
+## Q246 — DECIDED (owner, 2026-09-29) — Readings of unclear values in the reference video (REQ-071)
+- Decision: profit left = max profit − booked losses; capital = margin blocked; volatility = per-option IV; swing /
+  trend out of V1. Recorded in spec/technical-design/adjustment-data-contract.md "Owner readings".
+
+## Q247 — DECIDED (owner, 2026-09-29) — Where a strategy goes after adopting Zerodha's position
+- Decision: adopt → Active on the adopted version (from any prior state); closing order executed or broker flat →
+  Exited. Found by the W-041 verifier (Partially Executed → RR → adopt got stuck). Recorded in domain-model §6.
+
+## Q248 — DECIDED (owner, 2026-09-29) — Pricing model and rate for delta / IV values (REQ-071 rows 4, 26)
+- Decision: use the existing §4 Black-Scholes model; risk-free rate is an admin setting, default 6.5% p.a., recorded
+  with each calculation. Rows 4 and 26 → pass. Recorded in adjustment-data-contract.md.
+
+## Q249 — DECIDED (owner, 2026-09-29) — Strike selection modes (REQ-027 AC-1)
+- Decision: short-strike delta bands — Conservative 0.10–0.15, Balanced 0.20–0.25, Aggressive 0.30–0.35; wings at
+  template defaults; all strikes editable. Recorded in REQ-027.
+
+## Q250 — DECIDED (owner, 2026-09-29) — Valid setup and effective range (REQ-069, REQ-068 AC-4)
+- Decision: valid = listed + within capital/max-loss + P&L ≥ 0 over the whole range (range-bound) or at the favourable
+  end (directional); effective range = the breakeven band. Recorded in REQ-069.
+
+## Q251 — DECIDED (owner, 2026-09-29) — Strategy levels, market views, objectives (REQ-068 AC-2)
+- Decision: apply the level rules directly (Beginner / Intermediate / Advanced as listed in REQ-068), plus market view
+  and objective per strategy. Recorded in REQ-068 "Owner decision (Q251)".
+
+## Q252 — DECIDED (owner, 2026-09-29) — Default playbooks vs the "no user rule" case (REQ-045 AC-5/AC-7)
+- Decision: adopt-to-own — unadopted defaults are platform detections; adopted/edited defaults are the user's rules;
+  edits create personal copies. Recorded in REQ-045.
+
+## Q253 — DECIDED (owner, 2026-09-29) — Platform "risk area" detection (REQ-045 AC-2)
+- Decision: 0.5% from a short strike/breakeven, or 50% of max loss, or ≤2 DTE with a short leg within 1%; all
+  admin-configurable. Recorded in REQ-045.
+
+## Q254 — DECIDED (owner, 2026-09-29) — Expected move; "material" change
+- Decision: expected move = spot × ATM IV × √(days/365) (REQ-027); material = structure change or ≥5% move in max loss
+  or a breakeven (REQ-068). The question's example said ±332; the correct value is ±383 (recorded).
+
+## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact configuration (REQ-046 AC-4)
+- Decision: keep widths, restore the short strikes' entry distance from spot (snapped to listed strikes); always an
+  editable proposal. Recorded in REQ-046.
+
+## Q256 — DECIDED (owner, 2026-10-02) — The clock-skew window value (ADR-023 Q225)
+- Question: ADR-023 names a clock-skew window for new entitlement events but gave no number.
+- Decision: **60 seconds, both ways**, the value the verified strategy-version and timeline modules already use. An
+  event the ledger stamps at 10:00:00 may carry a granted/effective date from 09:59:00 to 10:01:00; anything outside
+  is refused. Recorded in ADR-023 "Q256".

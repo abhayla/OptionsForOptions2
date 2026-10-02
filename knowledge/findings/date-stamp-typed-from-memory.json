@@ -1,0 +1,21 @@
+{
+  "id": "date-stamp-typed-from-memory",
+  "scope": "generic",
+  "class": "Any date or time written into a status document, decision row or file name from the author's sense of 'today' instead of the system clock drifts; a long session that crosses midnight, or one that plans for 'tomorrow morning', stamps the future, and every reader then trusts a date that did not happen yet.",
+  "mechanism": "The overnight session (git: first commit 2026-09-28 20:42 IST, handover commit 2026-09-29 09:16 IST) wrote '2026-09-30' as the handover date, the owner-review heading and file name, CLAUDE.md 'Current state', and two references - one day in the future.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "docs/HANDOVER.md line 3, docs/owner-review-2026-09-30.md (file name + heading), CLAUDE.md line 12, spec/decisions/ADR-045.md, docs/plan-2026-09-29-night.md",
+    "evidence": "`date` printed 2026-09-29 16:40 IST; `git log -1 --format=%ci 8c0bed2` printed 2026-09-29 09:16:33 +0530; grep found 7 occurrences of 2026-09-30 in 5 files"
+  },
+  "fix": "Read the date from the clock (`date +%Y-%m-%d`) in the same step that writes it; corrected all 7 occurrences and renamed the owner-review file to 2026-09-29 on 2026-09-29.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Habit only (global status-artifact rule R6 says the same). A guard would be a test that fails on any YYYY-MM-DD in spec/, docs/, work/ or knowledge/ later than the latest commit date; build it at the second occurrence (learning.md L2)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-045.md"
+  ],
+  "occurrences": []
+}

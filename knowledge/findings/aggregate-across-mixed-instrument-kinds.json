@@ -1,5 +1,6 @@
 {
   "id": "aggregate-across-mixed-instrument-kinds",
+  "scope": "project",
   "class": "Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs.",
   "mechanism": "The method groups contracts by underlying and expiry only and treats a non-uniform attribute as bad data, but Zerodha lists NIFTY options at tick 0.05 and the NIFTY future at tick 0.1 on the same expiry date.",
   "first_seen": {

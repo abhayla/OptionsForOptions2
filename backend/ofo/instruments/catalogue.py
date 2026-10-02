@@ -10,11 +10,12 @@ matching underlying + expiry — never hard-coded (ADR-007 Q36).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Iterable
 
+from ofo.audit import AuditLog, EventType
 from ofo.instruments.models import FUTURE_TYPE, OPTION_TYPES, Contract
 
 # The two underlyings this catalogue tracks (ADR-007 / REQ-053 scope: NIFTY on NFO, SENSEX on BFO).
@@ -23,7 +24,8 @@ SUPPORTED_UNDERLYINGS: dict[str, str] = {
     "SENSEX": "BFO",
 }
 
-DEFAULT_MAX_UNLIST_SHARE = 0.5
+# The update date is the calendar date in India (the exchanges' timezone), ADR-007.
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 
 
 class ContractKind(str, Enum):
@@ -90,8 +92,11 @@ class Catalogue:
         self,
         contracts: Iterable[Contract],
         *,
-        max_unlist_share: float = DEFAULT_MAX_UNLIST_SHARE,
+        as_of: datetime,
         force: bool = False,
+        reason: str | None = None,
+        actor: str | None = None,
+        audit_log: AuditLog | None = None,
     ) -> "CatalogueUpdateResult":
         """Refresh from a newer instrument list.
 
@@ -99,57 +104,71 @@ class Catalogue:
         contracts already in the catalogue but absent from `contracts` are marked
         `currently_listed = False` — they are never removed (AC-2).
 
-        Refuses (raises `ValueError`, changes nothing) when `contracts` is empty; when, for any
-        underlying that currently has listed contracts, the new list has zero rows for that
-        underlying; or when the update would unlist more than `max_unlist_share` (default 50%)
-        of that underlying's currently listed contracts — evaluated PER UNDERLYING (NIFTY,
-        SENSEX), never as one whole-catalogue share (a feed can drop all of one underlying while
-        still being a small fraction of the combined catalogue). Pass `force=True` to override
-        every guard.
+        Refuses (raises `ValueError`, changes nothing) if the update would drop ANY currently
+        listed contract whose expiry has not yet passed (owner decision Q244, REQ-053). Expiry
+        is judged against `as_of`, a timezone-aware moment passed in by the caller (never a
+        hidden clock), converted to its India (IST) calendar date: a contract expiring ON that
+        date has not yet passed. Contracts of an already-passed expiry may roll off, and new
+        contracts may be added. An empty list therefore refuses while any unexpired contract is
+        listed.
+
+        `force=True` overrides the guard (a real broker delisting) but ONLY with a non-empty
+        `reason`, a non-empty `actor` and an explicit `audit_log` (no hidden global): a forced
+        update is refused otherwise, and every forced update appends one ADMIN_CHANGE_RECORDED
+        event (who, when = `as_of`, reason, exact dropped contract ids) before anything changes
+        (REQ-064; issue #80). `reason`/`actor`/`audit_log` are rejected without `force`.
         """
+        if as_of.tzinfo is None or as_of.utcoffset() is None:
+            raise ValueError("Catalogue.update() requires a timezone-aware as_of")
+        update_date = as_of.astimezone(IST).date()
+
         contracts = list(contracts)
-
-        if not contracts and not force:
-            raise ValueError(
-                "Catalogue.update() refused: the new instrument list is empty (would unlist "
-                "every currently listed contract) — pass force=True to override"
-            )
-
         in_scope_new = [c for c in contracts if self._in_scope(c)]
         new_tokens = {c.instrument_token for c in in_scope_new}
-        new_names_present = {c.name for c in in_scope_new}
 
-        # Per-underlying, never a whole-catalogue aggregate: a feed can drop ALL of one
-        # underlying (e.g. all NIFTY rows) while still being a small share of the WHOLE
-        # catalogue (NIFTY + SENSEX together) — that must still be refused (fix round 3,
-        # REQ-053 AC-2 finding: the whole-catalogue share let a 40% cut through and unlisted
-        # every NIFTY contract).
-        currently_listed_by_name: dict[str, set[int]] = {}
-        for token, entry in self._entries.items():
-            if entry.currently_listed:
-                currently_listed_by_name.setdefault(entry.contract.name, set()).add(token)
+        if not force and (reason is not None or actor is not None or audit_log is not None):
+            raise ValueError("Catalogue.update(): reason/actor/audit_log are only valid with force=True")
+        if force:
+            if reason is None or not reason.strip():
+                raise ValueError("Catalogue.update(force=True) refused: a non-empty reason is required")
+            if actor is None or not actor.strip():
+                raise ValueError("Catalogue.update(force=True) refused: a non-empty actor is required")
+            if audit_log is None:
+                raise ValueError("Catalogue.update(force=True) refused: an audit_log is required")
 
-        if not force:
-            for name, tokens in currently_listed_by_name.items():
-                if not tokens:
-                    continue
-                if name not in new_names_present:
-                    raise ValueError(
-                        f"Catalogue.update() refused: the new list has zero rows for {name}, "
-                        f"which has {len(tokens)} currently listed contracts — the source list "
-                        f"may be incomplete or truncated for this underlying; pass force=True "
-                        f"to override"
-                    )
-                would_unlist_for_name = tokens - new_tokens
-                share = len(would_unlist_for_name) / len(tokens)
-                if share > max_unlist_share:
-                    raise ValueError(
-                        f"Catalogue.update() refused: would unlist {len(would_unlist_for_name)}/"
-                        f"{len(tokens)} ({share:.0%}) of currently listed {name} contracts, "
-                        f"exceeding max_unlist_share={max_unlist_share:.0%} for {name} — the "
-                        f"source list may be incomplete or truncated for this underlying; pass "
-                        f"force=True to override"
-                    )
+        dropped_live = sorted(
+            (
+                e.contract
+                for token, e in self._entries.items()
+                if e.currently_listed
+                and token not in new_tokens
+                and (e.contract.expiry is None or e.contract.expiry >= update_date)
+            ),
+            key=lambda c: c.instrument_token,
+        )
+        if force:
+            assert audit_log is not None and reason is not None and actor is not None
+            audit_log.append(
+                EventType.ADMIN_CHANGE_RECORDED,
+                actor=actor.strip(),
+                timestamp=as_of,
+                correlation_id=f"catalogue-force-update-{as_of.isoformat()}",
+                payload={
+                    "action": "catalogue_force_update",
+                    "reason": reason.strip(),
+                    "dropped_instrument_tokens": [c.instrument_token for c in dropped_live],
+                    "dropped_tradingsymbols": [c.tradingsymbol for c in dropped_live],
+                },
+            )
+        else:
+            if dropped_live:
+                first = dropped_live[0]
+                raise ValueError(
+                    f"Catalogue.update() refused: would drop {len(dropped_live)} contract(s) "
+                    f"that have not expired as of {update_date} (first: {first.tradingsymbol}, "
+                    f"expiry {first.expiry}) — the source list may be incomplete or truncated; "
+                    f"override needs force=True with a reason, actor and audit_log"
+                )
 
         added = 0
         for contract in in_scope_new:

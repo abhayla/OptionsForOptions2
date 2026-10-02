@@ -4,11 +4,16 @@
   "title": "Finding",
   "description": "knowledge/findings/<slug>.json — one proven failure-class finding, as described in knowledge/findings/README.md.",
   "type": "object",
-  "required": ["id", "class", "mechanism", "first_seen", "fix", "detection"],
+  "required": ["id", "scope", "class", "mechanism", "first_seen", "fix", "detection"],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["generic", "project"],
+      "description": "generic: the class can happen in any project that uses the kit; project: it is about this repository only."
     },
     "class": {
       "type": "string",

@@ -1,5 +1,6 @@
 {
   "id": "guard-without-killing-test",
+  "scope": "generic",
   "class": "Any safety guard (an if-refuse/block/raise that protects money or state) with no test that fails when the guard is removed can be deleted or weakened in a later change with the suite still green; the guard's protection then depends on nobody touching that line.",
   "mechanism": "Builders wrote tests for the behaviours named in the ACs and the attacks in the brief, not for every guard they added; independent verifiers deleted guards one at a time and the suite stayed green.",
   "first_seen": {

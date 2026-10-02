@@ -1,0 +1,34 @@
+{
+  "id": "wall-clock-assertion-flakes-under-load",
+  "scope": "generic",
+  "class": "Any test that asserts elapsed wall-clock time against a fixed threshold (time.perf_counter() - start < N) measures the machine's load, not the code's cost; it fails whenever other work shares the CPU (parallel agents, CI neighbours) and passes on re-run, so a red run carries no information and trains readers to ignore reds.",
+  "mechanism": "tests/strategy/test_versions.py::test_one_thousand_history_appends_stay_fast asserts 1,001 appends finish in under 1.0 s; with three verifiers and a builder running full suites in parallel it exceeded 1.0 s and passed alone.",
+  "first_seen": {
+    "date": "2026-09-29",
+    "where": "W-031 verifier full-suite run (branch build/W-031-fixture-symbols @ 4cab7ff)",
+    "evidence": "verifier: 'Full suite 1217 passed, 1 failed (tests/strategy/test_versions.py::test_one_thousand_history_appends_stay_fast, a timing test); it passed on re-run (30 passed)'"
+  },
+  "fix": "Replace each wall-clock threshold with a deterministic cost check: count the work done (validation calls, comparisons, items re-checked) through an instrumented counter and assert it grows linearly (e.g. 1,000 appends re-validate each event once, not the whole history each time). Keep wall-clock only as a very loose sanity bound, or drop it.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/test_no_wall_clock_asserts.py"
+    ],
+    "note": "W-033 (2026-09-29): the five threshold asserts now count work (tests/work_count.py). W-038 (2026-09-29, issue #65) closed the guard's shape gaps: timeit readings, datetime.now() differences, aliased timer imports ('import time as t', 'from time import perf_counter as pc') and thresholds held in a module-level numeric constant are now flagged, each with a self-test snippet that was silent on the W-033 guard. Still NOT covered: call counting (tests/work_count.py) cannot see quadratic work with no function calls (an inline list comprehension); a threshold in a function-local or imported constant; a clock reading passed through a helper function's return value."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-09-29",
+      "where": "W-032 verifier full-suite run (build/W-032-close-slices @ f5e26ae)",
+      "evidence": "'full 1240 passed 1 failed (timing test, passes alone)'"
+    },
+    {
+      "date": "2026-09-29",
+      "where": "W-007 round-6 verifier full-suite run (build/W-007-entitlements @ a459ac0)",
+      "evidence": "'1 failed, 1423 passed in 189.43s' - same test"
+    }
+  ]
+}

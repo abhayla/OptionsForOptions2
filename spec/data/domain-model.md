@@ -46,12 +46,14 @@ Notification · Strategy Activity Event · Audit Event.
 Valid combinations include: Pro + broker disconnected; Limited + monitoring an Active strategy; Active strategy +
 expired Zerodha session; Reconciliation Required + active subscription.
 
-## 6. Strategy operational states (Q200) and a PROPOSED transition table
+## 6. Strategy operational states (Q200) and the transition table (owner-approved Q240)
 States (locked): Draft · Ready for Validation · Validated · Active · Monitoring Paused · Adjustment Proposed ·
 Execution in Progress · Partially Executed · Reconciliation Required · Completed · Exited · Archived.
 
-The handoff locks the states but gives **no transition table**. The table below is a **proposal for owner review**,
-not a decision; it follows the locked rules (explicit transitions, submitted ≠ executed, mismatch blocks execution).
+The handoff locks the states but gave no transition table. The table below was proposed by the orchestrator and
+**approved by the owner on 2026-09-29 (Q240)** with two fixes: Reconciliation Required is left only by an explicit
+manual resolution (Q222), and Monitoring Paused is entered and left only by the user. It follows the locked rules
+(explicit transitions, submitted ≠ executed, mismatch blocks execution).
 
 | From | To | Trigger |
 |---|---|---|
@@ -59,13 +61,16 @@ not a decision; it follows the locked rules (explicit transitions, submitted ≠
 | Ready for Validation | Validated / Draft | validation passes / fails (with reasons) |
 | Validated | Execution in Progress | user confirms Execute Strategy |
 | Execution in Progress | Active | every leg confirmed executed by the broker and reconciled |
-| Execution in Progress | Partially Executed | some legs executed, some failed/rejected |
-| Partially Executed | Execution in Progress / Reconciliation Required / Exited | user chooses complete or retry / review / close partial |
+| Execution in Progress | Validated | no leg filled and every order is finally rejected/failed; the rejection reasons are shown and the user may execute again or edit (Q243 fix 1) — this row is for a first ENTRY |
+| Execution in Progress | Adjustment Proposed | an ADJUSTMENT whose every order is finally rejected/failed with nothing filled: the original version stays active, the proposal is kept with the rejection reasons, and the user may execute it again or withdraw it (Q245) |
+| Execution in Progress | Partially Executed | some legs executed, the rest finally failed/rejected — even when the platform's intended legs differ from the fills; Reconciliation Required only if Zerodha's positions differ from the recorded fills (Q243 fix 4) |
+| Partially Executed | Execution in Progress / Exited | user chooses complete or retry / close partial. "Review Manually" keeps Partially Executed and opens the review; it is not a transition (Q243 fix 2) |
 | Active | Adjustment Proposed | user starts a modification, or accepts a detected opportunity to review |
-| Adjustment Proposed | Execution in Progress / Active | user confirms / discards the proposal |
-| Active | Monitoring Paused / Active | trigger **not yet defined** (part of the owner review of this table). A lost data feed or an expired Zerodha session does **not** change the strategy state: the strategy stays Active and its monitoring status shows paused ("Monitoring paused — reconnect Zerodha", Q182). Reason: REQ-043 AC-4 keeps monitoring status separate from this state machine, §5 allows Active + expired session, and the Zerodha session expires every morning (T1 #265), which would otherwise flip every Active strategy daily. Clarification recorded 2026-09-29 (audit item C-8). |
-| any live state | Reconciliation Required | broker state differs from platform state |
-| Reconciliation Required | previous live state | mismatch resolved (auto or explicit manual reconciliation) |
+| Adjustment Proposed | Execution in Progress / Active | user confirms / withdraws the proposal; a withdrawal is recorded in the version history (Q243 fix 3) |
+| Active | Monitoring Paused | the user explicitly pauses monitoring of this strategy (Q240) |
+| Monitoring Paused | Active | the user resumes monitoring of this strategy (Q240). A lost data feed or an expired Zerodha session does **not** change the strategy state: the strategy stays Active and its monitoring status shows paused ("Monitoring paused — reconnect Zerodha", Q182). Reason: REQ-043 AC-4 keeps monitoring status separate from this state machine, §5 allows Active + expired session, and the Zerodha session expires every morning (T1 #265), which would otherwise flip every Active strategy daily. Clarification recorded 2026-09-29 (audit item C-8). |
+| any live state (Active, Monitoring Paused, Adjustment Proposed, Execution in Progress, Partially Executed — Q243 fix 5) | Reconciliation Required | broker state differs from platform state |
+| Reconciliation Required | Active / Exited / previous live state | a recorded manual resolution on the latest run: **adopt → Active** on the adopted version, whatever the state before (Q247 — the adopted position is the strategy, nothing is left partial); a prepared closing order that executes, or broker flat → Exited; any other recorded resolution → the previous live state. An agreeing run alone never unblocks (Q222, Q240) |
 | Active | Exited | exit orders confirmed executed |
 | Active | Completed | all legs expired or closed at expiry |
 | Completed / Exited / Draft | Archived | user archives |

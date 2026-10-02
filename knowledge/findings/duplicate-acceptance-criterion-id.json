@@ -1,5 +1,6 @@
 {
   "id": "duplicate-acceptance-criterion-id",
+  "scope": "generic",
   "class": "Any requirement file can carry two acceptance criteria with the same AC id and still pass the project's lint, so tests, evidence files and citations that name that id become ambiguous.",
   "mechanism": "The requirement schema checks only the pattern of each AC id (^AC-\\d+$), not uniqueness within the file; an edit that appends a criterion by guessing the next number collides with an existing one unnoticed.",
   "first_seen": {
