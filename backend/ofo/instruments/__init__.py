@@ -4,6 +4,9 @@ Kept separate from eligibility (what Zerodha currently permits) per REQ-053 AC-2
 """
 from ofo.instruments.models import (
     BROKER_CODES,
+    BSE_FO,
+    EXCHANGE_SEGMENTS,
+    NSE_FO,
     ZERODHA,
     BrokerRef,
     Contract,
@@ -17,6 +20,9 @@ from ofo.instruments.parser import parse_instruments_csv
 
 __all__ = [
     "BROKER_CODES",
+    "BSE_FO",
+    "EXCHANGE_SEGMENTS",
+    "NSE_FO",
     "ZERODHA",
     "BrokerRef",
     "Contract",

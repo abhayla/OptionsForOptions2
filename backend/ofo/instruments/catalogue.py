@@ -19,6 +19,8 @@ from ofo.audit import AuditLog, EventType
 from ofo.instruments.models import (
     FUTURE_TYPE,
     OPTION_TYPES,
+    BSE_FO,
+    NSE_FO,
     BrokerRef,
     Contract,
     InstrumentId,
@@ -39,10 +41,10 @@ def _listed(row: Row) -> ListedContract:
         return ListedContract(contract=row)
     raise TypeError(f"catalogue rows are Contract or ListedContract, got {row!r}")
 
-# The two underlyings this catalogue tracks (ADR-007 / REQ-053 scope: NIFTY on NFO, SENSEX on BFO).
+# The two underlyings this catalogue tracks, by exchange segment (ADR-007 / REQ-053 scope; REQ-054 segment list).
 SUPPORTED_UNDERLYINGS: dict[str, str] = {
-    "NIFTY": "NFO",
-    "SENSEX": "BFO",
+    "NIFTY": NSE_FO,
+    "SENSEX": BSE_FO,
 }
 
 # The update date is the calendar date in India (the exchanges' timezone), ADR-007.
@@ -68,13 +70,13 @@ def _kind_types(kind: ContractKind) -> frozenset[str]:
 
 
 def _refuse_duplicate_ids(rows: list[ListedContract]) -> None:
-    """Fail closed: two in-scope rows of one list with the same exchange identity stop the load, naming both. (On the
-    real 2026-10-02 file 30 NSE cash/index pairs share an exchange token; none of the 4,970 NFO/BFO rows do.)"""
+    """Fail closed: two in-scope rows of one list with the same exchange identity stop the load, naming both. (F-10: on the
+    real 2026-10-02 file 30 NSE cash/index pairs share an exchange token; they are outside V1 and never reach here.)"""
     seen: dict[InstrumentId, ListedContract] = {}
     for row in rows:
         if row.id in seen:
             names = [", ".join(r.broker_symbol for r in x.broker_refs) or x.contract.name for x in (seen[row.id], row)]
-            raise ValueError(f"two instrument rows share the identity {row.id.exchange}:{row.id.exchange_token} "
+            raise ValueError(f"two instrument rows share the identity {row.id.exchange_segment}:{row.id.exchange_token} "
                              f"({names[0]} and {names[1]}); the list is refused, nothing changed")
         seen[row.id] = row
 
@@ -122,7 +124,7 @@ class Catalogue:
     def _in_scope(contract: Contract) -> bool:
         return (
             contract.name in SUPPORTED_UNDERLYINGS
-            and contract.exchange == SUPPORTED_UNDERLYINGS[contract.name]
+            and contract.exchange_segment == SUPPORTED_UNDERLYINGS[contract.name]
             and (contract.is_option() or contract.is_future())
         )
 
@@ -209,7 +211,7 @@ class Catalogue:
                 payload={
                     "action": "catalogue_force_update",
                     "reason": reason.strip(),
-                    "dropped_instrument_ids": [[e.id.exchange, e.id.exchange_token] for e in dropped_live],
+                    "dropped_instrument_ids": [[e.id.exchange_segment, e.id.exchange_token] for e in dropped_live],
                     "dropped_broker_symbols": [
                         [r.broker, r.broker_symbol] for e in dropped_live for r in e.broker_refs.values()
                     ],
@@ -222,7 +224,7 @@ class Catalogue:
                 raise ValueError(
                     f"Catalogue.update() refused: would drop {len(dropped_live)} contract(s) "
                     f"that have not expired as of {update_date} (first: {first.contract.name} "
-                    f"{first.id.exchange}:{first.id.exchange_token} {symbols}, "
+                    f"{first.id.exchange_segment}:{first.id.exchange_token} {symbols}, "
                     f"expiry {first.contract.expiry}) — the source list may be incomplete or truncated; "
                     f"override needs force=True with a reason, actor and audit_log"
                 )

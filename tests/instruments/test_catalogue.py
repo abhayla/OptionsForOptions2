@@ -66,7 +66,7 @@ def test_catalogue_filters_out_unrelated_instruments(catalogue: Catalogue, contr
     assert catalogue_rows < total_rows  # the fixture includes ~20 unrelated rows the catalogue must drop
     for entry in catalogue.all_entries():
         assert entry.contract.name in ("NIFTY", "SENSEX")
-        assert entry.contract.exchange in ("NFO", "BFO")
+        assert entry.contract.exchange_segment in ("NSE_FO", "BSE_FO")
 
 
 def test_catalogue_includes_futures(catalogue: Catalogue) -> None:
@@ -341,7 +341,7 @@ def test_force_with_reason_is_audited_with_exact_dropped_contracts(
     assert event.actor == "ops-admin"
     assert event.timestamp == ON_EXPIRY_DAY
     assert event.payload["reason"] == "NSE delisted it (circular 123)"
-    assert event.payload["dropped_instrument_ids"] == ((victim.id.exchange, victim.id.exchange_token),)
+    assert event.payload["dropped_instrument_ids"] == ((victim.id.exchange_segment, victim.id.exchange_token),)
     assert event.payload["dropped_broker_symbols"] == (("zerodha", victim.ref("zerodha").broker_symbol),)
     assert log.verify().ok
 
