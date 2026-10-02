@@ -646,8 +646,20 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
 
 async def check_owner_cannot_delete_or_change_terms(conn: AsyncConnection) -> None:
     """Even the owner (who bypasses grants) cannot delete a contract, change its identity, or rewrite the term-change
-    history: the triggers refuse."""
-    await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')", CATALOGUE_SQLSTATE)
+    history: the triggers refuse.
+
+    The DELETE targets a contract with no broker row and no history row, inserted here by the owner (a full V1
+    identity), so the guard is the ONLY barrier on it: a contract with a broker row is also held by the
+    broker_instruments foreign key (23503), which would hide a weakened guard (W-056 fix round 2)."""
+    await conn.execute(text(f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, expiry, strike, "
+                            "instrument_type) VALUES ('NSE_FO', 99997, 'NIFTY', '2026-10-27', 25000, 'CE')"))
+    bare = "exchange_segment = 'NSE_FO' AND exchange_token = 99997"
+    referenced = (await conn.execute(text(
+        f"SELECT (SELECT count(*) FROM {BROKER} b JOIN {TABLE} c ON c.id = b.contract_id WHERE c.{bare.replace(' AND ', ' AND c.')}) "
+        f"+ (SELECT count(*) FROM public.catalogue_term_changes h JOIN {TABLE} c ON c.id = h.contract_id "
+        f"WHERE c.{bare.replace(' AND ', ' AND c.')})"))).scalar_one()
+    assert referenced == 0, "the deleted row must have no foreign-key references, or the guard is not the only barrier"
+    await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE {bare}", CATALOGUE_SQLSTATE)
     await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
     await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
