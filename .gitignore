@@ -8,6 +8,7 @@
 # views/ is generated output — regenerate it, do not hand-edit or commit stale copies.
 # .factory/authorizations/ holds owner-only single-use records — never commit real ones.
 views/*
+!views/build-order.md
 !views/README.md
 .factory/authorizations/*
 !.factory/authorizations/README.md
