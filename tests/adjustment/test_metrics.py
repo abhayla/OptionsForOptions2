@@ -281,7 +281,7 @@ def test_market_clock_reads_exchange_time():
     """AC-1 row 18: 10:00 UTC is 10:00 + 5:30 = 15:30 IST. A naive clock is refused."""
     value = m.market_clock(datetime.datetime(2026, 9, 29, 10, 0, tzinfo=datetime.timezone.utc))
     assert value.value == datetime.time(15, 30, tzinfo=IST)
-    with pytest.raises(ValueError, match="timezone-aware"):
+    with pytest.raises(ValueError, match="now must be a timezone-aware"):
         m.market_clock(datetime.datetime(2026, 9, 29, 10, 0))
 
 
