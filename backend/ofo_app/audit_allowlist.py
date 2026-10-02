@@ -135,6 +135,19 @@ def _require_no_mapping(value: Any, path: str) -> None:
             _require_no_mapping(item, f"{path}[{index}]")
 
 
+def _spec_json(spec: Mapping[str, FieldSpec]) -> dict[str, Any]:
+    return {name: (SCALAR if field == SCALAR else _spec_json(field)) for name, field in spec.items()}  # type: ignore[arg-type]
+
+
+def allowlist_spec() -> dict[str, Any]:
+    """The allowlist as plain JSON: ``{event_type: {field: "scalar" | {sub_field: "scalar"}}}``.
+
+    The single source the database copy is generated from (migration 0002 embeds it in
+    ``public.ofo_audit_payload_allowlist()``; a head test asserts the two are equal).
+    """
+    return {event_type.value: _spec_json(spec) for event_type, spec in ALLOWLIST.items()}
+
+
 def filter_payload(event_type: EventType, payload: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return a new payload holding only the fields declared for ``event_type``.
 

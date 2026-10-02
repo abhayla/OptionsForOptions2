@@ -9,22 +9,26 @@ append(conn, ...) inside the caller's transaction (READ COMMITTED, the PostgreSQ
 3. Filters the payload through the event type's field allowlist (undeclared type: refused, nothing sent), refuses any
    value the store cannot round-trip exactly (float, non-finite Decimal, NUL or lone surrogate in a string, other
    types), and builds the ``ofo.audit.AuditEvent`` on the anchor's last hash.
-4. Inserts seq = count + 1 with the canonical tagged payload. The database refuses a row that does not extend the
-   anchor (SQLSTATE OF003) or whose time is outside the Q256 window (OF001), and its SECURITY DEFINER trigger moves
-   the anchor in the same transaction.
+4. Inserts seq = count + 1 with the canonical tagged payload and the canonical text the hash is the SHA-256 of.
+   The database refuses a row whose time is outside the Q256 window (OF001), whose payload leaves the allowlist
+   (OF004), whose hash is not sha256(canonical) or whose canonical text does not match its columns (OF005), or that
+   does not extend the anchor (OF003); its SECURITY DEFINER trigger moves the anchor in the same transaction.
 
 load_log(conn) reads the anchor FIRST, then the events (so events committed in between only extend the prefix the
-anchor attests), rebuilds every event with ``ofo.audit``, requires each stored hash to equal its recomputation, and
+anchor attests), rebuilds every event with ``ofo.audit``, requires each payload to equal its allowlist-filtered form,
+the stored canonical text to equal the Python canonical form byte for byte, each stored hash to equal its
+recomputation, and
 verifies the chain against the anchor via ``AuditLog.from_events``. Any mismatch raises ``AuditChainError`` naming
 the row's seq.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Mapping
 
@@ -46,12 +50,31 @@ _ISOLATION = text("SELECT current_setting('transaction_isolation')")
 _ANCHOR = text("SELECT event_count, last_hash FROM public.audit_anchor WHERE id = 1")
 _INSERT = text(
     'INSERT INTO public.audit_events (seq, event_type, actor, "timestamp", correlation_id, payload, previous_hash, '
-    "hash) VALUES (:seq, :event_type, :actor, :ts, :correlation_id, CAST(:payload AS jsonb), :previous_hash, :hash)"
+    "hash, canonical) VALUES (:seq, :event_type, :actor, :ts, :correlation_id, CAST(:payload AS jsonb), "
+    ":previous_hash, :hash, :canonical)"
 )
 _EVENTS = text(
-    'SELECT seq, event_type, actor, "timestamp", correlation_id, payload::text AS payload, previous_hash, hash '
-    "FROM public.audit_events ORDER BY seq"
+    'SELECT seq, event_type, actor, "timestamp", correlation_id, payload::text AS payload, previous_hash, hash, '
+    "canonical FROM public.audit_events ORDER BY seq"
 )
+
+
+def canonical_text(event: AuditEvent) -> str:
+    """The exact text ``event.hash`` is the SHA-256 of (the input of ofo.audit.models._compute_hash).
+
+    Stored in the ``canonical`` column so the database can check hash = sha256(canonical) at insert. append()
+    refuses if this ever drifts from ofo.audit's own hash.
+    """
+    return canonical_json(
+        {
+            "event_type": event.event_type.value,
+            "actor": event.actor,
+            "timestamp": event.timestamp.astimezone(timezone.utc).isoformat(),
+            "correlation_id": event.correlation_id,
+            "payload": event.payload,
+            "previous_hash": event.previous_hash,
+        }
+    )
 
 
 class AuditStoreError(ValueError):
@@ -187,6 +210,9 @@ async def append(
         previous_hash=head.last_hash,
     )
     seq = head.count + 1
+    canonical = canonical_text(event)
+    if hashlib.sha256(canonical.encode("utf-8")).hexdigest() != event.hash:
+        raise AuditStoreError("canonical text drifted from ofo.audit's hash input; refusing to store")
     await conn.execute(
         _INSERT,
         {
@@ -198,6 +224,7 @@ async def append(
             "payload": encoded,
             "previous_hash": event.previous_hash,
             "hash": event.hash,
+            "canonical": canonical,
         },
     )
     return StoredEvent(seq=seq, event=event)
@@ -215,16 +242,22 @@ def _row_event(row: Any) -> AuditEvent:
         raw = json.loads(row.payload, parse_float=_refuse_float, parse_constant=_refuse_constant)
         if not isinstance(raw, dict):
             raise AuditStoreError("stored payload is not an object")
+        decoded = decode_payload(raw)
+        allowed = filter_payload(event_type, decoded)
         event = AuditEvent(
             event_type=event_type,
             actor=row.actor,
             timestamp=row.timestamp,
             correlation_id=row.correlation_id,
-            payload=decode_payload(raw),
+            payload=decoded,
             previous_hash=row.previous_hash,
         )
     except (ValueError, TypeError, ArithmeticError) as exc:
         raise AuditChainError(f"audit row seq={seq} cannot be rebuilt: {exc}") from exc
+    if allowed != decoded:
+        raise AuditChainError(f"audit row seq={seq}: stored payload holds fields outside its allowlist")
+    if canonical_text(event) != row.canonical:
+        raise AuditChainError(f"audit row seq={seq}: stored canonical text is not the canonical form of the row")
     if event.hash != row.hash:
         raise AuditChainError(f"audit row seq={seq}: stored hash does not match its recomputed hash")
     return event
@@ -261,6 +294,7 @@ __all__ = [
     "AuditStoreError",
     "StoredEvent",
     "append",
+    "canonical_text",
     "decode_payload",
     "encode_payload",
     "load_log",
