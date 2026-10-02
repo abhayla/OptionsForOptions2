@@ -13,9 +13,11 @@
     "status": "guarded",
     "checks": [
       "backend/ofo_app/alembic/versions/0001_baseline_ledger_clock.py ofo_assert_app_role_allowlist (pre and post phase)",
-      "tests_app/test_ledger_clock.py allowlist mutation tests (run in .github/workflows/app-tests.yml with OFO_REQUIRE_DB_TESTS=1)"
+      "tests_app/test_ledger_clock.py allowlist mutation tests (run in .github/workflows/app-tests.yml with OFO_REQUIRE_DB_TESTS=1)",
+      "backend/ofo_app/alembic/versions/0002_audit_store.py allowlist block 7 (audit_events, audit_anchor, trigger functions: EXECUTE, SECURITY DEFINER, owner, search_path, trigger->function)",
+      "tests_app/test_audit_store.py allowlist mutation tests and head test of block markers"
     ],
-    "note": "Covers the ledger_entries table; every new append-only table (W-052, W-053) must be added to the allowlist's table checks. Does not cover privileges granted after the migration ran (a later manual GRANT): re-running the function is the check."
+    "note": "Covers ledger_entries (W-051) and the audit tables (W-052, PR #105); each later migration extends the allowlist through the chain helper (W-053 adds the catalogue table, trigger tgtype checks and pinned function bodies, which the W-052 round-2 review found unchecked at owner level). Does not cover privileges granted after the migration ran (a later manual GRANT): re-running the function is the check."
   },
   "spec_ref": [
     "spec/requirements/REQ-064.md",
