@@ -37,6 +37,7 @@ from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy
 from ofo.engine.interfaces import ChargesBreakdown, MarginRequirement
 from ofo.execution import DataHealth, DataInput, ExecutionAction, ExecutionContext, VersionState
 from ofo.execution.partial import PartialChoice, close_partial_strategy, complete_strategy, submit_confirmed
+from ofo.instruments.parser import zerodha_listed
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.strategy.definition import StrategyDefinition
@@ -125,7 +126,7 @@ def propose(rec: StrategyRecord, changes: tuple[LegChange, ...], margin: _Margin
 def _catalogue() -> Catalogue:
     cat = Catalogue()
     cat.load([
-        Contract(instrument_token=tok, exchange_token=tok, tradingsymbol=f"NIFTY{k}{i.value}", name="NIFTY",
+        zerodha_listed(instrument_token=tok, exchange_token=tok, tradingsymbol=f"NIFTY{k}{i.value}", name="NIFTY",
                  expiry=EXPIRY, strike=D(k), tick_size=D("0.05"), lot_size=QTY, instrument_type=i.value,
                  segment="NFO-OPT", exchange="NFO")
         for (i, k), tok in {(Instrument.PE, "22800"): 900001, (Instrument.PE, "22900"): 900002,
@@ -138,7 +139,7 @@ def _catalogue() -> Catalogue:
 def _eligibility(cat: Catalogue) -> EligibilityRegistry:
     reg = EligibilityRegistry()
     for entry in cat.all_entries():
-        reg.record(EligibilityStatus(entry.contract.instrument_token, True, T0))
+        reg.record(EligibilityStatus(entry.contract.id, True, T0))
     return reg
 
 

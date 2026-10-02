@@ -191,7 +191,7 @@ def test_validation_never_changes_strategy_catalogue_or_eligibility(catalogue, e
     before_strategy = copy.deepcopy(strategy)
     before_legs = [id(leg) for leg in strategy.legs]
     before_catalogue = [(e.contract, e.currently_listed) for e in catalogue.all_entries()]
-    before_elig = {e.contract.instrument_token: eligibility.get(e.contract.instrument_token)
+    before_elig = {e.contract.id: eligibility.get(e.contract.id)
                    for e in catalogue.all_entries()}
 
     result = check(strategy, all_true_context(market_open=False), catalogue, eligibility)
@@ -211,14 +211,14 @@ def test_unlisted_contract_is_reported_with_alternatives_not_replaced(condor, ca
     """AC-5: a contract missing from a newer list stays in the catalogue, is reported, alternatives are offered,
     and the strategy still holds the original strike."""
     token = find_token(catalogue, "PE", "23000")
-    catalogue.update([c for c in parse_instruments_csv(FIXTURE) if c.instrument_token != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
+    catalogue.update([c for c in parse_instruments_csv(FIXTURE) if c.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
     result = check(condor, all_true_context(), catalogue, eligibility)
     (failure,) = result.failures
     assert failure.code is CheckCode.CONTRACT_NOT_LISTED
     assert failure.leg_number == 2
     assert failure.alternatives == (D("22950"), D("23050"))
     assert condor.legs[1].strike == D("23000")
-    kept = [e for e in catalogue.all_entries() if e.contract.instrument_token == token]
+    kept = [e for e in catalogue.all_entries() if e.contract.id == token]
     assert len(kept) == 1 and kept[0].currently_listed is False
 
 
@@ -235,7 +235,7 @@ def test_alternatives_exclude_unlisted_and_ineligible_strikes(condor, catalogue,
 def test_unavailable_futures_contract_offers_no_strike_alternatives(catalogue, eligibility):
     """AC-5: an ineligible future is reported; no strike alternative is invented for a futures leg."""
     fut = Leg(Action.BUY, Instrument.FUT, None, datetime.date(2026, 10, 27), 65, D("23250"))
-    (token,) = [c.instrument_token for c in catalogue.contracts_for("NIFTY", fut.expiry, frozenset({"FUT"}))]
+    (token,) = [c.id for c in catalogue.contracts_for("NIFTY", fut.expiry, frozenset({"FUT"}))]
     eligibility.record(EligibilityStatus(token, False, AS_OF))
     result = check(Strategy((fut,)), all_true_context(), catalogue, eligibility)
     (failure,) = result.failures

@@ -37,6 +37,7 @@ from ofo.engine import Action
 from ofo.execution import partial, send_guard
 from ofo.execution.partial import Preparation, complete_strategy, discard_preparation
 from ofo.execution.send_guard import SendRefused
+from ofo.instruments.parser import zerodha_listed
 from ofo.instruments import CatalogueEntry, Contract
 from ofo.orders import Order
 from ofo.strategy.guard import GuardBinding, GuardRefused, proposal_hash
@@ -74,7 +75,7 @@ def _finnifty_twin() -> Contract:
     different underlying name. FINNIFTY is out of the catalogue's supported-underlying scope, so it is inserted
     directly into the catalogue's entries (a data-integrity edge case the sink itself must still refuse, not a
     shape the catalogue's own load would normally admit)."""
-    return Contract(
+    return zerodha_listed(
         instrument_token=900_000_001, exchange_token=900_001, tradingsymbol="FINNIFTY26O0623600CE",
         name="FINNIFTY", expiry=EXPIRY, strike=D("23600"), tick_size=D("0.05"), lot_size=40,
         instrument_type="CE", segment="NFO-OPT", exchange="NFO",
@@ -89,7 +90,9 @@ def test_underlying_filter_rejects_a_same_strike_finnifty_twin(catalogue, eligib
     FINNIFTY symbol instead. Deleting the underlying-equality filter in ``_catalogue_symbol`` makes the first
     assertion fail: two instruments then match strike+expiry+type, so the catalogue lookup itself raises instead
     of uniquely resolving to NIFTY."""
-    catalogue._entries[900_000_001] = CatalogueEntry(contract=_finnifty_twin(), currently_listed=True)
+    twin = _finnifty_twin()
+    catalogue._entries[twin.id] = CatalogueEntry(contract=twin.contract, currently_listed=True,
+                                                 broker_refs={r.broker: r for r in twin.broker_refs})
 
     book = book_with_three_filled()
     transport = _CountingTransport()
@@ -146,3 +149,19 @@ def test_guard_binding_mismatch_is_refused(catalogue, eligibility) -> None:
     authorised = getattr(partial, "_authorised_orders")
     with pytest.raises(GuardRefused, match="has not checked this exact action"):
         authorised(prep, book, STRATEGY_ID, forged_guard.acknowledgement)
+
+
+# -- W-056 (REQ-054 AC-3): Zerodha's symbol comes only from the entry's Zerodha row -------------------------------
+
+def test_a_leg_whose_contract_has_no_zerodha_row_is_refused_and_nothing_is_sent(catalogue) -> None:
+    """AC-3: with leg-4's catalogue entry stripped of its Zerodha row (contract still listed), the sink refuses the
+    order naming the missing row and the transport sees zero calls; no symbol is derived from the contract."""
+    (entry,) = [e for e in catalogue.all_entries() if e.has_ref("zerodha")
+                and e.ref("zerodha").broker_symbol == CONTRACTS[3]]
+    entry.broker_refs.clear()
+    book = book_with_three_filled()
+    transport = _CountingTransport()
+    leg4_order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
+    with pytest.raises(SendRefused, match="has no zerodha row"):
+        _sink(book, catalogue, transport=transport).resolve_all((_tagged(leg4_order),))
+    assert transport.calls == []

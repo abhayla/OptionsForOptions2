@@ -29,7 +29,7 @@ from decimal import Decimal
 from typing import Final, Protocol
 
 from ofo.engine import Action
-from ofo.instruments import Catalogue
+from ofo.instruments import ZERODHA, Catalogue, MissingBrokerRef
 from ofo.orders import TERMINAL_STATES, Order, OrderBook
 from ofo.strategy.definition import DefinitionLeg
 from ofo.strategy.versions import StrategyRecord, Version
@@ -117,13 +117,17 @@ def _slot(leg: object) -> Slot:
 
 
 def _catalogue_symbol(catalogue: Catalogue, underlying: str, leg: DefinitionLeg) -> str:
-    """The one catalogue entry for the leg: underlying, instrument type, expiry and (options) strike."""
-    matches = {e.contract.tradingsymbol for e in catalogue.all_entries()
+    """The one catalogue entry for the leg (underlying, instrument type, expiry and, for options, strike), and
+    Zerodha's symbol from that entry's Zerodha row. No Zerodha row: refused, no symbol is guessed (REQ-054 AC-3)."""
+    matches = [e for e in catalogue.all_entries()
                if e.contract.name == underlying and e.contract.instrument_type == leg.instrument.value
-               and e.contract.expiry == leg.expiry and (leg.strike is None or e.contract.strike == leg.strike)}
+               and e.contract.expiry == leg.expiry and (leg.strike is None or e.contract.strike == leg.strike)]
     if len(matches) != 1:
         raise SendRefused(f"the catalogue has {len(matches)} instruments for {leg.describe()}; nothing was sent")
-    return next(iter(matches))
+    try:
+        return matches[0].ref(ZERODHA).broker_symbol
+    except MissingBrokerRef as exc:
+        raise SendRefused(f"{leg.describe()}: {exc}; nothing was sent") from exc
 
 
 class _BrokerSink:

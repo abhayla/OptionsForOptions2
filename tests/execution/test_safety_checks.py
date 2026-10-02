@@ -28,6 +28,7 @@ from ofo.execution import (
     VersionState,
     active_legs_hash,
 )
+from ofo.instruments.models import ListedContract
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
 from execution_inputs import FIXTURE
 
@@ -49,7 +50,7 @@ def _strike_off_ladder(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inp
 
 def _unlisted(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
     token = find_token(c, "PE", "23000")
-    c.update([x for x in parse_instruments_csv(FIXTURE) if x.instrument_token != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
+    c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
     return s, all_true_context(), c, e
 
 
@@ -62,14 +63,15 @@ def _eligibility_unknown(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> I
     fresh = EligibilityRegistry()
     skip = find_token(c, "CE", "23600")
     for entry in c.all_entries():
-        if entry.contract.instrument_token != skip:
-            fresh.record(EligibilityStatus(entry.contract.instrument_token, True, AS_OF))
+        if entry.contract.id != skip:
+            fresh.record(EligibilityStatus(entry.contract.id, True, AS_OF))
     return s, all_true_context(), c, fresh
 
 
 def _ambiguous(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
-    (orig,) = [x for x in parse_instruments_csv(FIXTURE) if x.instrument_token == find_token(c, "PE", "22800")]
-    c.load([dataclasses.replace(orig, instrument_token=999_000_001, exchange_token=999_001)])
+    (orig,) = [x for x in parse_instruments_csv(FIXTURE) if x.id == find_token(c, "PE", "22800")]
+    c.load([ListedContract(dataclasses.replace(orig.contract, exchange_token=999_001),
+                           tuple(dataclasses.replace(r, broker_token="999000001") for r in orig.broker_refs))])
     return s, all_true_context(), c, e
 
 
@@ -95,7 +97,7 @@ def _exit_opens_position(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> I
 
 
 class _BrokenEligibility(EligibilityRegistry):
-    def get(self, instrument_token: int) -> EligibilityStatus | None:
+    def get(self, instrument_id) -> EligibilityStatus | None:
         raise RuntimeError("eligibility store unavailable")
 
 
@@ -256,7 +258,7 @@ def test_every_reason_is_plain_decision_support_wording(condor, catalogue, eligi
         cat.load(parse_instruments_csv(FIXTURE))
         elig = EligibilityRegistry()
         for entry in cat.all_entries():
-            elig.record(EligibilityStatus(entry.contract.instrument_token, True, AS_OF))
+            elig.record(EligibilityStatus(entry.contract.id, True, AS_OF))
         result = check(*mutate(Strategy(condor_legs()), cat, elig))
         for failure in result.failures:
             assert failure.reason.strip() and not FORBIDDEN.search(failure.reason), failure.reason
@@ -569,7 +571,7 @@ def _eligibility_never_read(cat: Catalogue, elig: EligibilityRegistry) -> dict[s
     fresh = EligibilityRegistry()
     skip = find_token(cat, "PE", "23000")
     for entry in cat.all_entries():
-        token = entry.contract.instrument_token
+        token = entry.contract.id
         if token != skip:
             fresh.record(EligibilityStatus(token, True, AS_OF))
     elig.__dict__.update(fresh.__dict__)
@@ -781,3 +783,15 @@ def test_passed_lists_only_checks_that_apply_to_the_action(action, inputs, not_a
     assert ctx.action.value == action and result.failures == ()
     assert set(result.not_applicable) == not_applicable
     assert set(result.passed) == set(CheckCode) - not_applicable - {CheckCode.INTERNAL_ERROR}
+
+
+def test_w056_a_listed_contract_with_no_zerodha_row_blocks_the_check(condor, catalogue, eligibility):
+    """REQ-054 AC-3: a listed, eligible contract whose Zerodha row is missing cannot be traded at Zerodha."""
+    token = find_token(catalogue, "CE", "23400")
+    catalogue.get(token).broker_refs.clear()
+    result = check(condor, all_true_context(), catalogue, eligibility)
+    assert result.blocked is True
+    (failure,) = result.failures
+    assert failure.code is CheckCode.CONTRACT_NOT_FOUND
+    assert "has no Zerodha instrument record" in failure.reason
+    assert failure.leg_number == 3

@@ -85,3 +85,14 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   monthly expiry assumed to be the last Thursday (`symbol_converter.py:43-53`); three broker-name vocabularies
   (`zerodha`/`kite`, `angelone`/`angel`/`smartapi`, `.claude/rules/broker-name-mapping.md`). Read 2026-10-02 at `bf9faf7`.
 - Bears on: spec/technical-design/legacy-reuse.md (rows stay SKIP), ADR-050 item 5. Status: **decided**.
+
+## F-10 - Zerodha's `exchange` column is not an exchange segment: (exchange, exchange_token) collides
+- Measured 2026-10-02 on Zerodha's public instrument file (`api.kite.trade/instruments`) by the W-056 builder: 30 pairs
+  of (`exchange`, `exchange_token`) appear twice, all with `exchange` = NSE, one row in Zerodha segment INDICES and one
+  NSE cash row. Example: NSE / 1001 is both "NIFTY 50" (segment INDICES) and "94SFL28-YL" (segment NSE). None of the
+  4,970 in-scope NFO/BFO option and future rows collide.
+- So "exchange segment" in ADR-050 and REQ-054 AC-3 means the exchange's market segment, not Zerodha's `exchange`
+  column, and is our own fixed list (REQ-054, "Exchange segment vocabulary"). The W-056 stage 1 code keyed on Zerodha's
+  `exchange`; the brief misstated the requirement (spec-adherence class 1), corrected in W-056.
+- Bears on: REQ-054 AC-3, REQ-053, ADR-050 items 1 and 2. Status: **decided** (wording of the existing decision; no
+  rule change). Registry: `knowledge/findings/instrument-identity-keyed-on-one-broker.json`.

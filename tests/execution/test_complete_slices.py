@@ -34,6 +34,7 @@ from partial_inputs import (
 from execution_inputs import condor_legs
 from plan_inputs import FakeConstraints, FakeMargin
 
+from ofo.instruments.models import ListedContract
 from ofo.engine import Action
 from ofo.execution import send_guard
 from ofo.execution.partial import (
@@ -163,10 +164,13 @@ def test_ac4_a_missing_quantity_that_is_not_a_whole_number_of_lots_is_refused(ca
 
 
 def test_ac4_a_symbol_held_by_two_catalogue_instruments_is_refused(catalogue) -> None:  # noqa: ANN001
-    """AC-4 negative: the catalogue is keyed by instrument token, so a second token with the 23,600 CE symbol (lot 75
+    """AC-4 negative: the catalogue is keyed by the exchange identity, so a second contract with the 23,600 CE symbol (lot 75
     here) makes the lot size ambiguous; refused rather than picking one."""
-    (entry,) = [e for e in catalogue.all_entries() if e.contract.tradingsymbol == CONTRACTS[3]]
-    twin = dataclasses.replace(entry.contract, instrument_token=entry.contract.instrument_token + 1, lot_size=75)
+    (entry,) = [e for e in catalogue.all_entries() if e.ref("zerodha").broker_symbol == CONTRACTS[3]]
+    ref = entry.ref("zerodha")
+    twin = ListedContract(
+        dataclasses.replace(entry.contract, exchange_token=entry.contract.exchange_token + 1, lot_size=75),
+        (dataclasses.replace(ref, broker_token=str(int(ref.broker_token) + 1), lot_size=75),))
     catalogue.load([twin])
     with pytest.raises(ValueError, match="2 instruments with that symbol"):
         sequence_plan(big_plan(), catalogue=catalogue)

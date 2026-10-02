@@ -72,7 +72,7 @@ from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, iden
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
 from ofo.execution.sequence import BrokerConstraints, PlannedOrder, exit_orders, sequence_plan
-from ofo.instruments import Catalogue, EligibilityRegistry
+from ofo.instruments import ZERODHA, Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
 from ofo.strategy.guard import GuardBinding, GuardDecision, GuardRefused, _decision, assess_risk_change, proposal_hash
@@ -475,7 +475,9 @@ def _grounded_plan(book: OrderBook, plan: ExecutionPlan, version_id: str,
     record = _record_with_version(book, plan.strategy_id, version_id)
     version = executable_version(record, _version_number(version_id))
     if catalogue is not None:
-        symbols = {e.contract.tradingsymbol: e.contract for e in catalogue.all_entries()}
+        # Zerodha's symbol comes only from an entry's Zerodha row; an entry without one is not tradable there.
+        symbols = {e.ref(ZERODHA).broker_symbol: e.contract for e in catalogue.all_entries()
+                   if e.has_ref(ZERODHA)}
         for p in plan.legs:
             c = symbols.get(p.contract)
             if (c is None or c.name != version.definition.underlying or c.instrument_type != p.leg.instrument.value

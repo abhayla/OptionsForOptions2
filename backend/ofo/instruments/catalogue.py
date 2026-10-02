@@ -9,19 +9,43 @@ matching underlying + expiry — never hard-coded (ADR-007 Q36).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Union
 
 from ofo.audit import AuditLog, EventType
-from ofo.instruments.models import FUTURE_TYPE, OPTION_TYPES, Contract
+from ofo.instruments.models import (
+    FUTURE_TYPE,
+    OPTION_TYPES,
+    BSE_FO,
+    NSE_FO,
+    BrokerRef,
+    Contract,
+    InstrumentId,
+    ListedContract,
+    check_broker_code,
+    find_ref,
+)
 
-# The two underlyings this catalogue tracks (ADR-007 / REQ-053 scope: NIFTY on NFO, SENSEX on BFO).
+# A row given to load()/update(): a listed contract with its broker rows, or a bare contract (no broker row, so it
+# cannot be traded at any broker; REQ-054 AC-3).
+Row = Union[Contract, ListedContract]
+
+
+def _listed(row: Row) -> ListedContract:
+    if isinstance(row, ListedContract):
+        return row
+    if isinstance(row, Contract):
+        return ListedContract(contract=row)
+    raise TypeError(f"catalogue rows are Contract or ListedContract, got {row!r}")
+
+# The two underlyings this catalogue tracks, by exchange segment (ADR-007 / REQ-053 scope; REQ-054 segment list).
 SUPPORTED_UNDERLYINGS: dict[str, str] = {
-    "NIFTY": "NFO",
-    "SENSEX": "BFO",
+    "NIFTY": NSE_FO,
+    "SENSEX": BSE_FO,
 }
 
 # The update date is the calendar date in India (the exchanges' timezone), ADR-007.
@@ -46,51 +70,86 @@ def _kind_types(kind: ContractKind) -> frozenset[str]:
     raise ValueError(f"unknown contract kind: {kind!r}")
 
 
+def _refuse_duplicate_ids(rows: list[ListedContract]) -> None:
+    """Fail closed: two in-scope rows of one list with the same exchange identity stop the load, naming both. (F-10: on the
+    real 2026-10-02 file 30 NSE cash/index pairs share an exchange token; they are outside V1 and never reach here.)"""
+    seen: dict[InstrumentId, ListedContract] = {}
+    for row in rows:
+        if row.id in seen:
+            names = [", ".join(r.broker_symbol for r in x.broker_refs) or x.contract.name for x in (seen[row.id], row)]
+            raise ValueError(f"two instrument rows share the identity {row.id.exchange_segment}:{row.id.exchange_token} "
+                             f"({names[0]} and {names[1]}); the list is refused, nothing changed")
+        seen[row.id] = row
+
+
 @dataclass
 class CatalogueEntry:
-    """A contract plus its listedness in the catalogue (mutable; identity is the contract)."""
+    """A contract plus its listedness and its per-broker rows (mutable; identity is `contract.id`)."""
 
     contract: Contract
     currently_listed: bool
+    broker_refs: dict[str, BrokerRef] = field(default_factory=dict)
+
+    @property
+    def id(self) -> InstrumentId:
+        return self.contract.id
+
+    def ref(self, broker: str) -> BrokerRef:
+        """The broker's own row for this contract; `MissingBrokerRef` when there is none (AC-3: never guessed)."""
+        check_broker_code(broker)
+        return find_ref(self.contract, self.broker_refs.values(), broker)
+
+    def has_ref(self, broker: str) -> bool:
+        check_broker_code(broker)
+        return broker in self.broker_refs
+
+
+def _entry(row: ListedContract, previous: "CatalogueEntry | None") -> CatalogueEntry:
+    refs = dict(previous.broker_refs) if previous is not None else {}
+    for ref in row.broker_refs:
+        old = refs.get(ref.broker)
+        if old is not None and ref.freeze_limit is None and old.freeze_limit is not None:
+            # REQ-054 "Per-broker values and their date": a list without a value leaves the stored value.
+            ref = dataclasses.replace(ref, freeze_limit=old.freeze_limit)
+        refs[ref.broker] = ref  # a broker's newer row replaces its older one; other brokers' rows are kept
+    return CatalogueEntry(contract=row.contract, currently_listed=True, broker_refs=refs)
 
 
 class Catalogue:
-    """Contract catalogue for the supported underlyings, keyed by `instrument_token`.
+    """Contract catalogue for the supported underlyings, keyed by the exchange identity `InstrumentId` (ADR-050).
 
     `update()` never deletes an entry: a contract absent from a newer list is marked
     `currently_listed = False` and kept (REQ-053 AC-2).
     """
 
     def __init__(self) -> None:
-        self._entries: dict[int, CatalogueEntry] = {}
+        self._entries: dict[InstrumentId, CatalogueEntry] = {}
 
     @staticmethod
     def _in_scope(contract: Contract) -> bool:
         return (
             contract.name in SUPPORTED_UNDERLYINGS
-            and contract.exchange == SUPPORTED_UNDERLYINGS[contract.name]
+            and contract.exchange_segment == SUPPORTED_UNDERLYINGS[contract.name]
             and (contract.is_option() or contract.is_future())
         )
 
-    def load(self, contracts: Iterable[Contract]) -> int:
+    def load(self, contracts: Iterable[Row]) -> int:
         """Initial load: every in-scope contract is inserted as currently listed.
 
         Returns the number of contracts loaded into scope (out-of-scope rows are silently
         skipped — this catalogue only tracks NIFTY/SENSEX).
         """
+        scoped = [r for r in map(_listed, contracts) if self._in_scope(r.contract)]
+        _refuse_duplicate_ids(scoped)
         count = 0
-        for contract in contracts:
-            if not self._in_scope(contract):
-                continue
-            self._entries[contract.instrument_token] = CatalogueEntry(
-                contract=contract, currently_listed=True
-            )
+        for row in scoped:
+            self._entries[row.id] = _entry(row, self._entries.get(row.id))
             count += 1
         return count
 
     def update(
         self,
-        contracts: Iterable[Contract],
+        contracts: Iterable[Row],
         *,
         as_of: datetime,
         force: bool = False,
@@ -122,9 +181,10 @@ class Catalogue:
             raise ValueError("Catalogue.update() requires a timezone-aware as_of")
         update_date = as_of.astimezone(IST).date()
 
-        contracts = list(contracts)
-        in_scope_new = [c for c in contracts if self._in_scope(c)]
-        new_tokens = {c.instrument_token for c in in_scope_new}
+        rows = [_listed(r) for r in contracts]
+        in_scope_new = [r for r in rows if self._in_scope(r.contract)]
+        _refuse_duplicate_ids(in_scope_new)
+        new_ids = {r.id for r in in_scope_new}
 
         if not force and (reason is not None or actor is not None or audit_log is not None):
             raise ValueError("Catalogue.update(): reason/actor/audit_log are only valid with force=True")
@@ -138,13 +198,13 @@ class Catalogue:
 
         dropped_live = sorted(
             (
-                e.contract
-                for token, e in self._entries.items()
+                e
+                for iid, e in self._entries.items()
                 if e.currently_listed
-                and token not in new_tokens
+                and iid not in new_ids
                 and (e.contract.expiry is None or e.contract.expiry >= update_date)
             ),
-            key=lambda c: c.instrument_token,
+            key=lambda e: e.id,
         )
         if force:
             assert audit_log is not None and reason is not None and actor is not None
@@ -156,32 +216,34 @@ class Catalogue:
                 payload={
                     "action": "catalogue_force_update",
                     "reason": reason.strip(),
-                    "dropped_instrument_tokens": [c.instrument_token for c in dropped_live],
-                    "dropped_tradingsymbols": [c.tradingsymbol for c in dropped_live],
+                    "dropped_instrument_ids": [[e.id.exchange_segment, e.id.exchange_token] for e in dropped_live],
+                    "dropped_broker_symbols": [
+                        [r.broker, r.broker_symbol] for e in dropped_live for r in e.broker_refs.values()
+                    ],
                 },
             )
         else:
             if dropped_live:
                 first = dropped_live[0]
+                symbols = ", ".join(r.broker_symbol for r in first.broker_refs.values())
                 raise ValueError(
                     f"Catalogue.update() refused: would drop {len(dropped_live)} contract(s) "
-                    f"that have not expired as of {update_date} (first: {first.tradingsymbol}, "
-                    f"expiry {first.expiry}) — the source list may be incomplete or truncated; "
+                    f"that have not expired as of {update_date} (first: {first.contract.name} "
+                    f"{first.id.exchange_segment}:{first.id.exchange_token} {symbols}, "
+                    f"expiry {first.contract.expiry}) — the source list may be incomplete or truncated; "
                     f"override needs force=True with a reason, actor and audit_log"
                 )
 
         added = 0
-        for contract in in_scope_new:
-            existing = self._entries.get(contract.instrument_token)
+        for row in in_scope_new:
+            existing = self._entries.get(row.id)
             if existing is None:
                 added += 1
-            self._entries[contract.instrument_token] = CatalogueEntry(
-                contract=contract, currently_listed=True
-            )
+            self._entries[row.id] = _entry(row, existing)
 
         newly_unlisted = 0
-        for token, entry in self._entries.items():
-            if token not in new_tokens and entry.currently_listed:
+        for iid, entry in self._entries.items():
+            if iid not in new_ids and entry.currently_listed:
                 entry.currently_listed = False
                 newly_unlisted += 1
 
@@ -189,6 +251,18 @@ class Catalogue:
 
     def all_entries(self) -> list[CatalogueEntry]:
         return list(self._entries.values())
+
+    def get(self, instrument_id: InstrumentId) -> CatalogueEntry | None:
+        """The entry for one exchange identity, or None."""
+        if not isinstance(instrument_id, InstrumentId):
+            raise TypeError(f"the catalogue is keyed by InstrumentId, got {instrument_id!r}")
+        return self._entries.get(instrument_id)
+
+    def entries_for_broker_symbol(self, broker: str, symbol: str) -> list[CatalogueEntry]:
+        """Entries whose row at `broker` carries `symbol` (a broker's symbol is not unique by itself, F-03)."""
+        check_broker_code(broker)
+        return [e for e in self._entries.values()
+                if broker in e.broker_refs and e.broker_refs[broker].broker_symbol == symbol]
 
     def contracts_for(
         self, name: str, expiry: date, instrument_types: frozenset[str] | None = None
