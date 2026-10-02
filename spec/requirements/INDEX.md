@@ -85,7 +85,7 @@ Requirements: 71; sections: 18
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-008 | Home dashboard | feature | Specified |
-| REQ-009 | Primary navigation and account menu | feature | Specified |
+| REQ-009 | Primary navigation and account menu | feature | Approved |
 | REQ-010 | Public site and live-data access | feature | Specified |
 | REQ-011 | Learn section | polish | Specified |
 
@@ -109,7 +109,7 @@ Requirements: 71; sections: 18
 |---|---|---|---|
 | REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Specified |
 | REQ-003 | Public multi-user SaaS | foundation | Specified |
-| REQ-004 | Responsive web, desktop and mobile priorities | polish | Specified |
+| REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
 | REQ-006 | Three UX levels | feature | Specified |
 | REQ-007 | Strategy information density | polish | Specified |
