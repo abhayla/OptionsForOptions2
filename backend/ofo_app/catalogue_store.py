@@ -225,7 +225,8 @@ async def apply_update(
     new = [scoped[t] for t in sorted(scoped) if t not in before]
     seen = sorted(t for t in scoped if t in before)
     unlisted = sorted(t for t, listed in after.items() if not listed and before.get(t, (None, False))[1])
-    if set(after) != set(before) | set(new) or any(not after[t] for t in scoped):
+    new_tokens = {c.instrument_token for c in new}  # compare tokens with tokens, never with Contract objects
+    if set(after) != set(before) | new_tokens or any(not after[t] for t in scoped):
         raise CatalogueStoreError("domain catalogue state does not match the planned write; nothing written")
 
     async with conn.begin_nested():

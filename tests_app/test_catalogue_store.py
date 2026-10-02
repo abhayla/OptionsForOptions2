@@ -193,6 +193,67 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
     ]
 
 
+class _FakeConn:
+    """No database: answers the catalogue SELECT with `rows` and records every write, so apply_update's planning
+    (load, validate, domain update, self-check, write plan) runs as pure code."""
+
+    def __init__(self, rows: list | None = None) -> None:
+        self.rows = rows or []
+        self.writes: list[tuple[str, object]] = []
+
+    async def execute(self, stmt, params=None):
+        sql = str(stmt)
+        if sql.startswith("SELECT id,"):
+            rows = self.rows
+
+            class _Result:
+                def all(self):
+                    return rows
+
+            return _Result()
+        if not sql.startswith("SELECT pg_advisory_xact_lock"):
+            self.writes.append((sql.split()[0], params))
+        return None
+
+    def begin_nested(self):
+        class _Savepoint:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Savepoint()
+
+
+async def test_planning_into_an_empty_catalogue_writes_every_in_scope_contract_without_a_database() -> None:
+    """Reproduces CI run 36979206662 without PostgreSQL: the first write into an empty table must plan 22 inserts."""
+    conn = _FakeConn()
+    result = await apply_update(conn, _fixture(), as_of=AS_OF)
+    assert (result.added, result.seen, result.newly_unlisted) == (22, 0, 0)
+    assert [kind for kind, _ in conn.writes] == ["INSERT"]
+    assert sorted(p["instrument_token"] for p in conn.writes[0][1]) == sorted(
+        c.instrument_token for c in _in_scope(_fixture()))
+
+
+async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_database() -> None:
+    from types import SimpleNamespace
+
+    stored = [SimpleNamespace(id=i + 1, currently_listed=True, **{k: getattr(c, k) for k in (
+        "exchange", "instrument_token", "exchange_token", "tradingsymbol", "name", "expiry", "strike", "tick_size",
+        "lot_size", "instrument_type", "segment")}) for i, c in enumerate(_in_scope(_fixture()))]
+    conn = _FakeConn(stored)
+    next_day = [c for c in _fixture() if c.expiry != date(2026, 10, 6)]
+    result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
+    assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
+    assert [(kind, p["listed"], len(p["tokens"])) for kind, p in conn.writes] == [("UPDATE", True, 18),
+                                                                                    ("UPDATE", False, 4)]
+    refused = _FakeConn(stored)
+    with pytest.raises(ValueError, match="refused: would drop 1 contract"):
+        await apply_update(refused, [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"], as_of=AS_OF)
+    assert refused.writes == []
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # AC-2 through the database, as the application role
 # ---------------------------------------------------------------------------------------------------------------
