@@ -1,0 +1,23 @@
+{
+  "id": "instrument-identity-keyed-on-one-broker",
+  "scope": "generic",
+  "class": "Any instrument store whose identity is one broker's own token or trading symbol cannot hold the same contract's identifiers from another broker, and every table, cache and subscription that joins on that broker id has to be re-keyed when a second broker arrives; the identifier the exchange itself assigns is the one every broker shares.",
+  "mechanism": "Brokers publish their own ids and symbol formats (Zerodha instrument_token = exchange token x 256 + segment code; Angel One, Upstox, Dhan and Fyers each format symbols differently, and Dhan's symbol is not unique across expiries), while all of them carry the exchange's contract number unchanged.",
+  "first_seen": {
+    "date": "2026-10-02",
+    "where": "W-053 catalogue (PR #109) keyed public.catalogue_contracts on (exchange, instrument_token); research before the broker phase",
+    "evidence": "Instrument masters downloaded 2026-10-02: NIFTY 06-Oct-2026 20050 CE has exchange number 40559 at Zerodha (exchange_token), Angel One (token), Upstox (NSE_FO|40559), Dhan (security_id) and Fyers (scrip code); SENSEX 75000 CE = 888931 at all five; 11,243 option contracts matched by (exchange, number) between Zerodha and Angel One. Zerodha instrument_token 10383106 = 40559 x 256 + 2 (not shared). Our code: 67 references to instrument_token in 9 files (catalogue_store.py 28, 0003 migration 14, catalogue.py 7, eligibility.py 7). The legacy algochanakya repo keyed every broker on a Zerodha symbol string and shipped converters for only 2 of 6 brokers (symbol_converter.py:171-194)."
+  },
+  "fix": "ADR-050: identity = (exchange segment, exchange token), cross-checked by underlying/expiry/strike/type; each broker's token, symbol and segment in a per-broker table; W-056 re-keys the catalogue.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Guarded when W-056 lands with a test that the catalogue's unique key is (exchange, exchange_token) and that no table outside the per-broker table stores instrument_token."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-053.md",
+    "spec/requirements/REQ-054.md",
+    "spec/decisions/ADR-050.md",
+    "spec/findings.md"
+  ]
+}
