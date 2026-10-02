@@ -23,8 +23,9 @@ apply_update(conn, contracts, *, as_of, force=False, reason=None, actor=None):
    UPDATE currently_listed = FALSE on contracts that left the list, each matched on (exchange, instrument_token).
    Nothing is ever deleted.
 5. ``force=True`` (a real broker delisting; reason and actor required by the domain): the domain's
-   ADMIN_CHANGE_RECORDED event is buffered, then appended through ofo_app.audit_store on the SAME connection only
-   after step 4 succeeded, so a failed write leaves no audit event.
+   ADMIN_CHANGE_RECORDED event is buffered, then appended through ofo_app.audit_store on the SAME connection inside
+   step 4's savepoint, after the writes: a failed write leaves no audit event, and a refused audit append rolls the
+   catalogue change back.
 Transaction control (commit) stays with the caller.
 
 Known limit (accepted, fix round 2): Q244 lives in the domain (REQ-053 places it there). The application role can
@@ -292,7 +293,8 @@ async def apply_update(
             await conn.execute(_SET_LISTED, {"listed": True, **_keys(seen)})
         if unlisted:
             await conn.execute(_SET_LISTED, {"listed": False, **_keys(unlisted)})
-    for event in audit.events if audit is not None else ():
-        await audit_store.append(conn, event.pop("event_type"), **event)
+        # Inside the savepoint, after the writes: a refused audit append rolls back the catalogue change too.
+        for event in audit.events if audit is not None else ():
+            await audit_store.append(conn, event.pop("event_type"), **event)
     return StoreUpdateResult(added=len(new), seen=len(seen) + len(revised), newly_unlisted=len(unlisted),
                              revised=len(revised), domain=domain)

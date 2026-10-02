@@ -35,8 +35,9 @@ Objects:
 - public.ofo_assert_app_role_allowlist gains block 8, built on 0002's text through the chain helper. Besides the
   catalogue privileges it closes owner-level gaps the W-052 round-2 review found: every guarded trigger must have its
   intended tgtype (timing, level, events), no WHEN condition (tgqual), no column list (tgattr), no arguments
-  (tgnargs), and no other non-internal trigger may exist on a guarded table; every guarded function's body must
-  have the md5 it had when the migrations wrote it.
+  (tgnargs), and no other non-internal trigger and no rewrite rule (pg_rewrite, other than a view's _RETURN) may
+  exist on a guarded table; the catalogue guard pins DateStyle 'ISO, YMD' (history dates are YYYY-MM-DD whatever the
+  session's DateStyle); every guarded function's body must have the md5 it had when the migrations wrote it.
 
 Pinned bodies (PINNED_BODIES): computed at import from the migrations' own source - 0001/0002 upgrade() replayed with
 a recording `op`, this file's function SQL - and, for public.ofo_audit_payload_allowlist(), from
@@ -90,6 +91,9 @@ HISTORY_SEQUENCE = "public.catalogue_term_changes_id_seq"
 HISTORY_FUNCTION = "public.catalogue_term_changes_guard"
 HISTORY_TRIGGER = "catalogue_term_changes_guard"
 SEARCH_PATH = _PREV.SEARCH_PATH
+#: The guard writes dates into the history as text; pinning DateStyle makes that text YYYY-MM-DD whatever the
+#: caller's session DateStyle is (a 'SQL, DMY' session would otherwise record 27/10/2026).
+GUARD_DATESTYLE = "ISO, YMD"
 
 SUPPORTED = (("NIFTY", "NFO"), ("SENSEX", "BFO"))  # ofo.instruments.catalogue.SUPPORTED_UNDERLYINGS; test asserts equal
 INSTRUMENT_TYPES = ("CE", "PE", "FUT")
@@ -152,6 +156,7 @@ def _guard_function_sql() -> str:
         LANGUAGE plpgsql
         SECURITY DEFINER
         SET search_path = {SEARCH_PATH}
+        SET DateStyle = '{GUARD_DATESTYLE}'
         AS $fn$
         BEGIN
             IF TG_OP = 'DELETE' THEN
@@ -291,9 +296,15 @@ def _sequence_checks(sequence: str, label: str, usage: bool) -> str:
 
 def _guard_function_checks(fn: str, security_definer: bool) -> str:
     sig = f"{fn}()"
+    datestyle = GUARD_DATESTYLE.replace(" ", "").lower()
     definer = (
         f"""                IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = '{sig}'::regprocedure) THEN
                     problems := problems || 'function {fn} is not SECURITY DEFINER'::TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_proc p, unnest(p.proconfig) AS c(setting)
+                               WHERE p.oid = '{sig}'::regprocedure
+                                 AND lower(replace(c.setting, ' ', '')) = 'datestyle={datestyle}') THEN
+                    problems := problems || 'function {fn} does not pin DateStyle'::TEXT;
                 END IF;"""
         if security_definer
         else ""
@@ -352,6 +363,10 @@ def _trigger_checks() -> str:
             f"""            IF to_regclass('{table}') IS NOT NULL AND EXISTS (
                    SELECT 1 FROM pg_trigger WHERE tgrelid = '{table}'::regclass AND NOT tgisinternal {allowed}) THEN
                 problems := problems || 'table {table} has an unexpected trigger'::TEXT;
+            END IF;
+            IF to_regclass('{table}') IS NOT NULL AND EXISTS (
+                   SELECT 1 FROM pg_rewrite WHERE ev_class = '{table}'::regclass AND rulename <> '_RETURN') THEN
+                problems := problems || 'table {table} has a rewrite rule'::TEXT;
             END IF;"""
         )
     return "\n".join(lines)

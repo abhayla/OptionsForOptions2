@@ -219,11 +219,17 @@ class _FakeConn:
         return None
 
     def begin_nested(self):
+        """Emulates a SAVEPOINT: writes recorded inside it are discarded when it exits with an exception."""
+        conn = self
+
         class _Savepoint:
             async def __aenter__(self):
+                self.mark = len(conn.writes)
                 return self
 
-            async def __aexit__(self, *exc):
+            async def __aexit__(self, exc_type, *exc):
+                if exc_type is not None:
+                    del conn.writes[self.mark:]
                 return False
 
         return _Savepoint()
@@ -331,6 +337,27 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
     with pytest.raises(RuntimeError, match="write failed"):
         await apply_update(failing, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
     assert calls == []
+
+
+async def test_a_refused_audit_append_rolls_back_the_forced_delisting_without_a_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The audit append runs inside the savepoint after the writes: when it raises, the writes are discarded."""
+    from ofo_app import catalogue_store
+
+    seen_writes: list[int] = []
+    conn = _FakeConn(_stored_rows())
+
+    async def refusing_append(c, event_type, **kwargs):
+        seen_writes.append(len(conn.writes))
+        raise ValueError("audit store refused")
+
+    monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
+    truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+    with pytest.raises(ValueError, match="audit store refused"):
+        await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+    assert seen_writes and seen_writes[0] > 0, "append must run after the writes, inside the savepoint"
+    assert conn.writes == [], "the savepoint must discard the delisting when the audit append is refused"
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -466,6 +493,46 @@ async def test_an_identity_change_is_refused_with_nothing_written(
             assert after == before and history == 0
             with capsys.disabled():
                 print(f"\nW-053 PROOF identity change {field} refused; rows identical={after == before} history={history}")
+        finally:
+            await trans.rollback()
+
+
+async def test_history_dates_are_iso_whatever_the_session_datestyle(app_engine: AsyncEngine) -> None:
+    """The guard pins DateStyle: a 'SQL, DMY' session revising an expiry still records YYYY-MM-DD."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await conn.execute(text("SET LOCAL DateStyle = 'SQL, DMY'"))
+            assert (await conn.execute(text("SELECT DATE '2026-10-27'::text"))).scalar_one() == "27/10/2026"
+            revised = [replace(c, expiry=date(2026, 10, 28)) if c.tradingsymbol == "NIFTY26OCTFUT" else c
+                       for c in _fixture()]
+            await apply_update(conn, revised, as_of=AS_OF)
+            history = (await conn.execute(text(f"SELECT field, old_value, new_value FROM {HISTORY}"))).all()
+            assert [tuple(h) for h in history] == [("expiry", "2026-10-27", "2026-10-28")]
+        finally:
+            await trans.rollback()
+
+
+async def test_a_refused_audit_append_leaves_the_catalogue_and_audit_log_unchanged(
+    app_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ofo_app import catalogue_store
+    from ofo_app.audit_store import read_anchor
+
+    async def refusing_append(conn, event_type, **kwargs):
+        raise ValueError("audit store refused")
+
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            before, head = await _snapshot(conn), await read_anchor(conn)
+            monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
+            truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+            with pytest.raises(ValueError, match="audit store refused"):
+                await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+            assert await _snapshot(conn) == before and await read_anchor(conn) == head
         finally:
             await trans.rollback()
 
@@ -689,6 +756,13 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
         ("CREATE TRIGGER zz_extra AFTER INSERT ON public.ledger_entries "
          "FOR EACH ROW EXECUTE FUNCTION public.ledger_entries_trusted_clock()",
          "table public.ledger_entries has an unexpected trigger"),
+        # rewrite rules on a guarded table; the guard's pinned DateStyle
+        ("CREATE RULE zz_rule AS ON UPDATE TO public.catalogue_contracts DO INSTEAD NOTHING",
+         "table public.catalogue_contracts has a rewrite rule"),
+        ("CREATE RULE zz_rule AS ON INSERT TO public.audit_events DO INSTEAD NOTHING",
+         "table public.audit_events has a rewrite rule"),
+        ("ALTER FUNCTION public.catalogue_contracts_guard() RESET DateStyle",
+         "function public.catalogue_contracts_guard does not pin DateStyle"),
         # the term-change history: SELECT only, nothing on its sequence; guard SECURITY DEFINER
         ('GRANT INSERT (field) ON public.catalogue_term_changes TO "{role}"',
          "has INSERT on catalogue_term_changes column field"),
