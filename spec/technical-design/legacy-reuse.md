@@ -83,7 +83,8 @@ Rows 1-10 above stay valid (re-confirmed at `bf9faf7`; row 9 lives in `app/api/r
 | `market_data/rate_limiter.py` (135) | COPY | set Kite limits (legacy had 3 req/s; Kite docs say 10, verify at P3a) | REQ-050 |
 | `market_data/exceptions.py` (80) | ADAPT | map to REQ-065 classes | REQ-065 |
 | `market_data/auth_tracking.py` (102) | REFERENCE | token-expiry detection idea | REQ-015 |
-| `market_data/{symbol_converter,token_manager,instrument_query,ticker_base,failover_fetch,factory}.py`, other-broker adapters | SKIP | cross-broker mapping/failover, platform-wide token | - |
+| `market_data/{symbol_converter,token_manager,instrument_query,ticker_base,failover_fetch,factory}.py`, other-broker adapters, `app/models/broker_instrument_tokens.py` | SKIP | cross-broker mapping/failover, platform-wide token; keyed on a Zerodha symbol string with converters for 2 of 6 brokers (spec/findings.md F-09); our identity is (exchange, exchange_token) per ADR-050 | REQ-054 |
+| OpenAlgo `broker/<name>/` plugin layout (github.com/marketcalls/openalgo; not algochanakya) | REFERENCE | design reference only (login, orders, data, mapping, contract master, capability file); licence not checked, no code copied (F-08, ADR-050) | REQ-054 |
 | `services/options/option_chain_live_engine.py` (222) | ADAPT | strip platform-wide assumptions | REQ-029, REQ-050 |
 | `services/options/option_chain_cache.py` (145) | ADAPT | row 5; no cross-user sharing until ADR-034 | REQ-050 |
 | `services/options/option_chain_prefetch.py` (149), `startup_chain_warmup.py` (270), `option_chain_service.py` (458) | REFERENCE | built on the platform adapter / duplicates | REQ-050 |

@@ -11,6 +11,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
+| REQ-054 | Broker adapter | core | normal | next |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
 | REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
@@ -67,7 +68,6 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-050 (Specified): Shared computation and scale
 - REQ-051 (Specified): Historical storage tiers and simulation
 - REQ-052 (Specified): Market-data sourcing and licensing
-- REQ-054 (Specified): Broker adapter
 - REQ-055 (Specified): Margin checks
 - REQ-061 (Specified): Existing positions on connect
 - REQ-062 (Specified): Notifications

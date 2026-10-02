@@ -1,0 +1,20 @@
+{
+  "id": "research-finding-held-in-chat",
+  "scope": "generic",
+  "class": "Any research finding proven during a session but reported only in chat (or held back until a decision) is lost to the next reader and lets work proceed on assumptions the finding contradicts; findings must be written to the spec findings list, the spec sections they bear on and (for failure classes) the registry in the same turn they are proven, before any decision or implementation.",
+  "mechanism": "The project had no spec findings list for non-defect research facts, and the orchestrator deferred recording until after the owner's decision, so the cross-broker symbology and SEBI findings existed only in the chat transcript.",
+  "first_seen": {
+    "date": "2026-10-02",
+    "where": "broker-architecture research turn (owner correction the same day)",
+    "evidence": "Owner, 2026-10-02: 'all the findings should be saved in the findings document and a spec and a requirement should be updated with all the findings and then you should start implementation'. At that moment F-01..F-09 were in chat only; REQ-053 still named instrument_token as identity; the spec had no static IP / algo ID text (grep of spec/ for 'static ip|algo ?id|empanel' returned nothing)."
+  },
+  "fix": "spec/findings.md created as the spec findings list (F-ids with values, source, date, status, bearing sections); F-01..F-09 recorded with citing lines in REQ-053, REQ-054, REQ-056, REQ-060, REQ-063, REQ-066 and Q258, in the same PR as ADR-050 and before W-056 is dispatched.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "No automated check: a test cannot tell whether a chat message held an unrecorded finding. Mitigation is procedural (spec-first R6) plus this entry being read before research turns."
+  },
+  "spec_ref": [
+    "spec/findings.md"
+  ]
+}
