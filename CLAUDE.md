@@ -80,6 +80,11 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   main source; `OFO`, `NewOFO`, `OptionsForOptions` reference) are never edited from here. Code may be copied or
   adapted per `spec/technical-design/legacy-reuse.md`: the file names its source repo, commit and path, is changed
   to meet every hard rule, and gets this project's own tests. The calculation engine and order execution are built new.
+- Copy first (ADR-047): before writing any module, check the algochanakya map in
+  `spec/technical-design/legacy-reuse.md` (every module, verdict, change, conflict; pinned to `bf9faf7`). Every builder
+  brief carries `Copy from: <map rows>` or `Copy from: none - <reason>`. Never search algochanakya ad hoc; if the map
+  lacks a row, add it there first. Kite API facts: the user-level `zerodha-expert` skill. Engine-math reviews: the
+  project skill `options-math-review`.
 - Every PR body carries the Spec-deviation block (`Class: none` is valid); CI fails without it.
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
