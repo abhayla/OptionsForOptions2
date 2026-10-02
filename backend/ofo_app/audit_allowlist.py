@@ -27,8 +27,8 @@ Declared types and their fields (where the fields come from):
   these are the minimal identity and dates.
 - ``referral_reward_granted``: platform_user_id, referred_platform_user_id, reward_period, starts_at, ends_at,
   reason (REQ-021; no referral domain code exists yet).
-- ``subscription_started`` / ``subscription_expired``: platform_user_id, plan, starts_at, ends_at, reason (no payment
-  data: payments sit behind an adapter, ADR-012/ADR-029, and are not audited here).
+- ``subscription_started`` / ``subscription_expired``: platform_user_id, plan, price (exact Decimal, ADR-008),
+  starts_at, ends_at, reason (no payment instrument or gateway data: payments sit behind an adapter, ADR-012/ADR-029).
 
 Every other ``ofo.audit.catalogue.EventType`` member (24 of 33) is undeclared and refused.
 """
@@ -72,7 +72,7 @@ _ELIGIBILITY = _fields(
     before=QUALIFYING_SNAPSHOT, after=QUALIFYING_SNAPSHOT,
 )
 _TRIAL = _fields("platform_user_id", "starts_at", "ends_at", "reason")
-_SUBSCRIPTION = _fields("platform_user_id", "plan", "starts_at", "ends_at", "reason")
+_SUBSCRIPTION = _fields("platform_user_id", "plan", "price", "starts_at", "ends_at", "reason")
 
 ALLOWLIST: Mapping[EventType, Mapping[str, FieldSpec]] = MappingProxyType(
     {
