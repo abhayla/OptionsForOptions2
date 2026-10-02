@@ -7,8 +7,7 @@ Two ways in, with different checks (owner decision Q225, 2026-09-29):
   names a grant not yet changed, ENDED only for a trial, representable dates) plus policy (clock,
   clock skew both ways, the free-day cap).
 - STORED history (``EntitlementLedger.load``) is loaded with the integrity checks only and is never
-  re-judged by today's settings: lowering the free-day cap from 90 to 30 or the skew from 5 minutes
-  to 1 does not break a history that was legal when written. ``load`` takes only a ``StoredHistory``,
+  re-judged by today's settings: lowering the free-day cap from 90 to 30 or the skew does not break a history that was legal when written. ``load`` takes only a ``StoredHistory``,
   which only ``EntitlementLedger.stored()`` (or the store adapter, via ``_restore``) produces, so the
   load path is not a way to add a new event without the policy checks.
 
@@ -17,8 +16,8 @@ the ledger from its own clock; a caller can never supply it. Every new event's o
 must lie within the clock-skew window of that stamp, both ways.'):
 - ``recorded_at`` = the ledger's ``clock()`` (real UTC now by default) at append; no public append path takes
   a recorded time, and ``append`` refuses an already-stamped ``EntitlementGrant`` / ``EntitlementStatusChange``;
-- a grant's ``granted_at`` and a status change's ``effective_at`` must lie within ``clock_skew`` (5 minutes by
-  default) of that stamp, both ways: nothing is backdated and nothing is post-dated;
+- a grant's ``granted_at`` and a status change's ``effective_at`` must lie within ``clock_skew`` (60 seconds by
+  default, ADR-023 Q256) of that stamp, both ways: nothing is backdated and nothing is post-dated;
 - ``paid_at`` (the gateway's time, audit only, never moves the schedule) may be earlier than the stamp (a late
   webhook) but not later than stamp + skew.
 A late payment webhook is recorded with ``granted_at`` = when we record it (the full duration runs
@@ -303,7 +302,7 @@ def _check_stored_history(history: object) -> None:
 
 
 def _restore(user_id: str, events: tuple[EntitlementEvent, ...]) -> StoredHistory:
-    """The store adapter's entry point: rows read back from the append-only store (none is built yet).
+    """The store adapter's entry point: rows read back from the append-only store (``ofo_app.entitlement_store``).
 
     ``load`` still runs the integrity checks on what this returns, so a corrupted store is refused.
     """

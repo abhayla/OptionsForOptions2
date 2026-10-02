@@ -14,7 +14,6 @@ a 30-day referral stacked on it runs 8 Sep - 8 Oct; the next 8 Oct - 7 Nov (Octo
 """
 
 import dataclasses
-import time
 from datetime import timedelta
 
 import pytest
@@ -283,13 +282,19 @@ def test_corrupted_stored_history_is_refused_on_load(history, message):
         _load(history())
 
 
-def test_load_of_1000_stored_events_is_fast():
-    """AC-4: loading re-checks each event against an index, not the whole history (1,000 events well under 1 s)."""
-    stored = _restore("u", tuple(_stored_paid(f"p{i}", T0 + timedelta(seconds=i)) for i in range(1000)))
-    started = time.perf_counter()
-    loaded = _load(stored)
-    assert time.perf_counter() - started < 1.0
-    assert len(loaded.events) == 1000
+def test_load_cost_is_linear_in_the_stored_history_length():
+    """AC-4: loading re-checks each event against an index, not the whole history: doubling the stored events at most
+    doubles the work (counted calls, not seconds: finding wall-clock-assertion-flakes-under-load)."""
+    from work_count import assert_linear
+
+    def make_run(size):
+        stored = _restore("u", tuple(_stored_paid(f"p{i}", T0 + timedelta(seconds=i)) for i in range(size)))
+
+        def run():
+            assert len(_load(stored).events) == size
+        return run
+
+    assert_linear(make_run, 500)
 
 
 # ---------------------------------------------------------------- ADR-023 rule 1-5 examples through load

@@ -5,7 +5,6 @@ revocations and raw status events that the builders would never produce. Each te
 the round-2 code (41b1568) and names the review finding it reproduces.
 """
 
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -157,16 +156,20 @@ def test_revoking_a_banked_referral_cancels_its_saved_days():
 # ---------------------------------------------------------------- finding 6: append cost
 
 
-def test_one_thousand_appends_finish_under_two_seconds():
-    """AC-4: append checks only the new event against an index, so 1,000 appends take well under 2 s."""
-    led = ledger_for("u")
-    started = time.perf_counter()
-    for n in range(1000):
-        when = NOW + timedelta(minutes=n)
-        led = record(led, _paid(f"p{n}", when, f"pay_{n}"))
-    elapsed = time.perf_counter() - started
-    assert len(led.events) == 1000
-    assert elapsed < 2.0, f"1,000 appends took {elapsed:.2f}s"
+def test_appends_cost_linear_work_in_the_history_length():
+    """AC-4: append checks only the new event against an index, so doubling the number of appends at most doubles the
+    work (counted calls, not seconds: finding wall-clock-assertion-flakes-under-load)."""
+    from work_count import assert_linear
+
+    def make_run(size):
+        def run():
+            led = ledger_for("u")
+            for n in range(size):
+                led = record(led, _paid(f"p{n}", NOW + timedelta(minutes=n), f"pay_{n}"))
+            assert len(led.events) == size
+        return run
+
+    assert_linear(make_run, 500)
 
 
 # ---------------------------------------------------------------- finding 7: raw ENDED events
