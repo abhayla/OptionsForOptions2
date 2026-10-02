@@ -320,3 +320,11 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Decision: **60 seconds, both ways**, the value the verified strategy-version and timeline modules already use. An
   event the ledger stamps at 10:00:00 may carry a granted/effective date from 09:59:00 to 10:01:00; anything outside
   is refused. Recorded in ADR-023 "Q256".
+
+## Q257 — DECIDED (owner delegation, 2026-10-02) — An existing contract arrives with revised terms (REQ-053)
+- Question: Zerodha's daily list carries a stored contract (same token) with a different lot size (exchanges revise
+  lot sizes on live contracts). The W-053 build first refused the whole update, which would freeze the catalogue.
+- Decision (orchestrator as product owner, under the owner's 2026-10-02 instruction to decide by role; basis REQ-053
+  AC-1 and ADR-016, Zerodha is final): lot size, tick size, expiry and trading symbol follow the source list and every
+  change goes to an append-only history; identity fields never change and a list changing them is refused with
+  nothing written. Recorded in REQ-053 "Q257". Found by the W-053 adversarial review (PR #109).
