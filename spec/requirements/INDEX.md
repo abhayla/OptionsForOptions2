@@ -10,10 +10,10 @@ Requirements: 71; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-002 | Account boundaries | foundation | Specified |
-| REQ-012 | Registration and identity layers | foundation | Specified |
-| REQ-013 | Email change and account deletion | feature | Specified |
-| REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Specified |
+| REQ-002 | Account boundaries | foundation | Approved |
+| REQ-012 | Registration and identity layers | foundation | Approved |
+| REQ-013 | Email change and account deletion | feature | Approved |
+| REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Approved |
 
 ## Adjustments (4)
 
@@ -108,7 +108,7 @@ Requirements: 71; sections: 18
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Specified |
-| REQ-003 | Public multi-user SaaS | foundation | Specified |
+| REQ-003 | Public multi-user SaaS | foundation | Approved |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
 | REQ-006 | Three UX levels | feature | Specified |

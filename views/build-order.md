@@ -12,6 +12,9 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
+| REQ-002 | Account boundaries | foundation | normal | next |
+| REQ-003 | Public multi-user SaaS | foundation | normal | next |
+| REQ-012 | Registration and identity layers | foundation | normal | next |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
 | REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
@@ -20,6 +23,8 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-024 blocked: PARKED #30 after rounds 5-7 (2026-09-29; owner set round 7 as the last); allowlist design recommended in the issue if unparked |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
+| REQ-013 | Email change and account deletion | feature | normal | next |
+| REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |
 | REQ-017 | Entitlement engine | feature | normal | next |
 | REQ-018 | Trial and Limited/Read-Only mode | feature | normal | blocked: its own work item W-008 blocked: blocked by W-007 (parked, issue #12) |
 | REQ-019 | Complimentary Pro for qualifying Zerodha customers | feature | normal | blocked: its own work item W-011 blocked: blocked by W-007 (parked, issue #12) |
@@ -41,17 +46,12 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 Draft or Specified requirements are recorded only: never next, never in the order above. An approved requirement that depends on one shows as waiting on it by id.
 
 - REQ-001 (Specified): V1 scope: underlyings, leg types, broker
-- REQ-002 (Specified): Account boundaries
-- REQ-003 (Specified): Public multi-user SaaS
 - REQ-005 (Specified): Product language and positioning
 - REQ-006 (Specified): Three UX levels
 - REQ-007 (Specified): Strategy information density
 - REQ-008 (Specified): Home dashboard
 - REQ-010 (Specified): Public site and live-data access
 - REQ-011 (Specified): Learn section
-- REQ-012 (Specified): Registration and identity layers
-- REQ-013 (Specified): Email change and account deletion
-- REQ-014 (Specified): Zerodha Client ID binding and anti-abuse
 - REQ-015 (Specified): Zerodha connection
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
