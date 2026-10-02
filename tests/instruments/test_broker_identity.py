@@ -130,3 +130,12 @@ def test_two_rows_with_one_identity_refuse_the_list(rows: list[ListedContract]) 
     with pytest.raises(ValueError, match="share the identity NSE_FO:73908"):
         cat.load(rows + [twin])
     assert cat.all_entries() == []
+
+
+def test_a_newer_list_without_a_freeze_limit_keeps_the_stored_one(rows: list[ListedContract]) -> None:
+    """REQ-054 "Per-broker values and their date": Zerodha's list has no freeze limit; loading it keeps 1800."""
+    cat = Catalogue()
+    cat.load([dataclasses.replace(r, broker_refs=tuple(dataclasses.replace(b, freeze_limit=1800) for b in r.broker_refs))
+              if r.id == NIFTY_23150_CE else r for r in rows])
+    cat.update(rows, as_of=datetime(2026, 9, 29, 10, 0, tzinfo=IST))
+    assert cat.get(NIFTY_23150_CE).ref("zerodha").freeze_limit == 1800

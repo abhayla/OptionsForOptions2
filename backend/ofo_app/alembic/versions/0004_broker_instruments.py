@@ -25,10 +25,9 @@ Changes (owner-run, one transaction):
   (contract_id, broker).
 - public.catalogue_term_changes: keyed by contract_id (FK) instead of (exchange, instrument_token); gains broker;
   field in (expiry, broker_symbol, lot_size, tick_size, freeze_limit), broker NULL exactly for expiry.
-- Data: 0003 rows are migrated in place by SQL (no hand edits): exchange -> exchange_segment, one zerodha broker row
-  per contract (instrument_token -> broker_token, tradingsymbol -> broker_symbol, segment -> broker_segment, lot/tick
-  copied, stamps kept), history rows re-keyed (tradingsymbol -> broker_symbol, broker 'zerodha' for broker terms).
-  Every step is guarded (IF NOT EXISTS / WHERE ... IS NULL / ON CONFLICT DO NOTHING).
+- Data: none is migrated (orchestrator decision M1, W-056 fix round 1: no database holds 0003 rows). The upgrade
+  refuses, before any change, while catalogue_contracts or catalogue_term_changes holds a row, the same way the
+  downgrade refuses.
 - public.ofo_assert_app_role_allowlist: rebuilt from 0002's text with block 8 re-rendered for the re-keyed
   catalogue (its 0003 pins and column lists no longer describe the schema) and block 9 for broker_instruments.
 
@@ -300,7 +299,7 @@ def _moved_columns_check() -> str:
     moved = f"ARRAY[{_quoted(MOVED_COLUMNS)}]::TEXT[]"
     return f"""            IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = '{TABLE}'::regclass AND attnum > 0
                        AND NOT attisdropped AND attname = ANY({moved})) THEN
-                problems := problems || 'catalogue_contracts holds a broker column (instrument_token, tradingsymbol, ...; REQ-054 AC-3)'::TEXT;
+                problems := problems || 'catalogue_contracts holds a broker column such as instrument_token or tradingsymbol (REQ-054 AC-3)'::TEXT;
             END IF;"""
 
 
@@ -339,12 +338,16 @@ def _broker_block() -> str:
     return f"""
     {ALLOWLIST_BLOCK_MARKER} (W-056): broker_instruments: SELECT + column INSERT on the broker row columns + column
     --    UPDATE on broker_symbol, lot_size, tick_size and freeze_limit only (identity and stamps never), USAGE only on
-    --    its sequence, no DELETE / TRUNCATE; its guard SECURITY DEFINER, search_path and DateStyle pinned, owned by
+    --    its sequence, no DELETE / TRUNCATE; owned by the catalogue table owner; its guard SECURITY DEFINER, search_path and DateStyle pinned, owned by
     --    the catalogue table owner, no EXECUTE (trigger shape and body pin are in block 8's lists)
     IF phase = 'post' THEN
         IF to_regclass('{BROKER_TABLE}') IS NULL THEN
             problems := problems || 'table {BROKER_TABLE} is missing'::TEXT;
         ELSE
+            IF (SELECT relowner FROM pg_class WHERE oid = '{BROKER_TABLE}'::regclass)
+               IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid = '{TABLE}'::regclass) THEN
+                problems := problems || 'table {BROKER_TABLE} is not owned by the catalogue table owner'::TEXT;
+            END IF;
 {_PREV._privilege_checks(BROKER_TABLE, "broker_instruments", {"SELECT"})}
 {_M3._columns_exactly(BROKER_TABLE, "broker_instruments", "INSERT", APP_BROKER_INSERT_COLUMNS)}
 {_M3._columns_exactly(BROKER_TABLE, "broker_instruments", "UPDATE", APP_BROKER_UPDATE_COLUMNS)}
@@ -379,59 +382,27 @@ def extended_allowlist_sql() -> str:
     return extend_allowlist(previous_allowlist_sql())
 
 
-def _data_migration_sql() -> list[str]:
-    mapping = " ".join(f"WHEN '{z}' THEN '{s}'" for z, s in ZERODHA_EXCHANGE_TO_SEGMENT)
-    return [
-        f"ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS exchange_segment TEXT",
-        f"UPDATE {TABLE} SET exchange_segment = CASE exchange {mapping} END WHERE exchange_segment IS NULL",
-        f"""
-        DO $chk$
+def refuse_if_rows_sql() -> str:
+    """The upgrade's first change: refuse while the 0003 catalogue holds any row (no data migration, decision M1)."""
+    return f"""
+        DO $refuse$
         BEGIN
-            IF EXISTS (SELECT 1 FROM {TABLE} WHERE exchange_segment IS NULL) THEN
-                RAISE EXCEPTION 'broker instruments migration: a stored contract has an exchange outside {_quoted(tuple(z for z, _ in ZERODHA_EXCHANGE_TO_SEGMENT))}';
+            IF EXISTS (SELECT 1 FROM {TABLE}) OR EXISTS (SELECT 1 FROM {HISTORY}) THEN
+                RAISE EXCEPTION 'refusing to upgrade to {revision}: the catalogue holds rows and this migration does not move 0003 data (W-056 decision M1)';
             END IF;
         END
-        $chk$;
-        """,
-        f"""
-        INSERT INTO {BROKER_TABLE} (contract_id, broker, broker_token, broker_symbol, broker_segment, lot_size,
-                                    tick_size, seen_on, first_seen_at, last_seen_at)
-        SELECT id, 'zerodha', instrument_token::text, tradingsymbol, segment, lot_size, tick_size,
-               (last_seen_at AT TIME ZONE '{SEEN_ON_TIMEZONE}')::date, first_seen_at, last_seen_at
-        FROM {TABLE}
-        ON CONFLICT (contract_id, broker) DO NOTHING
-        """,
-        f"ALTER TABLE {HISTORY} ADD COLUMN IF NOT EXISTS contract_id BIGINT",
-        f"ALTER TABLE {HISTORY} ADD COLUMN IF NOT EXISTS broker TEXT",
-        f"ALTER TABLE {HISTORY} DROP CONSTRAINT IF EXISTS catalogue_term_changes_field_check",
-        f"""
-        UPDATE {HISTORY} AS h
-        SET contract_id = c.id,
-            broker = CASE WHEN h.field = 'expiry' THEN NULL ELSE 'zerodha' END,
-            field = CASE WHEN h.field = 'tradingsymbol' THEN 'broker_symbol' ELSE h.field END
-        FROM {TABLE} AS c
-        WHERE h.contract_id IS NULL AND c.exchange = h.exchange AND c.instrument_token = h.instrument_token
-        """,
-        f"""
-        DO $chk$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM {HISTORY} WHERE contract_id IS NULL) THEN
-                RAISE EXCEPTION 'broker instruments migration: a term-change row matches no stored contract';
-            END IF;
-        END
-        $chk$;
-        """,
-    ]
+        $refuse$;
+        """
 
 
 def upgrade() -> None:
     role = _BASE._app_role()
     allowlist = _BASE.ALLOWLIST_FUNCTION
     op.execute(f"SELECT {allowlist}('{role}', 'pre')")
+    op.execute(refuse_if_rows_sql())
 
-    # The guards stay off only inside this transaction, while the owner re-keys rows; both are back before 'post'.
+    # The contract guard is re-created below with the new identity columns.
     op.execute(f"DROP TRIGGER IF EXISTS {GUARD_TRIGGER} ON {TABLE}")
-    op.execute(f"ALTER TABLE {HISTORY} DISABLE TRIGGER {HISTORY_TRIGGER}")
 
     codes = _quoted(BROKER_CODES)
     op.execute(
@@ -454,14 +425,13 @@ def upgrade() -> None:
         )
         """
     )
-    for sql in _data_migration_sql():
-        op.execute(sql)
-
-    # History: re-keyed by contract, field list and broker rule.
+    # History: re-keyed by contract, field list and broker rule (the tables are empty: refused above otherwise).
+    op.execute(f"ALTER TABLE {HISTORY} ADD COLUMN contract_id BIGINT NOT NULL")
+    op.execute(f"ALTER TABLE {HISTORY} ADD COLUMN broker TEXT")
+    op.execute(f"ALTER TABLE {HISTORY} DROP CONSTRAINT IF EXISTS catalogue_term_changes_field_check")
     op.execute(f"ALTER TABLE {HISTORY} DROP CONSTRAINT IF EXISTS catalogue_term_changes_contract_fkey")
     op.execute(f"ALTER TABLE {HISTORY} DROP COLUMN IF EXISTS instrument_token")
     op.execute(f"ALTER TABLE {HISTORY} DROP COLUMN IF EXISTS exchange")
-    op.execute(f"ALTER TABLE {HISTORY} ALTER COLUMN contract_id SET NOT NULL")
     op.execute(f"ALTER TABLE {HISTORY} ADD CONSTRAINT catalogue_term_changes_contract_fkey FOREIGN KEY (contract_id) "
                f"REFERENCES {TABLE} (id)")
     op.execute(f"ALTER TABLE {HISTORY} ADD CONSTRAINT catalogue_term_changes_field_check "
@@ -472,6 +442,7 @@ def upgrade() -> None:
 
     # Contracts: identity on the exchange segment; broker columns gone.
     pairs = " OR ".join(f"(name = '{n}' AND exchange_segment = '{s}')" for n, s in SUPPORTED)
+    op.execute(f"ALTER TABLE {TABLE} ADD COLUMN exchange_segment TEXT")
     op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS catalogue_contracts_supported_underlying")
     op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS catalogue_contracts_exchange_token_key")
     for column in MOVED_COLUMNS:
@@ -486,7 +457,6 @@ def upgrade() -> None:
     op.execute(_guard_function_sql())
     op.execute(f"CREATE TRIGGER {GUARD_TRIGGER} BEFORE INSERT OR UPDATE OR DELETE ON {TABLE} "
                f"FOR EACH ROW EXECUTE FUNCTION {GUARD_FUNCTION}()")
-    op.execute(f"ALTER TABLE {HISTORY} ENABLE TRIGGER {HISTORY_TRIGGER}")
     op.execute(_broker_function_sql())
     op.execute(f"DROP TRIGGER IF EXISTS {BROKER_TRIGGER} ON {BROKER_TABLE}")
     op.execute(f"CREATE TRIGGER {BROKER_TRIGGER} BEFORE INSERT OR UPDATE OR DELETE ON {BROKER_TABLE} "

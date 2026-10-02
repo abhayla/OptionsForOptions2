@@ -88,7 +88,7 @@ _REVISE = text(
 )
 _SEE_BROKER = text(
     f"UPDATE {BROKER_ROWS} SET broker_symbol = :broker_symbol, lot_size = :lot_size, tick_size = :tick_size, "
-    f"freeze_limit = :freeze_limit "
+    f"freeze_limit = COALESCE(CAST(:freeze_limit AS INTEGER), freeze_limit) "
     f"WHERE broker = :broker AND contract_id = (SELECT id FROM {CONTRACTS} "
     f"WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token)"
 )
@@ -102,6 +102,8 @@ _MISSING_BROKER_ROW = text(
     f"(SELECT 1 FROM {BROKER_ROWS} AS b WHERE b.contract_id = c.id AND b.broker = :broker)"
 )
 
+#: REQ-054 "Per-broker values and their date": a list without a value (Zerodha has no freeze limit) leaves the
+#: stored value; the broker-row UPDATE keeps it with COALESCE and the revision check skips it.
 #: Q257: these terms follow the list, each change recorded by the database; identity fields never change (OF006).
 REVISABLE_FIELDS = ("expiry",)
 IDENTITY_FIELDS = ("exchange_segment", "exchange_token", "name", "instrument_type", "strike")
@@ -338,7 +340,8 @@ async def apply_update(
         old_ref = stored.broker_refs[ZERODHA]
         _refuse_identity_change(label, f"{ZERODHA} ", BROKER_IDENTITY_FIELDS, old_ref, refs[ZERODHA])
         if (any(getattr(stored.contract, f) != getattr(row.contract, f) for f in REVISABLE_FIELDS)
-                or any(getattr(old_ref, f) != getattr(refs[ZERODHA], f) for f in BROKER_REVISABLE_FIELDS)):
+                or any(getattr(old_ref, f) != getattr(refs[ZERODHA], f) for f in BROKER_REVISABLE_FIELDS
+                       if getattr(refs[ZERODHA], f) is not None)):  # a value the list does not carry is kept
             revised.append(row)
 
     audit = _BufferedAuditLog() if force else None

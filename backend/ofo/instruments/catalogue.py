@@ -9,6 +9,7 @@ matching underlying + expiry — never hard-coded (ADR-007 Q36).
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -106,6 +107,10 @@ class CatalogueEntry:
 def _entry(row: ListedContract, previous: "CatalogueEntry | None") -> CatalogueEntry:
     refs = dict(previous.broker_refs) if previous is not None else {}
     for ref in row.broker_refs:
+        old = refs.get(ref.broker)
+        if old is not None and ref.freeze_limit is None and old.freeze_limit is not None:
+            # REQ-054 "Per-broker values and their date": a list without a value leaves the stored value.
+            ref = dataclasses.replace(ref, freeze_limit=old.freeze_limit)
         refs[ref.broker] = ref  # a broker's newer row replaces its older one; other brokers' rows are kept
     return CatalogueEntry(contract=row.contract, currently_listed=True, broker_refs=refs)
 

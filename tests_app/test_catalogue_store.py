@@ -851,6 +851,8 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
          "has UPDATE on broker_instruments column seen_on"),
         ('REVOKE UPDATE (lot_size) ON public.broker_instruments FROM "{role}"',
          "lacks UPDATE on broker_instruments column lot_size"),
+        ('ALTER TABLE public.broker_instruments OWNER TO "{role}"',
+         "table public.broker_instruments is not owned by the catalogue table owner"),
         ('GRANT EXECUTE ON FUNCTION public.broker_instruments_guard() TO "{role}"',
          "has EXECUTE on public.broker_instruments_guard"),
         ("ALTER TABLE public.broker_instruments DISABLE TRIGGER broker_instruments_guard",

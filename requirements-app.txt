@@ -11,3 +11,5 @@ httpx==0.28.1
 uvicorn==0.38.0
 pytest==8.4.2
 pytest-asyncio==1.2.0
+# Migration SQL parse check (W-056 fix round 1): libpg_query, PostgreSQL's own parser, in tests_app only.
+pglast==8.4

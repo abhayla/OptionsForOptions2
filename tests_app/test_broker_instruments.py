@@ -275,3 +275,104 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
                       f"\nW-056 PROOF missing broker row refused: upstox lookup raised MissingBrokerRef")
         finally:
             await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# W-056 fix round 1: review items M1, M4, m1, m2
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def _migration_0004():
+    import importlib.util
+
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0004_broker_instruments.py"
+    loader_spec = importlib.util.spec_from_file_location("ofo_migration_0004_broker_test", path)
+    module = importlib.util.module_from_spec(loader_spec)
+    loader_spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+async def test_m1_upgrade_refusal_statement_refuses_a_non_empty_catalogue(app_engine: AsyncEngine) -> None:
+    """M1: 0004 moves no 0003 data; its first change refuses while the catalogue holds a row. The harness cannot stage
+    a 0003 database (CI migrates to head once), so the migration's own refusal statement is run against the head
+    tables: refused with rows, accepted when empty."""
+    sql = _migration_0004().refuse_if_rows_sql()
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            async with conn.begin_nested():
+                await conn.execute(text(sql))  # empty: no refusal
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            with pytest.raises(DBAPIError, match="refusing to upgrade to 0004_broker_instruments"):
+                async with conn.begin_nested():
+                    await conn.execute(text(sql))
+        finally:
+            await trans.rollback()
+
+
+async def test_m4_a_zerodha_load_never_clears_a_stored_freeze_limit(app_engine: AsyncEngine) -> None:
+    """REQ-054 "Per-broker values and their date": Zerodha's list has no freeze limit, so a daily load keeps 1800 and
+    writes no 1800 -> NULL history row."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            with_freeze = [with_terms(c, freeze_limit=1800) if c.ref("zerodha").broker_token == "12468226" else c
+                           for c in _fixture()]
+            await apply_update(conn, with_freeze, as_of=AS_OF)
+            assert await _scalar(conn, f"SELECT freeze_limit FROM {BROKER} WHERE broker_token = '12468226'") == 1800
+            result = await apply_update(conn, _fixture(), as_of=AS_OF)  # the plain Zerodha list: no freeze value
+            assert result.revised == 0
+            assert await _scalar(conn, f"SELECT freeze_limit FROM {BROKER} WHERE broker_token = '12468226'") == 1800
+            assert await _scalar(conn, f"SELECT count(*) FROM {HISTORY}") == 0
+            entry = (await load_catalogue(conn)).get(InstrumentId("NSE_FO", 48704))
+            assert entry.ref("zerodha").freeze_limit == 1800
+        finally:
+            await trans.rollback()
+
+
+async def test_m1_owner_cannot_backdate_a_broker_rows_stamps(admin_engine: AsyncEngine) -> None:
+    """m1: the database stamps seen_on / first_seen_at / last_seen_at on insert and update, whatever is supplied."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            today_ist = await _scalar(conn, "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
+            await conn.execute(text(f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, expiry, strike, "
+                                    "instrument_type) VALUES ('NSE_FO', 99998, 'NIFTY', '2026-10-27', 25000, 'PE')"))
+            cid = await _scalar(conn, f"SELECT id FROM {TABLE} WHERE exchange_token = 99998")
+            await conn.execute(text(
+                f"INSERT INTO {BROKER} (contract_id, broker, broker_token, broker_symbol, broker_segment, lot_size, "
+                f"tick_size, seen_on, first_seen_at, last_seen_at) VALUES ({cid}, 'zerodha', '99998', 'X', 'NFO-OPT', "
+                "65, 0.05, '2000-01-01', '2000-01-01', '2000-01-01')"))
+            row = (await conn.execute(text(f"SELECT seen_on, first_seen_at, last_seen_at FROM {BROKER} "
+                                           f"WHERE contract_id = {cid}"))).one()
+            assert row.seen_on == today_ist and row.first_seen_at.year > 2000 and row.last_seen_at.year > 2000
+            await conn.execute(text(f"UPDATE {BROKER} SET seen_on = '2000-01-01', first_seen_at = '2000-01-01', "
+                                    f"last_seen_at = '2000-01-01' WHERE contract_id = {cid}"))
+            again = (await conn.execute(text(f"SELECT seen_on, first_seen_at, last_seen_at FROM {BROKER} "
+                                             f"WHERE contract_id = {cid}"))).one()
+            assert again.seen_on == today_ist and again.first_seen_at == row.first_seen_at
+            assert again.last_seen_at >= row.last_seen_at
+        finally:
+            await trans.rollback()
+
+
+async def test_m2_a_revised_broker_symbol_writes_one_dated_history_row(app_engine: AsyncEngine) -> None:
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            today_ist = await _scalar(conn, "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
+            revised = [with_terms(c, broker_symbol="NIFTY26OCTFUTX") if c.ref("zerodha").broker_token == "12468226"
+                       else c for c in _fixture()]
+            result = await apply_update(conn, revised, as_of=AS_OF)
+            assert result.revised == 1
+            history = (await conn.execute(text(
+                f"SELECT broker, field, old_value, new_value, (changed_at AT TIME ZONE 'Asia/Kolkata')::date AS day "
+                f"FROM {HISTORY}"))).all()
+            assert [tuple(h) for h in history] == [("zerodha", "broker_symbol", "NIFTY26OCTFUT", "NIFTY26OCTFUTX",
+                                                    today_ist)]
+            assert await _scalar(conn, f"SELECT broker_symbol FROM {BROKER} WHERE broker_token = '12468226'") == \
+                "NIFTY26OCTFUTX"
+        finally:
+            await trans.rollback()
