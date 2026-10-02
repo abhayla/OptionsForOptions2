@@ -81,15 +81,10 @@ Q224 confirmed. Findings-index wrapper approved until kit #40 is fixed (memory `
 ## DEFERRED (open issues — each must be implemented, not closed)
 - **#43** item 4: freeze 1,755, 10 orders/batch, "margin impact" meaning are unverified placeholders until the Kite build.
 - **#45** price passed through unchecked (REQ-056 AC-7, Q28); no first-entry execution path yet.
-- **#29** items 5-6 (integration must read legs from the store; forged alternative strike recorded to history).
-- **#10** small verifier findings (W-006 `validate_source` host check, 50% truncation threshold; W-013 AST money guard
-  misses `getattr`; W-002 NaN/float tests).
-- **#61** fixture guard checks only the head of f-string symbols.
-- **#62** Close Partial refusals raise after `mark_closing` instead of returning a message.
 - **#63** two ProposedOrder builders (reconciliation/resolution.py:343, rules/actions.py:45) don't slice — unreachable
-  to the broker today.
-- **#64** reconciliation compare is quadratic in active strategies (0.477 s at 800).
-- **#65** wall-clock guard misses timeit / datetime / aliased timers / named-constant thresholds.
+  to the broker today; depends on the #43 freeze placeholder, so it moves to build plan P4.
+- Corrected 2026-10-02: #10, #29, #61, #62, #64, #65 are CLOSED (W-036 #69, W-037 #70, W-038 #72, W-039 #73; `gh issue
+  view` state CLOSED); this list had not been updated after those merges.
 
 ## OPEN QUESTIONS still for the owner
 Q204, Q205 (Zerodha feed model — wait for Zerodha), Q211 (legal review), Q212 (YouTube transcript), REQ-039's
@@ -98,8 +93,11 @@ column, OD-e ("buy-backs of shorts go first", a code default not in the spec), t
 three UX levels (W-004 builder's call), the TOTAL P&L % "—" cases for missing LTP / multi-expiry (REQ-035
 clarification), "safety net" passing the wording check, the W-024 residual reworded promises.
 
-## NEXT (in order)
-1. Deferred issues that need no decision: #62, #64, #61, #65, #10 (items 1, 3, 4).
+## NEXT (in order) — superseded by `docs/process/build-plan-2026-10-02.md`
+Current step: P1 = W-051 (platform + trusted clock, Tier A) -> W-052 (audit store) and W-053 (catalogue store) ->
+W-007 unpark. Owner decisions taken 2026-10-02: Q256 (skew 60 s), ADR-048 (test DB on the VPS, isolated and capped).
+Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to create ofo_test + ofo_app).
+1. (Done before 2026-10-02) Deferred issues that need no decision: #62, #64, #61, #65, #10 (items 1, 3, 4).
 2. API/web layers: the first work item adds `app-tests.yml` (ADR-046) with the first API code — but prove its core
    first (CLAUDE.md, run-discipline): the Zerodha core proof is still the project's real core and is blocked.
 3. When Zerodha answers: the core proof (throwaway script, real login, 3 real option quotes per index + margin),
