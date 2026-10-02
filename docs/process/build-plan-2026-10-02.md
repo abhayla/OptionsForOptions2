@@ -112,6 +112,11 @@ the trigger. If any fails, stop and re-plan.
 Create Strategy -> Configure Legs -> Calculate -> Save Draft -> Connect Zerodha -> Validate -> Prepare Execution Plan ->
 Review -> Execute -> Confirm Broker Execution -> Reconcile -> Active Monitoring, through the existing `ofo` domain.
 Approval gate: REQ-015, REQ-054, REQ-055, REQ-061, REQ-043 (others in the slice are Approved/Verified).
+Added 2026-10-02 (ADR-050, owner-approved research): the broker brief carries the eight order-path safeguards - our tag
+on every order with lookup on timeout (never resend); persist intent before send; websocket + verified postbacks +
+polling; external orders recorded; per-key rate limits; re-login on token expiry; kill switch; Zerodha API-order rules
+(market protection, 10 slices, 25 modifications) - and stays blocked until Zerodha answers Q258 (SEBI algo provider,
+static IP). Instrument identity is (exchange, exchange_token) from W-056 (P1).
 Copy: `brokers/base.py` + `brokers/kite_adapter.py` behind `send_guard._Transport` only (mandatory strategy_id, no public
 place_order); `auth.py:60-175` callback (reference; token via the secure mechanism, never plaintext);
 `utils/encryption.py` (reference; own key); `orders.py` margins/import-positions (reference, REQ-055/061; #43 placeholders

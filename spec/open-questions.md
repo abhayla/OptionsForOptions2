@@ -328,3 +328,15 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   AC-1 and ADR-016, Zerodha is final): lot size, tick size, expiry and trading symbol follow the source list and every
   change goes to an append-only history; identity fields never change and a list changing them is refused with
   nothing written. Recorded in REQ-053 "Q257". Found by the W-053 adversarial review (PR #109).
+- Amended 2026-10-02 (owner, ADR-050): the identity list now names (exchange segment, exchange token), not Zerodha's
+  instrument_token (spec/findings.md F-01, F-02); see REQ-053.
+
+## Q258 — OPEN (external: Zerodha + legal) — Does the platform count as an "algo provider" under SEBI's 2025 framework?
+- Question: SEBI's retail algo framework (circular SEBI/HO/MIRSD/MIRSD-PoD/P/CIR/2025/0000013, 4 Feb 2025; NSE
+  INVG67858) requires orders from a whitelisted static IP (Zerodha rejects others from 1 Apr 2026, and limits static IP
+  sharing to family), an algo ID on API orders, and exchange empanelment for algo providers with every strategy
+  registered. Our SaaS sends many unrelated users' orders from our server through each user's own Kite session, each
+  order confirmed by the user. Does that make us an algo provider needing empanelment, and how is the static-IP rule met
+  for many users? (spec/findings.md F-06 - secondary sources, unverified.)
+- Recommendation: ask Zerodha in the pending written-answer thread (ADR-034) and include it in the Q211 legal review.
+  The broker phase (build plan P4) stays blocked until it is answered. Bears on REQ-054, REQ-063, REQ-066.

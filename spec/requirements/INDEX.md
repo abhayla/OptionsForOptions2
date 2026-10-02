@@ -29,7 +29,7 @@ Requirements: 71; sections: 18
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-053 | Broker authority and contract eligibility | core | Approved |
-| REQ-054 | Broker adapter | core | Specified |
+| REQ-054 | Broker adapter | core | Approved |
 | REQ-055 | Margin checks | foundation | Specified |
 | REQ-056 | Multi-leg execution plan and review | foundation | Approved |
 | REQ-057 | Order lifecycle | foundation | Verified |
