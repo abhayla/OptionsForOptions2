@@ -12,7 +12,7 @@
   "detection": {
     "status": "unguarded",
     "checks": [],
-    "note": "Guarded when W-056 lands with a test that the catalogue's unique key is (exchange segment from the platform list, exchange_token) and that no table outside the per-broker table stores instrument_token."
+    "note": "Guarded when W-056 lands with a test that the catalogue's unique key is (exchange segment from the platform list, exchange_token) and that no table outside the per-broker table stores instrument_token. Open member after W-056 (issue #115): the execution layer (plan legs, orders, positions, quotes) still links to the catalogue by Zerodha's trading symbol; the class stays unguarded until that is keyed on InstrumentId. Unverified related question (issue #116): whether an expired contract's exchange token can be reused."
   },
   "spec_ref": [
     "spec/requirements/REQ-053.md",
