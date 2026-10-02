@@ -18,6 +18,7 @@ Expected values come from the spec: a 7-day trial (ADR-023 Q88), 30 referral day
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -446,9 +447,12 @@ async def test_the_ledger_returned_by_append_cannot_stamp_an_unpersisted_event(a
 # ---------------------------------------------------------------- the per-user lock (two connections)
 
 
-async def _waiting_on_a_lock(conn: AsyncConnection, pid: int) -> bool:
-    return bool((await conn.execute(text("SELECT count(*) FROM pg_locks WHERE pid = :p AND NOT granted"),
-                                    {"p": pid})).scalar_one())
+async def _waiting_on_the_user_lock(conn: AsyncConnection, pid: int) -> bool:
+    """True while ``pid`` waits on the per-user advisory lock (class 52007); the audit store's lock does not count."""
+    return bool((await conn.execute(
+        text("SELECT count(*) FROM pg_locks WHERE pid = :p AND locktype = 'advisory' AND classid = :cls "
+             "AND NOT granted"),
+        {"p": pid, "cls": entitlement_store.ENTITLEMENT_LOCK_CLASS})).scalar_one())
 
 
 async def _concurrent_trials_yield_one(app_engine: AsyncEngine) -> None:
@@ -464,13 +468,23 @@ async def _concurrent_trials_yield_one(app_engine: AsyncEngine) -> None:
         async def b_appends():
             async with conn_b.begin():
                 return await entitlement_store.append(
-                    conn_b, user, trial_grant("trial-b", await _db_now(observer), "reg-b", note()))
+                    conn_b, user, trial_grant("trial-b", await _db_now(conn_b), "reg-b", note()))
 
         task = asyncio.create_task(b_appends())
-        for _ in range(200):  # until B waits on a lock or finishes (bounded by count, not by elapsed time)
-            if task.done() or await _waiting_on_a_lock(observer, pid_b):
+        waited = False
+        for _ in range(200):  # until B waits on the per-user lock or finishes (bounded by count, not elapsed time)
+            if await _waiting_on_the_user_lock(observer, pid_b):
+                waited = True
+                break
+            if task.done():
                 break
             await asyncio.sleep(0.01)
+        if not waited:
+            # Release B (it may be waiting on the audit lock) before failing, so no task outlives the test.
+            await trans_a.rollback()
+            with contextlib.suppress(Exception):
+                await task
+        assert waited, "connection B never waited on the per-user lock"
         await trans_a.commit()
         try:
             await task
@@ -490,5 +504,5 @@ async def test_mutant_without_the_per_user_lock_is_caught(app_engine: AsyncEngin
     """Without the lock, B reads the history before A commits and both trials are recorded."""
     await _concurrent_trials_yield_one(app_engine)  # baseline: green
     monkeypatch.setattr(entitlement_store, "_LOCK", text("SELECT CAST(:cls AS bigint), CAST(:user_id AS text)"))
-    with pytest.raises(AssertionError, match="both concurrent trial appends succeeded"):
+    with pytest.raises(AssertionError, match="connection B never waited on the per-user lock"):
         await _concurrent_trials_yield_one(app_engine)

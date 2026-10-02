@@ -226,7 +226,6 @@ _ACTION_FAMILY = {
     Source.REFERRAL: "referral",
     Source.PAID_MONTHLY: "paid",
     Source.PAID_ANNUAL: "paid",
-    Source.DIRECT_ZERODHA_CUSTOMER: "direct",
 }
 
 
