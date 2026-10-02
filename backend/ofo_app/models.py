@@ -33,36 +33,54 @@ class LedgerEntry(Base):
 
 
 class CatalogueContract(Base):
-    """One NIFTY (NFO) or SENSEX (BFO) option or future contract (REQ-053 AC-2; migration 0003_catalogue_store).
+    """One NIFTY (NSE_FO) or SENSEX (BSE_FO) option or future contract, identified by (exchange_segment,
+    exchange_token) (REQ-053 AC-2, REQ-054 AC-3; migrations 0003_catalogue_store and 0004_broker_instruments).
 
-    Copied/adapted from abhayla/algochanakya@bf9faf7:backend/app/models/instruments.py (ADR-047, legacy-reuse.md M2):
-    strike NUMERIC(12,2) and tick_size NUMERIC(10,4) as Decimal with no float default (legacy: DECIMAL(10,2) and
-    default=0.05), unique (exchange, instrument_token) instead of (instrument_token, source_broker), no source_broker
-    and no option_type; currently_listed / first_seen_at / last_seen_at added, the stamps set by the database
-    trigger catalogue_contracts_guard. Rows are never deleted; a contract's identity never changes, its revisable
-    terms (lot_size, tick_size, expiry, tradingsymbol) follow Zerodha with each change recorded in
-    public.catalogue_term_changes (Q257). Eligibility is not stored here. Reads and writes go through
-    ofo_app.catalogue_store.
+    Rows are never deleted and their identity never changes (database trigger catalogue_contracts_guard); expiry is the
+    only revisable column, its changes recorded in public.catalogue_term_changes. No broker's ids live here: Zerodha's
+    instrument_token, trading symbol, segment code, lot and tick size are in BrokerInstrument. Reads and writes go
+    through ofo_app.catalogue_store.
     """
 
     __tablename__ = "catalogue_contracts"
     __table_args__ = (
-        UniqueConstraint("exchange", "instrument_token", name="catalogue_contracts_exchange_token_key"),
+        UniqueConstraint("exchange_segment", "exchange_token", name="catalogue_contracts_identity_key"),
         {"schema": "public"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    exchange: Mapped[str] = mapped_column(Text, nullable=False)
-    instrument_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    exchange_segment: Mapped[str] = mapped_column(Text, nullable=False)
     exchange_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    tradingsymbol: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
     strike: Mapped[Decimal] = mapped_column(Numeric(12, 2, asdecimal=True), nullable=False, server_default=text("0"))
-    tick_size: Mapped[Decimal] = mapped_column(Numeric(10, 4, asdecimal=True), nullable=False)
-    lot_size: Mapped[int] = mapped_column(Integer, nullable=False)
     instrument_type: Mapped[str] = mapped_column(Text, nullable=False)
-    segment: Mapped[str] = mapped_column(Text, nullable=False)
     currently_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BrokerInstrument(Base):
+    """One broker's own row for one contract (REQ-054 AC-3/AC-4; migration 0004_broker_instruments): its token,
+    symbol and segment code, and its lot size, tick size and freeze limit dated seen_on (stamped by the database).
+    Never deleted; identity (contract, broker, token, segment) never changes; revisable terms keep history."""
+
+    __tablename__ = "broker_instruments"
+    __table_args__ = (
+        UniqueConstraint("broker", "broker_segment", "broker_token", name="broker_instruments_broker_token_key"),
+        UniqueConstraint("contract_id", "broker", name="broker_instruments_contract_broker_key"),
+        {"schema": "public"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    contract_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    broker: Mapped[str] = mapped_column(Text, nullable=False)
+    broker_token: Mapped[str] = mapped_column(Text, nullable=False)
+    broker_symbol: Mapped[str] = mapped_column(Text, nullable=False)
+    broker_segment: Mapped[str] = mapped_column(Text, nullable=False)
+    lot_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    tick_size: Mapped[Decimal] = mapped_column(Numeric(10, 4, asdecimal=True), nullable=False)
+    freeze_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seen_on: Mapped[date] = mapped_column(Date, nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

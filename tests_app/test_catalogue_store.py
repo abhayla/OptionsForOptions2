@@ -19,7 +19,7 @@ import importlib.util
 import io
 import re
 from collections import Counter
-from dataclasses import replace
+import dataclasses
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -30,13 +30,14 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
-from ofo.instruments.models import Contract
+from ofo.instruments.models import Contract, ListedContract
 from ofo_app.catalogue_store import (
     CatalogueStoreError,
     apply_update,
     check_storable,
     load_catalogue,
     parse_rows_naming_the_row,
+    with_terms,
 )
 
 INSUFFICIENT_PRIVILEGE = "42501"
@@ -48,14 +49,19 @@ AS_OF = datetime(2026, 10, 2, 10, 0, tzinfo=IST)  # the fixture's download day; 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests_app" / "fixtures" / "zerodha_instruments_nifty_sensex_2026-10-02.csv"
 TABLE = "public.catalogue_contracts"
-SNAPSHOT = text(f"SELECT * FROM {TABLE} ORDER BY id")
-FIELDS = ("tradingsymbol", "strike", "expiry", "lot_size", "tick_size", "instrument_type", "exchange", "name",
-          "exchange_token", "segment")
+BROKER = "public.broker_instruments"
+#: Every contract column plus its Zerodha row (W-056): a refused write must leave both tables unchanged.
+SNAPSHOT = text(
+    f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
+    f"c.currently_listed, c.first_seen_at, c.last_seen_at, b.broker, b.broker_token, b.broker_symbol, "
+    f"b.broker_segment, b.lot_size, b.tick_size, b.freeze_limit, b.seen_on, b.first_seen_at AS broker_first_seen_at, "
+    f"b.last_seen_at AS broker_last_seen_at FROM {TABLE} AS c LEFT JOIN {BROKER} AS b ON b.contract_id = c.id "
+    f"ORDER BY c.id, b.broker")
 
 
 def _migration():
-    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0003_catalogue_store.py"
-    spec = importlib.util.spec_from_file_location("ofo_migration_0003_test", path)
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0004_broker_instruments.py"
+    spec = importlib.util.spec_from_file_location("ofo_migration_0004_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -65,16 +71,24 @@ def _fixture_text() -> str:
     return "".join(line for line in FIXTURE.read_text(encoding="utf-8").splitlines(True) if not line.startswith("#"))
 
 
-def _fixture() -> list[Contract]:
+def _fixture() -> list[ListedContract]:
     return parse_rows_naming_the_row(io.StringIO(_fixture_text()))
 
 
-def _in_scope(contracts: list[Contract]) -> list[Contract]:
-    return [c for c in contracts if Catalogue._in_scope(c)]
+def _in_scope(contracts: list[ListedContract]) -> list[ListedContract]:
+    return [c for c in contracts if Catalogue._in_scope(c.contract)]
 
 
-def _by_symbol(contracts: list[Contract], symbol: str) -> Contract:
-    return next(c for c in contracts if c.tradingsymbol == symbol)
+def _sym(c: ListedContract) -> str:
+    return c.ref("zerodha").broker_symbol
+
+
+def _token(c: ListedContract) -> str:
+    return c.ref("zerodha").broker_token
+
+
+def _by_symbol(contracts: list[ListedContract], symbol: str) -> ListedContract:
+    return next(c for c in contracts if _sym(c) == symbol)
 
 
 def _sqlstate(exc: DBAPIError) -> str | None:
@@ -116,19 +130,27 @@ def _role(app_engine: AsyncEngine) -> str:
 
 
 def test_database_scope_equals_the_domain_scope() -> None:
-    assert dict(_migration().SUPPORTED) == SUPPORTED_UNDERLYINGS == {"NIFTY": "NFO", "SENSEX": "BFO"}
+    from ofo.instruments.models import BROKER_CODES, EXCHANGE_SEGMENTS
+    from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
+
+    migration = _migration()
+    assert dict(migration.SUPPORTED) == SUPPORTED_UNDERLYINGS == {"NIFTY": "NSE_FO", "SENSEX": "BSE_FO"}
+    assert set(migration.EXCHANGE_SEGMENTS) == EXCHANGE_SEGMENTS
+    assert dict(migration.ZERODHA_EXCHANGE_TO_SEGMENT) == ZERODHA_EXCHANGE_TO_SEGMENT
+    assert set(migration.BROKER_CODES) == BROKER_CODES
 
 
 def test_fixture_holds_real_nifty_and_sensex_rows() -> None:
     contracts = _fixture()
     scoped = _in_scope(contracts)
-    assert len(contracts) == 24 and len(scoped) == 22
-    assert Counter((c.name, c.exchange, c.instrument_type) for c in scoped) == {
-        ("NIFTY", "NFO", "FUT"): 3, ("NIFTY", "NFO", "CE"): 4, ("NIFTY", "NFO", "PE"): 4,
-        ("SENSEX", "BFO", "FUT"): 3, ("SENSEX", "BFO", "CE"): 4, ("SENSEX", "BFO", "PE"): 4,
+    # 24 rows: the NIFTY 50 index row (NSE) is outside V1 and skipped by the parser; BANKNIFTY (NFO) is outside scope
+    assert len(contracts) == 23 and contracts.skipped_outside_v1 == 1 and len(scoped) == 22
+    assert Counter((c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped) == {
+        ("NIFTY", "NSE_FO", "FUT"): 3, ("NIFTY", "NSE_FO", "CE"): 4, ("NIFTY", "NSE_FO", "PE"): 4,
+        ("SENSEX", "BSE_FO", "FUT"): 3, ("SENSEX", "BSE_FO", "CE"): 4, ("SENSEX", "BSE_FO", "PE"): 4,
     }
-    assert {c.lot_size for c in scoped if c.name == "NIFTY"} == {65}
-    assert {c.lot_size for c in scoped if c.name == "SENSEX"} == {20}
+    assert {c.ref("zerodha").lot_size for c in scoped if c.contract.name == "NIFTY"} == {65}
+    assert {c.ref("zerodha").lot_size for c in scoped if c.contract.name == "SENSEX"} == {20}
 
 
 @pytest.mark.parametrize(
@@ -156,10 +178,10 @@ def test_a_row_whose_strike_or_tick_is_not_a_decimal_stops_the_load_naming_it(co
      ("tick_size", 0.05, "not Decimal")],
 )
 def test_a_value_the_table_would_round_is_refused(field: str, value, match: str) -> None:
-    contract = replace(_by_symbol(_fixture(), "NIFTY26O0625050CE"), **{field: value})
+    contract = with_terms(_by_symbol(_fixture(), "NIFTY26O0625050CE"), **{field: value})
     with pytest.raises(CatalogueStoreError, match=match):
         check_storable(contract)
-    check_storable(replace(contract, strike=Decimal("25050.50"), tick_size=Decimal("0.0500")))  # fits: accepted
+    check_storable(with_terms(contract, strike=Decimal("25050.50"), tick_size=Decimal("0.0500")))  # fits: accepted
 
 
 def test_allowlist_block_shape_guard_fails_closed() -> None:
@@ -186,14 +208,20 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
         "public.audit_events_advance_anchor()",
         "public.catalogue_contracts_guard()",
         "public.catalogue_term_changes_guard()",
+        "public.broker_instruments_guard()",
     }
     assert all(re.fullmatch(r"[0-9a-f]{32}", d) for d in migration.PINNED_BODIES.values())
     assert [(t, g) for _, t, _, g, _ in migration.GUARDED_TRIGGERS] == [
         ("ledger_entries_trusted_clock", 7), ("audit_events_link_and_clock", 7),
         ("audit_events_advance_anchor", 5), ("catalogue_contracts_guard", 31), ("catalogue_term_changes_guard", 31),
+        ("broker_instruments_guard", 31),
     ]
     assert dict(migration.GUARDED_TABLES)["public.audit_anchor"] == ()
-    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "lot_size", "tick_size", "expiry", "tradingsymbol")
+    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry")
+    assert migration.APP_INSERT_COLUMNS == ("exchange_segment", "exchange_token", "name", "expiry", "strike",
+                                            "instrument_type")
+    assert migration.APP_BROKER_UPDATE_COLUMNS == ("broker_symbol", "lot_size", "tick_size", "freeze_limit")
+    assert dict(migration.GUARDED_TABLES)["public.broker_instruments"] == ("broker_instruments_guard",)
 
 
 class _FakeConn:
@@ -206,13 +234,16 @@ class _FakeConn:
 
     async def execute(self, stmt, params=None):
         sql = str(stmt)
-        if sql.startswith("SELECT id,"):
-            rows = self.rows
+        rows = self.rows
 
-            class _Result:
-                def all(self):
-                    return rows
+        class _Result:
+            def all(self):
+                return rows
 
+            def scalar_one(self):
+                return 0  # the post-write "contracts without a zerodha row" check
+
+        if sql.startswith("SELECT c.id,") or sql.startswith("SELECT count(*)"):
             return _Result()
         if not sql.startswith("SELECT pg_advisory_xact_lock"):
             self.writes.append((sql.split()[0], params))
@@ -240,54 +271,71 @@ async def test_planning_into_an_empty_catalogue_writes_every_in_scope_contract_w
     conn = _FakeConn()
     result = await apply_update(conn, _fixture(), as_of=AS_OF)
     assert (result.added, result.seen, result.newly_unlisted) == (22, 0, 0)
-    assert [kind for kind, _ in conn.writes] == ["INSERT"]
-    assert sorted(p["instrument_token"] for p in conn.writes[0][1]) == sorted(
-        c.instrument_token for c in _in_scope(_fixture()))
+    assert [kind for kind, _ in conn.writes] == ["INSERT", "INSERT"]  # contracts, then their zerodha rows
+    assert sorted(p["exchange_token"] for p in conn.writes[0][1]) == sorted(
+        c.contract.exchange_token for c in _in_scope(_fixture()))
+    assert set(conn.writes[0][1][0]) == {"exchange_segment", "exchange_token", "name", "expiry", "strike",
+                                         "instrument_type"}
+    assert sorted(p["broker_token"] for p in conn.writes[1][1]) == sorted(_token(c) for c in _in_scope(_fixture()))
+    assert {p["broker"] for p in conn.writes[1][1]} == {"zerodha"}
 
 
 async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_database() -> None:
     from types import SimpleNamespace
 
-    stored = [SimpleNamespace(id=i + 1, currently_listed=True, **{k: getattr(c, k) for k in (
-        "exchange", "instrument_token", "exchange_token", "tradingsymbol", "name", "expiry", "strike", "tick_size",
-        "lot_size", "instrument_type", "segment")}) for i, c in enumerate(_in_scope(_fixture()))]
+    stored = [SimpleNamespace(id=i + 1, currently_listed=True, exchange_segment=c.contract.exchange_segment,
+                             exchange_token=c.contract.exchange_token, name=c.contract.name, expiry=c.contract.expiry,
+                             strike=c.contract.strike, instrument_type=c.contract.instrument_type,
+                             **{k: getattr(c.ref("zerodha"), k) for k in (
+                                 "broker", "broker_token", "broker_symbol", "broker_segment", "lot_size", "tick_size",
+                                 "freeze_limit", "seen_on")}) for i, c in enumerate(_in_scope(_fixture()))]
     conn = _FakeConn(stored)
-    next_day = [c for c in _fixture() if c.expiry != date(2026, 10, 6)]
+    next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]
     result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
     assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
-    assert [(kind, p["listed"], len(p["tokens"])) for kind, p in conn.writes] == [("UPDATE", True, 18),
-                                                                                    ("UPDATE", False, 4)]
-    assert conn.writes[0][1]["exchanges"] == sorted(c.exchange for c in next_day if Catalogue._in_scope(c))
+    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # zerodha rows seen, listed, unlisted
+    assert len(conn.writes[0][1]) == 18
+    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[1:]] == [(True, 18), (False, 4)]
+    assert conn.writes[1][1]["segments"] == sorted(
+        c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 1 contract"):
-        await apply_update(refused, [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"], as_of=AS_OF)
+        await apply_update(refused, [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"], as_of=AS_OF)
     assert refused.writes == []
 
 
 def _stored_rows() -> list:
     from types import SimpleNamespace
 
-    return [SimpleNamespace(id=i + 1, currently_listed=True, **{k: getattr(c, k) for k in (
-        "exchange", "instrument_token", "exchange_token", "tradingsymbol", "name", "expiry", "strike", "tick_size",
-        "lot_size", "instrument_type", "segment")}) for i, c in enumerate(_in_scope(_fixture()))]
+    return [SimpleNamespace(id=i + 1, currently_listed=True, exchange_segment=c.contract.exchange_segment,
+                             exchange_token=c.contract.exchange_token, name=c.contract.name, expiry=c.contract.expiry,
+                             strike=c.contract.strike, instrument_type=c.contract.instrument_type,
+                             **{k: getattr(c.ref("zerodha"), k) for k in (
+                                 "broker", "broker_token", "broker_symbol", "broker_segment", "lot_size", "tick_size",
+                                 "freeze_limit", "seen_on")}) for i, c in enumerate(_in_scope(_fixture()))]
 
 
 async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database() -> None:
     conn = _FakeConn(_stored_rows())
-    revised = [replace(c, lot_size=75) if c.tradingsymbol == "NIFTY26OCTFUT" else c for c in _fixture()]
+    revised = [with_terms(c, lot_size=75) if _sym(c) == "NIFTY26OCTFUT" else c for c in _fixture()]
     result = await apply_update(conn, revised, as_of=AS_OF)
     assert (result.added, result.revised, result.seen, result.newly_unlisted) == (0, 1, 22, 0)
-    assert conn.writes[0] == ("UPDATE", [{"exchange": "NFO", "instrument_token": 12468226, "lot_size": 75,
-                                    "tick_size": Decimal("0.1"), "expiry": date(2026, 10, 27),
-                                    "tradingsymbol": "NIFTY26OCTFUT"}])
-    assert len(conn.writes[1][1]["tokens"]) == 21  # the other stored contracts: listed again, terms unchanged
+    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE"]  # no expiry changed: no contract revise
+    seen = conn.writes[0][1]
+    assert len(seen) == 22
+    # fixture row: 12468226,48704,NIFTY26OCTFUT,NIFTY,0,2026-10-27,0,0.1,65,FUT,NFO-FUT,NFO
+    assert [p for p in seen if p["exchange_token"] == 48704] == [{
+        "exchange_segment": "NSE_FO", "exchange_token": 48704, "broker": "zerodha", "broker_symbol": "NIFTY26OCTFUT",
+        "lot_size": 75, "tick_size": Decimal("0.1"), "freeze_limit": None}]
+    assert len(conn.writes[1][1]["tokens"]) == 22  # every present contract listed
 
 
 @pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE"),
-                                          ("exchange_token", 1), ("segment", "NFO-FUT")])
+                                          ("exchange_token", 1), ("broker_segment", "NFO-FUT"),
+                                          ("broker_token", "1")])
 async def test_planning_an_identity_change_is_refused_with_no_write(field: str, value) -> None:
     conn = _FakeConn(_stored_rows())
-    changed = [replace(c, **{field: value}) if c.tradingsymbol == "NIFTY26O0625050CE" else c for c in _fixture()]
+    changed = [with_terms(c, **{field: value}) if _sym(c) == "NIFTY26O0625050CE" else c for c in _fixture()]
     with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
         await apply_update(conn, changed, as_of=AS_OF)
     assert conn.writes == []
@@ -316,12 +364,12 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
         return await original_execute(stmt, params)
 
     conn.execute = tracking_execute  # type: ignore[method-assign]
-    truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+    truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
     await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
     assert order[-1] == "audit" and order.count("audit") == 1 and "write" in order[:-1]
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
-    assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == ["NIFTY26O1325050CE"]
+    assert payload["action"] == "catalogue_force_update" and payload["dropped_broker_symbols"] == [["zerodha", "NIFTY26O1325050CE"]]
     assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
 
     # a failed catalogue write leaves no audit event
@@ -353,7 +401,7 @@ async def test_a_refused_audit_append_rolls_back_the_forced_delisting_without_a_
         raise ValueError("audit store refused")
 
     monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
-    truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+    truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
     with pytest.raises(ValueError, match="audit store refused"):
         await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
     assert seen_writes and seen_writes[0] > 0, "append must run after the writes, inside the savepoint"
@@ -375,19 +423,23 @@ async def test_fixture_round_trips_unchanged_with_exact_decimals(app_engine: Asy
             assert (result.added, result.seen, result.newly_unlisted) == (22, 0, 0)
             assert await _count(conn) == 22  # the two out-of-scope rows are not stored
             catalogue = await load_catalogue(conn)
-            stored = {e.contract.instrument_token: e for e in catalogue.all_entries()}
-            assert set(stored) == {c.instrument_token for c in scoped}
+            stored = {e.id: e for e in catalogue.all_entries()}
+            assert set(stored) == {c.id for c in scoped}
             for c in scoped:
-                entry = stored[c.instrument_token]
-                assert entry.contract == c and entry.currently_listed
+                entry = stored[c.id]
+                assert entry.contract == c.contract and entry.currently_listed
+                stored_ref = entry.ref("zerodha")
+                assert dataclasses.replace(stored_ref, seen_on=None) == c.ref("zerodha")
+                assert stored_ref.seen_on is not None
                 assert isinstance(entry.contract.strike, Decimal) and isinstance(entry.contract.tick_size, Decimal)
             raw = (await conn.execute(text(
-                f"SELECT strike::text, tick_size::text, lot_size, expiry, first_seen_at = last_seen_at "
-                f"FROM {TABLE} WHERE tradingsymbol = 'NIFTY26OCTFUT'"
+                f"SELECT c.strike::text, b.tick_size::text, b.lot_size, c.expiry, c.first_seen_at = c.last_seen_at "
+                f"FROM {TABLE} AS c JOIN {BROKER} AS b ON b.contract_id = c.id WHERE b.broker_symbol = 'NIFTY26OCTFUT'"
             ))).one()
             assert tuple(raw) == ("0.00", "0.1000", 65, date(2026, 10, 27), True)
-            sensex = await conn.execute(text(f"SELECT strike::text, tick_size::text FROM {TABLE} "
-                                             "WHERE tradingsymbol = 'SENSEX26O0882100PE'"))
+            sensex = await conn.execute(text(f"SELECT c.strike::text, b.tick_size::text FROM {TABLE} AS c "
+                                             f"JOIN {BROKER} AS b ON b.contract_id = c.id "
+                                             "WHERE b.broker_symbol = 'SENSEX26O0882100PE'"))
             assert tuple(sensex.one()) == ("82100.00", "0.0500")
         finally:
             await trans.rollback()
@@ -397,9 +449,9 @@ async def check_truncated_update_refused(conn: AsyncConnection) -> None:
     """A list missing one unexpired contract (NIFTY26O1325050CE, expiry 2026-10-13) plus one new contract is
     refused, and every row keeps every column (listedness and stamps included); nothing is inserted."""
     before = await _snapshot(conn)
-    truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
-    extra = replace(_by_symbol(_fixture(), "NIFTY26O1325050CE"), instrument_token=99999999,
-                    tradingsymbol="NEW-CONTRACT")
+    truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
+    extra = with_terms(_by_symbol(_fixture(), "NIFTY26O1325050CE"), exchange_token=99999, broker_token="99999999",
+                       broker_symbol="NEW-CONTRACT")
     try:
         await apply_update(conn, truncated + [extra], as_of=AS_OF)
     except ValueError as exc:
@@ -424,11 +476,11 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
         trans = await conn.begin()
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
-            before = {r.tradingsymbol: r for r in (await conn.execute(SNAPSHOT)).all()}
-            next_day = [c for c in _fixture() if c.expiry != date(2026, 10, 6)]  # the 4 NIFTY 6-Oct options expired
+            before = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
+            next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]  # the 4 NIFTY 6-Oct options expired
             result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
             assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
-            after = {r.tradingsymbol: r for r in (await conn.execute(SNAPSHOT)).all()}
+            after = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
             assert set(after) == set(before) and len(after) == 22
             gone = {s for s, r in after.items() if not r.currently_listed}
             assert gone == {"NIFTY26O0625050CE", "NIFTY26O0625000CE", "NIFTY26O0625050PE", "NIFTY26O0625000PE"}
@@ -457,18 +509,21 @@ async def test_revised_lot_size_follows_zerodha_with_one_history_row(
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             clock_before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
-            revised = [replace(c, lot_size=75) if c.tradingsymbol == "NIFTY26OCTFUT" else c for c in _fixture()]
+            revised = [with_terms(c, lot_size=75) if _sym(c) == "NIFTY26OCTFUT" else c for c in _fixture()]
             result = await apply_update(conn, revised, as_of=AS_OF)
             clock_after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             assert (result.added, result.revised, result.newly_unlisted) == (0, 1, 0)
-            lot = (await conn.execute(text(f"SELECT lot_size FROM {TABLE} WHERE instrument_token = 12468226"))).scalar_one()
+            lot = (await conn.execute(text(
+                f"SELECT lot_size FROM {BROKER} WHERE broker = 'zerodha' AND broker_token = '12468226'"))).scalar_one()
             assert lot == 75
             history = (await conn.execute(text(
-                f"SELECT instrument_token, exchange, field, old_value, new_value, changed_at FROM {HISTORY}"))).all()
-            assert [tuple(h)[:5] for h in history] == [(12468226, "NFO", "lot_size", "65", "75")]
+                f"SELECT c.exchange_segment, c.exchange_token, h.broker, h.field, h.old_value, h.new_value, h.changed_at "
+                f"FROM {HISTORY} AS h JOIN {TABLE} AS c ON c.id = h.contract_id"))).all()
+            assert [tuple(h)[:6] for h in history] == [("NSE_FO", 48704, "zerodha", "lot_size", "65", "75")]
             assert clock_before <= history[0].changed_at <= clock_after
             catalogue = await load_catalogue(conn)
-            assert _by_symbol([e.contract for e in catalogue.all_entries()], "NIFTY26OCTFUT").lot_size == 75
+            entry = catalogue.get(_by_symbol(_fixture(), "NIFTY26OCTFUT").id)
+            assert entry.contract.lot_size == 75 and entry.ref("zerodha").lot_size == 75
             with capsys.disabled():
                 print(f"\nW-053 PROOF revise NIFTY26OCTFUT lot_size row={lot} history={[tuple(h) for h in history]}")
         finally:
@@ -484,7 +539,7 @@ async def test_an_identity_change_is_refused_with_nothing_written(
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             before = await _snapshot(conn)
-            changed = [replace(c, **{field: value}) if c.tradingsymbol == "NIFTY26O0625050CE" else c
+            changed = [with_terms(c, **{field: value}) if _sym(c) == "NIFTY26O0625050CE" else c
                        for c in _fixture()]
             with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
                 await apply_update(conn, changed, as_of=AS_OF)
@@ -505,11 +560,11 @@ async def test_history_dates_are_iso_whatever_the_session_datestyle(app_engine: 
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await conn.execute(text("SET LOCAL DateStyle = 'SQL, DMY'"))
             assert (await conn.execute(text("SELECT DATE '2026-10-27'::text"))).scalar_one() == "27/10/2026"
-            revised = [replace(c, expiry=date(2026, 10, 28)) if c.tradingsymbol == "NIFTY26OCTFUT" else c
+            revised = [with_terms(c, expiry=date(2026, 10, 28)) if _sym(c) == "NIFTY26OCTFUT" else c
                        for c in _fixture()]
             await apply_update(conn, revised, as_of=AS_OF)
-            history = (await conn.execute(text(f"SELECT field, old_value, new_value FROM {HISTORY}"))).all()
-            assert [tuple(h) for h in history] == [("expiry", "2026-10-27", "2026-10-28")]
+            history = (await conn.execute(text(f"SELECT broker, field, old_value, new_value FROM {HISTORY}"))).all()
+            assert [tuple(h) for h in history] == [(None, "expiry", "2026-10-27", "2026-10-28")]
         finally:
             await trans.rollback()
 
@@ -529,7 +584,7 @@ async def test_a_refused_audit_append_leaves_the_catalogue_and_audit_log_unchang
             await apply_update(conn, _fixture(), as_of=AS_OF)
             before, head = await _snapshot(conn), await read_anchor(conn)
             monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
-            truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+            truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
             with pytest.raises(ValueError, match="audit store refused"):
                 await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
             assert await _snapshot(conn) == before and await read_anchor(conn) == head
@@ -546,10 +601,10 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
             await apply_update(conn, _fixture(), as_of=AS_OF)
             head = await read_anchor(conn)
             now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
-            truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+            truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
             await apply_update(conn, truncated, as_of=now, force=True, reason="broker delisted", actor="admin-1")
             listed = (await conn.execute(text(
-                f"SELECT currently_listed FROM {TABLE} WHERE tradingsymbol = 'NIFTY26O1325050CE'"))).scalar_one()
+                f"SELECT currently_listed FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26O1325050CE')"))).scalar_one()
             assert listed is False
             log, anchor = await load_log(conn)
             assert anchor.count == head.count + 1 and log.verify(anchor).ok
@@ -572,13 +627,16 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
             await _expect_refused(conn, f"UPDATE {TABLE} SET strike = strike + 1", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {TABLE} SET last_seen_at = now()", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(
-                conn, f"INSERT INTO {TABLE} (exchange, instrument_token, exchange_token, tradingsymbol, name, strike, "
-                      "tick_size, lot_size, instrument_type, segment, currently_listed) VALUES ('NFO', 1, 1, 'X', "
-                      "'NIFTY', 0, 0.05, 65, 'FUT', 'NFO-FUT', FALSE)", INSUFFICIENT_PRIVILEGE)
+                conn, f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, strike, instrument_type, "
+                      "currently_listed) VALUES ('NSE_FO', 1, 'NIFTY', 0, 'FUT', FALSE)", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"ALTER TABLE {TABLE} DISABLE TRIGGER ALL", INSUFFICIENT_PRIVILEGE)
-            await _expect_refused(conn, f"INSERT INTO {HISTORY} (instrument_token, exchange, field, old_value, "
-                                        "new_value) VALUES (12468226, 'NFO', 'lot_size', '65', '75')",
-                                  INSUFFICIENT_PRIVILEGE)
+            cid = (await conn.execute(text(f"SELECT min(id) FROM {TABLE}"))).scalar_one()
+            await _expect_refused(conn, f"INSERT INTO {HISTORY} (contract_id, broker, field, old_value, new_value) "
+                                        f"VALUES ({cid}, 'zerodha', 'lot_size', '65', '75')", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"DELETE FROM {BROKER}", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"TRUNCATE {BROKER}", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"UPDATE {BROKER} SET broker_token = '1'", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"UPDATE {BROKER} SET seen_on = '2000-01-01'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = 'x'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"DELETE FROM {HISTORY}", INSUFFICIENT_PRIVILEGE)
             assert await _count(conn) == 22
@@ -589,10 +647,10 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
 async def check_owner_cannot_delete_or_change_terms(conn: AsyncConnection) -> None:
     """Even the owner (who bypasses grants) cannot delete a contract, change its identity, or rewrite the term-change
     history: the triggers refuse."""
-    await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE tradingsymbol = 'NIFTY26OCTFUT'", CATALOGUE_SQLSTATE)
-    await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE tradingsymbol = 'NIFTY26OCTFUT'",
+    await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')", CATALOGUE_SQLSTATE)
+    await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
-    await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE tradingsymbol = 'NIFTY26OCTFUT'",
+    await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
 
 
@@ -601,7 +659,7 @@ async def test_owner_cannot_rewrite_or_delete_term_change_history(admin_engine: 
         trans = await conn.begin()
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
-            await conn.execute(text(f"UPDATE {TABLE} SET lot_size = 75 WHERE tradingsymbol = 'NIFTY26OCTFUT'"))
+            await conn.execute(text(f"UPDATE {BROKER} SET lot_size = 75 WHERE broker_symbol = 'NIFTY26OCTFUT'"))
             assert (await conn.execute(text(f"SELECT count(*) FROM {HISTORY}"))).scalar_one() == 1
             await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = '65'", CATALOGUE_SQLSTATE)
             await _expect_refused(conn, f"DELETE FROM {HISTORY}", CATALOGUE_SQLSTATE)
@@ -615,9 +673,9 @@ async def test_owner_cannot_delete_or_change_terms_and_cannot_backdate_first_see
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await check_owner_cannot_delete_or_change_terms(conn)
-            stamp = (await conn.execute(text(f"SELECT first_seen_at FROM {TABLE} WHERE tradingsymbol = 'NIFTY26OCTFUT'"))).scalar_one()
-            await conn.execute(text(f"UPDATE {TABLE} SET first_seen_at = '2000-01-01' WHERE tradingsymbol = 'NIFTY26OCTFUT'"))
-            again = (await conn.execute(text(f"SELECT first_seen_at FROM {TABLE} WHERE tradingsymbol = 'NIFTY26OCTFUT'"))).scalar_one()
+            stamp = (await conn.execute(text(f"SELECT first_seen_at FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')"))).scalar_one()
+            await conn.execute(text(f"UPDATE {TABLE} SET first_seen_at = '2000-01-01' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')"))
+            again = (await conn.execute(text(f"SELECT first_seen_at FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')"))).scalar_one()
             assert again == stamp
         finally:
             await trans.rollback()
@@ -634,7 +692,7 @@ async def test_stored_nan_strike_stops_the_reload_naming_the_row(admin_engine: A
                 "AND pg_get_constraintdef(oid) LIKE '%strike%NaN%'"))).scalar_one()
             await conn.execute(text(f'ALTER TABLE {TABLE} DROP CONSTRAINT "{constraint}"'))
             await conn.execute(text(f"ALTER TABLE {TABLE} DISABLE TRIGGER catalogue_contracts_guard"))
-            await conn.execute(text(f"UPDATE {TABLE} SET strike = 'NaN' WHERE tradingsymbol = 'SENSEX26O1582000PE'"))
+            await conn.execute(text(f"UPDATE {TABLE} SET strike = 'NaN' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'SENSEX26O1582000PE')"))
             with pytest.raises(CatalogueStoreError, match=r"SENSEX26O1582000PE \(instrument_token 282293253\): strike NaN"):
                 await load_catalogue(conn)
         finally:
@@ -645,7 +703,8 @@ async def test_head_allowlist_function_holds_blocks_one_to_eight(app_engine: Asy
     async with app_engine.connect() as conn:
         body = (await conn.execute(text("SELECT pg_get_functiondef('public.ofo_assert_app_role_allowlist'::regproc)"))).scalar_one()
     markers = ["-- 1. attributes", "-- 2. membership", "-- 3. ownership", "-- 4. database privileges",
-               "-- 5. schema public", "-- 6. exactly SELECT", "-- 7. audit store", "-- 8. catalogue store"]
+               "-- 5. schema public", "-- 6. exactly SELECT", "-- 7. audit store", "-- 8. catalogue store",
+               "-- 9. broker instruments"]
     missing = [m for m in markers if m not in body]
     assert not missing, missing
 
@@ -685,6 +744,10 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN RETURN NEW; END $fn$"""
 _GUARD_BODY = """
 CREATE OR REPLACE FUNCTION public.catalogue_contracts_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $fn$"""
+_BROKER_BODY = """
+CREATE OR REPLACE FUNCTION public.broker_instruments_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp SET DateStyle = 'ISO, YMD'
+AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $fn$"""
 _HISTORY_BODY = """
 CREATE OR REPLACE FUNCTION public.catalogue_term_changes_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $fn$"""
@@ -773,8 +836,28 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
          "has USAGE on the term-change id sequence"),
         ('GRANT UPDATE (instrument_type) ON public.catalogue_contracts TO "{role}"',
          "has UPDATE on catalogue_contracts column instrument_type"),
-        ('REVOKE UPDATE (lot_size) ON public.catalogue_contracts FROM "{role}"',
-         "lacks UPDATE on catalogue_contracts column lot_size"),
+        ('REVOKE UPDATE (expiry) ON public.catalogue_contracts FROM "{role}"',
+         "lacks UPDATE on catalogue_contracts column expiry"),
+        # W-056 block 9 and the moved columns
+        ("ALTER TABLE public.catalogue_contracts ADD COLUMN instrument_token BIGINT",
+         "catalogue_contracts holds a broker column"),
+        ("ALTER TABLE public.catalogue_contracts ADD COLUMN tradingsymbol TEXT",
+         "catalogue_contracts holds a broker column"),
+        ('GRANT DELETE ON public.broker_instruments TO "{role}"', "has DELETE on broker_instruments"),
+        ('GRANT TRUNCATE ON public.broker_instruments TO "{role}"', "has TRUNCATE on broker_instruments"),
+        ('GRANT UPDATE (broker_token) ON public.broker_instruments TO "{role}"',
+         "has UPDATE on broker_instruments column broker_token"),
+        ('GRANT UPDATE (seen_on) ON public.broker_instruments TO "{role}"',
+         "has UPDATE on broker_instruments column seen_on"),
+        ('REVOKE UPDATE (lot_size) ON public.broker_instruments FROM "{role}"',
+         "lacks UPDATE on broker_instruments column lot_size"),
+        ('GRANT EXECUTE ON FUNCTION public.broker_instruments_guard() TO "{role}"',
+         "has EXECUTE on public.broker_instruments_guard"),
+        ("ALTER TABLE public.broker_instruments DISABLE TRIGGER broker_instruments_guard",
+         "trigger broker_instruments_guard is missing or not enabled"),
+        ("ALTER FUNCTION public.broker_instruments_guard() SECURITY INVOKER",
+         "function public.broker_instruments_guard is not SECURITY DEFINER"),
+        (_BROKER_BODY, "function public.broker_instruments_guard body differs from its pinned body"),
         ("ALTER FUNCTION public.catalogue_contracts_guard() SECURITY INVOKER",
          "function public.catalogue_contracts_guard is not SECURITY DEFINER"),
         ('GRANT EXECUTE ON FUNCTION public.catalogue_term_changes_guard() TO "{role}"',
@@ -847,7 +930,8 @@ async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
 # Core proof on the real file (network; runs in CI with OFO_REQUIRE_DB_TESTS=1)
 # ---------------------------------------------------------------------------------------------------------------
 
-PROOF_CATEGORIES = [("NIFTY", "NFO", t) for t in ("CE", "PE", "FUT")] + [("SENSEX", "BFO", t) for t in ("CE", "PE", "FUT")]
+PROOF_CATEGORIES = [("NIFTY", "NSE_FO", t) for t in ("CE", "PE", "FUT")] + [
+    ("SENSEX", "BSE_FO", t) for t in ("CE", "PE", "FUT")]
 
 
 @pytest.mark.network
@@ -859,7 +943,7 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
     raw = download_instruments_csv()
     contracts = parse_rows_naming_the_row(io.StringIO(raw))
     scoped = _in_scope(contracts)
-    file_counts = Counter((c.name, c.exchange, c.instrument_type) for c in scoped)
+    file_counts = Counter((c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped)
     assert all(file_counts[k] > 0 for k in PROOF_CATEGORIES), file_counts
 
     async with app_engine.connect() as conn:
@@ -869,17 +953,17 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             result = await apply_update(conn, contracts, as_of=as_of)
             rows = (await conn.execute(text(
-                f"SELECT name, exchange, instrument_type, count(*) FROM {TABLE} GROUP BY 1, 2, 3"))).all()
+                f"SELECT name, exchange_segment, instrument_type, count(*) FROM {TABLE} GROUP BY 1, 2, 3"))).all()
             table_counts = Counter({(r[0], r[1], r[2]): r[3] for r in rows})
             assert table_counts == file_counts
             assert result.added == len(scoped) == sum(table_counts.values())
 
             # 5 named contracts, chosen deterministically from the file: the nearest NIFTY and SENSEX futures and
-            # the lowest-token NIFTY CE, NIFTY PE and SENSEX CE of the nearest expiry
-            def first(name: str, kind: str) -> Contract:
-                pool = [c for c in scoped if c.name == name and c.instrument_type == kind]
-                nearest = min(c.expiry for c in pool)
-                return min((c for c in pool if c.expiry == nearest), key=lambda c: c.instrument_token)
+            # the lowest-exchange-token NIFTY CE, NIFTY PE and SENSEX CE of the nearest expiry
+            def first(name: str, kind: str) -> ListedContract:
+                pool = [c for c in scoped if c.contract.name == name and c.contract.instrument_type == kind]
+                nearest = min(c.contract.expiry for c in pool)
+                return min((c for c in pool if c.contract.expiry == nearest), key=lambda c: c.contract.exchange_token)
 
             named = [first("NIFTY", "FUT"), first("SENSEX", "FUT"), first("NIFTY", "CE"), first("NIFTY", "PE"),
                      first("SENSEX", "CE")]
@@ -888,25 +972,31 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
                       for k in PROOF_CATEGORIES]
             for c in named:
                 row = (await conn.execute(text(
-                    f"SELECT {', '.join(FIELDS)} FROM {TABLE} WHERE exchange = :e AND instrument_token = :t"),
-                    {"e": c.exchange, "t": c.instrument_token})).one()
-                for field in FIELDS:
-                    assert getattr(row, field) == getattr(c, field), (c.tradingsymbol, field)
+                    f"SELECT c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
+                    f"b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, b.tick_size FROM {TABLE} AS c "
+                    f"JOIN {BROKER} AS b ON b.contract_id = c.id AND b.broker = 'zerodha' "
+                    f"WHERE c.exchange_segment = :s AND c.exchange_token = :t"),
+                    {"s": c.contract.exchange_segment, "t": c.contract.exchange_token})).one()
+                ref = c.ref("zerodha")
+                for field in ("exchange_segment", "exchange_token", "name", "expiry", "strike", "instrument_type"):
+                    assert getattr(row, field) == getattr(c.contract, field), (_sym(c), field)
+                for field in ("broker_token", "broker_symbol", "broker_segment", "lot_size", "tick_size"):
+                    assert getattr(row, field) == getattr(ref, field), (_sym(c), field)
                 assert isinstance(row.strike, Decimal) and isinstance(row.tick_size, Decimal)
-                lines.append(f"W-053 PROOF match {c.tradingsymbol} token={c.instrument_token} strike={row.strike} "
-                             f"expiry={row.expiry} lot={row.lot_size} tick={row.tick_size} (file strike={c.strike} "
-                             f"tick={c.tick_size})")
+                lines.append(f"W-053 PROOF match {ref.broker_symbol} token={ref.broker_token} strike={row.strike} "
+                             f"expiry={row.expiry} lot={row.lot_size} tick={row.tick_size} (file strike="
+                             f"{c.contract.strike} tick={ref.tick_size})")
 
             # the refused update: one unexpired contract removed from a copy
             before = await _snapshot(conn)
             victim = named[2]
-            assert victim.expiry >= as_of.astimezone(IST).date()
-            copy = [c for c in contracts if c.instrument_token != victim.instrument_token]
+            assert victim.contract.expiry >= as_of.astimezone(IST).date()
+            copy = [c for c in contracts if c.id != victim.id]
             with pytest.raises(ValueError, match="refused: would drop 1 contract"):
                 await apply_update(conn, copy, as_of=as_of)
             after = await _snapshot(conn)
             assert after == before
-            lines.append(f"W-053 PROOF refused removing {victim.tradingsymbol} (expiry {victim.expiry}); "
+            lines.append(f"W-053 PROOF refused removing {_sym(victim)} (expiry {victim.contract.expiry}); "
                          f"rows before={len(before)} after={len(after)} identical={after == before}")
             with capsys.disabled():
                 print("\n" + "\n".join(lines))
