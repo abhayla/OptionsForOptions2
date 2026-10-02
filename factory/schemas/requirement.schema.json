@@ -4,7 +4,7 @@
   "title": "Requirement",
   "description": "spec/requirements/REQ-###.md frontmatter",
   "type": "object",
-  "required": ["id", "title", "statement", "source", "owner", "status", "acceptance_criteria"],
+  "required": ["id", "title", "statement", "source", "owner", "status", "layer", "section", "acceptance_criteria"],
   "properties": {
     "id": { "type": "string", "pattern": "^REQ-\\d{3,}$" },
     "title": { "type": "string", "minLength": 1 },
@@ -14,7 +14,7 @@
     "owner": { "type": "string", "minLength": 1 },
     "status": {
       "type": "string",
-      "enum": ["Draft", "Specified", "Approved", "Planned", "Implementing", "Implemented", "Testing", "Verified", "Reviewed", "Released"]
+      "enum": ["Draft", "Specified", "Approved", "Planned", "Implementing", "Implemented", "Testing", "Verified", "Reviewed", "Released", "Delivered-before-trace", "Superseded"]
     },
     "acceptance_criteria": {
       "type": "array",
@@ -31,7 +31,11 @@
     },
     "business_rules": { "type": "array", "items": { "type": "string" } },
     "depends_on": { "type": "array", "items": { "type": "string" } },
-    "priority": { "type": "string" },
+    "layer": { "type": "string", "enum": ["core", "foundation", "feature", "polish"] },
+    "risk": { "type": "string", "enum": ["high", "normal"] },
+    "risk_reason": { "type": "string" },
+    "skeleton": { "type": "boolean" },
+    "smoke": { "type": "array", "items": { "type": "string" } },
     "spec_refs": { "type": "array", "items": { "type": "string" } },
     "verification": {
       "type": "object",
@@ -43,7 +47,23 @@
       },
       "additionalProperties": true
     },
-    "release": { "type": "string" }
+    "release": { "type": "string" },
+    "section": { "type": "string", "pattern": "\\S" },
+    "distinct_from": { "type": "array", "items": { "type": "string" } },
+    "confirmed_against": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z]+-\\d+ #[0-9a-f]{12}$" } },
+    "delivered_in": { "type": "string", "pattern": "^docs/milestones/\\S+-report\\.md$" },
+    "superseded_by": { "type": "string", "pattern": "^(REQ-\\d{3,}|OD-\\d+|ADR-\\d{3,})$" },
+    "split_from": { "type": "string", "pattern": "^REQ-\\d{3,}$" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "Delivered-before-trace" } }, "required": ["status"] },
+      "then": { "required": ["delivered_in"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "Superseded" } }, "required": ["status"] },
+      "then": { "required": ["superseded_by"] }
+    }
+  ],
   "additionalProperties": true
 }
