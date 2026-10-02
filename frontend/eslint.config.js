@@ -6,7 +6,7 @@ import pluginVue from 'eslint-plugin-vue'
 import prettier from 'eslint-config-prettier'
 import globals from 'globals'
 
-export const VENDOR_HOSTS = /kite\.trade|zerodha\.com|nseindia\.com|upstox|angelone|dhan\.co|api\.dhan/i
+export const VENDOR_HOSTS = /kite\.trade|zerodha\.com|nseindia\.com|upstox|angelone|dhan\.co|dhanhq|api\.dhan/i
 const message = 'Vendor/broker hosts are never named in the browser (ADR-012). Call same-origin /api only.'
 
 export default [

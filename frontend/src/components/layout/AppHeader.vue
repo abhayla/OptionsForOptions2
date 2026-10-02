@@ -8,12 +8,16 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from '@/router/nav'
 
 const menuOpen = ref(false)
 const accountWrap = ref(null)
+const avatarButton = ref(null)
 const route = useRoute()
 watch(() => route.fullPath, () => { menuOpen.value = false })
 
 // Close the account menu on Escape and on a click outside it (W-054 review follow-up).
 function onKeydown(e) {
-  if (e.key === 'Escape') menuOpen.value = false
+  if (e.key === 'Escape' && menuOpen.value) {
+    menuOpen.value = false
+    avatarButton.value?.focus()
+  }
 }
 function onDocumentClick(e) {
   if (menuOpen.value && accountWrap.value && !accountWrap.value.contains(e.target)) menuOpen.value = false
@@ -47,6 +51,7 @@ onBeforeUnmount(() => {
       </nav>
       <div ref="accountWrap" class="relative shrink-0">
         <button
+          ref="avatarButton"
           type="button"
           aria-controls="account-menu"
           class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface-muted text-xs font-medium"

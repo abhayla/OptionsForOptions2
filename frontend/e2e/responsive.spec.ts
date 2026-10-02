@@ -109,6 +109,7 @@ test('account menu: aria wiring, closes on Escape and on a click outside', async
 
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
+  await expect(button).toBeFocused()
   await expect(button).toHaveAttribute('aria-expanded', 'false')
 
   await button.click()
