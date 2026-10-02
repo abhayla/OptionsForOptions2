@@ -314,3 +314,9 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact configuration (REQ-046 AC-4)
 - Decision: keep widths, restore the short strikes' entry distance from spot (snapped to listed strikes); always an
   editable proposal. Recorded in REQ-046.
+
+## Q256 — DECIDED (owner, 2026-10-02) — The clock-skew window value (ADR-023 Q225)
+- Question: ADR-023 names a clock-skew window for new entitlement events but gave no number.
+- Decision: **60 seconds, both ways**, the value the verified strategy-version and timeline modules already use. An
+  event the ledger stamps at 10:00:00 may carry a granted/effective date from 09:59:00 to 10:01:00; anything outside
+  is refused. Recorded in ADR-023 "Q256".
