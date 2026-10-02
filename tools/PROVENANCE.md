@@ -14,6 +14,7 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 | `tools/build_findings_index.py` | `tools/build_findings_index.py` | `f078ea7989691f2d0ba3ced02b094731d94aa6d595bcd2f81e02d69a81ce0fc9` |
 | `tools/build_order.py` | `tools/build_order.py` | `0b9e7c64ab35861fb7d42f3b1b32d65822f4508a62d9c8a09157d1ca43ee3160` |
 | `tools/build_spec_index.py` | `tools/build_spec_index.py` | `4c72f2f9a11ffb0230eb871ab9ad4f179fa8137803561709f3b402cf55037822` |
+| `tools/build_spec_digest.py` | `tools/build_spec_digest.py` | `712e318e26a5779e022ec3431efeff19999c353ee9b4bdcd882c33552edd854d` |
 | `tools/spec_dupes.py` | `tools/spec_dupes.py` | `17ead09c1677c6388eb1e91962ac1de0677583fb6f4ccf8d37c533386f803b32` |
 | `tools/spec_similar.py` | `tools/spec_similar.py` | `cf2d23fa2fbe90285731d8e4e730e0f7eeef5b1ad2b4a9a63bb85cbbf81bd06d` |
 | `tools/spec_text.py` | `tools/spec_text.py` | `714d236b3328bb7883d74aab3e52b026e3d92470a61ba75ee9a8c98889ba3b2f` |
@@ -23,7 +24,7 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 | `tools/check_spec_refs.py` | `tools/check_spec_refs.py` | `14a4592dd4fcd92b6e035f5d1f18c0ba1866e61a5ef09282731155e37db9eb33` |
 | `tools/factory_lint.py` | `tools/factory_lint.py` | `0cce2aa5973612e8f047c5f3a0a81194fc05543d50ddcc57071081aef22da5b1` |
 | `tools/kit_settings.py` | `tools/kit_settings.py` | `ce10f28f99639ddba1316b4485767d92fce5244322cdb2fb57e94d5ee3a24c03` |
-| `tools/kit_drift.py` | `tools/kit_drift.py` | `94bcd2682cf66722e5d581da659fb746a8364191d718097033074ea22f828377` |
+| `tools/kit_drift.py` | `tools/kit_drift.py` | `5654bed01a88d1b6237ca5d6d542aaaefa8d6468287d2758862f5f09f949ba87` |
 | `tools/kit_selftest.py` | `tools/kit_selftest.py` | `6832f2b7db5d76a4e73a57be483b3dcf6f893ef9dd4970ae89df9671b8ff7a8a` |
 | `tools/kithash.py` | `tools/kithash.py` | `9897059e8ed6133393f4bdf7fe4dca1bc9795f25a90fe450b833a4d3c63ccb4c` |
 | `tools/merge_when_green.py` | `tools/merge_when_green.py` | `f9ebefce2e381903e2a2819c25a473fee806a03ebd5589e163cf9f7d9f0fe5a5` |

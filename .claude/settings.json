@@ -18,6 +18,14 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/evidence_claim_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/answer_writeback_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -31,6 +39,15 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/spec_basis_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
       {
         "matcher": "Agent|Task",
         "hooks": [

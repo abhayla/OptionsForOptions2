@@ -36,6 +36,8 @@ check must never block a session start).
 | `agent_budget_required.py` | `capabilities/hooks/agent-budget-required/agent_budget_required.py` | `6ee63c53840d4b4e0da9ec951974e772e1c7cf7944ef4b1e8e509f66a8dea656` |
 | `agent_model_required.py` | `capabilities/hooks/agent-model-required/agent_model_required.py` | `0a4bee0f5909060875c8dc12c37e02d850200a30aeb655f0330ddb642520544f` |
 | `evidence_claim_guard.py` | `capabilities/hooks/evidence-claim-guard/evidence_claim_guard.py` | `dfb055113b7e99277aaeb59b7257713aafc5966edc4d9ff23359010df27c2795` |
+| `spec_basis_gate.py` | `capabilities/hooks/spec-basis-gate/spec_basis_gate.py` | `41c03f672708adf9ddc574d92b730cb215d8475e844fdcd5c4a5ceb72ef0012b` |
+| `answer_writeback_guard.py` | `capabilities/hooks/answer-writeback-guard/answer_writeback_guard.py` | `853080d94788d213ddca12d4238aded45704ade2a5db4cde5c84331eefb88409` |
 | `git_discard_uncommitted_guard.py` | `capabilities/hooks/git-discard-uncommitted-guard/git_discard_uncommitted_guard.py` | `1384cf7de44e245f4b5c0e420a277915eaa024b1701ca06ebdbd38da2ece9c42` |
 | `git_hook_bypass_guard.py` | `capabilities/hooks/git-hook-bypass-guard/git_hook_bypass_guard.py` | `ad7dea5f5c96e1c904bd87db00bbc0e4f8c36c1ea3c9d83f5ddc48926ec4e6d1` |
 | `git_stash_worktree_guard.py` | `capabilities/hooks/git-stash-worktree-guard/git_stash_worktree_guard.py` | `2e8f49ca6d34c8d960bc3f9112f3bc7dab677cb8de1d75ee4afdf7102e687a8a` |

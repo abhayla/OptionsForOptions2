@@ -43,6 +43,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tools/build_spec_index.py . --check
 
+      - name: Check the spec digest is current
+        if: ${{ !cancelled() }}
+        run: python tools/build_spec_digest.py . --check
+
       - name: Block restated spec text and missing or stale decision pins (full scan on every PR and push)
         if: ${{ !cancelled() }}
         run: python tools/spec_dupes.py .

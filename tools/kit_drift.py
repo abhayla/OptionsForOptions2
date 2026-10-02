@@ -293,6 +293,12 @@ def _render_spec_index(project_path: Path) -> str:
     return build_spec_index.render(project_path)
 
 
+def _render_spec_digest(project_path: Path) -> str:
+    import build_spec_digest  # noqa: E402
+
+    return build_spec_digest.render(project_path)
+
+
 # THE one table of generated files the kit knows (kit 1.5.1, OD-67): lock path -> (renderer, verdict
 # on a mismatch, the command that regenerates it). The settings file is hand-edit drift (EDITED IN
 # PROJECT); the two views change with every requirement edit, so a difference means "regenerate it"
@@ -304,6 +310,7 @@ GENERATED_CHECKS: dict = {
                                               "python tools/kit_settings.py ."),
     "views/build-order.md": (_render_build_order, "STALE", "python tools/build_order.py ."),
     "spec/requirements/INDEX.md": (_render_spec_index, "STALE", "python tools/build_spec_index.py ."),
+    "views/spec-digest.md": (_render_spec_digest, "STALE", "python tools/build_spec_digest.py ."),
 }
 
 

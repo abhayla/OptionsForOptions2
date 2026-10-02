@@ -11,6 +11,7 @@ line; read it before pushing or touching process files.
 - `python tools/build_order.py . --check` (regenerate without `--check`; before starting work: `--may-start REQ-###`)
 - `python tools/run_smoke.py .` (the walking skeleton's smoke commands)
 - `python tools/build_spec_index.py . --check` (requirements by section; regenerate without `--check`)
+- `python tools/build_spec_digest.py . --check` (spec digest, read before any owner question; regenerate without `--check`)
 - `python tools/spec_dupes.py .` (blocks restated spec text; before writing a spec line: `python tools/spec_similar.py . "<text>"`)
 - `python tools/build_findings_index.py . --check` (once `knowledge/findings/*.json` exists)
 - `python tools/check_spec_refs.py .`
