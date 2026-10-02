@@ -4,6 +4,32 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.6.0 — owner questions are checked against the spec; every answer is written back (OD-69)
+
+1. Why: the spec-first rule was text only; a word-match lookup found the right decision for 4 of 4 questions worded
+   like the spec but cleanly for only 1 of 4 paraphrased ones, and nothing checked that an answer given in the
+   question box reached the decision log.
+2. `tools/build_spec_digest.py` (new, kit-owned) writes `views/spec-digest.md` (generated): one line per decision
+   (id, date, lead sentence, relations), per requirement (id, status, title) and per spec section heading. CI runs
+   `python tools/build_spec_digest.py . --check`; `tools/kit_drift.py` reports the file STALE when it differs.
+3. Hook `spec_basis_gate.py` (PreToolUse, matcher `AskUserQuestion`) refuses, with exit 2, a question whose text
+   has no `Spec basis:` line citing an existing requirement or decision id, or `none (searched: <terms>)`. The
+   refusal names `views/spec-digest.md` and shows up to 3 word-match hits. It allows the question when the spec,
+   the digest or `tools/spec_text.py` is missing.
+4. Hook `answer_writeback_guard.py` (Stop) blocks a turn once when the owner answered a question and no decision
+   row (`spec/decisions/`, or the Factory's `docs/spec/decisions.md`) was written after the answer, unless the
+   session says `No spec change: <reason>` after the answer. A write is an Edit/Write to the log or to a decision
+   record (`spec/decisions/<PREFIX>-<n>...md`, not README.md), or a Bash/PowerShell call that names the log by path
+   and writes it (redirect to it, tee, sed -i, Set/Add-Content, Out-File, python open() a/w/x, .write( ); a read does
+   not count, and `No spec change:` counts only at the start of a line; file times are never read. It never blocks twice in a row (`stop_hook_active`). The ask gate compares ids by prefix in any
+   case and by number (`od-37` = `OD-037`) over the project root and the session's working folder.
+5. `.claude/rules/kit/spec-first.md` 1.4.0: R1 reads the digest first; R2 and R4 name the two hooks.
+6. Migration: the upgrade writes `views/spec-digest.md` and re-includes it in `.gitignore` (mechanical step
+   `unignore-spec-digest`); regenerate it with `python tools/build_spec_digest.py .` after any spec change. Run
+   `python tools/kit_settings.py .` so the settings file wires both new hooks, then ask one test question without a
+   `Spec basis:` line to see the refusal. Adds `tools/build_spec_digest.py` and the two hooks; replaces
+   `tools/kit_drift.py`, the CI workflow, the kit hook wiring, the spec-first rule and this file (kit-owned).
+
 ## 1.5.1 — the upgrade does the mechanical migration steps; every CI step runs after a failure (OD-67)
 
 1. Why: the 1.5.0 upgrade pull request in a real project (71 requirements, 45 work items) left about 140 hand edits
