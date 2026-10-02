@@ -39,8 +39,10 @@ class CatalogueContract(Base):
     strike NUMERIC(12,2) and tick_size NUMERIC(10,4) as Decimal with no float default (legacy: DECIMAL(10,2) and
     default=0.05), unique (exchange, instrument_token) instead of (instrument_token, source_broker), no source_broker
     and no option_type; currently_listed / first_seen_at / last_seen_at added, the stamps set by the database
-    trigger catalogue_contracts_guard. Rows are never deleted; a contract's terms never change. Eligibility is not
-    stored here. Reads and writes go through ofo_app.catalogue_store.
+    trigger catalogue_contracts_guard. Rows are never deleted; a contract's identity never changes, its revisable
+    terms (lot_size, tick_size, expiry, tradingsymbol) follow Zerodha with each change recorded in
+    public.catalogue_term_changes (Q257). Eligibility is not stored here. Reads and writes go through
+    ofo_app.catalogue_store.
     """
 
     __tablename__ = "catalogue_contracts"

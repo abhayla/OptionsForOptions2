@@ -8,17 +8,27 @@ load_catalogue(conn) -> Catalogue: every stored contract, listed or not. Fails c
 row) on a strike or tick that is not a finite Decimal, a duplicate instrument_token, or a row outside the catalogue's
 scope.
 
-apply_update(conn, contracts, *, as_of, force=False, reason=None, actor=None, audit_log=None):
+apply_update(conn, contracts, *, as_of, force=False, reason=None, actor=None):
 1. ``pg_advisory_xact_lock(CATALOGUE_UPDATE_LOCK_KEY)`` serialises updates until the caller's transaction ends.
 2. Validates every in-scope contract BEFORE anything is written: strike and tick are finite Decimals that fit their
    columns exactly (NUMERIC(12,2) / NUMERIC(10,4) would otherwise round silently), one set of terms per token, and a
-   token already stored keeps its terms (a contract is immutable by identity; the database also refuses, OF006).
+   token already stored keeps its IDENTITY (exchange, name, instrument_type, strike, exchange_token, segment;
+   refused here and by the database, OF006). Its REVISABLE terms (lot_size, tick_size, expiry, tradingsymbol)
+   follow the list (Q257; ADR-016 / REQ-053 AC-1, Zerodha is final); the database trigger records each change in
+   public.catalogue_term_changes with a database-stamped time.
 3. Loads the stored catalogue and calls the domain ``Catalogue.update`` (Q244: refuses, raising ValueError, if the
    update would drop any listed contract whose expiry has not passed as of ``as_of``). A refusal writes nothing.
-4. Writes the result inside a SAVEPOINT (one unit: all of it or none): INSERT the new contracts, UPDATE
-   currently_listed = TRUE on stored contracts present in the list (the database stamps last_seen_at), UPDATE
-   currently_listed = FALSE on contracts that left the list. Nothing is ever deleted.
+4. Writes the result inside a SAVEPOINT (one unit: all of it or none): INSERT the new contracts, UPDATE the revised
+   terms, UPDATE currently_listed = TRUE on stored contracts present in the list (the database stamps last_seen_at),
+   UPDATE currently_listed = FALSE on contracts that left the list, each matched on (exchange, instrument_token).
+   Nothing is ever deleted.
+5. ``force=True`` (a real broker delisting; reason and actor required by the domain): the domain's
+   ADMIN_CHANGE_RECORDED event is buffered, then appended through ofo_app.audit_store on the SAME connection only
+   after step 4 succeeded, so a failed write leaves no audit event.
 Transaction control (commit) stays with the caller.
+
+Known limit (accepted, fix round 2): Q244 lives in the domain (REQ-053 places it there). The application role can
+still UPDATE currently_listed with raw SQL, bypassing it; only code paths through apply_update are guarded.
 
 Eligibility (what Zerodha permits today, ``ofo.instruments.eligibility``) is not stored here (REQ-053 AC-2).
 """
@@ -36,6 +46,7 @@ from sqlalchemy import text
 from ofo.instruments.catalogue import Catalogue, CatalogueUpdateResult
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_rows
+from ofo_app import audit_store
 
 #: Fixed key for the update lock (any constant; only the catalogue store uses it).
 CATALOGUE_UPDATE_LOCK_KEY = 5_300_053_001
@@ -58,8 +69,19 @@ _INSERT = text(
 )
 _SET_LISTED = text(
     "UPDATE public.catalogue_contracts SET currently_listed = :listed "
-    "WHERE instrument_token = ANY(CAST(:tokens AS BIGINT[]))"
+    "WHERE (exchange, instrument_token) IN "
+    "(SELECT e, t FROM unnest(CAST(:exchanges AS TEXT[]), CAST(:tokens AS BIGINT[])) AS k(e, t))"
 )
+_REVISE = text(
+    "UPDATE public.catalogue_contracts SET lot_size = :lot_size, tick_size = :tick_size, expiry = :expiry, "
+    "tradingsymbol = :tradingsymbol, currently_listed = TRUE "
+    "WHERE exchange = :exchange AND instrument_token = :instrument_token"
+)
+
+#: Q257 (fix round 2): these terms follow Zerodha's list, each change recorded in public.catalogue_term_changes by
+#: the database trigger; the identity fields never change (refused here and by the trigger, OF006).
+REVISABLE_FIELDS = ("lot_size", "tick_size", "expiry", "tradingsymbol")
+IDENTITY_FIELDS = ("exchange", "name", "instrument_type", "strike", "exchange_token", "segment")
 
 
 class CatalogueStoreError(ValueError):
@@ -69,8 +91,9 @@ class CatalogueStoreError(ValueError):
 @dataclass(frozen=True)
 class StoreUpdateResult:
     added: int
-    seen: int
+    seen: int  # stored contracts present in the list (including the revised ones)
     newly_unlisted: int
+    revised: int  # stored contracts whose revisable terms changed
     domain: CatalogueUpdateResult
 
 
@@ -184,6 +207,24 @@ def _params(contract: Contract) -> dict[str, Any]:
     }
 
 
+class _BufferedAuditLog:
+    """Collects the domain's forced-update audit event(s) instead of appending them anywhere; apply_update writes
+    them through the W-052 store only after the catalogue write succeeded (no event for a write that failed)."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    def append(self, event_type: Any, *, actor: str, timestamp: datetime, correlation_id: str,
+               payload: Any = None) -> None:
+        self.events.append({"event_type": event_type, "actor": actor, "timestamp": timestamp,
+                            "correlation_id": correlation_id, "payload": payload})
+
+
+def _keys(contracts: Iterable[Contract]) -> dict[str, list]:
+    pairs = sorted((c.exchange, c.instrument_token) for c in contracts)
+    return {"exchanges": [e for e, _ in pairs], "tokens": [t for _, t in pairs]}
+
+
 async def apply_update(
     conn: Any,
     contracts: Iterable[Contract],
@@ -192,16 +233,18 @@ async def apply_update(
     force: bool = False,
     reason: str | None = None,
     actor: str | None = None,
-    audit_log: Any = None,
 ) -> StoreUpdateResult:
     """Apply a newer instrument list to the stored catalogue (see the module docstring). Refusals raise before any
-    write: ValueError from the domain (Q244, force without reason/actor/audit_log), CatalogueStoreError here."""
+    write: ValueError from the domain (Q244; force without reason/actor), CatalogueStoreError here. With
+    ``force=True`` the domain's ADMIN_CHANGE_RECORDED event is written through ofo_app.audit_store on ``conn`` after
+    the catalogue write, in the caller's transaction (so the caller's commit keeps both or neither)."""
     contracts = list(contracts)
     await conn.execute(_LOCK, {"k": CATALOGUE_UPDATE_LOCK_KEY})
     catalogue = await load_catalogue(conn)
     before = {e.contract.instrument_token: (e.contract, e.currently_listed) for e in catalogue.all_entries()}
 
     scoped: dict[int, Contract] = {}
+    revised: list[Contract] = []
     for contract in contracts:
         if not Catalogue._in_scope(contract):
             continue
@@ -209,22 +252,30 @@ async def apply_update(
         token = contract.instrument_token
         if token in scoped and scoped[token] != contract:
             raise CatalogueStoreError(f"the list holds two different contracts for instrument_token {token}")
+        if token in scoped:
+            continue
         scoped[token] = contract
         stored = before.get(token)
-        if stored is not None and stored[0] != contract:
+        if stored is None:
+            continue
+        changed_identity = [f for f in IDENTITY_FIELDS if getattr(stored[0], f) != getattr(contract, f)]
+        if changed_identity:
+            field = changed_identity[0]
             raise CatalogueStoreError(
-                f"contract {_label(contract)} differs from the stored contract {stored[0]!r}: a contract's terms "
-                f"never change (REQ-053 AC-2)"
+                f"contract {_label(contract)}: {field} {getattr(stored[0], field)!r} -> {getattr(contract, field)!r}"
+                f" - a contract's identity never changes (REQ-053 AC-2); nothing written"
             )
+        if any(getattr(stored[0], f) != getattr(contract, f) for f in REVISABLE_FIELDS):
+            revised.append(contract)
 
-    domain = catalogue.update(
-        contracts, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit_log
-    )
+    audit = _BufferedAuditLog() if force else None
+    domain = catalogue.update(contracts, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit)
 
     after = {e.contract.instrument_token: e.currently_listed for e in catalogue.all_entries()}
     new = [scoped[t] for t in sorted(scoped) if t not in before]
-    seen = sorted(t for t in scoped if t in before)
-    unlisted = sorted(t for t, listed in after.items() if not listed and before.get(t, (None, False))[1])
+    revised_tokens = {c.instrument_token for c in revised}
+    seen = [scoped[t] for t in sorted(scoped) if t in before and t not in revised_tokens]
+    unlisted = [before[t][0] for t, listed in sorted(after.items()) if not listed and before.get(t, (None, False))[1]]
     new_tokens = {c.instrument_token for c in new}  # compare tokens with tokens, never with Contract objects
     if set(after) != set(before) | new_tokens or any(not after[t] for t in scoped):
         raise CatalogueStoreError("domain catalogue state does not match the planned write; nothing written")
@@ -232,8 +283,16 @@ async def apply_update(
     async with conn.begin_nested():
         if new:
             await conn.execute(_INSERT, [_params(c) for c in new])
+        if revised:
+            await conn.execute(_REVISE, [
+                {"exchange": c.exchange, "instrument_token": c.instrument_token, "lot_size": c.lot_size,
+                 "tick_size": c.tick_size, "expiry": c.expiry, "tradingsymbol": c.tradingsymbol} for c in revised
+            ])
         if seen:
-            await conn.execute(_SET_LISTED, {"listed": True, "tokens": seen})
+            await conn.execute(_SET_LISTED, {"listed": True, **_keys(seen)})
         if unlisted:
-            await conn.execute(_SET_LISTED, {"listed": False, "tokens": unlisted})
-    return StoreUpdateResult(added=len(new), seen=len(seen), newly_unlisted=len(unlisted), domain=domain)
+            await conn.execute(_SET_LISTED, {"listed": False, **_keys(unlisted)})
+    for event in audit.events if audit is not None else ():
+        await audit_store.append(conn, event.pop("event_type"), **event)
+    return StoreUpdateResult(added=len(new), seen=len(seen) + len(revised), newly_unlisted=len(unlisted),
+                             revised=len(revised), domain=domain)

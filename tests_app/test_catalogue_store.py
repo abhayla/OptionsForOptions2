@@ -185,12 +185,15 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
         "public.audit_events_link_and_clock()",
         "public.audit_events_advance_anchor()",
         "public.catalogue_contracts_guard()",
+        "public.catalogue_term_changes_guard()",
     }
     assert all(re.fullmatch(r"[0-9a-f]{32}", d) for d in migration.PINNED_BODIES.values())
     assert [(t, g) for _, t, _, g, _ in migration.GUARDED_TRIGGERS] == [
         ("ledger_entries_trusted_clock", 7), ("audit_events_link_and_clock", 7),
-        ("audit_events_advance_anchor", 5), ("catalogue_contracts_guard", 31),
+        ("audit_events_advance_anchor", 5), ("catalogue_contracts_guard", 31), ("catalogue_term_changes_guard", 31),
     ]
+    assert dict(migration.GUARDED_TABLES)["public.audit_anchor"] == ()
+    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "lot_size", "tick_size", "expiry", "tradingsymbol")
 
 
 class _FakeConn:
@@ -248,10 +251,86 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
     assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
     assert [(kind, p["listed"], len(p["tokens"])) for kind, p in conn.writes] == [("UPDATE", True, 18),
                                                                                     ("UPDATE", False, 4)]
+    assert conn.writes[0][1]["exchanges"] == sorted(c.exchange for c in next_day if Catalogue._in_scope(c))
     refused = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 1 contract"):
         await apply_update(refused, [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"], as_of=AS_OF)
     assert refused.writes == []
+
+
+def _stored_rows() -> list:
+    from types import SimpleNamespace
+
+    return [SimpleNamespace(id=i + 1, currently_listed=True, **{k: getattr(c, k) for k in (
+        "exchange", "instrument_token", "exchange_token", "tradingsymbol", "name", "expiry", "strike", "tick_size",
+        "lot_size", "instrument_type", "segment")}) for i, c in enumerate(_in_scope(_fixture()))]
+
+
+async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database() -> None:
+    conn = _FakeConn(_stored_rows())
+    revised = [replace(c, lot_size=75) if c.tradingsymbol == "NIFTY26OCTFUT" else c for c in _fixture()]
+    result = await apply_update(conn, revised, as_of=AS_OF)
+    assert (result.added, result.revised, result.seen, result.newly_unlisted) == (0, 1, 22, 0)
+    assert conn.writes[0] == ("UPDATE", [{"exchange": "NFO", "instrument_token": 12468226, "lot_size": 75,
+                                    "tick_size": Decimal("0.1"), "expiry": date(2026, 10, 27),
+                                    "tradingsymbol": "NIFTY26OCTFUT"}])
+    assert len(conn.writes[1][1]["tokens"]) == 21  # the other stored contracts: listed again, terms unchanged
+
+
+@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE"),
+                                          ("exchange_token", 1), ("segment", "NFO-FUT")])
+async def test_planning_an_identity_change_is_refused_with_no_write(field: str, value) -> None:
+    conn = _FakeConn(_stored_rows())
+    changed = [replace(c, **{field: value}) if c.tradingsymbol == "NIFTY26O0625050CE" else c for c in _fixture()]
+    with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
+        await apply_update(conn, changed, as_of=AS_OF)
+    assert conn.writes == []
+
+
+async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ofo.audit.catalogue import EventType
+    from ofo_app import catalogue_store
+
+    order: list[str] = []
+    calls: list[tuple] = []
+
+    async def fake_append(conn, event_type, **kwargs):
+        order.append("audit")
+        calls.append((conn, event_type, kwargs))
+
+    monkeypatch.setattr(catalogue_store.audit_store, "append", fake_append)
+    conn = _FakeConn(_stored_rows())
+    original_execute = conn.execute
+
+    async def tracking_execute(stmt, params=None):
+        if not str(stmt).startswith("SELECT"):
+            order.append("write")
+        return await original_execute(stmt, params)
+
+    conn.execute = tracking_execute  # type: ignore[method-assign]
+    truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+    await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+    assert order[-1] == "audit" and order.count("audit") == 1 and "write" in order[:-1]
+    assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
+    payload = calls[0][2]["payload"]
+    assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == ["NIFTY26O1325050CE"]
+    assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
+
+    # a failed catalogue write leaves no audit event
+    calls.clear()
+    failing = _FakeConn(_stored_rows())
+
+    async def failing_execute(stmt, params=None):
+        if str(stmt).startswith("UPDATE"):
+            raise RuntimeError("write failed")
+        return await _FakeConn.execute(failing, stmt, params)
+
+    failing.execute = failing_execute  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="write failed"):
+        await apply_update(failing, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+    assert calls == []
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -338,16 +417,80 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
             await trans.rollback()
 
 
-async def test_a_contract_whose_terms_changed_is_refused_with_nothing_written(app_engine: AsyncEngine) -> None:
+HISTORY = "public.catalogue_term_changes"
+
+
+async def test_revised_lot_size_follows_zerodha_with_one_history_row(
+    app_engine: AsyncEngine, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Q257: lot_size 65 -> 75 on a stored contract is accepted; the row shows 75 and the history holds one row
+    (token, field, old 65, new 75, database-stamped time)."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            clock_before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            revised = [replace(c, lot_size=75) if c.tradingsymbol == "NIFTY26OCTFUT" else c for c in _fixture()]
+            result = await apply_update(conn, revised, as_of=AS_OF)
+            clock_after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            assert (result.added, result.revised, result.newly_unlisted) == (0, 1, 0)
+            lot = (await conn.execute(text(f"SELECT lot_size FROM {TABLE} WHERE instrument_token = 12468226"))).scalar_one()
+            assert lot == 75
+            history = (await conn.execute(text(
+                f"SELECT instrument_token, exchange, field, old_value, new_value, changed_at FROM {HISTORY}"))).all()
+            assert [tuple(h)[:5] for h in history] == [(12468226, "NFO", "lot_size", "65", "75")]
+            assert clock_before <= history[0].changed_at <= clock_after
+            catalogue = await load_catalogue(conn)
+            assert _by_symbol([e.contract for e in catalogue.all_entries()], "NIFTY26OCTFUT").lot_size == 75
+            with capsys.disabled():
+                print(f"\nW-053 PROOF revise NIFTY26OCTFUT lot_size row={lot} history={[tuple(h) for h in history]}")
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE")])
+async def test_an_identity_change_is_refused_with_nothing_written(
+    app_engine: AsyncEngine, capsys: pytest.CaptureFixture[str], field: str, value
+) -> None:
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             before = await _snapshot(conn)
-            changed = [replace(c, lot_size=75) if c.tradingsymbol == "NIFTY26OCTFUT" else c for c in _fixture()]
-            with pytest.raises(CatalogueStoreError, match="NIFTY26OCTFUT .* terms never change"):
+            changed = [replace(c, **{field: value}) if c.tradingsymbol == "NIFTY26O0625050CE" else c
+                       for c in _fixture()]
+            with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
                 await apply_update(conn, changed, as_of=AS_OF)
-            assert await _snapshot(conn) == before
+            after = await _snapshot(conn)
+            history = (await conn.execute(text(f"SELECT count(*) FROM {HISTORY}"))).scalar_one()
+            assert after == before and history == 0
+            with capsys.disabled():
+                print(f"\nW-053 PROOF identity change {field} refused; rows identical={after == before} history={history}")
+        finally:
+            await trans.rollback()
+
+
+async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_connection(app_engine: AsyncEngine) -> None:
+    from ofo_app.audit_store import load_log, read_anchor
+
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            head = await read_anchor(conn)
+            now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            truncated = [c for c in _fixture() if c.tradingsymbol != "NIFTY26O1325050CE"]
+            await apply_update(conn, truncated, as_of=now, force=True, reason="broker delisted", actor="admin-1")
+            listed = (await conn.execute(text(
+                f"SELECT currently_listed FROM {TABLE} WHERE tradingsymbol = 'NIFTY26O1325050CE'"))).scalar_one()
+            assert listed is False
+            log, anchor = await load_log(conn)
+            assert anchor.count == head.count + 1 and log.verify(anchor).ok
+            event = log.events[-1]
+            from ofo.audit.catalogue import EventType
+
+            assert event.event_type is EventType.ADMIN_CHANGE_RECORDED
+            assert event.payload["action"] == "catalogue_force_update" and event.actor == "admin-1"
         finally:
             await trans.rollback()
 
@@ -366,16 +509,37 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
                       "tick_size, lot_size, instrument_type, segment, currently_listed) VALUES ('NFO', 1, 1, 'X', "
                       "'NIFTY', 0, 0.05, 65, 'FUT', 'NFO-FUT', FALSE)", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"ALTER TABLE {TABLE} DISABLE TRIGGER ALL", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"INSERT INTO {HISTORY} (instrument_token, exchange, field, old_value, "
+                                        "new_value) VALUES (12468226, 'NFO', 'lot_size', '65', '75')",
+                                  INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = 'x'", INSUFFICIENT_PRIVILEGE)
+            await _expect_refused(conn, f"DELETE FROM {HISTORY}", INSUFFICIENT_PRIVILEGE)
             assert await _count(conn) == 22
         finally:
             await trans.rollback()
 
 
 async def check_owner_cannot_delete_or_change_terms(conn: AsyncConnection) -> None:
-    """Even the owner (who bypasses grants) cannot delete a contract or change its terms: the trigger refuses."""
+    """Even the owner (who bypasses grants) cannot delete a contract, change its identity, or rewrite the term-change
+    history: the triggers refuse."""
     await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE tradingsymbol = 'NIFTY26OCTFUT'", CATALOGUE_SQLSTATE)
-    await _expect_refused(conn, f"UPDATE {TABLE} SET lot_size = 75 WHERE tradingsymbol = 'NIFTY26OCTFUT'",
+    await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE tradingsymbol = 'NIFTY26OCTFUT'",
                           CATALOGUE_SQLSTATE)
+    await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE tradingsymbol = 'NIFTY26OCTFUT'",
+                          CATALOGUE_SQLSTATE)
+
+
+async def test_owner_cannot_rewrite_or_delete_term_change_history(admin_engine: AsyncEngine) -> None:
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await conn.execute(text(f"UPDATE {TABLE} SET lot_size = 75 WHERE tradingsymbol = 'NIFTY26OCTFUT'"))
+            assert (await conn.execute(text(f"SELECT count(*) FROM {HISTORY}"))).scalar_one() == 1
+            await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = '65'", CATALOGUE_SQLSTATE)
+            await _expect_refused(conn, f"DELETE FROM {HISTORY}", CATALOGUE_SQLSTATE)
+        finally:
+            await trans.rollback()
 
 
 async def test_owner_cannot_delete_or_change_terms_and_cannot_backdate_first_seen(admin_engine: AsyncEngine) -> None:
@@ -452,7 +616,10 @@ _LEDGER_BODY = """
 CREATE OR REPLACE FUNCTION public.ledger_entries_trusted_clock() RETURNS trigger LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN RETURN NEW; END $fn$"""
 _GUARD_BODY = """
-CREATE OR REPLACE FUNCTION public.catalogue_contracts_guard() RETURNS trigger LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION public.catalogue_contracts_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $fn$"""
+_HISTORY_BODY = """
+CREATE OR REPLACE FUNCTION public.catalogue_term_changes_guard() RETURNS trigger LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW; END $fn$"""
 
 
@@ -497,7 +664,49 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
         ("CREATE OR REPLACE TRIGGER ledger_entries_trusted_clock BEFORE INSERT ON public.ledger_entries "
          "FOR EACH ROW EXECUTE FUNCTION public.audit_events_advance_anchor()",
          "trigger ledger_entries_trusted_clock does not call public.ledger_entries_trusted_clock"),
+        ("CREATE OR REPLACE TRIGGER catalogue_term_changes_guard BEFORE INSERT ON public.catalogue_term_changes "
+         "FOR EACH ROW EXECUTE FUNCTION public.catalogue_term_changes_guard()",
+         "trigger catalogue_term_changes_guard is not BEFORE ROW INSERT OR UPDATE OR DELETE"),
+        # item 2: WHEN condition, column list, arguments, extra triggers
+        ("CREATE OR REPLACE TRIGGER catalogue_contracts_guard BEFORE INSERT OR UPDATE OR DELETE ON "
+         "public.catalogue_contracts FOR EACH ROW WHEN (false) EXECUTE FUNCTION public.catalogue_contracts_guard()",
+         "trigger catalogue_contracts_guard has a WHEN condition"),
+        ("CREATE OR REPLACE TRIGGER audit_events_link_and_clock BEFORE INSERT ON public.audit_events "
+         "FOR EACH ROW WHEN (false) EXECUTE FUNCTION public.audit_events_link_and_clock()",
+         "trigger audit_events_link_and_clock has a WHEN condition"),
+        ("CREATE OR REPLACE TRIGGER catalogue_contracts_guard BEFORE INSERT OR UPDATE OF currently_listed OR DELETE "
+         "ON public.catalogue_contracts FOR EACH ROW EXECUTE FUNCTION public.catalogue_contracts_guard()",
+         "trigger catalogue_contracts_guard is limited to a column list"),
+        ("CREATE OR REPLACE TRIGGER audit_events_link_and_clock BEFORE INSERT ON public.audit_events "
+         "FOR EACH ROW EXECUTE FUNCTION public.audit_events_link_and_clock('x')",
+         "trigger audit_events_link_and_clock has arguments"),
+        ("CREATE TRIGGER zz_extra BEFORE UPDATE ON public.catalogue_contracts "
+         "FOR EACH ROW EXECUTE FUNCTION public.ledger_entries_trusted_clock()",
+         "table public.catalogue_contracts has an unexpected trigger"),
+        ("CREATE TRIGGER zz_extra BEFORE UPDATE ON public.audit_anchor "
+         "FOR EACH ROW EXECUTE FUNCTION public.ledger_entries_trusted_clock()",
+         "table public.audit_anchor has an unexpected trigger"),
+        ("CREATE TRIGGER zz_extra AFTER INSERT ON public.ledger_entries "
+         "FOR EACH ROW EXECUTE FUNCTION public.ledger_entries_trusted_clock()",
+         "table public.ledger_entries has an unexpected trigger"),
+        # the term-change history: SELECT only, nothing on its sequence; guard SECURITY DEFINER
+        ('GRANT INSERT (field) ON public.catalogue_term_changes TO "{role}"',
+         "has INSERT on catalogue_term_changes column field"),
+        ('GRANT UPDATE (new_value) ON public.catalogue_term_changes TO "{role}"',
+         "has UPDATE on catalogue_term_changes column new_value"),
+        ('GRANT DELETE ON public.catalogue_term_changes TO "{role}"', "has DELETE on catalogue_term_changes"),
+        ('GRANT USAGE ON SEQUENCE public.catalogue_term_changes_id_seq TO "{role}"',
+         "has USAGE on the term-change id sequence"),
+        ('GRANT UPDATE (instrument_type) ON public.catalogue_contracts TO "{role}"',
+         "has UPDATE on catalogue_contracts column instrument_type"),
+        ('REVOKE UPDATE (lot_size) ON public.catalogue_contracts FROM "{role}"',
+         "lacks UPDATE on catalogue_contracts column lot_size"),
+        ("ALTER FUNCTION public.catalogue_contracts_guard() SECURITY INVOKER",
+         "function public.catalogue_contracts_guard is not SECURITY DEFINER"),
+        ('GRANT EXECUTE ON FUNCTION public.catalogue_term_changes_guard() TO "{role}"',
+         "has EXECUTE on public.catalogue_term_changes_guard"),
         # (b) pinned bodies: each replaced, attributes kept, so only the body differs
+        (_HISTORY_BODY, "function public.catalogue_term_changes_guard body differs from its pinned body"),
         (_ANCHOR_BODY, "function public.audit_events_advance_anchor body differs from its pinned body"),
         (_LEDGER_BODY, "function public.ledger_entries_trusted_clock body differs from its pinned body"),
         (_GUARD_BODY, "function public.catalogue_contracts_guard body differs from its pinned body"),
