@@ -21,6 +21,8 @@ class LedgerEntry(Base):
     """
 
     __tablename__ = "ledger_entries"
+    # Always schema-qualified, so a same-named temp table can never shadow the ledger.
+    __table_args__ = {"schema": "public"}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(Text, nullable=False)

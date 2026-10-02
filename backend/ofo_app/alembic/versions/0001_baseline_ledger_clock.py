@@ -7,8 +7,13 @@ The guard is two things, both in the database:
 1. A BEFORE INSERT trigger that overwrites recorded_at with the server clock and refuses (SQLSTATE OF001) an
    event_at outside recorded_at +/- 60 s, or a NULL event_at (fail closed).
 2. Ownership and grants: this migration runs as an owner role, never as the application role, so the application
-   role is not the owner and cannot ALTER/DISABLE/DROP the trigger; it gets only SELECT, INSERT on the table and
-   USAGE on its sequence, so UPDATE, DELETE and TRUNCATE are refused.
+   role is not the owner and cannot ALTER/DISABLE/DROP the trigger. It gets SELECT on the table, INSERT only on the
+   columns (kind, event_at, recorded_at, payload) so it cannot choose an id, and USAGE on the id sequence; UPDATE,
+   DELETE and TRUNCATE are refused. TEMPORARY on the database is revoked from PUBLIC so the role cannot create a
+   temp table that shadows public.ledger_entries, and the table is always named schema-qualified.
+
+The stamp is the server clock at INSERT time (clock_timestamp()), not the transaction's start and not its commit
+time: a row inserted at 10:00:00 in a transaction that commits at 10:00:20 carries 10:00:00.
 
 Revision ID: 0001_baseline
 Revises:
@@ -33,11 +38,13 @@ Q256_CLOCK_SKEW_SECONDS = 60
 # (not a PostgreSQL class), so a caller can tell this refusal apart from any built-in error.
 LEDGER_CLOCK_SQLSTATE = "OF001"
 
-# The application role that receives SELECT, INSERT only. Overridable for a differently named role on another host.
+# The application role. Overridable for a differently named role on another host.
 APP_ROLE = os.environ.get("OFO_APP_DB_ROLE", "ofo_app")
 
+TABLE = "public.ledger_entries"
+SEQUENCE = "public.ledger_entries_id_seq"
 TRIGGER_NAME = "ledger_entries_trusted_clock"
-FUNCTION_NAME = "ledger_entries_trusted_clock"
+FUNCTION = "public.ledger_entries_trusted_clock"
 
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 
@@ -51,11 +58,15 @@ def _app_role() -> str:
 def upgrade() -> None:
     role = _app_role()
 
-    # Fail closed: refuse to build the guard as the application role (it would own the table and could disable the
-    # trigger), or for an application role that is a superuser (it bypasses every grant).
+    # Fail closed: refuse to build the guard for an application role that could get around it - the role itself
+    # running the migration (it would own the table), a superuser/BYPASSRLS role, a role that can create roles or
+    # databases, a role that inherits the owner's privileges, or a member of the predefined roles that write or
+    # maintain every table (pg_write_all_data PG14+, pg_maintain PG17+; checked only where the role exists).
     op.execute(
         f"""
         DO $guard$
+        DECLARE
+            predefined TEXT;
         BEGIN
             IF current_user = '{role}' THEN
                 RAISE EXCEPTION 'run migrations as the owner role, not as the application role {role}';
@@ -63,17 +74,38 @@ def upgrade() -> None:
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
                 RAISE EXCEPTION 'application role {role} does not exist; create it first (ADR-048)';
             END IF;
-            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}' AND (rolsuper OR rolbypassrls)) THEN
-                RAISE EXCEPTION 'application role {role} must not be a superuser (ADR-048)';
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}'
+                       AND (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)) THEN
+                RAISE EXCEPTION 'application role {role} must be NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB';
             END IF;
+            IF pg_has_role('{role}', current_user, 'MEMBER') THEN
+                RAISE EXCEPTION 'application role {role} is a member of the owner role %', current_user;
+            END IF;
+            FOREACH predefined IN ARRAY ARRAY['pg_write_all_data', 'pg_maintain'] LOOP
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = predefined)
+                   AND pg_has_role('{role}', predefined, 'MEMBER') THEN
+                    RAISE EXCEPTION 'application role {role} must not be a member of %', predefined;
+                END IF;
+            END LOOP;
         END
         $guard$;
         """
     )
 
+    # No temp table may shadow the ledger: TEMPORARY is revoked from PUBLIC and never granted to the app role.
     op.execute(
         """
-        CREATE TABLE ledger_entries (
+        DO $tmp$
+        BEGIN
+            EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+        END
+        $tmp$;
+        """
+    )
+
+    op.execute(
+        f"""
+        CREATE TABLE {TABLE} (
             id          BIGSERIAL PRIMARY KEY,
             kind        TEXT        NOT NULL,
             event_at    TIMESTAMPTZ NOT NULL,
@@ -87,7 +119,7 @@ def upgrade() -> None:
     # caller's transaction, which a caller could hold open to stamp an older time.
     op.execute(
         f"""
-        CREATE FUNCTION {FUNCTION_NAME}() RETURNS trigger
+        CREATE FUNCTION {FUNCTION}() RETURNS trigger
         LANGUAGE plpgsql
         SET search_path = pg_catalog, pg_temp
         AS $fn$
@@ -108,19 +140,39 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE TRIGGER {TRIGGER_NAME}
-        BEFORE INSERT ON ledger_entries
-        FOR EACH ROW EXECUTE FUNCTION {FUNCTION_NAME}()
+        BEFORE INSERT ON {TABLE}
+        FOR EACH ROW EXECUTE FUNCTION {FUNCTION}()
         """
     )
 
-    op.execute("REVOKE ALL ON TABLE ledger_entries FROM PUBLIC")
-    op.execute("REVOKE ALL ON SEQUENCE ledger_entries_id_seq FROM PUBLIC")
-    op.execute(f"REVOKE ALL ON FUNCTION {FUNCTION_NAME}() FROM PUBLIC")
-    op.execute(f'REVOKE ALL ON TABLE ledger_entries FROM "{role}"')
-    op.execute(f'GRANT SELECT, INSERT ON TABLE ledger_entries TO "{role}"')
-    op.execute(f'GRANT USAGE ON SEQUENCE ledger_entries_id_seq TO "{role}"')
+    op.execute(f"REVOKE ALL ON TABLE {TABLE} FROM PUBLIC")
+    op.execute(f"REVOKE ALL ON SEQUENCE {SEQUENCE} FROM PUBLIC")
+    op.execute(f"REVOKE ALL ON FUNCTION {FUNCTION}() FROM PUBLIC")
+    op.execute(f'REVOKE ALL ON TABLE {TABLE} FROM "{role}"')
+    op.execute(f'GRANT SELECT ON TABLE {TABLE} TO "{role}"')
+    # Column-level INSERT: no id column, so the caller cannot pick (or collide) ids; recorded_at is listed only so a
+    # caller-supplied value is accepted and then overwritten by the trigger.
+    op.execute(f'GRANT INSERT (kind, event_at, recorded_at, payload) ON TABLE {TABLE} TO "{role}"')
+    op.execute(f'GRANT USAGE ON SEQUENCE {SEQUENCE} TO "{role}"')
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS ledger_entries")
-    op.execute(f"DROP FUNCTION IF EXISTS {FUNCTION_NAME}()")
+    # Refuses while the ledger holds rows: an append-only record is never dropped by a schema rollback.
+    op.execute(
+        f"""
+        DO $down$
+        DECLARE
+            has_rows BOOLEAN := FALSE;
+        BEGIN
+            IF to_regclass('{TABLE}') IS NOT NULL THEN
+                EXECUTE 'SELECT EXISTS (SELECT 1 FROM {TABLE})' INTO has_rows;
+            END IF;
+            IF has_rows THEN
+                RAISE EXCEPTION 'refusing to drop {TABLE}: it holds ledger rows (append-only, REQ-064 AC-2)';
+            END IF;
+        END
+        $down$;
+        """
+    )
+    op.execute(f"DROP TABLE IF EXISTS {TABLE}")
+    op.execute(f"DROP FUNCTION IF EXISTS {FUNCTION}()")

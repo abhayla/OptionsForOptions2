@@ -34,11 +34,11 @@ LEDGER_CLOCK_SQLSTATE = "OF001"  # documented in the baseline migration
 TRIGGER = "ledger_entries_trusted_clock"
 
 INSERT_WITH_CALLER_STAMP = text(
-    "INSERT INTO ledger_entries (kind, event_at, recorded_at, payload) "
+    "INSERT INTO public.ledger_entries (kind, event_at, recorded_at, payload) "
     "VALUES (:kind, :event_at, :recorded_at, CAST(:payload AS jsonb)) RETURNING id, recorded_at"
 )
 INSERT = text(
-    "INSERT INTO ledger_entries (kind, event_at, payload) "
+    "INSERT INTO public.ledger_entries (kind, event_at, payload) "
     "VALUES (:kind, :event_at, CAST(:payload AS jsonb)) RETURNING id, recorded_at"
 )
 
@@ -97,7 +97,7 @@ async def check_caller_recorded_at_is_ignored(conn: AsyncConnection) -> None:
     before = await _db_clock(conn)
     row_id, _ = await _insert(conn, _kind(), before, CALLER_RECORDED_AT)
     after = await _db_clock(conn)
-    stored = (await conn.execute(text("SELECT recorded_at FROM ledger_entries WHERE id = :i"), {"i": row_id})).scalar_one()
+    stored = (await conn.execute(text("SELECT recorded_at FROM public.ledger_entries WHERE id = :i"), {"i": row_id})).scalar_one()
     assert stored != CALLER_RECORDED_AT, "the caller's recorded_at was stored"
     assert before <= stored <= after, f"stored {stored} is not the server clock between {before} and {after}"
 
@@ -112,20 +112,20 @@ async def check_two_minutes_off_refused(conn: AsyncConnection) -> None:
 async def check_update_refused(conn: AsyncConnection) -> None:
     row_id, _ = await _insert(conn, _kind(), await _db_clock(conn))
     await _expect_refused(
-        conn, "UPDATE ledger_entries SET kind = 'tampered' WHERE id = :i", {"i": row_id}, INSUFFICIENT_PRIVILEGE
+        conn, "UPDATE public.ledger_entries SET kind = 'tampered' WHERE id = :i", {"i": row_id}, INSUFFICIENT_PRIVILEGE
     )
 
 
 async def check_delete_refused(conn: AsyncConnection) -> None:
     row_id, _ = await _insert(conn, _kind(), await _db_clock(conn))
-    await _expect_refused(conn, "DELETE FROM ledger_entries WHERE id = :i", {"i": row_id}, INSUFFICIENT_PRIVILEGE)
+    await _expect_refused(conn, "DELETE FROM public.ledger_entries WHERE id = :i", {"i": row_id}, INSUFFICIENT_PRIVILEGE)
 
 
 async def check_disable_trigger_refused(conn: AsyncConnection) -> None:
     """(d) The application role cannot switch the guard off."""
-    await _expect_refused(conn, f"ALTER TABLE ledger_entries DISABLE TRIGGER {TRIGGER}", None, INSUFFICIENT_PRIVILEGE)
-    await _expect_refused(conn, "ALTER TABLE ledger_entries DISABLE TRIGGER ALL", None, INSUFFICIENT_PRIVILEGE)
-    await _expect_refused(conn, f"DROP TRIGGER {TRIGGER} ON ledger_entries", None, INSUFFICIENT_PRIVILEGE)
+    await _expect_refused(conn, f"ALTER TABLE public.ledger_entries DISABLE TRIGGER {TRIGGER}", None, INSUFFICIENT_PRIVILEGE)
+    await _expect_refused(conn, "ALTER TABLE public.ledger_entries DISABLE TRIGGER ALL", None, INSUFFICIENT_PRIVILEGE)
+    await _expect_refused(conn, f"DROP TRIGGER {TRIGGER} ON public.ledger_entries", None, INSUFFICIENT_PRIVILEGE)
 
 
 # ---- the proof, as the application role ----
@@ -137,15 +137,54 @@ async def test_app_role_is_not_superuser_and_not_owner(app_engine: AsyncEngine) 
         row = (
             await conn.execute(
                 text(
-                    "SELECT r.rolsuper, r.rolbypassrls, t.tableowner, current_user "
+                    "SELECT r.rolsuper, r.rolbypassrls, r.rolcreaterole, r.rolcreatedb, t.tableowner, current_user, "
+                    "       pg_has_role(current_user, t.tableowner, 'MEMBER') AS member_of_owner, "
+                    "       EXISTS (SELECT 1 FROM pg_roles p WHERE p.rolname IN ('pg_write_all_data', 'pg_maintain') "
+                    "               AND pg_has_role(current_user, p.oid, 'MEMBER')) AS member_of_writer "
                     "FROM pg_roles r, pg_tables t "
-                    "WHERE r.rolname = current_user AND t.tablename = 'ledger_entries'"
+                    "WHERE r.rolname = current_user AND t.schemaname = 'public' AND t.tablename = 'ledger_entries'"
                 )
             )
         ).one()
-    rolsuper, bypassrls, owner, me = row
-    assert rolsuper is False and bypassrls is False, f"{me} must be NOSUPERUSER (ADR-048)"
+    rolsuper, bypassrls, createrole, createdb, owner, me, member_of_owner, member_of_writer = row
+    assert rolsuper is False and bypassrls is False, f"{me} must be NOSUPERUSER NOBYPASSRLS (ADR-048)"
+    assert createrole is False and createdb is False, f"{me} must be NOCREATEROLE NOCREATEDB (ADR-048)"
     assert owner != me, f"{me} owns ledger_entries; migrations must run as the owner role"
+    assert member_of_owner is False, f"{me} inherits the owner role {owner}'s privileges"
+    assert member_of_writer is False, f"{me} is a member of pg_write_all_data / pg_maintain"
+
+
+async def test_temp_table_cannot_be_created_to_shadow_the_ledger(app_engine: AsyncEngine) -> None:
+    async with app_engine.connect() as conn, conn.begin():
+        await _expect_refused(conn, "CREATE TEMP TABLE ledger_entries (id BIGINT)", None, INSUFFICIENT_PRIVILEGE)
+
+
+async def test_insert_naming_id_is_refused(app_engine: AsyncEngine) -> None:
+    """INSERT is granted per column without id: the caller can never choose an id."""
+    async with app_engine.connect() as conn, conn.begin():
+        now = await _db_clock(conn)
+        await _expect_refused(
+            conn,
+            "INSERT INTO public.ledger_entries (id, kind, event_at, payload) "
+            "VALUES (999999999, :k, :e, CAST('{}' AS jsonb))",
+            {"k": _kind(), "e": now},
+            INSUFFICIENT_PRIVILEGE,
+        )
+
+
+@pytest.mark.parametrize("seconds", [55, -55])
+async def test_boundary_event_within_window_is_accepted(app_engine: AsyncEngine, seconds: int) -> None:
+    async with app_engine.connect() as conn, conn.begin():
+        now = await _db_clock(conn)
+        row_id, _ = await _insert(conn, _kind(), now + timedelta(seconds=seconds))
+        assert row_id > 0
+
+
+@pytest.mark.parametrize("seconds", [65, -65])
+async def test_boundary_event_outside_window_is_refused(app_engine: AsyncEngine, seconds: int) -> None:
+    async with app_engine.connect() as conn, conn.begin():
+        now = await _db_clock(conn)
+        await _expect_insert_refused(conn, now + timedelta(seconds=seconds))
 
 
 async def test_a_caller_recorded_at_2020_is_replaced_by_server_clock(app_engine: AsyncEngine) -> None:
@@ -168,7 +207,7 @@ async def test_b_refused_insert_rolls_back_the_transaction(app_engine: AsyncEngi
                 await _insert(conn, kind, now + timedelta(minutes=2))
         assert _sqlstate(info.value) == LEDGER_CLOCK_SQLSTATE
     async with app_engine.connect() as conn:
-        count = (await conn.execute(text("SELECT count(*) FROM ledger_entries WHERE kind = :k"), {"k": kind})).scalar_one()
+        count = (await conn.execute(text("SELECT count(*) FROM public.ledger_entries WHERE kind = :k"), {"k": kind})).scalar_one()
     assert count == 0, "the valid row in the refused transaction was kept"
 
 
@@ -199,7 +238,7 @@ async def test_c_delete_is_refused(app_engine: AsyncEngine) -> None:
 
 async def test_truncate_is_refused(app_engine: AsyncEngine) -> None:
     async with app_engine.connect() as conn, conn.begin():
-        await _expect_refused(conn, "TRUNCATE ledger_entries", None, INSUFFICIENT_PRIVILEGE)
+        await _expect_refused(conn, "TRUNCATE public.ledger_entries", None, INSUFFICIENT_PRIVILEGE)
 
 
 async def test_d_disable_trigger_is_refused(app_engine: AsyncEngine) -> None:
@@ -230,10 +269,11 @@ async def test_repository_append_returns_db_stamp_and_never_sends_recorded_at(ap
 
     assert isinstance(row_id, int) and row_id > 0
     assert before <= recorded_at <= after, "append did not return the database-stamped recorded_at"
-    inserts = [s for s in statements if s.lstrip().upper().startswith("INSERT INTO LEDGER_ENTRIES")]
+    inserts = [s for s in statements if re.match(r"\s*INSERT INTO (public\.)?ledger_entries\b", s, re.IGNORECASE)]
     assert len(inserts) == 1, statements
     columns = re.search(r"\(([^)]*)\)", inserts[0]).group(1)
-    assert "recorded_at" not in [c.strip() for c in columns.split(",")], inserts[0]
+    sent = [c.strip() for c in columns.split(",")]
+    assert "recorded_at" not in sent and "id" not in sent, inserts[0]
 
 
 async def test_repository_refuses_naive_event_at_without_touching_the_db() -> None:
@@ -241,10 +281,28 @@ async def test_repository_refuses_naive_event_at_without_touching_the_db() -> No
         await ledger.append(None, "k", datetime(2026, 10, 2, 9, 0), {})  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [{"amount": 12.5}, {"legs": [{"premium": "1.00"}, {"premium": 0.05}]}, {"nested": {"deep": (1, 2.0)}}],
+)
+async def test_repository_refuses_float_anywhere_in_payload_without_touching_the_db(payload: dict) -> None:
+    """Money is never float (ADR-008): a float at any depth is refused before any SQL is sent."""
+    aware = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
+    with pytest.raises(TypeError, match="float"):
+        await ledger.append(None, "k", aware, payload)  # type: ignore[arg-type]
+
+
+async def test_repository_float_check_accepts_decimal_strings_and_tagged_form() -> None:
+    ledger._reject_floats({"amount": "12.50", "fee": {"$decimal": "0.05"}, "qty": 75, "ok": True, "none": None})
+
+
 # ---- mutation tests: weaken the guard (rolled back) and show the checks turn red ----
 
 
-async def _as_app_role_after(admin_engine: AsyncEngine, app_engine: AsyncEngine, mutation_sql: list[str], check) -> None:
+async def _as_app_role_after(
+    admin_engine: AsyncEngine, app_engine: AsyncEngine, mutation_sql: list[str], check, match: str
+) -> None:
+    """Weaken the guard, act as the app role, and require `check` to fail for the intended reason (`match`)."""
     role = app_engine.url.username
     assert role and re.fullmatch(r"[a-z_][a-z0-9_]*", role), role
     async with admin_engine.connect() as conn:
@@ -253,30 +311,40 @@ async def _as_app_role_after(admin_engine: AsyncEngine, app_engine: AsyncEngine,
             for sql in mutation_sql:
                 await conn.execute(text(sql.format(role=role)))
             await conn.execute(text(f'SET LOCAL ROLE "{role}"'))
-            with pytest.raises(AssertionError):
+            with pytest.raises(AssertionError, match=match):
                 await check(conn)
         finally:
             await trans.rollback()
 
 
 async def test_mutation_dropping_the_trigger_turns_a_and_b_red(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
-    drop = [f"DROP TRIGGER {TRIGGER} ON ledger_entries"]
-    await _as_app_role_after(admin_engine, app_engine, drop, check_caller_recorded_at_is_ignored)
-    await _as_app_role_after(admin_engine, app_engine, drop, check_two_minutes_off_refused)
+    drop = [f"DROP TRIGGER {TRIGGER} ON public.ledger_entries"]
+    await _as_app_role_after(
+        admin_engine, app_engine, drop, check_caller_recorded_at_is_ignored, match="the caller's recorded_at was stored"
+    )
+    await _as_app_role_after(
+        admin_engine, app_engine, drop, check_two_minutes_off_refused, match=r"insert with event_at=.* was accepted"
+    )
 
 
 async def test_mutation_granting_update_turns_c_red(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
     await _as_app_role_after(
-        admin_engine, app_engine, ['GRANT UPDATE ON ledger_entries TO "{role}"'], check_update_refused
+        admin_engine, app_engine, ['GRANT UPDATE ON public.ledger_entries TO "{role}"'],
+        check_update_refused,
+        match=r"not refused: UPDATE public\.ledger_entries",
     )
     await _as_app_role_after(
-        admin_engine, app_engine, ['GRANT DELETE ON ledger_entries TO "{role}"'], check_delete_refused
+        admin_engine, app_engine, ['GRANT DELETE ON public.ledger_entries TO "{role}"'],
+        check_delete_refused,
+        match=r"not refused: DELETE FROM public\.ledger_entries",
     )
 
 
 async def test_mutation_making_app_role_owner_turns_d_red(admin_engine: AsyncEngine, app_engine: AsyncEngine) -> None:
     await _as_app_role_after(
-        admin_engine, app_engine, ['ALTER TABLE ledger_entries OWNER TO "{role}"'], check_disable_trigger_refused
+        admin_engine, app_engine, ['ALTER TABLE public.ledger_entries OWNER TO "{role}"'],
+        check_disable_trigger_refused,
+        match=r"not refused: ALTER TABLE public\.ledger_entries DISABLE TRIGGER ledger_entries_trusted_clock",
     )
 
 
