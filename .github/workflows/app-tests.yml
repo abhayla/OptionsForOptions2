@@ -104,7 +104,7 @@ jobs:
   # W-054: frontend skeleton. Core proof: browser -> Vite preview /api proxy -> FastAPI (ofo_app) -> PostgreSQL.
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PGHOST: localhost
       PGPORT: '5432'
@@ -142,7 +142,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -175,9 +175,26 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Install Playwright Chromium
+      # The browser download took 11 min 18 s in run 36977878623; cache it, keyed on the lockfile (which pins the
+      # @playwright/test version), and cap the step.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright Chromium (cache miss, browser and system deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 12
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 12
+        working-directory: frontend
+        run: npx playwright install-deps chromium
 
       - name: Start the API (uvicorn factory) as ofo_app
         env:
@@ -202,7 +219,7 @@ jobs:
           # the proxy reaches the real database through the real API
           curl -sf http://127.0.0.1:4173/api/health
 
-      - name: Playwright (navigation + health, 390 and 1280 px)
+      - name: Playwright (navigation, health, responsive check of every route; 390 and 1280 px)
         working-directory: frontend
         env:
           PREVIEW_URL: http://127.0.0.1:4173
