@@ -1,5 +1,20 @@
 # Handover
 
+**2026-10-02 15:42 IST — where it stands now (supersedes the 09:34 note below where they differ).**
+Merged today (#99-#114, each Tier A/B item independently verified, evidence in `evidence/<W-id>/`): kit 1.5.1 (#99),
+P0 copy-first map ADR-047 (#100), P1 decisions Q256 + ADR-048 (#101), W-051 platform + trusted database clock (#102),
+ADR-049 styling (#103), REQ-009/REQ-004 approved (#104), W-052 PostgreSQL audit store (#105), W-054 frontend skeleton +
+navigation + live health page (#106), W-055 responsive check (#108), W-053 catalogue in PostgreSQL (#109), W-007
+entitlement engine on the database clock, unparked and done (#111), ADR-050 cross-broker identity + findings
+F-01..F-09 (#113), W-056 catalogue re-keyed on (exchange segment, exchange token) with Zerodha ids in
+`broker_instruments` (#114; finding F-10: Zerodha's `exchange` column is not a segment, 30 real NSE collisions).
+- App CI (`app-tests.yml`, PostgreSQL 16, database tests required): 475 passed on the W-056 head; domain suite 1429.
+- The databases exist only in CI. The VPS test database (ADR-048) waits for the owner's `GLOBAL.env`
+  WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD.
+- NEXT: P2b identity (Google sign-in, WhatsApp OTP via the Notifier) needs owner approval of REQ-012, REQ-002, REQ-003,
+  REQ-013, REQ-014 and the Google OAuth client credentials; then W-008, W-009, W-011. P3/P4 stay blocked on Zerodha's
+  written answer (ADR-034) and Q258 (SEBI algo provider / static IP).
+
 **2026-10-02 09:34 IST — the build plan changed.** Kit 1.5.1 is merged (#99). The owner approved an end-to-end build
 plan after an independent review: `docs/process/build-plan-2026-10-02.md` (phases P0-P6, copy-first from algochanakya
 per ADR-047, the full module map in `spec/technical-design/legacy-reuse.md`). It supersedes "NEXT" below; the DEFERRED,
@@ -64,10 +79,7 @@ trust boundary = W-026's; promise phrases), Q237 / ADR-046 (path-filtered `app-t
 Q224 confirmed. Findings-index wrapper approved until kit #40 is fixed (memory `findings-index-wrapper`).
 
 ## PARKED (owner decision needed — do NOT resume without it)
-- **W-007 entitlement engine — issue #12.** Rounds 5-6 today. Parked until the DB layer exists (owner's choice): any
-  in-memory ledger lets its creator choose the clock, so backdating stays possible until a trusted time source (DB
-  insert time / server clock at the application boundary) exists. Branch `build/W-007-entitlements` @ a459ac0.
-  Blocks W-008, W-009, W-011.
+- (Unparked 2026-10-02: W-007 is done on the database clock, #111; W-008, W-009, W-011 now wait only for P2b identity.)
 - **W-024 error messages — issue #30.** Rounds 5-7 today; owner set round 7 as the last. Round 7 failed on the CI scan
   missing relative-import rebinding of the checker. Recommended if unparked: an allowlist rule (no attribute
   assignment on any imported module in `backend/ofo`) + a runtime identity check. Branch
@@ -83,6 +95,13 @@ Q224 confirmed. Findings-index wrapper approved until kit #40 is fixed (memory `
 - **#45** price passed through unchecked (REQ-056 AC-7, Q28); no first-entry execution path yet.
 - **#63** two ProposedOrder builders (reconciliation/resolution.py:343, rules/actions.py:45) don't slice — unreachable
   to the broker today; depends on the #43 freeze placeholder, so it moves to build plan P4.
+- **#89** three user-text paths not yet on the shared wording checker.
+- **#107** scheduled audit-log verification monitor (REQ-064, P6).
+- **#110** responsive check misses content clipped by overflow:hidden (REQ-004).
+- **#112** entitlement ledger index and server-side free-day cap (REQ-017, with W-008/W-009).
+- **#115** execution layer links orders to the catalogue by Zerodha symbol, not `InstrumentId` (W-056 review M2; P4);
+  finding `instrument-identity-keyed-on-one-broker` stays unguarded until it is done.
+- **#116** verify on real data whether an expired contract's exchange token can be reused (W-056 review M3; unverified).
 - Corrected 2026-10-02: #10, #29, #61, #62, #64, #65 are CLOSED (W-036 #69, W-037 #70, W-038 #72, W-039 #73; `gh issue
   view` state CLOSED); this list had not been updated after those merges.
 
@@ -94,8 +113,8 @@ three UX levels (W-004 builder's call), the TOTAL P&L % "—" cases for missing 
 clarification), "safety net" passing the wording check, the W-024 residual reworded promises.
 
 ## NEXT (in order) — superseded by `docs/process/build-plan-2026-10-02.md`
-Current step: P1 = W-051 (platform + trusted clock, Tier A) -> W-052 (audit store) and W-053 (catalogue store) ->
-W-007 unpark. Owner decisions taken 2026-10-02: Q256 (skew 60 s), ADR-048 (test DB on the VPS, isolated and capped).
+Current step (15:42): P1 and P2a are done (W-051..W-056, W-007). Next is P2b identity, see the status block at the top.
+Owner decisions taken 2026-10-02: Q256 (skew 60 s), ADR-048 (test DB on the VPS, isolated and capped).
 Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to create ofo_test + ofo_app).
 1. (Done before 2026-10-02) Deferred issues that need no decision: #62, #64, #61, #65, #10 (items 1, 3, 4).
 2. API/web layers: the first work item adds `app-tests.yml` (ADR-046) with the first API code — but prove its core
