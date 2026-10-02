@@ -2,13 +2,34 @@
      Renamed and restyled with our tokens (ADR-049); broker switching and market-data source toggles removed (ADR-012);
      the nav is built from the route table (REQ-009) and the avatar opens Account & Settings (AC-8). -->
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from '@/router/nav'
 
 const menuOpen = ref(false)
+const accountWrap = ref(null)
+const avatarButton = ref(null)
 const route = useRoute()
 watch(() => route.fullPath, () => { menuOpen.value = false })
+
+// Close the account menu on Escape and on a click outside it (W-054 review follow-up).
+function onKeydown(e) {
+  if (e.key === 'Escape' && menuOpen.value) {
+    menuOpen.value = false
+    avatarButton.value?.focus()
+  }
+}
+function onDocumentClick(e) {
+  if (menuOpen.value && accountWrap.value && !accountWrap.value.contains(e.target)) menuOpen.value = false
+}
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+  document.addEventListener('click', onDocumentClick)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('click', onDocumentClick)
+})
 </script>
 
 <template>
@@ -28,9 +49,11 @@ watch(() => route.fullPath, () => { menuOpen.value = false })
           </li>
         </ul>
       </nav>
-      <div class="relative shrink-0">
+      <div ref="accountWrap" class="relative shrink-0">
         <button
+          ref="avatarButton"
           type="button"
+          aria-controls="account-menu"
           class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface-muted text-xs font-medium"
           aria-label="Account menu"
           :aria-expanded="menuOpen"
@@ -41,6 +64,7 @@ watch(() => route.fullPath, () => { menuOpen.value = false })
         </button>
         <div
           v-if="menuOpen"
+          id="account-menu"
           class="absolute right-0 z-10 mt-2 w-60 rounded border border-line bg-surface py-1 shadow-sm"
           data-testid="account-menu"
         >
