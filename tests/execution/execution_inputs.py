@@ -60,7 +60,7 @@ def eligibility(catalogue: Catalogue) -> EligibilityRegistry:
     """Every catalogue contract confirmed tradable (as a Zerodha read would record it)."""
     registry = EligibilityRegistry()
     for entry in catalogue.all_entries():
-        registry.record(EligibilityStatus(entry.contract.instrument_token, True, AS_OF))
+        registry.record(EligibilityStatus(entry.contract.id, True, AS_OF))
     return registry
 
 
@@ -121,8 +121,8 @@ def closing_orders(legs: tuple[Leg, ...]) -> tuple[Leg, ...]:
     return tuple(dataclasses.replace(leg, action=flip[leg.action]) for leg in legs)
 
 
-def find_token(catalogue: Catalogue, instrument_type: str, strike: str, expiry: datetime.date = EXPIRY) -> int:
+def find_token(catalogue: Catalogue, instrument_type: str, strike: str, expiry: datetime.date = EXPIRY):
     (contract,) = [
         c for c in catalogue.contracts_for("NIFTY", expiry, frozenset({instrument_type})) if c.strike == D(strike)
     ]
-    return contract.instrument_token
+    return contract.id  # the exchange identity (ADR-050)

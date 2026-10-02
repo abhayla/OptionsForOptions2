@@ -68,7 +68,7 @@ from typing import Final, Protocol
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.interfaces import MarginPlanner, plan_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
-from ofo.instruments import Catalogue
+from ofo.instruments import ZERODHA, Catalogue
 
 _BUILDER_KEY: Final = object()
 MARGIN_UNVERIFIED: Final = "unverified against real Zerodha margin behaviour (ADR-017 Q26)"
@@ -289,12 +289,15 @@ def _positive_int(value: object, name: str, cap: int | None = None) -> int:
 
 
 def _lot_sizes(plan: ExecutionPlan, catalogue: Catalogue) -> dict[str, int]:
-    """Each plan leg's lot size from the catalogue entry of its contract; every leg a whole number of lots."""
+    """Each plan leg's lot size from Zerodha's row of the catalogue entry of its contract (REQ-054 AC-4); every
+    leg a whole number of lots. An entry with no Zerodha row has no Zerodha symbol and is never matched."""
     if not isinstance(catalogue, Catalogue):
         raise ValueError(f"lot sizes come from the instrument catalogue, got {catalogue!r}")
     by_symbol: dict[str, list[int]] = {}
     for entry in catalogue.all_entries():
-        by_symbol.setdefault(entry.contract.tradingsymbol, []).append(entry.contract.lot_size)
+        if entry.has_ref(ZERODHA):
+            ref = entry.ref(ZERODHA)
+            by_symbol.setdefault(ref.broker_symbol, []).append(ref.lot_size)
     lots: dict[str, int] = {}
     for p in plan.legs:
         found = by_symbol.get(p.contract, [])

@@ -10,34 +10,38 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from ofo.instruments.models import InstrumentId
+
 
 @dataclass(frozen=True)
 class EligibilityStatus:
     """A point-in-time eligibility read from Zerodha for one instrument."""
 
-    instrument_token: int
+    instrument_id: InstrumentId
     tradable: bool
     checked_at: datetime
     reason: Optional[str] = None
 
 
 class EligibilityRegistry:
-    """Holds the latest known `EligibilityStatus` per `instrument_token`.
+    """Holds the latest known `EligibilityStatus` per contract identity (`InstrumentId`, ADR-050).
 
     Deliberately has no reference to `Catalogue` and no method that writes into one — eligibility
     and the contract catalogue are separate structures (AC-2).
     """
 
     def __init__(self) -> None:
-        self._status: dict[int, EligibilityStatus] = {}
+        self._status: dict[InstrumentId, EligibilityStatus] = {}
 
     def record(self, status: EligibilityStatus) -> None:
-        self._status[status.instrument_token] = status
+        if not isinstance(status.instrument_id, InstrumentId):
+            raise TypeError(f"eligibility is keyed by InstrumentId, got {status.instrument_id!r}")
+        self._status[status.instrument_id] = status
 
-    def get(self, instrument_token: int) -> Optional[EligibilityStatus]:
-        return self._status.get(instrument_token)
+    def get(self, instrument_id: InstrumentId) -> Optional[EligibilityStatus]:
+        return self._status.get(instrument_id)
 
-    def is_tradable(self, instrument_token: int) -> bool:
+    def is_tradable(self, instrument_id: InstrumentId) -> bool:
         """Fail closed: an instrument with no recorded eligibility check is not tradable."""
-        status = self._status.get(instrument_token)
+        status = self._status.get(instrument_id)
         return status is not None and status.tradable

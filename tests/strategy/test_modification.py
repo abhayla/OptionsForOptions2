@@ -32,6 +32,7 @@ from ofo.execution import (
     VersionState,
     active_legs_hash,
 )
+from ofo.instruments.parser import zerodha_listed
 from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus
 from ofo.instruments.models import Contract
 from ofo.strategy.definition import StrategyDefinition
@@ -146,7 +147,7 @@ def _make_catalogue(*, missing: frozenset[tuple[Instrument, str]] = frozenset())
     """The real Zerodha-shaped catalogue for every leg the roll touches, minus ``missing`` (to force a gate block)."""
     cat = Catalogue()
     contracts = [
-        Contract(
+        zerodha_listed(
             instrument_token=token, exchange_token=token, tradingsymbol=f"NIFTY{strike}{instrument.value}",
             name="NIFTY", expiry=EXPIRY, strike=D(strike), tick_size=D("0.05"), lot_size=QTY,
             instrument_type=instrument.value, segment="NFO-OPT", exchange="NFO",
@@ -160,7 +161,7 @@ def _make_catalogue(*, missing: frozenset[tuple[Instrument, str]] = frozenset())
 def _make_eligibility(catalogue: Catalogue) -> EligibilityRegistry:
     registry = EligibilityRegistry()
     for entry in catalogue.all_entries():
-        registry.record(EligibilityStatus(entry.contract.instrument_token, True, T0))
+        registry.record(EligibilityStatus(entry.contract.id, True, T0))
     return registry
 
 

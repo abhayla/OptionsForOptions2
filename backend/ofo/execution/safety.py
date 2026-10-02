@@ -26,7 +26,7 @@ from ofo.execution.context import (
     ExecutionContext,
     active_legs_hash,
 )
-from ofo.instruments import Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
+from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 logger = logging.getLogger("ofo.execution.safety")
@@ -177,7 +177,8 @@ def _alternatives(
         and e.contract.instrument_type == leg.instrument.value
         and e.contract.strike != leg.strike
         and e.currently_listed
-        and eligibility.is_tradable(e.contract.instrument_token)
+        and e.has_ref(ZERODHA)
+        and eligibility.is_tradable(e.contract.id)
     }
     return tuple(sorted(strikes, key=lambda s: (abs(s - leg.strike), s))[:MAX_ALTERNATIVES])
 
@@ -438,7 +439,17 @@ def _leg_failures(
                 leg_number=number, alternatives=alts,
             ))
             continue
-        status = eligibility.get(entry.contract.instrument_token)
+        if not entry.has_ref(ZERODHA):
+            # REQ-054 AC-3: a contract with no Zerodha row cannot be traded at Zerodha; no symbol is guessed.
+            alts = _alternatives(leg, underlying, catalogue, eligibility)
+            out.append(CheckFailure(
+                CheckCode.CONTRACT_NOT_FOUND,
+                f"{described} has no Zerodha instrument record, so it cannot be traded at Zerodha."
+                + _alternatives_text(alts),
+                leg_number=number, alternatives=alts,
+            ))
+            continue
+        status = eligibility.get(entry.contract.id)
         if status is None or not status.tradable:
             alts = _alternatives(leg, underlying, catalogue, eligibility)
             problem = (
