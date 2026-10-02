@@ -1,5 +1,10 @@
 # Handover
 
+**2026-10-02 09:34 IST — the build plan changed.** Kit 1.5.1 is merged (#99). The owner approved an end-to-end build
+plan after an independent review: `docs/process/build-plan-2026-10-02.md` (phases P0-P6, copy-first from algochanakya
+per ADR-047, the full module map in `spec/technical-design/legacy-reuse.md`). It supersedes "NEXT" below; the DEFERRED,
+PARKED and BLOCKED lists stay valid and are mapped into its phases (P0.5 = NEXT item 1).
+
 Updated 2026-09-29 16:40 IST (end of the owner-present day session; the overnight session before it ran
 2026-09-28 20:42 → 2026-09-29 09:16 — its "2026-09-30" stamps were wrong and are corrected, finding
 `date-stamp-typed-from-memory`). Main at the merge of this file's PR.
