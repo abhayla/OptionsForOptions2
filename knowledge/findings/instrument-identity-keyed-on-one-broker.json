@@ -12,12 +12,19 @@
   "detection": {
     "status": "unguarded",
     "checks": [],
-    "note": "Guarded when W-056 lands with a test that the catalogue's unique key is (exchange, exchange_token) and that no table outside the per-broker table stores instrument_token."
+    "note": "Guarded when W-056 lands with a test that the catalogue's unique key is (exchange segment from the platform list, exchange_token) and that no table outside the per-broker table stores instrument_token."
   },
   "spec_ref": [
     "spec/requirements/REQ-053.md",
     "spec/requirements/REQ-054.md",
     "spec/decisions/ADR-050.md",
     "spec/findings.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-02",
+      "where": "W-056 stage 1 (commit 15f8df1) keyed InstrumentId on Zerodha's `exchange` column instead of the exchange segment",
+      "evidence": "Real Zerodha file: 30 (exchange, exchange_token) pairs duplicated, all exchange = NSE, INDICES vs NSE cash (NSE / 1001 = 'NIFTY 50' and '94SFL28-YL'); 0 among the 4,970 in-scope NFO/BFO rows. Same class one level down: a broker's own column used as the identity's segment. Fix: platform-owned segment list (REQ-054, F-10)."
+    }
   ]
 }
