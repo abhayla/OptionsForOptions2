@@ -1,5 +1,6 @@
 {
   "id": "state-with-no-working-exit",
+  "scope": "generic",
   "class": "Any non-terminal state of a lifecycle (strategy, order, proposal) from which every action the system offers is refused leaves the user stuck with no path forward except acting outside the platform; the explanation shown for that state then points at actions that do not work. A transition table checked only pair-by-pair (is each allowed move allowed?) cannot see this: it needs a reachability check that every reachable non-terminal state has at least one action that succeeds.",
   "mechanism": "W-041 strategy state machine: the transition table matched the spec exactly (31 pairs), but guards on the underlying record (version store) refused every offered action in some reachable states.",
   "first_seen": {

@@ -25,10 +25,12 @@ project's hidden Factory folder, one entry per copied file with ``path``, ``sour
                     the kit path is named in the project's project-owned opt-outs file with a
                     reason, in which case a MISSING file is reported as ``OPTED OUT``, not drift.
                     ``FACTORY MOVED ON`` is also checked, except in ``--ci`` mode (see below).
-  - ``generated`` — never hash-compared; instead this entry's file is re-checked with the SAME logic
-                    as ``tools/kit_settings.py --check`` (imported, never re-implemented): the
-                    generated file must equal what ``kit_settings.build()`` would write right now, or
-                    it is reported EDITED IN PROJECT (hand-edited) / MISSING.
+  - ``generated`` — never hash-compared; instead the file is re-rendered by the tool that writes it,
+                    through the one ``GENERATED_CHECKS`` table (kit 1.5.1): the settings file via
+                    ``kit_settings`` (mismatch = EDITED IN PROJECT), ``views/build-order.md`` via
+                    ``build_order`` and ``spec/requirements/INDEX.md`` via ``build_spec_index``
+                    (mismatch = STALE, regenerate and commit). MISSING when absent. A generated path
+                    the table does not know is UNKNOWN GENERATED and fails the check (fail closed).
   - ``owner``     — a file only the human owner edits (e.g. the production seatbelt's yaml config).
                     A MISSING owner file is drift. A CHANGED owner file is never a failure by itself:
                     it is printed as a loud ``OWNER FILE CHANGED: <path> — only the owner edits this;
@@ -270,24 +272,59 @@ def _load_optout_pieces(project_path: Path) -> dict[str, str]:
     return out
 
 
-def _generated_entry_drift(project_path: Path, rel_path: str) -> str | None:
-    """Drift verdict for an owner=generated entry using the SAME logic as
-    tools/kit_settings.py --check (imported, never re-implemented). Returns None (clean),
-    "MISSING" or "EDITED IN PROJECT"."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+def _render_settings(project_path: Path) -> str | None:
     import kit_settings  # noqa: E402  (project mode may run inside a shipped copy too)
 
+    try:
+        return kit_settings.render(project_path)
+    except kit_settings.BadInput:
+        return None  # can't build the expected settings: unverifiable, never a silent pass
+
+
+def _render_build_order(project_path: Path) -> str:
+    import build_order  # noqa: E402
+
+    return build_order.render(project_path)
+
+
+def _render_spec_index(project_path: Path) -> str:
+    import build_spec_index  # noqa: E402
+
+    return build_spec_index.render(project_path)
+
+
+# THE one table of generated files the kit knows (kit 1.5.1, OD-67): lock path -> (renderer, verdict
+# on a mismatch, the command that regenerates it). The settings file is hand-edit drift (EDITED IN
+# PROJECT); the two views change with every requirement edit, so a difference means "regenerate it"
+# (STALE), not a hand edit. An owner=generated lock entry whose path is NOT in this table fails
+# closed (UNKNOWN GENERATED) -- it never falls through to some other renderer (the 1.5.0 defect:
+# spec/requirements/INDEX.md was compared against the settings renderer and always "edited").
+GENERATED_CHECKS: dict = {
+    f"{_CLAUDE_DIR_NAME}/{'settings'}.json": (_render_settings, "EDITED IN PROJECT",
+                                              "python tools/kit_settings.py ."),
+    "views/build-order.md": (_render_build_order, "STALE", "python tools/build_order.py ."),
+    "spec/requirements/INDEX.md": (_render_spec_index, "STALE", "python tools/build_spec_index.py ."),
+}
+
+
+def _generated_entry_drift(project_path: Path, rel_path: str) -> str | None:
+    """Drift verdict for an owner=generated entry, dispatched through GENERATED_CHECKS (each check
+    imports the tool that writes the file, never re-implements it). Returns None (clean), "MISSING",
+    the table's mismatch verdict ("EDITED IN PROJECT" / "STALE"), or "UNKNOWN GENERATED" for a path
+    the table does not know (fails closed)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    check = GENERATED_CHECKS.get(rel_path)
+    if check is None:
+        return "UNKNOWN GENERATED"
     target = project_path / rel_path
     if not target.exists():
         return "MISSING"
-    try:
-        expected = kit_settings.render(project_path)
-    except kit_settings.BadInput:
-        # Can't even build the expected settings — treat the existing file as unverifiable drift
-        # rather than silently passing it.
-        return "EDITED IN PROJECT"
+    render, mismatch, _ = check
+    expected = render(project_path)
+    if expected is None:
+        return mismatch
     current = target.read_text(encoding="utf-8").replace("\r\n", "\n")
-    return None if current == expected else "EDITED IN PROJECT"
+    return None if current == expected else mismatch
 
 
 def _check_local_overrides_disable_hooks(project_path: Path) -> str | None:
@@ -349,6 +386,8 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
 
     missing: list[str] = []
     edited: list[str] = []
+    stale: list[str] = []
+    unknown_generated: list[str] = []
     moved_on: list[str] = []
     opted_out: list[str] = []
     clean: list[str] = []
@@ -381,6 +420,12 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
                 missing.append(rel_path)
             elif verdict == "EDITED IN PROJECT":
                 edited.append(rel_path)
+            elif verdict == "STALE":
+                stale.append(rel_path)
+            elif verdict == "UNKNOWN GENERATED":
+                unknown_generated.append(rel_path)
+            elif verdict is not None:  # fail closed on any verdict this loop does not know
+                unknown_generated.append(rel_path)
             else:
                 clean.append(rel_path)
             continue
@@ -450,6 +495,11 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
         print(f"MISSING: {', '.join(missing)}")
     if edited:
         print(f"EDITED IN PROJECT: {', '.join(edited)}")
+    for rel_path in stale:
+        print(f"STALE (generated; regenerate with {GENERATED_CHECKS[rel_path][2]} and commit): {rel_path}")
+    for rel_path in unknown_generated:
+        print(f"UNKNOWN GENERATED: no check known for generated file {rel_path} (the lock lists it as "
+              "generated but kit_drift has no renderer for it; failing closed)")
     if moved_on:
         print(f"FACTORY MOVED ON: {', '.join(moved_on)}")
     if opted_out:
@@ -457,7 +507,7 @@ def run_project_mode(project_path: Path, ci: bool = False, base: str | None = No
     for rel_path in owner_changed:
         print(f"OWNER FILE CHANGED: {rel_path} — only the owner edits this; confirm in the PR")
 
-    rc = 1 if (missing or edited or moved_on) else 0
+    rc = 1 if (missing or edited or stale or unknown_generated or moved_on) else 0
 
     if base:
         lock_change_error = check_lock_change(project_path, lock_path, base)

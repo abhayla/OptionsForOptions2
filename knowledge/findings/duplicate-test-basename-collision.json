@@ -1,5 +1,6 @@
 {
   "id": "duplicate-test-basename-collision",
+  "scope": "generic",
   "class": "Any two test folders that are not Python packages and hold a test file with the same name break the whole test run with an import-file-mismatch collection error, but only after both files reach the same branch, so each PR is green alone and the break appears at merge time.",
   "mechanism": "pytest's default import mode inserts each test file's folder into sys.path and imports it by its bare module name; tests/rules/test_model.py and tests/strategy/test_model.py both import as 'test_model'.",
   "first_seen": {

@@ -1,5 +1,6 @@
 {
   "id": "brief-rule-from-memory",
+  "scope": "generic",
   "class": "Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it.",
   "mechanism": "The brief states the rule as settled; the builder has no reason to doubt it; the spec's actual words (or the owner-reviewed source) say something else.",
   "first_seen": {

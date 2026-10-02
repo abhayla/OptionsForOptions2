@@ -98,3 +98,5 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_drift.py . --ci` (add `--base <sha>` when checking a pull request against its base)
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)
 - Merge a PR: `python tools/merge_when_green.py <pr>`
+
+- Before pushing or touching process files, read `.claude/kit/GUIDE.md` (kit commands and kit-owned files).

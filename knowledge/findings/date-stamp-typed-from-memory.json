@@ -1,5 +1,6 @@
 {
   "id": "date-stamp-typed-from-memory",
+  "scope": "generic",
   "class": "Any date or time written into a status document, decision row or file name from the author's sense of 'today' instead of the system clock drifts; a long session that crosses midnight, or one that plans for 'tomorrow morning', stamps the future, and every reader then trusts a date that did not happen yet.",
   "mechanism": "The overnight session (git: first commit 2026-09-28 20:42 IST, handover commit 2026-09-29 09:16 IST) wrote '2026-09-30' as the handover date, the owner-review heading and file name, CLAUDE.md 'Current state', and two references - one day in the future.",
   "first_seen": {

@@ -1,5 +1,6 @@
 {
   "id": "resolution-on-stale-broker-copy",
+  "scope": "project",
   "class": "Any manual resolution or state change whose premise (what the broker holds) is read from a stored copy rather than from the latest reconciliation, or any multi-strategy recording that mutates some records before validating all of them, lets the platform act on a broker picture that is no longer true or leave a half-recorded run.",
   "mechanism": "W-021: record_report refreshed only blocked strategies, so exit/adopt used a stale copy (exited while the broker held 4 contracts; adopted -50 while the broker held -75); after that fix, record_report mutated strategy A before strategy B refused the run, leaving A flagged with no audit.",
   "first_seen": {

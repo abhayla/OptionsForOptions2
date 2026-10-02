@@ -27,7 +27,9 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_discard_uncommitted_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
           { "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_stash_worktree_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/git_stash_worktree_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
         "hooks": [
@@ -37,6 +39,16 @@
       { "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|SendMessage|RemoteTrigger|Monitor|Workflow|Agent|Task|Skill|mcp__.*|CronCreate|ScheduleWakeup",
         "hooks": [ { "type": "command",
           "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash|PowerShell",
+        "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "Bash|PowerShell",
+        "hooks": [ { "type": "command",
+          "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" } ] }
     ]
   }
 }

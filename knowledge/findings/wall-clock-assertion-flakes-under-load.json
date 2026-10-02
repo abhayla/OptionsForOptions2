@@ -1,5 +1,6 @@
 {
   "id": "wall-clock-assertion-flakes-under-load",
+  "scope": "generic",
   "class": "Any test that asserts elapsed wall-clock time against a fixed threshold (time.perf_counter() - start < N) measures the machine's load, not the code's cost; it fails whenever other work shares the CPU (parallel agents, CI neighbours) and passes on re-run, so a red run carries no information and trains readers to ignore reds.",
   "mechanism": "tests/strategy/test_versions.py::test_one_thousand_history_appends_stay_fast asserts 1,001 appends finish in under 1.0 s; with three verifiers and a builder running full suites in parallel it exceeded 1.0 s and passed alone.",
   "first_seen": {
