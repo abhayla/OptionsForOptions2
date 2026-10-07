@@ -140,7 +140,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (177)
+## Spec sections (178)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -229,6 +229,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-26 - An Authorised Person may not charge clients and brokers may no…
 - ## F-27 - Data-protection and cyber-security duties with dates
 - ## F-28 - Payments, GST and advertising gates (stream S1b, not re-read b…
+- ## F-29 - Core data proof on the owner's own account: live Kite login, q…
 
 ### spec/open-questions.md
 

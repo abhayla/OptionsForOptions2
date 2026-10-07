@@ -347,3 +347,26 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (P1 policy pages; Meta read through a rendered page only).
 - Bears on: ADR-026, REQ-023, H9, H10. Status: **unverified** until re-read in Stage 3 (each is cited by the Stage 3
   payments requirement only after a re-read).
+
+## F-29 - Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways
+- Measured 2026-10-07 ~20:00 IST (market closed; prices from that day's close) under ADR-051, with a throwaway script
+  (`docs/research/kite-proof-2026-10-07/kite_core_proof.py`, raw replies beside it; no personal data). Level P1 (real
+  data from Zerodha's API).
+- Values: NIFTY 50 22,603.05, SENSEX 72,638.70. Nearest expiries: NIFTY 13-Oct-2026 (216 contracts, ATM 22,600), SENSEX
+  08-Oct-2026 (336 contracts, ATM 72,600). NIFTY26O1322600CE (exchange token 44616) last price 124.30, OI 6,697,665,
+  lot 65, timestamp "2026-10-07 16:54:19"; SENSEX26O0872600CE (889159) 189.40, lot 20. Basket margin of a 1-lot NIFTY
+  iron condor (sell 22,800 CE, buy 23,000 CE, sell 22,400 PE, buy 22,200 PE): initial total 293,560.08, final total
+  66,431.68 (`/margins/basket`, consider_positions=false).
+- Field shapes our adapter must map (the domain `Quote` model, backend/ofo/marketdata/quote.py, uses normalised
+  names): (1) `timestamp` and `last_trade_time` are naive "YYYY-MM-DD HH:MM:SS" strings - the adapter attaches IST
+  (our model refuses a naive time, correctly); (2) bid/ask exist only inside `depth.buy/sell`, and after the close
+  every level reads price 0, quantity 0 - 0 must map to "absent", never to a Rs 0 price; (3) there is no OI-change
+  field (`oi`, `oi_day_high`, `oi_day_low` only). The reply also carries fields not in Kite's public docs:
+  `high_limit_price_protection`, `low_limit_price_protection`, `reference_limit_price`, `total_imbalance_qty`,
+  `indicative_close_price`. `ohlc.close` is the previous day's close (643.35 for the 22,600 CE).
+- Margin reply shape: `initial`, `final`, `orders` (each with span, exposure, option_premium, additional, total,
+  charges ...) and `charges`.
+- Still to prove in market hours (master-plan 4a step 2): live WebSocket ticks, reconnect, stale detection, our Greeks
+  against Kite's, and the next morning's token expiry.
+- Bears on: REQ-048, REQ-049, REQ-052, REQ-053, REQ-055, REQ-072, ADR-051, W-017 (real responses now exist). Status:
+  **recorded**.

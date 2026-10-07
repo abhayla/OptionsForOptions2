@@ -1,0 +1,33 @@
+{
+ "status": "success",
+ "data": {
+  "BSE:SENSEX": {
+   "instrument_token": 265,
+   "tradingsymbol": "SENSEX",
+   "timestamp": "2026-10-07 17:30:03",
+   "last_price": 72638.7,
+   "net_change": -429.11,
+   "indicative_close_price": 72638.7,
+   "ohlc": {
+    "open": 72965.38,
+    "high": 73018.82,
+    "low": 72468.72,
+    "close": 73067.81
+   }
+  },
+  "NSE:NIFTY 50": {
+   "instrument_token": 256265,
+   "tradingsymbol": "NIFTY 50",
+   "timestamp": "2026-10-07 17:35:05",
+   "last_price": 22603.05,
+   "net_change": -173.05,
+   "indicative_close_price": 22603.05,
+   "ohlc": {
+    "open": 22690.45,
+    "high": 22717.65,
+    "low": 22546.3,
+    "close": 22776.1
+   }
+  }
+ }
+}

@@ -228,6 +228,7 @@ findings:
   F-26: S8        # decided: ADR-055 default; Zerodha compliance pending
   F-27: S3        # DPDP / CERT-In requirements
   F-28: S3        # payments / GST / ads facts, re-read in Stage 3
+  F-29: 4a        # core data proof (owner's account): field shapes for the Kite adapter
 
 hypotheses:
   H1: done
