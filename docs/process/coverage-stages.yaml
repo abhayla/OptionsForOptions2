@@ -137,6 +137,7 @@ questions:
   Q210: S2              # external: Zerodha's written answer (owner action)
   Q224: S2              # attribution rule for shared contracts, "open for the owner"
   Q258: S2
+  Q259: S2              # how prepared orders reach Zerodha (F-17, F-18); blocks Stage 4b as written
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -201,6 +202,15 @@ findings:
   F-10: done
   F-11: S2
   F-12: S2
+  F-13: done      # recorded: OpenAlgo AGPL, ideas only
+  F-14: S2
+  F-15: S2
+  F-16: done      # recorded
+  F-17: S2        # Q259
+  F-18: S2        # Q259
+  F-19: done      # recorded
+  F-20: done      # recorded
+  F-21: S1        # unverified until stream S3's data count
 
 hypotheses:
   H1: S1

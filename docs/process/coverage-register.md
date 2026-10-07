@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit a3d3bf6
+Generated from commit bfd4323
 
 ## Stage S0
 
@@ -14,6 +14,7 @@ Generated from commit a3d3bf6
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
+| S1 | finding | F-21 | - | Exchange contract numbers come from a bounded range; reuse after expiry is likely but not stated by the exchange |
 | S1 | hypothesis | H1 | - |  |
 | S1 | hypothesis | H10 | - |  |
 | S1 | hypothesis | H11 | - |  |
@@ -45,6 +46,10 @@ Generated from commit a3d3bf6
 | S2 | finding | F-06 | - | SEBI's retail algo framework puts architecture rules on API order placement |
 | S2 | finding | F-11 | - | SEBI's retail-algo circular (primary text): brokers are principals, algo providers their agents, empanelled with exchanges |
 | S2 | finding | F-12 | - | NSE's implementation standards: a static IP maps to one client only (family excepted); API sessions end daily |
+| S2 | finding | F-14 | - | Exchanges do empanel SaaS algo providers by circular; a comparable product is empanelled "on provisional basis" |
+| S2 | finding | F-15 | - | SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns |
+| S2 | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
+| S2 | finding | F-18 | - | Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use |
 | S2 | open area | OA-01 | - | Pricing model for "Estimated Now" |
 | S2 | open area | OA-02 | - | bid/ask/slippage |
 | S2 | open area | OA-03 | - | charges model |
@@ -63,6 +68,7 @@ Generated from commit a3d3bf6
 | S2 | question | Q210 | - | What Zerodha allows, and what it costs each user |
 | S2 | question | Q224 | - | A contract held by more than one strategy disagrees with Zerodha |
 | S2 | question | Q258 | - | Does the platform count as an "algo provider" under SEBI's 2025 framework? |
+| S2 | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
 | S2 | vendor enquiry | VE-BSE | - |  |
 | S2 | vendor enquiry | VE-GlobalDatafeeds | - |  |
 | S2 | vendor enquiry | VE-NSE | - |  |
@@ -362,6 +368,10 @@ Generated from commit a3d3bf6
 | done | finding | F-08 | - | Multi-broker platforms isolate each broker in a plugin with a contract master and a capability file |
 | done | finding | F-09 | - | algochanakya's cross-broker symbol design keys on a Zerodha symbol string and is mostly stubs |
 | done | finding | F-10 | - | Zerodha's `exchange` column is not an exchange segment: (exchange, exchange_token) collides |
+| done | finding | F-13 | - | OpenAlgo is licensed AGPL-3.0: copying any of its code would put our whole hosted backend under AGPL |
+| done | finding | F-16 | - | Brokers' public option chains are delayed for signed-out visitors; live prices only after login |
+| done | finding | F-19 | - | The framework applies to all brokers from 1 April 2026; Zerodha allows up to two static IPs, used only by the client and immediate family |
+| done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
 | done | requirement | REQ-020 | - | Admin: qualifying Client ID management |
 | done | requirement | REQ-032 | - | Calculation engine |
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
@@ -380,8 +390,8 @@ Generated from commit a3d3bf6
 | Stage | build plan | conflict | decision | finding | hypothesis | issue | open area | question | requirement | vendor enquiry | work item | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| S1 | 0 | 0 | 0 | 0 | 11 | 1 | 1 | 0 | 0 | 0 | 0 | 13 |
-| S2 | 1 | 8 | 1 | 3 | 0 | 0 | 13 | 5 | 0 | 4 | 0 | 35 |
+| S1 | 0 | 0 | 0 | 1 | 11 | 1 | 1 | 0 | 0 | 0 | 0 | 14 |
+| S2 | 1 | 8 | 1 | 7 | 0 | 0 | 13 | 6 | 0 | 4 | 0 | 40 |
 | S3 | 0 | 15 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 16 |
 | 4a | 6 | 0 | 14 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 49 |
 | 4b | 1 | 0 | 4 | 1 | 0 | 4 | 0 | 0 | 12 | 0 | 1 | 23 |
@@ -398,4 +408,4 @@ Generated from commit a3d3bf6
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 3 |
 | S8 | 2 | 0 | 8 | 0 | 0 | 1 | 1 | 0 | 9 | 0 | 3 | 24 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 0 | 0 | 9 | 0 | 0 | 0 | 0 | 12 | 0 | 0 | 26 |
+| done | 5 | 0 | 0 | 13 | 0 | 0 | 0 | 0 | 12 | 0 | 0 | 30 |

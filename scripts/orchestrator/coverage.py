@@ -1,4 +1,4 @@
-"""coverage.py <repo-root> --check | --write [--no-gh]
+"""coverage.py <repo-root> --check | --write [--no-gh | --require-gh]
 
 Coverage register: discovers every tracked id from the repo files and fails when one has no stage in
 docs/process/coverage-stages.yaml (master plan 2026-10-07, A2).
@@ -6,6 +6,7 @@ docs/process/coverage-stages.yaml (master plan 2026-10-07, A2).
   --check   exit 1 listing every missing id, stale yaml id, invalid stage, missing/unknown AC, unparseable file
   --write   render docs/process/coverage-register.md (deterministic; one commit-sha line)
   --no-gh   skip the open-issues comparison
+  --require-gh  any gh failure fails the check (also implied when GITHUB_ACTIONS=true)
 Stdlib + PyYAML only.
 """
 import os
@@ -90,16 +91,19 @@ def discover(root, errors):
     else:
         cur = None  # (id, title, is_open)
         sections = []
-        for line in oq.read_text(encoding="utf-8").splitlines():
-            m = re.match(r"^##\s+(Q\d+)\s+[\u2014-]+\s+(.*)$", line)
+        for n, line in enumerate(oq.read_text(encoding="utf-8").splitlines(), 1):
+            loose = re.match(r"^#{2,6}\s*Q\d+", line)
+            m = re.match(r"^#{2,6}\s*(Q\d+)\s+[\u2014-]+\s+(.*)$", line)
+            if loose and not m:
+                errors.append(f"{SP}/open-questions.md line {n}: question heading not parsed: {line.strip()!r}")
             if m:
                 rest = m.group(2)
                 idx = rest.rfind(" \u2014 ")
                 status, title = (rest[:idx], rest[idx + 3:]) if idx >= 0 else (rest, "")
-                is_open = any(re.search(rf"\b{w}\b", status) for w in OPEN_WORDS)
+                is_open = any(re.search(rf"\b{w}\b", status, re.I) for w in OPEN_WORDS)
                 cur = [m.group(1), collapse(title) or collapse(rest), is_open]
                 sections.append(cur)
-            elif line.startswith("## "):
+            elif re.match(r"^#{1,2}\s", line):
                 cur = None
             elif cur is not None and "open for the owner" in line.lower():
                 cur[2] = True
@@ -111,8 +115,11 @@ def discover(root, errors):
     if not fp.is_file():
         errors.append(f"missing {SP}/findings.md")
     else:
-        for line in fp.read_text(encoding="utf-8").splitlines():
-            m = re.match(r"^##\s+(F-\d+)\s*[-\u2014:]*\s*(.*)$", line)
+        for n, line in enumerate(fp.read_text(encoding="utf-8").splitlines(), 1):
+            loose = re.match(r"^#{2,6}\s*F-\d+", line)
+            m = re.match(r"^#{2,6}\s*(F-\d+)\b\s*[-\u2014:]*\s*(.*)$", line)
+            if loose and not m:
+                errors.append(f"{SP}/findings.md line {n}: finding heading not parsed: {line.strip()!r}")
             if m:
                 found["findings"][m.group(1)] = {"title": collapse(m.group(2)), "acs": {}}
     # work items
@@ -165,22 +172,28 @@ def load_stages(root, errors):
     return data
 
 
+GH_LIMIT = 1000
+
+
 def gh_open_issues(root):
-    """Set of '#N' or None when gh is unavailable/unauthenticated."""
+    """-> (set of '#N' or None, reason). None means gh could not give a trustworthy list; reason says why."""
     if not shutil.which("gh"):
-        return None
+        return None, "gh binary not found"
     try:
         if not os.environ.get("GITHUB_TOKEN") and not os.environ.get("GH_TOKEN"):
             if subprocess.run(["gh", "auth", "status"], capture_output=True, cwd=root).returncode != 0:
-                return None
-        r = subprocess.run(["gh", "issue", "list", "--state", "open", "--json", "number", "--limit", "200"],
+                return None, "gh is not authenticated"
+        r = subprocess.run(["gh", "issue", "list", "--state", "open", "--json", "number", "--limit", str(GH_LIMIT)],
                            capture_output=True, text=True, cwd=root, encoding="utf-8")
         if r.returncode != 0:
-            return None
+            return None, f"gh issue list exited {r.returncode}: {(r.stderr or '').strip()[:200]}"
         import json
-        return {f"#{i['number']}" for i in json.loads(r.stdout)}
-    except Exception:  # noqa: BLE001
-        return None
+        issues = {f"#{i['number']}" for i in json.loads(r.stdout)}
+    except Exception as e:  # noqa: BLE001
+        return None, f"gh failed: {type(e).__name__}: {str(e)[:200]}"
+    if len(issues) >= GH_LIMIT:
+        return None, f"gh returned {len(issues)} issues, equal to the limit {GH_LIMIT}: list may be truncated"
+    return issues, ""
 
 
 def normalise(stages, found, errors):
@@ -220,7 +233,7 @@ def normalise(stages, found, errors):
     return rows
 
 
-def check(root, use_gh=True):
+def check(root, use_gh=True, require_gh=False):
     errors = []
     found = discover(root, errors)
     stages = load_stages(root, errors)
@@ -240,9 +253,12 @@ def check(root, use_gh=True):
                 errors.append(f"open_areas {_id}: text not found in open-questions.md: {collapse(str(v['text']))!r}")
     notes = []
     if use_gh:
-        issues = gh_open_issues(root)
+        issues, why = gh_open_issues(root)
         if issues is None:
-            notes.append("issues: not checked (gh unavailable)")
+            if require_gh or os.environ.get("GITHUB_ACTIONS") == "true":
+                errors.append(f"issues: GitHub issue list required but unavailable: {why}")
+            else:
+                notes.append(f"issues: not checked ({why})")
         else:
             have = {str(k) for k in stages.get("issues", {})}
             for i in sorted(issues - have, key=lambda s: int(s[1:])):
@@ -292,11 +308,13 @@ def render(root, rows):
 def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     flags = {a for a in argv if a.startswith("--")}
-    if len(args) != 1 or not (flags & {"--check", "--write"}) or flags - {"--check", "--write", "--no-gh"}:
+    if len(args) != 1 or not (flags & {"--check", "--write"}) or flags - {"--check", "--write", "--no-gh",
+                                                                          "--require-gh"}:
         print(__doc__)
         return 2
     root = Path(args[0]).resolve()
-    errors, found, counts, ac_total, notes, rows = check(root, use_gh="--no-gh" not in flags)
+    errors, found, counts, ac_total, notes, rows = check(root, use_gh="--no-gh" not in flags,
+                                                           require_gh="--require-gh" in flags)
     if "--write" in flags:
         if errors:
             print("coverage: refusing to write while the check fails:")

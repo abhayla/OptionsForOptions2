@@ -23,4 +23,4 @@ jobs:
       - name: Coverage register check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/orchestrator/coverage.py . --check
+        run: python scripts/orchestrator/coverage.py . --check --require-gh

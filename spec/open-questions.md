@@ -345,3 +345,22 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   I(a), III(a)). NSE: "A static IP can only be mapped to one client at a time", family excepted; for an empanelled
   provider's algos the IP "shall be that of the vendor or the client" (F-12, A.5, A.7). Still open: whether
   user-confirmed orders prepared by our rules are "algo orders" (definitions/FAQs, stream S1a) and Zerodha's own rules.
+  Answered by the text later the same day: F-17 (every API order is an algo order) and F-18 (algo providers' strategies
+  run on the broker's servers) - see Q259.
+
+## Q259 — OPEN (owner + legal + Zerodha) — How do the platform's prepared orders reach Zerodha, given that every API order is an algo order?
+- Finding: NSE treats every order received through a broker API as an algo order, even one the user confirms (F-17),
+  and requires an algo provider's strategies to run on the broker's servers with orders originating there (F-18).
+  Static IPs are one client or one family only (F-12, F-19). Our design (ADR-017, ADR-050 item 4) has our server send
+  each user's confirmed orders through that user's Kite Connect session.
+- Example: a user's Iron Condor hits its exit rule; we prepare 4 exit orders; the user presses Execute. Under F-17
+  those 4 orders, sent by our server through the API, are algo orders that must carry an algo ID from an empanelled
+  provider; our one server IP cannot be whitelisted for thousands of unrelated users (F-12 A.7).
+- Paths to weigh (none decided; costs not yet known): (a) become an exchange-empanelled algo provider hosted on
+  Zerodha's servers (ISO 27001, VAPT, two-year experience, about 30 working days, F-14/F-18; whether Zerodha hosts
+  vendors is unknown); (b) hand the prepared orders to Zerodha's own front end so the user places them there (whether a
+  Kite basket or Kite Publisher counts as the broker's front end is unknown); (c) planning, monitoring and prepared
+  orders shown only, the user enters them in Kite manually.
+- Recommendation: none yet - gather (a) and (b)'s facts first (Zerodha's written answer under ADR-034, Kite Publisher
+  documentation, stream S3), then ask the owner with costs. Spec basis: ADR-009, ADR-017, ADR-034, ADR-050, Q258.
+  This blocks master-plan Stage 4b as written; Stage 4a (data) is not affected.
