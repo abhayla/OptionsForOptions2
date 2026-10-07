@@ -6,11 +6,16 @@ its token is retired, and a later row with that token is a new contract (ADR-057
 ADR-057 ("Once the stored contract's expiry has passed, the token is retired for it; a later row with the same token
 creates a new contract with its own identity, and any record linked to the old one keeps pointing at the old one.");
 findings F-21 (62964 / 61746 expiry moved under a live token; 67245 reused after expiry; 79199 strike 410 -> 390.75).
-REQ-053 Q257's "strike never changes" is superseded for live contracts by ADR-057 (reported as a card defect).
+REQ-053 Q257's "strike never changes" is superseded for live contracts by ADR-057. ADR-058 / REQ-054 AC-3 (round 2):
+"A contract the daily list stops carrying before its expiry is marked delisted and kept, and its token is free for
+reuse (ADR-058)."
 
 Copy from: none - algochanakya keys every broker on a Zerodha symbol string (legacy-reuse.md M2 rows SKIP, F-09).
 
 Changes (owner-run, one transaction):
+- public.catalogue_contracts: gains delisted (BOOLEAN, default FALSE) and delisted_on (the database's IST date,
+  stamped by the guard, with a history row field delisted_on); a delisted contract never changes and is never
+  retired. Live = NOT retired AND NOT delisted.
 - public.catalogue_contracts: gains retired (BOOLEAN, default FALSE) and retired_at (stamped by the guard);
   CHECK retired contracts are unlisted and retired = (retired_at IS NOT NULL). UNIQUE (exchange_segment,
   exchange_token) becomes a partial unique index over live rows only (catalogue_contracts_live_identity_key).
@@ -18,8 +23,9 @@ Changes (owner-run, one transaction):
   = expiry and strike. The guard refuses: retiring a contract whose expiry has not passed on the database's IST date,
   retiring while changing terms or listed, any change to a retired contract (so never un-retired), any delete. On
   retiring it retires the contract's broker rows.
-- public.broker_instruments: gains retired (BOOLEAN, default FALSE, set only by the contract guard's cascade; no
-  application grant). UNIQUE (broker, broker_segment, broker_token) becomes a partial unique index over live rows
+- public.broker_instruments: gains retired (BOOLEAN, default FALSE: the row's contract has left the market, retired
+  or delisted; set only by the contract guard's cascade, which marks itself with the transaction-local setting
+  ofo.contract_leaving; no application grant). UNIQUE (broker, broker_segment, broker_token) becomes a partial unique index over live rows
   (broker_instruments_live_token_key): Zerodha's instrument_token is derived from the exchange token and is reused
   with it. The guard refuses: a broker row on a retired contract, retiring a row whose contract has not expired, any
   change to a retired row.
@@ -89,7 +95,7 @@ CONTRACT_COLUMNS = _M4.CONTRACT_COLUMNS
 CONTRACT_REVISABLE = ("expiry", "strike")
 CONTRACT_IDENTITY = ("id", "exchange_segment", "exchange_token", "name", "instrument_type")
 APP_INSERT_COLUMNS = CONTRACT_COLUMNS
-APP_UPDATE_COLUMNS = ("currently_listed",) + CONTRACT_REVISABLE + ("retired",)
+APP_UPDATE_COLUMNS = ("currently_listed",) + CONTRACT_REVISABLE + ("retired", "delisted")
 
 BROKER_COLUMNS = _M4.BROKER_COLUMNS
 BROKER_REVISABLE = _M4.BROKER_REVISABLE
@@ -97,12 +103,18 @@ BROKER_IDENTITY = _M4.BROKER_IDENTITY
 APP_BROKER_INSERT_COLUMNS = BROKER_COLUMNS
 APP_BROKER_UPDATE_COLUMNS = BROKER_REVISABLE
 
-HISTORY_FIELDS = CONTRACT_REVISABLE + BROKER_REVISABLE
+#: Contract-level history fields (broker NULL): the revisable terms and the delisting date (ADR-058).
+CONTRACT_HISTORY_FIELDS = CONTRACT_REVISABLE + ("delisted_on",)
+HISTORY_FIELDS = CONTRACT_HISTORY_FIELDS + BROKER_REVISABLE
+#: Transaction-local setting the contract guard sets while it frees the broker rows of a contract leaving the market.
+LEAVING_SETTING = "ofo.contract_leaving"
 MOVED_COLUMNS = _M4.MOVED_COLUMNS
 
 LIVE_IDENTITY_INDEX = "public.catalogue_contracts_live_identity_key"
 LIVE_BROKER_TOKEN_INDEX = "public.broker_instruments_live_token_key"
 OLD_IDENTITY_CONSTRAINT = "catalogue_contracts_identity_key"
+#: Live = neither retired after expiry (ADR-057) nor delisted before it (ADR-058).
+LIVE_PREDICATE = "NOT retired AND NOT delisted"
 OLD_BROKER_TOKEN_CONSTRAINT = "broker_instruments_broker_token_key"
 
 GUARDED_TRIGGERS = _M4.GUARDED_TRIGGERS  # the same triggers; only the two guard bodies change
@@ -112,6 +124,13 @@ CATALOGUE_BLOCK_MARKER = _M4.CATALOGUE_BLOCK_MARKER  # "-- 8. catalogue store"
 ALLOWLIST_BLOCK_MARKER = _M4.ALLOWLIST_BLOCK_MARKER  # "-- 9. broker instruments"
 
 _TODAY = _M4._seen_on()  # the database's IST date, never the caller's
+
+
+def _free_broker_rows() -> str:
+    """The contract guard's cascade: free the broker rows of a contract leaving the market (retired or delisted)."""
+    return f"""                PERFORM set_config('{LEAVING_SETTING}', OLD.id::text, TRUE);
+                UPDATE {BROKER_TABLE} SET retired = TRUE WHERE contract_id = OLD.id AND NOT retired;
+                PERFORM set_config('{LEAVING_SETTING}', '', TRUE);"""
 
 
 def _guard_function_sql() -> str:
@@ -139,17 +158,33 @@ def _guard_function_sql() -> str:
             IF TG_OP = 'INSERT' THEN
                 NEW.retired := FALSE;
                 NEW.retired_at := NULL;
+                NEW.delisted := FALSE;
+                NEW.delisted_on := NULL;
                 NEW.first_seen_at := clock_timestamp();
                 NEW.last_seen_at := NEW.first_seen_at;
                 RETURN NEW;
             END IF;
-            IF OLD.retired THEN
-                RAISE EXCEPTION 'catalogue store: contract id % (% %) is retired and never changes (ADR-057)',
+            IF OLD.retired OR OLD.delisted THEN
+                RAISE EXCEPTION 'catalogue store: contract id % (% %) has left the market and never changes (ADR-057, ADR-058)',
                     OLD.id, OLD.exchange_segment, OLD.exchange_token USING ERRCODE = '{CATALOGUE_SQLSTATE}';
             END IF;
             IF {changed} THEN
                 RAISE EXCEPTION 'catalogue store: the identity of contract % % never changes',
                     OLD.exchange_segment, OLD.exchange_token USING ERRCODE = '{CATALOGUE_SQLSTATE}';
+            END IF;
+            IF NEW.delisted THEN
+                IF NEW.retired OR {terms_changed} OR NEW.currently_listed THEN
+                    RAISE EXCEPTION 'catalogue store: contract id % is delisted unlisted, unretired, with its last terms (ADR-058)',
+                        OLD.id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
+                END IF;
+                NEW.delisted_on := {_TODAY};
+                NEW.retired_at := OLD.retired_at;
+                NEW.first_seen_at := OLD.first_seen_at;
+                NEW.last_seen_at := OLD.last_seen_at;
+                INSERT INTO {HISTORY} (contract_id, broker, field, old_value, new_value)
+                VALUES (OLD.id, NULL, 'delisted_on', NULL, NEW.delisted_on::text);
+{_free_broker_rows()}
+                RETURN NEW;
             END IF;
             IF NEW.retired THEN
                 IF OLD.expiry IS NULL OR OLD.expiry >= {_TODAY} THEN
@@ -161,12 +196,14 @@ def _guard_function_sql() -> str:
                         OLD.id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
                 END IF;
                 NEW.retired_at := clock_timestamp();
+                NEW.delisted_on := OLD.delisted_on;
                 NEW.first_seen_at := OLD.first_seen_at;
                 NEW.last_seen_at := OLD.last_seen_at;
-                UPDATE {BROKER_TABLE} SET retired = TRUE WHERE contract_id = OLD.id AND NOT retired;
+{_free_broker_rows()}
                 RETURN NEW;
             END IF;
             NEW.retired_at := OLD.retired_at;
+            NEW.delisted_on := OLD.delisted_on;
 {history}
             NEW.first_seen_at := OLD.first_seen_at;
             IF NEW.currently_listed THEN
@@ -203,8 +240,8 @@ def _broker_function_sql() -> str:
                     OLD.broker, OLD.broker_token, OLD.contract_id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
             END IF;
             IF TG_OP = 'INSERT' THEN
-                IF (SELECT c.retired FROM {TABLE} AS c WHERE c.id = NEW.contract_id) IS TRUE THEN
-                    RAISE EXCEPTION 'broker instruments: contract % is retired; no % row is added to it (ADR-057)',
+                IF (SELECT c.retired OR c.delisted FROM {TABLE} AS c WHERE c.id = NEW.contract_id) IS TRUE THEN
+                    RAISE EXCEPTION 'broker instruments: contract % has left the market; no % row is added to it (ADR-057)',
                         NEW.contract_id, NEW.broker USING ERRCODE = '{CATALOGUE_SQLSTATE}';
                 END IF;
                 NEW.retired := FALSE;
@@ -222,10 +259,9 @@ def _broker_function_sql() -> str:
                     OLD.broker, OLD.broker_token USING ERRCODE = '{CATALOGUE_SQLSTATE}';
             END IF;
             IF NEW.retired THEN
-                IF (SELECT c.expiry FROM {TABLE} AS c WHERE c.id = OLD.contract_id) IS NULL
-                   OR (SELECT c.expiry FROM {TABLE} AS c WHERE c.id = OLD.contract_id) >= {_TODAY} THEN
-                    RAISE EXCEPTION 'broker instruments: contract % has not expired; its % row cannot be retired (ADR-057)',
-                        OLD.contract_id, OLD.broker USING ERRCODE = '{CATALOGUE_SQLSTATE}';
+                IF current_setting('{LEAVING_SETTING}', TRUE) IS DISTINCT FROM OLD.contract_id::text THEN
+                    RAISE EXCEPTION 'broker instruments: % row % is freed only when contract % leaves the market (ADR-057, ADR-058)',
+                        OLD.broker, OLD.broker_token, OLD.contract_id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
                 END IF;
                 IF {terms_changed} THEN
                     RAISE EXCEPTION 'broker instruments: % row % is retired with its last terms (ADR-057)',
@@ -278,14 +314,14 @@ def _pin_checks() -> str:
     return "\n".join(lines)
 
 
-def _live_index_check(index: str, table: str, columns: str) -> str:
-    """The index exists on `table`, is UNIQUE, valid, and partial (WHERE NOT retired): two live rows never share it."""
+def _live_index_check(index: str, table: str, columns: str, predicate: str) -> str:
+    """The index exists on `table`, is UNIQUE, valid, and partial (WHERE `predicate`): two live rows never share it."""
     return f"""            IF NOT EXISTS (SELECT 1 FROM pg_index AS i WHERE i.indexrelid = to_regclass('{index}')
                            AND i.indrelid = '{table}'::regclass AND i.indisunique AND i.indisvalid
                            AND i.indpred IS NOT NULL
-                           AND replace(replace(pg_get_expr(i.indpred, i.indrelid), '(', ''), ')', '') = 'NOT retired'
+                           AND replace(replace(pg_get_expr(i.indpred, i.indrelid), '(', ''), ')', '') = '{predicate}'
                            AND pg_get_indexdef(i.indexrelid) LIKE '%({columns})%') THEN
-                problems := problems || 'live key {index} is missing or not UNIQUE ({columns}) WHERE NOT retired (ADR-057)'::TEXT;
+                problems := problems || 'live key {index} is missing or not UNIQUE ({columns}) WHERE {predicate} (ADR-057)'::TEXT;
             END IF;"""
 
 
@@ -306,7 +342,7 @@ def _catalogue_block() -> str:
 {_M3._columns_exactly(TABLE, "catalogue_contracts", "INSERT", APP_INSERT_COLUMNS)}
 {_M3._columns_exactly(TABLE, "catalogue_contracts", "UPDATE", APP_UPDATE_COLUMNS)}
 {_M4._moved_columns_check()}
-{_live_index_check(LIVE_IDENTITY_INDEX, TABLE, "exchange_segment, exchange_token")}
+{_live_index_check(LIVE_IDENTITY_INDEX, TABLE, "exchange_segment, exchange_token", LIVE_PREDICATE)}
 {_M3._sequence_checks(SEQUENCE, "catalogue id", usage=True)}
 {_PREV._privilege_checks(HISTORY, "catalogue_term_changes", {"SELECT"})}
 {_M3._columns_exactly(HISTORY, "catalogue_term_changes", "INSERT", ())}
@@ -338,7 +374,7 @@ def _broker_block() -> str:
 {_PREV._privilege_checks(BROKER_TABLE, "broker_instruments", {"SELECT"})}
 {_M3._columns_exactly(BROKER_TABLE, "broker_instruments", "INSERT", APP_BROKER_INSERT_COLUMNS)}
 {_M3._columns_exactly(BROKER_TABLE, "broker_instruments", "UPDATE", APP_BROKER_UPDATE_COLUMNS)}
-{_live_index_check(LIVE_BROKER_TOKEN_INDEX, BROKER_TABLE, "broker, broker_segment, broker_token")}
+{_live_index_check(LIVE_BROKER_TOKEN_INDEX, BROKER_TABLE, "broker, broker_segment, broker_token", "NOT retired")}
 {_M3._sequence_checks(BROKER_SEQUENCE, "broker instruments id", usage=True)}
 {_M3._guard_function_checks(BROKER_FUNCTION, security_definer=True)}
         END IF;
@@ -396,20 +432,24 @@ def upgrade() -> None:
     # Existing rows stay as they are and become live contracts (retired = FALSE); nothing is rewritten.
     op.execute(f"ALTER TABLE {TABLE} ADD COLUMN retired BOOLEAN NOT NULL DEFAULT FALSE")
     op.execute(f"ALTER TABLE {TABLE} ADD COLUMN retired_at TIMESTAMPTZ")
+    op.execute(f"ALTER TABLE {TABLE} ADD COLUMN delisted BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(f"ALTER TABLE {TABLE} ADD COLUMN delisted_on DATE")
     op.execute(f"ALTER TABLE {TABLE} ADD CONSTRAINT catalogue_contracts_retired_unlisted "
-               f"CHECK (NOT (retired AND currently_listed))")
+               f"CHECK (NOT ((retired OR delisted) AND currently_listed) AND NOT (retired AND delisted))")
+    op.execute(f"ALTER TABLE {TABLE} ADD CONSTRAINT catalogue_contracts_delisted_stamped "
+               f"CHECK (delisted = (delisted_on IS NOT NULL))")
     op.execute(f"ALTER TABLE {TABLE} ADD CONSTRAINT catalogue_contracts_retired_stamped "
                f"CHECK (retired = (retired_at IS NOT NULL))")
     op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT {OLD_IDENTITY_CONSTRAINT}")
     op.execute(f"CREATE UNIQUE INDEX {LIVE_IDENTITY_INDEX.split('.')[1]} ON {TABLE} "
-               f"(exchange_segment, exchange_token) WHERE NOT retired")
+               f"(exchange_segment, exchange_token) WHERE {LIVE_PREDICATE}")
 
     op.execute(f"ALTER TABLE {BROKER_TABLE} ADD COLUMN retired BOOLEAN NOT NULL DEFAULT FALSE")
     op.execute(f"ALTER TABLE {BROKER_TABLE} DROP CONSTRAINT {OLD_BROKER_TOKEN_CONSTRAINT}")
     op.execute(f"CREATE UNIQUE INDEX {LIVE_BROKER_TOKEN_INDEX.split('.')[1]} ON {BROKER_TABLE} "
                f"(broker, broker_segment, broker_token) WHERE NOT retired")
 
-    for statement in _history_checks(CONTRACT_REVISABLE, HISTORY_FIELDS):
+    for statement in _history_checks(CONTRACT_HISTORY_FIELDS, HISTORY_FIELDS):
         op.execute(statement)
 
     op.execute(_guard_function_sql())
@@ -447,7 +487,7 @@ def downgrade() -> None:
     role = _BASE._app_role()
     op.execute(_M4.extended_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {_BASE.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")
-    op.execute(f'REVOKE UPDATE ("strike") ON TABLE {TABLE} FROM "{role}"')  # "retired" goes with its column
+    op.execute(f'REVOKE UPDATE ("strike") ON TABLE {TABLE} FROM "{role}"')  # "retired"/"delisted" go with columns
     op.execute(_M4._guard_function_sql())
     op.execute(_M4._broker_function_sql())
     for fn in (GUARD_FUNCTION, BROKER_FUNCTION):
@@ -462,7 +502,10 @@ def downgrade() -> None:
     op.execute(f"DROP INDEX {LIVE_IDENTITY_INDEX}")
     op.execute(f"ALTER TABLE {TABLE} ADD CONSTRAINT {OLD_IDENTITY_CONSTRAINT} UNIQUE (exchange_segment, exchange_token)")
     op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT catalogue_contracts_retired_stamped")
+    op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT catalogue_contracts_delisted_stamped")
     op.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT catalogue_contracts_retired_unlisted")
     op.execute(f"ALTER TABLE {TABLE} DROP COLUMN retired_at")
     op.execute(f"ALTER TABLE {TABLE} DROP COLUMN retired")
+    op.execute(f"ALTER TABLE {TABLE} DROP COLUMN delisted_on")
+    op.execute(f"ALTER TABLE {TABLE} DROP COLUMN delisted")
     op.execute(f"SELECT {_BASE.ALLOWLIST_FUNCTION}('{role}', 'post')")

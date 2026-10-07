@@ -217,7 +217,7 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
         ("broker_instruments_guard", 31),
     ]
     assert dict(migration.GUARDED_TABLES)["public.audit_anchor"] == ()
-    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry", "strike", "retired")  # ADR-057 (W-057)
+    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry", "strike", "retired", "delisted")  # W-057
     assert migration.APP_INSERT_COLUMNS == ("exchange_segment", "exchange_token", "name", "expiry", "strike",
                                             "instrument_type")
     assert migration.APP_BROKER_UPDATE_COLUMNS == ("broker_symbol", "lot_size", "tick_size", "freeze_limit")
@@ -301,9 +301,14 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
     assert conn.writes[2][1]["segments"] == sorted(
         c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
-    with pytest.raises(ValueError, match="refused: would drop 1 contract"):
-        await apply_update(refused, [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"], as_of=AS_OF)
+    with pytest.raises(ValueError, match="refused: would drop 8 of 11 live NIFTY contracts"):  # ADR-058: > 10%
+        await apply_update(refused, _without_nifty_options(_fixture()), as_of=AS_OF)
     assert refused.writes == []
+
+
+def _without_nifty_options(contracts: list[ListedContract]) -> list[ListedContract]:
+    """A truncated list (ADR-058): the 8 NIFTY options of the fixture's 11 live NIFTY contracts are missing (72.7%)."""
+    return [c for c in contracts if not (c.contract.name == "NIFTY" and c.contract.is_option())]
 
 
 def _stored_rows() -> list:
@@ -448,16 +453,16 @@ async def test_fixture_round_trips_unchanged_with_exact_decimals(app_engine: Asy
 
 
 async def check_truncated_update_refused(conn: AsyncConnection) -> None:
-    """A list missing one unexpired contract (NIFTY26O1325050CE, expiry 2026-10-13) plus one new contract is
+    """A truncated list (ADR-058: 8 of the 11 live NIFTY contracts missing, more than 10%) plus one new contract is
     refused, and every row keeps every column (listedness and stamps included); nothing is inserted."""
     before = await _snapshot(conn)
-    truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
+    truncated = _without_nifty_options(_fixture())
     extra = with_terms(_by_symbol(_fixture(), "NIFTY26O1325050CE"), exchange_token=99999, broker_token="99999999",
                        broker_symbol="NEW-CONTRACT")
     try:
         await apply_update(conn, truncated + [extra], as_of=AS_OF)
     except ValueError as exc:
-        assert "refused: would drop 1 contract" in str(exc), exc
+        assert "refused: would drop 8 of 11 live NIFTY contracts" in str(exc), exc
         assert await _snapshot(conn) == before
         return
     raise AssertionError(f"not refused: truncated update ({len(await _snapshot(conn))} rows now)")
@@ -927,19 +932,19 @@ async def test_mutation_weakening_the_guard_lets_the_owner_delete(admin_engine: 
 async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
     app_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A store whose domain call judges expiry against the wrong date (here: year 2100, so nothing is "unexpired")
-    no longer refuses the truncated list, and the store then writes: the refusal check goes red."""
-    original = Catalogue.update
+    """A store whose ADR-058 counting guard is bypassed no longer refuses the truncated list, and the store then
+    writes (delisting the missing contracts): the refusal check goes red."""
+    from ofo_app import catalogue_store
 
-    def wrong_date(self, contracts, *, as_of, **kwargs):
-        return original(self, contracts, as_of=datetime(2100, 1, 1, tzinfo=IST), **kwargs)
+    def no_guard(*args, **kwargs):
+        return None
 
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await check_truncated_update_refused(conn)
-            monkeypatch.setattr(Catalogue, "update", wrong_date)
+            monkeypatch.setattr(catalogue_store, "_refuse_truncated", no_guard)
             with pytest.raises(AssertionError, match="not refused: truncated update"):
                 await check_truncated_update_refused(conn)
         finally:
@@ -1011,12 +1016,14 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
             before = await _snapshot(conn)
             victim = named[2]
             assert victim.contract.expiry >= as_of.astimezone(IST).date()
-            copy = [c for c in contracts if c.id != victim.id]
-            with pytest.raises(ValueError, match="refused: would drop 1 contract"):
+            nifty = [c for c in scoped if c.contract.name == "NIFTY"]
+            cut = {c.id for c in nifty[: len(nifty) * 4 // 10]} | {victim.id}  # ADR-058: a 40% cut is refused
+            copy = [c for c in contracts if c.id not in cut]
+            with pytest.raises(ValueError, match="refused: would drop .* live NIFTY contracts"):
                 await apply_update(conn, copy, as_of=as_of)
             after = await _snapshot(conn)
             assert after == before
-            lines.append(f"W-053 PROOF refused removing {_sym(victim)} (expiry {victim.contract.expiry}); "
+            lines.append(f"W-053 PROOF refused removing {len(cut)} NIFTY incl. {_sym(victim)} (expiry {victim.contract.expiry}); "
                          f"rows before={len(before)} after={len(after)} identical={after == before}")
             with capsys.disabled():
                 print("\n" + "\n".join(lines))

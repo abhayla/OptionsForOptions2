@@ -477,8 +477,10 @@ def test_ac3_migration_0005_shape() -> None:
     assert m5.down_revision == "0004_broker_instruments"
     assert m5.CONTRACT_REVISABLE == ("expiry", "strike")
     assert m5.CONTRACT_IDENTITY == ("id", "exchange_segment", "exchange_token", "name", "instrument_type")
-    assert m5.HISTORY_FIELDS == ("expiry", "strike", "broker_symbol", "lot_size", "tick_size", "freeze_limit")
-    assert m5.ADDED_UPDATE_COLUMNS == ("strike", "retired")
+    assert m5.HISTORY_FIELDS == ("expiry", "strike", "delisted_on", "broker_symbol", "lot_size", "tick_size",
+                                 "freeze_limit")
+    assert m5.ADDED_UPDATE_COLUMNS == ("strike", "retired", "delisted")
+    assert m5.LIVE_PREDICATE == "NOT retired AND NOT delisted"
     assert "retired" not in m5.APP_BROKER_UPDATE_COLUMNS + m5.APP_BROKER_INSERT_COLUMNS + m5.APP_INSERT_COLUMNS
     for fn in ("public.catalogue_contracts_guard()", "public.broker_instruments_guard()"):
         assert m5.PINNED_BODIES[fn] != m4.PINNED_BODIES[fn]
