@@ -115,7 +115,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   place algo orders with Brokers through API, shall require to be empaneled with Exchanges". Footnotes define white-box
   and black-box algos (5, 6) and the kill switch (4). Applicability: "with effect from August 01, 2025" (para 7(b)).
 - In force: as dated; later extensions of that date are not yet read (Stage 1 stream S1a checks them).
-- Bears on: Q258, REQ-042, REQ-054, REQ-063, REQ-066, ADR-009, ADR-050 item 4. Status: **open for owner decision**.
+- Bears on: Q258, REQ-042, REQ-054, REQ-063, REQ-066, ADR-009, ADR-050 item 4. Status: **decided** (ADR-054,
+  2026-10-07: the platform sends no orders through the API; Zerodha's confirmation pending).
   Whether our platform is an "algo provider" sending "algo orders" is not settled by this text alone; S1a reads the
   definitions and FAQs, and Q258 stays with Zerodha's answer and the Q211 legal review.
 
@@ -133,7 +134,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   let that IP be each user's client IP; A.5 allows a vendor IP only for an empanelled algo provider. This is the centre
   of Q258 and of master-plan decisions D1 and D5.
 - In force: as dated; later NSE circulars and BSE's equivalent are not yet read (S1a).
-- Bears on: Q258, Q205 (daily session end), REQ-015 AC-7, REQ-054, REQ-063. Status: **open for owner decision**.
+- Bears on: Q258, Q205 (daily session end), REQ-015 AC-7, REQ-054, REQ-063. Status: **decided** (ADR-053 daily
+  session pause; ADR-054 no orders from our server, so no shared static IP).
 
 ## F-13 - OpenAlgo is licensed AGPL-3.0: copying any of its code would put our whole hosted backend under AGPL
 - Source: github.com/marketcalls/openalgo, file `License.md` on `main` (raw.githubusercontent.com/.../main/License.md;
@@ -153,7 +155,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   provisional basis". AlgoTest's home page says "Exchange Empanelled" without "provisional" (stream S2b, P1 page).
 - Meaning for us: empanelment is a real route that comparable SaaS platforms use; whether we need it is still Q258.
   Whether the NSE list has more entries, and BSE's list, is not yet read.
-- Bears on: Q258, REQ-066, master-plan decisions D1/D2. Status: **open for owner decision**.
+- Bears on: Q258, REQ-066, master-plan decisions D1/D2. Status: **decided** (ADR-054: empanelment is the fallback path
+  if Zerodha says basket orders are algo orders).
 
 ## F-15 - SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns
 - Source: SEBI adjudication order Order/JS/YK/2025-26/32256, 25 Mar 2026, "In the matter of TradeTron and other Algo
@@ -165,7 +168,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Meaning for us: what a platform shows (returns, performance, "assured" wording) becomes the associated broker's
   problem, and so the owner's (a Zerodha Authorised Person) and Zerodha's. It strengthens ADR-003 (decision-support
   wording) and the REQ-005 forbidden-phrase check; the 2022 circular's clause 4.2 text is not yet read (stream S1b).
-- Bears on: ADR-003, REQ-005, REQ-051 (simulation results), REQ-066, H4, H10. Status: **open for owner decision**
+- Bears on: ADR-003, REQ-005, REQ-051 (simulation results), REQ-066, H4, H10. Status: **decided** (ADR-055: no return
+  claims, no marketplace)
   (whether past-performance or backtest display needs a rule beyond REQ-051 AC-7).
 
 ## F-16 - Brokers' public option chains are delayed for signed-out visitors; live prices only after login
@@ -189,7 +193,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   is not a legal opinion (Q211).
 - In force: yes, for all brokers from 1 Apr 2026 (F-19).
 - Bears on: ADR-009, ADR-017, ADR-050 item 4, REQ-042, REQ-054, REQ-056, REQ-063, REQ-066, Q258, master plan D1/D2 and
-  Stage 4b. Status: **open for owner decision** (Q259).
+  Stage 4b. Status: **decided** (ADR-054; Zerodha's confirmation pending, Q259).
 
 ## F-18 - Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use
 - Source (P1, read raw 2026-10-07): NSE FAQ (3 Nov 2025) Q5 quoting NSE/INVG/69255 Annexure I para 14: "all the
@@ -205,7 +209,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   empanelled provider hosted on Zerodha's infrastructure (whether Zerodha offers that is unknown); (b) hand the
   prepared orders to Zerodha's own front end for the user to place (e.g. a Kite basket - whether that counts as the
   broker's front end is unknown); (c) a planning-only product with no order sending. F-14 shows (a) is used by peers.
-- Bears on: as F-17, plus REQ-003, REQ-015, master plan D5. Status: **open for owner decision** (Q259).
+- Bears on: as F-17, plus REQ-003, REQ-015, master plan D5. Status: **decided** (ADR-054 chose path (b)).
 
 ## F-19 - The framework applies to all brokers from 1 April 2026; Zerodha allows up to two static IPs, used only by the client and immediate family
 - Source (P1, read raw 2026-10-07): SEBI circular SEBI/HO/MIRSD/MIRSD-PoD/P/CIR/2025/132, 30 Sep 2025, para 8: "W.e.f.
@@ -247,7 +251,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   but not over time; a stored strategy leg keyed on it alone could later point at a different contract. The identity
   needs the expiry (or a validity range) as well; changing it is an owner decision (Q262). Closes the data question of
   #116.
-- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **open for owner decision**.
+- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **decided** (ADR-052: identity includes
+  the expiry date).
 
 ## F-22 - Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page
 - Source: Kite Connect v3 docs, "Offsite order execution" (kite.trade/docs/connect/v3/basket/) and Kite Publisher
@@ -263,8 +268,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   how a failed leg is reported back. Only Zerodha's written answer settles the first (ADR-034 thread).
 - Meaning for us: a candidate for Q259 path (b) that keeps "every order belongs to a strategy" (our `tag` per order,
   ADR-050 item 4(a)) while the order is placed on Zerodha's own page; it also fits ADR-009 (the user executes).
-- Bears on: Q259, Q258, ADR-009, ADR-017, ADR-050 item 4, REQ-042, REQ-054, REQ-056, REQ-057. Status: **open for owner
-  decision**.
+- Bears on: Q259, Q258, ADR-009, ADR-017, ADR-050 item 4, REQ-042, REQ-054, REQ-056, REQ-057. Status: **decided**
+  (ADR-054: the planned order path; Zerodha's confirmation of its algo status pending).
 
 ## F-23 - Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display
 - Source (P1, read raw 2026-10-07, stream S1b, re-read by the orchestrator): SEBI circular of 24 May 2024 on sharing
@@ -283,8 +288,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   by Kite's terms for "platforms ... offer[ed] to other Clients of Zerodha" only after exchange approvals; whether the
   SEBI 2024 "third party ... platforms" bar applies is not settled by the text. Only Zerodha's written answer (ADR-034)
   settles (b).
-- Bears on: ADR-012, ADR-014, ADR-034, REQ-010, REQ-029, REQ-048, REQ-050, REQ-052, Q204, Q210, H1. Status: **open for
-  owner decision** (Q210, Q204).
+- Bears on: ADR-012, ADR-014, ADR-034, REQ-010, REQ-029, REQ-048, REQ-050, REQ-052, Q204, Q210, H1. Status: **decided**
+  for (a) and for V1's per-user feed (ADR-053); (b) for other users waits for Zerodha's written answer (Q210, ADR-034;
+  ADR-051 covers the owner's own account only).
 
 ## F-24 - SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration
 - Source (P1, read raw 2026-10-07): SEBI (Research Analysts) Regulations 2014 as amended (Third Amendment, Gazette 16
@@ -297,7 +303,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Interpretation (not a ruling): payoff and what-if tools look outside RA; "suggested setups" with strikes, stop-loss or
   adjustment triggers on a paid plan may fall inside it. Our wording rule (ADR-003) does not by itself decide this.
 - Bears on: ADR-003, ADR-005, ADR-011, REQ-005, REQ-024, REQ-025, REQ-027, REQ-045, REQ-046, REQ-068, REQ-069, Q211, H3.
-  Status: **open for owner decision** (Q261).
+  Status: **decided** (ADR-055 strict default until the legal review answers Q261).
 
 ## F-25 - Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims
 - Source (P1, read raw 2026-10-07): SEBI circular of 29 Jan 2025 on association with unregistered entities (updated 8
@@ -308,7 +314,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   performance only for IAs, RAs and algo services.
 - Meaning for us: if the platform gave unregistered advice or performance claims, the owner (an AP) and Zerodha would be
   exposed - the same class as F-15. Together with F-24 this decides how suggestions and simulations may be worded.
-- Bears on: ADR-003, ADR-013, REQ-005, REQ-051, REQ-066, F-15, H4. Status: **open for owner decision** (Q261).
+- Bears on: ADR-003, ADR-013, REQ-005, REQ-051, REQ-066, F-15, H4. Status: **decided** (ADR-055 strict default; Q261).
 
 ## F-26 - An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans
 - Source (P1, read raw 2026-10-07): SEBI Master Circular for Stock Brokers (17 Jun 2025), chapter on Authorised
@@ -322,7 +328,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   an AP selling Rs 600/month Pro to clients (ADR-026). A separate legal entity, Zerodha's written view or the proposed
   AP framework may change the answer.
 - Bears on: ADR-024, ADR-025, ADR-026, ADR-038, ADR-044, REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, H11. Status:
-  **open for owner decision** (Q260).
+  **decided** (ADR-055: paid plan, free Pro and referral rewards held until Zerodha compliance answers Q260).
 
 ## F-27 - Data-protection and cyber-security duties with dates
 - Source (P1, read raw 2026-10-07): DPDP Rules 2025 (G.S.R. 846(E), 13 Nov 2025), rule 1(4): rules 3, 5-16, 22, 23 come

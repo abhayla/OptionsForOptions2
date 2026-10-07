@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (50)
+## Decisions (56)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -56,10 +56,16 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-048 2026-10-02: Local database tests run against a separate ofo_test database on the Windows VPS PostgreSQL (103.118.16.189, reached through the existing SSH tunnel… [none — development environment decision, no requi…]
 - ADR-049 2026-10-02: The Vue frontend uses Tailwind CSS 4, set up by copying algochanakya's frontend configuration (ADR-047), with this project's own design tokens. [extends ADR-043; applies ADR-010]
 - ADR-050 2026-10-02: A contract is identified by its exchange segment and the exchange's own contract number (exchange token), which every Indian broker carries for the s… [refines REQ-053; extends ADR-016; extends ADR-029]
+- ADR-051 2026-10-07: As an exception to ADR-034, the owner's own Kite Connect app and account may be used now for a private technical proof of the core's data half - live… [amends ADR-034]
+- ADR-052 2026-10-07: A contract is identified by (exchange segment, exchange token, expiry date); underlying, strike as exact decimal and CE/PE/FUT stay the cross-check. [amends ADR-050]
+- ADR-053 2026-10-07: For V1 live market data comes through each user's own Kite Connect connection (no shared platform feed until a licensed vendor exists); calculations… [refines ADR-012; refines ADR-014]
+- ADR-054 2026-10-07: The planned order path is Zerodha's offsite order execution - the platform builds the strategy's orders as a read-only Kite basket, each order carryi… [refines ADR-017; refines ADR-050]
+- ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q211) answer in writing, (1) suggestions stay educational and generic - setups are shown as templates… [refines ADR-003; refines ADR-005; refines ADR-024…]
+- ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is unparked and built in Stage 4a with the allowlist design - no attribute assignment on any imported mod… [refines ADR-030; refines ADR-007]
 
-## Requirements (71)
+## Requirements (74)
 
-- REQ-001 [Specified]: V1 scope: underlyings, leg types, broker
+- REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
 - REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
@@ -73,7 +79,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-012 [Approved]: Registration and identity layers
 - REQ-013 [Approved]: Email change and account deletion
 - REQ-014 [Approved]: Zerodha Client ID binding and anti-abuse
-- REQ-015 [Specified]: Zerodha connection
+- REQ-015 [Approved]: Zerodha connection
 - REQ-016 [Specified]: Strategies without Zerodha
 - REQ-017 [Approved]: Entitlement engine
 - REQ-018 [Approved]: Trial and Limited/Read-Only mode
@@ -106,11 +112,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-045 [Approved]: Adjustment detection and triggers
 - REQ-046 [Approved]: Adjustment Opportunity panel and Before/After
 - REQ-047 [Specified]: Adjustment-relevant data collection
-- REQ-048 [Specified]: Market-data pipeline and browser boundary
+- REQ-048 [Approved]: Market-data pipeline and browser boundary
 - REQ-049 [Approved]: Normalized market data and data health
 - REQ-050 [Specified]: Shared computation and scale
 - REQ-051 [Specified]: Historical storage tiers and simulation
-- REQ-052 [Specified]: Market-data sourcing and licensing
+- REQ-052 [Approved]: Market-data sourcing and licensing
 - REQ-053 [Approved]: Broker authority and contract eligibility
 - REQ-054 [Approved]: Broker adapter
 - REQ-055 [Specified]: Margin checks
@@ -121,7 +127,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-060 [Verified]: Reconciliation with Zerodha
 - REQ-061 [Specified]: Existing positions on connect
 - REQ-062 [Specified]: Notifications
-- REQ-063 [Specified]: Security boundaries
+- REQ-063 [Approved]: Security boundaries
 - REQ-064 [Approved]: Audit log
 - REQ-065 [Approved]: Error classification and messages
 - REQ-066 [Specified]: Compliance gates
@@ -130,6 +136,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-069 [Approved]: Suggested setups in the Guided Builder
 - REQ-070 [Verified]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
+- REQ-072 [Specified]: Index spot prices for NIFTY 50 and SENSEX
+- REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
+- REQ-074 [Specified]: Security incident reporting and log retention
 
 ## Spec sections (177)
 
@@ -225,8 +234,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 
 - # Open product questions
 - ## Closed by the full chats (were open after the handoff import)
-- ## Q204 — OPEN — Shared data feed vs each user's own Zerodha feed
-- ## Q205 — OPEN — Monitoring while the user's Zerodha session has expired
+- ## Q204 — DECIDED → ADR-053 (owner delegation, 2026-10-07: per-user feed…
+- ## Q205 — DECIDED → ADR-053 (owner delegation, 2026-10-07: visible pause…
 - ## Q206 — DECIDED (spec-conformant, 2026-09-29; no new rule: follows Q18…
 - ## Q207 — DECIDED → ADR-041 (owner, 2026-09-29: A) — Futures leg payoff…
 - ## Q208 — DECIDED → ADR-042 (owner, 2026-09-29: A) — Scenario and range…
@@ -281,11 +290,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact con…
 - ## Q256 — DECIDED (owner, 2026-10-02) — The clock-skew window value (ADR…
 - ## Q257 — DECIDED (owner delegation, 2026-10-02) — An existing contract…
-- ## Q258 — OPEN (external: Zerodha + legal) — Does the platform count as…
-- ## Q259 — OPEN (owner + legal + Zerodha) — How do the platform's prepare…
-- ## Q260 — OPEN (owner + Zerodha compliance + legal) — Can the owner, as…
-- ## Q261 — OPEN (owner + legal) — Which features count as research or adv…
-- ## Q262 — OPEN (owner) — Contract identity must stay unique over time: a…
+- ## Q258 — EXTERNAL (Zerodha's written answer; design decided → ADR-054,…
+- ## Q259 — EXTERNAL (Zerodha confirmation; path (b) chosen → ADR-054, own…
+- ## Q260 — EXTERNAL (Zerodha compliance's written view; strict default →…
+- ## Q261 — LEGAL (legal review Q211; strict default → ADR-055, 2026-10-07…
+- ## Q262 — DECIDED → ADR-052 (owner delegation, 2026-10-07: identity incl…
 
 ### spec/operations/README.md
 
