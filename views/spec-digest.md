@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (56)
+## Decisions (59)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -62,6 +62,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-054 2026-10-07: The planned order path is Zerodha's offsite order execution - the platform builds the strategy's orders as a read-only Kite basket, each order carryi… [refines ADR-017; refines ADR-050]
 - ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q211) answer in writing, (1) suggestions stay educational and generic - setups are shown as templates… [refines ADR-003; refines ADR-005; refines ADR-024…]
 - ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is unparked and built in Stage 4a with the allowlist design - no attribute assignment on any imported mod… [refines ADR-030; refines ADR-007]
+- ADR-057 2026-10-07: Correction of ADR-052. [amends ADR-052; amends ADR-050]
+- ADR-058 2026-10-07: A stored contract stops being live in either of two ways - its expiry has passed (ADR-057), or the daily list no longer carries it while its expiry i… [amends ADR-057]
+- ADR-059 2026-10-07: For a list row whose token is held by a live stored contract, the change is a revision of that contract only if the underlying, option type and excha… [amends ADR-058; amends ADR-057]
 
 ## Requirements (74)
 
@@ -140,7 +143,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (178)
+## Spec sections (179)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -230,6 +233,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-27 - Data-protection and cyber-security duties with dates
 - ## F-28 - Payments, GST and advertising gates (stream S1b, not re-read b…
 - ## F-29 - Core data proof on the owner's own account: live Kite login, q…
+- ## F-30 - The exchange removes contracts before their expiry and reuses…
 
 ### spec/open-questions.md
 
@@ -295,7 +299,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q259 — EXTERNAL (Zerodha confirmation; path (b) chosen → ADR-054, own…
 - ## Q260 — EXTERNAL (Zerodha compliance's written view; strict default →…
 - ## Q261 — LEGAL (legal review Q211; strict default → ADR-055, 2026-10-07…
-- ## Q262 — DECIDED → ADR-052 (owner delegation, 2026-10-07: identity incl…
+- ## Q262 — DECIDED → ADR-052, corrected by ADR-057 (owner delegation, 202…
 
 ### spec/operations/README.md
 

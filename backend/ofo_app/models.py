@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, Numeric, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Index, Integer, Numeric, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,17 +34,20 @@ class LedgerEntry(Base):
 
 class CatalogueContract(Base):
     """One NIFTY (NSE_FO) or SENSEX (BSE_FO) option or future contract, identified by (exchange_segment,
-    exchange_token) (REQ-053 AC-2, REQ-054 AC-3; migrations 0003_catalogue_store and 0004_broker_instruments).
+    exchange_token) while it is live (REQ-053 AC-2, REQ-054 AC-3, ADR-057; migrations 0003_catalogue_store,
+    0004_broker_instruments and 0005_contract_lifecycle). Links use the internal id.
 
-    Rows are never deleted and their identity never changes (database trigger catalogue_contracts_guard); expiry is the
-    only revisable column, its changes recorded in public.catalogue_term_changes. No broker's ids live here: Zerodha's
+    Rows are never deleted and their identity never changes (database trigger catalogue_contracts_guard); expiry and
+    strike are the revisable columns of a live contract, their changes recorded in public.catalogue_term_changes. Once
+    its expiry has passed a contract is retired (never changes again) and its token may be reused by a new contract. No broker's ids live here: Zerodha's
     instrument_token, trading symbol, segment code, lot and tick size are in BrokerInstrument. Reads and writes go
     through ofo_app.catalogue_store.
     """
 
     __tablename__ = "catalogue_contracts"
     __table_args__ = (
-        UniqueConstraint("exchange_segment", "exchange_token", name="catalogue_contracts_identity_key"),
+        Index("catalogue_contracts_live_identity_key", "exchange_segment", "exchange_token", unique=True,
+              postgresql_where=text("NOT retired AND NOT delisted")),
         {"schema": "public"},
     )
 
@@ -58,6 +61,10 @@ class CatalogueContract(Base):
     currently_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    retired: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delisted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    delisted_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class BrokerInstrument(Base):
@@ -67,7 +74,8 @@ class BrokerInstrument(Base):
 
     __tablename__ = "broker_instruments"
     __table_args__ = (
-        UniqueConstraint("broker", "broker_segment", "broker_token", name="broker_instruments_broker_token_key"),
+        Index("broker_instruments_live_token_key", "broker", "broker_segment", "broker_token", unique=True,
+              postgresql_where=text("NOT retired")),
         UniqueConstraint("contract_id", "broker", name="broker_instruments_contract_broker_key"),
         {"schema": "public"},
     )
@@ -84,3 +92,4 @@ class BrokerInstrument(Base):
     seen_on: Mapped[date] = mapped_column(Date, nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    retired: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))

@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from ofo.instruments import InstrumentId, MissingBrokerRef
 from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.models import ListedContract
 from ofo_app.catalogue_store import CatalogueStoreError, apply_update, load_catalogue, parse_rows_naming_the_row, with_terms
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -251,19 +252,32 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
             await apply_update(conn, rows, as_of=as_of)
             contracts = await _scalar(conn, f"SELECT count(*) FROM {TABLE}")
             broker_rows = await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'")
-            assert len(scoped) == contracts == broker_rows
+            load_day = as_of.astimezone(IST).date()
+            live_rows = [r for r in scoped if r.contract.expiry >= load_day]  # ADR-059: stale rows are skipped
+            assert len(live_rows) == contracts == broker_rows
+
+            # W-057 fix: the named contracts are chosen relative to the load date (the live file changes daily): the
+            # lowest-token CE of the nearest unexpired NIFTY and SENSEX expiry, compared with the file's own row
+            def nearest_ce(name: str) -> ListedContract:
+                pool = [r for r in live_rows if r.contract.name == name and r.contract.instrument_type == "CE"]
+                first = min(r.contract.expiry for r in pool)
+                return min((r for r in pool if r.contract.expiry == first), key=lambda r: r.contract.exchange_token)
+
+            want_nifty, want_sensex = nearest_ce("NIFTY"), nearest_ce("SENSEX")
             nifty = (await conn.execute(text(
                 f"SELECT c.exchange_segment, c.exchange_token, b.broker, b.broker_token, b.broker_symbol FROM {TABLE} "
-                f"AS c JOIN {BROKER} AS b ON b.contract_id = c.id WHERE c.name = 'NIFTY' AND c.strike = 20050 "
-                f"AND c.instrument_type = 'CE' AND c.expiry = '2026-10-06'"))).one()
-            assert tuple(nifty) == ("NSE_FO", 40559, "zerodha", "10383106", "NIFTY26O0620050CE")
+                f"AS c JOIN {BROKER} AS b ON b.contract_id = c.id WHERE c.exchange_segment = 'NSE_FO' "
+                f"AND c.exchange_token = :t"), {"t": want_nifty.contract.exchange_token})).one()
+            ref = want_nifty.ref("zerodha")
+            assert tuple(nifty) == ("NSE_FO", want_nifty.contract.exchange_token, "zerodha", ref.broker_token,
+                                    ref.broker_symbol)
             sensex = (await conn.execute(text(
-                f"SELECT exchange_segment, exchange_token FROM {TABLE} WHERE name = 'SENSEX' AND strike = 75000 "
-                f"AND instrument_type = 'CE' AND expiry = '2026-10-08'"))).one()
-            assert tuple(sensex) == ("BSE_FO", 888931)
+                f"SELECT exchange_segment, exchange_token FROM {TABLE} WHERE exchange_segment = 'BSE_FO' "
+                f"AND exchange_token = :t"), {"t": want_sensex.contract.exchange_token})).one()
+            assert tuple(sensex) == ("BSE_FO", want_sensex.contract.exchange_token)
             stray = await _scalar(conn, f"SELECT count(*) FROM {TABLE} WHERE exchange_token = 1001")
             assert stray == 0
-            entry = (await load_catalogue(conn)).get(InstrumentId("NSE_FO", 40559))
+            entry = (await load_catalogue(conn)).get(want_nifty.id)
             with pytest.raises(MissingBrokerRef):
                 entry.ref("upstox")
             with capsys.disabled():

@@ -128,12 +128,15 @@ def _entry(catalogue: Catalogue, token: int):
     return next(e for e in catalogue.all_entries() if e.contract.id == token)
 
 
-def test_core_update_refuses_dropping_one_live_contract(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: removing ONE unexpired NIFTY option row is refused, naming it; nothing changes."""
-    victim = next(c for c in contracts if c.contract.name == "NIFTY" and c.contract.instrument_type == "CE" and c.contract.expiry == NIFTY_FAR_EXPIRY)
+def test_core_update_refuses_dropping_more_than_half_of_one_expiry(catalogue: Catalogue, contracts: list[Contract]) -> None:
+    """AC-2 as changed by ADR-058/ADR-059 (W-057): removing more than half of one unexpired NIFTY expiry's contracts is
+    refused, naming the expiry; nothing changes. (The old Q244 rule refused ONE removal; ADR-058 replaced it.)"""
+    far = [c for c in contracts if c.contract.name == "NIFTY" and c.contract.expiry == NIFTY_FAR_EXPIRY]
+    gone = {c.id for c in far[: len(far) // 2 + 1]}
     before = _snapshot(catalogue)
-    with pytest.raises(ValueError, match=victim.ref("zerodha").broker_symbol):
-        catalogue.update([c for c in contracts if c.id != victim.id], as_of=ON_EXPIRY_DAY)
+    with pytest.raises(ValueError, match=f"of expiry {NIFTY_FAR_EXPIRY}, more than half"):
+        # the index-wide 10% guard is set to 100 here so the per-expiry guard alone must refuse
+        catalogue.update([c for c in contracts if c.id not in gone], as_of=ON_EXPIRY_DAY, max_delist_percent=100)
     assert _snapshot(catalogue) == before, "a refused update must change nothing"
 
 
@@ -341,12 +344,13 @@ def test_force_with_reason_is_audited_with_exact_dropped_contracts(
     assert event.actor == "ops-admin"
     assert event.timestamp == ON_EXPIRY_DAY
     assert event.payload["reason"] == "NSE delisted it (circular 123)"
-    assert event.payload["dropped_instrument_ids"] == ((victim.id.exchange_segment, victim.id.exchange_token),)
-    assert event.payload["dropped_broker_symbols"] == (("zerodha", victim.ref("zerodha").broker_symbol),)
+    # the keys the audit store's allowlist declares (REQ-063 AC-5); any other key is dropped before storage
+    assert event.payload["dropped_instrument_tokens"] == ((victim.id.exchange_segment, victim.id.exchange_token),)
+    assert event.payload["dropped_tradingsymbols"] == (("zerodha", victim.ref("zerodha").broker_symbol),)
     assert log.verify().ok
 
 
 def test_unforced_refusal_writes_no_audit_entry(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: the guard's normal refusal is unchanged and still refuses without force."""
+    """AC-2: the guard's normal refusal still refuses without force (a whole NIFTY expiry missing, ADR-059)."""
     with pytest.raises(ValueError, match="refused"):
-        catalogue.update(_without(contracts, _live_victim(contracts).id), as_of=ON_EXPIRY_DAY)
+        catalogue.update([c for c in contracts if c.contract.expiry != NIFTY_FAR_EXPIRY], as_of=ON_EXPIRY_DAY)

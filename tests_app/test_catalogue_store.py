@@ -60,8 +60,8 @@ SNAPSHOT = text(
 
 
 def _migration():
-    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0004_broker_instruments.py"
-    spec = importlib.util.spec_from_file_location("ofo_migration_0004_test", path)
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0005_contract_lifecycle.py"  # the head (W-057)
+    spec = importlib.util.spec_from_file_location("ofo_migration_0005_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -217,7 +217,7 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
         ("broker_instruments_guard", 31),
     ]
     assert dict(migration.GUARDED_TABLES)["public.audit_anchor"] == ()
-    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry")
+    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry", "strike", "retired", "delisted")  # W-057
     assert migration.APP_INSERT_COLUMNS == ("exchange_segment", "exchange_token", "name", "expiry", "strike",
                                             "instrument_type")
     assert migration.APP_BROKER_UPDATE_COLUMNS == ("broker_symbol", "lot_size", "tick_size", "freeze_limit")
@@ -243,7 +243,9 @@ class _FakeConn:
             def scalar_one(self):
                 return 0  # the post-write "contracts without a zerodha row" check
 
-        if sql.startswith("SELECT c.id,") or sql.startswith("SELECT count(*)"):
+        if sql.startswith("SELECT d.id,"):  # delisted candidates for reinstatement (W-057, ADR-059): none here
+            rows = []
+        if sql.startswith(("SELECT c.id,", "SELECT d.id,", "SELECT count(*)")):
             return _Result()
         if not sql.startswith("SELECT pg_advisory_xact_lock"):
             self.writes.append((sql.split()[0], params))
@@ -292,16 +294,23 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
     conn = _FakeConn(stored)
     next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]
     result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
-    assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
-    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # zerodha rows seen, listed, unlisted
-    assert len(conn.writes[0][1]) == 18
-    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[1:]] == [(True, 18), (False, 4)]
-    assert conn.writes[1][1]["segments"] == sorted(
+    assert (result.added, result.seen, result.newly_unlisted, result.retired) == (0, 18, 4, 4)
+    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # retired (W-057), seen, listed
+    expired_ids = sorted(r.id for r in stored if r.expiry == date(2026, 10, 6))
+    assert len(expired_ids) == 4 and conn.writes[0][1] == {"ids": expired_ids}  # the 4 expired: retired, ADR-057
+    assert len(conn.writes[1][1]) == 18
+    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[2:]] == [(True, 18)]
+    assert conn.writes[2][1]["segments"] == sorted(
         c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
-    with pytest.raises(ValueError, match="refused: would drop 1 contract"):
-        await apply_update(refused, [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"], as_of=AS_OF)
+    with pytest.raises(ValueError, match="refused: would drop 8 of 11 live NIFTY contracts"):  # ADR-058: > 10%
+        await apply_update(refused, _without_nifty_options(_fixture()), as_of=AS_OF)
     assert refused.writes == []
+
+
+def _without_nifty_options(contracts: list[ListedContract]) -> list[ListedContract]:
+    """A truncated list (ADR-058): the 8 NIFTY options of the fixture's 11 live NIFTY contracts are missing (72.7%)."""
+    return [c for c in contracts if not (c.contract.name == "NIFTY" and c.contract.is_option())]
 
 
 def _stored_rows() -> list:
@@ -330,8 +339,9 @@ async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database(
     assert len(conn.writes[1][1]["tokens"]) == 22  # every present contract listed
 
 
-@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE"),
-                                          ("exchange_token", 1), ("broker_segment", "NFO-FUT"),
+# W-057: a strike change is a revision (ADR-057); another instrument_type is a token reuse, i.e. a new contract
+# (ADR-059, tested in test_contract_identity_lifecycle.py); what stays refused is a Zerodha identity change.
+@pytest.mark.parametrize("field, value", [("exchange_token", 1), ("broker_segment", "NFO-FUT"),
                                           ("broker_token", "1")])
 async def test_planning_an_identity_change_is_refused_with_no_write(field: str, value) -> None:
     conn = _FakeConn(_stored_rows())
@@ -369,7 +379,7 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
     assert order[-1] == "audit" and order.count("audit") == 1 and "write" in order[:-1]
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
-    assert payload["action"] == "catalogue_force_update" and payload["dropped_broker_symbols"] == [["zerodha", "NIFTY26O1325050CE"]]
+    assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == [["zerodha", "NIFTY26O1325050CE"]]
     assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
 
     # a failed catalogue write leaves no audit event
@@ -446,16 +456,16 @@ async def test_fixture_round_trips_unchanged_with_exact_decimals(app_engine: Asy
 
 
 async def check_truncated_update_refused(conn: AsyncConnection) -> None:
-    """A list missing one unexpired contract (NIFTY26O1325050CE, expiry 2026-10-13) plus one new contract is
+    """A truncated list (ADR-058: 8 of the 11 live NIFTY contracts missing, more than 10%) plus one new contract is
     refused, and every row keeps every column (listedness and stamps included); nothing is inserted."""
     before = await _snapshot(conn)
-    truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
+    truncated = _without_nifty_options(_fixture())
     extra = with_terms(_by_symbol(_fixture(), "NIFTY26O1325050CE"), exchange_token=99999, broker_token="99999999",
                        broker_symbol="NEW-CONTRACT")
     try:
         await apply_update(conn, truncated + [extra], as_of=AS_OF)
     except ValueError as exc:
-        assert "refused: would drop 1 contract" in str(exc), exc
+        assert "refused: would drop 8 of 11 live NIFTY contracts" in str(exc), exc
         assert await _snapshot(conn) == before
         return
     raise AssertionError(f"not refused: truncated update ({len(await _snapshot(conn))} rows now)")
@@ -490,8 +500,12 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
                     assert row.last_seen_at == before[symbol].last_seen_at
                 else:
                     assert row.last_seen_at > before[symbol].last_seen_at
-            catalogue = await load_catalogue(conn)
-            assert sum(not e.currently_listed for e in catalogue.all_entries()) == 4
+            retired = (await conn.execute(text(
+                f"SELECT b.broker_symbol FROM {TABLE} AS c JOIN {BROKER} AS b ON b.contract_id = c.id "
+                f"WHERE c.retired AND b.retired"))).scalars().all()
+            assert set(retired) == gone  # W-057: expired before the load date -> retired, still stored (ADR-057)
+            catalogue = await load_catalogue(conn)  # live contracts only
+            assert len(catalogue.all_entries()) == 18 and all(e.currently_listed for e in catalogue.all_entries())
         finally:
             await trans.rollback()
 
@@ -530,7 +544,8 @@ async def test_revised_lot_size_follows_zerodha_with_one_history_row(
             await trans.rollback()
 
 
-@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE")])
+# W-057: strike is a revision (ADR-057) and instrument_type a token reuse (ADR-059); a Zerodha token change stays refused
+@pytest.mark.parametrize("field, value", [("broker_token", "1")])
 async def test_an_identity_change_is_refused_with_nothing_written(
     app_engine: AsyncEngine, capsys: pytest.CaptureFixture[str], field: str, value
 ) -> None:
@@ -624,7 +639,8 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await _expect_refused(conn, f"DELETE FROM {TABLE}", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"TRUNCATE {TABLE}", INSUFFICIENT_PRIVILEGE)
-            await _expect_refused(conn, f"UPDATE {TABLE} SET strike = strike + 1", INSUFFICIENT_PRIVILEGE)
+            # W-057: strike is app-updatable since 0005 (a revision, ADR-057); name never is
+            await _expect_refused(conn, f"UPDATE {TABLE} SET name = 'SENSEX'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {TABLE} SET last_seen_at = now()", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(
                 conn, f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, strike, instrument_type, "
@@ -660,7 +676,7 @@ async def check_owner_cannot_delete_or_change_terms(conn: AsyncConnection) -> No
         f"WHERE c.{bare.replace(' AND ', ' AND c.')})"))).scalar_one()
     assert referenced == 0, "the deleted row must have no foreign-key references, or the guard is not the only barrier"
     await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE {bare}", CATALOGUE_SQLSTATE)
-    await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
+    await _expect_refused(conn, f"UPDATE {TABLE} SET exchange_token = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
     await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
@@ -771,7 +787,7 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
         ('GRANT DELETE ON public.catalogue_contracts TO "{role}"', "has DELETE on catalogue_contracts"),
         ('GRANT TRUNCATE ON public.catalogue_contracts TO "{role}"', "has TRUNCATE on catalogue_contracts"),
         ('GRANT INSERT ON public.catalogue_contracts TO "{role}"', "has table-wide INSERT on catalogue_contracts"),
-        ('GRANT UPDATE (strike) ON public.catalogue_contracts TO "{role}"', "has UPDATE on catalogue_contracts column strike"),
+        ('GRANT UPDATE (name) ON public.catalogue_contracts TO "{role}"', "has UPDATE on catalogue_contracts column name"),
         ('GRANT UPDATE (last_seen_at) ON public.catalogue_contracts TO "{role}"',
          "has UPDATE on catalogue_contracts column last_seen_at"),
         ('GRANT INSERT (currently_listed) ON public.catalogue_contracts TO "{role}"',
@@ -921,19 +937,19 @@ async def test_mutation_weakening_the_guard_lets_the_owner_delete(admin_engine: 
 async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
     app_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A store whose domain call judges expiry against the wrong date (here: year 2100, so nothing is "unexpired")
-    no longer refuses the truncated list, and the store then writes: the refusal check goes red."""
-    original = Catalogue.update
+    """A store whose ADR-058 counting guard is bypassed no longer refuses the truncated list, and the store then
+    writes (delisting the missing contracts): the refusal check goes red."""
+    from ofo.instruments import catalogue as domain_catalogue
 
-    def wrong_date(self, contracts, *, as_of, **kwargs):
-        return original(self, contracts, as_of=datetime(2100, 1, 1, tzinfo=IST), **kwargs)
+    def no_guard(*args, **kwargs):
+        return None
 
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await check_truncated_update_refused(conn)
-            monkeypatch.setattr(Catalogue, "update", wrong_date)
+            monkeypatch.setattr(domain_catalogue, "_refuse_truncation", no_guard)  # the guards live in the domain
             with pytest.raises(AssertionError, match="not refused: truncated update"):
                 await check_truncated_update_refused(conn)
         finally:
@@ -1005,12 +1021,14 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
             before = await _snapshot(conn)
             victim = named[2]
             assert victim.contract.expiry >= as_of.astimezone(IST).date()
-            copy = [c for c in contracts if c.id != victim.id]
-            with pytest.raises(ValueError, match="refused: would drop 1 contract"):
+            nifty = [c for c in scoped if c.contract.name == "NIFTY"]
+            cut = {c.id for c in nifty[: len(nifty) * 4 // 10]} | {victim.id}  # ADR-058: a 40% cut is refused
+            copy = [c for c in contracts if c.id not in cut]
+            with pytest.raises(ValueError, match="refused: would drop .* live NIFTY contracts"):
                 await apply_update(conn, copy, as_of=as_of)
             after = await _snapshot(conn)
             assert after == before
-            lines.append(f"W-053 PROOF refused removing {_sym(victim)} (expiry {victim.contract.expiry}); "
+            lines.append(f"W-053 PROOF refused removing {len(cut)} NIFTY incl. {_sym(victim)} (expiry {victim.contract.expiry}); "
                          f"rows before={len(before)} after={len(after)} identical={after == before}")
             with capsys.disabled():
                 print("\n" + "\n".join(lines))

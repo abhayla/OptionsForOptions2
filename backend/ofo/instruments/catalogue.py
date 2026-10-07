@@ -51,6 +51,37 @@ SUPPORTED_UNDERLYINGS: dict[str, str] = {
 # The update date is the calendar date in India (the exchanges' timezone), ADR-007.
 IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 
+#: ADR-058: an update is refused if MORE than this percentage of one index's live contracts would disappear at once
+#: (an admin setting; ofo_app.config.Settings.CATALOGUE_MAX_DELIST_PERCENT holds the same default).
+DEFAULT_MAX_DELIST_PERCENT = Decimal("10")
+#: ADR-059: ... or if any one unexpired expiry of an index would lose MORE than half of its live contracts at once.
+MAX_EXPIRY_LOSS_FRACTION = Decimal("0.5")
+#: ADR-059 (a): "the strike is unchanged and the expiry moved by at most 6 calendar days" (62964: 5 days, 61746: 3
+#: days); a move of 7 days or more is a token reuse, i.e. a new contract.
+MAX_EXPIRY_MOVE_DAYS = 6
+
+
+def check_max_delist_percent(value: object) -> Decimal:
+    """The ADR-058 setting: an int or Decimal from 0 to 100 (never a float or bool); anything else is refused."""
+    if (isinstance(value, bool) or not isinstance(value, (int, Decimal)) or not Decimal(value).is_finite()
+            or not Decimal(0) <= Decimal(value) <= Decimal(100)):
+        raise ValueError(f"max_delist_percent must be an int or Decimal from 0 to 100, got {value!r}")
+    return Decimal(value)
+
+
+def is_revision(old: Contract, new: Contract) -> bool:
+    """ADR-059: a list row on a stored contract's token revises that contract only if the underlying, option type and
+    exchange segment are unchanged AND either (a) the strike is unchanged and the expiry moved by at most
+    MAX_EXPIRY_MOVE_DAYS calendar days, or (b) the expiry is unchanged and the strike changed. Anything else is the
+    exchange reusing the token: a new contract. An unchanged row is case (a) with a 0-day move."""
+    if (old.name, old.instrument_type, old.exchange_segment) != (new.name, new.instrument_type, new.exchange_segment):
+        return False
+    if old.expiry is None or new.expiry is None:
+        return old.expiry == new.expiry and old.strike == new.strike
+    if old.strike == new.strike:
+        return abs((new.expiry - old.expiry).days) <= MAX_EXPIRY_MOVE_DAYS
+    return old.expiry == new.expiry
+
 
 class ContractKind(str, Enum):
     """Option vs future — Zerodha ticks and lot sizes can legitimately differ between the two
@@ -156,6 +187,7 @@ class Catalogue:
         reason: str | None = None,
         actor: str | None = None,
         audit_log: AuditLog | None = None,
+        max_delist_percent: object = DEFAULT_MAX_DELIST_PERCENT,
     ) -> "CatalogueUpdateResult":
         """Refresh from a newer instrument list.
 
@@ -163,15 +195,15 @@ class Catalogue:
         contracts already in the catalogue but absent from `contracts` are marked
         `currently_listed = False` — they are never removed (AC-2).
 
-        Refuses (raises `ValueError`, changes nothing) if the update would drop ANY currently
-        listed contract whose expiry has not yet passed (owner decision Q244, REQ-053). Expiry
-        is judged against `as_of`, a timezone-aware moment passed in by the caller (never a
-        hidden clock), converted to its India (IST) calendar date: a contract expiring ON that
-        date has not yet passed. Contracts of an already-passed expiry may roll off, and new
-        contracts may be added. An empty list therefore refuses while any unexpired contract is
-        listed.
+        Refuses (raises `ValueError`, changes nothing) when the list looks truncated (ADR-058, ADR-059, replacing the
+        old Q244 "refuse any unexpired drop"): MORE than `max_delist_percent` (default 10) of one index's live
+        contracts would disappear at once, or any one unexpired expiry of an index would lose MORE than half of its
+        live contracts. Live = listed and not expired on the update date, judged against `as_of` (timezone-aware,
+        never a hidden clock) converted to its India (IST) calendar date: a contract expiring ON that date has not yet
+        passed. Contracts of an already-passed expiry may roll off; a list row whose expiry has passed is skipped.
+        A row on an existing token that is not a revision (`is_revision`, ADR-059) replaces the entry: a new contract.
 
-        `force=True` overrides the guard (a real broker delisting) but ONLY with a non-empty
+        `force=True` overrides the guards (a real broker delisting) but ONLY with a non-empty
         `reason`, a non-empty `actor` and an explicit `audit_log` (no hidden global): a forced
         update is refused otherwise, and every forced update appends one ADMIN_CHANGE_RECORDED
         event (who, when = `as_of`, reason, exact dropped contract ids) before anything changes
@@ -180,9 +212,13 @@ class Catalogue:
         if as_of.tzinfo is None or as_of.utcoffset() is None:
             raise ValueError("Catalogue.update() requires a timezone-aware as_of")
         update_date = as_of.astimezone(IST).date()
+        limit = check_max_delist_percent(max_delist_percent)
 
         rows = [_listed(r) for r in contracts]
-        in_scope_new = [r for r in rows if self._in_scope(r.contract)]
+        in_scope = [r for r in rows if self._in_scope(r.contract)]
+        # ADR-059: a row whose expiry is already before the load date is skipped, never loaded.
+        in_scope_new = [r for r in in_scope if r.contract.expiry is None or r.contract.expiry >= update_date]
+        skipped_expired = len(in_scope) - len(in_scope_new)
         _refuse_duplicate_ids(in_scope_new)
         new_ids = {r.id for r in in_scope_new}
 
@@ -196,18 +232,18 @@ class Catalogue:
             if audit_log is None:
                 raise ValueError("Catalogue.update(force=True) refused: an audit_log is required")
 
-        dropped_live = sorted(
-            (
-                e
-                for iid, e in self._entries.items()
-                if e.currently_listed
-                and iid not in new_ids
-                and (e.contract.expiry is None or e.contract.expiry >= update_date)
-            ),
-            key=lambda e: e.id,
-        )
+        # ADR-059: a row on an existing token that is not a revision is the exchange reusing the token.
+        replaced = sorted(r.id for r in in_scope_new
+                          if r.id in self._entries and not is_revision(self._entries[r.id].contract, r.contract))
+        live = {iid: e for iid, e in self._entries.items()
+                if e.currently_listed and (e.contract.expiry is None or e.contract.expiry >= update_date)}
+        vanishing = sorted((e for iid, e in live.items() if iid not in new_ids), key=lambda e: e.id)
+        # ADR-059: both guards count every live contract that stops being live in this update - not carried, AND
+        # delisted because its token now carries another contract.
+        leaving_live = vanishing + [live[i] for i in replaced if i in live]
         if force:
             assert audit_log is not None and reason is not None and actor is not None
+            leaving = vanishing + [self._entries[i] for i in replaced]
             audit_log.append(
                 EventType.ADMIN_CHANGE_RECORDED,
                 actor=actor.strip(),
@@ -216,27 +252,22 @@ class Catalogue:
                 payload={
                     "action": "catalogue_force_update",
                     "reason": reason.strip(),
-                    "dropped_instrument_ids": [[e.id.exchange_segment, e.id.exchange_token] for e in dropped_live],
-                    "dropped_broker_symbols": [
-                        [r.broker, r.broker_symbol] for e in dropped_live for r in e.broker_refs.values()
+                    # every contract this update delists: not carried (ADR-058) or its token reused (ADR-059), under
+                    # the two keys the audit allowlist declares (ofo_app.audit_allowlist, REQ-063 AC-5); any other key
+                    # would be dropped before storage
+                    "dropped_instrument_tokens": [[e.id.exchange_segment, e.id.exchange_token] for e in leaving],
+                    "dropped_tradingsymbols": [
+                        [r.broker, r.broker_symbol] for e in leaving for r in e.broker_refs.values()
                     ],
                 },
             )
         else:
-            if dropped_live:
-                first = dropped_live[0]
-                symbols = ", ".join(r.broker_symbol for r in first.broker_refs.values())
-                raise ValueError(
-                    f"Catalogue.update() refused: would drop {len(dropped_live)} contract(s) "
-                    f"that have not expired as of {update_date} (first: {first.contract.name} "
-                    f"{first.id.exchange_segment}:{first.id.exchange_token} {symbols}, "
-                    f"expiry {first.contract.expiry}) — the source list may be incomplete or truncated; "
-                    f"override needs force=True with a reason, actor and audit_log"
-                )
+            _refuse_truncation(list(live.values()), leaving_live, limit, update_date)
 
         added = 0
+        replaced_set = set(replaced)
         for row in in_scope_new:
-            existing = self._entries.get(row.id)
+            existing = None if row.id in replaced_set else self._entries.get(row.id)
             if existing is None:
                 added += 1
             self._entries[row.id] = _entry(row, existing)
@@ -247,7 +278,8 @@ class Catalogue:
                 entry.currently_listed = False
                 newly_unlisted += 1
 
-        return CatalogueUpdateResult(added=added, newly_unlisted=newly_unlisted)
+        return CatalogueUpdateResult(added=added, newly_unlisted=newly_unlisted, skipped_expired=skipped_expired,
+                                     replaced=tuple(replaced), delisted=tuple(e.id for e in vanishing))
 
     def all_entries(self) -> list[CatalogueEntry]:
         return list(self._entries.values())
@@ -339,7 +371,38 @@ class Catalogue:
         return min(gaps)
 
 
+def _refuse_truncation(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], limit: Decimal,
+                       update_date: date) -> None:
+    """ADR-058 per-index count and ADR-059 per-expiry half guard (both "more than": the boundary itself passes).
+    `vanishing` is every live contract that stops being live: not carried AND token reused (ADR-059)."""
+    def counts(entries, key):
+        out: dict = {}
+        for e in entries:
+            out[key(e)] = out.get(key(e), 0) + 1
+        return out
+
+    live_index, gone_index = counts(live, lambda e: e.contract.name), counts(vanishing, lambda e: e.contract.name)
+    for name in sorted(gone_index):
+        if gone_index[name] * 100 > limit * live_index[name]:
+            share = (Decimal(gone_index[name] * 100) / live_index[name]).quantize(Decimal("0.1"))
+            raise ValueError(
+                f"Catalogue update refused: would drop {gone_index[name]} of {live_index[name]} live {name} contracts "
+                f"({share}%), more than {limit}% at once - the source list may be truncated (ADR-058); nothing changed; "
+                f"override needs force=True with a reason, actor and audit_log")
+    by_expiry = lambda e: (e.contract.name, e.contract.expiry)  # noqa: E731
+    live_expiry, gone_expiry = counts(live, by_expiry), counts(vanishing, by_expiry)
+    for key in sorted(gone_expiry, key=lambda k: (k[0], k[1] or date.max)):
+        if gone_expiry[key] > MAX_EXPIRY_LOSS_FRACTION * live_expiry[key]:
+            raise ValueError(
+                f"Catalogue update refused: would drop {gone_expiry[key]} of {live_expiry[key]} live {key[0]} "
+                f"contracts of expiry {key[1]}, more than half of one expiry at once - the source list may be "
+                f"truncated (ADR-059); nothing changed; override needs force=True with a reason, actor and audit_log")
+
+
 @dataclass
 class CatalogueUpdateResult:
     added: int
     newly_unlisted: int
+    skipped_expired: int = 0  # in-scope rows whose expiry had passed: never loaded (ADR-059)
+    replaced: tuple[InstrumentId, ...] = ()  # tokens reused by a new contract in this list (ADR-059)
+    delisted: tuple[InstrumentId, ...] = ()  # live contracts this list stopped carrying (ADR-058)

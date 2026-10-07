@@ -251,8 +251,12 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   but not over time; a stored strategy leg keyed on it alone could later point at a different contract. The identity
   needs the expiry (or a validity range) as well; changing it is an owner decision (Q262). Closes the data question of
   #116.
-- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **decided** (ADR-052: identity includes
-  the expiry date).
+- **Also measured 2026-10-07 (orchestrator, raw NSE files):** the exchange moves the expiry of LIVE contracts under the
+  same number - 62964 NIFTY 31000 PE 26-Mar-2026 (Jun 2025) -> 31-Mar-2026 (Sep 2025, the NSE expiry-day move); 61746
+  NIFTY 23000 CE 27-Dec-2029 -> 24-Dec-2029 (Sep 2025), later reused for WIPRO (2026). So the expiry cannot be part of
+  the key.
+- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **decided** (ADR-057, correcting ADR-052:
+  identity holds while the contract is live; the token retires after expiry).
 
 ## F-22 - Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page
 - Source: Kite Connect v3 docs, "Offsite order execution" (kite.trade/docs/connect/v3/basket/) and Kite Publisher
@@ -370,3 +374,16 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   against Kite's, and the next morning's token expiry.
 - Bears on: REQ-048, REQ-049, REQ-052, REQ-053, REQ-055, REQ-072, ADR-051, W-017 (real responses now exist). Status:
   **recorded**.
+
+## F-30 - The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download
+- Measured 2026-10-07 by the orchestrator. NSE F&O bhavcopies: token 61746 was NIFTY 23000 CE expiring 27-Dec-2029
+  (Jan 2025), 24-Dec-2029 (Sep 2025); from 26-Aug-2026 the same token is WIPRO 23-Nov-2026 futures, and no NIFTY
+  Dec-2029 23000 CE appears in any 2026 file. Zerodha's instrument list read the same day (api.kite.trade/instruments,
+  108,383 rows): token 61746 = NFO WIPRO26NOVFUT; NIFTY Dec-2029 CE strikes listed are 15000, 16500, 18000, 19500,
+  21000, 22500, ... (13 in all, 1,500 points apart) - no 23000 CE. Level P1 (real data).
+- Meaning: (1) a contract can leave the market before its expiry date (here a long-dated strike grid was rebuilt), and
+  its number can be reused while the old contract's expiry date is still in the future - so ADR-057's "retired after
+  expiry" needs a second exit, "no longer listed"; (2) the Q244 guard (refuse a daily update that would remove any
+  unexpired contract) would refuse every daily list after such a clean-up and freeze the catalogue, the failure Q257
+  was written to avoid. The bhavcopy alone cannot date the removal (it may omit untraded contracts); Zerodha's list can.
+- Bears on: ADR-057, REQ-053 (Q244, Q257), REQ-054 AC-3, W-057, F-21. Status: **decided** (ADR-058).
