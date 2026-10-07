@@ -96,13 +96,14 @@ def _as_of(day: date) -> datetime:
 class _FakeConn:
     """Answers the store's live-contract SELECT with `rows` and records every write (no database)."""
 
-    def __init__(self, rows: list | None = None) -> None:
+    def __init__(self, rows: list | None = None, delisted: list | None = None) -> None:
         self.rows = rows or []
+        self.delisted = delisted or []
         self.writes: list[tuple[str, str, object]] = []
 
     async def execute(self, stmt, params=None):
         sql = str(stmt)
-        rows = self.rows
+        rows = self.delisted if sql.startswith("SELECT d.id,") else self.rows
 
         class _Result:
             def all(self):
@@ -111,7 +112,7 @@ class _FakeConn:
             def scalar_one(self):
                 return 0
 
-        if sql.startswith("SELECT c.id,") or sql.startswith("SELECT count(*)"):
+        if sql.startswith(("SELECT c.id,", "SELECT d.id,", "SELECT count(*)")):
             return _Result()
         if not sql.startswith("SELECT pg_advisory_xact_lock"):
             self.writes.append((sql.split()[0], sql, params))
@@ -178,14 +179,52 @@ async def test_ac3_a_live_token_on_its_expiry_day_is_not_retired() -> None:
     assert not any("SET retired = TRUE" in sql for _, sql, _ in conn.writes)
 
 
-async def test_ac3_a_live_token_listed_as_a_different_contract_is_refused_with_nothing_written() -> None:
-    """AC-3: two live contracts never share a token. 67245 is live until 2026-08-25; a list on 2026-08-14 that gives
-    67245 a CE (or another underlying's identity) is refused, nothing written."""
-    conn = _FakeConn([_stored(R67245_OLD, 7)])
-    other = _row(67245, date(2026, 12, 29), "72200", "CE", "NIFTY26DEC72200CE")
-    with pytest.raises(CatalogueStoreError, match=r"instrument_type 'PE' -> 'CE'.*live"):
-        await apply_update(conn, [other], as_of=_as_of(date(2026, 8, 14)))
-    assert conn.writes == []
+def _kinds(conn: "_FakeConn") -> list[str]:
+    """The write plan in order: delist / retire / reinstate / insert / revise / see / listed."""
+    out = []
+    for kind, sql, _ in conn.writes:
+        for marker, name in (("SET delisted = TRUE", "delist"), ("SET retired = TRUE", "retire"),
+                             ("SET delisted = FALSE", "reinstate"), ("INSERT INTO public.catalogue_contracts", "insert"),
+                             ("INSERT INTO public.broker_instruments", "insert-broker"), ("SET expiry", "revise"),
+                             ("UPDATE public.broker_instruments", "see"), ("SET currently_listed = :listed", "listed")):
+            if marker in sql:
+                out.append(name)
+                break
+        else:
+            out.append(kind)
+    return out
+
+
+@pytest.mark.parametrize("other, kind", [
+    (_row(62964, date(2026, 3, 31), "31000", "PE", "NIFTY26MAR31000PE"), "revision"),  # real: +5 days
+    (_row(62964, date(2026, 4, 2), "31000", "PE", "NIFTY26MAR31000PE"), "revision"),  # +7 days: the boundary
+    (_row(62964, date(2026, 4, 3), "31000", "PE", "NIFTY26APR31000PE"), "new"),  # +8 days
+    (_row(62964, date(2026, 3, 26), "30500", "PE", "NIFTY26MAR30500PE"), "revision"),  # strike only (79199 shape)
+    (_row(62964, date(2026, 3, 31), "30500", "PE", "NIFTY26MAR30500PE"), "new"),  # strike AND expiry
+    (_row(62964, date(2026, 3, 26), "31000", "CE", "NIFTY26MAR31000CE"), "new"),  # PE -> CE
+    (_row(62964, date(2026, 3, 26), "0", "FUT", "NIFTY26MARFUT"), "new"),  # option -> future
+], ids=["plus-5-days", "plus-7-days", "plus-8-days", "strike-only", "strike-and-expiry", "pe-to-ce", "pe-to-fut"])
+async def test_ac3_fix1_adr059_classifies_a_changed_row_on_a_live_token(other: ListedContract, kind: str) -> None:
+    """AC-3 / ADR-059: 62964 is live (NIFTY 31000 PE, expiry 2026-03-26). A row on its token revises it only if
+    underlying, type and segment are unchanged AND (strike unchanged and expiry moved <= 7 days, OR expiry unchanged and
+    strike changed); anything else delists the stored contract and inserts the row as a new contract, delist first."""
+    conn = _FakeConn([_stored(R62964_A, 5)])
+    result = await apply_update(conn, [other], as_of=_as_of(date(2025, 9, 1)))
+    if kind == "revision":
+        assert (result.added, result.delisted, result.seen) == (0, 0, 1)
+        assert _kinds(conn) == ["revise", "see", "listed"]
+    else:
+        assert (result.added, result.delisted, result.seen) == (1, 1, 0)
+        assert _kinds(conn) == ["delist", "insert", "insert-broker"]
+        assert conn.writes[0][2] == {"ids": [5]}
+
+
+async def test_ac3_fix1_61746_minus_3_days_is_a_revision() -> None:
+    """AC-3 / ADR-059 real case: 61746 NIFTY 23000 CE 2029-12-27 -> 2029-12-24 (3 days, same strike) is a revision."""
+    conn = _FakeConn([_stored(R61746_A, 61)])
+    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2025, 9, 1)))
+    assert (result.added, result.delisted, result.revised) == (0, 0, 1)
+    assert _kinds(conn) == ["revise", "see", "listed"]
 
 
 def _other_zerodha_token(row: ListedContract, broker_token: str) -> ListedContract:
@@ -355,22 +394,31 @@ async def test_ac3_real_token_histories_load_day_by_day(app_engine: AsyncEngine)
             await trans.rollback()
 
 
-async def test_ac3_a_second_live_contract_on_an_occupied_token_is_refused_with_nothing_written(
+async def test_ac3_fix1_a_token_reused_in_the_same_list_never_repoints_the_old_contract(
     app_engine: AsyncEngine,
 ) -> None:
-    """AC-3: 67245 is live until 2026-08-25; on 2026-08-14 a list giving 67245 to a CE is refused and every row is
-    unchanged; the database also refuses a second live row on the token (unique live identity)."""
+    """AC-3 / ADR-059 (the review's CRITICAL): 61746 is live as NIFTY 23000 CE 2029-12-24; ONE list gives the token to
+    NIFTY 20550 CE 2026-11-24 (strike and expiry both changed). The old contract is delisted (kept, terms unchanged, no
+    revision history) and a new contract takes the token; a link by the old internal id still resolves to 23000 CE.
+    The database also refuses a second live row on the token (unique live identity)."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await _load_days(conn, [(date(2026, 8, 3), [R67245_OLD])])
-            before = await _contracts(conn, 67245)
-            other = _row(67245, date(2026, 12, 29), "72200", "CE", "NIFTY26DEC72200CE")
-            with pytest.raises(CatalogueStoreError, match="live"):
-                await apply_update(conn, [other], as_of=_as_of(date(2026, 8, 14)))
-            assert await _contracts(conn, 67245) == before and await _history(conn) == []
+            await _load_days(conn, [(date(2025, 9, 1), [R61746_B])])
+            old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
+            reuse = _row(61746, date(2026, 11, 24), "20550", "CE", "NIFTY26NOV20550CE")
+            result = await apply_update(conn, [reuse], as_of=_as_of(date(2025, 9, 2)))
+            assert (result.added, result.delisted, result.revised) == (1, 1, 0)
+            new_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
+            assert new_id is not None and new_id != old_id
+            old = await load_contract(conn, old_id)
+            assert (old.delisted, old.listed.contract.strike, old.listed.contract.expiry) == (
+                True, Decimal("23000.00"), date(2029, 12, 24))
+            assert [h[3] for h in await _history(conn) if h[1] == old_id] == ["delisted_on"]
+            new = await load_contract(conn, new_id)
+            assert (new.listed.contract.strike, new.listed.contract.expiry) == (Decimal("20550.00"), date(2026, 11, 24))
             await _expect_refused(conn, f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, expiry, strike, "
-                                        "instrument_type) VALUES ('NSE_FO', 67245, 'NIFTY', '2026-12-29', 72200, 'CE')",
+                                        "instrument_type) VALUES ('NSE_FO', 61746, 'NIFTY', '2026-12-29', 72200, 'CE')",
                                   UNIQUE_VIOLATION)
         finally:
             await trans.rollback()
@@ -519,13 +567,14 @@ async def test_ac3_downgrade_of_0005_refuses_while_rows_exist(admin_engine: Asyn
 # ---------------------------------------------------------------------------------------------------------------
 
 
-def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001) -> list[ListedContract]:
+def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001,
+             expiry: date = date(2027, 12, 28)) -> list[ListedContract]:
     """n live contracts of one index with future expiries (synthetic: only their COUNT matters to the guard)."""
     import dataclasses
 
     rows = []
     for i in range(n):
-        row = _row(first_token + i, date(2027, 12, 28), str(10000 + 50 * i), "CE", f"{name}27DEC{10000 + 50 * i}CE",
+        row = _row(first_token + i, expiry, str(10000 + 50 * i), "CE", f"{name}27DEC{10000 + 50 * i}CE",
                    name=name)
         if name == "SENSEX":
             row = ListedContract(contract=dataclasses.replace(row.contract, exchange_segment="BSE_FO"),
@@ -559,7 +608,7 @@ async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None
     """AC-3 / ADR-058: the same 1,832 NIFTY contracts and a list missing 733 of them (40.0%) -> refused, no write."""
     live = _fillers(1832)
     conn = _FakeConn(_stored_all(live))
-    with pytest.raises(CatalogueStoreError, match=r"refused: would drop 733 of 1832 live NIFTY contracts"):
+    with pytest.raises(ValueError, match=r"refused: would drop 733 of 1832 live NIFTY contracts"):
         await apply_update(conn, live[733:], as_of=_as_of(date(2026, 10, 7)))
     assert conn.writes == []
 
@@ -570,7 +619,7 @@ async def test_ac3_r2_the_boundary_is_more_than_ten_percent(missing: int, refuse
     live = _fillers(1830)
     conn = _FakeConn(_stored_all(live))
     if refused:
-        with pytest.raises(CatalogueStoreError, match="refused: would drop 184 of 1830"):
+        with pytest.raises(ValueError, match="refused: would drop 184 of 1830"):
             await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)))
         assert conn.writes == []
     else:
@@ -588,7 +637,7 @@ async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
     assert Settings(DATABASE_URL="postgresql://x").CATALOGUE_MAX_DELIST_PERCENT == Decimal("10")
     live = _fillers(1830)
     conn = _FakeConn(_stored_all(live))
-    with pytest.raises(CatalogueStoreError, match=r"refused: would drop 92 of 1830 .*more than 5%"):
+    with pytest.raises(ValueError, match=r"refused: would drop 92 of 1830 .*more than 5%"):
         await apply_update(conn, live[92:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=Decimal("5"))
     assert conn.writes == []
     for bad in (-1, Decimal("100.1"), 10.0, True, Decimal("NaN"), "10"):
@@ -604,7 +653,7 @@ async def test_ac3_r2_each_index_is_counted_on_its_own() -> None:
     nifty, sensex = _fillers(1832), _fillers(10, name="SENSEX", first_token=900001)
     stored = _stored_all(nifty + sensex)
     conn = _FakeConn(stored)
-    with pytest.raises(CatalogueStoreError, match="refused: would drop 3 of 10 live SENSEX contracts"):
+    with pytest.raises(ValueError, match="refused: would drop 3 of 10 live SENSEX contracts"):
         await apply_update(conn, nifty + sensex[3:], as_of=_as_of(date(2026, 10, 7)))
     assert conn.writes == []
     result = await apply_update(_FakeConn(stored), nifty + sensex[1:], as_of=_as_of(date(2026, 10, 7)))
@@ -615,7 +664,7 @@ async def test_ac3_r2_plan_for_61746_delists_then_a_reuse_is_a_new_contract() ->
     """AC-3 / F-30, 61746 modelled with NIFTY rows: stored live (expiry 2029-12-24) next to 10 other live NIFTY
     contracts; the 2026-08-26 list lacks it (1 of 11 = 9.1%) -> delisted; once delisted it is not in the live SELECT, so
     a list giving 61746 to a NIFTY Nov-2026 future (models WIPRO Nov-2026 futures) inserts a new contract."""
-    others = _fillers(10)
+    others = _fillers(10) + _fillers(2, first_token=200001, expiry=date(2029, 12, 24))
     conn = _FakeConn(_stored_all(others) + [_stored(R61746_B, 61)])
     result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
     assert (result.delisted, result.retired, result.added) == (1, 0, 0)
@@ -632,13 +681,14 @@ async def test_ac3_r2_61746_delisted_before_expiry_then_reused(app_engine: Async
     (2029-12-27 -> 2029-12-24, one history row); the 2026-08-26 list lacks it while its expiry is 3 years away ->
     delisted on the database's IST date with a history row, kept, unlisted, its Zerodha row freed; the 2026-09-01 list
     gives 61746 to a different contract -> a new contract; the old one still resolves by its internal id."""
-    others = _fillers(10)
+    others = _fillers(10) + _fillers(2, first_token=200001, expiry=date(2029, 12, 24))
+    early = _fillers(10) + _fillers(2, first_token=200001, expiry=date(2029, 12, 27))
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             today = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))
                      ).scalar_one()
-            await _load_days(conn, [(date(2025, 1, 1), others + [R61746_A]), (date(2025, 9, 1), others + [R61746_B])])
+            await _load_days(conn, [(date(2025, 1, 1), early + [R61746_A]), (date(2025, 9, 1), others + [R61746_B])])
             old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
             result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
             assert (result.delisted, result.retired) == (1, 0)
@@ -688,3 +738,102 @@ async def test_ac3_r2_delisting_is_held_by_the_database(admin_engine: AsyncEngin
                 await _expect_refused(conn, f"UPDATE {TABLE} SET {change} WHERE id = {cid}", CATALOGUE_SQLSTATE)
         finally:
             await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Fix round 1 (ADR-059): reinstatement, the per-expiry half guard, stale rows, the forced audit event
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def _delisted_row(row: ListedContract, contract_id: int) -> SimpleNamespace:
+    stored = _stored(row, contract_id)
+    stored.currently_listed = False
+    return stored
+
+
+async def test_ac3_fix2_an_identical_delisted_contract_returning_is_reinstated() -> None:
+    """AC-3 / ADR-059: 61746 (NIFTY 23000 CE 2029-12-24, Zerodha token 15807234) was delisted as id 61; a list carrying
+    the identical row reinstates id 61 (no insert); a delisted row with another strike is not reinstated."""
+    conn = _FakeConn([], delisted=[_delisted_row(R61746_B, 61)])
+    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+    assert (result.added, result.reinstated, result.seen) == (0, 1, 0)
+    assert _kinds(conn) == ["reinstate", "see", "listed"]
+    assert conn.writes[0][2] == {"ids": [61]}
+    other = _FakeConn([], delisted=[_delisted_row(_row(61746, date(2029, 12, 24), "23050", "CE", "X"), 61)])
+    result = await apply_update(other, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+    assert (result.added, result.reinstated) == (1, 0) and _kinds(other) == ["insert", "insert-broker"]
+
+
+async def test_ac3_fix2_two_identical_delisted_candidates_refuse_the_list() -> None:
+    """Fail closed: two delisted contracts identical to one row cannot both be the returning contract."""
+    conn = _FakeConn([], delisted=[_delisted_row(R61746_B, 61), _delisted_row(R61746_B, 62)])
+    with pytest.raises(CatalogueStoreError, match="2 delisted contracts"):
+        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+    assert conn.writes == []
+
+
+async def test_ac3_fix2_a_partial_list_heals_on_the_next_full_list(app_engine: AsyncEngine) -> None:
+    """AC-3 / ADR-059: list A = 20 Dec-2027 + 4 weekly (2025-09-09) NIFTY contracts; list B lacks 2 of the weekly
+    (2 of 24 = 8.3% of the index, exactly half of the expiry: accepted) -> 2 delisted; list C is full again -> the same
+    24 internal ids as after A, all live, each delisting undone with a history row."""
+    weekly = _fillers(4, first_token=300001, expiry=date(2025, 9, 9))
+    full = _fillers(20) + weekly
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, full, as_of=_as_of(date(2025, 9, 1)))
+            ids_a = {r.contract.exchange_token: await live_contract_id(conn, r.id) for r in full}
+            result = await apply_update(conn, _fillers(20) + weekly[2:], as_of=_as_of(date(2025, 9, 2)))
+            assert result.delisted == 2
+            result = await apply_update(conn, full, as_of=_as_of(date(2025, 9, 3)))
+            assert (result.reinstated, result.added) == (2, 0)
+            ids_c = {r.contract.exchange_token: await live_contract_id(conn, r.id) for r in full}
+            assert ids_c == ids_a
+            day = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date::text"))
+                   ).scalar_one()
+            assert [(h[0], h[3], h[4], h[5]) for h in await _history(conn)] == [
+                (300001, "delisted_on", None, day), (300002, "delisted_on", None, day),
+                (300001, "delisted_on", day, None), (300002, "delisted_on", day, None)]
+            assert (await conn.execute(text(f"SELECT count(*) FROM {TABLE} WHERE delisted"))).scalar_one() == 0
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.parametrize("missing, refused", [(5, False), (6, True)], ids=["exactly-half", "more-than-half"])
+async def test_ac3_fix3_one_expiry_losing_more_than_half_is_refused(missing: int, refused: bool) -> None:
+    """ADR-059: 1,000 live NIFTY contracts of 2027-12-28 plus 10 of 2026-10-13. Losing 5 of the 10 (exactly half, 0.5%
+    of the index) is accepted; losing 6 (more than half) is refused with nothing written."""
+    big, weekly = _fillers(1000), _fillers(10, first_token=400001, expiry=date(2026, 10, 13))
+    conn = _FakeConn(_stored_all(big + weekly))
+    if refused:
+        with pytest.raises(ValueError, match="would drop 6 of 10 live NIFTY contracts of expiry 2026-10-13"):
+            await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)))
+        assert conn.writes == []
+    else:
+        result = await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)))
+        assert result.delisted == 5
+
+
+async def test_ac3_fix4_a_stale_row_never_creates_a_live_contract() -> None:
+    """ADR-059: a list row whose expiry (2026-10-06) is before the load date (2026-10-07) is skipped, never loaded."""
+    stale = _row(500001, date(2026, 10, 6), "25000", "CE", "NIFTY26O0625000CE")
+    conn = _FakeConn()
+    result = await apply_update(conn, [stale], as_of=_as_of(date(2026, 10, 7)))
+    assert (result.added, result.domain.skipped_expired) == (0, 1) and conn.writes == []
+
+
+def test_ac3_fix5_a_forced_update_audits_every_contract_it_delists() -> None:
+    """ADR-059: a forced update's audit event names the contracts not carried AND the ones whose token is reused."""
+    from ofo.audit import AuditLog
+    from ofo.instruments.catalogue import Catalogue
+
+    cat = Catalogue()
+    cat.load([R62964_A, R61746_A])
+    log = AuditLog()
+    reuse = _row(62964, date(2026, 11, 24), "20550", "CE", "NIFTY26NOV20550CE")
+    result = cat.update([reuse], as_of=_as_of(date(2025, 6, 27)), force=True, reason="test", actor="admin-1",
+                        audit_log=log, max_delist_percent=100)
+    assert result.replaced == (InstrumentId("NSE_FO", 62964),)
+    assert result.delisted == (InstrumentId("NSE_FO", 61746),)
+    (event,) = log.events
+    assert sorted(event.payload["dropped_instrument_ids"]) == [("NSE_FO", 61746), ("NSE_FO", 62964)]
