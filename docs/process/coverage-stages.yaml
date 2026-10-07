@@ -136,6 +136,7 @@ decisions:
   ADR-052: 4a           # corrected by ADR-057 (expiry is not part of the key)
   ADR-057: 4a           # identity holds while live; token retires after expiry; W-057
   ADR-058: 4a           # delisting before expiry; counting truncation guard; W-057
+  ADR-059: 4a           # revision vs new contract; reinstatement; per-expiry guard; W-057
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
