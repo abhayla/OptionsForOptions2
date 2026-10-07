@@ -1,0 +1,509 @@
+{
+ "status": "success",
+ "data": {
+  "BFO:SENSEX26O0872500CE": {
+   "instrument_token": 227668741,
+   "timestamp": "2026-10-07 16:25:51",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 239.5,
+   "last_quantity": 20,
+   "buy_quantity": 0,
+   "sell_quantity": 0,
+   "volume": 61673320,
+   "average_price": 346.99,
+   "oi": 915820,
+   "oi_day_high": 2245320,
+   "oi_day_low": 399080,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 2495.35,
+   "low_limit_price_protection": 144.15,
+   "high_limit_price_protection": 336.3,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 523.75,
+    "high": 622.6,
+    "low": 232.6,
+    "close": 643.35
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ],
+    "sell": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ]
+   }
+  },
+  "BFO:SENSEX26O0872600CE": {
+   "instrument_token": 227624709,
+   "timestamp": "2026-10-07 16:25:51",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 189.4,
+   "last_quantity": 160,
+   "buy_quantity": 0,
+   "sell_quantity": 0,
+   "volume": 85793380,
+   "average_price": 298.44,
+   "oi": 1073500,
+   "oi_day_high": 2366280,
+   "oi_day_low": 163120,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 2326.9,
+   "low_limit_price_protection": 115.1,
+   "high_limit_price_protection": 268.45,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 566,
+    "high": 566,
+    "low": 186.05,
+    "close": 566.4
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ],
+    "sell": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ]
+   }
+  },
+  "BFO:SENSEX26O0872700CE": {
+   "instrument_token": 227590917,
+   "timestamp": "2026-10-07 16:25:51",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 148.6,
+   "last_quantity": 20,
+   "buy_quantity": 0,
+   "sell_quantity": 0,
+   "volume": 90050920,
+   "average_price": 261.64,
+   "oi": 1057700,
+   "oi_day_high": 2153260,
+   "oi_day_low": 177160,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 2162.9,
+   "low_limit_price_protection": 89.9,
+   "high_limit_price_protection": 209.7,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 494.6,
+    "high": 494.6,
+    "low": 143,
+    "close": 500.4
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ],
+    "sell": [
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     },
+     {
+      "price": 0,
+      "quantity": 0,
+      "orders": 0
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1322550CE": {
+   "instrument_token": 11421186,
+   "timestamp": "2026-10-07 16:54:19",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 149.4,
+   "last_quantity": 130,
+   "buy_quantity": 118820,
+   "sell_quantity": 180765,
+   "volume": 47580975,
+   "average_price": 185.67,
+   "oi": 1346215,
+   "oi_day_high": 2554305,
+   "oi_day_low": 315185,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 479.25,
+   "low_limit_price_protection": 90.1,
+   "high_limit_price_protection": 210.15,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 222.8,
+    "high": 260.9,
+    "low": 148,
+    "close": 274.9
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 148.95,
+      "quantity": 325,
+      "orders": 2
+     },
+     {
+      "price": 148.5,
+      "quantity": 195,
+      "orders": 1
+     },
+     {
+      "price": 148.05,
+      "quantity": 195,
+      "orders": 1
+     },
+     {
+      "price": 148,
+      "quantity": 650,
+      "orders": 7
+     },
+     {
+      "price": 147.6,
+      "quantity": 130,
+      "orders": 1
+     }
+    ],
+    "sell": [
+     {
+      "price": 150.35,
+      "quantity": 650,
+      "orders": 3
+     },
+     {
+      "price": 150.45,
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": 150.55,
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": 150.85,
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": 151,
+      "quantity": 975,
+      "orders": 1
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1322600CE": {
+   "instrument_token": 11421698,
+   "timestamp": "2026-10-07 16:54:19",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 124.3,
+   "last_quantity": 65,
+   "buy_quantity": 251225,
+   "sell_quantity": 908570,
+   "volume": 203645585,
+   "average_price": 163.94,
+   "oi": 6697665,
+   "oi_day_high": 9192950,
+   "oi_day_low": 1966965,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 428.15,
+   "low_limit_price_protection": 74.65,
+   "high_limit_price_protection": 174.1,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 191.8,
+    "high": 226.05,
+    "low": 122.45,
+    "close": 240.05
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 123.75,
+      "quantity": 520,
+      "orders": 2
+     },
+     {
+      "price": 123.7,
+      "quantity": 260,
+      "orders": 1
+     },
+     {
+      "price": 123,
+      "quantity": 195,
+      "orders": 1
+     },
+     {
+      "price": 122.5,
+      "quantity": 65,
+      "orders": 1
+     },
+     {
+      "price": 122.4,
+      "quantity": 195,
+      "orders": 3
+     }
+    ],
+    "sell": [
+     {
+      "price": 124.75,
+      "quantity": 650,
+      "orders": 2
+     },
+     {
+      "price": 124.8,
+      "quantity": 910,
+      "orders": 2
+     },
+     {
+      "price": 124.85,
+      "quantity": 65,
+      "orders": 1
+     },
+     {
+      "price": 124.95,
+      "quantity": 2535,
+      "orders": 1
+     },
+     {
+      "price": 125,
+      "quantity": 2145,
+      "orders": 8
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1322650CE": {
+   "instrument_token": 11422210,
+   "timestamp": "2026-10-07 16:54:19",
+   "last_trade_time": "2026-10-07 15:39:59",
+   "last_price": 100.55,
+   "last_quantity": 130,
+   "buy_quantity": 95940,
+   "sell_quantity": 548860,
+   "volume": 142081420,
+   "average_price": 143.74,
+   "oi": 3069560,
+   "oi_day_high": 4948710,
+   "oi_day_low": 570960,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 379.65,
+   "low_limit_price_protection": 60.6,
+   "high_limit_price_protection": 141.35,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 163,
+    "high": 194,
+    "low": 99,
+    "close": 208.25
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 100.55,
+      "quantity": 390,
+      "orders": 3
+     },
+     {
+      "price": 100.4,
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": 100.3,
+      "quantity": 65,
+      "orders": 1
+     },
+     {
+      "price": 100.2,
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": 100,
+      "quantity": 260,
+      "orders": 1
+     }
+    ],
+    "sell": [
+     {
+      "price": 101,
+      "quantity": 1820,
+      "orders": 1
+     },
+     {
+      "price": 101.05,
+      "quantity": 325,
+      "orders": 1
+     },
+     {
+      "price": 101.5,
+      "quantity": 455,
+      "orders": 2
+     },
+     {
+      "price": 101.6,
+      "quantity": 2340,
+      "orders": 2
+     },
+     {
+      "price": 101.75,
+      "quantity": 65,
+      "orders": 1
+     }
+    ]
+   }
+  }
+ }
+}

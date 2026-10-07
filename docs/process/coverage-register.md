@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 67568ba
+Generated from commit 8e9e957
 
 ## Stage S0
 
@@ -75,6 +75,7 @@ Generated from commit 67568ba
 | 4a | decision | ADR-056 | - | How the core is judged and what it needs before it starts (error messages, pricing model, gates, fan-out test, chain levels) |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
+| 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #116 | - |  |
 | 4a | issue | #30 | - |  |
@@ -406,7 +407,7 @@ Generated from commit 67568ba
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 18 | 2 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 59 |
+| 4a | 7 | 0 | 18 | 3 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 60 |
 | 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 39 |
 | 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |

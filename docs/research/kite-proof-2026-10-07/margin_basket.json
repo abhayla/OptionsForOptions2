@@ -1,0 +1,270 @@
+{
+ "request": [
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1322800CE",
+   "transaction_type": "SELL",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "MARKET",
+   "quantity": 65,
+   "price": 0
+  },
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1323000CE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "MARKET",
+   "quantity": 65,
+   "price": 0
+  },
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1322400PE",
+   "transaction_type": "SELL",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "MARKET",
+   "quantity": 65,
+   "price": 0
+  },
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1322200PE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "MARKET",
+   "quantity": 65,
+   "price": 0
+  }
+ ],
+ "reply": {
+  "status": "success",
+  "data": {
+   "initial": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 231532.40000000002,
+    "exposure": 58767.93,
+    "option_premium": 3259.75,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 293560.08
+   },
+   "final": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 12473.75,
+    "exposure": 58767.93,
+    "option_premium": -4810,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 66431.68
+   },
+   "orders": [
+    {
+     "type": "equity",
+     "tradingsymbol": "NIFTY26O1322800CE",
+     "exchange": "NFO",
+     "span": 132496.65000000002,
+     "exposure": 29383.965,
+     "option_premium": 0,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 4.850625,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 1.148951375,
+      "sebi_turnover_charge": 0.0032337499999999996,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 3.8073933225,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 3.8073933225
+      },
+      "total": 29.8102034475
+     },
+     "total": 161880.61500000002
+    },
+    {
+     "type": "equity",
+     "tradingsymbol": "NIFTY26O1323000CE",
+     "exchange": "NFO",
+     "span": 0,
+     "exposure": 0,
+     "option_premium": 1095.25,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 0,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 0.389142325,
+      "sebi_turnover_charge": 0.0010952499999999999,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 3.6702427635,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 3.6702427635
+      },
+      "total": 24.0604803385
+     },
+     "total": 1095.25
+    },
+    {
+     "type": "equity",
+     "tradingsymbol": "NIFTY26O1322400PE",
+     "exchange": "NFO",
+     "span": 99035.75,
+     "exposure": 29383.965,
+     "option_premium": 0,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 7.2540000000000004,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 1.7182308000000002,
+      "sebi_turnover_charge": 0.004836,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 3.9101520240000003,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 3.9101520240000003
+      },
+      "total": 32.887218824
+     },
+     "total": 128419.715
+    },
+    {
+     "type": "equity",
+     "tradingsymbol": "NIFTY26O1322200PE",
+     "exchange": "NFO",
+     "span": 0,
+     "exposure": 0,
+     "option_premium": 2164.5,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 0,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 0.76904685,
+      "sebi_turnover_charge": 0.0021644999999999998,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 3.7388180429999993,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 3.7388180429999993
+      },
+      "total": 24.510029392999996
+     },
+     "total": 2164.5
+    }
+   ],
+   "charges": {
+    "transaction_tax": 0,
+    "transaction_tax_type": "",
+    "exchange_turnover_charge": 0,
+    "sebi_turnover_charge": 0.0113295,
+    "brokerage": 80,
+    "stamp_duty": 0,
+    "gst": {
+     "igst": 0,
+     "cgst": 0,
+     "sgst": 0,
+     "total": 0
+    },
+    "total": 0
+   }
+  }
+ }
+}
