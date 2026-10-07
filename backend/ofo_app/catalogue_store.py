@@ -30,25 +30,30 @@ load_catalogue(conn) -> Catalogue: every stored contract (listed or not) with it
 (CatalogueStoreError naming the row) on a strike or tick that is not a finite Decimal, a contract with no Zerodha row,
 or a row outside the catalogue's scope.
 
-apply_update(conn, rows, *, as_of, force=False, reason=None, actor=None):
+apply_update(conn, rows, *, as_of, force=False, reason=None, actor=None, max_delist_percent=10):
 1. ``pg_advisory_xact_lock(CATALOGUE_UPDATE_LOCK_KEY)`` serialises updates until the caller's transaction ends.
-2. Validates every in-scope row BEFORE anything is written: strike and tick fit their columns exactly, every row has a
-   Zerodha broker row, no two rows share a Zerodha token, and a contract already stored keeps its identity (name,
-   instrument_type, strike) and its Zerodha row keeps its identity (broker_token, broker_segment) - refused here and by
-   the database (OF006). Revisable terms follow the list (Q257): the contract's expiry, and the Zerodha row's
-   broker_symbol, lot_size, tick_size and freeze_limit; the database triggers record each change in
-   public.catalogue_term_changes (broker NULL for expiry, the broker otherwise) with a database-stamped time.
-3. Loads the stored catalogue and calls the domain ``Catalogue.update`` (Q244). A refusal writes nothing.
-4. Writes inside a SAVEPOINT: INSERT new contracts, INSERT their broker rows (contract found by its identity), UPDATE
-   revised expiries, UPDATE every present stored contract's broker row (the database stamps seen_on/last_seen_at and
-   writes history only for a changed value), mark present contracts listed and departed ones unlisted, then checks no
-   stored contract lacks its Zerodha row. Nothing is ever deleted.
-5. ``force=True``: the domain's ADMIN_CHANGE_RECORDED event is appended through ofo_app.audit_store on the SAME
-   connection inside step 4's savepoint, after the writes.
+2. Loads the LIVE contracts; those whose expiry is before the load date are retired (ADR-057).
+3. Validates every in-scope row BEFORE anything is written: strike and tick fit their columns exactly, every row has
+   an expiry and one Zerodha broker row, no token or Zerodha token appears twice, a live Zerodha token never moves to
+   another exchange identity, and a revision keeps its Zerodha identity (broker_token, broker_segment). Rows whose
+   expiry has passed are skipped (ADR-059).
+4. Calls the domain ``Catalogue.update``, which holds the rules: the ADR-058 per-index and ADR-059 per-expiry
+   truncation guards (a refusal writes nothing), and the ADR-059 revision test - a row on a live token is a revision
+   only if underlying, type and segment are unchanged and either the expiry moved <= 7 days with the strike unchanged,
+   or the strike changed with the expiry unchanged; any other change is a token reuse. A row about to be inserted that
+   is identical to a delisted contract reinstates it (same internal id).
+5. Writes inside a SAVEPOINT, in this order: delist (not carried, or token reused), retire, reinstate, insert new
+   contracts and their broker rows, revise expiry/strike, see the broker rows (the database stamps seen_on and writes
+   history only for a changed value), mark seen contracts listed; then checks no stored contract lacks its Zerodha
+   row. Nothing is ever deleted.
+6. ``force=True``: the domain's ADMIN_CHANGE_RECORDED event (naming every contract the update delists) is appended
+   through ofo_app.audit_store on the SAME connection inside step 5's savepoint, after the writes.
 Transaction control (commit) stays with the caller.
 
-Known limit (accepted, W-053 fix round 2): Q244 lives in the domain; the application role can still UPDATE
-currently_listed with raw SQL, bypassing it.
+Known limit (accepted, W-053 fix round 2; widened by W-057): the truncation guards live in the domain; the application
+role can still UPDATE currently_listed, retired or delisted with raw SQL, bypassing them (the database guard still
+refuses retiring a live contract, any change to a retired one, and any return of a delisted one other than an
+identical reinstatement).
 """
 
 from __future__ import annotations
@@ -62,7 +67,14 @@ from typing import Any, Iterable, TextIO
 
 from sqlalchemy import text
 
-from ofo.instruments.catalogue import IST, Catalogue, CatalogueUpdateResult
+from ofo.instruments.catalogue import (
+    DEFAULT_MAX_DELIST_PERCENT,
+    IST,
+    Catalogue,
+    CatalogueUpdateResult,
+    check_max_delist_percent,
+    is_revision,
+)
 from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, ListedContract
 from ofo.instruments.parser import ParsedInstruments, parse_instruments_rows, zerodha_segment
 from ofo_app import audit_store
@@ -100,6 +112,19 @@ _LIVE_ID = text(
 _RETIRE = text(
     f"UPDATE {CONTRACTS} SET retired = TRUE, currently_listed = FALSE "
     f"WHERE id = ANY(CAST(:ids AS BIGINT[])) AND NOT retired AND NOT delisted"
+)
+_REINSTATE = text(
+    f"UPDATE {CONTRACTS} SET delisted = FALSE, currently_listed = TRUE "
+    f"WHERE id = ANY(CAST(:ids AS BIGINT[])) AND delisted AND NOT retired"
+)
+_SELECT_DELISTED = text(
+    f"SELECT d.id, d.exchange_segment, d.exchange_token, d.name, d.expiry, d.strike, d.instrument_type, "
+    f"d.currently_listed, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, b.tick_size, "
+    f"b.freeze_limit, b.seen_on "
+    f"FROM {CONTRACTS} AS d LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = d.id "
+    f"WHERE d.delisted AND NOT d.retired AND (d.exchange_segment, d.exchange_token) IN "
+    f"(SELECT s, t FROM unnest(CAST(:segments AS TEXT[]), CAST(:tokens AS BIGINT[])) AS k(s, t)) "
+    f"ORDER BY d.id, b.broker"
 )
 _DELIST = text(
     f"UPDATE {CONTRACTS} SET delisted = TRUE, currently_listed = FALSE "
@@ -146,11 +171,6 @@ BROKER_REVISABLE_FIELDS = ("broker_symbol", "lot_size", "tick_size", "freeze_lim
 BROKER_IDENTITY_FIELDS = ("broker_token", "broker_segment")
 
 
-#: ADR-058: refuse an update that would drop MORE than this percentage of an index's live contracts at once. The admin
-#: setting is ofo_app.config.Settings.CATALOGUE_MAX_DELIST_PERCENT; a test asserts the two defaults are equal.
-DEFAULT_MAX_DELIST_PERCENT = Decimal("10")
-
-
 class CatalogueStoreError(ValueError):
     """The store refused: a value it cannot store or reload exactly, or a contract whose identity would change."""
 
@@ -163,7 +183,8 @@ class StoreUpdateResult:
     revised: int  # stored contracts whose expiry, strike or Zerodha terms changed
     domain: CatalogueUpdateResult
     retired: int = 0  # live contracts retired by this load (expiry before the load date, ADR-057)
-    delisted: int = 0  # live, unexpired contracts the list no longer carries (ADR-058)
+    delisted: int = 0  # live contracts the list no longer carries (ADR-058) or whose token it reuses (ADR-059)
+    reinstated: int = 0  # delisted contracts back, identical, under their own internal id (ADR-059)
 
 
 @dataclass(frozen=True)
@@ -374,28 +395,10 @@ def _keys(ids: Iterable[InstrumentId]) -> dict[str, list]:
 
 
 def _check_percent(value: Any) -> Decimal:
-    if isinstance(value, bool) or not isinstance(value, (int, Decimal)) or not Decimal(value).is_finite() \
-            or not Decimal(0) <= Decimal(value) <= Decimal(100):
-        raise CatalogueStoreError(f"max_delist_percent must be an int or Decimal from 0 to 100, got {value!r}")
-    return Decimal(value)
-
-
-def _refuse_truncated(kept: list[tuple[int, ListedContract, bool]], vanishing: list[tuple[int, ListedContract, bool]],
-                      limit: Decimal) -> None:
-    """ADR-058: per index (underlying), refuse when MORE than `limit` percent of its live contracts would disappear."""
-    live: dict[str, int] = {}
-    gone: dict[str, int] = {}
-    for _, listed, _ in kept:
-        live[listed.contract.name] = live.get(listed.contract.name, 0) + 1
-    for _, listed, _ in vanishing:
-        gone[listed.contract.name] = gone.get(listed.contract.name, 0) + 1
-    for name in sorted(gone):
-        if gone[name] * 100 > limit * live[name]:
-            share = (Decimal(gone[name] * 100) / live[name]).quantize(Decimal("0.1"))
-            raise CatalogueStoreError(
-                f"Catalogue update refused: would drop {gone[name]} of {live[name]} live {name} contracts ({share}%), "
-                f"more than {limit}% at once - the source list may be truncated (ADR-058); nothing written; override "
-                f"needs force=True with a reason, actor and audit_log")
+    try:
+        return check_max_delist_percent(value)
+    except ValueError as exc:
+        raise CatalogueStoreError(str(exc)) from None
 
 
 def _refuse_identity_change(label: str, what: str, fields: tuple[str, ...], old: Any, new: Any) -> None:
@@ -406,6 +409,38 @@ def _refuse_identity_change(label: str, what: str, fields: tuple[str, ...], old:
                 f" - a live contract's identity never changes and two live contracts never share a token"
                 f" (REQ-054 AC-3, ADR-057); nothing written"
             )
+
+
+def _same_contract(stored: ListedContract, row: ListedContract) -> bool:
+    """ADR-059 reinstatement: the same token, underlying, type, strike and expiry (and the same Zerodha token)."""
+    fields = ("exchange_segment", "exchange_token", "name", "instrument_type", "strike", "expiry")
+    if any(getattr(stored.contract, f) != getattr(row.contract, f) for f in fields):
+        return False
+    old, new = stored.ref(ZERODHA), row.ref(ZERODHA)
+    return (old.broker_token, old.broker_segment) == (new.broker_token, new.broker_segment)
+
+
+async def _reinstatable(conn: Any, rows: list[ListedContract]) -> dict[InstrumentId, int]:
+    """For each row to be inserted, the one delisted (not retired) contract identical to it, if any (ADR-059). Two
+    identical delisted candidates for one row refuse the list (fail closed: never guess which one returns)."""
+    if not rows:
+        return {}
+    grouped: dict[int, list[Any]] = {}
+    for found in (await conn.execute(_SELECT_DELISTED, _keys(r.id for r in rows))).all():
+        grouped.setdefault(found.id, []).append(found)
+    candidates: dict[InstrumentId, list[tuple[int, ListedContract]]] = {}
+    for contract_id, found in grouped.items():
+        listed, _ = _stored_row(found)
+        candidates.setdefault(listed.id, []).append((contract_id, listed))
+    out: dict[InstrumentId, int] = {}
+    for row in rows:
+        matches = [cid for cid, listed in candidates.get(row.id, []) if _same_contract(listed, row)]
+        if len(matches) > 1:
+            raise CatalogueStoreError(f"{len(matches)} delisted contracts (ids {sorted(matches)}) are identical to "
+                                      f"{_label(row)}; cannot tell which one returns; nothing written")
+        if matches:
+            out[row.id] = matches[0]
+    return out
 
 
 async def apply_update(
@@ -419,7 +454,8 @@ async def apply_update(
     max_delist_percent: Any = DEFAULT_MAX_DELIST_PERCENT,
 ) -> StoreUpdateResult:
     """Apply a newer instrument list to the stored catalogue (see the module docstring). Refusals raise before any
-    write: ValueError from the domain (Q244; force without reason/actor), CatalogueStoreError here."""
+    write: ValueError from the domain (the ADR-058/059 truncation guards; force without reason/actor),
+    CatalogueStoreError here."""
     if not isinstance(as_of, datetime) or as_of.tzinfo is None or as_of.utcoffset() is None:
         raise ValueError("apply_update() requires a timezone-aware as_of (the retirement date, ADR-057)")
     update_date = as_of.astimezone(IST).date()
@@ -434,23 +470,16 @@ async def apply_update(
     # ADR-057: a live contract whose expiry is before the load date is retired; its token is free from now on.
     retiring = [(cid, listed, is_listed) for cid, listed, is_listed in live if listed.contract.expiry < update_date]
     kept = [item for item in live if item[1].contract.expiry >= update_date]
-    in_list = {r.id for r in rows if Catalogue._in_scope(r.contract)}
-    vanishing = [item for item in kept if item[1].id not in in_list]  # live, unexpired, not carried: delisted
-    if not force:
-        _refuse_truncated(kept, vanishing, limit)
-    vanishing_ids = {item[1].id for item in vanishing}
-    # Without force the delisted contracts leave the domain catalogue first (the count above is the guard); with force
-    # the domain sees them dropped and records them in its audit event.
-    catalogue = _catalogue_of(kept if force else [item for item in kept if item[1].id not in vanishing_ids])
+    contract_ids = {listed.id: cid for cid, listed, _ in kept}
+    catalogue = _catalogue_of(kept)
     before = {e.id: e for e in catalogue.all_entries()}
-    # Every unexpired live contract, including those about to be delisted: a Zerodha token held by one of them never
-    # moves to another exchange identity inside one list (fail closed).
+    was_listed = {i: e.currently_listed for i, e in before.items()}  # the domain update mutates the entries
+    # A Zerodha token held by an unexpired live contract never moves to another exchange identity in one list.
     stored_by_token = {(ref.broker_segment, ref.broker_token): listed
                        for _, listed, _ in kept for ref in listed.broker_refs if ref.broker == ZERODHA}
 
     scoped: dict[InstrumentId, ListedContract] = {}
     zerodha_tokens: dict[tuple[str, str], InstrumentId] = {}
-    revised: list[ListedContract] = []
     for row in rows:
         if not Catalogue._in_scope(row.contract):
             continue
@@ -459,6 +488,8 @@ async def apply_update(
         if row.contract.expiry is None:
             raise CatalogueStoreError(f"contract {label}: has no expiry; cannot tell when its token retires "
                                       "(ADR-057); the list is refused, nothing written")
+        if row.contract.expiry < update_date:  # ADR-059: a stale row is skipped, never loaded (the domain skips too)
+            continue
         refs = {r.broker: r for r in row.broker_refs}
         if ZERODHA not in refs or len(refs) != len(row.broker_refs):
             raise CatalogueStoreError(f"contract {label}: needs exactly one {ZERODHA} row (REQ-054 AC-3)")
@@ -472,40 +503,45 @@ async def apply_update(
                                       f"and {row.id}")
         zerodha_tokens[token_key] = row.id
         scoped[row.id] = row
+        owner = stored_by_token.get(token_key)
+        if owner is not None and owner.id != row.id:  # the live Zerodha row would point at another identity
+            _refuse_identity_change(label, "", IDENTITY_FIELDS, owner.contract, row.contract)
         stored = before.get(row.id)
-        if stored is None:
-            owner = stored_by_token.get(token_key)
-            if owner is not None:  # the live Zerodha row now points at another identity: an identity change
-                _refuse_identity_change(label, "", IDENTITY_FIELDS, owner.contract, row.contract)
-            continue
-        _refuse_identity_change(label, "", IDENTITY_FIELDS, stored.contract, row.contract)
-        old_ref = stored.broker_refs[ZERODHA]
-        _refuse_identity_change(label, f"{ZERODHA} ", BROKER_IDENTITY_FIELDS, old_ref, refs[ZERODHA])
-        if (any(getattr(stored.contract, f) != getattr(row.contract, f) for f in REVISABLE_FIELDS)
-                or any(getattr(old_ref, f) != getattr(refs[ZERODHA], f) for f in BROKER_REVISABLE_FIELDS
-                       if getattr(refs[ZERODHA], f) is not None)):  # a value the list does not carry is kept
-            revised.append(row)
+        if stored is not None and is_revision(stored.contract, row.contract):  # a revision keeps the Zerodha row
+            _refuse_identity_change(label, f"{ZERODHA} ", BROKER_IDENTITY_FIELDS, stored.broker_refs[ZERODHA],
+                                    refs[ZERODHA])
 
     audit = _BufferedAuditLog() if force else None
-    domain = catalogue.update(rows, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit)
-
-    after = {e.id: e.currently_listed for e in catalogue.all_entries()}
-    new = [scoped[i] for i in sorted(scoped) if i not in before]
-    present = [scoped[i] for i in sorted(scoped) if i in before]
+    # The domain holds the rules (ADR-058 index guard, ADR-059 half-expiry guard, revision test, stale rows).
+    domain = catalogue.update(rows, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit,
+                              max_delist_percent=limit)
+    replaced = set(domain.replaced)
+    vanishing = set(domain.delisted)
+    if (replaced != {i for i in scoped if i in before and not is_revision(before[i].contract, scoped[i].contract)}
+            or not vanishing <= set(before) or vanishing & set(scoped)):
+        raise CatalogueStoreError("domain catalogue state does not match the planned write; nothing written")
+    present = [scoped[i] for i in sorted(scoped) if i in before and i not in replaced]
+    arriving = [scoped[i] for i in sorted(scoped) if i not in before or i in replaced]
+    reinstate = await _reinstatable(conn, arriving)
+    new = [r for r in arriving if r.id not in reinstate]
+    returning = [r for r in arriving if r.id in reinstate]
+    revised = [r for r in present
+               if any(getattr(before[r.id].contract, f) != getattr(r.contract, f) for f in REVISABLE_FIELDS)
+               or any(getattr(before[r.id].broker_refs[ZERODHA], f) != getattr(r.ref(ZERODHA), f)
+                      for f in BROKER_REVISABLE_FIELDS if getattr(r.ref(ZERODHA), f) is not None)]
     terms_revised = [r for r in present
                      if any(getattr(before[r.id].contract, f) != getattr(r.contract, f) for f in REVISABLE_FIELDS)]
-    unlisted = {i for i, listed in after.items() if not listed}
-    if (set(after) != set(before) | {r.id for r in new} or any(not after[i] for i in scoped)
-            or not unlisted <= vanishing_ids):
-        raise CatalogueStoreError("domain catalogue state does not match the planned write; nothing written")
     retire_ids = sorted(cid for cid, _, _ in retiring)
-    delist_ids = sorted(cid for cid, _, _ in vanishing)
+    delist_ids = sorted(contract_ids[i] for i in vanishing | replaced)
+    seen = present + returning
 
     async with conn.begin_nested():
-        if delist_ids:  # first: frees each token that leaves the market before a new contract takes it
+        if delist_ids:  # first: frees each token that leaves the market (or is reused) before a contract takes it
             await conn.execute(_DELIST, {"ids": delist_ids})
         if retire_ids:
             await conn.execute(_RETIRE, {"ids": retire_ids})
+        if reinstate:  # ADR-059: the same contract (same internal id) returns
+            await conn.execute(_REINSTATE, {"ids": sorted(reinstate.values())})
         if new:
             await conn.execute(_INSERT, [_contract_params(r) for r in new])
             await conn.execute(_INSERT_BROKER, [_broker_params(r, ref) for r in new for ref in r.broker_refs])
@@ -514,9 +550,9 @@ async def apply_update(
                                           "exchange_token": r.contract.exchange_token,
                                           "expiry": r.contract.expiry, "strike": r.contract.strike}
                                          for r in terms_revised])
-        if present:
-            await conn.execute(_SEE_BROKER, [_see_params(r, ref) for r in present for ref in r.broker_refs])
-            await conn.execute(_SET_LISTED, {"listed": True, **_keys(r.id for r in present)})
+        if seen:
+            await conn.execute(_SEE_BROKER, [_see_params(r, ref) for r in seen for ref in r.broker_refs])
+            await conn.execute(_SET_LISTED, {"listed": True, **_keys(r.id for r in seen)})
         missing = (await conn.execute(_MISSING_BROKER_ROW, {"broker": ZERODHA})).scalar_one()
         if missing:
             raise CatalogueStoreError(f"{missing} stored contract(s) have no {ZERODHA} row after the write; "
@@ -524,9 +560,11 @@ async def apply_update(
         # Inside the savepoint, after the writes: a refused audit append rolls back the catalogue change too.
         for event in audit.events if audit is not None else ():
             await audit_store.append(conn, event.pop("event_type"), **event)
-    newly_unlisted = sum(1 for _, _, was_listed in retiring + vanishing if was_listed)
+    leaving_listed = sum(1 for i in vanishing | replaced if was_listed[i])
+    newly_unlisted = sum(1 for _, _, was_listed in retiring if was_listed) + leaving_listed
     return StoreUpdateResult(added=len(new), seen=len(present), newly_unlisted=newly_unlisted,
-                             revised=len(revised), domain=domain, retired=len(retire_ids), delisted=len(delist_ids))
+                             revised=len(revised), domain=domain, retired=len(retire_ids), delisted=len(delist_ids),
+                             reinstated=len(reinstate))
 
 
 def with_terms(row: ListedContract, **changes: Any) -> ListedContract:

@@ -47,7 +47,7 @@ class CatalogueContract(Base):
     __tablename__ = "catalogue_contracts"
     __table_args__ = (
         Index("catalogue_contracts_live_identity_key", "exchange_segment", "exchange_token", unique=True,
-              postgresql_where=text("NOT retired")),
+              postgresql_where=text("NOT retired AND NOT delisted")),
         {"schema": "public"},
     )
 
@@ -63,6 +63,8 @@ class CatalogueContract(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     retired: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delisted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    delisted_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class BrokerInstrument(Base):

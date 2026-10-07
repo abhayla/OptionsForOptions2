@@ -8,14 +8,16 @@ creates a new contract with its own identity, and any record linked to the old o
 findings F-21 (62964 / 61746 expiry moved under a live token; 67245 reused after expiry; 79199 strike 410 -> 390.75).
 REQ-053 Q257's "strike never changes" is superseded for live contracts by ADR-057. ADR-058 / REQ-054 AC-3 (round 2):
 "A contract the daily list stops carrying before its expiry is marked delisted and kept, and its token is free for
-reuse (ADR-058)."
+reuse (ADR-058)." ADR-059: a delisted contract that comes back identical "is reinstated as the same contract (its
+internal id kept)".
 
 Copy from: none - algochanakya keys every broker on a Zerodha symbol string (legacy-reuse.md M2 rows SKIP, F-09).
 
 Changes (owner-run, one transaction):
 - public.catalogue_contracts: gains delisted (BOOLEAN, default FALSE) and delisted_on (the database's IST date,
   stamped by the guard, with a history row field delisted_on); a delisted contract never changes and is never
-  retired. Live = NOT retired AND NOT delisted.
+  retired, except reinstatement (ADR-059): delisted -> live with every term unchanged and listed again, history row
+  delisted_on -> NULL, broker rows un-freed. Live = NOT retired AND NOT delisted.
 - public.catalogue_contracts: gains retired (BOOLEAN, default FALSE) and retired_at (stamped by the guard);
   CHECK retired contracts are unlisted and retired = (retired_at IS NOT NULL). UNIQUE (exchange_segment,
   exchange_token) becomes a partial unique index over live rows only (catalogue_contracts_live_identity_key).
@@ -27,10 +29,10 @@ Changes (owner-run, one transaction):
   or delisted; set only by the contract guard's cascade, which marks itself with the transaction-local setting
   ofo.contract_leaving; no application grant). UNIQUE (broker, broker_segment, broker_token) becomes a partial unique index over live rows
   (broker_instruments_live_token_key): Zerodha's instrument_token is derived from the exchange token and is reused
-  with it. The guard refuses: a broker row on a retired contract, retiring a row whose contract has not expired, any
-  change to a retired row.
-- public.catalogue_term_changes: field list gains strike (broker NULL for expiry and strike).
-- Grants: the application role gains column UPDATE on catalogue_contracts.strike and .retired.
+  with it. The guard refuses: a broker row on a contract that has left the market, freeing or un-freeing a row other
+  than through the contract guard's cascade, any other change to a freed row.
+- public.catalogue_term_changes: field list gains strike and delisted_on (broker NULL for expiry, strike, delisted_on).
+- Grants: the application role gains column UPDATE on catalogue_contracts.strike, .retired and .delisted.
 - Data: existing rows are kept as they are and become live contracts (retired = FALSE); the next load retires each
   one whose expiry is before its date. Nothing is deleted or rewritten. The downgrade refuses while any contract,
   broker row or history row exists (as 0004 does).
@@ -126,10 +128,12 @@ ALLOWLIST_BLOCK_MARKER = _M4.ALLOWLIST_BLOCK_MARKER  # "-- 9. broker instruments
 _TODAY = _M4._seen_on()  # the database's IST date, never the caller's
 
 
-def _free_broker_rows() -> str:
-    """The contract guard's cascade: free the broker rows of a contract leaving the market (retired or delisted)."""
+def _free_broker_rows(free: bool = True) -> str:
+    """The contract guard's cascade: free (or, on reinstatement, un-free) the broker rows of a contract leaving (or
+    returning to) the market; the transaction-local setting tells the broker guard the change comes from here."""
+    to, was = ("TRUE", "NOT retired") if free else ("FALSE", "retired")
     return f"""                PERFORM set_config('{LEAVING_SETTING}', OLD.id::text, TRUE);
-                UPDATE {BROKER_TABLE} SET retired = TRUE WHERE contract_id = OLD.id AND NOT retired;
+                UPDATE {BROKER_TABLE} SET retired = {to} WHERE contract_id = OLD.id AND {was};
                 PERFORM set_config('{LEAVING_SETTING}', '', TRUE);"""
 
 
@@ -164,6 +168,19 @@ def _guard_function_sql() -> str:
                 NEW.last_seen_at := NEW.first_seen_at;
                 RETURN NEW;
             END IF;
+            IF OLD.delisted AND NOT OLD.retired AND NOT NEW.delisted AND NOT NEW.retired AND NEW.currently_listed
+               AND NOT ({changed})
+               AND NOT ({terms_changed}) THEN
+                -- ADR-059 reinstatement: the identical contract returns under its own internal id
+                NEW.delisted_on := NULL;
+                NEW.retired_at := OLD.retired_at;
+                NEW.first_seen_at := OLD.first_seen_at;
+                NEW.last_seen_at := clock_timestamp();
+                INSERT INTO {HISTORY} (contract_id, broker, field, old_value, new_value)
+                VALUES (OLD.id, NULL, 'delisted_on', OLD.delisted_on::text, NULL);
+{_free_broker_rows(False)}
+                RETURN NEW;
+            END IF;
             IF OLD.retired OR OLD.delisted THEN
                 RAISE EXCEPTION 'catalogue store: contract id % (% %) has left the market and never changes (ADR-057, ADR-058)',
                     OLD.id, OLD.exchange_segment, OLD.exchange_token USING ERRCODE = '{CATALOGUE_SQLSTATE}';
@@ -177,6 +194,7 @@ def _guard_function_sql() -> str:
                     RAISE EXCEPTION 'catalogue store: contract id % is delisted unlisted, unretired, with its last terms (ADR-058)',
                         OLD.id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
                 END IF;
+                -- the load date by the trusted database clock (ADR-023), never the list's as_of
                 NEW.delisted_on := {_TODAY};
                 NEW.retired_at := OLD.retired_at;
                 NEW.first_seen_at := OLD.first_seen_at;
@@ -251,6 +269,14 @@ def _broker_function_sql() -> str:
                 RETURN NEW;
             END IF;
             IF OLD.retired THEN
+                IF NOT NEW.retired AND current_setting('{LEAVING_SETTING}', TRUE) IS NOT DISTINCT FROM OLD.contract_id::text
+                   AND NOT ({changed}) AND NOT ({terms_changed}) THEN
+                    -- un-freed by the contract guard's reinstatement cascade (ADR-059)
+                    NEW.first_seen_at := OLD.first_seen_at;
+                    NEW.last_seen_at := OLD.last_seen_at;
+                    NEW.seen_on := OLD.seen_on;
+                    RETURN NEW;
+                END IF;
                 RAISE EXCEPTION 'broker instruments: % row % of contract % is retired and never changes (ADR-057)',
                     OLD.broker, OLD.broker_token, OLD.contract_id USING ERRCODE = '{CATALOGUE_SQLSTATE}';
             END IF;

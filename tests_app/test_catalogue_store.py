@@ -243,7 +243,9 @@ class _FakeConn:
             def scalar_one(self):
                 return 0  # the post-write "contracts without a zerodha row" check
 
-        if sql.startswith("SELECT c.id,") or sql.startswith("SELECT count(*)"):
+        if sql.startswith("SELECT d.id,"):  # delisted candidates for reinstatement (W-057, ADR-059): none here
+            rows = []
+        if sql.startswith(("SELECT c.id,", "SELECT d.id,", "SELECT count(*)")):
             return _Result()
         if not sql.startswith("SELECT pg_advisory_xact_lock"):
             self.writes.append((sql.split()[0], params))
@@ -337,8 +339,9 @@ async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database(
     assert len(conn.writes[1][1]["tokens"]) == 22  # every present contract listed
 
 
-@pytest.mark.parametrize("field, value", [("instrument_type", "PE"),  # strike is a revision since ADR-057 (W-057)
-                                          ("exchange_token", 1), ("broker_segment", "NFO-FUT"),
+# W-057: a strike change is a revision (ADR-057); another instrument_type is a token reuse, i.e. a new contract
+# (ADR-059, tested in test_contract_identity_lifecycle.py); what stays refused is a Zerodha identity change.
+@pytest.mark.parametrize("field, value", [("exchange_token", 1), ("broker_segment", "NFO-FUT"),
                                           ("broker_token", "1")])
 async def test_planning_an_identity_change_is_refused_with_no_write(field: str, value) -> None:
     conn = _FakeConn(_stored_rows())
@@ -541,7 +544,8 @@ async def test_revised_lot_size_follows_zerodha_with_one_history_row(
             await trans.rollback()
 
 
-@pytest.mark.parametrize("field, value", [("instrument_type", "PE")])  # strike: a revision since ADR-057 (W-057)
+# W-057: strike is a revision (ADR-057) and instrument_type a token reuse (ADR-059); a Zerodha token change stays refused
+@pytest.mark.parametrize("field, value", [("broker_token", "1")])
 async def test_an_identity_change_is_refused_with_nothing_written(
     app_engine: AsyncEngine, capsys: pytest.CaptureFixture[str], field: str, value
 ) -> None:
