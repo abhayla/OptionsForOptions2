@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit bd47b26
+Generated from commit 7c8dd39
 
 ## Stage S0
 
@@ -98,13 +98,14 @@ Generated from commit bd47b26
 | 4a | requirement | REQ-049 | - | Normalized market data and data health |
 | 4a | requirement | REQ-052 | - | Market-data sourcing and licensing |
 | 4a | requirement | REQ-053 | - | Broker authority and contract eligibility |
-| 4a | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, submit order, fetch order status, reconcile. |
+| 4a | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
 | 4a | requirement | REQ-063 | AC-1 | Broker, market-data and payment integrations each sit behind an adapter. |
 | 4a | requirement | REQ-063 | AC-2 | Business rules live in backend/domain services, not only in UI code. |
 | 4a | requirement | REQ-063 | AC-3 | Shared calculations are centralised. |
 | 4a | requirement | REQ-063 | AC-5 | Vendor credentials never reach the browser; broker credentials are never stored beyond the official secure-token mechanism. Audit and other stored payloads use a per-event-type field ALLOWLIST (each event type declares the fields it may carry; anything else is dropped before storage), never a list of forbidden key names - a denylist failed twice (W-015 - over-blocked instrument_token, under-blocked X-Api-Key and Kite's enctoken). Delegated overnight after an independent review (ADR-045); work item W-017, blocked until real Kite responses exist. |
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
+| 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-024 | - | Error classification and user-facing error messages |
 
 ## Stage 4b
@@ -138,7 +139,7 @@ Generated from commit bd47b26
 | 4b | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
 | 4b | requirement | REQ-036 | - | Strategy-only execution |
 | 4b | requirement | REQ-039 | - | Strategy state machine and exception states |
-| 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, submit order, fetch order status, reconcile. |
+| 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
 | 4b | requirement | REQ-055 | - | Margin checks |
 | 4b | requirement | REQ-056 | - | Multi-leg execution plan and review |
 | 4b | requirement | REQ-057 | - | Order lifecycle |
@@ -148,6 +149,7 @@ Generated from commit bd47b26
 | 4b | requirement | REQ-061 | - | Existing positions on connect |
 | 4b | requirement | REQ-063 | AC-4 | No API allows an order outside a strategy context, a bypass of a reconciliation block, or a bypass of safety checks by UX level. |
 | 4b | requirement | REQ-063 | AC-5 | Vendor credentials never reach the browser; broker credentials are never stored beyond the official secure-token mechanism. Audit and other stored payloads use a per-event-type field ALLOWLIST (each event type declares the fields it may carry; anything else is dropped before storage), never a list of forbidden key names - a denylist failed twice (W-015 - over-blocked instrument_token, under-blocked X-Api-Key and Kite's enctoken). Delegated overnight after an independent review (ADR-045); work item W-017, blocked until real Kite responses exist. |
+| 4b | requirement | REQ-073 | - | Orders reach Zerodha as a read-only basket the user places on Kite's own page |
 | 4b | work item | W-017 | - | Per-event-type payload allowlist for stored audit/broker data (no stored credentials) |
 
 ## Stage 4c
@@ -275,6 +277,7 @@ Generated from commit bd47b26
 | S7 | build plan | P6 | - |  |
 | S7 | issue | #107 | - |  |
 | S7 | open area | OA-14 | - | admin/system-health screens |
+| S7 | requirement | REQ-074 | - | Security incident reporting and log retention |
 
 ## Stage S8
 
@@ -305,6 +308,7 @@ Generated from commit bd47b26
 | S8 | requirement | REQ-063 | AC-1 | Broker, market-data and payment integrations each sit behind an adapter. |
 | S8 | requirement | REQ-066 | - | Compliance gates |
 | S8 | requirement | REQ-067 | AC-7 | A concise project control center tracks feature, spec/story/task, owner/agent, status, dependency, blocker, verification, screenshot and branch, updated compactly. |
+| S8 | requirement | REQ-074 | - | Security incident reporting and log retention |
 | S8 | vendor enquiry | VE-BSE | - |  |
 | S8 | vendor enquiry | VE-GlobalDatafeeds | - |  |
 | S8 | vendor enquiry | VE-NSE | - |  |
@@ -387,7 +391,7 @@ Generated from commit bd47b26
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
 | done | requirement | REQ-038 | - | Strategy definition, live state and versions |
 | done | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
-| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity (exchange segment, exchange token), with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. |
+| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity (exchange segment, exchange token, expiry date; ADR-052), with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. A token seen again with a different expiry is a new contract. |
 | done | requirement | REQ-054 | AC-4 | Lot size, tick size and freeze limit are stored per broker with the date the broker's list showed them. |
 | done | requirement | REQ-057 | - | Order lifecycle |
 | done | requirement | REQ-058 | - | Partial execution and no automatic retry |
@@ -402,8 +406,8 @@ Generated from commit bd47b26
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 18 | 2 | 0 | 4 | 0 | 1 | 25 | 0 | 1 | 58 |
-| 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 12 | 0 | 1 | 38 |
+| 4a | 7 | 0 | 18 | 2 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 59 |
+| 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 39 |
 | 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
@@ -414,7 +418,7 @@ Generated from commit bd47b26
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 2 |
 | S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 2 |
-| S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 3 |
-| S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 9 | 4 | 3 | 32 |
+| S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
+| S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
 | done | 5 | 4 | 0 | 20 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 53 |

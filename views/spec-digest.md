@@ -63,9 +63,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q211) answer in writing, (1) suggestions stay educational and generic - setups are shown as templates… [refines ADR-003; refines ADR-005; refines ADR-024…]
 - ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is unparked and built in Stage 4a with the allowlist design - no attribute assignment on any imported mod… [refines ADR-030; refines ADR-007]
 
-## Requirements (71)
+## Requirements (74)
 
-- REQ-001 [Specified]: V1 scope: underlyings, leg types, broker
+- REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
 - REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
@@ -79,7 +79,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-012 [Approved]: Registration and identity layers
 - REQ-013 [Approved]: Email change and account deletion
 - REQ-014 [Approved]: Zerodha Client ID binding and anti-abuse
-- REQ-015 [Specified]: Zerodha connection
+- REQ-015 [Approved]: Zerodha connection
 - REQ-016 [Specified]: Strategies without Zerodha
 - REQ-017 [Approved]: Entitlement engine
 - REQ-018 [Approved]: Trial and Limited/Read-Only mode
@@ -112,11 +112,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-045 [Approved]: Adjustment detection and triggers
 - REQ-046 [Approved]: Adjustment Opportunity panel and Before/After
 - REQ-047 [Specified]: Adjustment-relevant data collection
-- REQ-048 [Specified]: Market-data pipeline and browser boundary
+- REQ-048 [Approved]: Market-data pipeline and browser boundary
 - REQ-049 [Approved]: Normalized market data and data health
 - REQ-050 [Specified]: Shared computation and scale
 - REQ-051 [Specified]: Historical storage tiers and simulation
-- REQ-052 [Specified]: Market-data sourcing and licensing
+- REQ-052 [Approved]: Market-data sourcing and licensing
 - REQ-053 [Approved]: Broker authority and contract eligibility
 - REQ-054 [Approved]: Broker adapter
 - REQ-055 [Specified]: Margin checks
@@ -127,7 +127,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-060 [Verified]: Reconciliation with Zerodha
 - REQ-061 [Specified]: Existing positions on connect
 - REQ-062 [Specified]: Notifications
-- REQ-063 [Specified]: Security boundaries
+- REQ-063 [Approved]: Security boundaries
 - REQ-064 [Approved]: Audit log
 - REQ-065 [Approved]: Error classification and messages
 - REQ-066 [Specified]: Compliance gates
@@ -136,6 +136,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-069 [Approved]: Suggested setups in the Guided Builder
 - REQ-070 [Verified]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
+- REQ-072 [Specified]: Index spot prices for NIFTY 50 and SENSEX
+- REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
+- REQ-074 [Specified]: Security incident reporting and log retention
 
 ## Spec sections (177)
 

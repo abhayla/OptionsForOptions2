@@ -77,6 +77,9 @@ requirements:
   REQ-069: S6.2
   REQ-070: [done, S6.3]
   REQ-071: S6.4
+  REQ-072: 4a           # index spot (new, Stage 3)
+  REQ-073: 4b           # Kite basket order path (new, ADR-054)
+  REQ-074: [S7, S8]     # CERT-In logs and incident runbook (new, F-27)
 
 decisions:
   ADR-001: all
