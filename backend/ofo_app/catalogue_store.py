@@ -39,8 +39,8 @@ apply_update(conn, rows, *, as_of, force=False, reason=None, actor=None, max_del
    expiry has passed are skipped (ADR-059).
 4. Calls the domain ``Catalogue.update``, which holds the rules: the ADR-058 per-index and ADR-059 per-expiry
    truncation guards (a refusal writes nothing), and the ADR-059 revision test - a row on a live token is a revision
-   only if underlying, type and segment are unchanged and either the expiry moved <= 7 days with the strike unchanged,
-   or the strike changed with the expiry unchanged; any other change is a token reuse. A row about to be inserted that
+   only if underlying, type and segment are unchanged and either the expiry moved <= 6 days with the strike unchanged,
+   or the strike changed with the expiry unchanged; any other change is a token reuse, and both guards count it. A row about to be inserted that
    is identical to a delisted contract reinstates it (same internal id).
 5. Writes inside a SAVEPOINT, in this order: delist (not carried, or token reused), retire, reinstate, insert new
    contracts and their broker rows, revise expiry/strike, see the broker rows (the database stamps seen_on and writes
@@ -53,7 +53,9 @@ Transaction control (commit) stays with the caller.
 Known limit (accepted, W-053 fix round 2; widened by W-057): the truncation guards live in the domain; the application
 role can still UPDATE currently_listed, retired or delisted with raw SQL, bypassing them (the database guard still
 refuses retiring a live contract, any change to a retired one, and any return of a delisted one other than an
-identical reinstatement).
+identical, unexpired reinstatement). The application role can also UPDATE a live contract's expiry and strike by any
+amount with raw SQL: the database records each change as a revision with history, but does not apply the ADR-059
+revision test (expiry moved <= 6 days, or strike alone) - only this store's path through the domain does.
 """
 
 from __future__ import annotations

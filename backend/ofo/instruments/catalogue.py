@@ -56,9 +56,9 @@ IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 DEFAULT_MAX_DELIST_PERCENT = Decimal("10")
 #: ADR-059: ... or if any one unexpired expiry of an index would lose MORE than half of its live contracts at once.
 MAX_EXPIRY_LOSS_FRACTION = Decimal("0.5")
-#: ADR-059 (a): a live contract's expiry may move by at most this many calendar days under its token (62964: 5 days,
-#: 61746: 3 days); a larger move is a token reuse, i.e. a new contract.
-MAX_EXPIRY_MOVE_DAYS = 7
+#: ADR-059 (a): "the strike is unchanged and the expiry moved by at most 6 calendar days" (62964: 5 days, 61746: 3
+#: days); a move of 7 days or more is a token reuse, i.e. a new contract.
+MAX_EXPIRY_MOVE_DAYS = 6
 
 
 def check_max_delist_percent(value: object) -> Decimal:
@@ -238,6 +238,9 @@ class Catalogue:
         live = {iid: e for iid, e in self._entries.items()
                 if e.currently_listed and (e.contract.expiry is None or e.contract.expiry >= update_date)}
         vanishing = sorted((e for iid, e in live.items() if iid not in new_ids), key=lambda e: e.id)
+        # ADR-059: both guards count every live contract that stops being live in this update - not carried, AND
+        # delisted because its token now carries another contract.
+        leaving_live = vanishing + [live[i] for i in replaced if i in live]
         if force:
             assert audit_log is not None and reason is not None and actor is not None
             leaving = vanishing + [self._entries[i] for i in replaced]
@@ -249,16 +252,17 @@ class Catalogue:
                 payload={
                     "action": "catalogue_force_update",
                     "reason": reason.strip(),
-                    # every contract this update delists: not carried (ADR-058) or its token reused (ADR-059); the
-                    # audit allowlist (REQ-063 AC-5) declares only these two list fields, so both kinds go here
-                    "dropped_instrument_ids": [[e.id.exchange_segment, e.id.exchange_token] for e in leaving],
-                    "dropped_broker_symbols": [
+                    # every contract this update delists: not carried (ADR-058) or its token reused (ADR-059), under
+                    # the two keys the audit allowlist declares (ofo_app.audit_allowlist, REQ-063 AC-5); any other key
+                    # would be dropped before storage
+                    "dropped_instrument_tokens": [[e.id.exchange_segment, e.id.exchange_token] for e in leaving],
+                    "dropped_tradingsymbols": [
                         [r.broker, r.broker_symbol] for e in leaving for r in e.broker_refs.values()
                     ],
                 },
             )
         else:
-            _refuse_truncation(list(live.values()), vanishing, limit, update_date)
+            _refuse_truncation(list(live.values()), leaving_live, limit, update_date)
 
         added = 0
         replaced_set = set(replaced)
@@ -369,7 +373,8 @@ class Catalogue:
 
 def _refuse_truncation(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], limit: Decimal,
                        update_date: date) -> None:
-    """ADR-058 per-index count and ADR-059 per-expiry half guard (both "more than": the boundary itself passes)."""
+    """ADR-058 per-index count and ADR-059 per-expiry half guard (both "more than": the boundary itself passes).
+    `vanishing` is every live contract that stops being live: not carried AND token reused (ADR-059)."""
     def counts(entries, key):
         out: dict = {}
         for e in entries:

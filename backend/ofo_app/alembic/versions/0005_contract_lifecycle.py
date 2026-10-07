@@ -16,7 +16,8 @@ Copy from: none - algochanakya keys every broker on a Zerodha symbol string (leg
 Changes (owner-run, one transaction):
 - public.catalogue_contracts: gains delisted (BOOLEAN, default FALSE) and delisted_on (the database's IST date,
   stamped by the guard, with a history row field delisted_on); a delisted contract never changes and is never
-  retired, except reinstatement (ADR-059): delisted -> live with every term unchanged and listed again, history row
+  retired, except reinstatement (ADR-059): delisted -> live, unexpired by the database's IST date, with every term
+  unchanged and listed again, history row
   delisted_on -> NULL, broker rows un-freed. Live = NOT retired AND NOT delisted.
 - public.catalogue_contracts: gains retired (BOOLEAN, default FALSE) and retired_at (stamped by the guard);
   CHECK retired contracts are unlisted and retired = (retired_at IS NOT NULL). UNIQUE (exchange_segment,
@@ -169,6 +170,7 @@ def _guard_function_sql() -> str:
                 RETURN NEW;
             END IF;
             IF OLD.delisted AND NOT OLD.retired AND NOT NEW.delisted AND NOT NEW.retired AND NEW.currently_listed
+               AND OLD.expiry >= {_TODAY}
                AND NOT ({changed})
                AND NOT ({terms_changed}) THEN
                 -- ADR-059 reinstatement: the identical contract returns under its own internal id

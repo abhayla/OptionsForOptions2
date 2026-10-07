@@ -827,9 +827,12 @@ async def test_ac3_fix2_a_partial_list_heals_on_the_next_full_list(app_engine: A
             assert ids_c == ids_a
             day = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date::text"))
                    ).scalar_one()
-            assert [(h[0], h[3], h[4], h[5]) for h in await _history(conn)] == [
-                (300001, "delisted_on", None, day), (300002, "delisted_on", None, day),
-                (300001, "delisted_on", day, None), (300002, "delisted_on", day, None)]
+            history = [(h[0], h[3], h[4], h[5]) for h in await _history(conn)]
+            # one UPDATE touches both rows in an order PostgreSQL does not promise: compare each step as a set, and the
+            # two delistings (ids first) must come before the two reinstatements
+            assert set(history[:2]) == {(300001, "delisted_on", None, day), (300002, "delisted_on", None, day)}
+            assert set(history[2:]) == {(300001, "delisted_on", day, None), (300002, "delisted_on", day, None)}
+            assert len(history) == 4
             assert (await conn.execute(text(f"SELECT count(*) FROM {TABLE} WHERE delisted"))).scalar_one() == 0
         finally:
             await trans.rollback()
