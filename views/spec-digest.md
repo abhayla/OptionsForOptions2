@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (56)
+## Decisions (57)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -62,6 +62,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-054 2026-10-07: The planned order path is Zerodha's offsite order execution - the platform builds the strategy's orders as a read-only Kite basket, each order carryi… [refines ADR-017; refines ADR-050]
 - ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q211) answer in writing, (1) suggestions stay educational and generic - setups are shown as templates… [refines ADR-003; refines ADR-005; refines ADR-024…]
 - ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is unparked and built in Stage 4a with the allowlist design - no attribute assignment on any imported mod… [refines ADR-030; refines ADR-007]
+- ADR-057 2026-10-07: Correction of ADR-052. [amends ADR-052; amends ADR-050]
 
 ## Requirements (74)
 
@@ -295,7 +296,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q259 — EXTERNAL (Zerodha confirmation; path (b) chosen → ADR-054, own…
 - ## Q260 — EXTERNAL (Zerodha compliance's written view; strict default →…
 - ## Q261 — LEGAL (legal review Q211; strict default → ADR-055, 2026-10-07…
-- ## Q262 — DECIDED → ADR-052 (owner delegation, 2026-10-07: identity incl…
+- ## Q262 — DECIDED → ADR-052, corrected by ADR-057 (owner delegation, 202…
 
 ### spec/operations/README.md
 

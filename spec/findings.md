@@ -251,8 +251,12 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   but not over time; a stored strategy leg keyed on it alone could later point at a different contract. The identity
   needs the expiry (or a validity range) as well; changing it is an owner decision (Q262). Closes the data question of
   #116.
-- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **decided** (ADR-052: identity includes
-  the expiry date).
+- **Also measured 2026-10-07 (orchestrator, raw NSE files):** the exchange moves the expiry of LIVE contracts under the
+  same number - 62964 NIFTY 31000 PE 26-Mar-2026 (Jun 2025) -> 31-Mar-2026 (Sep 2025, the NSE expiry-day move); 61746
+  NIFTY 23000 CE 27-Dec-2029 -> 24-Dec-2029 (Sep 2025), later reused for WIPRO (2026). So the expiry cannot be part of
+  the key.
+- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **decided** (ADR-057, correcting ADR-052:
+  identity holds while the contract is live; the token retires after expiry).
 
 ## F-22 - Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page
 - Source: Kite Connect v3 docs, "Offsite order execution" (kite.trade/docs/connect/v3/basket/) and Kite Publisher

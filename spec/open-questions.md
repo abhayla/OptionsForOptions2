@@ -392,7 +392,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   a registered RA; drop the exposed features. Spec basis: ADR-003, ADR-005, ADR-011, Q211. Blocks Stage 6 items 2 and 4
   and the public launch, not the core.
 
-## Q262 — DECIDED → ADR-052 (owner delegation, 2026-10-07: identity includes the expiry date) — Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity?
+## Q262 — DECIDED → ADR-052, corrected by ADR-057 (owner delegation, 2026-10-07: identity holds while the contract is live; tokens retire after expiry) — Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity?
 - Finding F-21: NSE reuses contract numbers after expiry - 4,768 of 65,265 numbers in Aug-Oct 2026 mapped to more than
   one contract (e.g. 67245: ABCAPITAL 25-Aug-2026 410 PE, then NIFTYNXT50 29-Dec-2026 72200 PE); Zerodha's docs say the
   same. A saved strategy leg or audit record keyed on (segment, number) alone could later resolve to the wrong
