@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit a2bc95e
+Generated from commit 697b6dc
 
 ## Stage S0
 
@@ -397,7 +397,7 @@ Generated from commit a2bc95e
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
 | done | requirement | REQ-038 | - | Strategy definition, live state and versions |
 | done | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
-| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity, with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. The identity is (exchange segment, exchange token) while the contract is live: an exchange change of a live contract's expiry, strike or lot is a revision with history; after the contract's expiry has passed its token is retired, and a later row with that token is a new contract (ADR-057, correcting ADR-052). A contract the daily list stops carrying before its expiry is marked delisted and kept, and its token is free for reuse (ADR-058). A change on a live token is a revision only when the underlying and type are unchanged and either the expiry moved by at most 7 days with the same strike or the strike changed with the same expiry; any other change makes the old contract delisted and the row a new contract; an identical returning delisted contract is reinstated (ADR-059). |
+| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity, with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. The identity is (exchange segment, exchange token) while the contract is live: an exchange change of a live contract's expiry, strike or lot is a revision with history; after the contract's expiry has passed its token is retired, and a later row with that token is a new contract (ADR-057, correcting ADR-052). A contract the daily list stops carrying before its expiry is marked delisted and kept, and its token is free for reuse (ADR-058). A change on a live token is a revision only when the underlying and type are unchanged and either the expiry moved by at most 6 days with the same strike or the strike changed with the same expiry; any other change makes the old contract delisted and the row a new contract; an identical returning delisted contract is reinstated (ADR-059). |
 | done | requirement | REQ-054 | AC-4 | Lot size, tick size and freeze limit are stored per broker with the date the broker's list showed them. |
 | done | requirement | REQ-057 | - | Order lifecycle |
 | done | requirement | REQ-058 | - | Partial execution and no automatic retry |
