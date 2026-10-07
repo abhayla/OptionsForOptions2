@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 8e9e957
+Generated from commit 0886820
 
 ## Stage S0
 
@@ -73,9 +73,12 @@ Generated from commit 8e9e957
 | 4a | decision | ADR-052 | - | A contract's identity includes its expiry date, because exchanges reuse contract numbers after expiry |
 | 4a | decision | ADR-053 | - | V1 uses each user's own Zerodha feed, and monitoring pauses visibly when that user's daily session has ended |
 | 4a | decision | ADR-056 | - | How the core is judged and what it needs before it starts (error messages, pricing model, gates, fan-out test, chain levels) |
+| 4a | decision | ADR-057 | - | A contract keeps its identity while it is live, even if its expiry moves; a token is retired only after the contract has expired |
+| 4a | decision | ADR-058 | - | A contract also leaves the market when the list stops carrying it; the truncated-download guard counts removals instead of refusing any one |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
+| 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #116 | - |  |
 | 4a | issue | #30 | - |  |
@@ -108,6 +111,7 @@ Generated from commit 8e9e957
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-024 | - | Error classification and user-facing error messages |
+| 4a | work item | W-057 | - | Contract identity holds while a contract is live; a token retires after expiry and its reuse is a new contract |
 
 ## Stage 4b
 
@@ -392,7 +396,7 @@ Generated from commit 8e9e957
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
 | done | requirement | REQ-038 | - | Strategy definition, live state and versions |
 | done | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
-| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity (exchange segment, exchange token, expiry date; ADR-052), with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. A token seen again with a different expiry is a new contract. |
+| done | requirement | REQ-054 | AC-3 | Each broker's own token, trading symbol and segment code for a contract are stored in a per-broker table keyed to the contract's identity, with one broker code vocabulary; a contract with no row for a broker cannot be traded at that broker - no symbol is guessed or derived. The identity is (exchange segment, exchange token) while the contract is live: an exchange change of a live contract's expiry, strike or lot is a revision with history; after the contract's expiry has passed its token is retired, and a later row with that token is a new contract (ADR-057, correcting ADR-052). A contract the daily list stops carrying before its expiry is marked delisted and kept, and its token is free for reuse (ADR-058). |
 | done | requirement | REQ-054 | AC-4 | Lot size, tick size and freeze limit are stored per broker with the date the broker's list showed them. |
 | done | requirement | REQ-057 | - | Order lifecycle |
 | done | requirement | REQ-058 | - | Partial execution and no automatic retry |
@@ -407,7 +411,7 @@ Generated from commit 8e9e957
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 18 | 3 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 60 |
+| 4a | 7 | 0 | 20 | 4 | 0 | 4 | 0 | 1 | 26 | 0 | 2 | 64 |
 | 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 39 |
 | 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |
