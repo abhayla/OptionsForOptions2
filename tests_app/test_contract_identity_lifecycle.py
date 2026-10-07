@@ -214,9 +214,49 @@ async def test_ac3_a_row_with_no_expiry_is_refused_fail_closed() -> None:
 async def test_ac3_a_naive_as_of_is_refused() -> None:
     """AC-3 fail closed: the retirement date needs a timezone-aware as_of."""
     conn = _FakeConn([_stored(R67245_OLD, 7)])
-    with pytest.raises(ValueError, match="timezone-aware"):
+    with pytest.raises(ValueError, match="timezone-aware as_of \\(the retirement date"):
         await apply_update(conn, [R67245_NEW], as_of=datetime(2026, 9, 30, 10, 0))
     assert conn.writes == []
+
+
+async def test_ac3_a_stored_live_contract_with_no_expiry_stops_the_load() -> None:
+    """AC-3 fail closed: a stored live contract without an expiry can never be judged retired; the load refuses."""
+    stored = _stored(R67245_OLD, 7)
+    stored.expiry = None
+    conn = _FakeConn([stored])
+    with pytest.raises(CatalogueStoreError, match="id=7 .* has no expiry"):
+        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 9, 30)))
+    assert conn.writes == []
+
+
+class _Rows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def execute(self, stmt, params=None):
+        rows = self.rows
+
+        class _Result:
+            def all(self):
+                return rows
+
+        return _Result()
+
+
+async def test_ac3_lookups_fail_closed() -> None:
+    """AC-3: two live rows on one token (only possible if the live key was dropped) are never resolved to one of them;
+    a link is a positive integer internal id; an unknown id is refused."""
+    with pytest.raises(CatalogueStoreError, match="2 live contracts share"):
+        await live_contract_id(_Rows([SimpleNamespace(id=1), SimpleNamespace(id=2)]), InstrumentId("NSE_FO", 67245))
+    assert await live_contract_id(_Rows([SimpleNamespace(id=9)]), InstrumentId("NSE_FO", 67245)) == 9
+    assert await live_contract_id(_Rows([]), InstrumentId("NSE_FO", 67245)) is None
+    with pytest.raises(TypeError):
+        await live_contract_id(_Rows([]), ("NSE_FO", 67245))
+    for bad in (0, -1, True, "7", 7.0):
+        with pytest.raises(CatalogueStoreError, match="positive integer internal id"):
+            await load_contract(_Rows([]), bad)
+    with pytest.raises(CatalogueStoreError, match="no stored contract has internal id 7"):
+        await load_contract(_Rows([]), 7)
 
 
 async def test_ac3_the_real_out_of_scope_rows_are_skipped() -> None:
@@ -358,6 +398,29 @@ async def test_ac3_retirement_and_retired_rows_are_held_by_the_database(admin_en
             await trans.rollback()
 
 
+async def test_ac3_retiring_is_held_to_its_last_terms_and_cascades_to_broker_rows(admin_engine: AsyncEngine) -> None:
+    """AC-3 database guards: 67245 (expiry 2026-08-25, passed) is still live after a 2026-08-03 load. Retiring it while
+    changing its strike or keeping it listed is refused; a plain retire succeeds, stamps retired_at and retires its
+    Zerodha row; a broker row cannot then be added to it."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _load_days(conn, [(date(2026, 8, 3), [R67245_OLD])])
+            (cid,) = [r[0] for r in await _contracts(conn, 67245)]
+            await _expect_refused(conn, f"UPDATE {TABLE} SET retired = TRUE, currently_listed = FALSE, strike = 1 "
+                                        f"WHERE id = {cid}", CATALOGUE_SQLSTATE)
+            await _expect_refused(conn, f"UPDATE {TABLE} SET retired = TRUE WHERE id = {cid}", CATALOGUE_SQLSTATE)
+            await conn.execute(text(f"UPDATE {TABLE} SET retired = TRUE, currently_listed = FALSE WHERE id = {cid}"))
+            row = (await conn.execute(text(f"SELECT c.retired, c.retired_at IS NOT NULL, b.retired FROM {TABLE} AS c "
+                                           f"JOIN {BROKER} AS b ON b.contract_id = c.id WHERE c.id = {cid}"))).one()
+            assert tuple(row) == (True, True, True)
+            await _expect_refused(conn, f"INSERT INTO {BROKER} (contract_id, broker, broker_token, broker_symbol, "
+                                        f"broker_segment, lot_size, tick_size) VALUES ({cid}, 'zerodha', 'X1', 'X1', "
+                                        "'NFO-OPT', 75, 0.05)", CATALOGUE_SQLSTATE)
+        finally:
+            await trans.rollback()
+
+
 def _sqlstate(exc: DBAPIError) -> str | None:
     for obj in (exc.orig, getattr(exc.orig, "__cause__", None)):
         code = getattr(obj, "sqlstate", None) or getattr(obj, "pgcode", None)
@@ -375,3 +438,64 @@ async def _expect_refused(conn: AsyncConnection, sql: str, expected: str) -> Non
         assert got == expected, f"refused with SQLSTATE {got}, expected {expected}: {exc}"
         return
     raise AssertionError(f"not refused: {sql}")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Migration 0005 (the schema half of AC-3)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def _migration(name: str):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / f"{name}.py"
+    loader = importlib.util.spec_from_file_location(f"ofo_migration_{name}_w057_test", path)
+    module = importlib.util.module_from_spec(loader)
+    loader.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def _without_guards(pins: dict[str, str]) -> dict[str, str]:
+    return {k: v for k, v in pins.items()
+            if k not in ("public.catalogue_contracts_guard()", "public.broker_instruments_guard()")}
+
+
+def test_ac3_migration_0005_shape() -> None:
+    """AC-3 schema: strike joins expiry as a revisable contract term (history broker NULL); retired is app-updatable on
+    contracts but never on broker rows; both live keys are checked by the allowlist; only the two guard bodies are
+    re-pinned (different from 0004's, every other pin equal)."""
+    m5, m4 = _migration("0005_contract_lifecycle"), _migration("0004_broker_instruments")
+    assert m5.down_revision == "0004_broker_instruments"
+    assert m5.CONTRACT_REVISABLE == ("expiry", "strike")
+    assert m5.CONTRACT_IDENTITY == ("id", "exchange_segment", "exchange_token", "name", "instrument_type")
+    assert m5.HISTORY_FIELDS == ("expiry", "strike", "broker_symbol", "lot_size", "tick_size", "freeze_limit")
+    assert m5.ADDED_UPDATE_COLUMNS == ("strike", "retired")
+    assert "retired" not in m5.APP_BROKER_UPDATE_COLUMNS + m5.APP_BROKER_INSERT_COLUMNS + m5.APP_INSERT_COLUMNS
+    for fn in ("public.catalogue_contracts_guard()", "public.broker_instruments_guard()"):
+        assert m5.PINNED_BODIES[fn] != m4.PINNED_BODIES[fn]
+    assert _without_guards(m5.PINNED_BODIES) == _without_guards(m4.PINNED_BODIES)
+    allowlist = m5.extended_allowlist_sql()
+    assert allowlist.count("live key public.catalogue_contracts_live_identity_key") == 1
+    assert allowlist.count("live key public.broker_instruments_live_token_key") == 1
+    with pytest.raises(RuntimeError, match="changed shape"):
+        m5.extend_allowlist(allowlist)
+
+
+async def test_ac3_downgrade_of_0005_refuses_while_rows_exist(admin_engine: AsyncEngine) -> None:
+    """AC-3: the downgrade cannot express a retired contract (0004 keys a token for ever), so it refuses while any
+    contract exists; its first statement is run (as the owner) on a loaded catalogue and must raise."""
+    recorded: list[str] = []
+    m5 = _migration("0005_contract_lifecycle")
+    m5.op = SimpleNamespace(execute=lambda sql, *a, **k: recorded.append(str(sql)))
+    m5._BASE._app_role = lambda: "ofo_app"
+    m5.downgrade()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _load_days(conn, [(date(2026, 8, 3), [R67245_OLD])])
+            with pytest.raises(DBAPIError, match="refusing to downgrade 0005_contract_lifecycle"):
+                async with conn.begin_nested():
+                    await conn.execute(text(recorded[0]))
+        finally:
+            await trans.rollback()
