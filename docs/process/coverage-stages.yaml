@@ -211,6 +211,7 @@ findings:
   F-19: done      # recorded
   F-20: done      # recorded
   F-21: S1        # unverified until stream S3's data count
+  F-22: S2        # Q259 path (b): Kite offsite order execution
 
 hypotheses:
   H1: S1

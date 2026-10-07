@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit bfd4323
+Generated from commit 2034799
 
 ## Stage S0
 
@@ -50,6 +50,7 @@ Generated from commit bfd4323
 | S2 | finding | F-15 | - | SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns |
 | S2 | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | S2 | finding | F-18 | - | Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use |
+| S2 | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
 | S2 | open area | OA-01 | - | Pricing model for "Estimated Now" |
 | S2 | open area | OA-02 | - | bid/ask/slippage |
 | S2 | open area | OA-03 | - | charges model |
@@ -391,7 +392,7 @@ Generated from commit bfd4323
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 1 | 11 | 1 | 1 | 0 | 0 | 0 | 0 | 14 |
-| S2 | 1 | 8 | 1 | 7 | 0 | 0 | 13 | 6 | 0 | 4 | 0 | 40 |
+| S2 | 1 | 8 | 1 | 8 | 0 | 0 | 13 | 6 | 0 | 4 | 0 | 41 |
 | S3 | 0 | 15 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 16 |
 | 4a | 6 | 0 | 14 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 49 |
 | 4b | 1 | 0 | 4 | 1 | 0 | 4 | 0 | 0 | 12 | 0 | 1 | 23 |

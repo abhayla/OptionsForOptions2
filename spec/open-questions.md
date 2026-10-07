@@ -362,5 +362,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   Kite basket or Kite Publisher counts as the broker's front end is unknown); (c) planning, monitoring and prepared
   orders shown only, the user enters them in Kite manually.
 - Recommendation: none yet - gather (a) and (b)'s facts first (Zerodha's written answer under ADR-034, Kite Publisher
-  documentation, stream S3), then ask the owner with costs. Spec basis: ADR-009, ADR-017, ADR-034, ADR-050, Q258.
+  documentation, stream S3), then ask the owner with costs. Update 2026-10-07: Zerodha's own docs describe path (b) as
+  "offsite order execution" on "Kite's exchange approved order page", free, multi-order basket, read-only option, our
+  tag per order (F-22); not stated whether such orders are non-algo under the 2025 framework - ask Zerodha. Spec basis: ADR-009, ADR-017, ADR-034, ADR-050, Q258.
   This blocks master-plan Stage 4b as written; Stage 4a (data) is not affected.

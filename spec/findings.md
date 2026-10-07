@@ -235,3 +235,20 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Meaning for us: a bounded range of about 282,000 numbers for every F&O contract makes reuse plausible, so ADR-050's
   identity (segment, number) may need the expiry or a validity date to stay unique over time (#116).
 - Bears on: ADR-050 item 1, REQ-053, REQ-054 AC-3, #116. Status: **unverified**.
+
+## F-22 - Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page
+- Source: Kite Connect v3 docs, "Offsite order execution" (kite.trade/docs/connect/v3/basket/) and Kite Publisher
+  (kite.trade/docs/connect/v3/publisher/, kite.trade/publisher), read raw 2026-10-07 (page footer "2015 - 2025"). Level
+  P1 (Zerodha's own docs).
+- Quotes: it redirects users "to Kite's exchange approved order page where they place orders and come back to your
+  application seamlessly, like a payment gateway"; "you do not have to build, maintain, and get exchange approvals for
+  order execution screens". The basket is a JSON list of orders (the example mixes NSE and NFO, MARKET and LIMIT);
+  `readonly: true` means users "can only review and execute"; each order may carry a `tag` (alphanumeric, max 20 chars);
+  the user returns to our redirect URL with `status` and `request_token`. Kite Publisher "is available free of charge".
+- Not stated (gap): whether orders placed this way count as non-algo under the 2025 framework (F-17 keeps non-algo
+  status for the broker's own front end with manual entry of the order attributes); how many orders a basket may hold;
+  how a failed leg is reported back. Only Zerodha's written answer settles the first (ADR-034 thread).
+- Meaning for us: a candidate for Q259 path (b) that keeps "every order belongs to a strategy" (our `tag` per order,
+  ADR-050 item 4(a)) while the order is placed on Zerodha's own page; it also fits ADR-009 (the user executes).
+- Bears on: Q259, Q258, ADR-009, ADR-017, ADR-050 item 4, REQ-042, REQ-054, REQ-056, REQ-057. Status: **open for owner
+  decision**.
