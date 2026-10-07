@@ -191,6 +191,7 @@ issues:
   "#110": 4a
   "#112": S8
   "#115": 4b
+  "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
 
 # Work items whose status is not done.
 work_items:

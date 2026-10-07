@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 151a52a
+Generated from commit 453da81
 
 ## Stage S0
 
@@ -81,6 +81,7 @@ Generated from commit 151a52a
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
 | 4a | issue | #110 | - |  |
+| 4a | issue | #126 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -410,7 +411,7 @@ Generated from commit 151a52a
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 21 | 4 | 0 | 3 | 0 | 1 | 26 | 0 | 1 | 63 |
+| 4a | 7 | 0 | 21 | 4 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 64 |
 | 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 39 |
 | 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |
