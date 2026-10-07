@@ -150,7 +150,7 @@ async def test_ac3_plan_retires_the_expired_holder_before_inserting_the_token_re
     conn = _FakeConn([_stored(R67245_OLD, 7)])
     result = await apply_update(conn, [R67245_NEW], as_of=_as_of(date(2026, 9, 30)))
     assert (result.added, result.seen, result.revised, result.retired, result.newly_unlisted) == (1, 0, 0, 1, 1)
-    kinds = [(kind, "retired" in sql) for kind, sql, _ in conn.writes]
+    kinds = [(kind, "SET retired = TRUE" in sql) for kind, sql, _ in conn.writes]
     assert kinds == [("UPDATE", True), ("INSERT", False), ("INSERT", False)]
     assert conn.writes[0][2] == {"ids": [7]}
     assert [(p["exchange_token"], p["expiry"], p["strike"]) for p in conn.writes[1][2]] == [
@@ -175,7 +175,7 @@ async def test_ac3_a_live_token_on_its_expiry_day_is_not_retired() -> None:
     conn = _FakeConn([_stored(R67245_OLD, 7)])
     result = await apply_update(conn, [R67245_OLD], as_of=_as_of(date(2026, 8, 25)))
     assert (result.added, result.seen, result.retired) == (0, 1, 0)
-    assert not any("retired" in sql for _, sql, _ in conn.writes)
+    assert not any("SET retired = TRUE" in sql for _, sql, _ in conn.writes)
 
 
 async def test_ac3_a_live_token_listed_as_a_different_contract_is_refused_with_nothing_written() -> None:

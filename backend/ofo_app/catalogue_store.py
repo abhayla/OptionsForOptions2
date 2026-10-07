@@ -2,9 +2,17 @@
 
 Spec basis: REQ-053 AC-2 and Q244/Q257 (never deleted; truncated update refused; revisable terms follow the source
 with history; identity never changes); REQ-054 AC-3/AC-4 and "Exchange segment vocabulary"; ADR-050. Schema:
-migrations 0003_catalogue_store and 0004_broker_instruments.
+migrations 0003_catalogue_store, 0004_broker_instruments and 0005_contract_lifecycle.
 
-A contract's identity is (exchange_segment, exchange_token) in public.catalogue_contracts. Zerodha's instrument_token,
+Identity over time (W-057, ADR-057, REQ-054 AC-3): every stored contract has an internal id (catalogue_contracts.id),
+and every link (broker rows, history, and later strategy legs, orders, audit records) uses that id, never the raw
+token. (exchange_segment, exchange_token) is unique among LIVE contracts only (a partial unique index, retired =
+FALSE). A load on a date after a stored contract's expiry retires it (retired = TRUE, unlisted; its broker rows are
+retired by the database guard); a later row with the same token is then a new contract with a new id. While a contract
+is live, a changed expiry or strike under its token is a revision with history (ADR-057; the "strike never changes"
+wording of REQ-053 Q257 is superseded for live contracts). Retired rows never change; nothing is ever deleted.
+
+A live contract's identity is (exchange_segment, exchange_token) in public.catalogue_contracts. Zerodha's instrument_token,
 trading symbol, segment code, lot size, tick size and freeze limit live only in public.broker_instruments (one row per
 contract and broker). The domain `Contract` still carries lot/tick as its current terms: on load they are taken from
 the contract's Zerodha row, and a stored contract with no Zerodha row stops the load (fail closed, AC-3).
@@ -48,7 +56,7 @@ from typing import Any, Iterable, TextIO
 
 from sqlalchemy import text
 
-from ofo.instruments.catalogue import Catalogue, CatalogueUpdateResult
+from ofo.instruments.catalogue import IST, Catalogue, CatalogueUpdateResult
 from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, ListedContract
 from ofo.instruments.parser import ParsedInstruments, parse_instruments_rows, zerodha_segment
 from ofo_app import audit_store
@@ -70,7 +78,22 @@ _SELECT = text(
     f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
     f"c.currently_listed, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, b.tick_size, "
     f"b.freeze_limit, b.seen_on "
-    f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id ORDER BY c.id, b.broker"
+    f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id WHERE NOT c.retired "
+    f"ORDER BY c.id, b.broker"
+)
+_SELECT_ONE = text(
+    f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
+    f"c.currently_listed, c.retired, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, "
+    f"b.tick_size, b.freeze_limit, b.seen_on "
+    f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id WHERE c.id = :id ORDER BY b.broker"
+)
+_LIVE_ID = text(
+    f"SELECT id FROM {CONTRACTS} WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token "
+    f"AND NOT retired"
+)
+_RETIRE = text(
+    f"UPDATE {CONTRACTS} SET retired = TRUE, currently_listed = FALSE "
+    f"WHERE id = ANY(CAST(:ids AS BIGINT[])) AND NOT retired"
 )
 _INSERT = text(
     f"INSERT INTO {CONTRACTS} (exchange_segment, exchange_token, name, expiry, strike, instrument_type) "
@@ -80,21 +103,22 @@ _INSERT_BROKER = text(
     f"INSERT INTO {BROKER_ROWS} (contract_id, broker, broker_token, broker_symbol, broker_segment, lot_size, "
     f"tick_size, freeze_limit) "
     f"SELECT id, :broker, :broker_token, :broker_symbol, :broker_segment, :lot_size, :tick_size, :freeze_limit "
-    f"FROM {CONTRACTS} WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token"
+    f"FROM {CONTRACTS} WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token "
+    f"AND NOT retired"
 )
 _REVISE = text(
-    f"UPDATE {CONTRACTS} SET expiry = :expiry, currently_listed = TRUE "
-    f"WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token"
+    f"UPDATE {CONTRACTS} SET expiry = :expiry, strike = :strike, currently_listed = TRUE "
+    f"WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token AND NOT retired"
 )
 _SEE_BROKER = text(
     f"UPDATE {BROKER_ROWS} SET broker_symbol = :broker_symbol, lot_size = :lot_size, tick_size = :tick_size, "
     f"freeze_limit = COALESCE(CAST(:freeze_limit AS INTEGER), freeze_limit) "
     f"WHERE broker = :broker AND contract_id = (SELECT id FROM {CONTRACTS} "
-    f"WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token)"
+    f"WHERE exchange_segment = :exchange_segment AND exchange_token = :exchange_token AND NOT retired)"
 )
 _SET_LISTED = text(
     f"UPDATE {CONTRACTS} SET currently_listed = :listed "
-    f"WHERE (exchange_segment, exchange_token) IN "
+    f"WHERE NOT retired AND (exchange_segment, exchange_token) IN "
     f"(SELECT s, t FROM unnest(CAST(:segments AS TEXT[]), CAST(:tokens AS BIGINT[])) AS k(s, t))"
 )
 _MISSING_BROKER_ROW = text(
@@ -105,8 +129,9 @@ _MISSING_BROKER_ROW = text(
 #: REQ-054 "Per-broker values and their date": a list without a value (Zerodha has no freeze limit) leaves the
 #: stored value; the broker-row UPDATE keeps it with COALESCE and the revision check skips it.
 #: Q257: these terms follow the list, each change recorded by the database; identity fields never change (OF006).
-REVISABLE_FIELDS = ("expiry",)
-IDENTITY_FIELDS = ("exchange_segment", "exchange_token", "name", "instrument_type", "strike")
+#: ADR-057: a live contract's expiry and strike are revisable (Zerodha's lot/tick/symbol on the broker row).
+REVISABLE_FIELDS = ("expiry", "strike")
+IDENTITY_FIELDS = ("exchange_segment", "exchange_token", "name", "instrument_type")
 BROKER_REVISABLE_FIELDS = ("broker_symbol", "lot_size", "tick_size", "freeze_limit")
 BROKER_IDENTITY_FIELDS = ("broker_token", "broker_segment")
 
@@ -120,8 +145,19 @@ class StoreUpdateResult:
     added: int
     seen: int  # stored contracts present in the list (including the revised ones)
     newly_unlisted: int
-    revised: int  # stored contracts whose expiry or Zerodha terms changed
+    revised: int  # stored contracts whose expiry, strike or Zerodha terms changed
     domain: CatalogueUpdateResult
+    retired: int = 0  # live contracts retired by this load (expiry before the load date, ADR-057)
+
+
+@dataclass(frozen=True)
+class StoredContract:
+    """One stored contract by its internal id (live or retired): what a strategy leg, order or audit record links to."""
+
+    contract_id: int
+    listed: ListedContract
+    currently_listed: bool
+    retired: bool
 
 
 def _listed(row: ListedContract | Contract) -> ListedContract:
@@ -217,18 +253,21 @@ def _stored_row(rows: list[Any]) -> tuple[ListedContract, bool]:
     return ListedContract(contract=contract, broker_refs=tuple(refs)), bool(head.currently_listed)
 
 
-async def load_catalogue(conn: Any) -> Catalogue:
-    """Every stored contract as a domain Catalogue, each with its broker rows and stored listedness."""
+async def _load_live(conn: Any) -> list[tuple[int, ListedContract, bool]]:
+    """Every LIVE (not retired) stored contract: (internal id, listed contract, stored listedness)."""
     grouped: dict[int, list[Any]] = {}
     for row in (await conn.execute(_SELECT)).all():
         grouped.setdefault(row.id, []).append(row)
-    listed_rows: list[ListedContract] = []
-    unlisted: set[InstrumentId] = set()
-    for rows in grouped.values():
+    out = []
+    for contract_id, rows in grouped.items():
         listed, is_listed = _stored_row(rows)
-        listed_rows.append(listed)
-        if not is_listed:
-            unlisted.add(listed.id)
+        out.append((contract_id, listed, is_listed))
+    return out
+
+
+def _catalogue_of(live: list[tuple[int, ListedContract, bool]]) -> Catalogue:
+    listed_rows = [listed for _, listed, _ in live]
+    unlisted = {listed.id for _, listed, is_listed in live if not is_listed}
     catalogue = Catalogue()
     try:
         loaded = catalogue.load(listed_rows)
@@ -242,6 +281,40 @@ async def load_catalogue(conn: Any) -> Catalogue:
         if entry.id in unlisted:
             entry.currently_listed = False
     return catalogue
+
+
+async def load_catalogue(conn: Any) -> Catalogue:
+    """Every LIVE stored contract as a domain Catalogue, each with its broker rows and stored listedness. Retired
+    contracts are read by their internal id with ``load_contract``."""
+    return _catalogue_of(await _load_live(conn))
+
+
+def _check_contract_id(contract_id: Any) -> int:
+    if isinstance(contract_id, bool) or not isinstance(contract_id, int) or contract_id <= 0:
+        raise CatalogueStoreError(f"a contract is linked by its positive integer internal id, got {contract_id!r}")
+    return contract_id
+
+
+async def load_contract(conn: Any, contract_id: int) -> StoredContract:
+    """The stored contract with this internal id, live or retired (ADR-057: a link keeps pointing at its contract
+    after the token is reused). Fails closed when no contract has the id."""
+    rows = (await conn.execute(_SELECT_ONE, {"id": _check_contract_id(contract_id)})).all()
+    if not rows:
+        raise CatalogueStoreError(f"no stored contract has internal id {contract_id}")
+    listed, is_listed = _stored_row(rows)
+    return StoredContract(contract_id=contract_id, listed=listed, currently_listed=is_listed,
+                          retired=bool(rows[0].retired))
+
+
+async def live_contract_id(conn: Any, instrument_id: InstrumentId) -> int | None:
+    """The internal id of the LIVE contract holding this exchange identity today, or None (never a retired one)."""
+    if not isinstance(instrument_id, InstrumentId):
+        raise TypeError(f"a live contract is found by its InstrumentId, got {instrument_id!r}")
+    rows = (await conn.execute(_LIVE_ID, {"exchange_segment": instrument_id.exchange_segment,
+                                          "exchange_token": instrument_id.exchange_token})).all()
+    if len(rows) > 1:  # the partial unique index forbids this; fail closed if it was ever dropped
+        raise CatalogueStoreError(f"{len(rows)} live contracts share {instrument_id}; refusing to pick one")
+    return int(rows[0].id) if rows else None
 
 
 def _contract_params(row: ListedContract) -> dict[str, Any]:
@@ -286,7 +359,8 @@ def _refuse_identity_change(label: str, what: str, fields: tuple[str, ...], old:
         if getattr(old, field) != getattr(new, field):
             raise CatalogueStoreError(
                 f"contract {label}: {what}{field} {getattr(old, field)!r} -> {getattr(new, field)!r}"
-                f" - a contract's identity never changes (REQ-053 AC-2, REQ-054 AC-3); nothing written"
+                f" - a live contract's identity never changes and two live contracts never share a token"
+                f" (REQ-054 AC-3, ADR-057); nothing written"
             )
 
 
@@ -301,9 +375,20 @@ async def apply_update(
 ) -> StoreUpdateResult:
     """Apply a newer instrument list to the stored catalogue (see the module docstring). Refusals raise before any
     write: ValueError from the domain (Q244; force without reason/actor), CatalogueStoreError here."""
+    if not isinstance(as_of, datetime) or as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise ValueError("apply_update() requires a timezone-aware as_of (the retirement date, ADR-057)")
+    update_date = as_of.astimezone(IST).date()
     rows = [_listed(r) for r in contracts]
     await conn.execute(_LOCK, {"k": CATALOGUE_UPDATE_LOCK_KEY})
-    catalogue = await load_catalogue(conn)
+    live = await _load_live(conn)
+    for contract_id, listed, _ in live:
+        if listed.contract.expiry is None:
+            raise CatalogueStoreError(f"stored contract id={contract_id} {_label(listed)} has no expiry; cannot tell "
+                                      "when its token retires (ADR-057); nothing written")
+    # ADR-057: a live contract whose expiry is before the load date is retired; its token is free from now on.
+    retiring = [(cid, listed, is_listed) for cid, listed, is_listed in live if listed.contract.expiry < update_date]
+    kept = [item for item in live if item[1].contract.expiry >= update_date]
+    catalogue = _catalogue_of(kept)
     before = {e.id: e for e in catalogue.all_entries()}
     before_listed = {i: e.currently_listed for i, e in before.items()}
     stored_by_token = {(e.broker_refs[ZERODHA].broker_segment, e.broker_refs[ZERODHA].broker_token): e
@@ -317,13 +402,16 @@ async def apply_update(
             continue
         check_storable(row)
         label = _label(row)
+        if row.contract.expiry is None:
+            raise CatalogueStoreError(f"contract {label}: has no expiry; cannot tell when its token retires "
+                                      "(ADR-057); the list is refused, nothing written")
         refs = {r.broker: r for r in row.broker_refs}
         if ZERODHA not in refs or len(refs) != len(row.broker_refs):
             raise CatalogueStoreError(f"contract {label}: needs exactly one {ZERODHA} row (REQ-054 AC-3)")
-        if row.id in scoped:
-            if scoped[row.id] != row:
-                raise CatalogueStoreError(f"the list holds two different contracts for {row.id}")
-            continue
+        if row.id in scoped:  # even an identical repeat: one token, one row per list (ADR-057)
+            raise CatalogueStoreError(f"the list holds token {row.id.exchange_segment}:{row.id.exchange_token} "
+                                      f"twice ({_label(scoped[row.id])} and {label}); the list is refused, "
+                                      "nothing written")
         token_key = (refs[ZERODHA].broker_segment, refs[ZERODHA].broker_token)
         if token_key in zerodha_tokens:
             raise CatalogueStoreError(f"the list gives {ZERODHA} token {token_key[1]} to {zerodha_tokens[token_key]} "
@@ -333,7 +421,7 @@ async def apply_update(
         stored = before.get(row.id)
         if stored is None:
             owner = stored_by_token.get(token_key)
-            if owner is not None:  # the stored Zerodha row now points at another identity: an identity change
+            if owner is not None:  # the live Zerodha row now points at another identity: an identity change
                 _refuse_identity_change(label, "", IDENTITY_FIELDS, owner.contract, row.contract)
             continue
         _refuse_identity_change(label, "", IDENTITY_FIELDS, stored.contract, row.contract)
@@ -350,19 +438,24 @@ async def apply_update(
     after = {e.id: e.currently_listed for e in catalogue.all_entries()}
     new = [scoped[i] for i in sorted(scoped) if i not in before]
     present = [scoped[i] for i in sorted(scoped) if i in before]
-    expiry_revised = [r for r in present if before[r.id].contract.expiry != r.contract.expiry]
+    terms_revised = [r for r in present
+                     if any(getattr(before[r.id].contract, f) != getattr(r.contract, f) for f in REVISABLE_FIELDS)]
     unlisted = [i for i, listed in sorted(after.items()) if not listed and before_listed.get(i, False)]
     if set(after) != set(before) | {r.id for r in new} or any(not after[i] for i in scoped):
         raise CatalogueStoreError("domain catalogue state does not match the planned write; nothing written")
+    retire_ids = sorted(cid for cid, _, _ in retiring)
 
     async with conn.begin_nested():
+        if retire_ids:  # first: frees each retired token before a new contract takes it
+            await conn.execute(_RETIRE, {"ids": retire_ids})
         if new:
             await conn.execute(_INSERT, [_contract_params(r) for r in new])
             await conn.execute(_INSERT_BROKER, [_broker_params(r, ref) for r in new for ref in r.broker_refs])
-        if expiry_revised:
+        if terms_revised:
             await conn.execute(_REVISE, [{"exchange_segment": r.contract.exchange_segment,
                                           "exchange_token": r.contract.exchange_token,
-                                          "expiry": r.contract.expiry} for r in expiry_revised])
+                                          "expiry": r.contract.expiry, "strike": r.contract.strike}
+                                         for r in terms_revised])
         if present:
             await conn.execute(_SEE_BROKER, [_see_params(r, ref) for r in present for ref in r.broker_refs])
             await conn.execute(_SET_LISTED, {"listed": True, **_keys(r.id for r in present)})
@@ -375,8 +468,9 @@ async def apply_update(
         # Inside the savepoint, after the writes: a refused audit append rolls back the catalogue change too.
         for event in audit.events if audit is not None else ():
             await audit_store.append(conn, event.pop("event_type"), **event)
-    return StoreUpdateResult(added=len(new), seen=len(present), newly_unlisted=len(unlisted),
-                             revised=len(revised), domain=domain)
+    newly_unlisted = len(unlisted) + sum(1 for _, _, was_listed in retiring if was_listed)
+    return StoreUpdateResult(added=len(new), seen=len(present), newly_unlisted=newly_unlisted,
+                             revised=len(revised), domain=domain, retired=len(retire_ids))
 
 
 def with_terms(row: ListedContract, **changes: Any) -> ListedContract:
