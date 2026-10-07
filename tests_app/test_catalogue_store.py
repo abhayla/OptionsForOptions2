@@ -379,7 +379,7 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
     assert order[-1] == "audit" and order.count("audit") == 1 and "write" in order[:-1]
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
-    assert payload["action"] == "catalogue_force_update" and payload["dropped_broker_symbols"] == [["zerodha", "NIFTY26O1325050CE"]]
+    assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == [["zerodha", "NIFTY26O1325050CE"]]
     assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
 
     # a failed catalogue write leaves no audit event
@@ -639,7 +639,8 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await _expect_refused(conn, f"DELETE FROM {TABLE}", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"TRUNCATE {TABLE}", INSUFFICIENT_PRIVILEGE)
-            await _expect_refused(conn, f"UPDATE {TABLE} SET strike = strike + 1", INSUFFICIENT_PRIVILEGE)
+            # W-057: strike is app-updatable since 0005 (a revision, ADR-057); name never is
+            await _expect_refused(conn, f"UPDATE {TABLE} SET name = 'SENSEX'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {TABLE} SET last_seen_at = now()", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(
                 conn, f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, strike, instrument_type, "
@@ -938,7 +939,7 @@ async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
 ) -> None:
     """A store whose ADR-058 counting guard is bypassed no longer refuses the truncated list, and the store then
     writes (delisting the missing contracts): the refusal check goes red."""
-    from ofo_app import catalogue_store
+    from ofo.instruments import catalogue as domain_catalogue
 
     def no_guard(*args, **kwargs):
         return None
@@ -948,7 +949,7 @@ async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             await check_truncated_update_refused(conn)
-            monkeypatch.setattr(catalogue_store, "_refuse_truncated", no_guard)
+            monkeypatch.setattr(domain_catalogue, "_refuse_truncation", no_guard)  # the guards live in the domain
             with pytest.raises(AssertionError, match="not refused: truncated update"):
                 await check_truncated_update_refused(conn)
         finally:

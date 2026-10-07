@@ -344,8 +344,9 @@ def test_force_with_reason_is_audited_with_exact_dropped_contracts(
     assert event.actor == "ops-admin"
     assert event.timestamp == ON_EXPIRY_DAY
     assert event.payload["reason"] == "NSE delisted it (circular 123)"
-    assert event.payload["dropped_instrument_ids"] == ((victim.id.exchange_segment, victim.id.exchange_token),)
-    assert event.payload["dropped_broker_symbols"] == (("zerodha", victim.ref("zerodha").broker_symbol),)
+    # the keys the audit store's allowlist declares (REQ-063 AC-5); any other key is dropped before storage
+    assert event.payload["dropped_instrument_tokens"] == ((victim.id.exchange_segment, victim.id.exchange_token),)
+    assert event.payload["dropped_tradingsymbols"] == (("zerodha", victim.ref("zerodha").broker_symbol),)
     assert log.verify().ok
 
 
