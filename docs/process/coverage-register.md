@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 136b401
+Generated from commit bd47b26
 
 ## Stage S0
 
@@ -16,65 +16,11 @@ Generated from commit 136b401
 | --- | --- | --- | --- | --- |
 | S1 | open area | OA-18 | - | Zerodha rate limits for per-user WebSockets |
 
-## Stage S2
-
-| Stage | Kind | Id | AC | Text |
-| --- | --- | --- | --- | --- |
-| S2 | build plan | rotate-algochanakya-secrets | - |  |
-| S2 | conflict | C-01 | - | REQ-006 AC-3 / REQ-035 AC-7 (Greeks and IV from Advanced) vs REQ-029 AC-2/AC-9 (IV and Delta at lower levels) |
-| S2 | conflict | C-11 | - | REQ-048 AC-4 (shared feed) vs REQ-052 AC-1 (per-user feed) = Q204 |
-| S2 | conflict | C-12 | - | REQ-051 AC-4 (history from live feed) vs AC-1 (history disabled in V1) |
-| S2 | conflict | C-13 | - | ADR-001 and ADR-005 list Q207/Q208 as open; decided by ADR-041/ADR-042 |
-| S2 | conflict | C-14 | - | ADR-013 lists Q212 as open; open-questions marks it done |
-| S2 | conflict | C-15 | - | ADR-019 calls the transition table a proposal; Q240 approved it |
-| S2 | conflict | C-20 | - | adjustment-data-contract still lists 7 unclear rows; Q246 resolved 5 (rows 12, 13 remain) |
-| S2 | conflict | C-21 | - | ADR-030 / build-plan "allowed before the answer" list differs from ADR-034 "allowed meanwhile" list |
-| S2 | decision | ADR-034 | - | Ask Zerodha in writing before building anything on Zerodha live market data |
-| S2 | finding | F-06 | - | SEBI's retail algo framework puts architecture rules on API order placement |
-| S2 | finding | F-11 | - | SEBI's retail-algo circular (primary text): brokers are principals, algo providers their agents, empanelled with exchanges |
-| S2 | finding | F-12 | - | NSE's implementation standards: a static IP maps to one client only (family excepted); API sessions end daily |
-| S2 | finding | F-14 | - | Exchanges do empanel SaaS algo providers by circular; a comparable product is empanelled "on provisional basis" |
-| S2 | finding | F-15 | - | SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns |
-| S2 | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
-| S2 | finding | F-18 | - | Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use |
-| S2 | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
-| S2 | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
-| S2 | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
-| S2 | finding | F-24 | - | SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration |
-| S2 | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
-| S2 | finding | F-26 | - | An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans |
-| S2 | issue | #116 | - |  |
-| S2 | open area | OA-01 | - | Pricing model for "Estimated Now" |
-| S2 | open area | OA-02 | - | bid/ask/slippage |
-| S2 | open area | OA-03 | - | charges model |
-| S2 | open area | OA-04 | - | tick rounding |
-| S2 | open area | OA-05 | - | timeout/cancel/repricing |
-| S2 | open area | OA-06 | - | MIS/NRML |
-| S2 | open area | OA-07 | - | expiry/multi-expiry execution edge cases |
-| S2 | open area | OA-08 | - | quantity edge cases |
-| S2 | open area | OA-09 | - | existing-position grouping algorithm |
-| S2 | open area | OA-10 | - | alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits |
-| S2 | open area | OA-12 | - | security architecture |
-| S2 | open area | OA-13 | - | data-retention policy |
-| S2 | open area | OA-15 | - | final cloud/stack |
-| S2 | question | Q204 | - | Shared data feed vs each user's own Zerodha feed |
-| S2 | question | Q205 | - | Monitoring while the user's Zerodha session has expired |
-| S2 | question | Q210 | - | What Zerodha allows, and what it costs each user |
-| S2 | question | Q224 | - | A contract held by more than one strategy disagrees with Zerodha |
-| S2 | question | Q258 | - | Does the platform count as an "algo provider" under SEBI's 2025 framework? |
-| S2 | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
-| S2 | question | Q260 | - | Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals? |
-| S2 | question | Q261 | - | Which features count as research or advice, and does the platform need RA registration or an RA partner? |
-| S2 | question | Q262 | - | Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity? |
-| S2 | vendor enquiry | VE-BSE | - |  |
-| S2 | vendor enquiry | VE-GlobalDatafeeds | - |  |
-| S2 | vendor enquiry | VE-NSE | - |  |
-| S2 | vendor enquiry | VE-TrueData | - |  |
-
 ## Stage S3
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
+| S3 | conflict | C-01 | - | REQ-006 AC-3 / REQ-035 AC-7 (Greeks and IV from Advanced) vs REQ-029 AC-2/AC-9 (IV and Delta at lower levels) |
 | S3 | conflict | C-02 | - | REQ-021 Open line on Q209 is stale (AC-7 records ADR-044) |
 | S3 | conflict | C-03 | - | REQ-016 AC-1 (drafts without Zerodha) should state it is subject to REQ-018 AC-5 (Limited users cannot save drafts) |
 | S3 | conflict | C-04 | - | REQ-034 Open line lists Q208 as open; ADR-042 decided it (NIFTY 100, SENSEX 300) |
@@ -84,6 +30,8 @@ Generated from commit 136b401
 | S3 | conflict | C-08 | - | REQ-060 AC-6 does not say that a mismatch also blocks exits (REQ-059 gate decision); add the cross-reference |
 | S3 | conflict | C-09 | - | REQ-059: state that exits get the seven exit conditions plus the five Q239 checks (union) |
 | S3 | conflict | C-10 | - | REQ-055 AC-1 (margin before any order) vs REQ-059 (exits exempt from margin sufficiency) |
+| S3 | conflict | C-11 | - | REQ-048 AC-4 (shared feed) vs REQ-052 AC-1 (per-user feed) = Q204 |
+| S3 | conflict | C-12 | - | REQ-051 AC-4 (history from live feed) vs AC-1 (history disabled in V1) |
 | S3 | conflict | C-16 | - | core-invariants #2 (a strategy has a version) vs domain-model (no versions before first execution) |
 | S3 | conflict | C-17 | - | build-plan text: test-DB decision placed in ADR-047 (it is ADR-048); kite-quirks skill and "two" path rules |
 | S3 | conflict | C-18 | - | ADR-050 identity vs build-plan:79 / legacy-reuse:62 "unique (exchange, token)" written before it |
@@ -92,6 +40,8 @@ Generated from commit 136b401
 | S3 | conflict | C-23 | - | open-questions "Open areas" lists the Estimated Now model and transition table, both since decided |
 | S3 | finding | F-27 | - | Data-protection and cyber-security duties with dates |
 | S3 | finding | F-28 | - | Payments, GST and advertising gates (stream S1b, not re-read by the orchestrator) |
+| S3 | open area | OA-12 | - | security architecture |
+| S3 | open area | OA-13 | - | data-retention policy |
 | S3 | open area | OA-16 | - | the strategy state transition table |
 
 ## Stage 4a
@@ -101,6 +51,7 @@ Generated from commit 136b401
 | 4a | build plan | P3a | - |  |
 | 4a | build plan | P3b | - |  |
 | 4a | build plan | P4 | - |  |
+| 4a | build plan | rotate-algochanakya-secrets | - |  |
 | 4a | build plan | safety-net-wording | - |  |
 | 4a | build plan | token-auto-refresh-rule | - |  |
 | 4a | build plan | vps-test-db-credentials | - |  |
@@ -119,9 +70,16 @@ Generated from commit 136b401
 | 4a | decision | ADR-049 | - | Frontend styling - Tailwind CSS 4 with the owner's data-dense references and one cobalt accent |
 | 4a | decision | ADR-050 | - | One instrument identity across brokers, broker-specific data in a per-broker table, and the order-path safeguards for the broker phase |
 | 4a | decision | ADR-051 | - | The core's live-data half is proven on the owner's own Zerodha account before Zerodha answers; no orders |
+| 4a | decision | ADR-052 | - | A contract's identity includes its expiry date, because exchanges reuse contract numbers after expiry |
+| 4a | decision | ADR-053 | - | V1 uses each user's own Zerodha feed, and monitoring pauses visibly when that user's daily session has ended |
+| 4a | decision | ADR-056 | - | How the core is judged and what it needs before it starts (error messages, pricing model, gates, fan-out test, chain levels) |
+| 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
+| 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | issue | #110 | - |  |
+| 4a | issue | #116 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
+| 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
 | 4a | requirement | REQ-001 | - | V1 scope: underlyings, leg types, broker |
 | 4a | requirement | REQ-015 | AC-4 | Settings → Broker & Market Data → Zerodha shows four separate statuses — account connection, live market data, position/account sync, order-execution readiness — as Connected, Partially connected (naming what to fix) or Disconnected (with the guide); Connected shows 'Last successful sync' time and Reconnect / Disconnect actions (Q181; T2 #124). |
 | 4a | requirement | REQ-015 | AC-5 | When the connection drops within a valid Zerodha session the platform reconnects automatically, validates and resynchronises, then resumes monitoring; reconnecting never places or submits an order (Q183). Auto-reconnect cannot renew the daily Zerodha session; after that expiry the user must authenticate again (owner T1 #265). |
@@ -158,11 +116,26 @@ Generated from commit 136b401
 | 4b | decision | ADR-017 | - | Multi-leg execution, order handling, partial execution and no automatic retry |
 | 4b | decision | ADR-018 | - | Reconciliation and existing positions |
 | 4b | decision | ADR-050 | - | One instrument identity across brokers, broker-specific data in a per-broker table, and the order-path safeguards for the broker phase |
+| 4b | decision | ADR-054 | - | Prepared orders reach Zerodha through Kite's own order page (offsite basket), pending Zerodha's confirmation |
+| 4b | decision | ADR-056 | - | How the core is judged and what it needs before it starts (error messages, pricing model, gates, fan-out test, chain levels) |
 | 4b | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
+| 4b | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
+| 4b | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
 | 4b | issue | #115 | - |  |
 | 4b | issue | #43 | - |  |
 | 4b | issue | #45 | - |  |
 | 4b | issue | #63 | - |  |
+| 4b | open area | OA-02 | - | bid/ask/slippage |
+| 4b | open area | OA-03 | - | charges model |
+| 4b | open area | OA-04 | - | tick rounding |
+| 4b | open area | OA-05 | - | timeout/cancel/repricing |
+| 4b | open area | OA-06 | - | MIS/NRML |
+| 4b | open area | OA-07 | - | expiry/multi-expiry execution edge cases |
+| 4b | open area | OA-08 | - | quantity edge cases |
+| 4b | open area | OA-09 | - | existing-position grouping algorithm |
+| 4b | open area | OA-15 | - | final cloud/stack |
+| 4b | question | Q258 | - | Does the platform count as an "algo provider" under SEBI's 2025 framework? |
+| 4b | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
 | 4b | requirement | REQ-036 | - | Strategy-only execution |
 | 4b | requirement | REQ-039 | - | Strategy state machine and exception states |
 | 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, submit order, fetch order status, reconcile. |
@@ -184,6 +157,8 @@ Generated from commit 136b401
 | 4c | decision | ADR-009 | - | Rules engine, entry/exit rules and V1 automation (Alert + Prepare Orders) |
 | 4c | decision | ADR-010 | - | Monitoring, the Strategy Plan and the Live Position view |
 | 4c | decision | ADR-028 | - | Notifications |
+| 4c | decision | ADR-053 | - | V1 uses each user's own Zerodha feed, and monitoring pauses visibly when that user's daily session has ended |
+| 4c | open area | OA-10 | - | alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits |
 | 4c | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
 | 4c | requirement | REQ-041 | - | Rule engine: entry, exit and rule defaults |
 | 4c | requirement | REQ-042 | - | Automation: Alert + Prepare Orders |
@@ -217,6 +192,7 @@ Generated from commit 136b401
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
 | S6 | build plan | P5 | - |  |
+| S6 | decision | ADR-055 | - | Until written compliance answers arrive, the product is built to the strictest reading of the AP and research-analyst rules |
 
 ## Stage S6.1
 
@@ -233,6 +209,8 @@ Generated from commit 136b401
 | --- | --- | --- | --- | --- |
 | S6.2 | decision | ADR-005 | - | Strategy creation: guided builder, discovery, expected range and setups |
 | S6.2 | decision | ADR-032 | - | Strategy preferences |
+| S6.2 | finding | F-24 | - | SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration |
+| S6.2 | question | Q261 | - | Which features count as research or advice, and does the platform need RA registration or an RA partner? |
 | S6.2 | requirement | REQ-016 | - | Strategies without Zerodha |
 | S6.2 | requirement | REQ-024 | - | Guided strategy creation |
 | S6.2 | requirement | REQ-025 | - | Strategy discovery and preferences |
@@ -255,6 +233,7 @@ Generated from commit 136b401
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
+| S6.4 | conflict | C-20 | - | adjustment-data-contract still lists 7 unclear rows; Q246 resolved 5 (rows 12, 13 remain) |
 | S6.4 | decision | ADR-011 | - | Adjustment engine: configurable rules, playbooks and platform-detected opportunities |
 | S6.4 | open area | OA-11 | - | adjustment rule priority/conflict/ |
 | S6.4 | requirement | REQ-045 | - | Adjustment detection and triggers |
@@ -307,12 +286,16 @@ Generated from commit 136b401
 | S8 | decision | ADR-024 | - | Direct Zerodha customers: free Pro forever, verification and admin list |
 | S8 | decision | ADR-025 | - | Referral rewards and the free-eligibility page |
 | S8 | decision | ADR-026 | - | Paid Pro: price, annual plan, Razorpay and admin commercial settings |
+| S8 | decision | ADR-034 | - | Ask Zerodha in writing before building anything on Zerodha live market data |
 | S8 | decision | ADR-036 | - | Launch is public; invite-only switch off by default |
 | S8 | decision | ADR-037 | - | Limited users can always exit an active strategy |
 | S8 | decision | ADR-038 | - | A referral reward is 30 days, not a calendar month |
 | S8 | decision | ADR-044 | - | Referral success arrives by admin upload of confirmed Zerodha openings |
+| S8 | decision | ADR-055 | - | Until written compliance answers arrive, the product is built to the strictest reading of the AP and research-analyst rules |
+| S8 | finding | F-26 | - | An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans |
 | S8 | issue | #112 | - |  |
 | S8 | open area | OA-17 | - | complimentary list |
+| S8 | question | Q260 | - | Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals? |
 | S8 | requirement | REQ-017 | - | Entitlement engine |
 | S8 | requirement | REQ-018 | - | Trial and Limited/Read-Only mode |
 | S8 | requirement | REQ-019 | - | Complimentary Pro for qualifying Zerodha customers |
@@ -322,6 +305,10 @@ Generated from commit 136b401
 | S8 | requirement | REQ-063 | AC-1 | Broker, market-data and payment integrations each sit behind an adapter. |
 | S8 | requirement | REQ-066 | - | Compliance gates |
 | S8 | requirement | REQ-067 | AC-7 | A concise project control center tracks feature, spec/story/task, owner/agent, status, dependency, blocker, verification, screenshot and branch, updated compactly. |
+| S8 | vendor enquiry | VE-BSE | - |  |
+| S8 | vendor enquiry | VE-GlobalDatafeeds | - |  |
+| S8 | vendor enquiry | VE-NSE | - |  |
+| S8 | vendor enquiry | VE-TrueData | - |  |
 | S8 | work item | W-008 | - | Trial and Limited/Read-Only access policy |
 | S8 | work item | W-009 | - | Referral rewards and confirmed-openings CSV import |
 | S8 | work item | W-011 | - | Complimentary Pro for qualifying Zerodha customers: match, grant, audit |
@@ -359,19 +346,30 @@ Generated from commit 136b401
 | done | build plan | P1 | - |  |
 | done | build plan | P2a | - |  |
 | done | build plan | kite-quirks-skill | - |  |
+| done | conflict | C-13 | - | ADR-001 and ADR-005 list Q207/Q208 as open; decided by ADR-041/ADR-042 |
+| done | conflict | C-14 | - | ADR-013 lists Q212 as open; open-questions marks it done |
+| done | conflict | C-15 | - | ADR-019 calls the transition table a proposal; Q240 approved it |
+| done | conflict | C-21 | - | ADR-030 / build-plan "allowed before the answer" list differs from ADR-034 "allowed meanwhile" list |
 | done | finding | F-01 | - | The exchange's contract number is the one identifier shared by every Indian broker |
 | done | finding | F-02 | - | Zerodha's instrument_token is not a cross-broker identifier |
 | done | finding | F-03 | - | Broker trading symbols differ, and some are not unique |
 | done | finding | F-04 | - | Broker data scales and limits differ for the same contract |
 | done | finding | F-05 | - | Expiry dates must be read from the instrument master, never computed from a weekday |
+| done | finding | F-06 | - | SEBI's retail algo framework puts architecture rules on API order placement |
 | done | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
 | done | finding | F-08 | - | Multi-broker platforms isolate each broker in a plugin with a contract master and a capability file |
 | done | finding | F-09 | - | algochanakya's cross-broker symbol design keys on a Zerodha symbol string and is mostly stubs |
 | done | finding | F-10 | - | Zerodha's `exchange` column is not an exchange segment: (exchange, exchange_token) collides |
+| done | finding | F-11 | - | SEBI's retail-algo circular (primary text): brokers are principals, algo providers their agents, empanelled with exchanges |
+| done | finding | F-12 | - | NSE's implementation standards: a static IP maps to one client only (family excepted); API sessions end daily |
 | done | finding | F-13 | - | OpenAlgo is licensed AGPL-3.0: copying any of its code would put our whole hosted backend under AGPL |
+| done | finding | F-14 | - | Exchanges do empanel SaaS algo providers by circular; a comparable product is empanelled "on provisional basis" |
+| done | finding | F-15 | - | SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns |
 | done | finding | F-16 | - | Brokers' public option chains are delayed for signed-out visitors; live prices only after login |
+| done | finding | F-18 | - | Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use |
 | done | finding | F-19 | - | The framework applies to all brokers from 1 April 2026; Zerodha allows up to two static IPs, used only by the client and immediate family |
 | done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
+| done | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
 | done | hypothesis | H1 | - |  |
 | done | hypothesis | H10 | - |  |
 | done | hypothesis | H11 | - |  |
@@ -383,6 +381,7 @@ Generated from commit 136b401
 | done | hypothesis | H7 | - |  |
 | done | hypothesis | H8 | - |  |
 | done | hypothesis | H9 | - |  |
+| done | open area | OA-01 | - | Pricing model for "Estimated Now" |
 | done | requirement | REQ-020 | - | Admin: qualifying Client ID management |
 | done | requirement | REQ-032 | - | Calculation engine |
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
@@ -402,21 +401,20 @@ Generated from commit 136b401
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
-| S2 | 1 | 8 | 1 | 13 | 0 | 1 | 13 | 9 | 0 | 4 | 0 | 50 |
-| S3 | 0 | 15 | 0 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 18 |
-| 4a | 6 | 0 | 15 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 50 |
-| 4b | 1 | 0 | 4 | 1 | 0 | 4 | 0 | 0 | 12 | 0 | 1 | 23 |
-| 4c | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 8 |
+| S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
+| 4a | 7 | 0 | 18 | 2 | 0 | 4 | 0 | 1 | 25 | 0 | 1 | 58 |
+| 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 12 | 0 | 1 | 38 |
+| 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |
-| S6 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
 | S6.1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
-| S6.2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 0 | 9 |
+| S6.2 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | 1 | 7 | 0 | 0 | 11 |
 | S6.3 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 5 |
-| S6.4 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | 0 | 8 | 0 | 0 | 10 |
+| S6.4 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 8 | 0 | 0 | 11 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 2 |
 | S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 2 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 3 |
-| S8 | 2 | 0 | 8 | 0 | 0 | 1 | 1 | 0 | 9 | 0 | 3 | 24 |
+| S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 9 | 4 | 3 | 32 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 0 | 0 | 13 | 11 | 0 | 0 | 0 | 12 | 0 | 0 | 41 |
+| done | 5 | 4 | 0 | 20 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 53 |
