@@ -12,7 +12,7 @@ party) · **DECIDED → ADR-###**.
 - **Q81** — DECIDED: C, hybrid dashboard (T2 #3) → ADR-027.
 - Scenario range and anchoring — DECIDED: Q33B = E, Q33C = rounded ₹100 grid + current level + 0-P&L, Q33D = C → ADR-008.
 
-## Q204 — OPEN — Shared data feed vs each user's own Zerodha feed
+## Q204 — DECIDED → ADR-053 (owner delegation, 2026-10-07: per-user feeds in V1) — Shared data feed vs each user's own Zerodha feed
 - **Where it stands.** The owner decided (T2 #121) that the interim source is Zerodha live data through **each user's
   own Zerodha API connection**. That is a per-user feed. ADR-012 (Q98, Q170, T2 #102) wants one shared feed fanned
   out to all users, which only a licensed vendor can give. So in V1 the shared-feed goal cannot be met for live
@@ -22,7 +22,7 @@ party) · **DECIDED → ADR-###**.
   per API key are unverified here).
 - Spec basis: ADR-012, ADR-014; T2 #102, #121, #122.
 
-## Q205 — OPEN — Monitoring while the user's Zerodha session has expired
+## Q205 — DECIDED → ADR-053 (owner delegation, 2026-10-07: visible pause + morning reminder) — Monitoring while the user's Zerodha session has expired
 - Zerodha sessions end every morning (owner, T1 #265). Under per-user Zerodha data, a user who hasn't logged in today
   has no data feeding their active strategy, so no exit alert can fire.
 - Example: an Iron Condor is active, the user doesn't log in Monday, NIFTY falls 400 points at 11:00 → no Red alert.
@@ -191,8 +191,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   REFUSED and every holder stays blocked; "mark as requiring attention" and "review and modify" stay available. The
   user resolves by trading in Kite (or by later modifying a strategy) and running reconciliation again. Single-holder
   contracts (with or without a recorded standalone) are unchanged.
-- Open for the owner: an attribution rule for shared contracts (e.g. the user picks which strategy absorbs the change,
-  recorded and audited), which would restore adopt/close/exit for this case.
+- Attribution rule for shared contracts: **decided 2026-10-07 (owner delegation) → ADR-056 item 6** - the user picks
+  which strategy absorbs the change, recorded and audited, which restores adopt/close/exit for this case (Stage 4b).
 - Spec basis: ADR-016/ADR-018 (Zerodha is the authority; a mismatch blocks); ADR-018 Q198 resolution list; REQ-060
   AC-5, AC-7 (AC-7 covers one strategy plus a standalone, not two strategies). No spec text defines attribution across
   strategies.
@@ -334,7 +334,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 - Amended 2026-10-02 (owner, ADR-050): the identity list now names (exchange segment, exchange token), not Zerodha's
   instrument_token (spec/findings.md F-01, F-02); see REQ-053.
 
-## Q258 — OPEN (external: Zerodha + legal) — Does the platform count as an "algo provider" under SEBI's 2025 framework?
+## Q258 — EXTERNAL (Zerodha's written answer; design decided → ADR-054, 2026-10-07: the platform sends no orders through the API) — Does the platform count as an "algo provider" under SEBI's 2025 framework?
 - Question: SEBI's retail algo framework (circular SEBI/HO/MIRSD/MIRSD-PoD/P/CIR/2025/0000013, 4 Feb 2025; NSE
   INVG67858) requires orders from a whitelisted static IP (Zerodha rejects others from 1 Apr 2026, and limits static IP
   sharing to family), an algo ID on API orders, and exchange empanelment for algo providers with every strategy
@@ -351,7 +351,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   Answered by the text later the same day: F-17 (every API order is an algo order) and F-18 (algo providers' strategies
   run on the broker's servers) - see Q259.
 
-## Q259 — OPEN (owner + legal + Zerodha) — How do the platform's prepared orders reach Zerodha, given that every API order is an algo order?
+## Q259 — EXTERNAL (Zerodha confirmation; path (b) chosen → ADR-054, owner delegation 2026-10-07) — How do the platform's prepared orders reach Zerodha, given that every API order is an algo order?
 - Finding: NSE treats every order received through a broker API as an algo order, even one the user confirms (F-17),
   and requires an algo provider's strategies to run on the broker's servers with orders originating there (F-18).
   Static IPs are one client or one family only (F-12, F-19). Our design (ADR-017, ADR-050 item 4) has our server send
@@ -370,7 +370,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   tag per order (F-22); not stated whether such orders are non-algo under the 2025 framework - ask Zerodha. Spec basis: ADR-009, ADR-017, ADR-034, ADR-050, Q258.
   This blocks master-plan Stage 4b as written; Stage 4a (data) is not affected.
 
-## Q260 — OPEN (owner + Zerodha compliance + legal) — Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals?
+## Q260 — EXTERNAL (Zerodha compliance's written view; strict default → ADR-055, 2026-10-07) — Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals?
 - Finding F-26: an AP "shall not charge any amount from the clients" (SEBI Master Circular for Stock Brokers, 17 Jun
   2025); NSE/COMP/55482 §5.5(a) bars incentives "for account opening/trading ... or any kind of subscription plan". A
   proposal of 6 Aug 2026 would narrow the AP rule to "in the capacity of AP" (not in force).
@@ -381,7 +381,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   Pro and referral rewards; ask Zerodha compliance in writing first. Spec basis: ADR-024, ADR-025, ADR-026, ADR-038,
   REQ-019, REQ-021, REQ-023. Blocks master-plan Stage 8 (money), not the core.
 
-## Q261 — OPEN (owner + legal) — Which features count as research or advice, and does the platform need RA registration or an RA partner?
+## Q261 — LEGAL (legal review Q211; strict default → ADR-055, 2026-10-07) — Which features count as research or advice, and does the platform need RA registration or an RA partner?
 - Findings F-24 (RA definition covers price targets, stop losses and "any other service of similar nature"; no
   exemption for tools; Sensibull's operator holds RA INH200006895), F-25 (APs may not associate with unregistered
   advisers or return claims), F-15 (SEBI penalised a broker over a SaaS platform's return claims), F-18 (black-box algo
@@ -392,7 +392,7 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   a registered RA; drop the exposed features. Spec basis: ADR-003, ADR-005, ADR-011, Q211. Blocks Stage 6 items 2 and 4
   and the public launch, not the core.
 
-## Q262 — OPEN (owner) — Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity?
+## Q262 — DECIDED → ADR-052 (owner delegation, 2026-10-07: identity includes the expiry date) — Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity?
 - Finding F-21: NSE reuses contract numbers after expiry - 4,768 of 65,265 numbers in Aug-Oct 2026 mapped to more than
   one contract (e.g. 67245: ABCAPITAL 25-Aug-2026 410 PE, then NIFTYNXT50 29-Dec-2026 72200 PE); Zerodha's docs say the
   same. A saved strategy leg or audit record keyed on (segment, number) alone could later resolve to the wrong

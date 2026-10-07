@@ -1,5 +1,11 @@
 # Handover
 
+**2026-10-07 ~20:00 IST — Stages 0-2 done.** Stage 0-1 merged as #121 (findings F-11..F-28, coverage register with its
+own CI check, research docs, surprise register, architecture page claude.ai/artifact/NoPqsrgmK8KvX6TiCo1Xi1). Stage 2
+decisions ADR-051..ADR-056 (see the "Stage 2 outcome" block in the master plan). NEXT: Stage 3 - update and create the
+requirements these decisions and findings touch, then the Stage 4a approval batch. Owner actions (Zerodha email,
+legal question, Kite app at 4a): `docs/process/owner-actions-2026-10-07.md`.
+
 **2026-10-07 18:45 IST — the order of work changed (owner-approved master plan).** Read
 `docs/process/master-plan-2026-10-07.md` first. Core first: Stage 0 full spec read + coverage register → Stage 1 all
 research (`docs/research/research-plan-2026-10-07.md`) → Stage 2 owner decisions one at a time (D1 = an ADR-034/ADR-050

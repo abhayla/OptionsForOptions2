@@ -160,6 +160,20 @@ Each answer is written into the spec in the same turn, as an ADR-051+ row or an 
 
 Gate: no open owner decision blocks Stage 4.
 
+**Stage 2 outcome (2026-10-07).** The owner answered D1 (ADR-051: prove the data half on the owner's own account, no
+orders) and then delegated the rest ("go as per the plan"); each was decided by role and recorded:
+- ADR-052 (Q262): identity = (segment, token, expiry). **Adds a re-key work item to 4a**, before any strategy is stored.
+- ADR-053 (Q204, Q205): per-user feeds in V1; visible "Monitoring paused" when the daily session ends.
+- ADR-054 (Q258, Q259): **4b changes**: orders go to Zerodha as a read-only Kite basket the user places on Kite's own
+  page; our server places no orders, so no static IP is needed. 4b waits for Zerodha's written answer.
+- ADR-055 (Q260, Q261): strict compliance default (no platform-picked strikes or stops, no return claims; paid plan,
+  free Pro and referral rewards held) until Zerodha compliance and the legal review answer.
+- ADR-056 (D4, D7 part, D8, D9, C-01, Q224): W-024 unparked into 4a; "Estimated Now" uses scenario-calculations §4 with
+  the Q248 rate; core gates judged by our own formulas; fan-out proven by a recorded-tick replay; chain IV/Greeks from
+  Advanced; shared-contract attribution by user choice.
+- The questions only third parties can answer are in `docs/process/owner-actions-2026-10-07.md` (Zerodha email draft,
+  legal question). Stage 4a does not wait for them.
+
 ### Stage 3: Requirements (no code)
 - Update every requirement that a finding or decision touches. Each gets ACs that cite the F-ids and ADRs, after
   running `spec_similar.py`.
