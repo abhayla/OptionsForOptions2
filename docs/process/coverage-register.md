@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 5c45183
+Generated from commit 0e5dc34
 
 ## Stage S0
 
@@ -14,17 +14,6 @@ Generated from commit 5c45183
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
-| S1 | hypothesis | H1 | - |  |
-| S1 | hypothesis | H10 | - |  |
-| S1 | hypothesis | H11 | - |  |
-| S1 | hypothesis | H2 | - |  |
-| S1 | hypothesis | H3 | - |  |
-| S1 | hypothesis | H4 | - |  |
-| S1 | hypothesis | H5 | - |  |
-| S1 | hypothesis | H6 | - |  |
-| S1 | hypothesis | H7 | - |  |
-| S1 | hypothesis | H8 | - |  |
-| S1 | hypothesis | H9 | - |  |
 | S1 | open area | OA-18 | - | Zerodha rate limits for per-user WebSockets |
 
 ## Stage S2
@@ -382,6 +371,17 @@ Generated from commit 5c45183
 | done | finding | F-16 | - | Brokers' public option chains are delayed for signed-out visitors; live prices only after login |
 | done | finding | F-19 | - | The framework applies to all brokers from 1 April 2026; Zerodha allows up to two static IPs, used only by the client and immediate family |
 | done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
+| done | hypothesis | H1 | - |  |
+| done | hypothesis | H10 | - |  |
+| done | hypothesis | H11 | - |  |
+| done | hypothesis | H2 | - |  |
+| done | hypothesis | H3 | - |  |
+| done | hypothesis | H4 | - |  |
+| done | hypothesis | H5 | - |  |
+| done | hypothesis | H6 | - |  |
+| done | hypothesis | H7 | - |  |
+| done | hypothesis | H8 | - |  |
+| done | hypothesis | H9 | - |  |
 | done | requirement | REQ-020 | - | Admin: qualifying Client ID management |
 | done | requirement | REQ-032 | - | Calculation engine |
 | done | requirement | REQ-033 | - | Expiry scenario and live P&L formulas |
@@ -400,7 +400,7 @@ Generated from commit 5c45183
 | Stage | build plan | conflict | decision | finding | hypothesis | issue | open area | question | requirement | vendor enquiry | work item | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| S1 | 0 | 0 | 0 | 0 | 11 | 0 | 1 | 0 | 0 | 0 | 0 | 12 |
+| S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S2 | 1 | 8 | 1 | 13 | 0 | 1 | 13 | 9 | 0 | 4 | 0 | 50 |
 | S3 | 0 | 15 | 0 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 18 |
 | 4a | 6 | 0 | 14 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 49 |
@@ -418,4 +418,4 @@ Generated from commit 5c45183
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 3 |
 | S8 | 2 | 0 | 8 | 0 | 0 | 1 | 1 | 0 | 9 | 0 | 3 | 24 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 0 | 0 | 13 | 0 | 0 | 0 | 0 | 12 | 0 | 0 | 30 |
+| done | 5 | 0 | 0 | 13 | 11 | 0 | 0 | 0 | 12 | 0 | 0 | 41 |

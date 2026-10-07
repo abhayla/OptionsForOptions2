@@ -1,4 +1,4 @@
-# Stage assignment for every tracked id (master plan 2026-10-07, A2). Hand-written by the orchestrator; read by
+﻿# Stage assignment for every tracked id (master plan 2026-10-07, A2). Hand-written by the orchestrator; read by
 # scripts/orchestrator/coverage.py, which discovers ids from the repo and fails if any is missing here.
 # Stage codes: S0 S1 S2 S3 4a 4b 4c S5 S6.1..S6.7 S7 S8; "all" = a standing rule applied in every stage;
 # "done" = built and independently verified (still re-checked by the core gate where it says so).
@@ -144,7 +144,7 @@ questions:
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
-  OA-01: {text: 'Pricing model for "Estimated Now"', stage: S2}      # Stage 0 read: default set in scenario-calculations §4; confirm
+  OA-01: {text: 'Pricing model for "Estimated Now"', stage: S2}      # Stage 0 read: default set in scenario-calculations Â§4; confirm
   OA-02: {text: 'bid/ask/slippage', stage: S2}
   OA-03: {text: 'charges model', stage: S2}
   OA-04: {text: 'tick rounding', stage: S2}
@@ -223,17 +223,17 @@ findings:
   F-28: S3        # payments / GST / ads facts, re-read in Stage 3
 
 hypotheses:
-  H1: S1
-  H2: S1
-  H3: S1
-  H4: S1
-  H5: S1
-  H6: S1
-  H7: S1
-  H8: S1
-  H9: S1
-  H10: S1
-  H11: S1
+  H1: done
+  H2: done
+  H3: done
+  H4: done
+  H5: done
+  H6: done
+  H7: done
+  H8: done
+  H9: done
+  H10: done
+  H11: done
 
 # Build plan 2026-10-02 phases and named leftovers, and HANDOVER open items.
 build_plan:
