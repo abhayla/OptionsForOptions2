@@ -60,8 +60,8 @@ SNAPSHOT = text(
 
 
 def _migration():
-    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0004_broker_instruments.py"
-    spec = importlib.util.spec_from_file_location("ofo_migration_0004_test", path)
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0005_contract_lifecycle.py"  # the head (W-057)
+    spec = importlib.util.spec_from_file_location("ofo_migration_0005_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -217,7 +217,7 @@ def test_every_guarded_function_body_is_pinned_from_the_migrations_sql() -> None
         ("broker_instruments_guard", 31),
     ]
     assert dict(migration.GUARDED_TABLES)["public.audit_anchor"] == ()
-    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry")
+    assert migration.APP_UPDATE_COLUMNS == ("currently_listed", "expiry", "strike", "retired")  # ADR-057 (W-057)
     assert migration.APP_INSERT_COLUMNS == ("exchange_segment", "exchange_token", "name", "expiry", "strike",
                                             "instrument_type")
     assert migration.APP_BROKER_UPDATE_COLUMNS == ("broker_symbol", "lot_size", "tick_size", "freeze_limit")
@@ -292,11 +292,13 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
     conn = _FakeConn(stored)
     next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]
     result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
-    assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
-    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # zerodha rows seen, listed, unlisted
-    assert len(conn.writes[0][1]) == 18
-    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[1:]] == [(True, 18), (False, 4)]
-    assert conn.writes[1][1]["segments"] == sorted(
+    assert (result.added, result.seen, result.newly_unlisted, result.retired) == (0, 18, 4, 4)
+    assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # retired (W-057), seen, listed
+    expired_ids = sorted(r.id for r in stored if r.expiry == date(2026, 10, 6))
+    assert len(expired_ids) == 4 and conn.writes[0][1] == {"ids": expired_ids}  # the 4 expired: retired, ADR-057
+    assert len(conn.writes[1][1]) == 18
+    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[2:]] == [(True, 18)]
+    assert conn.writes[2][1]["segments"] == sorted(
         c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 1 contract"):
@@ -330,7 +332,7 @@ async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database(
     assert len(conn.writes[1][1]["tokens"]) == 22  # every present contract listed
 
 
-@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE"),
+@pytest.mark.parametrize("field, value", [("instrument_type", "PE"),  # strike is a revision since ADR-057 (W-057)
                                           ("exchange_token", 1), ("broker_segment", "NFO-FUT"),
                                           ("broker_token", "1")])
 async def test_planning_an_identity_change_is_refused_with_no_write(field: str, value) -> None:
@@ -490,8 +492,12 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
                     assert row.last_seen_at == before[symbol].last_seen_at
                 else:
                     assert row.last_seen_at > before[symbol].last_seen_at
-            catalogue = await load_catalogue(conn)
-            assert sum(not e.currently_listed for e in catalogue.all_entries()) == 4
+            retired = (await conn.execute(text(
+                f"SELECT b.broker_symbol FROM {TABLE} AS c JOIN {BROKER} AS b ON b.contract_id = c.id "
+                f"WHERE c.retired AND b.retired"))).scalars().all()
+            assert set(retired) == gone  # W-057: expired before the load date -> retired, still stored (ADR-057)
+            catalogue = await load_catalogue(conn)  # live contracts only
+            assert len(catalogue.all_entries()) == 18 and all(e.currently_listed for e in catalogue.all_entries())
         finally:
             await trans.rollback()
 
@@ -530,7 +536,7 @@ async def test_revised_lot_size_follows_zerodha_with_one_history_row(
             await trans.rollback()
 
 
-@pytest.mark.parametrize("field, value", [("strike", Decimal("25100")), ("instrument_type", "PE")])
+@pytest.mark.parametrize("field, value", [("instrument_type", "PE")])  # strike: a revision since ADR-057 (W-057)
 async def test_an_identity_change_is_refused_with_nothing_written(
     app_engine: AsyncEngine, capsys: pytest.CaptureFixture[str], field: str, value
 ) -> None:
@@ -660,7 +666,7 @@ async def check_owner_cannot_delete_or_change_terms(conn: AsyncConnection) -> No
         f"WHERE c.{bare.replace(' AND ', ' AND c.')})"))).scalar_one()
     assert referenced == 0, "the deleted row must have no foreign-key references, or the guard is not the only barrier"
     await _expect_refused(conn, f"DELETE FROM {TABLE} WHERE {bare}", CATALOGUE_SQLSTATE)
-    await _expect_refused(conn, f"UPDATE {TABLE} SET strike = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
+    await _expect_refused(conn, f"UPDATE {TABLE} SET exchange_token = 1 WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
     await _expect_refused(conn, f"UPDATE {TABLE} SET instrument_type = 'CE' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')",
                           CATALOGUE_SQLSTATE)
@@ -771,7 +777,7 @@ SET search_path = pg_catalog, pg_temp AS $fn$ BEGIN IF TG_OP = 'DELETE' THEN RET
         ('GRANT DELETE ON public.catalogue_contracts TO "{role}"', "has DELETE on catalogue_contracts"),
         ('GRANT TRUNCATE ON public.catalogue_contracts TO "{role}"', "has TRUNCATE on catalogue_contracts"),
         ('GRANT INSERT ON public.catalogue_contracts TO "{role}"', "has table-wide INSERT on catalogue_contracts"),
-        ('GRANT UPDATE (strike) ON public.catalogue_contracts TO "{role}"', "has UPDATE on catalogue_contracts column strike"),
+        ('GRANT UPDATE (name) ON public.catalogue_contracts TO "{role}"', "has UPDATE on catalogue_contracts column name"),
         ('GRANT UPDATE (last_seen_at) ON public.catalogue_contracts TO "{role}"',
          "has UPDATE on catalogue_contracts column last_seen_at"),
         ('GRANT INSERT (currently_listed) ON public.catalogue_contracts TO "{role}"',
