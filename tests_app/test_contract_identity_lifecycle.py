@@ -188,13 +188,21 @@ async def test_ac3_a_live_token_listed_as_a_different_contract_is_refused_with_n
     assert conn.writes == []
 
 
-@pytest.mark.parametrize("second", [R67245_OLD, _row(67245, date(2026, 12, 29), "72200", "PE", "OTHER")],
-                         ids=["same-row-twice", "two-contracts-one-token"])
+def _other_zerodha_token(row: ListedContract, broker_token: str) -> ListedContract:
+    import dataclasses
+
+    return ListedContract(contract=row.contract,
+                          broker_refs=tuple(dataclasses.replace(r, broker_token=broker_token) for r in row.broker_refs))
+
+
+@pytest.mark.parametrize("second", [R67245_OLD, _row(67245, date(2026, 12, 29), "72200", "PE", "OTHER"),
+                                    _other_zerodha_token(R67245_NEW, "99999999")],
+                         ids=["same-row-twice", "two-contracts-one-token", "one-exchange-token-two-zerodha-tokens"])
 async def test_ac3_two_rows_with_one_token_in_one_list_refuse_the_whole_list(second: ListedContract) -> None:
-    """AC-3: two rows with the same token in ONE list refuse the whole list (even an identical repeat); nothing is
-    written, including the unrelated row 61746."""
+    """AC-3: two rows with the same exchange token in ONE list refuse the whole list (even an identical repeat, and
+    even when Zerodha gives them different instrument tokens); nothing is written, including the unrelated row 61746."""
     conn = _FakeConn()
-    with pytest.raises(CatalogueStoreError, match="67245"):
+    with pytest.raises(CatalogueStoreError, match="token NSE_FO:67245 twice"):
         await apply_update(conn, [R61746_B, R67245_OLD, second], as_of=_as_of(date(2026, 8, 3)))
     assert conn.writes == []
 
