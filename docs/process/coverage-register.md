@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 0e5dc34
+Generated from commit 136b401
 
 ## Stage S0
 
@@ -118,6 +118,7 @@ Generated from commit 0e5dc34
 | 4a | decision | ADR-048 | - | Test database for local runs on the Windows VPS PostgreSQL, isolated and capped; CI uses its own |
 | 4a | decision | ADR-049 | - | Frontend styling - Tailwind CSS 4 with the owner's data-dense references and one cobalt accent |
 | 4a | decision | ADR-050 | - | One instrument identity across brokers, broker-specific data in a per-broker table, and the order-path safeguards for the broker phase |
+| 4a | decision | ADR-051 | - | The core's live-data half is proven on the owner's own Zerodha account before Zerodha answers; no orders |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
@@ -403,7 +404,7 @@ Generated from commit 0e5dc34
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S2 | 1 | 8 | 1 | 13 | 0 | 1 | 13 | 9 | 0 | 4 | 0 | 50 |
 | S3 | 0 | 15 | 0 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 18 |
-| 4a | 6 | 0 | 14 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 49 |
+| 4a | 6 | 0 | 15 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 50 |
 | 4b | 1 | 0 | 4 | 1 | 0 | 4 | 0 | 0 | 12 | 0 | 1 | 23 |
 | 4c | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 8 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |

@@ -129,6 +129,7 @@ decisions:
   ADR-048: 4a
   ADR-049: 4a
   ADR-050: [4a, 4b]
+  ADR-051: 4a           # D1: core data proof on the owner's own account
 
 # Open questions with status OPEN / EXTERNAL / LEGAL in spec/open-questions.md, plus items marked open for the owner.
 questions:

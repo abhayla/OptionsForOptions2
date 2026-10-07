@@ -58,6 +58,9 @@ party) · **DECIDED → ADR-###**.
 - Spec basis: ADR-024, ADR-025.
 
 ## Q210 — DECIDED → ADR-034 (email Zerodha first; owner, 2026-09-29) + EXTERNAL (waiting on Zerodha's written answer) — What Zerodha allows, and what it costs each user
+- **Owner, 2026-10-07 (master plan D1) → ADR-051:** exception for the owner's own account - the core's live-data half
+  (quotes, Phase-0 checks, engine, one screen) is proven privately now; no orders (Q259); everything else waits for
+  Zerodha's written answer.
 - ChatGPT's check of Zerodha's docs on 28 Sep (T2 #122): the free Personal plan has no live
   data; live data needs the ₹500/month Connect plan per API key; Kite Connect data may not be displayed or
   redistributed on other platforms; startups building mass-retail products may get Kite Connect free.
