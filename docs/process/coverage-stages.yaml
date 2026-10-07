@@ -191,7 +191,6 @@ issues:
   "#110": 4a
   "#112": S8
   "#115": 4b
-  "#116": 4a            # answered on data (F-21); fixed by the ADR-052 re-key work item
 
 # Work items whose status is not done.
 work_items:
@@ -200,7 +199,6 @@ work_items:
   W-011: S8
   W-017: 4b
   W-024: 4a
-  W-057: 4a             # ADR-057 identity lifecycle (fixes #116)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

@@ -208,7 +208,7 @@ def _kinds(conn: "_FakeConn") -> list[str]:
         "pe-to-fut"])
 async def test_ac3_fix1_adr059_classifies_a_changed_row_on_a_live_token(other: ListedContract, kind: str) -> None:
     """AC-3 / ADR-059: 62964 is live (NIFTY 31000 PE, expiry 2026-03-26). A row on its token revises it only if
-    underlying, type and segment are unchanged AND (strike unchanged and expiry moved <= 7 days, OR expiry unchanged and
+    underlying, type and segment are unchanged AND (strike unchanged and expiry moved <= 6 days, OR expiry unchanged and
     strike changed); anything else delists the stored contract and inserts the row as a new contract, delist first.
     62964 sits among 11 other live NIFTY contracts, 2 of them in its expiry, so the one delisting is counted by both
     guards and stays under them (1 of 12 = 8.3%; 1 of 3 of the expiry)."""
