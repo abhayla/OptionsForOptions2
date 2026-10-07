@@ -136,7 +136,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-069 [Approved]: Suggested setups in the Guided Builder
 - REQ-070 [Verified]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
-- REQ-072 [Specified]: Index spot prices for NIFTY 50 and SENSEX
+- REQ-072 [Approved]: Index spot prices for NIFTY 50 and SENSEX
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
