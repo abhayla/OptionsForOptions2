@@ -25,6 +25,11 @@
       "date": "2026-10-02",
       "where": "W-056 stage 1 (commit 15f8df1) keyed InstrumentId on Zerodha's `exchange` column instead of the exchange segment",
       "evidence": "Real Zerodha file: 30 (exchange, exchange_token) pairs duplicated, all exchange = NSE, INDICES vs NSE cash (NSE / 1001 = 'NIFTY 50' and '94SFL28-YL'); 0 among the 4,970 in-scope NFO/BFO rows. Same class one level down: a broker's own column used as the identity's segment. Fix: platform-owned segment list (REQ-054, F-10)."
+    },
+    {
+      "date": "2026-10-07",
+      "where": "ADR-050 identity (exchange segment, exchange token) as built by W-056 - unique per day, not over time (issue #116 answered on data)",
+      "evidence": "45 NSE F&O bhavcopies, every trading day 2026-08-03..2026-10-06: 65,265 FinInstrmId values, 4,768 map to more than one (symbol, expiry, strike, option type); e.g. 67245 = ABCAPITAL 25-Aug-2026 410 PE, then NIFTYNXT50 29-Dec-2026 72200 PE; 421 touch NIFTY. 0 same-day collisions. Zerodha docs: 'Exchanges may reuse instrument tokens for different derivative instruments after each expiry'. Same class, time dimension: an identifier assumed permanent that the issuer recycles. Fix pending owner decision Q262 (add expiry or a validity range to the identity). spec/findings.md F-21."
     }
   ]
 }

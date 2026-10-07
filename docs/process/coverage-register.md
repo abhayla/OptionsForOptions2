@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 2034799
+Generated from commit 5c45183
 
 ## Stage S0
 
@@ -14,7 +14,6 @@ Generated from commit 2034799
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
-| S1 | finding | F-21 | - | Exchange contract numbers come from a bounded range; reuse after expiry is likely but not stated by the exchange |
 | S1 | hypothesis | H1 | - |  |
 | S1 | hypothesis | H10 | - |  |
 | S1 | hypothesis | H11 | - |  |
@@ -26,7 +25,6 @@ Generated from commit 2034799
 | S1 | hypothesis | H7 | - |  |
 | S1 | hypothesis | H8 | - |  |
 | S1 | hypothesis | H9 | - |  |
-| S1 | issue | #116 | - |  |
 | S1 | open area | OA-18 | - | Zerodha rate limits for per-user WebSockets |
 
 ## Stage S2
@@ -50,7 +48,13 @@ Generated from commit 2034799
 | S2 | finding | F-15 | - | SEBI penalised a stock broker for its association with a SaaS algo platform whose strategies showed assured returns |
 | S2 | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | S2 | finding | F-18 | - | Algo providers must be empanelled and their algos run on the broker's servers; a client's own static IP is only for a tech-savvy client's own API use |
+| S2 | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | S2 | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
+| S2 | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
+| S2 | finding | F-24 | - | SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration |
+| S2 | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
+| S2 | finding | F-26 | - | An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans |
+| S2 | issue | #116 | - |  |
 | S2 | open area | OA-01 | - | Pricing model for "Estimated Now" |
 | S2 | open area | OA-02 | - | bid/ask/slippage |
 | S2 | open area | OA-03 | - | charges model |
@@ -70,6 +74,9 @@ Generated from commit 2034799
 | S2 | question | Q224 | - | A contract held by more than one strategy disagrees with Zerodha |
 | S2 | question | Q258 | - | Does the platform count as an "algo provider" under SEBI's 2025 framework? |
 | S2 | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
+| S2 | question | Q260 | - | Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals? |
+| S2 | question | Q261 | - | Which features count as research or advice, and does the platform need RA registration or an RA partner? |
+| S2 | question | Q262 | - | Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity? |
 | S2 | vendor enquiry | VE-BSE | - |  |
 | S2 | vendor enquiry | VE-GlobalDatafeeds | - |  |
 | S2 | vendor enquiry | VE-NSE | - |  |
@@ -94,6 +101,8 @@ Generated from commit 2034799
 | S3 | conflict | C-19 | - | options-math-review skill cites Q253 for expected move; it is Q254 |
 | S3 | conflict | C-22 | - | REQ-054 body cites ADR-050 but spec_refs/confirmed_against list ADR-016 only; REQ-041/REQ-067 confirmed_against vs spec_refs |
 | S3 | conflict | C-23 | - | open-questions "Open areas" lists the Estimated Now model and transition table, both since decided |
+| S3 | finding | F-27 | - | Data-protection and cyber-security duties with dates |
+| S3 | finding | F-28 | - | Payments, GST and advertising gates (stream S1b, not re-read by the orchestrator) |
 | S3 | open area | OA-16 | - | the strategy state transition table |
 
 ## Stage 4a
@@ -391,9 +400,9 @@ Generated from commit 2034799
 | Stage | build plan | conflict | decision | finding | hypothesis | issue | open area | question | requirement | vendor enquiry | work item | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| S1 | 0 | 0 | 0 | 1 | 11 | 1 | 1 | 0 | 0 | 0 | 0 | 14 |
-| S2 | 1 | 8 | 1 | 8 | 0 | 0 | 13 | 6 | 0 | 4 | 0 | 41 |
-| S3 | 0 | 15 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 16 |
+| S1 | 0 | 0 | 0 | 0 | 11 | 0 | 1 | 0 | 0 | 0 | 0 | 12 |
+| S2 | 1 | 8 | 1 | 13 | 0 | 1 | 13 | 9 | 0 | 4 | 0 | 50 |
+| S3 | 0 | 15 | 0 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 18 |
 | 4a | 6 | 0 | 14 | 0 | 0 | 3 | 0 | 0 | 25 | 0 | 1 | 49 |
 | 4b | 1 | 0 | 4 | 1 | 0 | 4 | 0 | 0 | 12 | 0 | 1 | 23 |
 | 4c | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | 8 |

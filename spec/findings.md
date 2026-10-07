@@ -66,7 +66,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   key and need the checksum SHA-256(order_id + order_timestamp + api_secret) verified, while the websocket covers all of
   a user's orders; a place_order timeout can leave an order that exists, so look it up by our tag instead of resending;
   limits 10 orders/second, 400/minute, a daily cap (3,000 per Zerodha's support page vs 5,000 per Kite docs -
-  conflicting, unverified), 25 modifications per order; autoslice returns mixed success and failure per slice, at most
+  conflicting, unverified; **settled 2026-10-07: 5,000 per day and 400 per minute per user/API key**, kite.trade/docs/
+  connect/v3/exceptions "will not be able to place more than 5000 orders per day", re-read raw), 25 modifications per
+  order; autoslice returns mixed success and failure per slice, at most
   10 slices; market and SL-M API orders need non-zero market protection; TokenException (403) means the session expired
   or the user logged in elsewhere.
 - Bears on: REQ-056, REQ-057, REQ-058, REQ-060, ADR-017, ADR-050 item 4. Status: **decided** for the P4 brief (ADR-050);
@@ -227,14 +229,25 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   shifts (unverified).
 - Bears on: REQ-001, REQ-026, REQ-053, REQ-054 AC-4, ADR-042, F-05. Status: **recorded**.
 
-## F-21 - Exchange contract numbers come from a bounded range; reuse after expiry is likely but not stated by the exchange
+## F-21 - Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day
 - Source: NSE circulars FAOP60133 (5 Jan 2024) and FAOP48511: F&O token numbers "should range from 1 to 31980 & 750001
   to 999999" (P1, stream S1a; not re-read by the orchestrator). The only statement of reuse is a Zerodha staff forum
   post from Dec 2016, "exchange reuses token after expiry" (P2, **unverified**); it would be verified by NSE's F&O
   consolidated circular Part D or the contract-file specification, or by stream S3's data count (pending).
-- Meaning for us: a bounded range of about 282,000 numbers for every F&O contract makes reuse plausible, so ADR-050's
-  identity (segment, number) may need the expiry or a validity date to stay unique over time (#116).
-- Bears on: ADR-050 item 1, REQ-053, REQ-054 AC-3, #116. Status: **unverified**.
+- **Measured 2026-10-07 (stream S3, recounted by the orchestrator with its own script):** across 45 NSE F&O
+  bhavcopies (every trading day 3 Aug - 6 Oct 2026), 65,265 contract numbers (`FinInstrmId`); 4,768 of them map to more
+  than one contract (symbol, expiry, strike, option type). Example: 67245 was ABCAPITAL 25-Aug-2026 410 PE, then
+  NIFTYNXT50 29-Dec-2026 72200 PE; 421 such numbers touch NIFTY (e.g. 53334: TATAELXSI 25-Aug-2026 2900 PE, then NIFTY
+  03-Nov-2026 20550 CE). No file has two contracts on one number on the same day. BSE: no reuse in 3,575 numbers over
+  the same dates; 107 SENSEX numbers reused in the 2025 samples (S3, not recounted). S3 also saw a live contract's
+  strike change under the same number (NSE 79199 HINDPETRO 410 -> 390.75 from 14 Aug 2026, likely a corporate action,
+  unconfirmed). Zerodha's own docs: "Exchanges may reuse instrument tokens for different derivative instruments after
+  each expiry" (kite.trade/docs/connect/v3/market-quotes, P1, re-read raw).
+- Meaning for us: the identity in the ADR-050 decision, (exchange segment, exchange token), is unique on a given day
+  but not over time; a stored strategy leg keyed on it alone could later point at a different contract. The identity
+  needs the expiry (or a validity range) as well; changing it is an owner decision (Q262). Closes the data question of
+  #116.
+- Bears on: ADR-050 item 1, F-01, REQ-053, REQ-054 AC-3, #116, #115. Status: **open for owner decision**.
 
 ## F-22 - Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page
 - Source: Kite Connect v3 docs, "Offsite order execution" (kite.trade/docs/connect/v3/basket/) and Kite Publisher
@@ -252,3 +265,79 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   ADR-050 item 4(a)) while the order is placed on Zerodha's own page; it also fits ADR-009 (the user executes).
 - Bears on: Q259, Q258, ADR-009, ADR-017, ADR-050 item 4, REQ-042, REQ-054, REQ-056, REQ-057. Status: **open for owner
   decision**.
+
+## F-23 - Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display
+- Source (P1, read raw 2026-10-07, stream S1b, re-read by the orchestrator): SEBI circular of 24 May 2024 on sharing
+  of real-time price data, para 2(i): MIIs and brokers shall "ensure that no real time price data is shared with any
+  third party including various platforms" except where required for orderly functioning or regulation. SEBI circular
+  of May 2026 (forwarded by NSE/COMP/74156, 11 May 2026): "a time lag of 30 days for both sharing and usage of price data
+  for educational purposes", effective 1 Jul 2026. NSE Data Sharing & Usage Policy cl. 7.3-7.4: no redistribution of
+  market data "except as agreed in the Relevant Agreement"; not to be provided to virtual-trading or simulation (S1b,
+  not re-read). Kite Connect terms (kite.trade/terms): content returned by the APIs may not be distributed or "publicly
+  display"-ed; but "You may use the APIs to build platforms which You may in turn offer to other Clients of Zerodha
+  (after obtaining the required exchange approvals)".
+- Also reported by S1b (P1, not re-read): NSE prices display "per medium" (website and app are two media); 15-minute
+  delayed F&O data is itself a paid product; using market data to derive values falls under NSE's non-display policy.
+- Meaning for us: (a) signed-out visitors: no live, delayed or recent prices without an NSE (and BSE) licence;
+  "education" needs data at least 30 days old. (b) A user's own Kite data shown to that user inside our SaaS: allowed
+  by Kite's terms for "platforms ... offer[ed] to other Clients of Zerodha" only after exchange approvals; whether the
+  SEBI 2024 "third party ... platforms" bar applies is not settled by the text. Only Zerodha's written answer (ADR-034)
+  settles (b).
+- Bears on: ADR-012, ADR-014, ADR-034, REQ-010, REQ-029, REQ-048, REQ-050, REQ-052, Q204, Q210, H1. Status: **open for
+  owner decision** (Q210, Q204).
+
+## F-24 - SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration
+- Source (P1, read raw 2026-10-07): SEBI (Research Analysts) Regulations 2014 as amended (Third Amendment, Gazette 16
+  Dec 2024; consolidated to 25 Nov 2025), reg 2(1): research services include price targets, stop losses, trading calls
+  and "any other service of similar nature or character"; a research report excludes only "comments on general trends
+  in the securities market" and discussions of broad-based indices. No exemption for calculators or tools was found.
+  SEBI's RA register: INH200006895 = RISKILLA SOFTWARE TECHNOLOGIES PRIVATE LIMITED (Sensibull's operator), "Validity
+  Jul 30, 2025 - Jul 29, 2030". The 2025 algo framework (F-18) also requires RA registration for black-box algo
+  providers.
+- Interpretation (not a ruling): payoff and what-if tools look outside RA; "suggested setups" with strikes, stop-loss or
+  adjustment triggers on a paid plan may fall inside it. Our wording rule (ADR-003) does not by itself decide this.
+- Bears on: ADR-003, ADR-005, ADR-011, REQ-005, REQ-024, REQ-025, REQ-027, REQ-045, REQ-046, REQ-068, REQ-069, Q211, H3.
+  Status: **open for owner decision** (Q261).
+
+## F-25 - Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims
+- Source (P1, read raw 2026-10-07): SEBI circular of 29 Jan 2025 on association with unregistered entities (updated 8
+  May 2026), FAQs: agents include "Authorised Persons of stock brokers"; association includes money, client referral or
+  "interaction of information technology systems". NSE Code of Advertisement NSE/COMP/55482 (2 Feb 2023) §5.7(c): no
+  direct or indirect association "with any platform providing any reference to the past or expected future
+  return/performance of the algorithm". PaRRVA (SEBI circular of 29 Apr 2026, S1b, not re-read): verified past
+  performance only for IAs, RAs and algo services.
+- Meaning for us: if the platform gave unregistered advice or performance claims, the owner (an AP) and Zerodha would be
+  exposed - the same class as F-15. Together with F-24 this decides how suggestions and simulations may be worded.
+- Bears on: ADR-003, ADR-013, REQ-005, REQ-051, REQ-066, F-15, H4. Status: **open for owner decision** (Q261).
+
+## F-26 - An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans
+- Source (P1, read raw 2026-10-07): SEBI Master Circular for Stock Brokers (17 Jun 2025), chapter on Authorised
+  Persons: the AP receives remuneration "only from the stock broker and he shall not charge any amount from the
+  clients". NSE/COMP/55482 §5.5(a): members "shall refrain from providing any form of incentive/vouchers/coupons/
+  certificates/tokens, by whatever name called, to their clients for account opening/trading ... or any kind of
+  subscription plan". An NSE consultation of 6 Aug 2026 would narrow the AP rule to charging "in the capacity of AP" -
+  a **proposal, not in force** (S1b, not re-read).
+- Interpretation (not a ruling): three owner decisions are exposed as written - free Pro for clients who opened Zerodha
+  accounts through the owner (ADR-024), 30 days of Pro per referred account opening (ADR-025, ADR-038), and the owner as
+  an AP selling Rs 600/month Pro to clients (ADR-026). A separate legal entity, Zerodha's written view or the proposed
+  AP framework may change the answer.
+- Bears on: ADR-024, ADR-025, ADR-026, ADR-038, ADR-044, REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, H11. Status:
+  **open for owner decision** (Q260).
+
+## F-27 - Data-protection and cyber-security duties with dates
+- Source (P1, read raw 2026-10-07): DPDP Rules 2025 (G.S.R. 846(E), 13 Nov 2025), rule 1(4): rules 3, 5-16, 22, 23 come
+  into force "eighteen months after the date of publication" (13 May 2027); rule 7: breach report to the Board "within
+  seventy-two hours"; rule 8 (S1b, not re-read): logs kept at least one year. CERT-In directions of 28 Apr 2022: report
+  cyber incidents "within 6 hours of noticing", keep ICT logs "for a rolling period of 180 days" in India; applies to
+  every body corporate.
+- Bears on: REQ-013, REQ-063, REQ-064, Q96, ADR-029, H6, H10. Status: **recorded** (requirements to be written in Stage 3).
+
+## F-28 - Payments, GST and advertising gates (stream S1b, not re-read by the orchestrator)
+- Razorpay's prohibited list names "Securities ... related financial products" and lets the bank refuse at its sole
+  discretion; trading tools are not named (razorpay.com/terms, P1). RBI e-mandates: authentication at registration and
+  first debit, later debits up to Rs 15,000 without it, notice at least 24 hours before each debit (RBI/2019-20/47,
+  RBI/2023-24/88, P1). GST registration above Rs 20 lakh turnover for services (CGST Act s.22, P1); the SaaS GST rate is
+  unknown. Google and Meta verify financial-services advertisers in India and ask for SEBI registration or exemption
+  (P1 policy pages; Meta read through a rendered page only).
+- Bears on: ADR-026, REQ-023, H9, H10. Status: **unverified** until re-read in Stage 3 (each is cited by the Stage 3
+  payments requirement only after a re-read).

@@ -138,6 +138,9 @@ questions:
   Q224: S2              # attribution rule for shared contracts, "open for the owner"
   Q258: S2
   Q259: S2              # how prepared orders reach Zerodha (F-17, F-18); blocks Stage 4b as written
+  Q260: S2              # AP selling Pro / free Pro / referral rewards (F-26); blocks Stage 8
+  Q261: S2              # research/advice scope, RA (F-24, F-25); blocks Stage 6.2/6.4 and launch
+  Q262: S2              # identity + expiry (F-21); needed before Stage 4a stores strategies
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -178,7 +181,7 @@ issues:
   "#110": 4a
   "#112": S8
   "#115": 4b
-  "#116": S1
+  "#116": S2            # answered on data (F-21); fix waits on Q262
 
 # Work items whose status is not done.
 work_items:
@@ -210,8 +213,14 @@ findings:
   F-18: S2        # Q259
   F-19: done      # recorded
   F-20: done      # recorded
-  F-21: S1        # unverified until stream S3's data count
+  F-21: S2        # Q262: identity needs the expiry (reuse measured)
   F-22: S2        # Q259 path (b): Kite offsite order execution
+  F-23: S2        # Q210 / Q204: live price display rights
+  F-24: S2        # Q261: Research Analyst scope
+  F-25: S2        # Q261
+  F-26: S2        # Q260: Authorised Person rules vs the business model
+  F-27: S3        # DPDP / CERT-In requirements
+  F-28: S3        # payments / GST / ads facts, re-read in Stage 3
 
 hypotheses:
   H1: S1
