@@ -340,3 +340,62 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   for many users? (spec/findings.md F-06 - secondary sources, unverified.)
 - Recommendation: ask Zerodha in the pending written-answer thread (ADR-034) and include it in the Q211 legal review.
   The broker phase (build plan P4) stays blocked until it is answered. Bears on REQ-054, REQ-063, REQ-066.
+- **Primary text read 2026-10-07 (F-11, F-12):** SEBI makes brokers the principal and any algo provider "providing the
+  facility to place algo orders with Brokers through API" an agent that must be empanelled with exchanges (F-11, para
+  I(a), III(a)). NSE: "A static IP can only be mapped to one client at a time", family excepted; for an empanelled
+  provider's algos the IP "shall be that of the vendor or the client" (F-12, A.5, A.7). Still open: whether
+  user-confirmed orders prepared by our rules are "algo orders" (definitions/FAQs, stream S1a) and Zerodha's own rules.
+  Answered by the text later the same day: F-17 (every API order is an algo order) and F-18 (algo providers' strategies
+  run on the broker's servers) - see Q259.
+
+## Q259 — OPEN (owner + legal + Zerodha) — How do the platform's prepared orders reach Zerodha, given that every API order is an algo order?
+- Finding: NSE treats every order received through a broker API as an algo order, even one the user confirms (F-17),
+  and requires an algo provider's strategies to run on the broker's servers with orders originating there (F-18).
+  Static IPs are one client or one family only (F-12, F-19). Our design (ADR-017, ADR-050 item 4) has our server send
+  each user's confirmed orders through that user's Kite Connect session.
+- Example: a user's Iron Condor hits its exit rule; we prepare 4 exit orders; the user presses Execute. Under F-17
+  those 4 orders, sent by our server through the API, are algo orders that must carry an algo ID from an empanelled
+  provider; our one server IP cannot be whitelisted for thousands of unrelated users (F-12 A.7).
+- Paths to weigh (none decided; costs not yet known): (a) become an exchange-empanelled algo provider hosted on
+  Zerodha's servers (ISO 27001, VAPT, two-year experience, about 30 working days, F-14/F-18; whether Zerodha hosts
+  vendors is unknown); (b) hand the prepared orders to Zerodha's own front end so the user places them there (whether a
+  Kite basket or Kite Publisher counts as the broker's front end is unknown); (c) planning, monitoring and prepared
+  orders shown only, the user enters them in Kite manually.
+- Recommendation: none yet - gather (a) and (b)'s facts first (Zerodha's written answer under ADR-034, Kite Publisher
+  documentation, stream S3), then ask the owner with costs. Update 2026-10-07: Zerodha's own docs describe path (b) as
+  "offsite order execution" on "Kite's exchange approved order page", free, multi-order basket, read-only option, our
+  tag per order (F-22); not stated whether such orders are non-algo under the 2025 framework - ask Zerodha. Spec basis: ADR-009, ADR-017, ADR-034, ADR-050, Q258.
+  This blocks master-plan Stage 4b as written; Stage 4a (data) is not affected.
+
+## Q260 — OPEN (owner + Zerodha compliance + legal) — Can the owner, as a Zerodha Authorised Person, sell Pro to clients and give free Pro for account openings and referrals?
+- Finding F-26: an AP "shall not charge any amount from the clients" (SEBI Master Circular for Stock Brokers, 17 Jun
+  2025); NSE/COMP/55482 §5.5(a) bars incentives "for account opening/trading ... or any kind of subscription plan". A
+  proposal of 6 Aug 2026 would narrow the AP rule to "in the capacity of AP" (not in force).
+- Exposed decisions as written: ADR-024 (free Pro forever for clients who opened through the owner), ADR-025/ADR-038
+  (30 days of Pro per referred account opening), ADR-026 (Rs 600/month Pro sold by the owner). Example: a client the
+  owner on-boarded to Zerodha gets Pro free forever - read plainly, an incentive tied to account opening.
+- Paths to weigh (none decided): a separate company (not the AP) owns and sells the product; drop opening-linked free
+  Pro and referral rewards; ask Zerodha compliance in writing first. Spec basis: ADR-024, ADR-025, ADR-026, ADR-038,
+  REQ-019, REQ-021, REQ-023. Blocks master-plan Stage 8 (money), not the core.
+
+## Q261 — OPEN (owner + legal) — Which features count as research or advice, and does the platform need RA registration or an RA partner?
+- Findings F-24 (RA definition covers price targets, stop losses and "any other service of similar nature"; no
+  exemption for tools; Sensibull's operator holds RA INH200006895), F-25 (APs may not associate with unregistered
+  advisers or return claims), F-15 (SEBI penalised a broker over a SaaS platform's return claims), F-18 (black-box algo
+  providers must be RAs).
+- Features exposed: suggested setups (REQ-069), strike suggestions (REQ-027), adjustment suggestions (REQ-045/046),
+  strategy discovery (REQ-025), any backtest or simulation result (REQ-051). Plain payoff/what-if tools look outside RA.
+- Paths: keep suggestions generic and educational (no specific strikes or stops); obtain RA registration; partner with
+  a registered RA; drop the exposed features. Spec basis: ADR-003, ADR-005, ADR-011, Q211. Blocks Stage 6 items 2 and 4
+  and the public launch, not the core.
+
+## Q262 — OPEN (owner) — Contract identity must stay unique over time: add the expiry (or a validity range) to ADR-050's identity?
+- Finding F-21: NSE reuses contract numbers after expiry - 4,768 of 65,265 numbers in Aug-Oct 2026 mapped to more than
+  one contract (e.g. 67245: ABCAPITAL 25-Aug-2026 410 PE, then NIFTYNXT50 29-Dec-2026 72200 PE); Zerodha's docs say the
+  same. A saved strategy leg or audit record keyed on (segment, number) alone could later resolve to the wrong
+  contract. W-056 built that key.
+- Recommendation: identity = (exchange segment, exchange token, expiry date), with strike and option type as the
+  cross-check; a stored contract never changes its identity, and a number seen again with a different expiry is a new
+  contract. Reason: the expiry is in every broker's file and in the exchange file, so the key stays broker-neutral
+  (F-01). SPEC CHANGE to ADR-050 item 1 and REQ-054 AC-3. Spec basis: ADR-050, REQ-053, REQ-054, #116. Needed before
+  Stage 4a stores any strategy.

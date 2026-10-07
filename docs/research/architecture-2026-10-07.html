@@ -1,0 +1,205 @@
+<title>OFO2 System Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one wide labelled diagram (scrolls inside its own box on phones), then the open forks and a key. */
+:root{
+  --bg:#f6f7f8; --panel:#ffffff; --ink:#1b2430; --muted:#5b6673; --line:#c9d0d8;
+  --accent:#0f6b6e; --accent-soft:#e1f0ef; --fork:#b45309; --fork-soft:#fdf0dc; --ext:#eef1f5;
+  --font-body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --panel:#1a2129; --ink:#e4e9ee; --muted:#9aa6b2; --line:#34404c;
+  --accent:#5cc3c0; --accent-soft:#163b3b; --fork:#f0a64b; --fork-soft:#3a2a12; --ext:#202a34; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --panel:#1a2129; --ink:#e4e9ee; --muted:#9aa6b2; --line:#34404c;
+  --accent:#5cc3c0; --accent-soft:#163b3b; --fork:#f0a64b; --fork-soft:#3a2a12; --ext:#202a34; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:28px}
+h1{font-size:1.7rem;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:1.1rem;margin:0 0 10px;text-wrap:balance}
+.lede{color:var(--muted);max-width:68ch;margin:6px 0 0}
+.mono{font-family:var(--font-mono);font-size:.82em}
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow-x:auto;padding:12px}
+.diagram svg{display:block;min-width:900px;width:100%;height:auto}
+svg text{font-family:var(--font-body);fill:var(--ink)}
+svg .id{font-family:var(--font-mono);font-size:10.5px;fill:var(--muted)}
+svg .box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+svg .ours{fill:var(--accent-soft);stroke:var(--accent)}
+svg .ext{fill:var(--ext);stroke:var(--line)}
+svg .forkbox{fill:var(--fork-soft);stroke:var(--fork);stroke-dasharray:5 4}
+svg .wire{stroke:var(--accent);stroke-width:1.6;fill:none}
+svg .wire.open{stroke:var(--fork);stroke-dasharray:6 4}
+svg .lbl{font-size:11px;fill:var(--ink)}
+svg .lbl.open{fill:var(--fork);font-weight:600}
+svg .title{font-weight:600;font-size:13.5px}
+svg .sub{font-size:11px;fill:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.fork{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--fork);border-radius:8px;padding:14px 16px;min-width:0}
+.fork h3{margin:0 0 6px;font-size:1rem}
+.fork p{margin:0;color:var(--muted)}
+.tag{display:inline-block;font-family:var(--font-mono);font-size:.75rem;padding:1px 7px;border-radius:99px;background:var(--fork-soft);color:var(--fork);margin-right:6px}
+.key{display:flex;flex-wrap:wrap;gap:18px;color:var(--muted);font-size:.9rem}
+.key span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:26px;height:12px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent-soft)}
+.sw.e{border-color:var(--line);background:var(--ext)}
+.sw.f{border-color:var(--fork);background:var(--fork-soft);border-style:dashed}
+.foot{color:var(--muted);font-size:.85rem;max-width:80ch}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>How OptionsForOptions2 fits together</h1>
+    <p class="lede">Our system as decided so far, with each connection labelled by the decision (ADR) or research finding (F) behind it. Dashed amber lines are open questions that Stage 2 decides. Research of 7 Oct 2026.</p>
+  </header>
+
+  <section class="diagram" aria-label="System diagram">
+    <svg viewBox="0 0 1000 600" role="img" aria-labelledby="dt">
+      <title id="dt">Browser talks only to our API; the engine and database sit behind it; Zerodha supplies login, data, instrument list and order updates; how orders reach Zerodha is an open question.</title>
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+        <marker id="af" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--fork)"/></marker>
+      </defs>
+
+      <!-- Column 1: user side -->
+      <rect class="box ext" x="20" y="40" width="170" height="70" rx="8"/>
+      <text class="title" x="35" y="68">Browser (Vue)</text>
+      <text class="sub" x="35" y="88">screens only, no money maths</text>
+      <text class="id" x="35" y="102">ADR-043, ADR-008</text>
+
+      <rect class="box ext" x="20" y="480" width="170" height="70" rx="8"/>
+      <text class="title" x="35" y="508">Admin</text>
+      <text class="sub" x="35" y="528">client list, referrals, settings</text>
+      <text class="id" x="35" y="542">REQ-020, ADR-044</text>
+
+      <!-- Column 2: our server -->
+      <rect class="box ours" x="270" y="40" width="210" height="70" rx="8"/>
+      <text class="title" x="285" y="68">Our API (FastAPI)</text>
+      <text class="sub" x="285" y="88">entitlements checked here</text>
+      <text class="id" x="285" y="102">REQ-063 AC-2, ADR-023</text>
+
+      <rect class="box ours" x="270" y="170" width="210" height="80" rx="8"/>
+      <text class="title" x="285" y="198">One calculation engine</text>
+      <text class="sub" x="285" y="218">payoff, P&amp;L, Greeks, plans</text>
+      <text class="id" x="285" y="236">ADR-008, REQ-032/033</text>
+
+      <rect class="box ours" x="270" y="310" width="210" height="90" rx="8"/>
+      <text class="title" x="285" y="338">PostgreSQL</text>
+      <text class="sub" x="285" y="358">audit log, catalogue, strategies</text>
+      <text class="id" x="285" y="374">ADR-029, REQ-064, W-051..W-056</text>
+      <text class="id" x="285" y="390">clock stamped by the database</text>
+
+      <rect class="box ours" x="270" y="460" width="210" height="70" rx="8"/>
+      <text class="title" x="285" y="488">Notifier gateway</text>
+      <text class="sub" x="285" y="508">WhatsApp OTP, alerts</text>
+      <text class="id" x="285" y="522">ADR-040, ADR-028</text>
+
+      <!-- Column 3: adapters -->
+      <rect class="box ours" x="560" y="120" width="190" height="80" rx="8"/>
+      <text class="title" x="575" y="148">Market-data gateway</text>
+      <text class="sub" x="575" y="168">per-user feed, stale flagged</text>
+      <text class="id" x="575" y="184">ADR-012, ADR-014, ADR-015</text>
+
+      <rect class="box ours" x="560" y="260" width="190" height="90" rx="8"/>
+      <text class="title" x="575" y="288">Broker adapter</text>
+      <text class="sub" x="575" y="308">only route: send_guard</text>
+      <text class="id" x="575" y="324">REQ-054, ADR-050 item 4</text>
+      <text class="id" x="575" y="340">8 order-path safeguards</text>
+
+      <rect class="box ours" x="560" y="430" width="190" height="70" rx="8"/>
+      <text class="title" x="575" y="458">Payments adapter</text>
+      <text class="sub" x="575" y="478">Razorpay, Rs 600/month Pro</text>
+      <text class="id" x="575" y="492">ADR-026, REQ-023</text>
+
+      <!-- Column 4: outside world -->
+      <rect class="box ext" x="820" y="40" width="160" height="80" rx="8"/>
+      <text class="title" x="835" y="68">Zerodha Kite</text>
+      <text class="sub" x="835" y="88">login, data, orders</text>
+      <text class="id" x="835" y="104">ADR-016, ADR-018</text>
+
+      <rect class="box ext" x="820" y="170" width="160" height="80" rx="8"/>
+      <text class="title" x="835" y="198">Instrument list</text>
+      <text class="sub" x="835" y="218">Zerodha daily file</text>
+      <text class="id" x="835" y="234">F-01, F-20</text>
+
+      <rect class="box forkbox" x="820" y="290" width="160" height="110" rx="8"/>
+      <text class="title" x="835" y="318">Order path</text>
+      <text class="lbl open" x="835" y="338">OPEN: Q259</text>
+      <text class="sub" x="835" y="356">(a) API, empanelled</text>
+      <text class="sub" x="835" y="372">(b) Kite's own page</text>
+      <text class="sub" x="835" y="388">(c) user enters in Kite</text>
+
+      <rect class="box ext" x="820" y="440" width="160" height="60" rx="8"/>
+      <text class="title" x="835" y="468">Razorpay</text>
+      <text class="id" x="835" y="486">F-28</text>
+
+      <!-- Wires -->
+      <line class="wire" x1="190" y1="75" x2="268" y2="75" marker-end="url(#a)"/>
+      <text class="lbl" x="198" y="66">session only</text>
+      <text class="id" x="198" y="94">REQ-048 AC-5</text>
+
+      <line class="wire" x1="375" y1="110" x2="375" y2="168" marker-end="url(#a)"/>
+      <text class="lbl" x="383" y="143">every number</text>
+
+      <line class="wire" x1="375" y1="250" x2="375" y2="308" marker-end="url(#a)"/>
+      <text class="lbl" x="383" y="283">append-only</text>
+
+      <line class="wire" x1="375" y1="400" x2="375" y2="458" marker-end="url(#a)"/>
+      <text class="lbl" x="383" y="433">alerts</text>
+
+      <line class="wire" x1="190" y1="515" x2="268" y2="430" marker-end="url(#a)"/>
+
+      <!-- Kite data to gateway (display rights open) -->
+      <path class="wire open" d="M820,95 C770,95 760,140 752,150" marker-end="url(#af)"/>
+      <text class="lbl open" x="700" y="108">display rights: Q210</text>
+      <text class="id" x="700" y="122">F-23</text>
+
+      <line class="wire" x1="560" y1="160" x2="482" y2="200" marker-end="url(#a)"/>
+      <text class="lbl" x="490" y="168">live inputs</text>
+
+      <!-- Instrument list to DB (identity open) -->
+      <path class="wire open" d="M820,215 C700,215 640,380 482,370" marker-end="url(#af)"/>
+      <text class="lbl open" x="600" y="232">identity + expiry: Q262</text>
+      <text class="id" x="600" y="246">F-21 (numbers reused)</text>
+
+      <line class="wire" x1="482" y1="230" x2="558" y2="290" marker-end="url(#a)"/>
+      <text class="lbl" x="490" y="270">execution plan</text>
+
+      <!-- Adapter to order path (open) -->
+      <line class="wire open" x1="750" y1="305" x2="818" y2="335" marker-end="url(#af)"/>
+      <text class="lbl open" x="758" y="300">F-17, F-18, F-22</text>
+
+      <!-- Order updates back -->
+      <path class="wire" d="M820,115 C790,180 770,250 752,270" marker-end="url(#a)"/>
+      <text class="lbl" x="762" y="210">order updates</text>
+      <text class="id" x="762" y="224">F-07 postback + websocket</text>
+
+      <line class="wire" x1="482" y1="80" x2="818" y2="80" marker-end="url(#a)"/>
+      <text class="lbl" x="560" y="72">login redirect, token encrypted</text>
+      <text class="id" x="560" y="94">REQ-015 AC-9, core-invariants §4</text>
+
+      <line class="wire" x1="750" y1="465" x2="818" y2="470" marker-end="url(#a)"/>
+      <path class="wire open" d="M480,140 C520,380 540,440 558,455" marker-end="url(#af)"/>
+      <text class="lbl open" x="488" y="560">who may sell Pro: Q260 (F-26)</text>
+    </svg>
+  </section>
+
+  <section>
+    <h2>Open forks on this map</h2>
+    <div class="grid">
+      <article class="fork"><h3><span class="tag">Q259</span>How orders reach Zerodha</h3><p>NSE counts every API order as an algo order, even one the user confirms (F-17). Options: become an empanelled provider, use Zerodha's own order page (F-22), or let users enter orders in Kite.</p></article>
+      <article class="fork"><h3><span class="tag">Q210</span>Showing a user's own Kite prices</h3><p>Kite's terms forbid public display but allow platforms for other Zerodha clients after exchange approval (F-23). Needs Zerodha's written answer.</p></article>
+      <article class="fork"><h3><span class="tag">Q262</span>Contract identity</h3><p>NSE reused 4,768 of 65,265 contract numbers in two months (F-21). Recommendation: add the expiry date to the identity.</p></article>
+      <article class="fork"><h3><span class="tag">Q260</span>Who sells Pro</h3><p>An Authorised Person may not charge clients, and incentives for account opening are barred (F-26).</p></article>
+    </div>
+  </section>
+
+  <section class="key" aria-label="Key">
+    <span><i class="sw"></i>Our system</span>
+    <span><i class="sw e"></i>Outside service</span>
+    <span><i class="sw f"></i>Open question</span>
+  </section>
+
+  <p class="foot">Source of every label: the repository's <span class="mono">spec/decisions</span>, <span class="mono">spec/requirements</span> and <span class="mono">spec/findings.md</span> (F-01 to F-28). Generated from the Stage 1 research, branch <span class="mono">docs/research-2026-10</span>. Not legal advice; Q211's legal review decides.</p>
+</div>

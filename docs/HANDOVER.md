@@ -1,5 +1,12 @@
 # Handover
 
+**2026-10-07 18:45 IST — the order of work changed (owner-approved master plan).** Read
+`docs/process/master-plan-2026-10-07.md` first. Core first: Stage 0 full spec read + coverage register → Stage 1 all
+research (`docs/research/research-plan-2026-10-07.md`) → Stage 2 owner decisions one at a time (D1 = an ADR-034/ADR-050
+exception to prove the core on the owner's own Zerodha account) → Stage 3 requirements → Stage 4 the core (live data →
+engine → saved strategy → screen → one real order → reconcile → one rule firing) → Stages 5-8 around it. NEXT below
+("P2b identity") is superseded: identity is Stage 5. The build plan's rules and copy-first map stay.
+
 **2026-10-02 15:42 IST — where it stands now (supersedes the 09:34 note below where they differ).**
 Merged today (#99-#114, each Tier A/B item independently verified, evidence in `evidence/<W-id>/`): kit 1.5.1 (#99),
 P0 copy-first map ADR-047 (#100), P1 decisions Q256 + ADR-048 (#101), W-051 platform + trusted database clock (#102),

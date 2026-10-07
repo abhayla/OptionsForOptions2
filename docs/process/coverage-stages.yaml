@@ -1,0 +1,287 @@
+﻿# Stage assignment for every tracked id (master plan 2026-10-07, A2). Hand-written by the orchestrator; read by
+# scripts/orchestrator/coverage.py, which discovers ids from the repo and fails if any is missing here.
+# Stage codes: S0 S1 S2 S3 4a 4b 4c S5 S6.1..S6.7 S7 S8; "all" = a standing rule applied in every stage;
+# "done" = built and independently verified (still re-checked by the core gate where it says so).
+# A requirement may be given per acceptance criterion: REQ-054: {AC-1: [4a, 4b], AC-2: all, ...}.
+# A value may be a list when one item really spans stages.
+
+requirements:
+  REQ-001: 4a
+  REQ-002: S5
+  REQ-003: S5
+  REQ-004: S5
+  REQ-005: S6.5
+  REQ-006: S6.5
+  REQ-007: S6.5
+  REQ-008: S6.3
+  REQ-009: S5
+  REQ-010: S6.6
+  REQ-011: S6.6
+  REQ-012: S5
+  REQ-013: S5
+  REQ-014: S5
+  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a}
+  REQ-016: S6.2
+  REQ-017: S8
+  REQ-018: S8
+  REQ-019: S8
+  REQ-020: done
+  REQ-021: S8
+  REQ-022: S8
+  REQ-023: S8
+  REQ-024: S6.2
+  REQ-025: S6.2
+  REQ-026: S6.2
+  REQ-027: S6.2
+  REQ-028: 4a
+  REQ-029: S6.1
+  REQ-030: S6.1
+  REQ-031: S6.1
+  REQ-032: [done, 4a]     # verified on fakes; re-proven on live inputs in 4a
+  REQ-033: [done, 4a]
+  REQ-034: 4a
+  REQ-035: 4a
+  REQ-036: 4b
+  REQ-037: S6.3
+  REQ-038: [done, 4a]     # domain verified; persistence and Save Draft in 4a
+  REQ-039: 4b
+  REQ-040: [done, 4c]
+  REQ-041: 4c
+  REQ-042: 4c
+  REQ-043: 4c
+  REQ-044: S6.3
+  REQ-045: S6.4
+  REQ-046: S6.4
+  REQ-047: {AC-1: S6.4, AC-2: S6.4, AC-3: S6.4, AC-4: 4a, AC-5: S6.4, AC-6: S6.4}   # collection starts in 4a
+  REQ-048: 4a
+  REQ-049: 4a
+  REQ-050: S5
+  REQ-051: S6.7
+  REQ-052: 4a
+  REQ-053: 4a
+  REQ-054: {AC-1: [4a, 4b], AC-2: all, AC-3: done, AC-4: done}
+  REQ-055: 4b
+  REQ-056: 4b
+  REQ-057: [done, 4b]
+  REQ-058: [done, 4b]
+  REQ-059: [done, 4b]
+  REQ-060: [done, 4b]
+  REQ-061: 4b
+  REQ-062: 4c
+  REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b]}
+  REQ-064: 4a
+  REQ-065: 4a
+  REQ-066: S8
+  REQ-067: {AC-1: all, AC-2: all, AC-3: all, AC-4: all, AC-5: all, AC-6: all, AC-7: S8, AC-8: all, AC-9: all}
+  REQ-068: S6.2
+  REQ-069: S6.2
+  REQ-070: [done, S6.3]
+  REQ-071: S6.4
+
+decisions:
+  ADR-001: all
+  ADR-002: 4b
+  ADR-003: all
+  ADR-004: S6.5
+  ADR-005: S6.2
+  ADR-006: 4a
+  ADR-007: S6.1
+  ADR-008: 4a
+  ADR-009: 4c
+  ADR-010: 4c
+  ADR-011: S6.4
+  ADR-012: 4a
+  ADR-013: S6.7
+  ADR-014: 4a
+  ADR-015: 4a
+  ADR-016: 4a
+  ADR-017: 4b
+  ADR-018: 4b
+  ADR-019: 4a
+  ADR-020: 4a
+  ADR-021: S5
+  ADR-022: S5
+  ADR-023: S8
+  ADR-024: S8
+  ADR-025: S8
+  ADR-026: S8
+  ADR-027: S6.3
+  ADR-028: 4c
+  ADR-029: all
+  ADR-030: all
+  ADR-031: all
+  ADR-032: S6.2
+  ADR-033: all
+  ADR-034: S2           # D1 exception asked in Stage 2
+  ADR-035: 4a
+  ADR-036: S8
+  ADR-037: S8
+  ADR-038: S8
+  ADR-039: S5
+  ADR-040: S5
+  ADR-041: 4a
+  ADR-042: 4a
+  ADR-043: all
+  ADR-044: S8
+  ADR-045: all
+  ADR-046: all
+  ADR-047: all
+  ADR-048: 4a
+  ADR-049: 4a
+  ADR-050: [4a, 4b]
+
+# Open questions with status OPEN / EXTERNAL / LEGAL in spec/open-questions.md, plus items marked open for the owner.
+questions:
+  Q204: S2
+  Q205: S2
+  Q210: S2              # external: Zerodha's written answer (owner action)
+  Q224: S2              # attribution rule for shared contracts, "open for the owner"
+  Q258: S2
+  Q259: S2              # how prepared orders reach Zerodha (F-17, F-18); blocks Stage 4b as written
+  Q260: S2              # AP selling Pro / free Pro / referral rewards (F-26); blocks Stage 8
+  Q261: S2              # research/advice scope, RA (F-24, F-25); blocks Stage 6.2/6.4 and launch
+  Q262: S2              # identity + expiry (F-21); needed before Stage 4a stores strategies
+
+# The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
+open_areas:
+  OA-01: {text: 'Pricing model for "Estimated Now"', stage: S2}      # Stage 0 read: default set in scenario-calculations Â§4; confirm
+  OA-02: {text: 'bid/ask/slippage', stage: S2}
+  OA-03: {text: 'charges model', stage: S2}
+  OA-04: {text: 'tick rounding', stage: S2}
+  OA-05: {text: 'timeout/cancel/repricing', stage: S2}
+  OA-06: {text: 'MIS/NRML', stage: S2}
+  OA-07: {text: 'expiry/multi-expiry execution edge cases', stage: S2}
+  OA-08: {text: 'quantity edge cases', stage: S2}
+  OA-09: {text: 'existing-position grouping algorithm', stage: S2}
+  OA-10: {text: 'alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits', stage: S2}
+  OA-11: {text: 'adjustment rule priority/conflict/', stage: S6.4}
+  OA-12: {text: 'security architecture', stage: S2}
+  OA-13: {text: 'data-retention policy', stage: S2}
+  OA-14: {text: 'admin/system-health screens', stage: S7}
+  OA-15: {text: 'final cloud/stack', stage: S2}                      # D5 hosting
+  OA-16: {text: 'the strategy state transition table', stage: S3}   # stale: approved at Q240; wording fix
+  OA-17: {text: 'complimentary list', stage: S8}
+  OA-18: {text: 'Zerodha rate limits for per-user WebSockets', stage: S1}
+
+# Vendor enquiries (owner actions, logged with a date in Stage 2).
+vendor_enquiries:
+  VE-TrueData: S2
+  VE-GlobalDatafeeds: S2
+  VE-NSE: S2
+  VE-BSE: S2
+
+# Open GitHub issues (checked against `gh issue list --state open` when gh is available).
+issues:
+  "#30": 4a
+  "#43": 4b
+  "#45": 4b
+  "#63": 4b
+  "#89": 4a
+  "#107": S7
+  "#110": 4a
+  "#112": S8
+  "#115": 4b
+  "#116": S2            # answered on data (F-21); fix waits on Q262
+
+# Work items whose status is not done.
+work_items:
+  W-008: S8
+  W-009: S8
+  W-011: S8
+  W-017: 4b
+  W-024: 4a
+
+# Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
+findings:
+  F-01: done
+  F-02: done
+  F-03: done
+  F-04: done
+  F-05: done
+  F-06: S2
+  F-07: [done, 4b]
+  F-08: done
+  F-09: done
+  F-10: done
+  F-11: S2
+  F-12: S2
+  F-13: done      # recorded: OpenAlgo AGPL, ideas only
+  F-14: S2
+  F-15: S2
+  F-16: done      # recorded
+  F-17: S2        # Q259
+  F-18: S2        # Q259
+  F-19: done      # recorded
+  F-20: done      # recorded
+  F-21: S2        # Q262: identity needs the expiry (reuse measured)
+  F-22: S2        # Q259 path (b): Kite offsite order execution
+  F-23: S2        # Q210 / Q204: live price display rights
+  F-24: S2        # Q261: Research Analyst scope
+  F-25: S2        # Q261
+  F-26: S2        # Q260: Authorised Person rules vs the business model
+  F-27: S3        # DPDP / CERT-In requirements
+  F-28: S3        # payments / GST / ads facts, re-read in Stage 3
+
+hypotheses:
+  H1: done
+  H2: done
+  H3: done
+  H4: done
+  H5: done
+  H6: done
+  H7: done
+  H8: done
+  H9: done
+  H10: done
+  H11: done
+
+# Build plan 2026-10-02 phases and named leftovers, and HANDOVER open items.
+build_plan:
+  P0: done
+  P0.5: done
+  P1: done
+  P2a: done
+  P2b: S5
+  P3a: 4a
+  P3b: 4a
+  P4: [4a, 4b]
+  P5: S6
+  P6: [S7, S8]
+  rotate-algochanakya-secrets: S2      # owner action outside this repo; no evidence it was done (Stage 0 read)
+  legacy-docs-secret-scrub-record: S0  # no key-like text found in docs/reference/legacy (Stage 0 read, 2026-10-07)
+  kite-quirks-skill: done              # dropped by design (build plan "changes made"); zerodha-expert used instead
+  token-auto-refresh-rule: 4a
+  google-oauth-credentials: S5
+  vps-test-db-credentials: 4a          # ADR-048, if D5 uses it
+  safety-net-wording: 4a
+  q211-legal-review: S8                # Q211 is DECIDED (not a blocker for building); the review itself is due before production
+
+# Cross-file conflicts found by the Stage 0 full read (2026-10-07), each re-checked before it is fixed.
+# Wording-only fixes go to S3; anything that changes WHAT the system does goes to S2 as a question.
+conflicts:
+  C-01: {text: 'REQ-006 AC-3 / REQ-035 AC-7 (Greeks and IV from Advanced) vs REQ-029 AC-2/AC-9 (IV and Delta at lower levels)', stage: S2}
+  C-02: {text: 'REQ-021 Open line on Q209 is stale (AC-7 records ADR-044)', stage: S3}
+  # C-03 re-checked 2026-10-07: different axes (entitlement vs broker connection); REQ-016 should say "subject to REQ-018".
+  C-03: {text: 'REQ-016 AC-1 (drafts without Zerodha) should state it is subject to REQ-018 AC-5 (Limited users cannot save drafts)', stage: S3}
+  C-04: {text: 'REQ-034 Open line lists Q208 as open; ADR-042 decided it (NIFTY 100, SENSEX 300)', stage: S3}
+  C-05: {text: 'REQ-035 uses Q242 for two different decisions', stage: S3}
+  C-06: {text: 'REQ-030 AC-5 and AC-12 overlap on a same-action repeat pick', stage: S3}
+  C-07: {text: 'REQ-037 AC-5 (every modification a version) vs REQ-038 AC-2 (no versions before first execution)', stage: S3}
+  # C-08/C-09 re-checked 2026-10-07: not contradictions. REQ-060 AC-6 is silent on exits and the REQ-059 gate decision
+  # extends it; Q239's five checks are kept IN ADDITION to the seven exit conditions. Wording/cross-reference fix only.
+  C-08: {text: 'REQ-060 AC-6 does not say that a mismatch also blocks exits (REQ-059 gate decision); add the cross-reference', stage: S3}
+  C-09: {text: 'REQ-059: state that exits get the seven exit conditions plus the five Q239 checks (union)', stage: S3}
+  C-10: {text: 'REQ-055 AC-1 (margin before any order) vs REQ-059 (exits exempt from margin sufficiency)', stage: S3}
+  C-11: {text: 'REQ-048 AC-4 (shared feed) vs REQ-052 AC-1 (per-user feed) = Q204', stage: S2}
+  C-12: {text: 'REQ-051 AC-4 (history from live feed) vs AC-1 (history disabled in V1)', stage: S2}
+  C-13: {text: 'ADR-001 and ADR-005 list Q207/Q208 as open; decided by ADR-041/ADR-042', stage: S2}  # ADR text: owner-approved amendment PR
+  C-14: {text: 'ADR-013 lists Q212 as open; open-questions marks it done', stage: S2}
+  C-15: {text: 'ADR-019 calls the transition table a proposal; Q240 approved it', stage: S2}
+  C-16: {text: 'core-invariants #2 (a strategy has a version) vs domain-model (no versions before first execution)', stage: S3}
+  C-17: {text: 'build-plan text: test-DB decision placed in ADR-047 (it is ADR-048); kite-quirks skill and "two" path rules', stage: S3}
+  C-18: {text: 'ADR-050 identity vs build-plan:79 / legacy-reuse:62 "unique (exchange, token)" written before it', stage: S3}
+  C-19: {text: 'options-math-review skill cites Q253 for expected move; it is Q254', stage: S3}
+  C-20: {text: 'adjustment-data-contract still lists 7 unclear rows; Q246 resolved 5 (rows 12, 13 remain)', stage: S2}
+  C-21: {text: 'ADR-030 / build-plan "allowed before the answer" list differs from ADR-034 "allowed meanwhile" list', stage: S2}
+  C-22: {text: 'REQ-054 body cites ADR-050 but spec_refs/confirmed_against list ADR-016 only; REQ-041/REQ-067 confirmed_against vs spec_refs', stage: S3}
+  C-23: {text: 'open-questions "Open areas" lists the Estimated Now model and transition table, both since decided', stage: S3}
