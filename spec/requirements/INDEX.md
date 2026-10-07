@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 71; sections: 18
+Requirements: 74; sections: 18
 
 ## Accounts and identity (4)
 
@@ -24,7 +24,7 @@ Requirements: 71; sections: 18
 | REQ-047 | Adjustment-relevant data collection | feature | Specified |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | Approved |
 
-## Broker and execution (7)
+## Broker and execution (8)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -35,6 +35,7 @@ Requirements: 71; sections: 18
 | REQ-057 | Order lifecycle | foundation | Verified |
 | REQ-058 | Partial execution and no automatic retry | foundation | Verified |
 | REQ-059 | Pre-execution safety checks and validation | foundation | Verified |
+| REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | Specified |
 
 ## Calculations and outcome (4)
 
@@ -63,15 +64,16 @@ Requirements: 71; sections: 18
 | REQ-022 | Free-eligibility loop | feature | Specified |
 | REQ-023 | Paid Pro and billing | feature | Specified |
 
-## Market data (5)
+## Market data (6)
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-048 | Market-data pipeline and browser boundary | core | Specified |
+| REQ-048 | Market-data pipeline and browser boundary | core | Approved |
 | REQ-049 | Normalized market data and data health | core | Approved |
 | REQ-050 | Shared computation and scale | feature | Specified |
 | REQ-051 | Historical storage tiers and simulation | feature | Specified |
-| REQ-052 | Market-data sourcing and licensing | core | Specified |
+| REQ-052 | Market-data sourcing and licensing | core | Approved |
+| REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | Specified |
 
 ## Monitoring (2)
 
@@ -107,7 +109,7 @@ Requirements: 71; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Specified |
+| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Approved |
 | REQ-003 | Public multi-user SaaS | foundation | Approved |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
@@ -128,14 +130,15 @@ Requirements: 71; sections: 18
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | Approved |
 | REQ-042 | Automation: Alert + Prepare Orders | feature | Specified |
 
-## Security, audit and compliance (4)
+## Security, audit and compliance (5)
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-063 | Security boundaries | foundation | Specified |
+| REQ-063 | Security boundaries | foundation | Approved |
 | REQ-064 | Audit log | foundation | Approved |
 | REQ-065 | Error classification and messages | foundation | Approved |
 | REQ-066 | Compliance gates | feature | Specified |
+| REQ-074 | Security incident reporting and log retention | foundation | Specified |
 
 ## Strategy building (8)
 
@@ -164,5 +167,5 @@ Requirements: 71; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-015 | Zerodha connection | core | Specified |
+| REQ-015 | Zerodha connection | core | Approved |
 | REQ-016 | Strategies without Zerodha | feature | Specified |

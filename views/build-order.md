@@ -8,10 +8,14 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
+| REQ-015 | Zerodha connection | core | normal | next |
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
+| REQ-048 | Market-data pipeline and browser boundary | core | normal | next |
 | REQ-049 | Normalized market data and data health | core | normal | next |
+| REQ-052 | Market-data sourcing and licensing | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
+| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | normal | next |
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
 | REQ-012 | Registration and identity layers | foundation | normal | next |
@@ -20,6 +24,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
+| REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-024 blocked: PARKED #30 after rounds 5-7 (2026-09-29; owner set round 7 as the last); allowlist design recommended in the issue if unparked |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
@@ -45,14 +50,12 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-05
 
 Draft or Specified requirements are recorded only: never next, never in the order above. An approved requirement that depends on one shows as waiting on it by id.
 
-- REQ-001 (Specified): V1 scope: underlyings, leg types, broker
 - REQ-005 (Specified): Product language and positioning
 - REQ-006 (Specified): Three UX levels
 - REQ-007 (Specified): Strategy information density
 - REQ-008 (Specified): Home dashboard
 - REQ-010 (Specified): Public site and live-data access
 - REQ-011 (Specified): Learn section
-- REQ-015 (Specified): Zerodha connection
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
 - REQ-023 (Specified): Paid Pro and billing
@@ -64,13 +67,13 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-043 (Specified): Live monitoring and status colours
 - REQ-044 (Specified): Strategy control center and Positions screen
 - REQ-047 (Specified): Adjustment-relevant data collection
-- REQ-048 (Specified): Market-data pipeline and browser boundary
 - REQ-050 (Specified): Shared computation and scale
 - REQ-051 (Specified): Historical storage tiers and simulation
-- REQ-052 (Specified): Market-data sourcing and licensing
 - REQ-055 (Specified): Margin checks
 - REQ-061 (Specified): Existing positions on connect
 - REQ-062 (Specified): Notifications
-- REQ-063 (Specified): Security boundaries
 - REQ-066 (Specified): Compliance gates
 - REQ-067 (Specified): Delivery controls
+- REQ-072 (Specified): Index spot prices for NIFTY 50 and SENSEX
+- REQ-073 (Specified): Orders reach Zerodha as a read-only basket the user places on Kite's own page
+- REQ-074 (Specified): Security incident reporting and log retention
