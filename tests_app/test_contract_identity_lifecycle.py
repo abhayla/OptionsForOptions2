@@ -507,3 +507,182 @@ async def test_ac3_downgrade_of_0005_refuses_while_rows_exist(admin_engine: Asyn
                     await conn.execute(text(recorded[0]))
         finally:
             await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Round 2 (ADR-058): delisted before expiry, and the counting truncation guard
+# Spec basis: ADR-058 "refuse the whole update, writing nothing, if more than 10% of an index's live contracts would
+# disappear at once"; REQ-054 AC-3 "A contract the daily list stops carrying before its expiry is marked delisted and
+# kept, and its token is free for reuse (ADR-058)."
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001) -> list[ListedContract]:
+    """n live contracts of one index with future expiries (synthetic: only their COUNT matters to the guard)."""
+    import dataclasses
+
+    rows = []
+    for i in range(n):
+        row = _row(first_token + i, date(2027, 12, 28), str(10000 + 50 * i), "CE", f"{name}27DEC{10000 + 50 * i}CE",
+                   name=name)
+        if name == "SENSEX":
+            row = ListedContract(contract=dataclasses.replace(row.contract, exchange_segment="BSE_FO"),
+                                 broker_refs=tuple(dataclasses.replace(r, broker_segment="BFO-OPT")
+                                                   for r in row.broker_refs))
+        rows.append(row)
+    return rows
+
+
+def _stored_all(rows: list[ListedContract]) -> list[SimpleNamespace]:
+    return [_stored(r, i + 1) for i, r in enumerate(rows)]
+
+
+def _delist_writes(conn: _FakeConn) -> list:
+    return [p for kind, sql, p in conn.writes if "SET delisted = TRUE" in sql]
+
+
+async def test_ac3_r2_a_small_cleanup_is_accepted_and_delists_the_missing() -> None:
+    """AC-3 / ADR-058 example: 1,832 live NIFTY contracts; the list lacks 14 (0.8%) -> accepted; the 14 are delisted
+    (kept, token freed) in the first write; the other 1,818 are seen."""
+    live = _fillers(1832)
+    conn = _FakeConn(_stored_all(live))
+    missing = {r.id for r in live[100:114]}
+    result = await apply_update(conn, [r for r in live if r.id not in missing], as_of=_as_of(date(2026, 10, 7)))
+    assert (result.added, result.seen, result.delisted, result.retired, result.newly_unlisted) == (0, 1818, 14, 0, 14)
+    assert _delist_writes(conn) == [{"ids": list(range(101, 115))}]
+    assert conn.writes[0][0] == "UPDATE" and "SET delisted = TRUE" in conn.writes[0][1]
+
+
+async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None:
+    """AC-3 / ADR-058: the same 1,832 NIFTY contracts and a list missing 733 of them (40.0%) -> refused, no write."""
+    live = _fillers(1832)
+    conn = _FakeConn(_stored_all(live))
+    with pytest.raises(CatalogueStoreError, match=r"refused: would drop 733 of 1832 live NIFTY contracts"):
+        await apply_update(conn, live[733:], as_of=_as_of(date(2026, 10, 7)))
+    assert conn.writes == []
+
+
+@pytest.mark.parametrize("missing, refused", [(183, False), (184, True)], ids=["exactly-10pct", "just-over-10pct"])
+async def test_ac3_r2_the_boundary_is_more_than_ten_percent(missing: int, refused: bool) -> None:
+    """ADR-058 "more than 10%": 183 of 1,830 is exactly 10% -> accepted; 184 (10.05%) -> refused."""
+    live = _fillers(1830)
+    conn = _FakeConn(_stored_all(live))
+    if refused:
+        with pytest.raises(CatalogueStoreError, match="refused: would drop 184 of 1830"):
+            await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)))
+        assert conn.writes == []
+    else:
+        result = await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)))
+        assert result.delisted == 183
+
+
+async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
+    """ADR-058 "the 10% is an admin setting": Settings defaults to 10; a lower setting refuses what 10 accepts; a value
+    that is not a percentage is refused before anything is read."""
+    from ofo_app.catalogue_store import DEFAULT_MAX_DELIST_PERCENT
+    from ofo_app.config import Settings
+
+    assert DEFAULT_MAX_DELIST_PERCENT == Decimal("10")
+    assert Settings(DATABASE_URL="postgresql://x").CATALOGUE_MAX_DELIST_PERCENT == Decimal("10")
+    live = _fillers(1830)
+    conn = _FakeConn(_stored_all(live))
+    with pytest.raises(CatalogueStoreError, match=r"refused: would drop 92 of 1830 .*more than 5%"):
+        await apply_update(conn, live[92:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=Decimal("5"))
+    assert conn.writes == []
+    for bad in (-1, Decimal("100.1"), 10.0, True, Decimal("NaN"), "10"):
+        empty = _FakeConn()
+        with pytest.raises(CatalogueStoreError, match="max_delist_percent"):
+            await apply_update(empty, [], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=bad)
+        assert empty.writes == []
+
+
+async def test_ac3_r2_each_index_is_counted_on_its_own() -> None:
+    """ADR-058 "an index's live contracts": dropping 3 of 10 SENSEX contracts (30%) is refused even though that is
+    0.16% of all 1,842 live contracts; dropping 1 of 10 SENSEX (10%) is accepted."""
+    nifty, sensex = _fillers(1832), _fillers(10, name="SENSEX", first_token=900001)
+    stored = _stored_all(nifty + sensex)
+    conn = _FakeConn(stored)
+    with pytest.raises(CatalogueStoreError, match="refused: would drop 3 of 10 live SENSEX contracts"):
+        await apply_update(conn, nifty + sensex[3:], as_of=_as_of(date(2026, 10, 7)))
+    assert conn.writes == []
+    result = await apply_update(_FakeConn(stored), nifty + sensex[1:], as_of=_as_of(date(2026, 10, 7)))
+    assert result.delisted == 1
+
+
+async def test_ac3_r2_plan_for_61746_delists_then_a_reuse_is_a_new_contract() -> None:
+    """AC-3 / F-30, 61746 modelled with NIFTY rows: stored live (expiry 2029-12-24) next to 10 other live NIFTY
+    contracts; the 2026-08-26 list lacks it (1 of 11 = 9.1%) -> delisted; once delisted it is not in the live SELECT, so
+    a list giving 61746 to a NIFTY Nov-2026 future (models WIPRO Nov-2026 futures) inserts a new contract."""
+    others = _fillers(10)
+    conn = _FakeConn(_stored_all(others) + [_stored(R61746_B, 61)])
+    result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
+    assert (result.delisted, result.retired, result.added) == (1, 0, 0)
+    assert _delist_writes(conn) == [{"ids": [61]}]
+    reuse = _row(61746, date(2026, 11, 24), "0", "FUT", "NIFTY26NOVFUT")
+    after = _FakeConn(_stored_all(others))
+    result = await apply_update(after, others + [reuse], as_of=_as_of(date(2026, 9, 1)))
+    inserted = [p for kind, sql, p in after.writes if sql.startswith("INSERT INTO public.catalogue_contracts")]
+    assert result.added == 1 and [p["exchange_token"] for p in inserted[0]] == [61746]
+
+
+async def test_ac3_r2_61746_delisted_before_expiry_then_reused(app_engine: AsyncEngine) -> None:
+    """AC-3 core proof of round 2 through PostgreSQL: 61746 (NIFTY 23000 CE) is one contract across its expiry move
+    (2029-12-27 -> 2029-12-24, one history row); the 2026-08-26 list lacks it while its expiry is 3 years away ->
+    delisted on the database's IST date with a history row, kept, unlisted, its Zerodha row freed; the 2026-09-01 list
+    gives 61746 to a different contract -> a new contract; the old one still resolves by its internal id."""
+    others = _fillers(10)
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            today = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))
+                     ).scalar_one()
+            await _load_days(conn, [(date(2025, 1, 1), others + [R61746_A]), (date(2025, 9, 1), others + [R61746_B])])
+            old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
+            result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
+            assert (result.delisted, result.retired) == (1, 0)
+            assert await live_contract_id(conn, InstrumentId("NSE_FO", 61746)) is None
+            reuse = _row(61746, date(2026, 11, 24), "0", "FUT", "NIFTY26NOVFUT")
+            result = await apply_update(conn, others + [reuse], as_of=_as_of(date(2026, 9, 1)))
+            assert result.added == 1
+            new_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
+            assert new_id is not None and new_id != old_id
+            old = await load_contract(conn, old_id)
+            assert (old.delisted, old.delisted_on, old.retired, old.currently_listed) == (True, today, False, False)
+            assert (old.listed.contract.expiry, old.listed.contract.strike, old.listed.contract.instrument_type) == (
+                date(2029, 12, 24), Decimal("23000.00"), "CE")
+            assert [h for h in await _history(conn) if h[1] == old_id] == [
+                (61746, old_id, None, "expiry", "2029-12-27", "2029-12-24"),
+                (61746, old_id, None, "delisted_on", None, today.isoformat())]
+            rows = (await conn.execute(text(f"SELECT contract_id, retired FROM {BROKER} WHERE broker_token = :t "
+                                            "ORDER BY contract_id"), {"t": str(61746 * 256 + 2)})).all()
+            assert [tuple(r) for r in rows] == [(old_id, True), (new_id, False)]
+            await _expect_refused(conn, f"UPDATE {TABLE} SET delisted = FALSE WHERE id = {old_id}",
+                                  CATALOGUE_SQLSTATE)  # a delisted contract never changes (as the app role)
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_r2_delisting_is_held_by_the_database(admin_engine: AsyncEngine) -> None:
+    """ADR-058 database guards, as the owner: delisting while listed, while changing a term, or together with retiring
+    is refused; a broker row cannot be freed by hand; a plain delist stamps delisted_on and frees the Zerodha row; a
+    delisted contract cannot be retired, re-listed, revised or un-delisted."""
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _load_days(conn, [(date(2025, 9, 1), [R61746_B])])
+            (cid,) = [r[0] for r in await _contracts(conn, 61746)]
+            await _expect_refused(conn, f"UPDATE {TABLE} SET delisted = TRUE WHERE id = {cid}", CATALOGUE_SQLSTATE)
+            await _expect_refused(conn, f"UPDATE {TABLE} SET delisted = TRUE, currently_listed = FALSE, strike = 1 "
+                                        f"WHERE id = {cid}", CATALOGUE_SQLSTATE)
+            await _expect_refused(conn, f"UPDATE {TABLE} SET delisted = TRUE, retired = TRUE, currently_listed = FALSE "
+                                        f"WHERE id = {cid}", CATALOGUE_SQLSTATE)
+            await _expect_refused(conn, f"UPDATE {BROKER} SET retired = TRUE WHERE contract_id = {cid}",
+                                  CATALOGUE_SQLSTATE)
+            await conn.execute(text(f"UPDATE {TABLE} SET delisted = TRUE, currently_listed = FALSE WHERE id = {cid}"))
+            row = (await conn.execute(text(f"SELECT c.delisted_on IS NOT NULL, b.retired FROM {TABLE} AS c "
+                                           f"JOIN {BROKER} AS b ON b.contract_id = c.id WHERE c.id = {cid}"))).one()
+            assert tuple(row) == (True, True)
+            for change in ("retired = TRUE", "currently_listed = TRUE", "expiry = '2029-12-27'", "delisted = FALSE"):
+                await _expect_refused(conn, f"UPDATE {TABLE} SET {change} WHERE id = {cid}", CATALOGUE_SQLSTATE)
+        finally:
+            await trans.rollback()
