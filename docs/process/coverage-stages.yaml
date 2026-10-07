@@ -135,7 +135,6 @@ questions:
   Q204: S2
   Q205: S2
   Q210: S2              # external: Zerodha's written answer (owner action)
-  Q211: S8              # legal review before production
   Q224: S2              # attribution rule for shared contracts, "open for the owner"
   Q258: S2
 
@@ -156,7 +155,7 @@ open_areas:
   OA-13: {text: 'data-retention policy', stage: S2}
   OA-14: {text: 'admin/system-health screens', stage: S7}
   OA-15: {text: 'final cloud/stack', stage: S2}                      # D5 hosting
-  OA-16: {text: 'the\nstrategy state transition table', stage: S3}   # stale: approved at Q240; wording fix
+  OA-16: {text: 'the strategy state transition table', stage: S3}   # stale: approved at Q240; wording fix
   OA-17: {text: 'complimentary list', stage: S8}
   OA-18: {text: 'Zerodha rate limits for per-user WebSockets', stage: S1}
 
@@ -235,19 +234,23 @@ build_plan:
   google-oauth-credentials: S5
   vps-test-db-credentials: 4a          # ADR-048, if D5 uses it
   safety-net-wording: 4a
+  q211-legal-review: S8                # Q211 is DECIDED (not a blocker for building); the review itself is due before production
 
 # Cross-file conflicts found by the Stage 0 full read (2026-10-07), each re-checked before it is fixed.
 # Wording-only fixes go to S3; anything that changes WHAT the system does goes to S2 as a question.
 conflicts:
   C-01: {text: 'REQ-006 AC-3 / REQ-035 AC-7 (Greeks and IV from Advanced) vs REQ-029 AC-2/AC-9 (IV and Delta at lower levels)', stage: S2}
   C-02: {text: 'REQ-021 Open line on Q209 is stale (AC-7 records ADR-044)', stage: S3}
-  C-03: {text: 'REQ-018 AC-5 (Limited users cannot save drafts) vs REQ-016 AC-1 (drafts without Zerodha)', stage: S2}
+  # C-03 re-checked 2026-10-07: different axes (entitlement vs broker connection); REQ-016 should say "subject to REQ-018".
+  C-03: {text: 'REQ-016 AC-1 (drafts without Zerodha) should state it is subject to REQ-018 AC-5 (Limited users cannot save drafts)', stage: S3}
   C-04: {text: 'REQ-034 Open line lists Q208 as open; ADR-042 decided it (NIFTY 100, SENSEX 300)', stage: S3}
   C-05: {text: 'REQ-035 uses Q242 for two different decisions', stage: S3}
   C-06: {text: 'REQ-030 AC-5 and AC-12 overlap on a same-action repeat pick', stage: S3}
   C-07: {text: 'REQ-037 AC-5 (every modification a version) vs REQ-038 AC-2 (no versions before first execution)', stage: S3}
-  C-08: {text: 'REQ-060 AC-6 (mismatch blocks new and adjustment execution) vs REQ-059 gate (mismatch blocks exits too)', stage: S2}
-  C-09: {text: 'REQ-059: two different exit-check lists in one file (gate list vs Q239)', stage: S2}
+  # C-08/C-09 re-checked 2026-10-07: not contradictions. REQ-060 AC-6 is silent on exits and the REQ-059 gate decision
+  # extends it; Q239's five checks are kept IN ADDITION to the seven exit conditions. Wording/cross-reference fix only.
+  C-08: {text: 'REQ-060 AC-6 does not say that a mismatch also blocks exits (REQ-059 gate decision); add the cross-reference', stage: S3}
+  C-09: {text: 'REQ-059: state that exits get the seven exit conditions plus the five Q239 checks (union)', stage: S3}
   C-10: {text: 'REQ-055 AC-1 (margin before any order) vs REQ-059 (exits exempt from margin sufficiency)', stage: S3}
   C-11: {text: 'REQ-048 AC-4 (shared feed) vs REQ-052 AC-1 (per-user feed) = Q204', stage: S2}
   C-12: {text: 'REQ-051 AC-4 (history from live feed) vs AC-1 (history disabled in V1)', stage: S2}
