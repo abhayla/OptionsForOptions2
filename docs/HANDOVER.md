@@ -1,5 +1,10 @@
 # Handover
 
+**2026-10-07 ~22:00 IST — end of session; START HERE: `docs/process/session-handover-2026-10-07.md`** (what is done,
+what is next, how to set up another PC, and the working rules the owner set). Stages 0-3 done; Stage 4a step 1 (core
+data proof on the owner's account, F-29) done; W-057 (contract identity over time, ADR-057..059) merged as #125 and
+verified. NEXT: Stage 4a step 2 - the live market-hours checks (needs one owner Kite login after 09:15 IST).
+
 **2026-10-07 ~20:00 IST — Stages 0-2 done.** Stage 0-1 merged as #121 (findings F-11..F-28, coverage register with its
 own CI check, research docs, surprise register, architecture page claude.ai/artifact/NoPqsrgmK8KvX6TiCo1Xi1). Stage 2
 decisions ADR-051..ADR-056 (see the "Stage 2 outcome" block in the master plan). NEXT: Stage 3 - update and create the
