@@ -26,3 +26,6 @@ __pycache__/
 venv/
 node_modules/
 .pytest_cache/
+
+# Local secrets (project .env) - never commit
+.env
