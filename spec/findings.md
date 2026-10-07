@@ -374,3 +374,16 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   against Kite's, and the next morning's token expiry.
 - Bears on: REQ-048, REQ-049, REQ-052, REQ-053, REQ-055, REQ-072, ADR-051, W-017 (real responses now exist). Status:
   **recorded**.
+
+## F-30 - The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download
+- Measured 2026-10-07 by the orchestrator. NSE F&O bhavcopies: token 61746 was NIFTY 23000 CE expiring 27-Dec-2029
+  (Jan 2025), 24-Dec-2029 (Sep 2025); from 26-Aug-2026 the same token is WIPRO 23-Nov-2026 futures, and no NIFTY
+  Dec-2029 23000 CE appears in any 2026 file. Zerodha's instrument list read the same day (api.kite.trade/instruments,
+  108,383 rows): token 61746 = NFO WIPRO26NOVFUT; NIFTY Dec-2029 CE strikes listed are 15000, 16500, 18000, 19500,
+  21000, 22500, ... (13 in all, 1,500 points apart) - no 23000 CE. Level P1 (real data).
+- Meaning: (1) a contract can leave the market before its expiry date (here a long-dated strike grid was rebuilt), and
+  its number can be reused while the old contract's expiry date is still in the future - so ADR-057's "retired after
+  expiry" needs a second exit, "no longer listed"; (2) the Q244 guard (refuse a daily update that would remove any
+  unexpired contract) would refuse every daily list after such a clean-up and freeze the catalogue, the failure Q257
+  was written to avoid. The bhavcopy alone cannot date the removal (it may omit untraded contracts); Zerodha's list can.
+- Bears on: ADR-057, REQ-053 (Q244, Q257), REQ-054 AC-3, W-057, F-21. Status: **decided** (ADR-058).
