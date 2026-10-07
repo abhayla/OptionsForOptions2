@@ -55,6 +55,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Bears on: REQ-054, REQ-063, REQ-066, ADR-034, open question Q258. Status: **unverified / open for owner decision**
   (Q258: does a SaaS sending many users' orders count as an algo provider; verify with Zerodha's written answer and the
   legal review Q211).
+- **Update 2026-10-07:** the SEBI circular and the NSE implementation standards were read from the primary PDFs; see
+  F-11 and F-12. Their verified clauses supersede the secondary-source summary above. The Zerodha-specific points (1 Apr
+  2026 rejection date, family-only sharing at Zerodha) are still unverified until read on Zerodha's own pages.
 
 ## F-07 - Zerodha API order behaviour the broker phase must handle
 - From Kite Connect docs (kite.trade/docs/connect/v3: orders, postbacks, exceptions) and forum threads, read 2026-10-02:
@@ -96,3 +99,36 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   `exchange`; the brief misstated the requirement (spec-adherence class 1), corrected in W-056.
 - Bears on: REQ-054 AC-3, REQ-053, ADR-050 items 1 and 2. Status: **decided** (wording of the existing decision; no
   rule change). Registry: `knowledge/findings/instrument-identity-keyed-on-one-broker.json`.
+
+## F-11 - SEBI's retail-algo circular (primary text): brokers are principals, algo providers their agents, empanelled with exchanges
+- Source: SEBI circular SEBI/HO/MIRSD/MIRSD-PoD/P/CIR/2025/0000013, 4 Feb 2025, "Safer participation of retail
+  investors in Algorithmic trading" (sebi.gov.in/sebi_data/attachdocs/feb-2025/1738665456458.pdf), read raw 2026-10-07.
+  Level P1 (primary).
+- Para I(a): brokers "shall be the principal" and any algo provider or fintech/vendor "shall act as its agent". I(b):
+  every algo order through a broker API is tagged with an exchange-provided unique identifier. I(c): a retail investor's
+  own algo is registered only above the order-per-second threshold, and may be used for the family (self, spouse,
+  dependent children, dependent parents) "but not for other investors". I(d): brokers give API access only "through a
+  unique vendor client specific API key and static IP whitelisted by the broker", OAuth only, two-factor
+  authentication, and "deal with empaneled algo providers only". III(a): an algo provider "providing the facility to
+  place algo orders with Brokers through API, shall require to be empaneled with Exchanges". Footnotes define white-box
+  and black-box algos (5, 6) and the kill switch (4). Applicability: "with effect from August 01, 2025" (para 7(b)).
+- In force: as dated; later extensions of that date are not yet read (Stage 1 stream S1a checks them).
+- Bears on: Q258, REQ-042, REQ-054, REQ-063, REQ-066, ADR-009, ADR-050 item 4. Status: **open for owner decision**.
+  Whether our platform is an "algo provider" sending "algo orders" is not settled by this text alone; S1a reads the
+  definitions and FAQs, and Q258 stays with Zerodha's answer and the Q211 legal review.
+
+## F-12 - NSE's implementation standards: a static IP maps to one client only (family excepted); API sessions end daily
+- Source: NSE circular NSE/INVG/67858 (Circular Ref. 471/2025), 5 May 2025, annexure "Implementation Standards"
+  (nsearchives.nseindia.com/content/circulars/INVG67858.pdf), read raw 2026-10-07. Level P1 (primary).
+- A.1: clients "must mandatorily provide the stockbroker with a static IP address(es)" for API access; A.2 one primary,
+  optional secondary. A.5: for algos via an empanelled algo provider "the static IP shall be that of the vendor or the
+  client". A.6: the mapped IP may change at most "once a calendar week". A.7: "A static IP can only be mapped to one
+  client at a time", shared only within one family (SEBI circular SEBI/HO/MIRSD/MIRSD-PoD1/P/CIR/2024/169, 3 Dec 2024)
+  on the client's written or 2FA request. A.8: "All API sessions shall be compulsorily logged out every day before the
+  start of the next trading day". B.2: the Threshold Order Per Second (TOPS) is 10 orders per second per exchange; below
+  it a client need not register the algo, above it registration with each exchange is required (C.1).
+- Consequence to verify, not a conclusion: if our server sends many unrelated users' orders from one IP, A.7 does not
+  let that IP be each user's client IP; A.5 allows a vendor IP only for an empanelled algo provider. This is the centre
+  of Q258 and of master-plan decisions D1 and D5.
+- In force: as dated; later NSE circulars and BSE's equivalent are not yet read (S1a).
+- Bears on: Q258, Q205 (daily session end), REQ-015 AC-7, REQ-054, REQ-063. Status: **open for owner decision**.

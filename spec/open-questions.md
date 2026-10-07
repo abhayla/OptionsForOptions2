@@ -340,3 +340,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   for many users? (spec/findings.md F-06 - secondary sources, unverified.)
 - Recommendation: ask Zerodha in the pending written-answer thread (ADR-034) and include it in the Q211 legal review.
   The broker phase (build plan P4) stays blocked until it is answered. Bears on REQ-054, REQ-063, REQ-066.
+- **Primary text read 2026-10-07 (F-11, F-12):** SEBI makes brokers the principal and any algo provider "providing the
+  facility to place algo orders with Brokers through API" an agent that must be empanelled with exchanges (F-11, para
+  I(a), III(a)). NSE: "A static IP can only be mapped to one client at a time", family excepted; for an empanelled
+  provider's algos the IP "shall be that of the vendor or the client" (F-12, A.5, A.7). Still open: whether
+  user-confirmed orders prepared by our rules are "algo orders" (definitions/FAQs, stream S1a) and Zerodha's own rules.
