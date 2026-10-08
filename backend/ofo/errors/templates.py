@@ -23,7 +23,7 @@ from .model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from .gate_slots import (
-    Clock, DataHealthState, DataInputName, Date, LegContract, LegRef, Rupees, Strikes, Symbol, VersionStateName,
+    Clock, DataHealthState, DataInputName, Date, ExecutionStatusName, LegContract, LegRef, Rupees, Strikes, Symbol, VersionStateName,
     VersionStates, WorstCase,
 )
 from .slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
@@ -220,6 +220,8 @@ _SUPPORTED = ", ".join(SUPPORTED_UNDERLYINGS)
 _UI, _SV, _MD = ErrorClass.USER_INPUT, ErrorClass.STRATEGY_VALIDATION, ErrorClass.MARKET_DATA
 _BA, _BE, _MG = ErrorClass.BROKER_AUTHENTICATION, ErrorClass.BROKER_ELIGIBILITY, ErrorClass.MARGIN
 _EA, _RM, _IS = ErrorClass.ENTITLEMENT_ACCESS, ErrorClass.RECONCILIATION_MISMATCH, ErrorClass.INTERNAL_SYSTEM
+_PE = ErrorClass.PARTIAL_EXECUTION
+_PARTIAL_BLOCKED = "Completing, retrying or closing this strategy."
 
 _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("gate_underlying_unsupported", _UI, 101,
@@ -362,6 +364,58 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The strategy template list has {count} problem(s) and could not be loaded.",
           "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
           "Build the strategy leg by leg for now; contact support if this keeps happening.", {"count": Count}),
+    # Partial execution (ofo.execution.partial, REQ-058): each what-happened keeps the sentence shown before round 9,
+    # minus any raw exception text (logged instead).
+    _gate("partial_reread_failed", _PE, 101,
+          "We could not re-read your Zerodha positions and orders. No order has been prepared.",
+          "The platform does not know this strategy's current state at Zerodha.", _PARTIAL_BLOCKED,
+          "Try again in a moment; check the positions in Zerodha if this keeps happening."),
+    _gate("partial_nothing_prepared", _PE, 102, "Nothing prepared.", "No order is waiting for your confirmation.",
+          _PARTIAL_BLOCKED, "Check the strategy's state, then choose again."),
+    _gate("partial_status_not_partial", _PE, 103, "Nothing prepared: the strategy is {status}.",
+          "Completing, retrying or closing applies only to a partly executed strategy.", _PARTIAL_BLOCKED,
+          "Check the strategy's state, then choose again.", {"status": ExecutionStatusName}),
+    _gate("partial_waiting", _PE, 104,
+          "Another preparation for this strategy is waiting for your confirmation. Confirm or discard it first. "
+          "No order has been prepared.",
+          "Only one set of orders can wait for your confirmation at a time.", "A new preparation for this strategy.",
+          "Confirm or discard the waiting orders, then choose again."),
+    _gate("partial_in_flight", _PE, 105,
+          "Orders for this strategy are in flight and Zerodha has not confirmed them yet. No order has been "
+          "prepared; check again once they are confirmed.",
+          "New orders now could duplicate the ones Zerodha is still handling.", _PARTIAL_BLOCKED,
+          "Wait for Zerodha to confirm the open orders, then check again."),
+    _gate("partial_needs_fresh_read", _PE, 106,
+          "You chose Close Partial Strategy. Completing or retrying needs a fresh read of your Zerodha positions "
+          "taken after that choice. No order has been prepared.",
+          "Orders based on the earlier read could add to positions you chose to close.", "Completing or retrying.",
+          "Refresh the strategy's positions from Zerodha, then choose again."),
+    _gate("partial_gate_blocked", _PE, 107, "The safety checks blocked this. No order has been prepared.",
+          "The orders cannot be sent until every safety check passes.", _PARTIAL_BLOCKED,
+          "Read the safety check results shown with this, resolve them, then try again."),
+    _gate("partial_ready", _PE, 108, "{count} order(s) ready for your confirmation.",
+          "Nothing is sent to Zerodha until you confirm.", "Sending these orders until you confirm them.",
+          "Review the orders, then confirm or discard them.", {"count": Count}),
+    _gate("partial_margin_reread_failed", _PE, 109,
+          "We could not re-read your available margin. No order has been prepared.",
+          "The orders could be rejected for insufficient margin.", _PARTIAL_BLOCKED,
+          "Try again in a moment; check your margin in Zerodha if this keeps happening."),
+    _gate("partial_already_complete", _PE, 110,
+          "Zerodha now shows every leg filled. The strategy is complete; nothing was prepared.",
+          "No further order is needed for this strategy.", "Completing or retrying this strategy.",
+          "Review the filled strategy on its page."),
+    _gate("partial_review_manually", _PE, 111,
+          "Review the filled and failed legs below. No order has been prepared.",
+          "The strategy stays partly executed until you choose an action.", "Automatic completion of this strategy.",
+          "Choose Complete Strategy, Retry Failed Leg or Close Partial Strategy when ready."),
+    _gate("partial_no_price", _PE, 112,
+          "Zerodha did not give a current price for every filled leg. No order has been prepared.",
+          "Exit orders cannot be priced without a current price.", "Closing this strategy.",
+          "Try again once Zerodha shows a price for every filled leg."),
+    _gate("partial_exits_in_flight", _PE, 113,
+          "Exit orders for every filled leg are already in flight. No order has been prepared.",
+          "More exit orders could close more than the strategy holds.", "Closing this strategy.",
+          "Wait for Zerodha to confirm the open exit orders, then check again."),
     # REQ-049 AC-5's exact sentence is the what-happened part (owner-cited); the other three are new.
     _gate("marketdata_disconnected", _MD, 120,
           "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",

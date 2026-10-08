@@ -235,3 +235,15 @@ def test_round8_verifier_misses_are_refused(phrase: str) -> None:
 
     with pytest.raises(ValueError):
         ofo.wording.check_platform_text(phrase, "test")
+
+
+def test_preparation_refuses_a_plain_string_message() -> None:
+    """Structural door (B8): a Preparation's message is a render() result or an explicitly marked UnroutedText."""
+    from ofo.execution import partial
+
+    with pytest.raises(TypeError, match="comes from render"):
+        partial.Preparation(partial.PartialChoice.REVIEW_MANUALLY, None, (), None, "Nothing prepared.",
+                            _mint=getattr(partial, "_MINT"))
+    prep = partial._not_prepared(partial.PartialChoice.REVIEW_MANUALLY, None, "partial_waiting")
+    assert prep.reason == partial.WAITING
+    assert len(prep.text.splitlines()) == 4

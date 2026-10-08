@@ -219,6 +219,26 @@ class DataHealthState(SlotType):
         return "is out of date" if value is DataHealth.STALE else "is unavailable"
 
 
+#: The value of each `ofo.execution.partial.ExecutionStatus` member -> plain words. Keyed by value, so this package
+#: never imports ofo.execution.partial (only the order-issuing flows may: W-026's import test).
+_STATUS_WORDS = {"complete": "complete", "partial_exception": "partly executed", "in_progress": "in progress",
+                 "not_executed": "not executed", "reconciliation_required": "waiting for reconciliation"}
+
+
+class ExecutionStatusName(SlotType):
+    """A partial-execution status, given as its `ExecutionStatus` value (a closed set), shown in plain words."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "ExecutionStatusName")
+        if value not in _STATUS_WORDS:
+            raise ValueError(f"ExecutionStatusName slot must be one of {sorted(_STATUS_WORDS)}, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return _STATUS_WORDS[value]
+
+
 #: An underlying symbol the platform does not support, as the context names it: capitals and digits only.
 _SYMBOL_PATTERN = re.compile(r"[A-Z][A-Z0-9]{0,19}")
 

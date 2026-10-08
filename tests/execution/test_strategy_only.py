@@ -137,7 +137,7 @@ def test_a_preparation_cannot_be_built_directly(catalogue, eligibility) -> None:
     be changed afterwards."""
     real = _complete(book_with_three_filled(), catalogue, eligibility)
     with pytest.raises(ValueError, match="made only by the strategy's execution flow"):
-        Preparation(real.choice, real.assessment, real.orders, real.gate, "x", real.book, STRATEGY_ID)
+        Preparation(real.choice, real.assessment, real.orders, real.gate, real.message, real.book, STRATEGY_ID)
     with pytest.raises(AttributeError):
         real.orders = ()  # type: ignore[misc]
 
@@ -145,7 +145,7 @@ def test_a_preparation_cannot_be_built_directly(catalogue, eligibility) -> None:
 def _reach_around(real: Preparation, orders: tuple[Order, ...], forge_gate: bool) -> Preparation:
     """In-process bypass of the mint (the verifier's getattr route): used only to prove the LATER lines hold."""
     discard_preparation(real)
-    prep = Preparation(real.choice, real.assessment, orders, real.gate, "x", real.book, STRATEGY_ID, (),
+    prep = Preparation(real.choice, real.assessment, orders, real.gate, real.message, real.book, STRATEGY_ID, (),
                        real.guard, real.plan, real.catalogue, _mint=getattr(partial, "_MINT"))
     if forge_gate:  # also forge the gate-to-orders binding
         getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")(orders))
@@ -462,7 +462,7 @@ def test_an_aliased_submit_confirmed_works_only_through_the_real_flow(catalogue,
     transport = CountingTransport()
     real = _complete(book_with_three_filled(), catalogue, eligibility)
     with pytest.raises(ValueError, match="made only by the strategy's execution flow"):
-        Preparation(real.choice, real.assessment, real.orders, real.gate, "x", real.book, STRATEGY_ID)
+        Preparation(real.choice, real.assessment, real.orders, real.gate, real.message, real.book, STRATEGY_ID)
     send_it(real, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1", submitter=transport)
     assert len(transport.calls) == 1
 
@@ -524,7 +524,7 @@ def test_send_time_grounding_uses_the_catalogue(catalogue, eligibility) -> None:
     legs[2], legs[3] = (PlannedLeg("leg-3", CONTRACTS[3], legs[2].leg), PlannedLeg("leg-4", CONTRACTS[2], legs[3].leg))
     order = Order(STRATEGY_ID, "leg-4", CONTRACTS[2], Action.BUY, LOT, D("44.00"), version_id="v1")
     discard_preparation(real)
-    prep = Preparation(real.choice, real.assessment, (order,), real.gate, "x", book, STRATEGY_ID, (), real.guard,
+    prep = Preparation(real.choice, real.assessment, (order,), real.gate, real.message, book, STRATEGY_ID, (), real.guard,
                        ExecutionPlan(STRATEGY_ID, tuple(legs)), real.catalogue, _mint=getattr(partial, "_MINT"))
     getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")((order,)))
     transport = CountingTransport()

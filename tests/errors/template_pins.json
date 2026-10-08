@@ -223,6 +223,58 @@
     "sha256": "85b38b7a9de1e0bd43e9b53f3d4b6ed197a5bc89a393e6b24cd174accefe9f40",
     "reviewed": "pending owner read"
   },
+  "partial_reread_failed": {
+    "sha256": "cecb4504e290488609d6d8c25a4eae6b78d0102403a41a598184a46bbf15312e",
+    "reviewed": "pending owner read"
+  },
+  "partial_nothing_prepared": {
+    "sha256": "4aaf8e1cdf1f1ff19fd703ab8d3779902a9f80ba7472a1601fb17ec5a42f69f0",
+    "reviewed": "pending owner read"
+  },
+  "partial_status_not_partial": {
+    "sha256": "775571973513f32bb6bf6dd34511ff55fd38c5e698b2d0f240b5b78c3f48d00e",
+    "reviewed": "pending owner read"
+  },
+  "partial_waiting": {
+    "sha256": "b9ac73f1a21b320731637163577f2e517611ac0c8c32bf035477239455281360",
+    "reviewed": "pending owner read"
+  },
+  "partial_in_flight": {
+    "sha256": "c126e344f2282bdd7d2b1834449e9ae02a234530b714a42150e99b0d16fb1fff",
+    "reviewed": "pending owner read"
+  },
+  "partial_needs_fresh_read": {
+    "sha256": "1fb78d65d10e15d0804497c7d742262d3512d3b9f50ef808f1735f52d48fa182",
+    "reviewed": "pending owner read"
+  },
+  "partial_gate_blocked": {
+    "sha256": "92f24732c31b92ede412b5cb002ac412f34e1beb45ecf3069d58f3bb243dd32e",
+    "reviewed": "pending owner read"
+  },
+  "partial_ready": {
+    "sha256": "8bea0ae7b6fc65808fb56172c7300fc35739af9ae5d7615febc180b12e06a5b7",
+    "reviewed": "pending owner read"
+  },
+  "partial_margin_reread_failed": {
+    "sha256": "ca90785b5201963f1b01424a2b854c7763b8b3739bdacd59b8003e45777d7d3e",
+    "reviewed": "pending owner read"
+  },
+  "partial_already_complete": {
+    "sha256": "39992711350377ef852f5821dfceadc175252f9636702bb9e4f798dae10a3702",
+    "reviewed": "pending owner read"
+  },
+  "partial_review_manually": {
+    "sha256": "ff2ed43aff0d6f09aac613050f00e2eb445da151ee64eca41760599a9f6ee347",
+    "reviewed": "pending owner read"
+  },
+  "partial_no_price": {
+    "sha256": "6e7fc3eeb6c18a5c32fe20587f521d64532100d46e6a3536ca948a01f6fe011e",
+    "reviewed": "pending owner read"
+  },
+  "partial_exits_in_flight": {
+    "sha256": "a76b2a4c0b1ed73f39a4a47f0fd473172c201b484b9fec746b156861b84753dc",
+    "reviewed": "pending owner read"
+  },
   "marketdata_disconnected": {
     "sha256": "a87e6f1bded6de61cf847696a990b1061ab3015635ee40eb59b1c530c7f99d9e",
     "reviewed": "pending owner read"

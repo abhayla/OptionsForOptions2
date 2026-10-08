@@ -142,7 +142,7 @@ def test_guard_binding_mismatch_is_refused(catalogue, eligibility) -> None:
         real.choice, real.assessment, real.orders, real.gate, real.book, real.plan, real.catalogue)
     discard_preparation(real)  # frees the strategy's one-live-preparation slot for the reach-around below
 
-    prep = Preparation(choice, assessment, orders, gate, "x", guard_book, STRATEGY_ID, (),
+    prep = Preparation(choice, assessment, orders, gate, real.message, guard_book, STRATEGY_ID, (),
                        forged_guard, plan_, catalogue_, _mint=getattr(partial, "_MINT"))
     getattr(partial, "_GATE_ORDERS")[id(gate)] = (gate, getattr(partial, "_orders_digest")(orders))
 

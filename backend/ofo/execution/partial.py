@@ -56,6 +56,7 @@ Orchestrator defaults (not stated by the spec; each also marked where it is used
 from __future__ import annotations
 
 import dataclasses
+import logging
 import datetime
 import hmac
 from collections.abc import Sequence
@@ -64,6 +65,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Final, Protocol
 
+from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
@@ -109,6 +111,7 @@ class ExecutionStatus(Enum):
 
 
 _ident = ident
+logger = logging.getLogger("ofo.execution.partial")
 
 
 def _int(value: object, name: str, *, signed: bool = False) -> int:
@@ -364,6 +367,19 @@ def _orders_digest(orders: Sequence[Order]) -> str:
     return proposal_hash(rows)
 
 
+@dataclass(frozen=True)
+class UnroutedText:
+    """W-024 round 9: a preparation text still built outside the catalogue (a slicing refusal carrying the sequencer's
+    own reason, a Strategy Guard risk message). Listed in the producer inventory's PENDING ratchet until the
+    sequencer and the guard raise typed refusals; every other preparation text is a render() message."""
+
+    what_happened: str
+
+    def __post_init__(self) -> None:
+        if type(self.what_happened) is not str or not self.what_happened.strip():
+            raise TypeError("UnroutedText needs non-blank text")
+
+
 def _prep(*args: object, **kwargs: object) -> Preparation:
     return Preparation(*args, _mint=_MINT, **kwargs)  # type: ignore[arg-type]
 
@@ -380,11 +396,12 @@ class Preparation:
     and gate result. ``plan`` is the flow's grounded plan; ``guard`` the Strategy Guard decision shown to the user.
     """
 
-    __slots__ = ("choice", "assessment", "orders", "gate", "reason", "book", "strategy_id", "cancels", "guard",
+    __slots__ = ("choice", "assessment", "orders", "gate", "message", "book", "strategy_id", "cancels", "guard",
                  "plan", "catalogue", "slices", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
-                 gate: SafetyResult | None, reason: str, book: OrderBook | None = None,
+                 gate: SafetyResult | None, message: "UserFacingError | UnroutedText",
+                 book: OrderBook | None = None,
                  strategy_id: str | None = None, cancels: tuple[str, ...] = (),
                  guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
                  catalogue: Catalogue | None = None, slices: tuple[PlannedOrder, ...] = (), *,
@@ -392,8 +409,10 @@ class Preparation:
         if _mint is not _MINT:
             raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
         orders = tuple(orders)
+        if type(message) not in (UserFacingError, UnroutedText):
+            raise TypeError(f"a Preparation's message comes from render() (W-024), got {type(message).__name__}")
         for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
-                            ("reason", reason), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
+                            ("message", message), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
                             ("guard", guard), ("plan", plan), ("catalogue", catalogue), ("slices", tuple(slices)),
                             ("_seal", (_orders_digest(orders), gate)),
                             ("_consumed", False)):
@@ -403,6 +422,17 @@ class Preparation:
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("a Preparation cannot be changed after the flow made it")
+
+    @property
+    def reason(self) -> str:
+        """The what-happened part (the sentence shown before W-024 round 9; kept for callers and the audit)."""
+        return self.message.what_happened
+
+    @property
+    def text(self) -> str:
+        """What the user is shown: all four parts for a catalogue message."""
+        message = self.message
+        return message.what_happened if type(message) is UnroutedText else display_text(message)
 
     @property
     def ready(self) -> bool:
@@ -422,31 +452,35 @@ def discard_preparation(preparation: Preparation) -> None:
 
 
 def _refetch(plan: ExecutionPlan, reader: BrokerReader, book: OrderBook,
-             planner: MarginPlanner) -> Assessment | str:
+             planner: MarginPlanner) -> Assessment | UserFacingError:
     """AC-4: re-read positions AND order status (each read checked for freshness) before anything is prepared."""
     try:
         positions, positions_at = reader.fetch_positions(plan.strategy_id)
         statuses, statuses_at = reader.fetch_order_statuses(plan.strategy_id)
         read_at = min(book.check_read(positions_at), book.check_read(statuses_at))
-    except Exception as exc:  # fail closed: any read error means we do not know the broker's state
-        return f"We could not re-read your Zerodha positions and orders ({exc}). No order has been prepared."
+    except Exception:  # fail closed: any read error means we do not know the broker's state
+        logger.exception("broker re-read failed strategy=%s", plan.strategy_id)
+        return render("partial_reread_failed")
     return assess(plan, positions, statuses, book, planner, read_at=read_at)
 
 
-def _not_prepared(choice: PartialChoice, a: Assessment | str | None, reason: str | None = None) -> Preparation:
-    if isinstance(a, str):
+def _not_prepared(choice: PartialChoice, a: Assessment | UserFacingError | None,
+                  message: "UserFacingError | UnroutedText | str | None" = None) -> Preparation:
+    """Nothing prepared. ``message`` is a render() result, an UnroutedText, or a catalogue template id."""
+    if type(message) is str:
+        message = render(message)
+    if type(a) is UserFacingError:
         return _prep(choice, None, (), None, a)
     if a is None:
-        return _prep(choice, None, (), None, reason or "Nothing prepared.")
-    return _prep(choice, a, (), None, reason or f"Nothing prepared: the strategy is {a.status.value}.")
+        return _prep(choice, None, (), None, message or render("partial_nothing_prepared"))
+    return _prep(choice, a, (), None, message or render("partial_status_not_partial", status=a.status.value))
 
 
-WAITING = ("Another preparation for this strategy is waiting for your confirmation. Confirm or discard it first. "
-           "No order has been prepared.")
-IN_FLIGHT = ("Orders for this strategy are in flight and Zerodha has not confirmed them yet. No order has been "
-             "prepared; check again once they are confirmed.")
-NEEDS_FRESH_READ = ("You chose Close Partial Strategy. Completing or retrying needs a fresh read of your Zerodha "
-                    "positions taken after that choice. No order has been prepared.")
+#: The what-happened sentences of three catalogue templates (W-024 round 9: the texts live in ofo/errors/templates.py;
+#: these names are kept for callers and tests that compare a preparation's reason).
+WAITING = CATALOGUE["partial_waiting"].what_happened
+IN_FLIGHT = CATALOGUE["partial_in_flight"].what_happened
+NEEDS_FRESH_READ = CATALOGUE["partial_needs_fresh_read"].what_happened
 
 
 def _version_number(version_id: object) -> int:
@@ -540,7 +574,7 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
         ctx = dataclasses.replace(ctx, reconciliation_blocked_strategy_ids=blocked | {plan.strategy_id})
     result = check_pre_execution(Strategy(legs), ctx, catalogue, eligibility, strategy_id=plan.strategy_id)
     if result.blocked:
-        return _prep(choice, a, (), result, "The safety checks blocked this. No order has been prepared.")
+        return _prep(choice, a, (), result, render("partial_gate_blocked"))
     # REQ-036 AC-5 (Strategy Guard), run only after the gate passed, on this flow's own grounded inputs (OD-n).
     before = tuple(p.leg for p in plan.legs)
     after = _after_legs(plan, a, orders)
@@ -551,10 +585,10 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     if len(_GATE_ORDERS) >= _MAX_OPEN_GATES:  # one in, one out: the store never grows past the cap
         del _GATE_ORDERS[next(iter(_GATE_ORDERS))]
     _GATE_ORDERS[id(result)] = (result, _orders_digest(orders))  # this gate result belongs to THESE orders
-    reason = f"{len(orders)} order(s) ready for your confirmation."
-    if decision.changes_risk_profile:
-        reason = f"{decision.message}. {reason}"
-    return _prep(choice, a, orders, result, reason, book, plan.strategy_id, cancels, decision, plan, catalogue,
+    message: UserFacingError | UnroutedText = render("partial_ready", count=len(orders))
+    if decision.changes_risk_profile:  # the guard's own message: unrouted until ofo.strategy.guard is (PENDING)
+        message = UnroutedText(f"{decision.message}. {message.what_happened}")
+    return _prep(choice, a, orders, result, message, book, plan.strategy_id, cancels, decision, plan, catalogue,
                  slices)
 
 
@@ -569,10 +603,10 @@ def _prepare_missing(
     # Once Close was chosen, only a read taken after that choice may complete or retry.
     closing = book.closing_read_at(plan.strategy_id)
     if closing is not None and a.read_at <= closing:
-        return _not_prepared(choice, a, NEEDS_FRESH_READ)
+        return _not_prepared(choice, a, "partial_needs_fresh_read")
     # In flight = non-terminal in the reconciled book. While anything is, nothing is prepared.
     if a.open_orders:
-        return _not_prepared(choice, a, IN_FLIGHT)
+        return _not_prepared(choice, a, "partial_in_flight")
     record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
     # ADR-017 Q26 / REQ-056 AC-2/AC-3 (W-022, W-028): the missing units go through the FULL plan's sequence with the
     # plan's own margin planner and broker constraints: protectors before the sells that depend on them, never "all
@@ -581,7 +615,7 @@ def _prepare_missing(
     try:
         seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
     except ValueError as exc:  # W-043 (#71): a slicing refusal is shown with its reason, never raised (as Close, W-036)
-        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
+        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
     legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
                  for ref in dict.fromkeys(o.leg_ref for o in seq.orders))
     orders = tuple(
@@ -592,9 +626,9 @@ def _prepare_missing(
     )
     try:
         available = require_decimal(reader.fetch_available_margin(), "margin_available")  # OD-d: fresh read
-    except Exception as exc:  # fail closed
-        return _not_prepared(choice, a, f"We could not re-read your available margin ({exc}). No order has been "
-                                        "prepared.")
+    except Exception:  # fail closed
+        logger.exception("margin re-read failed strategy=%s", plan.strategy_id)
+        return _not_prepared(choice, a, "partial_margin_reread_failed")
     required = require_decimal(planner.required_margin(Strategy(legs)), "margin_required")  # OD-d
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
     prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
@@ -608,7 +642,7 @@ def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Prepar
     """Orchestrator default OD-h: a second prepare while one waits is REFUSED (not handed the same one back)."""
     if not isinstance(book, OrderBook) or not isinstance(plan, ExecutionPlan):
         raise ValueError("a preparation needs an ExecutionPlan and an OrderBook")
-    return _not_prepared(choice, None, WAITING) if book.has_live_preparation(plan.strategy_id) else None
+    return _not_prepared(choice, None, "partial_waiting") if book.has_live_preparation(plan.strategy_id) else None
 
 
 def complete_strategy(
@@ -626,13 +660,12 @@ def complete_strategy(
     if waiting is not None:
         return waiting
     a = _refetch(plan, reader, book, planner)
-    if isinstance(a, str):
+    if type(a) is UserFacingError:
         return _not_prepared(choice, a)
     if a.status is ExecutionStatus.COMPLETE:
-        return _not_prepared(choice, a,
-                             "Zerodha now shows every leg filled. The strategy is complete; nothing was prepared.")
+        return _not_prepared(choice, a, "partial_already_complete")
     if a.status is ExecutionStatus.IN_PROGRESS:
-        return _not_prepared(choice, a, IN_FLIGHT)
+        return _not_prepared(choice, a, "partial_in_flight")
     if a.status is not ExecutionStatus.PARTIAL_EXCEPTION:
         return _not_prepared(choice, a)
     return _prepare_missing(choice, a.remaining, plan, reader, book, planner, context, catalogue, eligibility, a,
@@ -652,10 +685,10 @@ def retry_failed_leg(
     if waiting is not None:
         return waiting
     a = _refetch(plan, reader, book, planner)
-    if isinstance(a, str):
+    if type(a) is UserFacingError:
         return _not_prepared(choice, a)
     if a.status is ExecutionStatus.IN_PROGRESS:
-        return _not_prepared(choice, a, IN_FLIGHT)
+        return _not_prepared(choice, a, "partial_in_flight")
     if a.status is not ExecutionStatus.PARTIAL_EXCEPTION:
         return _not_prepared(choice, a)
     if leg_ref not in {f.leg_ref for f in a.failures}:
@@ -669,8 +702,7 @@ def review_manually(assessment: Assessment) -> Preparation:
     """Review Manually: show the state and the broker's reasons; prepare nothing."""
     if not isinstance(assessment, Assessment):
         raise ValueError("review_manually needs an Assessment")
-    return _prep(PartialChoice.REVIEW_MANUALLY, assessment, (), None,
-                       "Review the filled and failed legs below. No order has been prepared.")
+    return _prep(PartialChoice.REVIEW_MANUALLY, assessment, (), None, render("partial_review_manually"))
 
 
 def close_partial_strategy(
@@ -691,15 +723,14 @@ def close_partial_strategy(
     if waiting is not None:
         return waiting
     a = _refetch(plan, reader, book, planner)
-    if isinstance(a, str):
+    if type(a) is UserFacingError:
         return _not_prepared(choice, a)
     if a.status not in (ExecutionStatus.PARTIAL_EXCEPTION, ExecutionStatus.IN_PROGRESS) or not a.actual_legs:
         return _not_prepared(choice, a)
     record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
     # W-036 (#62): every refusal below is decided BEFORE the Close choice is recorded (mark_closing, at the end).
     if any(leg.ltp is None for leg in a.actual_legs):  # orchestrator default OD-e: fail closed without a price
-        return _not_prepared(choice, a, "Zerodha did not give a current price for every filled leg. No order has "
-                                        "been prepared.")
+        return _not_prepared(choice, a, "partial_no_price")
     exits_open: dict[str, int] = {}
     cancels: list[str] = []
     for view in a.open_orders:
@@ -718,14 +749,13 @@ def close_partial_strategy(
             pairs.append((planned, dataclasses.replace(leg, action=flip[leg.action], quantity=still_open,
                                                        entry_price=leg.ltp, ltp=None)))
     if not pairs:
-        return _not_prepared(choice, a, "Exit orders for every filled leg are already in flight. No order has been "
-                                        "prepared.")
+        return _not_prepared(choice, a, "partial_exits_in_flight")
     pairs.sort(key=lambda pl: 0 if pl[1].action is Action.BUY else 1)  # OD-e: buy back shorts first
     groups = [[(p.leg_ref, e.quantity) for p, e in pairs if e.action is side] for side in (Action.BUY, Action.SELL)]
     try:
         slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
     except ValueError as exc:  # W-036 (#62): a slicing refusal is shown with its reason, never raised
-        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
+        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
     exits = {p.leg_ref: e for p, e in pairs}
     orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
                          s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id) for s in slices)
@@ -743,7 +773,7 @@ def close_partial_strategy(
         book.mark_closing(plan.strategy_id, a.read_at)  # Complete/Retry now need a read newer than this one
     except ValueError as exc:  # the read went stale while preparing: undo the preparation, record nothing
         discard_preparation(prep)
-        return _not_prepared(choice, a, f"Nothing prepared: {exc}.")
+        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
     return prep
 
 
