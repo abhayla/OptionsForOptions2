@@ -13,9 +13,9 @@ NIFTY26O1322200PE (44595), NIFTY26O1323100CE (the edited wing), all expiry 2026-
 Database tests need TEST_DATABASE_URL / TEST_ADMIN_DATABASE_URL (PostgreSQL 16 in CI); they skip locally. Every test
 runs in a rolled-back transaction EXCEPT the core proof: a restart can only be proven by a second engine, which sees
 only committed rows. It commits five catalogue contracts and one strategy under a fresh user_ref, and at the end
-retires those contracts (a catalogue load dated 2026-10-14, after their expiry; the catalogue never deletes), so no
-later test sees them live. Retired rows remain in catalogue_contracts: a test elsewhere that counts the WHOLE table
-must run before this file (it sorts last today).
+delists those contracts through the catalogue's forced admin path (the database refuses retiring a contract before its
+expiry; the catalogue never deletes), so no later test sees them live. The delisted rows and one audit event remain:
+a test elsewhere that counts the WHOLE catalogue table or audit chain must run before this file (it sorts last today).
 """
 
 from __future__ import annotations
@@ -43,7 +43,6 @@ from ofo_app.routes import strategies as strategy_routes
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 8, 9, 0, tzinfo=IST)
-AFTER_EXPIRY = datetime(2026, 10, 14, 9, 0, tzinfo=IST)
 FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
 EXPIRY = date(2026, 10, 13)
 LOT = 65
@@ -180,7 +179,11 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
         engine = second or app_engine
         async with engine.connect() as conn:
             async with conn.begin():
-                await apply_update(conn, [], as_of=AFTER_EXPIRY)  # retires the five contracts (expired)
+                # The database refuses retiring a contract before its expiry by its own clock, so the five are
+                # delisted through the catalogue's admin path (ADR-058/059: force with a reason and an actor, which
+                # appends an ADMIN_CHANGE_RECORDED audit event). Delisted = not live; nothing is deleted.
+                await apply_update(conn, [], as_of=AS_OF, force=True, actor="test-w061-core-proof",
+                                   reason="W-061 core proof cleanup: the five test contracts leave the live catalogue")
             assert await _ids(conn) == {}
         if second is not None:
             await second.dispose()
