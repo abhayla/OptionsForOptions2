@@ -28,7 +28,8 @@ from .slots import (
     Time,
     Underlying,
 )
-from .templates import CATALOGUE, MessageTemplate, render
+from .gate_slots import LegValue
+from .templates import CATALOGUE, MessageTemplate, display_text, render
 
 __all__ = [
     "ErrorClass",
@@ -36,6 +37,8 @@ __all__ = [
     "MessageTemplate",
     "CATALOGUE",
     "render",
+    "display_text",
+    "LegValue",
     "Money",
     "PnLMoney",
     "Int",

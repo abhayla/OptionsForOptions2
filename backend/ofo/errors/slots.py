@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum, unique
 
 from ofo.engine.legs import Instrument as _EngineInstrument
-from ofo.execution.safety import CheckCode
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo import wording as shared_wording
 
@@ -171,9 +170,13 @@ class Instrument(SlotType):
 #: newline).
 _REFERENCE_ID_PATTERN = re.compile(r"ERR-[0-9A-F]{8}")
 
-#: The known check codes a Code slot may carry, built from `CheckCode` (W-014) so a new check code
-#: is valid without a second list to keep in sync.
-_KNOWN_CODES: frozenset[str] = frozenset(code.value for code in CheckCode)
+def _known_codes() -> frozenset[str]:
+    """The known check codes a Code slot may carry, built from `CheckCode` (W-014) so a new check code
+    is valid without a second list to keep in sync. Imported on use (round 9): ofo.execution.safety
+    builds its messages with render(), so this package must not import it at load time."""
+    from ofo.execution.safety import CheckCode
+
+    return frozenset(code.value for code in CheckCode)
 
 
 class Code(SlotType):
@@ -184,7 +187,7 @@ class Code(SlotType):
     def validate(value: object) -> None:
         _require_exact(value, str, "Code")
         assert isinstance(value, str)
-        if value in _KNOWN_CODES or _REFERENCE_ID_PATTERN.fullmatch(value):
+        if value in _known_codes() or _REFERENCE_ID_PATTERN.fullmatch(value):
             return
         raise ValueError(
             f"Code slot must be a known check code or match {_REFERENCE_ID_PATTERN.pattern!r}, got {value!r}"

@@ -679,12 +679,13 @@ def test_round6_check_failure_reason_and_flag_message_pass_the_shared_check() ->
 
     for bad, match in (("The safest fix is to reconnect.", "banned wording"), ("\u200b", "blank"),
                        ("Reconnect t\u043e continue.", "non-Latin")):
-        with pytest.raises(ValueError, match=match):
+        # Round 9: a CheckFailure takes no text at all, only a render() result (structural, B8).
+        with pytest.raises(TypeError, match="needs a UserFacingError"):
             CheckFailure(CheckCode.SESSION_INVALID, bad)
         with pytest.raises(ValueError, match=match):
             Flag(FlagCode.MULTI_EXPIRY, bad)
-    ok = CheckFailure(CheckCode.SESSION_INVALID, "You must reconnect Zerodha.")
-    assert ok.reason == "You must reconnect Zerodha."
+    with pytest.raises(TypeError, match="needs a UserFacingError"):
+        CheckFailure(CheckCode.SESSION_INVALID, "You must reconnect Zerodha.")
     stale = Flag(FlagCode.DATA_STALE_ON_EXIT, "Prices shown may be stale \u2014 confirm to continue.")
     assert stale.message == "Prices shown may be stale \u2014 confirm to continue."
 
@@ -698,9 +699,12 @@ def test_round6_disconnect_message_runs_the_shared_check(monkeypatch: pytest.Mon
     at = datetime.datetime(2026, 9, 29, 5, 12, 17, tzinfo=datetime.timezone.utc)
     assert disconnect.disconnect_message(at) == (
         "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused.")
-    monkeypatch.setattr(disconnect, "_MESSAGE", "Live market data disconnected at {time}; you are safe.")
-    with pytest.raises(ValueError, match="banned wording"):
-        disconnect.disconnect_message(at)
+    # Round 9: the text lives only in the catalogue (template marketdata_disconnected); the module keeps no text
+    # of its own that could be swapped, and the message carries all four AC-2 parts.
+    assert not hasattr(disconnect, "_MESSAGE")
+    error = disconnect.disconnect_error(at)
+    assert error.code == "MARKET_DATA_120"
+    assert all((error.what_happened, error.impact, error.what_is_blocked, error.next_action))
 
 
 def test_round6_why_answer_uses_the_shared_check() -> None:

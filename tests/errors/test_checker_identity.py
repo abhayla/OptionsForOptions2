@@ -105,9 +105,10 @@ def _safety_flag() -> object:
 
 
 def _safety_check_failure() -> object:
-    from ofo.execution.safety import CheckCode, CheckFailure
+    from ofo.execution.safety import CheckCode, _fail
 
-    return CheckFailure(CheckCode.SESSION_INVALID, "You should buy this, it is the best trade")
+    # Round 9: a CheckFailure's words come only from render(), whose builder runs the identity check.
+    return _fail(CheckCode.SESSION_INVALID, "gate_session_expired")
 
 
 def _disconnect() -> object:

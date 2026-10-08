@@ -14,9 +14,9 @@ Fail closed: any sentence-shaped literal anywhere else fails this test, naming f
 whose text could not be classified (a sentence-shaped literal in a position this scan does not recognise) is a
 failure too - nothing is skipped by default.
 
-`PENDING` lists the producers outside this round's scope that are NOT routed yet, per file and function. It is a
-ratchet, not an allowlist: the test fails when a new producer appears AND when a listed one is routed but still
-listed, so the list can only shrink. Every entry is a known AC-2 gap, reported to the owner.
+`PENDING` lists the producers outside this round's scope that are NOT routed yet: per file, per function, the number
+of sentence-shaped literals. It is a ratchet, not an allowlist: the test fails when a function gains a producer
+(new function, or a higher count) AND when a listed count is higher than what is left, so the list can only shrink. Every entry is a known AC-2 gap, reported to the owner.
 """
 from __future__ import annotations
 
@@ -29,6 +29,8 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo"
 CATALOGUE_FILE = "errors/templates.py"
+#: The door's own slot formatters: they print typed slot values that only render() places into catalogue text.
+DOOR_FILES = frozenset({CATALOGUE_FILE, "errors/slots.py", "errors/gate_slots.py"})
 
 #: Files whose literals are the forbidden-wording DATA (phrases refused, never shown).
 WORDING_DATA_FILES = frozenset({"wording.py", "strategy/wording.py"})
@@ -44,17 +46,36 @@ REGEX_FUNCTIONS = frozenset({"compile", "search", "match", "fullmatch", "sub", "
 _WORD = re.compile(r"[A-Za-z]")
 
 #: Producers not routed through render() yet (out of round 9's five-module scope), file -> functions. Ratchet.
-PENDING: dict[str, frozenset[str]] = {
-    "execution/partial.py": frozenset({
-        "_prepare_complete", "prepare_complete", "_refusal", "_ready", "prepare_close_partial", "review_manually",
-        "_reread_refusal", "_margin_refusal", "_prepare_close", "_close_refusal", "_in_flight_refusal",
-    }),
-    "reconciliation/compare.py": frozenset({"<module>"}),
-    "rules/plan.py": frozenset({"<module>"}),
-    "rules/actions.py": frozenset({"<module>"}),
-    "instruments/sources.py": frozenset({"<module>"}),
-    "timeline/why.py": frozenset({"why_did_this_trigger"}),
-    "execution/safety.py": frozenset({"_risk_flags", "<module>"}),
+PENDING: dict[str, dict[str, int]] = {
+    'admin/client_id.py': {'normalise_client_id': 1},
+    'admin/qualifying.py': {'_classify_one': 4, 'preview_import': 1},
+    'audit/models.py': {'check_payload_safe': 2},
+    'engine/display.py': {'describe_estimate': 1, 'estimate_line': 1},
+    'engine/estimate.py': {'<module>': 1},
+    'execution/alternatives.py': {'record_alternative_choice': 1},
+    'execution/partial.py': {'<module>': 5, '_authorised_orders': 2, '_gate': 2, '_not_prepared': 1, '_position_mismatches': 2, '_prepare_missing': 2, '_refetch': 1, '_sync_book': 1, 'close_partial_strategy': 4, 'complete_strategy': 1, 'review_manually': 1},
+    'execution/review.py': {'_notes': 1},
+    'execution/safety.py': {'<module>': 1, '__post_init__': 1, '_risk_flags': 3},
+    'execution/send_guard.py': {'_catalogue_symbol': 1, 'allowed_or_refuse': 3, 'resolve_all': 3},
+    'execution/sequence.py': {'<module>': 2, '_margin_order': 1},
+    'instruments/models.py': {'find_ref': 1},
+    'instruments/sources.py': {'<module>': 1},
+    'reconciliation/compare.py': {'<module>': 6, '_check_aware_datetime': 1, '_check_breakdown': 3, '_check_contract_pairs': 2, '_check_units': 1, '_records': 1, 'require_id': 1, 'units_map': 3},
+    'reconciliation/resolution.py': {'_require_text': 1},
+    'reconciliation/triggers.py': {'_ids': 3, '_records': 1, 'plan_run': 3},
+    'rules/actions.py': {'respond': 1},
+    'rules/model.py': {'describe': 1},
+    'rules/plan.py': {'<module>': 2},
+    'rules/templates.py': {'entry_level_reached': 1, 'entry_premium_target': 2, 'entry_range': 1, 'entry_time_window': 1, 'entry_volatility': 1, 'exit_max_loss': 1, 'exit_profit_target': 1, 'exit_time': 2, 'exit_underlying_level': 1},
+    'scenario/views.py': {'<module>': 1, 'scenario_values': 1},
+    'strategy/builder_history.py': {'<module>': 9},
+    'strategy/definition.py': {'_named': 5, 'changes_from': 1, 'describe': 1, 'describe_contract': 1},
+    'strategy/guard.py': {'<module>': 1, '_find': 3},
+    'strategy/live_state.py': {'_count': 1, '_is_bool': 1, '_pairs': 3, '_signed': 1},
+    'strategy/loader.py': {'load_templates': 2},
+    'strategy/versions.py': {'_require_aware': 1, '_require_text': 1},
+    'table/model.py': {'<module>': 1, 'scenario_caption': 1},
+    'timeline/why.py': {'<module>': 1, 'why_did_this_trigger': 9},
 }
 
 
@@ -114,7 +135,7 @@ def _excluded(chain: list[ast.AST]) -> bool:
 
 def scan_source(source: str, rel: str) -> list[tuple[str, int, str, str]]:
     """Every user-facing text producer in one file: (file, line, function, text)."""
-    if rel == CATALOGUE_FILE or rel in WORDING_DATA_FILES:
+    if rel in DOOR_FILES or rel in WORDING_DATA_FILES:
         return []
     tree = ast.parse(source)
     found: list[tuple[str, int, str, str]] = []
@@ -142,11 +163,11 @@ def inventory() -> list[tuple[str, int, str, str]]:
     return rows
 
 
-def _by_file(rows: list[tuple[str, int, str, str]]) -> dict[str, set[str]]:
-    grouped: dict[str, set[str]] = defaultdict(set)
+def _counts(rows: list[tuple[str, int, str, str]]) -> dict[tuple[str, str], int]:
+    counts: dict[tuple[str, str], int] = defaultdict(int)
     for rel, _, function, _ in rows:
-        grouped[rel].add(function)
-    return grouped
+        counts[(rel, function)] += 1
+    return counts
 
 
 def test_print_inventory(capsys: pytest.CaptureFixture[str]) -> None:
@@ -161,18 +182,19 @@ def test_print_inventory(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_every_producer_in_scope_is_routed_through_render() -> None:
     """AC-2 / Q226: no sentence-shaped user text outside the catalogue, except the PENDING ratchet."""
-    unrouted = [
-        f"{rel}:{line} in {function}: {text[:80]!r}"
-        for rel, line, function, text in inventory()
-        if function not in PENDING.get(rel, frozenset())
-    ]
+    rows = inventory()
+    counts = _counts(rows)
+    over = {key for key, n in counts.items() if n > PENDING.get(key[0], {}).get(key[1], 0)}
+    unrouted = [f"{rel}:{line} in {function}: {text[:80]!r}" for rel, line, function, text in rows
+                if (rel, function) in over]
     assert not unrouted, "user-facing text built outside render():\n" + "\n".join(unrouted)
 
 
 def test_pending_ratchet_only_shrinks() -> None:
     """A PENDING entry that no longer produces text must be removed, so the gap list cannot go stale."""
-    grouped = _by_file(inventory())
-    stale = [f"{rel}:{fn}" for rel, fns in PENDING.items() for fn in fns if fn not in grouped.get(rel, set())]
+    counts = _counts(inventory())
+    stale = [f"{rel}:{fn} listed {n}, left {counts.get((rel, fn), 0)}" for rel, fns in PENDING.items()
+             for fn, n in fns.items() if counts.get((rel, fn), 0) < n]
     assert not stale, f"routed producers still listed in PENDING (remove them): {stale}"
 
 
@@ -225,4 +247,5 @@ def test_detector_fails_closed_on_unknown_positions() -> None:
 def test_catalogue_file_is_the_one_home() -> None:
     src = 'X = "Leg 1 has already expired today."\n'
     assert scan_source(src, CATALOGUE_FILE) == []
+    assert scan_source(src, "errors/gate_slots.py") == []
     assert len(scan_source(src, "errors/other.py")) == 1

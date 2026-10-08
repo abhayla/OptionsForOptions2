@@ -1,0 +1,222 @@
+{
+  "user_input_lot_size": {
+    "sha256": "3747f34c3ef90510bed7dde442a661724f01fff2de5373226e7ef68d6aaa0b24",
+    "reviewed": "pending owner read"
+  },
+  "strategy_validation_duplicate_leg": {
+    "sha256": "54501268c50b76c3174f8be9854e33622bc0a704a9aa37865621720ade32a351",
+    "reviewed": "pending owner read"
+  },
+  "market_data_stale": {
+    "sha256": "12014012cce27f97b98c8bbc506228832c77503e85e6a978b036d77c52e387dc",
+    "reviewed": "pending owner read"
+  },
+  "broker_authentication_session_expired": {
+    "sha256": "e1ce13d806b12d1968c3d87d4ceabc0b0f899c9264ac191e8dbcf3b2b2a6ee73",
+    "reviewed": "pending owner read"
+  },
+  "broker_eligibility_fo_segment": {
+    "sha256": "a9d59a3d31a377359f5675e800e0577dfe4e1c7ae568ad865a110d5519adc09d",
+    "reviewed": "pending owner read"
+  },
+  "margin_insufficient": {
+    "sha256": "0f5341444321bbbf571f259b1a700f4c94b3aae5db298e37f4a058a7775c68b9",
+    "reviewed": "pending owner read"
+  },
+  "order_rejection_leg": {
+    "sha256": "476b0082084d8e060ce4060d8a57450fbd56baecee4d4edd803ac9304ca77cb8",
+    "reviewed": "pending owner read"
+  },
+  "partial_execution_legs": {
+    "sha256": "23ea0d25176d731aa1c0059436abf4f9a721b954f9644b516552f71834fd51b7",
+    "reviewed": "pending owner read"
+  },
+  "reconciliation_mismatch_lots": {
+    "sha256": "3e226b8c43b248dba54e49f16c4d85499c2bc26b3b0e78008ac9d4df56c5b431",
+    "reviewed": "pending owner read"
+  },
+  "notification_delivery_failed": {
+    "sha256": "13c46f0e24381d439e80ccf364a50dc0e8ddaf710f56c2fe02f127f82560e90f",
+    "reviewed": "pending owner read"
+  },
+  "entitlement_access_trial_ended": {
+    "sha256": "958436c21ef58cfe324b63bdebf20bd569d287ddf21d30bd05e92279fd372194",
+    "reviewed": "pending owner read"
+  },
+  "internal_system_save_failed": {
+    "sha256": "c88d237d7d3d01fa7eeb68246293fbf3d3be2ec1cbd147f8c8c78be7d53a10f4",
+    "reviewed": "pending owner read"
+  },
+  "gate_underlying_unsupported": {
+    "sha256": "e3f5cc6d3ba9024ef1593337e423e6783ce8a004c2f2e288409f6490f39b2d9f",
+    "reviewed": "pending owner read"
+  },
+  "gate_lot_size_unconfirmed": {
+    "sha256": "eac3c531f627147a426f552d70f2f6814eeaf55e03005e4f890d826e80c20927",
+    "reviewed": "pending owner read"
+  },
+  "gate_quantity_not_lots": {
+    "sha256": "912ba873efdb7ab437eb03092be320cd4332bf06f9c6f671d6f54550e29362b7",
+    "reviewed": "pending owner read"
+  },
+  "gate_version_not_executable": {
+    "sha256": "606e02e2500a89f6c0d269a21d1faaa1c829a03fb619fa65a1c2086b3e833ffe",
+    "reviewed": "pending owner read"
+  },
+  "gate_rules_unconfirmed": {
+    "sha256": "3b274eda72fb99f22caac44f6ced198a09fc9630752915c6626a4ddf0646e6ad",
+    "reviewed": "pending owner read"
+  },
+  "gate_rules_invalid": {
+    "sha256": "ed0c1ec7bf6ba9db54b4f74a1e3605de688d1b55c0ebafd7dad0df20f787fc67",
+    "reviewed": "pending owner read"
+  },
+  "gate_dependencies_unconfirmed": {
+    "sha256": "d8fca414dd92c3798d7f1b56da559c345dee66f2e9eac2a7a1301946bbf175c9",
+    "reviewed": "pending owner read"
+  },
+  "gate_dependencies_unsatisfied": {
+    "sha256": "093279eef5083eee37b8b568e6066d50054c541635a57f77ecf3a43f7a8934a7",
+    "reviewed": "pending owner read"
+  },
+  "gate_duplicate_leg": {
+    "sha256": "934c27d3a574150b7f8e9cad41d622f3c62fd5c5863bd5fa28096e2d7c5933cd",
+    "reviewed": "pending owner read"
+  },
+  "gate_exit_unverified": {
+    "sha256": "5ed04e7059fa9158087cc79f5b236276726259cc60cada78fdc5a58c36213174",
+    "reviewed": "pending owner read"
+  },
+  "gate_exit_adds_position": {
+    "sha256": "4d74ae51f4cf71d53b32e9bc7b636d665d0d81b6055c9e4052d0ec3362095202",
+    "reviewed": "pending owner read"
+  },
+  "gate_market_unconfirmed": {
+    "sha256": "b85b5fa92c69260adc5e27dd2796c2e3cb540fb2c2148754732194c841da426d",
+    "reviewed": "pending owner read"
+  },
+  "gate_market_closed": {
+    "sha256": "bb65aac3b47ef3de4a75b47f20ddb8ac8c0bb197651f0a0123c2e24461f20d87",
+    "reviewed": "pending owner read"
+  },
+  "gate_data_unhealthy": {
+    "sha256": "a9a83c4371a7c8bac521343daa32c7b1498c8e4cf1bd34aa180dac7eafa63697",
+    "reviewed": "pending owner read"
+  },
+  "gate_expiry_passed": {
+    "sha256": "23ec328a9bb1ebe1f69c6c728543db71de9ba9918577b6f6880ed0551aba90fc",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_ambiguous": {
+    "sha256": "112636046d66b848e7ef58b9745f0e7a1d8ee6950ef29feb96d77e1d770e9a29",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_not_found": {
+    "sha256": "9e5ebea755aea249ca45898d0d534e455a304267538721c4e35384e30840fee4",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_not_found_alternatives": {
+    "sha256": "47309b635393986c83b12f3d9405c5e514df5f69c05de482a4ad9643a6b1f18d",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_no_zerodha_record": {
+    "sha256": "aa40cb9437d123e229a280f4af639c530ef48b14ed5d9698ecabd6f3e7a1db6f",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_no_zerodha_record_alternatives": {
+    "sha256": "96467cec2bbbf6eb1514390565cc18ce75a7f564a84d82795ba0d8cb054cfeff",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_not_listed": {
+    "sha256": "eaf59e128e37efaaf2b9d4fccd1c52a454f7481f7b902c7148ef53785dd184e8",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_not_listed_alternatives": {
+    "sha256": "c03397893897a13be9fe38d3e06a920521fa26a1620b08ca95ba9063da4f3690",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_unconfirmed": {
+    "sha256": "ff9fa832eeeadcf6918d9530df83b2a992173411bd6a2f401edb98e0c1b2116f",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_unconfirmed_alternatives": {
+    "sha256": "d7c68c3ed93e8bb64babe722d9ddbfe6ea2ac478160ba7dd37657e42b2c48c84",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_unavailable": {
+    "sha256": "018b6878be0d89bd6a6f1c700ea9ae4d783ab138a5d924d1779561f4ea929594",
+    "reviewed": "pending owner read"
+  },
+  "gate_contract_unavailable_alternatives": {
+    "sha256": "abb887bdaba2231227888afc97e566bf2aab7df73dc298a7aa18555af56d3e33",
+    "reviewed": "pending owner read"
+  },
+  "gate_broker_unconfirmed": {
+    "sha256": "266bb7f6980e060782b68973895f26943b899906c31eea43c9fda0ceeefbc5a0",
+    "reviewed": "pending owner read"
+  },
+  "gate_broker_not_connected": {
+    "sha256": "97b63566c5a01205721b9e0cdef6b7b3ff0c1c94412dd1d4e2e77d5b2c21be34",
+    "reviewed": "pending owner read"
+  },
+  "gate_session_unconfirmed": {
+    "sha256": "0f11ff56a270948befa6cfdcb34103e8c9aa5b160c63c406c0f7992f3c7fc974",
+    "reviewed": "pending owner read"
+  },
+  "gate_session_expired": {
+    "sha256": "d0b36f554ef44ae8da91ad82ce7c628e01d9b9c938ecb3c7a9c6d3e07f90ee7e",
+    "reviewed": "pending owner read"
+  },
+  "gate_margin_unconfirmed": {
+    "sha256": "021eb04a8fcc3f0f640e742c05828bf7a163530352a5ad2fc8e1924182cea4c2",
+    "reviewed": "pending owner read"
+  },
+  "gate_margin_insufficient": {
+    "sha256": "9ac83cd5615f2e69c87abb86cadb43497a9e3bb00c8bd8c1de60bd56a968d463",
+    "reviewed": "pending owner read"
+  },
+  "gate_entitlement_unconfirmed": {
+    "sha256": "0177a28d6d5e0398db5e3979505f31b4aa480b45c1fb54b584275d7e216b7b63",
+    "reviewed": "pending owner read"
+  },
+  "gate_entitlement_pro": {
+    "sha256": "f234e60d39cb46bcd9d26b32000b22de2945137a6bfcea17e4ec25a2570ee133",
+    "reviewed": "pending owner read"
+  },
+  "gate_entitlement_worse_worst_case": {
+    "sha256": "89e788d8c8e8b2ccea023514717a96b1a9e492a2fcf0f93ad0dd8b1de2f59456",
+    "reviewed": "pending owner read"
+  },
+  "gate_entitlement_futures_entry_unknown": {
+    "sha256": "f42ab0cfa605cb9c2209a296d9f46415dd7b19041d105b4383ba8e3fd155e73c",
+    "reviewed": "pending owner read"
+  },
+  "gate_entitlement_multi_expiry": {
+    "sha256": "f8cbf84276260cbd44ac40033b5a4d117d13d9e0cb8069b5bb23d26dc4efe36f",
+    "reviewed": "pending owner read"
+  },
+  "gate_reconciliation_unknown": {
+    "sha256": "609b7ac16a0a161ee21b077105d35fab9c1e7027fd17f2408e3423884860f026",
+    "reviewed": "pending owner read"
+  },
+  "gate_reconciliation_mismatch": {
+    "sha256": "0d454322a4babfc99263d1dfeffd8cd237c147c679269a86b280007c214aa7fd",
+    "reviewed": "pending owner read"
+  },
+  "gate_active_legs_unverified": {
+    "sha256": "55ca54c460456e0bce88e23b8dfa40083b05cc7f81f5ce1c0de94038de66d9c7",
+    "reviewed": "pending owner read"
+  },
+  "gate_strategy_mismatch": {
+    "sha256": "6e6f7639fadb3d94c9b0929f17f140f9a3e2e520d83035ab9ce5b8ce505a1f53",
+    "reviewed": "pending owner read"
+  },
+  "gate_internal_error": {
+    "sha256": "3d700cafffea9c8c0569201c985a27e8b5d8131c5a72e83c74dd9aec7eb4d3a8",
+    "reviewed": "pending owner read"
+  },
+  "marketdata_disconnected": {
+    "sha256": "a87e6f1bded6de61cf847696a990b1061ab3015635ee40eb59b1c530c7f99d9e",
+    "reviewed": "pending owner read"
+  }
+}

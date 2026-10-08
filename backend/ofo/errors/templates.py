@@ -20,6 +20,12 @@ from types import MappingProxyType
 
 from .classes import ErrorClass
 from .model import UserFacingError, _build, _claim_render_token
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+
+from .gate_slots import (
+    Clock, DataHealthState, DataInputName, Date, LegContract, LegRef, Rupees, Strikes, Symbol, VersionStateName,
+    VersionStates, WorstCase,
+)
 from .slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
@@ -175,6 +181,190 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
 )
 
 
+# --- Round 9 (issue #30): the execution safety gate (REQ-059) and the disconnect status (REQ-049 AC-5) -----------
+# Each `what_happened` keeps the sentence the gate showed before round 9 (W-014's reviewed reason text), except the
+# expired-leg message, which uses the brief's wording; the other three parts are new and await the owner's read
+# (tests/errors/template_pins.json, docs/process/w024-templates-for-owner.md).
+
+_EXEC = "Execution of this strategy."
+_RECONNECT = "Reconnect your Zerodha account from the account page, then try again."
+_NO_ALTERNATIVE = " No nearby listed strike is available to offer."
+_ALTERNATIVES = " Strikes you could consider instead: {strikes}. Your strategy has not been changed."
+_PICK_OR_REMOVE = "Pick one of the strikes shown for this leg yourself, or remove the leg, then check again."
+_REPLACE_OR_REMOVE = "Replace or remove this leg, then check again."
+_NOT_TRADABLE = "This leg cannot be sent to Zerodha as it stands."
+_PRO_IMPACT = "This action is not available on your current plan."
+_PRO_BLOCKED = "This entry or adjustment."
+_PRO_NEXT = "Upgrade to Pro to continue, or exit or reduce the strategy instead."
+
+
+def _gate(id: str, error_class: ErrorClass, number: int, what: str, impact: str, blocked: str, next_: str,
+          slots: Mapping[str, type[SlotType]] | None = None) -> MessageTemplate:
+    return MessageTemplate(
+        id=id, error_class=error_class, code=f"{error_class.name}_{number:03d}", what_happened=what, impact=impact,
+        what_is_blocked=blocked, next_action=next_, slots=dict(slots or {}),
+    )
+
+
+def _contract_pair(id: str, error_class: ErrorClass, number: int, problem: str) -> tuple[MessageTemplate, ...]:
+    """A contract problem in its two forms: no alternative strike to offer, and one or two offered (never applied)."""
+    return (
+        _gate(id, error_class, number, "{leg} " + problem + _NO_ALTERNATIVE, _NOT_TRADABLE, _EXEC,
+              _REPLACE_OR_REMOVE, {"leg": LegRef}),
+        _gate(id + "_alternatives", error_class, number + 1, "{leg} " + problem + _ALTERNATIVES, _NOT_TRADABLE, _EXEC,
+              _PICK_OR_REMOVE, {"leg": LegRef, "strikes": Strikes}),
+    )
+
+
+_SUPPORTED = ", ".join(SUPPORTED_UNDERLYINGS)
+_UI, _SV, _MD = ErrorClass.USER_INPUT, ErrorClass.STRATEGY_VALIDATION, ErrorClass.MARKET_DATA
+_BA, _BE, _MG = ErrorClass.BROKER_AUTHENTICATION, ErrorClass.BROKER_ELIGIBILITY, ErrorClass.MARGIN
+_EA, _RM, _IS = ErrorClass.ENTITLEMENT_ACCESS, ErrorClass.RECONCILIATION_MISMATCH, ErrorClass.INTERNAL_SYSTEM
+
+_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("gate_underlying_unsupported", _UI, 101,
+          "{symbol} is not supported. Supported underlyings: " + _SUPPORTED + ".",
+          "None of this strategy's contracts can be checked or traded on this platform.", _EXEC,
+          "Build the strategy on a supported underlying.", {"symbol": Symbol}),
+    _gate("gate_lot_size_unconfirmed", _UI, 102, "{leg}: the lot size for this expiry could not be confirmed.",
+          "The quantity of this leg cannot be checked against the exchange lot size.", _EXEC,
+          "Refresh the instrument list, then check again.", {"leg": LegRef}),
+    _gate("gate_quantity_not_lots", _UI, 103,
+          "{leg}: quantity {quantity} is not a whole number of lots. The {underlying} lot size for this expiry is "
+          "{lot} (for example {lot} or {two_lots}).",
+          "The exchange accepts orders only in whole lots.", _EXEC,
+          "Change this leg's quantity to a whole number of lots, then check again.",
+          {"leg": LegRef, "quantity": Count, "underlying": Underlying, "lot": Count, "two_lots": Count}),
+    _gate("gate_version_not_executable", _SV, 101,
+          "This version of the strategy is {state}. This action executes only a version that is {allowed}.",
+          "The orders would not match the strategy version this action is meant for.",
+          "This action on this strategy version.", "Open the version this action applies to, then try again.",
+          {"state": VersionStateName, "allowed": VersionStates}),
+    _gate("gate_rules_unconfirmed", _SV, 102,
+          "We could not confirm that this strategy's rules are valid. Review them to continue.",
+          "Monitoring could act on rules that have not been checked.", _EXEC,
+          "Open the strategy's rules and save them again."),
+    _gate("gate_rules_invalid", _SV, 103, "This strategy's rules are not valid. Review them to continue.",
+          "Monitoring cannot act on rules that are not valid.", _EXEC,
+          "Correct the rules marked as not valid, then save the strategy."),
+    _gate("gate_dependencies_unconfirmed", _SV, 104,
+          "We could not confirm that the orders this execution depends on are in place.",
+          "Orders could be placed without the orders they rely on.", _EXEC,
+          "Check the strategy's open orders, then try again."),
+    _gate("gate_dependencies_unsatisfied", _SV, 105,
+          "An order this execution depends on is not in place yet (for example a protective leg).",
+          "Orders could be placed without the order they rely on.", _EXEC,
+          "Place the order this execution depends on first, then try again."),
+    _gate("gate_duplicate_leg", _SV, 106,
+          "{leg} is the same contract as leg {other}. The legs have not been combined; edit the strategy to keep "
+          "one or combine them yourself.",
+          "Two legs on one contract would be sent as separate orders.", _EXEC,
+          "Edit the strategy so each contract appears in one leg only.", {"leg": LegRef, "other": Count}),
+    _gate("gate_exit_unverified", _SV, 107,
+          "We could not compare this exit with the strategy's open positions. Execution is blocked and no order "
+          "has been submitted.",
+          "An exit could open a position instead of closing one.", "This exit.",
+          "Refresh the strategy's positions from Zerodha, then try the exit again."),
+    _gate("gate_exit_adds_position", _SV, 108,
+          "This exit includes an order that would open or add to a position instead of closing one. An exit can "
+          "only close or reduce positions this strategy holds.",
+          "Sending it would add risk instead of removing it.", "This exit.",
+          "Remove the order that opens or adds to a position, then try the exit again."),
+    _gate("gate_market_unconfirmed", _MD, 101,
+          "We could not confirm that the market is open. Execution is paused until it is confirmed.",
+          "No order can be placed while the market's status is unknown.", _EXEC,
+          "Try again once the market status is shown."),
+    _gate("gate_market_closed", _MD, 102, "The market is closed. Orders can be placed once it opens.",
+          "No order can be placed while the market is closed.", _EXEC,
+          "Return during market hours and execute again."),
+    _gate("gate_data_unhealthy", _MD, 103,
+          "Market data needed for execution ({data_input}) {state}. Execution is paused until it is current.",
+          "Prices, margin and checks could rest on data that does not match the market.", _EXEC,
+          "Wait for the data to update, then try again.", {"data_input": DataInputName, "state": DataHealthState}),
+    _gate("gate_expiry_passed", _MD, 104, "Leg {leg} ({contract}) expired on {date}.",
+          "This strategy cannot be executed as planned.", "Execute", "Replace or remove this leg.",
+          {"leg": Count, "contract": LegContract, "date": Date}),
+    _gate("gate_contract_ambiguous", _MD, 105, "{leg} matches more than one contract in the instrument list.",
+          _NOT_TRADABLE, _EXEC, "Refresh the instrument list, then check again.", {"leg": LegRef}),
+    *_contract_pair("gate_contract_not_found", _MD, 106, "does not exist in Zerodha's instrument list."),
+    *_contract_pair("gate_contract_no_zerodha_record", _MD, 108,
+                    "has no Zerodha instrument record, so it cannot be traded at Zerodha."),
+    *_contract_pair("gate_contract_not_listed", _MD, 110, "is no longer listed by Zerodha."),
+    *_contract_pair("gate_contract_unconfirmed", _BE, 101,
+                    "has not been confirmed as available on Zerodha yet. Refresh availability to continue."),
+    *_contract_pair("gate_contract_unavailable", _BE, 103,
+                    "is currently unavailable on Zerodha. Zerodha isn't accepting fresh orders for this contract "
+                    "right now."),
+    _gate("gate_broker_unconfirmed", _BA, 101, "We could not confirm your Zerodha connection. Reconnect to continue.",
+          "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
+    _gate("gate_broker_not_connected", _BA, 102, "Your Zerodha account is not connected. Connect it to continue.",
+          "Orders cannot be sent to Zerodha.", _EXEC, "Connect your Zerodha account from the account page."),
+    _gate("gate_session_unconfirmed", _BA, 103, "We could not confirm your Zerodha session. Reconnect to continue.",
+          "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
+    _gate("gate_session_expired", _BA, 104, "Your Zerodha session has expired. Reconnect to continue.",
+          "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
+    _gate("gate_margin_unconfirmed", _MG, 101,
+          "We could not confirm your available margin with Zerodha. Execution is paused.",
+          "The orders could be rejected for insufficient margin.", _EXEC,
+          "Check your margin in Zerodha, then try again."),
+    _gate("gate_margin_insufficient", _MG, 102,
+          "Available margin {available} is less than the estimated {required} this strategy needs. Zerodha's figure "
+          "is final. No order has been submitted.",
+          "Zerodha would reject these orders for insufficient margin.", _EXEC,
+          "Add funds in Zerodha or reduce the quantity, then try again.",
+          {"available": Rupees, "required": Rupees}),
+    _gate("gate_entitlement_unconfirmed", _EA, 101,
+          "We could not confirm your plan. New entries and adjustments that add or change positions need Pro.",
+          "This action cannot run until your plan is confirmed.", _PRO_BLOCKED,
+          "Reload the page to confirm your plan, or exit or reduce the strategy instead."),
+    _gate("gate_entitlement_pro", _EA, 102,
+          "New entries and adjustments that add or change positions need Pro. Exiting, or closing or reducing legs "
+          "of an active strategy, stays available on every plan.",
+          _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
+    _gate("gate_entitlement_worse_worst_case", _EA, 103,
+          "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from "
+          "{before} to {after}. Adjustments that add risk need Pro. Exiting, or closing or reducing legs without a "
+          "larger worst case, stays available on every plan.",
+          _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT, {"before": WorstCase, "after": WorstCase}),
+    _gate("gate_entitlement_futures_entry_unknown", _EA, 104,
+          "Entry price of a futures leg is not known yet — adjustment needs Pro until it is.",
+          _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
+    _gate("gate_entitlement_multi_expiry", _EA, 105,
+          "This strategy has legs on more than one expiry. Without Pro it can be exited, reduced by the same share "
+          "on every leg, or have only its sold options closed; other adjustments may add risk and need Pro.",
+          _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
+    _gate("gate_reconciliation_unknown", _RM, 101,
+          "Reconciliation status unknown. Execution is blocked until your Zerodha positions have been reconciled.",
+          "The platform cannot tell whether its record matches your Zerodha positions.", _EXEC,
+          "Run reconciliation for your account, then try again."),
+    _gate("gate_reconciliation_mismatch", _RM, 102,
+          "Your Zerodha positions for this strategy do not match what we recorded. Resolve the mismatch to "
+          "continue.",
+          "P&L, checks and new orders for this strategy would rest on the wrong positions.", _EXEC,
+          "Open the reconciliation screen and resolve the mismatch."),
+    _gate("gate_active_legs_unverified", _RM, 103,
+          "This strategy's open positions could not be verified against its stored active version. Execution is "
+          "blocked and no order has been submitted.",
+          "Orders could be prepared from positions this strategy does not hold.", _EXEC,
+          "Reload the strategy so its positions are read again, then try again."),
+    _gate("gate_strategy_mismatch", _RM, 104,
+          "This check was prepared for a different strategy. Execution is blocked; reopen the strategy to continue.",
+          "The checks shown do not belong to this strategy.", _EXEC, "Reopen this strategy and check again."),
+    _gate("gate_internal_error", _IS, 101,
+          "An internal error stopped the safety checks. Execution is blocked and no order has been submitted.",
+          "The platform could not finish checking this strategy before execution.", _EXEC,
+          "Try again in a few minutes; contact support if this keeps happening."),
+    # REQ-049 AC-5's exact sentence is the what-happened part (owner-cited); the other three are new.
+    _gate("marketdata_disconnected", _MD, 120,
+          "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",
+          "Prices on screen may not match the live market, and rules are not checked while data is missing.",
+          "Rule monitoring for this strategy.", "Wait for the feed to reconnect; monitoring resumes on its own.",
+          {"time": Clock}),
+)
+
+_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES
+
+
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
 #: `render()` never reads it: it works from its own snapshot taken below, so neither adding a key
 #: (refused: a mappingproxy has no __setitem__) nor forcing new text into a template object (with
@@ -244,3 +434,19 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
 
 render = _make_render(_claim_render_token())
 del _make_render
+
+
+def display_text(message: UserFacingError) -> str:
+    """The text a user is shown for `message`: all four REQ-065 AC-2 parts, one per line, plus Zerodha's or the
+    user's own words in their labelled field when present. Built only from a `render()` result."""
+    if type(message) is not UserFacingError:
+        raise TypeError(f"display_text needs a UserFacingError from render(), got {type(message).__name__}")
+    lines = [
+        message.what_happened,
+        message.impact,
+        "Blocked: " + message.what_is_blocked,
+        "Next step: " + message.next_action,
+    ]
+    if message.external_text is not None:
+        lines.append(message.external_text)
+    return "\n".join(lines)
