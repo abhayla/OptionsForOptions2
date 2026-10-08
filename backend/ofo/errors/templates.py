@@ -646,7 +646,9 @@ _BOUNDARY_TEMPLATES: tuple[MessageTemplate, ...] = (
 
 # --- W-058 (REQ-015 AC-6/AC-9, REQ-063): the Zerodha login link and callback (backend/ofo_app/routes/broker.py).
 # Each refusal keeps the meaning of the fixed message W-058 showed before the merge onto W-024 and adds the other
-# three parts. Nothing is ever stored on a refusal. New: awaiting the owner's read.
+# three parts. Nothing is ever stored on a refusal. Owner read 2026-10-08 (kite_busy: awaiting the owner's read).
+# Fix round 1: a busy or unreachable Zerodha, and our own login cap, are broker-authentication failures (the login did
+# not complete), not internal-system bugs; their HTTP status comes from the failure's source (ofo_app.errors.Failure).
 _LOGIN_IMPACT = "Your Zerodha account was not connected, and nothing was saved."
 _LOGIN_BLOCKED = "Connecting your Zerodha account."
 _LOGIN_AGAIN = "Start the Zerodha login again from the account page."
@@ -656,7 +658,7 @@ _BROKER_LOGIN_TEMPLATES: tuple[MessageTemplate, ...] = (
           _LOGIN_IMPACT, _LOGIN_BLOCKED, _LOGIN_AGAIN),
     _gate("broker_state_invalid", _BA, 302, "This Zerodha login link has expired or was already used.",
           _LOGIN_IMPACT, _LOGIN_BLOCKED, _LOGIN_AGAIN),
-    _gate("broker_login_busy", _IS, 301, "Too many Zerodha logins are in progress at the moment.",
+    _gate("broker_login_busy", _BA, 308, "Too many Zerodha logins are in progress at the moment.",
           _LOGIN_IMPACT, _LOGIN_BLOCKED, "Wait a few minutes, then start the Zerodha login again."),
     _gate("broker_user_mismatch", _BE, 301, "This Zerodha account is not the one connected to this platform.",
           "Nothing was changed; the connected Zerodha account stays as it was.", _LOGIN_BLOCKED,
@@ -671,8 +673,10 @@ _BROKER_LOGIN_TEMPLATES: tuple[MessageTemplate, ...] = (
           _LOGIN_IMPACT, _LOGIN_BLOCKED, _LOGIN_AGAIN),
     _gate("kite_refused", _BA, 307, "Zerodha did not accept this login.",
           _LOGIN_IMPACT, _LOGIN_BLOCKED, _LOGIN_AGAIN),
-    _gate("kite_unavailable", _IS, 302, "Zerodha could not be reached to finish this login.",
+    _gate("kite_unavailable", _BA, 309, "Zerodha could not be reached to finish this login.",
           _LOGIN_IMPACT, _LOGIN_BLOCKED, "Wait a moment, then start the Zerodha login again."),
+    _gate("kite_busy", _BA, 310, "Zerodha is handling too many requests to finish this login right now.",
+          _LOGIN_IMPACT, _LOGIN_BLOCKED, "Wait a minute, then start the Zerodha login again."),
     _gate("broker_store_failed", _IS, 303, "The Zerodha session could not be saved.",
           "Your Zerodha account was not connected; no part of the session was kept.", _LOGIN_BLOCKED,
           _LOGIN_AGAIN),

@@ -37,6 +37,7 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal
 
 import httpx
@@ -52,7 +53,7 @@ from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
 from ofo_app.broker_token_store import store_session
 from ofo_app.db import get_db
-from ofo_app.errors import RedirectCookie, typed_redirect
+from ofo_app.errors import Failure, RedirectCookie, typed_redirect
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
 
 log = logging.getLogger(__name__)
@@ -73,19 +74,28 @@ V1_OWNER_REF = "owner"
 REFUSAL_CODES = frozenset({
     "broker_login_not_completed", "broker_state_invalid", "broker_login_busy", "broker_user_mismatch",
     "kite_no_user_id", "kite_token_exception", "kite_input_exception", "kite_no_access_token", "kite_refused",
-    "kite_unavailable", "broker_store_failed",
+    "kite_unavailable", "kite_busy", "broker_store_failed",
+})
+#: Refusals whose cause is our own capacity or Zerodha, not our code: answered 429 / 503 / 502, never 500.
+FAILURE_BY_CODE = MappingProxyType({
+    "broker_login_busy": Failure.CAPACITY,
+    "kite_busy": Failure.UPSTREAM_BUSY,
+    "kite_unavailable": Failure.UPSTREAM_BAD_GATEWAY,
 })
 
 
 class BrokerLoginRefused(UserFacing, Exception):
-    """A refused Zerodha login: carries only its `render()` message; the error boundary shows it."""
+    """A refused Zerodha login: carries only its `render()` message; the error boundary shows it, at the status of
+    its failure source when it has one, and clears the login-state cookie (``clear_cookie``) on every refusal."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, clear_cookie: RedirectCookie | None = None) -> None:
         if code not in REFUSAL_CODES:
             raise ValueError("not a broker login refusal code")
         self.message: UserFacingError = render(code)
         super().__init__(code)
         self.code = code
+        self.failure: Failure | None = FAILURE_BY_CODE.get(code)
+        self.clear_cookie = clear_cookie
 
 
 class BrokerRedirectOut(ApiModel):
@@ -151,6 +161,17 @@ def runtime(request: Request) -> BrokerRuntime:
     return request.app.state.broker
 
 
+def _state_cookie(rt: BrokerRuntime, nonce: str | None = None) -> RedirectCookie:
+    """The login-state cookie: set with ``nonce``, cleared (Max-Age=0, same Path) without one."""
+    return RedirectCookie(STATE_COOKIE, rt.config.callback_path, value=nonce,
+                          max_age=STATE_TTL_SECONDS if nonce else None,
+                          secure=rt.config.redirect_url.startswith("https://"))
+
+
+def _refused(rt: BrokerRuntime, code: str) -> BrokerLoginRefused:
+    return BrokerLoginRefused(code, clear_cookie=_state_cookie(rt))
+
+
 def current_user_ref() -> str:
     return V1_OWNER_REF
 
@@ -170,9 +191,8 @@ async def zerodha_login(request: Request, user_ref: str = Depends(current_user_r
     try:
         state, nonce = rt.states.issue(user_ref)
     except StateCapReached:
-        raise BrokerLoginRefused("broker_login_busy") from None
-    cookie = RedirectCookie(STATE_COOKIE, rt.config.callback_path, value=nonce, max_age=STATE_TTL_SECONDS,
-                            secure=rt.config.redirect_url.startswith("https://"))
+        raise _refused(rt, "broker_login_busy") from None
+    cookie = _state_cookie(rt, nonce)
     return typed_redirect(BrokerRedirectOut(redirect="zerodha_login"), login_url(rt.config.api_key, state), cookie)
 
 
@@ -187,27 +207,26 @@ async def kite_callback(
     rt = runtime(request)
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))
     if user_ref is None:
-        raise BrokerLoginRefused("broker_state_invalid")
+        raise _refused(rt, "broker_state_invalid")
     if status != "success" or not request_token:
-        raise BrokerLoginRefused("broker_login_not_completed")
+        raise _refused(rt, "broker_login_not_completed")
     try:
         session = await kite.exchange(request_token)
     except KiteExchangeError as exc:
         code = exc.code if exc.code in REFUSAL_CODES else "kite_refused"
-        raise BrokerLoginRefused(code) from None
+        raise _refused(rt, code) from None
     except Exception:  # noqa: BLE001 - fail closed, and never let an exception text near a log or the browser
-        raise BrokerLoginRefused("kite_unavailable") from None
+        raise _refused(rt, "kite_unavailable") from None
     if not secrets.compare_digest(session.user_id, rt.config.expected_user_id):
-        raise BrokerLoginRefused("broker_user_mismatch")  # nothing stored; the active session is not replaced
+        raise _refused(rt, "broker_user_mismatch")  # nothing stored; the active session is not replaced
     try:
         async with db.begin():
             await store_session(db, user_ref, session.access_token, rt.cipher)
     except Exception:  # noqa: BLE001 - any error between exchange and commit stores nothing
-        raise BrokerLoginRefused("broker_store_failed") from None
+        raise _refused(rt, "broker_store_failed") from None
     finally:
         del session
-    cookie = RedirectCookie(STATE_COOKIE, rt.config.callback_path, secure=rt.config.redirect_url.startswith("https://"))
-    return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, cookie)
+    return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
 
 
 class CallbackQueryFilter(logging.Filter):

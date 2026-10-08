@@ -9,6 +9,7 @@ Every answer state maps to one code (run-discipline B4 d); nothing about the ans
 - 200 with data.access_token          -> the token
 - 200 without an access token         -> KiteExchangeError("kite_no_access_token")
 - 200 without a user_id               -> KiteExchangeError("kite_no_user_id")
+- 429 (Kite rate limit)               -> KiteExchangeError("kite_busy")     (never "did not accept this login")
 - 403 / TokenException                -> KiteExchangeError("kite_token_exception")   (expired or used request token)
 - 400 / InputException                -> KiteExchangeError("kite_input_exception")   (bad checksum or input)
 - any other 4xx                       -> KiteExchangeError("kite_refused")
@@ -93,6 +94,8 @@ class HttpKiteAuth:
             return KiteSession(access_token=token, user_id=user_id)
         if status >= 500:
             raise KiteExchangeError("kite_unavailable")
+        if status == 429:
+            raise KiteExchangeError("kite_busy")
         error_type = _error_type(response)
         if status == 403 or error_type == "TokenException":
             raise KiteExchangeError("kite_token_exception")

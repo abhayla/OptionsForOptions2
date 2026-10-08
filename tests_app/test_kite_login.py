@@ -22,6 +22,7 @@ from ofo.broker.kite_auth import KiteSession
 from ofo.errors import CATALOGUE, render
 from ofo_app.broker_config import BrokerConfig, BrokerConfigError, BrokerSettings, load_broker_config
 from ofo_app.db import get_db
+from ofo_app import errors as errors_module
 from ofo_app.errors import STATUS_BY_CLASS
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
 from ofo_app.main import create_app
@@ -93,24 +94,38 @@ async def _state(ac: AsyncClient) -> str:
     return parse_qs(query["redirect_params"][0])["state"][0]
 
 
+#: Each refusal's HTTP status (fix round 1): its failure source when it has one (our cap 429, Kite busy 503, Kite
+#: unreachable or junk 502), else its error class. Only a failure of our own code is a 500.
+EXPECTED_STATUS = {"broker_login_not_completed": 401, "broker_state_invalid": 401, "broker_login_busy": 429,
+                   "broker_user_mismatch": 403, "kite_no_user_id": 401, "kite_no_access_token": 401,
+                   "kite_token_exception": 401, "kite_input_exception": 401, "kite_refused": 401,
+                   "kite_unavailable": 502, "kite_busy": 503, "broker_store_failed": 500}
+
+
 def _refused(response, code: str) -> None:
     """A refusal is answered by the one error boundary (W-024): the catalogue template's four parts, the status of its
-    error class, and the no-leak headers."""
+    failure source or class, the no-leak headers, the login-state cookie cleared, and on a 401 a WWW-Authenticate."""
     assert code in broker_routes.REFUSAL_CODES
-    assert response.status_code == STATUS_BY_CLASS[CATALOGUE[code].error_class], (response.status_code, code)
+    assert response.status_code == EXPECTED_STATUS[code], (response.status_code, code)
     assert response.json() == render(code).as_dict()
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
+    cookie = response.headers.get("set-cookie", "").lower()
+    assert cookie.startswith(broker_routes.STATE_COOKIE + "="), cookie
+    assert "max-age=0" in cookie and f"path={CALLBACK}" in cookie, cookie
+    if response.status_code == 401:
+        assert response.headers["www-authenticate"] == errors_module.WWW_AUTHENTICATE
+    if code in ("broker_login_busy", "kite_busy"):
+        assert response.headers["retry-after"] == "60"
 
 
-def test_every_refusal_code_is_a_catalogue_template_at_the_status_of_its_class():
-    """Each refusal's status now follows its error class (ofo_app.errors.STATUS_BY_CLASS)."""
-    expected = {"broker_login_not_completed": 401, "broker_state_invalid": 401, "broker_login_busy": 500,
-                "broker_user_mismatch": 403, "kite_no_user_id": 401, "kite_no_access_token": 401,
-                "kite_token_exception": 401, "kite_input_exception": 401, "kite_refused": 401,
-                "kite_unavailable": 500, "broker_store_failed": 500}
-    assert set(expected) == broker_routes.REFUSAL_CODES
-    assert {c: STATUS_BY_CLASS[CATALOGUE[c].error_class] for c in expected} == expected
+def test_every_refusal_code_is_a_catalogue_template_at_its_status():
+    assert set(EXPECTED_STATUS) == broker_routes.REFUSAL_CODES
+    by_class = {c: STATUS_BY_CLASS[CATALOGUE[c].error_class] for c in EXPECTED_STATUS
+                if c not in broker_routes.FAILURE_BY_CODE}
+    by_failure = {c: f.status for c, f in broker_routes.FAILURE_BY_CODE.items()}
+    assert {**by_class, **by_failure} == EXPECTED_STATUS
+    assert all(CATALOGUE[c].error_class.name != "INTERNAL_SYSTEM" for c in broker_routes.FAILURE_BY_CODE)
     with pytest.raises(ValueError):
         broker_routes.BrokerLoginRefused("Zerodha login was not completed")
 
@@ -224,9 +239,9 @@ async def test_the_login_route_refuses_over_the_cap():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         codes = [(await ac.get(broker_routes.LOGIN_PATH)).status_code for _ in range(21)]
         last = await ac.get(broker_routes.LOGIN_PATH)
-    assert codes[:20] == [302] * 20 and codes[20] == 500
+    assert codes[:20] == [302] * 20 and codes[20] == 429
     _refused(last, "broker_login_busy")
-    assert "set-cookie" not in last.headers
+    assert "max-age=0" in last.headers["set-cookie"].lower()  # no new login nonce, only the clearing cookie
 
 
 async def test_the_login_cookie_is_httponly_lax_and_scoped_to_the_callback():
@@ -301,7 +316,7 @@ async def test_a_login_not_completed_stores_nothing(params):
 
 @pytest.mark.parametrize("code", [
     "kite_token_exception", "kite_input_exception", "kite_no_access_token", "kite_no_user_id", "kite_unavailable",
-    "kite_refused",
+    "kite_refused", "kite_busy",
 ])
 async def test_a_refused_exchange_stores_nothing(code):
     kite = FakeKite(KiteExchangeError(code))
@@ -378,7 +393,8 @@ async def test_exchange_posts_the_documented_form_and_returns_the_access_token()
                                "error_type": "TokenException"}), "kite_token_exception"),
     (httpx.Response(400, json={"status": "error", "message": "Invalid `checksum`.",
                                "error_type": "InputException"}), "kite_input_exception"),
-    (httpx.Response(429, json={"status": "error", "error_type": "NetworkException"}), "kite_refused"),
+    (httpx.Response(429, json={"status": "error", "error_type": "NetworkException"}), "kite_busy"),
+    (httpx.Response(429, text="slow down"), "kite_busy"),
     (httpx.Response(500, text="oops"), "kite_unavailable"),
     (httpx.Response(503, text="maintenance"), "kite_unavailable"),
 ])
@@ -551,3 +567,55 @@ async def test_any_boundary_error_carries_the_no_leak_headers():
     assert response.status_code == 404 and response.json() == render("user_input_request_not_available").as_dict()
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
+
+
+# ---- fix round 1: redirect and cookie guards, catalogue codes survive log redaction ----
+
+
+@pytest.mark.parametrize("location", ["https://evil.example/x", "//evil.example", "/" + chr(92) + "evil.example",
+                                      "https://kite.zerodha.com/connect/login?v=3&api_key=k",
+                                      "https://evil.example/connect/login?v=3&api_key=k&redirect_params=state%3Ds"])
+def test_typed_redirect_refuses_an_off_site_location(location):
+    with pytest.raises(ValueError):
+        errors_module.typed_redirect(broker_routes.BrokerRedirectOut(redirect="connected"), location)
+
+
+def test_typed_redirect_allows_exactly_the_kite_login_url():
+    from ofo.broker.kite_auth import KITE_LOGIN_BASE, login_url
+
+    assert errors_module.KITE_LOGIN_PAGE == KITE_LOGIN_BASE
+
+    url = login_url(API_KEY, "s" * 43)
+    response = errors_module.typed_redirect(broker_routes.BrokerRedirectOut(redirect="zerodha_login"), url)
+    assert response.headers["location"] == url
+
+
+@pytest.mark.parametrize("field, bad", [("path", "/p; Domain=.evil.example"), ("value", "v; Domain=.evil.example"),
+                                        ("value", "v" + chr(13) + chr(10) + "X: y"), ("path", "/p" + chr(10))])
+def test_a_cookie_with_a_separator_is_refused(field, bad):
+    kwargs = {"name": broker_routes.STATE_COOKIE, "path": CALLBACK, "value": "v", field: bad}
+    with pytest.raises(ValueError):
+        errors_module.RedirectCookie(**kwargs)
+
+
+def test_catalogue_codes_survive_log_redaction_and_a_kite_token_does_not():
+    from ofo_app import redaction
+
+    codes = {t.code for t in CATALOGUE.values()}
+    assert redaction.CATALOGUE_CODES == frozenset(codes)
+    long_codes = sorted(c for c in codes if len(c) >= 20)
+    assert long_codes, "no catalogue code is long enough to look like a token"
+    for code in long_codes:
+        line = f"user-facing error {code} on GET /kite/callback"
+        assert redaction.redact(line) == line
+    token = "h7Kq2Lm9Xw4Rt6Yp1Zs8Vb3Nc5Jd0Fg"  # 32 letters and digits: the shape of a Kite access token
+    assert redaction.redact(f"token {token} here") == "token [REDACTED] here"
+
+
+def test_mutant_without_the_code_set_redacts_the_codes(monkeypatch):
+    """Mutation: drop the catalogue code set -> a long catalogue code is redacted as if it were a secret."""
+    from ofo_app import redaction
+
+    monkeypatch.setattr(redaction, "CATALOGUE_CODES", frozenset())
+    code = CATALOGUE["broker_state_invalid"].code
+    assert redaction.redact(code) == redaction.REDACTED
