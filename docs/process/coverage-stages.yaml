@@ -143,6 +143,7 @@ decisions:
   ADR-063: 4a           # the engine owns the dividend yield and every Greek, theta included (W-060 review)
   ADR-064: 4a           # closed names for a strategy's risk limits and preferences (W-061 review)
   ADR-065: 4a           # pricing guards: same trust boundary as wording (Q235); W-060 unparked
+  ADR-066: 4a           # Kite historical candles: internal use only in V1 (F-33)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
