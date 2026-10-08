@@ -5,7 +5,7 @@ tests_app/test_api_models.py). An `ApiModel` cannot hold free text: at class def
 and a plain `str` (or anything not listed below) raises TypeError. Allowed leaves:
 - `CatalogueText`: a `render()` result (`UserFacingError`, shown as its four parts) or a `render_explanation()`
   result (`ExplanationText`); a plain string is refused at validation, so text built in route code cannot pass;
-- `Identifier`: a closed token (letters, digits, `_ - . :`), at most 64 characters and no space, so it can never
+- `Identifier`: a closed token (letters, digits, `_ - .`; no `:` or `=`), at most 64 characters and no space, so it can never
   carry a sentence;
 - `Literal[...]` of strings, `bool`, `int`, `Decimal` (serialized as a string, project rule), `datetime`, `date`,
   `Enum` subclasses, nested `ApiModel`s, and `list`/`tuple`/`Optional` of those.
@@ -44,7 +44,10 @@ def _serialize(value: UserFacingError | ExplanationText) -> object:
 
 
 CatalogueText = Annotated[object, PlainValidator(_catalogue_only), PlainSerializer(_serialize)]
-Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.:]{1,64}$")]
+#: Round 10 item 4: a closed pattern - letters, digits, `_ - .` only (no `:`, no `=`, no whitespace), so a
+#: `key:value` or `key=value` pair (e.g. `access_token:...`) can never pass as an id; at most IDENTIFIER_MAX characters.
+IDENTIFIER_MAX = 64
+Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$" % IDENTIFIER_MAX)]
 Money = Annotated[Decimal, PlainSerializer(lambda v: str(v), return_type=str)]
 
 _LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date)
