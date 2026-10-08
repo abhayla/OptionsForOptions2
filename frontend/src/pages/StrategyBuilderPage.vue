@@ -13,6 +13,8 @@ import PayoffChart from '@/components/strategy/PayoffChart.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
+import { advancedDetails } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 
@@ -67,6 +69,7 @@ const showNumbers = computed(() => (state.value === 'computed' || state.value ==
 const headerUnderlying = computed(() => data.value?.underlying ?? readDraft()?.underlying ?? '')
 const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
 const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
+const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
 </script>
 
@@ -129,6 +132,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
+      <AdvancedDetails v-if="advancedRows" :rows="advancedRows" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" @recalculate="load" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>

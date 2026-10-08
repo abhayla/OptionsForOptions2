@@ -136,3 +136,30 @@ def test_committed_openapi_schema_matches_the_route():
     app.include_router(outcome.router)
     committed = json.loads((ROOT / "docs" / "api" / "outcome.openapi.json").read_text(encoding="utf-8"))
     assert committed == json.loads(json.dumps(app.openapi()))
+
+
+async def test_advanced_details_only_at_advanced(replayed):
+    """REQ-035 AC-5: bid/ask come only in the advanced_details block, absent (not empty) at guided and standard, taken
+    from the same snapshot as the table; the table's locked columns do not change."""
+    for ux in (None, "guided", "standard"):
+        out = (await _post(_body(replayed, ux), replayed)).json()
+        assert "advanced_details" not in out, ux
+        assert not any(c["id"] in ("bid", "ask") for c in out["table"]["columns"])
+    adv = (await _post(_body(replayed, "advanced"), replayed)).json()
+    std = (await _post(_body(replayed), replayed)).json()
+    assert [c["id"] for c in adv["table"]["columns"]] == [c["id"] for c in std["table"]["columns"]]  # AC-2 order
+    assert not any(c["id"] in ("bid", "ask") for c in adv["table"]["columns"])
+    rows = adv["advanced_details"]
+    assert [r["instrument_id"] for r in rows] == [iid for iid, _ in CONDOR]
+    for r in rows:
+        q = replayed.book.get(r["instrument_id"], VALUATION)
+        assert r["bid"] == (None if q.bid is None else f"{q.bid:f}")
+        assert r["ask"] == (None if q.ask is None else f"{q.ask:f}")
+        assert isinstance(r["health"], str) and r["symbol"]
+    assert any(r["bid"] is not None and r["ask"] is not None for r in rows)  # the recording carries depth
+    _no_floats(adv)
+
+
+async def test_no_provider_has_no_advanced_details(replayed):
+    out = (await _post(_body(replayed, "advanced"))).json()
+    assert out["state"] == "NOT_CONNECTED" and "advanced_details" not in out

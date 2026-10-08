@@ -14,7 +14,7 @@ const props = defineProps({
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
 })
-const cols = computed(() => columnsToRender(props.table.columns, props.uxLevel))
+const cols = computed(() => columnsToRender(props.table.columns))
 </script>
 
 <template>

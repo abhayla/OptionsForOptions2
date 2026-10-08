@@ -1,55 +1,61 @@
 // REQ-035 AC-5: Bid/Ask appear only in Advanced Details; AC-2: the screen never reorders the API's columns;
 // ADR-008: no client-side maths on the outcome's values (a second layer; the first is that the page takes strings).
+// The fixture is a REAL outcome response (NIFTY 13-Oct iron condor on the recorded 2026-10-08 09:20 frames, requested
+// at ux_level=advanced from the replay API), not invented columns or ids.
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { columnsToRender, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
+import { columnsToRender, advancedDetails, isCurrentColumn, cellText, STICKY_COUNT } from '@/lib/strategyTable'
+import real from './fixtures/outcome-condor-advanced.json'
 
-const col = (id, extra = {}) => ({ id, label: id, kind: 'money', is_scenario_level: false, markers: [], visible: true, ...extra })
-// the API's locked order with bid and ask in it (as the Advanced table carries them)
-const COLUMNS = [col('leg'), col('action'), col('instrument'), col('expiry'), col('strike'), col('bid'), col('ask'), col('ltp'), col('iv', { visible: false }), col('22500'), col('22533.25', { markers: ['CURRENT'] }), col('status')]
 const ids = (cols) => cols.map((c) => c.id)
+const without = (r) => {
+  const { advanced_details: _drop, ...rest } = r
+  return rest
+}
 
-describe('AC-5: bid and ask only in Advanced', () => {
-  it('hides bid and ask at Standard and Guided', () => {
-    for (const ux of ['standard', 'guided']) {
-      const shown = ids(columnsToRender(COLUMNS, ux))
-      expect(shown).not.toContain('bid')
-      expect(shown).not.toContain('ask')
-    }
+describe('the real response used here', () => {
+  it('is the advanced condor with bid and ask from the API', () => {
+    expect(real.ux_level).toBe('advanced')
+    expect(real.advanced_details).toHaveLength(4)
+    expect(real.advanced_details[0]).toMatchObject({ instrument_id: 'NSE_FO:44624', symbol: 'NIFTY26O1322800CE', bid: '39', ask: '39.1' })
   })
-  it('shows bid and ask at Advanced', () => {
-    const shown = ids(columnsToRender(COLUMNS, 'advanced'))
-    expect(shown).toContain('bid')
-    expect(shown).toContain('ask')
+})
+
+describe('AC-5: bid and ask only in Advanced Details', () => {
+  it('shows the API block at Advanced, as given', () => {
+    expect(advancedDetails(real, 'advanced')).toEqual(real.advanced_details)
   })
-  it('an unknown UX level is treated as not Advanced', () => {
-    expect(ids(columnsToRender(COLUMNS, 'whatever'))).not.toContain('bid')
+  it('shows nothing at Standard and Guided even if a block were present', () => {
+    for (const ux of ['standard', 'guided', '', undefined, 'whatever']) expect(advancedDetails(real, ux)).toBeNull()
+  })
+  it('shows nothing at Advanced when the response carries no block', () => {
+    expect(advancedDetails(without(real), 'advanced')).toBeNull()
+    expect(advancedDetails(null, 'advanced')).toBeNull()
+  })
+  it('bid and ask are never table columns, at any level (AC-2 locked order)', () => {
+    expect(ids(columnsToRender(real.table.columns))).not.toContain('bid')
+    expect(ids(real.table.columns)).not.toContain('ask')
   })
 })
 
 describe('AC-2: the API order is kept', () => {
-  it('never reorders, at any level', () => {
-    const order = ids(COLUMNS)
-    for (const ux of ['guided', 'standard', 'advanced']) {
-      const shown = ids(columnsToRender(COLUMNS, ux))
-      expect(shown).toEqual(order.filter((id) => shown.includes(id)))
-    }
-  })
-  it('drops what the API marks as not visible', () => {
-    expect(ids(columnsToRender(COLUMNS, 'advanced'))).not.toContain('iv')
+  it('never reorders and drops only what the API marks as not visible', () => {
+    const shown = ids(columnsToRender(real.table.columns))
+    expect(shown).toEqual(ids(real.table.columns.filter((c) => c.visible)))
   })
 })
 
 describe('AC-3 helpers', () => {
-  it('flags only the CURRENT column and keeps three sticky columns', () => {
-    expect(COLUMNS.filter(isCurrentColumn).map((c) => c.id)).toEqual(['22533.25'])
+  it('flags only the CURRENT column (the real spot level) and keeps three sticky columns', () => {
+    expect(real.table.columns.filter(isCurrentColumn).map((c) => c.id)).toEqual([real.spot_level])
     expect(STICKY_COUNT).toBe(3)
   })
   it('cellText returns the API display text and nothing computed', () => {
-    const row = { cells: { ltp: { display: '39.15' } } }
-    expect(cellText(row, col('ltp'))).toBe('39.15')
-    expect(cellText(row, col('missing'))).toBe('')
+    const row = real.table.rows[0]
+    const col = real.table.columns.find((c) => c.id === 'ltp')
+    expect(cellText(row, col)).toBe(row.cells.ltp.display)
+    expect(cellText(row, { id: 'missing' })).toBe('')
   })
 })
 

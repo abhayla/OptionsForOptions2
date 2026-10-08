@@ -106,10 +106,17 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
 
   // scrolling sideways keeps the sticky columns in view (390 px wide: the table is wider than the screen)
   const scroller = page.getByTestId('strategy-table-scroll')
+  const visibleIds = api.table.columns.filter((c: { visible: boolean }) => c.visible).map((c: { id: string }) => c.id)
   const before = await page.locator(`th[data-col="${first3[0]}"]`).boundingBox()
-  await scroller.evaluate((e) => (e.scrollLeft = 400))
+  // instant (the table's CSS says smooth, which makes an immediate read racy), then wait until the scroll has landed
+  await scroller.evaluate((e) => e.scrollTo({ left: 400, behavior: 'instant' }))
+  await expect.poll(() => scroller.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
   const after = await page.locator(`th[data-col="${first3[0]}"]`).boundingBox()
-  expect(after!.x).toBeCloseTo(before!.x, 0)
+  const box = await scroller.boundingBox()
+  expect(after!.x - box!.x).toBeGreaterThanOrEqual(-0.5) // pinned inside the scroll area, not scrolled out of view
+  expect(after!.x - box!.x).toBeLessThan(6)
+  const fourth = page.locator(`th[data-col="${visibleIds[3]}"]`)
+  expect((await fourth.boundingBox())!.x).toBeLessThan(before!.x + 60) // and the unpinned columns did move left
 
   // exactly one column is highlighted: the one the API flags as CURRENT
   const flagged = api.table.columns.filter((c: { markers: string[] }) => c.markers.includes('CURRENT')).map((c: { id: string }) => c.id)
@@ -121,12 +128,28 @@ test('AC-3: left columns are sticky and the current level column is highlighted'
   expect(bg).not.toBe(plain)
 })
 
-test('Bid and Ask are absent from the screen at Standard and Guided', async ({ page, request }) => {
-  for (const ux of ['guided', 'standard']) {
+test('AC-5: Bid and Ask are in Advanced Details at Advanced only, with the API values', async ({ page, request }, info) => {
+  for (const ux of ['guided', 'standard', undefined]) {
     const { api } = await openCondor(page, request, ux)
-    expect(api.ux_level).toBe(ux)
+    expect(api.advanced_details).toBeUndefined() // absent, not empty
+    await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
+    await expect(page.getByTestId('advanced-details')).toHaveCount(0)
     const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
     expect(heads).not.toContain('bid')
     expect(heads).not.toContain('ask')
   }
+  const { api } = await openCondor(page, request, 'advanced')
+  expect(api.ux_level).toBe('advanced')
+  expect(api.advanced_details).toHaveLength(4)
+  await expect(page.getByTestId('advanced-details')).toBeVisible()
+  for (const r of api.advanced_details) {
+    const row = page.locator(`[data-testid="advanced-details"] tr[data-leg="${r.instrument_id}"]`)
+    await expect(row.getByTestId('adv-bid')).toHaveText(r.bid)
+    await expect(row.getByTestId('adv-ask')).toHaveText(r.ask)
+    await expect(row.getByTestId('adv-health')).toHaveText(r.health)
+  }
+  // the locked table columns are the same as at Standard (AC-2); bid/ask are not among them
+  const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
+  expect(heads).not.toContain('bid')
+  await page.screenshot({ path: `screenshots/strategy-advanced-${info.project.name}.png`, fullPage: true })
 })
