@@ -28,6 +28,7 @@ The form (schema_version 1):
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
+from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import DefinitionError, DefinitionLeg, StrategyDefinition
 
 SCHEMA_VERSION = 1
@@ -43,6 +45,14 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 DOCUMENT_KEYS = frozenset({"schema_version", "underlying", "legs", "rules_ref", "risk_limits", "preferences"})
 LEG_KEYS = frozenset({"contract_id", "action", "instrument", "strike", "expiry", "quantity"})
 ENTRY_KEYS = frozenset({"schema_version", "seq", "at", "change_summary", "definition"})
+
+#: Every live-market field name (REQ-038 AC-1's live state, read from the LiveState, LegQuote and Greeks classes) plus
+#: "price": none may appear in the stored form, a strategy table column or a Save Draft body.
+LIVE_STATE_NAMES = frozenset(
+    {f.name for cls in (_live_state.LiveState, _live_state.LegQuote, _live_state.Greeks)
+     for f in dataclasses.fields(cls)} - {"leg_index"}) | {"price"}
+if LIVE_STATE_NAMES & (DOCUMENT_KEYS | LEG_KEYS | ENTRY_KEYS):  # pragma: no cover - a definition key is never live data
+    raise RuntimeError("a stored-form key is a live-state name")
 
 # Fixed refusal codes (the API returns them as-is).
 MALFORMED = "malformed"
@@ -210,6 +220,11 @@ def _decimal_from(value: Any, where: str) -> Decimal:
     if not number.is_finite() or str(number) != value:
         raise StoredFormError(NOT_DECIMAL_STRING, f"{where} {value!r} is not an exact finite decimal text")
     return number
+
+
+def decimal_from_text(value: Any, where: str) -> Decimal:
+    """A decimal given as exact text (API bodies and the stored form); a JSON number or a float is refused."""
+    return _decimal_from(value, where)
 
 
 def _int_from(value: Any, where: str, code: str = MALFORMED) -> int:
