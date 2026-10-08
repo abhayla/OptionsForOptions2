@@ -10,6 +10,8 @@ gets no disconnect message - that would misreport the cause.
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import datetime
 from dataclasses import dataclass
 
@@ -31,7 +33,7 @@ def disconnect_message(last_updated: datetime.datetime) -> str:
 
 
 @dataclass(frozen=True)
-class DisconnectStatus:
+class DisconnectStatus(UserFacing):
     """The AC-5 status shown for a strategy paused because the feed is disconnected. ``error`` is the four-part
     message; ``message`` its AC-5 sentence; ``text`` what the user is shown (all four parts)."""
 
@@ -45,6 +47,11 @@ class DisconnectStatus:
     @property
     def message(self) -> str:
         return self.error.what_happened
+
+    @property
+    def user_message(self) -> UserFacingError:
+        """The four-part message a user is shown (`ofo.errors.UserFacing`): kept in `error`, not `message`."""
+        return self.error
 
     @property
     def text(self) -> str:

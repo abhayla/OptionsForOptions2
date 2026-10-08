@@ -86,7 +86,14 @@ def _mismatch() -> object:
                             platform_breakdown=(), difference=(), next_action=compare._NEXT_ACTION[kind])
 
 
+def _disconnect_status() -> object:
+    from ofo.marketdata.disconnect import DisconnectStatus, disconnect_error
+
+    return DisconnectStatus(error=disconnect_error(AT), last_updated=AT)
+
+
 EXAMPLES: dict[str, Callable[[], object]] = {
+    "ofo.marketdata.disconnect.DisconnectStatus": _disconnect_status,
     "ofo.execution.safety.CheckFailure": _check_failure,
     "ofo.execution.send_guard.SendRefused": _send_refused,
     "ofo.execution.sequence.SliceRefused": _slice_refused,
