@@ -39,10 +39,22 @@ Existing code outside these shapes is listed in `ALLOWLIST` (file, statement pat
 pattern must FULL-match the source of the one simple statement that holds the hit (fix round 1,
 finding 4), so a second statement on the same line (`a; wording.f = g`) is judged on its own.
 
-Not claimed: a name assembled at run time (`getattr(builtins, "set" + "attr")`), a method called
-unbound with a module as `self` (`C.m(wording, f)`), or code outside backend/ofo. Q235 puts
-deliberate runtime replacement out of scope beyond this CI flag and the runtime checks in
-`ofo.wording` (read-only module, identity check on every read) and `ofo.errors.model`.
+Fix round 2: a name an import in the file bound to ofo.wording (any alias, absolute or relative,
+and the root `ofo` of `import ofo.wording`) is never stored, deleted, re-imported over, or declared
+`global`/`nonlocal` anywhere in that file (`shared_wording = fake`,
+`wording = types.SimpleNamespace(check_platform_text=print)`).
+
+Not claimed (named limits):
+- a name assembled at run time (`getattr(builtins, "set" + "attr")`);
+- `C.m(<module>, f)`: a method called unbound with a module as `self` (its `self.x = f` is a
+  legal method write to the scan);
+- a caller that catches the checker's ValueError and shows the text anyway: the scan sees writes,
+  not what a caller does with a refusal;
+- code outside backend/ofo.
+Q235 puts deliberate runtime replacement out of scope beyond this CI flag and the runtime checks in
+`ofo.wording` (read-only module, identity check on every read) and `ofo.errors.model`. Because
+ofo.wording is read-only, `importlib.reload(ofo.wording)` raises: tests must not reload or patch it
+except through the monkeypatch-based namespace swaps in tests/errors/test_checker_identity.py.
 """
 from __future__ import annotations
 
@@ -297,6 +309,27 @@ def _import_bound_names(tree: ast.AST) -> tuple[set[str], set[str]]:
     return imported, sys_names
 
 
+def _checker_bindings(tree: ast.AST, module: str, is_package: bool) -> tuple[set[str], set[int]]:
+    """(names an import in this file bound to ofo.wording or to its root package `ofo`, `id()` of
+    those import nodes). `import ofo.wording` binds `ofo`; `import ofo.wording as w` binds `w`;
+    `from ofo import wording [as w]` and `from .. import wording` bind `wording`/`w`."""
+    names: set[str] = set()
+    nodes: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == CHECKER_MODULE or alias.name.startswith(CHECKER_MODULE + "."):
+                    names.add(alias.asname or alias.name.split(".")[0])
+                    nodes.add(id(node))
+        elif isinstance(node, ast.ImportFrom):
+            source_module = _resolve_from(node, module, is_package)
+            for alias in node.names:
+                if f"{source_module}.{alias.name}" == CHECKER_MODULE:
+                    names.add(alias.asname or alias.name)
+                    nodes.add(id(node))
+    return names, nodes
+
+
 def _enclosing_statement(node: ast.AST, parents: dict[int, ast.AST]) -> ast.stmt | None:
     while node is not None and not isinstance(node, ast.stmt):
         node = parents.get(id(node))
@@ -319,7 +352,13 @@ def scan_source(source: str, module: str = "ofo.sample", is_package: bool = Fals
         hits.append(Hit(getattr(node, "lineno", 0), message,
                         ast.get_source_segment(source, stmt) if stmt is not None else None))
 
+    checker_names, checker_imports = _checker_bindings(tree, module, is_package)
     for node in ast.walk(tree):
+        # --- fix round 2: a name an import bound to ofo.wording is never rebound ---------------
+        if id(node) not in checker_imports:
+            for name in checker_names:
+                if _binds(node, name):
+                    hit(node, f"rebinds {name!r}, which an import bound to {CHECKER_MODULE}")
         # --- writes, found by context ------------------------------------------------------------
         if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
             verb = "deletes" if isinstance(node.ctx, ast.Del) else "writes"
@@ -563,6 +602,27 @@ FLAGGED = {
     "clear on a chain from an import": "import ofo.timeline.why as why\nwhy.INPUT_LABELS.clear()",
     "setdefault on a chain from an import": "from ofo import wording\nwording.X.setdefault('k', f)",
     "update on a call root (fail closed)": "get().d.update(x=f)",
+    # Fix round 2: a name bound to ofo.wording by an import is never rebound in that file.
+    "rebind the module alias": "from ofo import wording as shared_wording\nshared_wording = fake",
+    "rebind the module alias via global": (
+        "from ofo import wording as shared_wording\ndef f():\n    global shared_wording\n    shared_wording = fake"
+    ),
+    "rebind wording to a SimpleNamespace": (
+        "import types\nfrom ofo import wording\nwording = types.SimpleNamespace(check_platform_text=print)"
+    ),
+    "rebind import-as alias": "import ofo.wording as w\nw = fake",
+    "rebind the ofo root": "import ofo.wording\nofo = fake",
+    "rebind relative module import": "from . import wording\nwording += 1",  # in ofo.sample: ofo.wording
+    "rebind by annotated assign": "from ofo import wording\nwording: object = fake",
+    "rebind by for target": "from ofo import wording\nfor wording in [fake]:\n    pass",
+    "rebind by with target": "from ofo import wording\nwith cm() as wording:\n    pass",
+    "rebind by except-as": "from ofo import wording\ntry:\n    pass\nexcept E as wording:\n    pass",
+    "rebind by walrus": "from ofo import wording\n(wording := fake)",
+    "rebind by a second import-as": "from ofo import wording\nimport fake as wording",
+    "delete the module name": "from ofo import wording\ndel wording",
+    "nonlocal declaration": (
+        "from ofo import wording\ndef f():\n    wording = 1\n    def g():\n        nonlocal wording"
+    ),
     # Fix round 1, finding 1: nothing imported from ofo.wording by name.
     "from ofo.wording import name": "from ofo.wording import check_platform_text",
     "from ofo.wording import star": "from ofo.wording import *",
