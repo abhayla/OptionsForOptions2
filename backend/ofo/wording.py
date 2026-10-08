@@ -76,6 +76,14 @@ ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bzero risk\b", "zero risk"),
     (r"\bavoid\w* (a )?loss(es)?\b", "avoid loss(es)"),
     (r"\bnever los\w*\b", "never lose"),
+    # W-024 round 8: the round-7 reworded promises (issue 30), under ADR-003 "any promise of returns
+    # or of reduced losses", every word form. "risk" and "loss" alone stay allowed.
+    (r"\b(return|profit|gain)s? (is |are |was |were |will be |get |gets )?assured\b", "returns are assured"),
+    (r"\bloss(es)? (is |are |was |were |will be |get |gets )?minimi[sz]\w*\b", "losses are minimised"),
+    (r"\briskless\w*\b", "riskless"),
+    (r"\b(won ?t|will not|wont) los\w*\b", "won't lose"),
+    (r"\bloss(es)? ?free\b", "loss-free"),
+    (r"\b(profit|return|gain)s? (is |are |was |were |will be )?certain\w*\b", "profit is certain"),
 )
 
 _COMPILED_PATTERNS: tuple[tuple["re.Pattern[str]", str], ...] = tuple(

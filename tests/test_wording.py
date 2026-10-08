@@ -114,6 +114,53 @@ ALLOWED_NEAR_MISSES: tuple[str, ...] = (
 )
 
 
+#: W-024 round 8 (ADR-056 item 1): the round-7 residual promise phrases from issue 30, each in
+#: several word forms. Spec: ADR-003 Forbidden "any promise of returns or of reduced losses";
+#: Q235 "in every word form". Keyed by the phrase, so removing one pattern turns its cases red.
+ROUND7_RESIDUAL_PROMISES: dict[str, tuple[str, ...]] = {
+    "returns are assured": ("Returns are assured", "your return is assured", "Profits are assured",
+                            "gains assured", "returns will be assured"),
+    "losses are minimised": ("Losses are minimised", "losses are minimized", "Your loss is minimised",
+                             "losses get minimised", "loss minimized"),
+    "riskless": ("Riskless", "a riskless trade", "RISKLESS setup", "trade risklessly"),
+    "won't lose": ("You won't lose", "you won’t lose", "you wont lose", "You will not lose",
+                   "won t lose money", "will not lose money"),
+    "loss-free": ("loss-free", "Loss free trade", "LOSS_FREE", "a lossfree setup"),
+    "profit is certain": ("Profit is certain", "profits are certain", "returns are certain",
+                          "the gain is certain", "profit will be certain", "profit certainly"),
+}
+
+
+@pytest.mark.parametrize(
+    "phrase,text",
+    [(p, t) for p, texts in ROUND7_RESIDUAL_PROMISES.items() for t in texts],
+    ids=[f"{p}: {t}" for p, texts in ROUND7_RESIDUAL_PROMISES.items() for t in texts],
+)
+def test_round7_residual_promises_are_flagged_under_their_own_label(phrase: str, text: str) -> None:
+    """Each residual is caught by ITS OWN pattern (the label), so no other pattern hides a mutant."""
+    assert phrase in find_advice_wording(text), (phrase, text, find_advice_wording(text))
+
+
+ROUND8_NEAR_MISSES: tuple[str, ...] = (
+    "risk",
+    "loss",
+    "Losses are shown at every level",
+    "Returns are shown before charges",
+    "profit at expiry",
+    "The maximum loss is the premium paid",
+    "You will lose money below 22,909",
+    "a certain strike",
+    "Risk is shown for every leg",
+    "Loss at this level",
+    "free margin",
+)
+
+
+@pytest.mark.parametrize("text", ROUND8_NEAR_MISSES)
+def test_round8_promise_patterns_leave_ordinary_risk_and_loss_text_clean(text: str) -> None:
+    assert find_advice_wording(text) == [], text
+
+
 @pytest.mark.parametrize("text", ALLOWED_NEAR_MISSES)
 def test_promise_phrase_patterns_do_not_catch_normal_text(text: str) -> None:
     """Q235: ordinary words near a promise phrase ("no loss of data", "Loss", "risk", "reduce the
