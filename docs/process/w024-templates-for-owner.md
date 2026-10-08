@@ -1,6 +1,8 @@
 # W-024 templates for the owner to read once
 
-Every user-facing error template in `backend/ofo/errors/templates.py`, with its four REQ-065 AC-2 parts as written. `{name}` is a typed slot filled at run time. Each template's pin in `tests/errors/template_pins.json` says `pending owner read` until you have read it; a changed word changes the pin and fails CI until re-pinned.
+Every platform message template, as written. `{name}` is a typed slot filled at run time. Each template's pin in `tests/errors/template_pins.json` says `pending owner read` until you have read it; a changed word changes the pin and fails CI until re-pinned.
+
+## Error templates (`backend/ofo/errors/templates.py`, REQ-065 AC-2 four parts)
 
 | Template | Code | What happened | Impact | What is blocked | Next action |
 |---|---|---|---|---|---|
@@ -59,3 +61,29 @@ Every user-facing error template in `backend/ofo/errors/templates.py`, with its 
 | `gate_strategy_mismatch` | RECONCILIATION_MISMATCH_104 | This check was prepared for a different strategy. Execution is blocked; reopen the strategy to continue. | The checks shown do not belong to this strategy. | Execution of this strategy. | Reopen this strategy and check again. |
 | `gate_internal_error` | INTERNAL_SYSTEM_101 | An internal error stopped the safety checks. Execution is blocked and no order has been submitted. | The platform could not finish checking this strategy before execution. | Execution of this strategy. | Try again in a few minutes; contact support if this keeps happening. |
 | `marketdata_disconnected` | MARKET_DATA_120 | Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused. | Prices on screen may not match the live market, and rules are not checked while data is missing. | Rule monitoring for this strategy. | Wait for the feed to reconnect; monitoring resumes on its own. |
+
+## Explanation templates (`backend/ofo/errors/explanations.py`, not errors: no four parts)
+
+| Template | Field | Text |
+|---|---|---|
+| `why_triggered` | what_triggered | Your rule was triggered: {rule_text} ({kind} rule {rule_id}). |
+| `why_condition_met` | values_seen | Condition met: {input} was {value}, {op} the threshold {threshold}. |
+| `why_no_condition` | values_seen | Condition met: this rule has no market condition; it applies as soon as it is checked. |
+| `why_not_available` | values_seen | Not available when checked: {inputs}. |
+| `why_checked_at` | values_seen | Checked at: {time}. |
+| `why_market_data` | values_seen | Market data: source {source}, health {health}. |
+| `why_active_version` | rule | Active strategy version: {version}. |
+| `why_planned_version` | rule | Active strategy version: none (not yet executed); evaluated against planned version {version}. |
+| `why_action` | rule | The rule's chosen action: {action}. |
+| `why_follow_up_missing` | rule | {follow_up}: not recorded. |
+| `why_follow_up_yes_no` | rule | {follow_up}: {answer}. |
+| `why_follow_up_answer` | rule | {follow_up}: {answer}. |
+
+## Explanation labels
+
+| Table | Labels |
+|---|---|
+| input | underlying level; underlying move (points); underlying move (%); distance to the nearest short strike (points); distance to the nearest breakeven (points); net premium (Rs); live P&L (Rs); P&L as % of max profit; loss as % of max loss; days to expiry; time of day (minutes after midnight IST); implied volatility; IV percentile; delta; gamma; theta; vega |
+| op | at or above; above; at or below; below |
+| action | alert only; alert and prepare orders for your review |
+| follow_up | Alert generated; Order prepared; Confirmation required; Executed; Broker reported; Reconciliation succeeded |

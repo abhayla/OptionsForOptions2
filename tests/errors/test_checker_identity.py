@@ -120,7 +120,7 @@ def _disconnect() -> object:
 def _why() -> object:
     from ofo.timeline import why
 
-    return why._own("Your rule was triggered: {}.", "x")
+    return why.render_explanation("why_checked_at", time="x")
 
 
 def _loader() -> object:
@@ -163,7 +163,7 @@ def test_caller_paths_work_with_the_original_checker() -> None:
     with pytest.raises(ValueError, match="banned wording"):
         _safety_flag()
     assert _disconnect().startswith("Live market data disconnected.")
-    assert _why() == "Your rule was triggered: x."
+    assert _why() == "Checked at: x."
     _loader()
 
 

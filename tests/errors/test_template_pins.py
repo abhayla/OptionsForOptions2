@@ -43,11 +43,45 @@ def check_pins(catalogue: dict, pins: dict) -> list[str]:
     return problems
 
 
+def expected_pins() -> dict[str, str]:
+    """Pin id -> SHA-256 for every catalogue text: error templates (four parts), explanation templates (field +
+    text, id prefixed `explanation:`), explanation label tables (`labels:<table>`)."""
+    from ofo.errors import CATALOGUE
+    from ofo.errors.explanations import EXPLANATIONS, LABEL_TABLES
+
+    out = {tid: pin_of(_parts(t)) for tid, t in CATALOGUE.items()}
+    for tid, t in EXPLANATIONS.items():
+        out[f"explanation:{tid}"] = hashlib.sha256(f"{t.field}\x1f{t.text}".encode("utf-8")).hexdigest()
+    for name, table in LABEL_TABLES.items():
+        blob = "\x1f".join(f"{k}={v}" for k, v in sorted(table.items()))
+        out[f"labels:{name}"] = hashlib.sha256(blob.encode("utf-8")).hexdigest()
+    return out
+
+
 def test_every_template_matches_its_pin() -> None:
     from ofo.errors import CATALOGUE
 
     pins = json.loads(PINS_FILE.read_text(encoding="utf-8"))
-    assert check_pins(dict(CATALOGUE), pins) == []
+    errors_only = {k: v for k, v in pins.items() if ":" not in k}
+    assert check_pins(dict(CATALOGUE), errors_only) == []
+
+
+def test_every_explanation_and_label_matches_its_pin() -> None:
+    """Explanations and their labels share the pin file (round 9 part 2 decision)."""
+    pins = json.loads(PINS_FILE.read_text(encoding="utf-8"))
+    expected = expected_pins()
+    assert sorted(pins) == sorted(expected), "pin ids differ from the catalogue"
+    assert [k for k, sha in expected.items() if pins[k]["sha256"] != sha] == []
+
+
+def test_every_explanation_passes_the_wording_check() -> None:
+    from ofo.errors.explanations import EXPLANATIONS, LABEL_TABLES, check_explanation_wording
+
+    for tid, t in EXPLANATIONS.items():
+        check_explanation_wording(t.text.format(**{n: "" for n in t.slots}), tid)
+    for table in LABEL_TABLES.values():
+        for label in table.values():
+            check_explanation_wording(label, "label")
 
 
 def test_pins_carry_a_review_state_a_builder_may_write() -> None:

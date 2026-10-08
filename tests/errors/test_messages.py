@@ -716,10 +716,13 @@ def test_round6_why_answer_uses_the_shared_check() -> None:
 
     assert find_banned_phrases("the safest leg") == []
     assert why.advice_words_in("the safest leg") == ["safe"]
+    # Round 9: the answer's own words are explanation templates; their check is check_explanation_wording.
+    from ofo.errors.explanations import check_explanation_wording
+
     with pytest.raises(ValueError, match="advice phrases"):
-        why._own("Your rule was triggered: the safest exit {}.", "x")
+        check_explanation_wording("Your rule was triggered: the safest exit .", "test")
     with pytest.raises(ValueError, match="non-Latin"):
-        why._own("Your rule was triggered: {} \u043e.", "x")
+        check_explanation_wording("Your rule was triggered:  \u043e.", "test")
 
 
 def test_round6_strategy_loader_runs_the_shared_check_function() -> None:

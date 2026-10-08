@@ -30,7 +30,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo"
 CATALOGUE_FILE = "errors/templates.py"
 #: The door's own slot formatters: they print typed slot values that only render() places into catalogue text.
-DOOR_FILES = frozenset({CATALOGUE_FILE, "errors/slots.py", "errors/gate_slots.py"})
+DOOR_FILES = frozenset({CATALOGUE_FILE, "errors/explanations.py", "errors/slots.py", "errors/gate_slots.py"})
 
 #: Files whose literals are the forbidden-wording DATA (phrases refused, never shown).
 WORDING_DATA_FILES = frozenset({"wording.py", "strategy/wording.py"})
@@ -75,7 +75,6 @@ PENDING: dict[str, dict[str, int]] = {
     'strategy/loader.py': {'load_templates': 2},
     'strategy/versions.py': {'_require_aware': 1, '_require_text': 1},
     'table/model.py': {'<module>': 1, 'scenario_caption': 1},
-    'timeline/why.py': {'<module>': 1, 'why_did_this_trigger': 9},
 }
 
 

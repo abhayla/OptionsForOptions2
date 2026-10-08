@@ -131,10 +131,18 @@ def test_platform_wording_is_checked_at_runtime_but_recorded_text_is_quoted_not_
     """AC-5 with ADR-003: if the platform's own answer wording contains an advice phrase, building the answer raises;
     a user's rule text or a broker report that contains one is printed as recorded, in quotes, and does not raise."""
     timeline, seq, record = _recorded_trigger()
+    # W-024 round 9: the answer's words come only from the read-only explanation catalogue; changing the
+    # re-exported label dict changes nothing a user sees, and the catalogue's own table refuses the write.
+    from ofo.errors.explanations import OP_TEXT, check_explanation_wording
+
+    before = timeline.why(seq)
     monkeypatch.setitem(OP_WORDS, record.observations[0].op, "at or below, you should exit at")
-    with pytest.raises(ValueError, match="advice phrases"):
-        timeline.why(seq)
+    assert timeline.why(seq) == before
     monkeypatch.undo()
+    with pytest.raises(TypeError):
+        OP_TEXT["LTE"] = "at or below, you should exit at"  # type: ignore[index]
+    with pytest.raises(ValueError, match="advice phrases"):
+        check_explanation_wording("Condition met: at or below, you should exit at.", "test")
     timeline.record_follow_up(FollowUp(FollowUpKind.BROKER_REPORTED, seq, CHECKED_AT, "best price filled"))
     text = timeline.why(seq)
     assert 'Broker reported: "best price filled".' in text
