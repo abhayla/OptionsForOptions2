@@ -16,13 +16,13 @@ def test_1000_subscribers_share_one_vendor_subscription_per_instrument():
     for inbox in inboxes:
         fan.subscribe(inbox.append, ids)
 
-    assert provider.counters["vendor_subscribe"] == len(ids) == 1091  # 1 per instrument, not 1,000 per instrument
-    assert len(provider.subscribed_tokens()) == 1091
+    assert provider.counters["vendor_subscribe"] == len(ids) == 1090  # 1 per instrument, not 1,000 per instrument (INDIA VIX left out, W-060)
+    assert len(provider.subscribed_tokens()) == 1090
     replay(provider, clock)
     fan.pump()
 
     first = inboxes[0]
-    assert len(first) == 7301  # every tick of the recording reached the subscriber
+    assert len(first) == 7281  # every tick of the recording reached the subscriber
     assert all(inbox == first for inbox in inboxes)  # same updates, same order, for all 1,000
     assert fan.listener_errors == 0
     assert fan.subscriber_count(NIFTY_CE_ID) == SUBSCRIBERS

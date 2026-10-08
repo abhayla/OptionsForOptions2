@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 684ac91
+Generated from commit f9b8198
 
 ## Stage S0
 
@@ -80,13 +80,17 @@ Generated from commit 684ac91
 | 4a | decision | ADR-061 | - | IV, Greeks and Estimated Now use each expiry's put-call-parity forward (an implied dividend yield); the payoff's current level stays spot |
 | 4a | decision | ADR-062 | - | Save Draft stores a strategy's definition and activity history durably; live prices are never stored with it |
 | 4a | decision | ADR-063 | - | The engine prices with each expiry's implied dividend yield (Black-Scholes-Merton); every Greek, theta included, comes from the engine |
+| 4a | decision | ADR-064 | - | A strategy's risk limits and preferences use a closed list of names; any other name is refused |
+| 4a | decision | ADR-065 | - | Pricing and stale-data guards stop accidental misuse by our own code; deliberate forging is flagged in CI, not resisted at runtime |
+| 4a | decision | ADR-066 | - | Kite Connect's historical candles are used internally only in V1; users see no history screens |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
-| 4a | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
+| 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
+| 4a | issue | #138 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -390,6 +394,7 @@ Generated from commit 684ac91
 | done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
 | done | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
 | done | finding | F-31 | - | Zerodha grants multi-user Kite Connect access only to a production-ready platform, after a demo; the API fee is waived for active traders |
+| done | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
 | done | hypothesis | H1 | - |  |
 | done | hypothesis | H10 | - |  |
 | done | hypothesis | H11 | - |  |
@@ -422,7 +427,7 @@ Generated from commit 684ac91
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 25 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 3 | 71 |
+| 4a | 7 | 0 | 28 | 5 | 0 | 5 | 0 | 1 | 26 | 0 | 3 | 75 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
@@ -437,4 +442,4 @@ Generated from commit 684ac91
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
 | S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 4 | 0 | 21 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 54 |
+| done | 5 | 4 | 0 | 22 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 55 |

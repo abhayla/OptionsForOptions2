@@ -60,13 +60,16 @@ _WORD = re.compile(r"[A-Za-z]")
 PENDING: dict[str, dict[str, int]] = {
     'audit/catalogue.py': {'<module>': 31},
     'engine/display.py': {'describe_estimate': 1},
+    # merged from main (W-060 forward/ModelInputs, 2026-10-08): field names and data labels, not routed yet
+    'engine/inputs.py': {'__post_init__': 1},
+    'engine/model.py': {'data_label': 2, 'expiry_model': 3, 'model_inputs': 2},
+    'marketdata/forward.py': {'<module>': 2},
     'engine/interfaces.py': {'__post_init__': 2},
     'errors/classes.py': {'<module>': 9},
     'execution/partial.py': {'assess': 3, 'submit_confirmed': 2},
     'execution/safety.py': {'__post_init__': 1},
     'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1, 'slice_quantity': 1},
     'marketdata/health.py': {'evaluate_health': 1},
-    'marketdata/kite_provider.py': {'<module>': 2},
     'marketdata/quote.py': {'__post_init__': 3},
     'orders/model.py': {'<module>': 1},
     'range/pick_lists.py': {'<module>': 1, '__post_init__': 1},

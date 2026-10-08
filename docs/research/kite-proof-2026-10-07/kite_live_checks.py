@@ -309,6 +309,9 @@ async def run_ws(key, token, st, tokens, raw_path, anchor, end_at, reconnect_at)
                                             last_data_before_mono=st.last_data_rx)
                         event(st, "forced_disconnect")
                         await ws.close()
+                        if PAUSE_S:
+                            event(st, "forced_pause", seconds=PAUSE_S)
+                            await asyncio.sleep(PAUSE_S)
                         break
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -367,6 +370,7 @@ def verify_raw(raw_path, expected_frames):
 
 
 SUMMARY = None
+PAUSE_S = 0.0
 
 
 def write_summary(st, extra=None):
@@ -432,15 +436,19 @@ def token_watch(key, token, extra):
 
 
 def main():
-    global SUMMARY
+    global SUMMARY, PAUSE_S
     ap = argparse.ArgumentParser()
     ap.add_argument("--minutes", type=int, default=30)
     ap.add_argument("--reconnect-at", type=int, default=15)
     ap.add_argument("--ticks-dir", default=r"D:\Abhay\Ventures\ofo-kite-ticks")
     ap.add_argument("--no-token-watch", action="store_true")
+    ap.add_argument("--tag", default="", help="summary folder suffix, e.g. pm")
+    ap.add_argument("--pause-s", type=float, default=0.0, help="wait this long after the forced disconnect")
+    ap.add_argument("--end", default="", help="HH:MM IST end time; overrides --minutes")
     a = ap.parse_args()
+    PAUSE_S = a.pause_s
     day = dt.date.today().isoformat()
-    SUMMARY = os.path.join(HERE, f"live-{day}", "summary.json")
+    SUMMARY = os.path.join(HERE, f"live-{day}" + (f"-{a.tag}" if a.tag else ""), "summary.json")
     tick_dir = os.path.join(a.ticks_dir, day)
     os.makedirs(tick_dir, exist_ok=True)
 
@@ -485,6 +493,9 @@ def main():
     n = now_ist()
     anchor = max(n, n.replace(hour=9, minute=15, second=0, microsecond=0))
     end_at = anchor + dt.timedelta(minutes=a.minutes)
+    if a.end:
+        hh, mm = map(int, a.end.split(":"))
+        end_at = n.replace(hour=hh, minute=mm, second=0, microsecond=0)
     reconnect_at = anchor + dt.timedelta(minutes=a.reconnect_at)
     log(f"WINDOW anchor {anchor:%H:%M:%S} reconnect {reconnect_at:%H:%M:%S} end {end_at:%H:%M:%S}")
     st = State(meta)

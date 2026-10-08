@@ -1,0 +1,27 @@
+{
+ "id": "money-parsed-through-float",
+ "scope": "generic",
+ "class": "Any adapter that reads a JSON reply with the default number parser turns every price, margin and charge into a binary float before it becomes a Decimal, so values like 291444.67000000004 enter the money path and rupee totals pick up representation error.",
+ "mechanism": "Kite's REST replies carry money as JSON numbers that are not exactly representable (e.g. /margins/basket initial total 291444.67000000004, /charges/orders total 32.962115749999995); json.loads gives floats, and Decimal(float) keeps the binary error.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "docs/research/kite-proof-2026-10-07/rest-2026-10-08/margins_basket.json, charges_orders.json",
+  "evidence": "margins/basket initial.total 291444.67000000004; charges total 32.962115749999995 (F-33)"
+ },
+ "fix": "Every Kite REST reply is parsed with json.loads(..., parse_float=Decimal, parse_int=int) (or the equivalent in the HTTP client) at the adapter boundary, and a test feeds the real captured replies and asserts type(x) is Decimal with the exact text value.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No Kite REST adapter exists yet (W-059 covers the WebSocket's integer paise). The guard is a test over the captured rest-2026-10-08 replies in the REST adapter work item."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "Kite REST capture",
+   "evidence": "two money fields with float tails in two endpoints"
+  }
+ ]
+}

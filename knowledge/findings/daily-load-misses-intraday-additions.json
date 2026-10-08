@@ -1,0 +1,27 @@
+{
+ "id": "daily-load-misses-intraday-additions",
+ "scope": "generic",
+ "class": "Any reference-data load that runs once a day assumes the source list is fixed for the day; when the source adds members during the day (new strikes, new contracts), everything listed after the load is missing from the catalogue until the next day, and anything keyed on it (subscriptions, strategies, validations) refuses or ignores those members.",
+ "mechanism": "The exchange added 128 NIFTY strikes per weekly expiry between 08:05 and 14:39 on 2026-10-08 (range 20,050-25,400 became 17,150-28,900); a catalogue loaded once in the morning would not know them.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "Kite instrument list, morning fixture tests/fixtures/kite_ws/instruments-2026-10-08-subscribed.csv vs afternoon list",
+  "evidence": "NIFTY 13-Oct strikes 108 -> 236, 19-Oct 104 -> 232, none removed; SENSEX unchanged (F-33)"
+ },
+ "fix": "The daily load also runs at least once during market hours (and on demand when a user picks a strike the catalogue does not know), additions accepted under the ADR-058/ADR-059 guards; the subscription set follows the refreshed catalogue.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The daily load job does not exist yet (issue 126, master-plan 4a step 4). Its work item carries a test that a second load with added strikes adds them and changes nothing else."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-053.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "NIFTY weekly expiries",
+   "evidence": "+128 strikes per expiry intraday"
+  }
+ ]
+}

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ofo.execution.safety import CheckCode
 
-from .classes import ErrorClass
+from ofo.errors.classes import ErrorClass
 
 #: One ErrorClass per CheckCode (REQ-065 AC-1 classes). Each mapping is the class whose four-part
 #: message best explains that check's failure to the user; grouped by rationale below.

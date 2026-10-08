@@ -13,7 +13,7 @@ instance carries none (an optional `message=`, e.g. `TemplateError`): the bounda
 
 from __future__ import annotations
 
-from .model import UserFacingError
+from ofo.errors.model import UserFacingError
 
 
 class UserFacing:

@@ -17,13 +17,14 @@ Breakevens, max loss and every P&L come from the engine (:func:`ofo.engine.strat
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Final
 
 from ofo.engine import UNLIMITED, strategy_metrics
-from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import require_price
+from ofo.engine.model import ModelInputs
 from ofo.scenario.config import ScenarioConfig
 
 DAYS_IN_YEAR: Final = Decimal(365)
@@ -96,6 +97,8 @@ class LevelSet:
     upper_be: Decimal | None
     risk_boundaries: tuple[Decimal, ...]
     expected_move_points: Decimal | None
+    spot_at: datetime | None = None  # REQ-072 AC-3: the spot's time, recorded beside the calculation
+    data_label: str | None = None  # "stale since HH:MM IST" etc. (REQ-049 AC-4); None when live
 
     @property
     def levels(self) -> tuple[Decimal, ...]:
@@ -110,7 +113,7 @@ def _ceil_to(value: Decimal, unit: Decimal) -> Decimal:
     return (value / unit).to_integral_value(rounding=ROUND_CEILING) * unit
 
 
-def _lower_upper(inputs: StrategyInput, breakevens: tuple[Decimal, ...], step: Decimal) -> tuple[Decimal | None, ...]:
+def _lower_upper(inputs: ModelInputs, breakevens: tuple[Decimal, ...], step: Decimal) -> tuple[Decimal | None, ...]:
     """Lower/Upper BE summary values (Q213).
 
     Two or more breakevens: the lowest and the highest. Exactly one: it is the edge of the profit zone, so it is the
@@ -145,22 +148,26 @@ def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[De
 
 
 def build_level_set(
-    inputs: StrategyInput,
+    inputs: ModelInputs,
     config: ScenarioConfig,
     *,
     expected_move: ExpectedMove | None = None,
     override: RangeOverride | None = None,
 ) -> LevelSet:
-    """The one level set every scenario consumer (table and payoff graph) uses (AC-8)."""
-    if not isinstance(inputs, StrategyInput):
-        raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
+    """The one level set every scenario consumer (table and payoff graph) uses (AC-8).
+
+    ``inputs`` is a gated :class:`~ofo.engine.model.ModelInputs` (REQ-072 AC-2): the spot was refused there if it was
+    missing or unavailable; CURRENT and the range stay on that spot (ADR-061).
+    """
+    if not isinstance(inputs, ModelInputs):
+        raise ValueError(f"inputs must be a ModelInputs (ofo.engine.model.model_inputs), got {inputs!r}")
     if not isinstance(config, ScenarioConfig):
         raise ValueError(f"config must be a ScenarioConfig, got {config!r}")
     if config.index != inputs.underlying:
         raise ValueError(f"config is for {config.index}, the strategy is on {inputs.underlying}")
     if expected_move is not None and not isinstance(expected_move, ExpectedMove):
         raise ValueError(f"expected_move must be an ExpectedMove, got {expected_move!r}")
-    spot = require_price(inputs.underlying_level, "current level", allow_zero=False)
+    spot = require_price(inputs.spot_level, "current level", allow_zero=False)
     strategy = inputs.strategy
     metrics = strategy_metrics(strategy)  # raises MultiExpiryError: no exact at-expiry payoff to lay out
     strikes = sorted({leg.strike for leg in strategy.legs if leg.is_option})
@@ -206,6 +213,8 @@ def build_level_set(
     return LevelSet(
         index=config.index,
         current=spot,
+        spot_at=inputs.spot_at,
+        data_label=inputs.data_label,
         step=step,
         start=start,
         end=end,

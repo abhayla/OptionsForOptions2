@@ -28,8 +28,8 @@ from typing import Any
 
 from ofo import wording as _wording
 
-from .classes import ErrorClass
-from .slots import ExternalText
+from ofo.errors.classes import ErrorClass
+from ofo.errors.slots import ExternalText
 
 
 def _external_text(fields: Mapping[str, Any]) -> str | None:

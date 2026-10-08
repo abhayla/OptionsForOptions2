@@ -423,6 +423,12 @@ def test_ast_no_bypass_of_render_outside_the_catalogue_module() -> None:
             # W-024 round 8 fix round 1: ofo.wording makes ITSELF read-only with one statement,
             # `_this_module.__class__ = _FrozenModule` (named allowlist entry in test_write_allowlist.py).
             offences = [o for o in offences if not o.endswith("assigns to an attribute of a checker module (.__class__)")]
+        if path.parent == BACKEND_OFO_DIR / "errors":
+            # The package's own modules re-export its public surface. They used relative imports (which this scan
+            # never saw); the merge with main made them absolute, because main's pricing scan fails closed on any
+            # relative import. The exemption is exactly that: a same-package `from ofo.errors.model|templates`.
+            offences = [o for o in offences
+                        if not re.fullmatch(r"\d+: imports from ofo\.errors\.(model|templates)", o)]
         offenders += [f"{path.relative_to(REPO_ROOT)}:{o}" for o in offences]
     assert not offenders, "\n".join(offenders)
 

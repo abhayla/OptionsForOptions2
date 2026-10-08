@@ -1,0 +1,53 @@
+{
+ "status": "success",
+ "data": {
+  "BSE:SENSEX": {
+   "instrument_token": 265,
+   "last_price": 71470.18
+  },
+  "NFO:NIFTY26O1322000CE": {
+   "instrument_token": 11410434,
+   "last_price": 299.3
+  },
+  "NFO:NIFTY26O1322000PE": {
+   "instrument_token": 11412738,
+   "last_price": 60.45
+  },
+  "NFO:NIFTY26O1322100CE": {
+   "instrument_token": 11413506,
+   "last_price": 225.7
+  },
+  "NFO:NIFTY26O1322100PE": {
+   "instrument_token": 11413762,
+   "last_price": 87.45
+  },
+  "NFO:NIFTY26O1322200CE": {
+   "instrument_token": 11415554,
+   "last_price": 164.4
+  },
+  "NFO:NIFTY26O1322200PE": {
+   "instrument_token": 11416322,
+   "last_price": 124.5
+  },
+  "NFO:NIFTY26O1322300CE": {
+   "instrument_token": 11417090,
+   "last_price": 113.5
+  },
+  "NFO:NIFTY26O1322300PE": {
+   "instrument_token": 11417346,
+   "last_price": 173.6
+  },
+  "NFO:NIFTY26O1322400CE": {
+   "instrument_token": 11418114,
+   "last_price": 74.55
+  },
+  "NFO:NIFTY26O1322400PE": {
+   "instrument_token": 11418626,
+   "last_price": 235.75
+  },
+  "NSE:NIFTY 50": {
+   "instrument_token": 256265,
+   "last_price": 22207.15
+  }
+ }
+}

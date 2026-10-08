@@ -15,9 +15,9 @@ Public surface:
   `ExternalText` (with its closed `ExternalSource` label).
 """
 
-from .classes import ErrorClass
-from .model import UserFacingError
-from .slots import (
+from ofo.errors.classes import ErrorClass
+from ofo.errors.model import UserFacingError
+from ofo.errors.slots import (
     Code,
     Count,
     ExternalSource,
@@ -30,9 +30,9 @@ from .slots import (
     Time,
     Underlying,
 )
-from .gate_slots import LegValue
-from .templates import CATALOGUE, MessageTemplate, display_text, render
-from .user_facing import UserFacing, user_message_of
+from ofo.errors.gate_slots import LegValue
+from ofo.errors.templates import CATALOGUE, MessageTemplate, display_text, render
+from ofo.errors.user_facing import UserFacing, user_message_of
 
 __all__ = [
     "ErrorClass",

@@ -108,6 +108,9 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
     AllowlistEntry("audit/log.py", r"log\._events = list\(events\)",
                    "AuditLog.load: `log = cls()` two lines up; fills the new log, then verifies it"),
     AllowlistEntry("engine/metrics.py", r"ctx\.prec = 60", _DECIMAL_CONTEXT),
+    AllowlistEntry("engine/model.py", r"object\.__setattr__\(obj, name, fields\[name\]\)",
+                   "W-060 gated _make: `obj = object.__new__(cls)` just above, after the token check; fills a "
+                   "frozen ModelInputs record whose __setattr__ refuses every later change"),
     AllowlistEntry("table/model.py", r"ctx\.prec = 50", _DECIMAL_CONTEXT),
     AllowlistEntry("entitlements/ledger.py", r'object\.__setattr__\(history, "user_id", user_id\)',
                    "_restore: `history = object.__new__(StoredHistory)` just above; fills a frozen record"),

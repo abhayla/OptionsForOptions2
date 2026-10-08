@@ -15,8 +15,8 @@ from ofo.engine.legs import Action as _Action
 from ofo.engine.legs import Instrument as _EngineInstrument
 from ofo.engine.legs import Leg as _Leg
 
-from .slots import _IST, _MONTHS, MONEY_ABS_MAX, Count, Instrument, SlotType, Time, Underlying, _require_exact
-from .slots import _validate_money
+from ofo.errors.slots import _IST, _MONTHS, MONEY_ABS_MAX, Count, Instrument, SlotType, Time, Underlying, _require_exact
+from ofo.errors.slots import _validate_money
 
 
 def _format_strike(strike: Decimal) -> str:

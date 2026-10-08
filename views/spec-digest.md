@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (63)
+## Decisions (66)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -69,6 +69,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-061 2026-10-08: For each expiry, the underlying level fed to the Black-Scholes model is the forward implied by that expiry's own option prices, expressed as an impli… [amends ADR-056]
 - ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition and its activity history in the database; they survive a restart and load back exactly as saved; li… [none — adds one acceptance criterion to REQ-038 o…]
 - ADR-063 2026-10-08: The calculation engine takes the implied continuous dividend yield q of ADR-061 as an input and computes the option price, implied volatility and eve… [refines ADR-061]
+- ADR-064 2026-10-08: A strategy definition's `risk_limits` may only use the names max_loss, max_capital and max_margin, and its `preferences` only objective, market_view,… [refines ADR-062]
+- ADR-065 2026-10-08: The guards that keep a stale or missing index value from being used silently (REQ-072 AC-2) have the same trust boundary ADR-003 Q235 set for the wor… [extends ADR-003]
+- ADR-066 2026-10-08: Kite Connect includes historical candles (F-33). [refines ADR-014]
 
 ## Requirements (74)
 
@@ -147,7 +150,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (181)
+## Spec sections (182)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -240,6 +243,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-30 - The exchange removes contracts before their expiry and reuses…
 - ## F-31 - Zerodha grants multi-user Kite Connect access only to a produc…
 - ## F-32 - Live market-hours checks on the owner's account: one Kite WebS…
+- ## F-33 - Afternoon market-hours capture: strikes are added during the d…
 
 ### spec/open-questions.md
 

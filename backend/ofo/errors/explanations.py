@@ -20,7 +20,7 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from .slots import SlotType, _require_exact
+from ofo.errors.slots import SlotType, _require_exact
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
@@ -467,7 +467,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("estimate_assume_iv", "values_seen", "IV {ivs}", {"ivs": LegacyRecorded}),
     ExplanationTemplate("estimate_assume_rate", "values_seen", "rate {rate}", {"rate": Recorded}),
     ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": LegacyRecorded}),
-    ExplanationTemplate("estimate_model_name", "values_seen", "Black-Scholes (European, no dividends)"),
+    ExplanationTemplate("estimate_model_name", "values_seen",
+                        "Black-Scholes-Merton (European, each expiry's implied dividend yield from put-call parity; "
+                        "\"estimated from spot\" when the forward is unavailable)"),  # ADR-061, ADR-063
     ExplanationTemplate("alternative_choice_reason", "values_seen",
                         "User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code})",
                         {"chosen": Recorded, "instrument": Recorded, "original": Recorded, "code": Recorded}),
