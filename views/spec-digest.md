@@ -107,7 +107,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-035 [Approved]: Single strategy table
 - REQ-036 [Approved]: Strategy-only execution
 - REQ-037 [Approved]: Strategy modification
-- REQ-038 [Verified]: Strategy definition, live state and versions
+- REQ-038 [Approved]: Strategy definition, live state and versions
 - REQ-039 [Approved]: Strategy state machine and exception states
 - REQ-040 [Verified]: Activity timeline and rule-trigger audit
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults

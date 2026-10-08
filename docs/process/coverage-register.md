@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit ea25358
+Generated from commit 8ad7a77
 
 ## Stage S0
 
@@ -115,6 +115,8 @@ Generated from commit ea25358
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-024 | - | Error classification and user-facing error messages |
+| 4a | work item | W-060 | - | NIFTY 50 and SENSEX index spot with data health, and each expiry's put-call-parity forward for IV and Greeks |
+| 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
 
 ## Stage 4b
 
@@ -418,7 +420,7 @@ Generated from commit ea25358
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 23 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 67 |
+| 4a | 7 | 0 | 23 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 3 | 69 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |

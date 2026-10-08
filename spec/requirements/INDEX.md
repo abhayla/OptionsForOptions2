@@ -159,7 +159,7 @@ Requirements: 74; sections: 18
 |---|---|---|---|
 | REQ-036 | Strategy-only execution | foundation | Approved |
 | REQ-037 | Strategy modification | feature | Approved |
-| REQ-038 | Strategy definition, live state and versions | core | Verified |
+| REQ-038 | Strategy definition, live state and versions | core | Approved |
 | REQ-039 | Strategy state machine and exception states | foundation | Approved |
 | REQ-040 | Activity timeline and rule-trigger audit | foundation | Verified |
 
