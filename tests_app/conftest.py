@@ -13,6 +13,7 @@ engine and @compiles shims are deliberately not copied.
 
 from __future__ import annotations
 
+import base64
 import os
 from collections.abc import AsyncIterator
 
@@ -21,7 +22,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-DB_SKIP_REASON = "TEST_DATABASE_URL is unset: database tests need real PostgreSQL (ADR-048); never SQLite"
+# W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
+# this run (never a real secret); a value already in the environment (CI) is kept.
+os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")
+os.environ.setdefault("KITE_API_SECRET", "test_placeholder_secret")
+os.environ.setdefault("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback")
+os.environ.setdefault("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
+
+DB_SKIP_REASON ="TEST_DATABASE_URL is unset: database tests need real PostgreSQL (ADR-048); never SQLite"
 ADMIN_SKIP_REASON = "TEST_ADMIN_DATABASE_URL is unset: mutation tests need the owner role (ADR-048)"
 
 

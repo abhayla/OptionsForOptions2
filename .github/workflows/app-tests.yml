@@ -69,6 +69,15 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements-app.txt
 
+      # W-058: the broker routes refuse to start without these. Placeholders and a key generated per run, never a
+      # real secret; nothing in CI talks to Kite.
+      - name: Throwaway broker settings
+        run: |
+          echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
+          echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
+          echo "KITE_REDIRECT_URL=http://127.0.0.1:8000/kite/callback" >> "$GITHUB_ENV"
+          echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
+
       # Standard library only, so it may run before the install step.
       - name: Guard against empty Alembic migrations
         run: python scripts/alembic_migration_guard.py
@@ -145,6 +154,13 @@ jobs:
           node-version: '20.19'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Throwaway broker settings (W-058; as in the api job)
+        run: |
+          echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
+          echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
+          echo "KITE_REDIRECT_URL=http://127.0.0.1:8000/kite/callback" >> "$GITHUB_ENV"
+          echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
 
       - name: Install backend dependencies
         run: |
