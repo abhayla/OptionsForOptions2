@@ -3,7 +3,8 @@
 Method (ADR-061): take the 21 strikes nearest spot (the at-the-money strike and 10 either side, over the strikes the
 chain lists); keep a strike only when its call AND its put both have a bid and an ask; per kept strike
 ``K + e^(rT)(C_mid - P_mid)``; the forward F is the MEDIAN of those values; the implied continuous dividend yield is
-``q = r - ln(F/S)/T``; the engine is given ``S e^(-qT)`` for a level S (the "effective spot").
+``q = r - ln(F/S)/T``. The engine is given spot S and q (ADR-063) and owns every Greek; ``effective_spot``
+(``F e^(-rT)`` = ``S e^(-qT)``) is stored as a figure only and never fed to the engine.
 
 Answer states (run-discipline B4 (d)), each a distinct outcome:
 
@@ -13,6 +14,7 @@ Answer states (run-discipline B4 (d)), each a distinct outcome:
 - spot missing, or its health is not AVAILABLE: :class:`ForwardUnavailable` (refuse; a stale index value is never used
   silently, REQ-072 AC-2).
 - T at or below zero (the valuation is at or after the expiry close): :class:`ForwardUnavailable` (expired).
+- a median forward at or below zero (absurd quotes): :class:`ForwardUnavailable`, never a raw math error.
 - a strike with ask below bid on either leg: skipped and counted in ``crossed_skipped``.
 
 ``quality_spread`` (W-060 "Measured robustness") is max - min of the per-strike forwards over the strikes whose two
@@ -29,7 +31,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final, Iterable, Literal
 
-from ofo.engine.black_scholes import year_fraction
+from ofo.engine.black_scholes import DAYS_IN_YEAR, year_fraction
 from ofo.engine.legs import Instrument
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
@@ -69,6 +71,8 @@ class ExpiryForward:
     spot_timestamp: datetime.datetime
     years: Decimal
     rate: Decimal
+    valuation_time: datetime.datetime
+    days_in_year: int = DAYS_IN_YEAR
     strikes_considered: int = 0
     crossed_skipped: int = 0
 
@@ -76,25 +80,6 @@ class ExpiryForward:
     def label(self) -> str | None:
         """"estimated from spot" on the fallback, else None (ADR-061: the switch is never silent)."""
         return FALLBACK_LABEL if self.source == SPOT_FALLBACK else None
-
-    def _q(self) -> float:
-        return float(self.implied_yield)
-
-    def level_for(self, level: Decimal) -> Decimal:
-        """The level the engine is given for a what-if underlying level S: ``S e^(-qT)``, to 0.01 points."""
-        if self.source == SPOT_FALLBACK:
-            return level
-        return _q2(float(level) * math.exp(-self._q() * float(self.years)))
-
-    @property
-    def delta_scale(self) -> Decimal:
-        """Delta relative to spot = engine delta (to the effective spot) x e^(-qT)."""
-        return Decimal(repr(math.exp(-self._q() * float(self.years))))
-
-    @property
-    def gamma_scale(self) -> Decimal:
-        """Gamma relative to spot = engine gamma x e^(-2qT)."""
-        return Decimal(repr(math.exp(-2.0 * self._q() * float(self.years))))
 
 
 def _mid(q: NormalizedQuote | None) -> tuple[Decimal | None, bool]:
@@ -165,11 +150,14 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
         return ExpiryForward(expiry=expiry, forward=_q2(s * growth), implied_yield=Decimal(0),
                              effective_spot=spot.ltp, strikes_used=len(values), quality_spread=quality,
                              source=SPOT_FALLBACK, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years,
-                             rate=rate, strikes_considered=len(near), crossed_skipped=crossed)
+                             rate=rate, valuation_time=valuation, strikes_considered=len(near),
+                             crossed_skipped=crossed)
     f = statistics.median(values)
+    if not math.isfinite(f) or f <= 0:
+        raise ForwardUnavailable(f"the median parity forward is {f}, not a positive level; the chain is unusable")
     q = r - math.log(f / s) / t
     return ExpiryForward(expiry=expiry, forward=_q2(f),
                          implied_yield=Decimal(repr(q)).quantize(_YIELD_STEP, rounding=ROUND_HALF_EVEN),
                          effective_spot=_q2(f * math.exp(-r * t)), strikes_used=len(values), quality_spread=quality,
                          source=PARITY, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years, rate=rate,
-                         strikes_considered=len(near), crossed_skipped=crossed)
+                         valuation_time=valuation, strikes_considered=len(near), crossed_skipped=crossed)

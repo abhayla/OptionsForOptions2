@@ -43,12 +43,13 @@ class EstimatedNow:
     kind: Literal["estimate"] = "estimate"
 
 
-def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
+def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decimal = Decimal("0")) -> EstimatedNow:
     """Estimated Now P&L of the whole strategy if the underlying were at ``level`` at the valuation time.
 
     ``level`` is index points, not money, but it must be finite, > 0 and have at most 2 decimal places (the
     exchange quotes index levels to 0.01), so a float-built level cannot enter. An exact breakeven with more
-    decimals (see metrics) is rounded to 0.01 by the caller before it is estimated.
+    decimals (see metrics) is rounded to 0.01 by the caller before it is estimated. ``dividend_yield`` is the
+    implied yield q of the legs' expiry (ADR-063), applied to every leg; default 0 = no dividends.
     """
     if not isinstance(inputs, StrategyInput):
         raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
@@ -58,11 +59,12 @@ def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
     for leg_input in inputs.legs:
         years = year_fraction(inputs.valuation_time, leg_input.expiry, days_in_year=inputs.days_in_year)
         if leg_input.instrument is Instrument.FUT:
-            mark = forward_price(level, years, inputs.rate)
+            mark = forward_price(level, years, inputs.rate, dividend_yield=dividend_yield)
         else:
             if leg_input.iv is None:
                 raise ValueError(f"leg {leg_input.contract} has no IV; an estimate needs one for every option leg")
-            mark = bs_price(leg_input.instrument, level, leg_input.strike, years, inputs.rate, leg_input.iv)
+            mark = bs_price(leg_input.instrument, level, leg_input.strike, years, inputs.rate, leg_input.iv,
+                            dividend_yield=dividend_yield)
         marks.append(mark)
         years_list.append(years)
     leg_pnls = tuple(_legs.position_pnl(li.leg, mark) for li, mark in zip(inputs.legs, marks))

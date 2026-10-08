@@ -61,7 +61,8 @@ def test_forward_per_expiry_matches_the_independent_values(replayed, key):
     assert abs(f.effective_spot - effective) <= TOL, (f.effective_spot, effective)
     assert f.strikes_used == used
     assert f.strikes_considered == 21
-    assert f.level_for(spot) == f.effective_spot  # S e^(-qT) == F e^(-rT)
+    q, t = float(f.implied_yield), float(f.years)  # stored figure: S e^(-qT) == F e^(-rT)
+    assert abs(Decimal(repr(float(spot) * math.exp(-q * t))).quantize(TOL) - f.effective_spot) <= TOL
 
 
 def test_quality_spread_is_the_filtered_figure_from_the_work_item(replayed):
@@ -145,7 +146,7 @@ def test_state_fewer_than_three_strikes_falls_back_with_the_label():
     f = parity_forward(_chain((22000, 22050)), _spot(), E, VALUATION, RATE)
     assert f.source == SPOT_FALLBACK and f.strikes_used == 2
     assert f.label == FALLBACK_LABEL == "estimated from spot"
-    assert f.effective_spot == S and f.implied_yield == 0 and f.level_for(Decimal("21000.00")) == Decimal("21000.00")
+    assert f.effective_spot == S and f.implied_yield == 0
     assert iv_on_forward(Instrument.PE, Decimal("100.00"), Decimal("22000"), f).label == "estimated from spot"
 
 
@@ -179,26 +180,74 @@ def _ncdf(x):
     return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
 
-def _hull_call(s, k, t, r, q, v):
+def _hull(s, k, t, r, q, v, put=False):
+    """Hull ch. 17-19, European option on an asset paying a continuous yield q; theta per calendar day (365)."""
     d1 = (math.log(s / k) + (r - q + v * v / 2) * t) / (v * math.sqrt(t))
     d2 = d1 - v * math.sqrt(t)
     pdf = math.exp(-d1 * d1 / 2) / math.sqrt(2 * math.pi)
-    return {"price": s * math.exp(-q * t) * _ncdf(d1) - k * math.exp(-r * t) * _ncdf(d2),
-            "delta": math.exp(-q * t) * _ncdf(d1), "gamma": math.exp(-q * t) * pdf / (s * v * math.sqrt(t))}
+    sq, kr = s * math.exp(-q * t), k * math.exp(-r * t)
+    decay = -sq * pdf * v / (2 * math.sqrt(t))
+    if put:
+        return {"price": kr * _ncdf(-d2) - sq * _ncdf(-d1), "delta": math.exp(-q * t) * (_ncdf(d1) - 1),
+                "theta": (decay + r * kr * _ncdf(-d2) - q * sq * _ncdf(-d1)) / 365,
+                "gamma": math.exp(-q * t) * pdf / (s * v * math.sqrt(t)), "vega": sq * pdf * math.sqrt(t) / 100}
+    return {"price": sq * _ncdf(d1) - kr * _ncdf(d2), "delta": math.exp(-q * t) * _ncdf(d1),
+            "theta": (decay - r * kr * _ncdf(d2) + q * sq * _ncdf(d1)) / 365,
+            "gamma": math.exp(-q * t) * pdf / (s * v * math.sqrt(t)), "vega": sq * pdf * math.sqrt(t) / 100}
+
+
+def _hull_call(s, k, t, r, q, v):
+    return _hull(s, k, t, r, q, v)
 
 
 def _synthetic_forward(q="0.5", years="1"):
     return ExpiryForward(expiry=E, forward=Decimal("0"), implied_yield=Decimal(q), effective_spot=Decimal("0"),
                          strikes_used=21, quality_spread=None, source=PARITY, spot=Decimal("100.00"),
-                         spot_timestamp=VALUATION, years=Decimal(years), rate=RATE)
+                         spot_timestamp=VALUATION, years=Decimal(years), rate=RATE, valuation_time=VALUATION)
 
 
-def test_delta_and_gamma_follow_hull_for_a_dividend_yield():
-    f = _synthetic_forward()  # qT = 0.5: e^(-qT) = 0.61, so a missing scale is far outside 4 dp
-    g = greeks_on_forward(Instrument.CE, Decimal("100"), Decimal("0.2"), f).greeks
-    h = _hull_call(100.0, 100.0, 1.0, 0.065, 0.5, 0.2)
-    assert abs(float(g.delta) - h["delta"]) <= 1e-4
-    assert abs(float(g.gamma) - h["gamma"]) <= 1e-4
+@pytest.mark.parametrize("kind", [Instrument.CE, Instrument.PE])
+def test_every_greek_follows_hull_for_a_dividend_yield(kind):
+    f = _synthetic_forward()  # qT = 0.5: e^(-qT) = 0.61, so a missing yield factor is far outside 4 dp
+    g = greeks_on_forward(kind, Decimal("100"), Decimal("0.2"), f).greeks
+    h = _hull(100.0, 100.0, 1.0, 0.065, 0.5, 0.2, put=kind is Instrument.PE)
+    for name in ("delta", "gamma", "theta", "vega"):
+        assert abs(float(getattr(g, name)) - h[name]) <= 1e-4, (name, getattr(g, name), h[name])
+
+
+# The review's (ADR-063) theta values were computed with the yield read from UNROUNDED mids (q below); the forward
+# here uses paise-rounded mids (work/W-060.md proof), which moves SENSEX 08-Oct q to 1.25071 and theta to -111.05.
+# So the review's numbers are pinned at the review's inputs, and the live forward is checked against Hull separately.
+@pytest.mark.parametrize("key, strike, vol, q, theta", [
+    (("SENSEX", D(2026, 10, 8)), "72400", "0.15", "1.2505103235", Decimal("-111.07")),  # code was -229.44
+    (("NIFTY", D(2026, 10, 13)), "22550", "0.12", "0.0775980093", Decimal("-11.89")),  # code was -14.17
+])
+def test_theta_carries_the_yield_term(replayed, key, strike, vol, q, theta):
+    live = _forward(replayed, *key)
+    review = dataclasses.replace(live, implied_yield=Decimal(q))
+    g = greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), review).greeks
+    assert abs(g.theta - theta) <= Decimal("0.005"), g.theta
+    g_live = greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), live).greeks
+    h = _hull(float(live.spot), float(strike), float(live.years), 0.065, float(live.implied_yield), float(vol))
+    assert abs(float(g_live.theta) - h["theta"]) <= 1e-4
+
+
+def test_estimate_refuses_a_forward_read_for_another_valuation_rate_or_day_count(replayed):
+    f = _forward(replayed, "NIFTY", D(2026, 10, 13))
+    inputs = _one_call(f.spot)
+    for bad in (dataclasses.replace(f, valuation_time=VALUATION + datetime.timedelta(minutes=1)),
+                dataclasses.replace(f, rate=Decimal("0.07")), dataclasses.replace(f, days_in_year=252)):
+        with pytest.raises(ForwardUnavailable, match="different"):
+            estimate_now_on_forward(inputs, f.spot, {f.expiry: bad})
+
+
+def test_a_non_positive_median_forward_refuses_not_a_math_error():
+    # deep calls priced far below their puts: K + e^(rT)(C - P) < 0 at every strike
+    chain = []
+    for k in (100, 110, 120):
+        chain += [_q(Instrument.CE, str(k), "1.00", "1.10"), _q(Instrument.PE, str(k), "5000.00", "5000.10")]
+    with pytest.raises(ForwardUnavailable, match="median"):
+        parity_forward(chain, _spot(Decimal("110.00")), E, VALUATION, RATE)
 
 
 def test_delta_on_the_real_nifty_forward_follows_hull(replayed):
@@ -221,7 +270,7 @@ def test_estimated_now_marks_at_the_effective_level_per_hull(replayed):
     h = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, float(f.implied_yield), 0.12)
     expected = (Decimal(repr(h["price"])).quantize(TOL) - Decimal("100.00")) * 65
     assert abs(est.total - expected) <= Decimal("0.65")  # one paisa of price rounding x 65 (one lot)
-    assert est.leg_levels == (f.effective_spot,) and est.label is None
+    assert est.dividend_yields == (f.implied_yield,) and est.level == f.spot and est.label is None
     no_yield = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, 0.0, 0.12)["price"]
     on_spot = (Decimal(repr(no_yield)).quantize(TOL) - Decimal("100.00")) * 65
     assert abs(est.total - on_spot) > Decimal("100")  # spot would be visibly off (about 25 points x delta x 65)

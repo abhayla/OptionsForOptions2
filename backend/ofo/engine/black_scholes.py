@@ -2,7 +2,9 @@
 
 Textbook formulas (Hull, *Options, Futures and Other Derivatives*: Black-Scholes-Merton and the Greek letters),
 written for this project in the
-standard library only; nothing is copied from a legacy repo. The model assumes no dividend yield.
+standard library only; nothing is copied from a legacy repo. Black-Scholes-Merton with a continuous dividend yield
+``dividend_yield`` q (ADR-063: each expiry's implied yield from its parity forward, ADR-061; default 0 = the
+no-dividend formulas exactly). Every Greek comes from here; callers pass spot and q and never rescale an output.
 
 Boundary policy (ADR-008, REQ-032 AC-4):
 
@@ -83,6 +85,14 @@ def _rate(value: object) -> float:
     return float(value)
 
 
+def _yield(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, Decimal):
+        raise ValueError(f"dividend_yield must be a decimal.Decimal, got {type(value).__name__}")
+    if not value.is_finite():
+        raise ValueError(f"dividend_yield must be finite, got {value}")
+    return float(value)
+
+
 def _kind(option: object) -> Instrument:
     if option not in (Instrument.CE, Instrument.PE):
         raise ValueError(f"Black-Scholes prices a CE or PE option, got {option!r}")
@@ -97,18 +107,19 @@ def _norm_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
-def _d1_d2(s: float, k: float, t: float, r: float, v: float) -> tuple[float, float]:
-    d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
+def _d1_d2(s: float, k: float, t: float, r: float, v: float, q: float = 0.0) -> tuple[float, float]:
+    d1 = (math.log(s / k) + (r - q + 0.5 * v * v) * t) / (v * math.sqrt(t))
     return d1, d1 - v * math.sqrt(t)
 
 
-def _price(option: Instrument, s: float, k: float, t: float, r: float, v: float) -> float:
-    """Unrounded model price (float, internal only)."""
-    d1, d2 = _d1_d2(s, k, t, r, v)
+def _price(option: Instrument, s: float, k: float, t: float, r: float, v: float, q: float = 0.0) -> float:
+    """Unrounded model price (float, internal only). Call S e^(-qT) N(d1) - K e^(-rT) N(d2); put by symmetry."""
+    d1, d2 = _d1_d2(s, k, t, r, v, q)
     discounted_k = k * math.exp(-r * t)
+    discounted_s = s * math.exp(-q * t)
     if option is Instrument.CE:
-        return s * _norm_cdf(d1) - discounted_k * _norm_cdf(d2)
-    return discounted_k * _norm_cdf(-d2) - s * _norm_cdf(-d1)
+        return discounted_s * _norm_cdf(d1) - discounted_k * _norm_cdf(d2)
+    return discounted_k * _norm_cdf(-d2) - discounted_s * _norm_cdf(-d1)
 
 
 def _to_decimal(value: float, step: Decimal) -> Decimal:
@@ -140,22 +151,24 @@ def year_fraction(
 
 
 def bs_price(
-    option: Instrument, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal, vol: Decimal
+    option: Instrument, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal, vol: Decimal,
+    *, dividend_yield: Decimal = Decimal("0"),
 ) -> Decimal:
-    """Black-Scholes price per unit of a European CE/PE, rounded half-even to 0.01 rupee."""
+    """Black-Scholes(-Merton) price per unit of a European CE/PE, rounded half-even to 0.01 rupee."""
     s, k = _paise(spot, "spot"), _paise(strike, "strike")
     t, v, r = _positive(years, "years"), _positive(vol, "vol"), _rate(rate)
-    return _to_decimal(_price(_kind(option), s, k, t, r, v), PRICE_STEP)
+    return _to_decimal(_price(_kind(option), s, k, t, r, v, _yield(dividend_yield)), PRICE_STEP)
 
 
-def forward_price(spot: Decimal, years: Decimal, rate: Decimal) -> Decimal:
-    """Cost-of-carry fair value of an index future, ``S e^(rT)`` (same no-dividend assumption), to 0.01."""
+def forward_price(spot: Decimal, years: Decimal, rate: Decimal, *, dividend_yield: Decimal = Decimal("0")) -> Decimal:
+    """Cost-of-carry fair value of an index future, ``S e^((r - q)T)``, to 0.01 (q = 0: ``S e^(rT)``)."""
     s, t, r = _paise(spot, "spot"), _positive(years, "years"), _rate(rate)
-    return _to_decimal(s * math.exp(r * t), PRICE_STEP)
+    return _to_decimal(s * math.exp((r - _yield(dividend_yield)) * t), PRICE_STEP)
 
 
 def implied_volatility(
-    option: Instrument, price: Decimal, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal
+    option: Instrument, price: Decimal, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal,
+    *, dividend_yield: Decimal = Decimal("0"),
 ) -> Decimal:
     """Volatility in [IV_LOWER, IV_UPPER] whose model price equals ``price``; bracketed bisection.
 
@@ -166,13 +179,13 @@ def implied_volatility(
     kind = _kind(option)
     target = _paise(price, "price")
     s, k, t, r = _paise(spot, "spot"), _paise(strike, "strike"), _positive(years, "years"), _rate(rate)
-    return _to_decimal(_solve_iv(kind, target, s, k, t, r), IV_STEP)
+    return _to_decimal(_solve_iv(kind, target, s, k, t, r, _yield(dividend_yield)), IV_STEP)
 
 
-def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: float) -> float:
+def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: float, q: float = 0.0) -> float:
     """Bisection on [IV_LOWER, IV_UPPER] for the volatility whose model price is ``target`` (float, internal)."""
     lo, hi = IV_LOWER, IV_UPPER
-    p_lo, p_hi = _price(kind, s, k, t, r, lo), _price(kind, s, k, t, r, hi)
+    p_lo, p_hi = _price(kind, s, k, t, r, lo, q), _price(kind, s, k, t, r, hi, q)
     if target < p_lo:
         raise NoImpliedVolatilityError(
             f"price {target} is below the lowest model price {p_lo:.4f} (at or under intrinsic value); no IV"
@@ -181,7 +194,7 @@ def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: 
         raise NoImpliedVolatilityError(f"price {target} is above the model price at vol {IV_UPPER} ({p_hi:.4f}); no IV")
     for _ in range(_IV_MAX_ITERATIONS):
         mid = 0.5 * (lo + hi)
-        if _price(kind, s, k, t, r, mid) < target:
+        if _price(kind, s, k, t, r, mid, q) < target:
             lo = mid
         else:
             hi = mid
@@ -191,21 +204,28 @@ def _solve_iv(kind: Instrument, target: float, s: float, k: float, t: float, r: 
 
 
 def _greek_floats(kind: Instrument, s: float, k: float, t: float, r: float, v: float,
-                   days_in_year: int) -> dict[str, float]:
-    """The four raw (unrounded) Greek floats. Shared by :func:`bs_greeks` and :func:`bs_greeks_unrounded`."""
-    d1, d2 = _d1_d2(s, k, t, r, v)
+                   days_in_year: int, q: float = 0.0) -> dict[str, float]:
+    """The four raw (unrounded) Greek floats, Black-Scholes-Merton with yield q (Hull ch. 17-19).
+
+    Shared by :func:`bs_greeks` and :func:`bs_greeks_unrounded`. With q = 0 every yield factor is exactly 1.0 or 0.0,
+    so the no-dividend values are reproduced bit for bit.
+    """
+    d1, d2 = _d1_d2(s, k, t, r, v, q)
     pdf = _norm_pdf(d1)
-    decay = -s * pdf * v / (2.0 * math.sqrt(t))
+    yield_df = math.exp(-q * t)
+    decay = -s * yield_df * pdf * v / (2.0 * math.sqrt(t))
     carry = r * k * math.exp(-r * t)
     if kind is Instrument.CE:
-        delta, theta_year = _norm_cdf(d1), decay - carry * _norm_cdf(d2)
+        delta = yield_df * _norm_cdf(d1)
+        theta_year = decay - carry * _norm_cdf(d2) + q * s * yield_df * _norm_cdf(d1)
     else:
-        delta, theta_year = _norm_cdf(d1) - 1.0, decay + carry * _norm_cdf(-d2)
+        delta = yield_df * (_norm_cdf(d1) - 1.0)
+        theta_year = decay + carry * _norm_cdf(-d2) - q * s * yield_df * _norm_cdf(-d1)
     return {
         "delta": delta,
-        "gamma": pdf / (s * v * math.sqrt(t)),
+        "gamma": yield_df * pdf / (s * v * math.sqrt(t)),
         "theta": theta_year / days_in_year,
-        "vega": s * pdf * math.sqrt(t) / 100.0,
+        "vega": s * yield_df * pdf * math.sqrt(t) / 100.0,
     }
 
 
@@ -228,6 +248,7 @@ def bs_greeks(
     vol: Decimal,
     *,
     days_in_year: int = DAYS_IN_YEAR,
+    dividend_yield: Decimal = Decimal("0"),
 ) -> Greeks:
     """Delta, gamma, theta (per calendar day) and vega (per 1 vol point) per unit, each rounded to 4 dp.
 
@@ -238,7 +259,7 @@ def bs_greeks(
     Iron Condor leg's Gamma was off by 0.0035 at position level from exactly this bug).
     """
     kind, s, k, t, r, v = _check_greek_inputs(option, spot, strike, years, rate, vol, days_in_year)
-    raw = _greek_floats(kind, s, k, t, r, v, days_in_year)
+    raw = _greek_floats(kind, s, k, t, r, v, days_in_year, _yield(dividend_yield))
     return Greeks(**{name: _to_decimal(value, GREEK_STEP) for name, value in raw.items()})
 
 
@@ -251,6 +272,7 @@ def bs_greeks_unrounded(
     vol: Decimal,
     *,
     days_in_year: int = DAYS_IN_YEAR,
+    dividend_yield: Decimal = Decimal("0"),
 ) -> Greeks:
     """The same per-unit Greeks as :func:`bs_greeks`, WITHOUT the 4 dp display rounding.
 
@@ -259,7 +281,7 @@ def bs_greeks_unrounded(
     sums several legs, then rounds once at its own boundary (never displayed to a user directly).
     """
     kind, s, k, t, r, v = _check_greek_inputs(option, spot, strike, years, rate, vol, days_in_year)
-    raw = _greek_floats(kind, s, k, t, r, v, days_in_year)
+    raw = _greek_floats(kind, s, k, t, r, v, days_in_year, _yield(dividend_yield))
     for name, value in raw.items():
         if not math.isfinite(value):
             raise ValueError(f"the model produced a non-finite {name}: {value}")
