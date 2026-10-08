@@ -344,6 +344,15 @@ FLAGGED = {
     "object.__setattr__ in a non-frozen dataclass": (
         "@dataclass\nclass C:\n    def __post_init__(self):\n        object.__setattr__(self, 'x', 1)"
     ),
+    "object.__setattr__ in a dataclass(order=True)": (
+        "@dataclass(order=True)\nclass C:\n    def __post_init__(self):\n        object.__setattr__(self, 'x', 1)"
+    ),
+    "object.__setattr__ in a dataclass(frozen=False)": (
+        "@dataclass(frozen=False)\nclass C:\n    def __post_init__(self):\n        object.__setattr__(self, 'x', 1)"
+    ),
+    "object.__setattr__ under another decorator(frozen=True)": (
+        "@attrs(frozen=True)\nclass C:\n    def __post_init__(self):\n        object.__setattr__(self, 'x', 1)"
+    ),
     "object.__setattr__ in a frozen dataclass __init__": (
         "@dataclass(frozen=True)\nclass C:\n    def __init__(self):\n        object.__setattr__(self, 'x', 1)"
     ),
