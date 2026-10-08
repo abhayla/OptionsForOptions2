@@ -200,7 +200,6 @@ issues:
   "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#138": 4a            # W-061 Save Draft test-coverage gaps (verifier, 2026-10-08)
-  "#140": 4a            # W-060 parked then unparked by ADR-065; closes when PR 135 merges
 
 # Work items whose status is not done.
 work_items:
