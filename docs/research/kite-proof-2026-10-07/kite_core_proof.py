@@ -68,6 +68,56 @@ def wait_for_request_token(timeout_s=600):
     return got
 
 
+CACHE = r"D:\Abhay\Ventures\ofo-kite-ticks\token.cache"  # outside the repo; owner decision 2026-10-08
+
+
+def _next_six_am_ist(now):
+    ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
+    n = now.astimezone(ist)
+    six = n.replace(hour=6, minute=0, second=0, microsecond=0)
+    return six if n < six else six + dt.timedelta(days=1)
+
+
+def session_token(env):
+    """One Kite login per day: reuse the AES-GCM encrypted token cached outside the repo until 06:00 IST or until
+    Kite refuses it; otherwise print the login link, log in, and cache the new token. Never prints the token."""
+    import base64
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    key, secret = env["KITE_API_KEY"], env["KITE_API_SECRET"]
+    aes = AESGCM(base64.urlsafe_b64decode(env["KITE_TOKEN_CACHE_KEY"]))
+    now = dt.datetime.now(dt.timezone.utc)
+    if os.path.exists(CACHE):
+        try:
+            blob = json.load(open(CACHE, encoding="utf-8"))
+            if dt.datetime.fromisoformat(blob["expires"]) > now:
+                tok = aes.decrypt(base64.b64decode(blob["nonce"]), base64.b64decode(blob["ct"]), key.encode()).decode()
+                s, _ = call("GET", "/quote/ltp?i=NSE:NIFTY+50", tok, key)
+                if s == 200:
+                    print("SESSION reused from encrypted cache", flush=True)
+                    return tok
+        except Exception as e:  # unreadable or tampered cache: fall through to a fresh login
+            print("cache not usable:", type(e).__name__, flush=True)
+        os.remove(CACHE)
+    print("LOGIN_URL https://kite.zerodha.com/connect/login?v=3&api_key=" + key, flush=True)
+    got = wait_for_request_token(timeout_s=3600)
+    if got.get("status") != "success" or not got.get("request_token"):
+        sys.exit(f"login not completed (status={got.get('status')!r})")
+    cs = hashlib.sha256((key + got["request_token"] + secret).encode()).hexdigest()
+    st, raw = call("POST", "/session/token", form={"api_key": key, "request_token": got["request_token"], "checksum": cs})
+    sess = json.loads(raw)
+    if st != 200:
+        sys.exit(f"session failed HTTP {st}: {sess.get('error_type')}")
+    tok = sess["data"]["access_token"]
+    nonce = os.urandom(12)
+    ct = aes.encrypt(nonce, tok.encode(), key.encode())
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    with open(CACHE, "w", encoding="utf-8") as f:
+        json.dump({"nonce": base64.b64encode(nonce).decode(), "ct": base64.b64encode(ct).decode(),
+                   "expires": _next_six_am_ist(now).isoformat()}, f)
+    print("SESSION ok (token cached encrypted until 06:00 IST)", flush=True)
+    return tok
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     env = load_env()

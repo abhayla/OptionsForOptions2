@@ -149,7 +149,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (181)
+## Spec sections (182)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -242,6 +242,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-30 - The exchange removes contracts before their expiry and reuses…
 - ## F-31 - Zerodha grants multi-user Kite Connect access only to a produc…
 - ## F-32 - Live market-hours checks on the owner's account: one Kite WebS…
+- ## F-33 - Afternoon market-hours capture: strikes are added during the d…
 
 ### spec/open-questions.md
 

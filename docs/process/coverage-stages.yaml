@@ -244,7 +244,8 @@ findings:
   F-29: 4a        # core data proof (owner's account): field shapes for the Kite adapter
   F-30: 4a        # delisting before expiry (ADR-058, W-057)
   F-31: done      # Zerodha wants a production-ready demo first; fee waiver (decided, ADR-060)
-  F-32: 4a        # live checks: Greeks input decided (ADR-061); staleness rule open for the data path
+  F-32: done      # live checks: Greeks input (ADR-061) and staleness (W-059) decided
+  F-33: 4a        # afternoon capture: intraday strikes, REST charges/history, floats, sessions, expiry close
 
 hypotheses:
   H1: done
