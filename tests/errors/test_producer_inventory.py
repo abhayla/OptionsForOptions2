@@ -233,8 +233,6 @@ def _excluded(chain: list[ast.AST], rel: str = "") -> bool:
     for ancestor in reversed(chain[:-1]):
         if isinstance(ancestor, ast.Assert):
             return True
-        if isinstance(ancestor, ast.keyword) and ancestor.arg == "detail":
-            return True  # a labelled developer detail beside a render() message (e.g. TemplateError(detail=, message=))
         if isinstance(ancestor, ast.Raise):
             exc = ancestor.exc
             name = _call_name(exc) if isinstance(exc, ast.Call) else ""
@@ -369,14 +367,25 @@ def test_detector_fails_closed_on_unknown_positions() -> None:
     assert [(r[1], r[2]) for r in scan_source(src, "m.py")] == [(1, "<module>"), (2, "f")]
 
 
-def test_detail_keyword_is_developer_text_but_a_positional_text_is_not() -> None:
+def test_detail_is_resolved_by_the_real_signature_not_the_keyword_name() -> None:
+    """Fix round (review MAJOR-1): `detail=` is developer text only when it binds to the `detail` parameter of the
+    resolved callee; an unresolved callee is counted whatever the keyword (fail closed)."""
     src = (
         'def f(p):\n'
         '    raise TemplateError(detail=f"{p}: not valid YAML here", message=render("x"))\n'
         'def g(p):\n'
         '    raise TemplateError(f"{p}: not valid YAML here")\n'
     )
-    assert [r[2] for r in scan_source(src, "m.py")] == ["g"]
+    assert scan_source(src, "strategy/model.py") == []  # TemplateError(detail, *, message): both bind to detail
+    assert [r[2] for r in scan_source(src, "m.py")] == ["f", "g"]  # unresolved: counted
+
+
+def test_catalogue_typed_helper_result_carries_no_taint() -> None:
+    src = ('from ofo.errors import render, UserFacingError\n'
+           'def msg(e) -> UserFacingError:\n    return render("partial_nothing_prepared")\n'
+           'def f():\n    try:\n        pass\n    except ValueError as exc:\n'
+           '        return render("x", m=msg(exc))\n')
+    assert exception_text_flows(src, "execution/partial.py") == []
 
 
 def test_catalogue_file_is_the_one_home() -> None:
@@ -475,28 +484,111 @@ def test_mutant_treating_user_facing_types_as_detail_lets_shown_text_through(mon
     assert scan_source(src, "execution/send_guard.py") == []
 
 
+RENDER_SINKS = frozenset({"render", "render_explanation"})
+
+
+#: Return types only render()/render_explanation() can build: a call to a module function annotated with one of
+#: these yields catalogue text whatever its arguments were, so it does not carry an exception's text onwards.
+CATALOGUE_RETURN_TYPES = frozenset({"UserFacingError", "ExplanationText"})
+_CATALOGUE_FUNCTIONS: set[str] = set()
+
+
+def _names_in(node: ast.AST) -> set[str]:
+    """Names an expression reads, skipping calls to functions typed to return catalogue text."""
+    out: set[str] = set()
+    stack = [node]
+    while stack:
+        sub = stack.pop()
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id in _CATALOGUE_FUNCTIONS:
+            continue
+        if isinstance(sub, ast.Name):
+            out.add(sub.id)
+        stack.extend(ast.iter_child_nodes(sub))
+    return out
+
+
+def _targets(node: ast.AST) -> set[str]:
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+
+
+def _taint_closure(fn: ast.AST, seeds: set[str]) -> set[str]:
+    """Flow-insensitive (fail closed): every name assigned from an expression holding a tainted name is tainted."""
+    tainted = set(seeds) | {h.name for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler) and h.name}
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(fn):
+            pairs: list[tuple[ast.AST, ast.AST]] = []
+            if isinstance(node, ast.Assign):
+                pairs = [(t, node.value) for t in node.targets]
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) and node.value is not None:
+                pairs = [(node.target, node.value)]
+            elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+                pairs = [(node.target, node.iter)]
+            elif isinstance(node, (ast.With, ast.AsyncWith)):
+                pairs = [(i.optional_vars, i.context_expr) for i in node.items if i.optional_vars is not None]
+            for target, value in pairs:
+                if _names_in(value) & tainted:
+                    new = _targets(target) - tainted
+                    if new:
+                        tainted |= new
+                        changed = True
+    return tainted
+
+
 def exception_text_flows(source: str, rel: str) -> list[tuple[str, int, str]]:
-    """Every use of an `except ... as e` name inside `render(...)` or inside a non-detail argument of a `UserFacing`
-    constructor: the one route by which a hidden exception's text could still reach a user."""
+    """Every place a caught exception's text can reach a user message: an `except ... as e` name, any name assigned
+    from it (aliases, `why = str(e)`), and any parameter of a module-level function it is passed to (helpers), used
+    inside `render(...)` / `render_explanation(...)` or a non-detail argument of a `UserFacing` constructor (resolved
+    by import source and the real signature). Flow-insensitive and fail closed."""
     tree = ast.parse(source)
-    found: list[tuple[str, int, str]] = []
+    functions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    _CATALOGUE_FUNCTIONS.clear()
+    _CATALOGUE_FUNCTIONS.update(name for name, fn in functions.items()
+                                if fn.returns is not None and ast.unparse(fn.returns) in CATALOGUE_RETURN_TYPES)
+    every_fn = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    seeds: dict[ast.AST, set[str]] = {fn: set() for fn in every_fn}
+    found: set[tuple[str, int, str]] = set()
+    work = list(every_fn)
+    while work:
+        fn = work.pop()
+        tainted = _taint_closure(fn, seeds[fn])
+        for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
+            args = [*call.args, *(k for k in call.keywords)]
+            hot = [a for a in args if _names_in(a.value if isinstance(a, ast.keyword) else a) & tainted]
+            if not hot:
+                continue
+            name = _call_name(call)
+            if name in RENDER_SINKS:
+                found.add((rel, call.lineno, name))
+                continue
+            target = resolve_callee(call, [tree, fn, call], rel)
+            from ofo.errors import UserFacing
 
-    def walk(node: ast.AST, chain: list[ast.AST], bound: frozenset[str]) -> None:
-        for child in ast.iter_child_nodes(node):
-            names = bound | {child.name} if isinstance(child, ast.ExceptHandler) and child.name else bound
-            child_chain = chain + [child]
-            if isinstance(child, ast.Name) and child.id in bound:
-                for index in range(len(child_chain) - 2, -1, -1):
-                    link = child_chain[index]
-                    if not isinstance(link, ast.Call):
-                        continue
-                    if _call_name(link) == "render" or _exception_flow(link, child_chain, rel) is False:
-                        found.append((rel, child.lineno, child.id))
-                        break
-            walk(child, child_chain, names)
-
-    walk(tree, [tree], frozenset())
-    return found
+            if isinstance(target, type) and issubclass(target, UserFacing):
+                for arg in hot:
+                    if _bound_parameter(call, [call, arg], target) != DETAIL_PARAMETER:
+                        found.add((rel, call.lineno, target.__name__))
+                continue
+            helper = functions.get(name) if isinstance(call.func, ast.Name) else None
+            if helper is not None:
+                params = [a.arg for a in (*helper.args.posonlyargs, *helper.args.args)]
+                new = set()
+                for arg in hot:
+                    if isinstance(arg, ast.keyword):
+                        new.add(arg.arg) if arg.arg else new.update(params)
+                    elif isinstance(arg, ast.Starred):
+                        new.update(params)
+                    else:
+                        index = call.args.index(arg)
+                        if index < len(params):
+                            new.add(params[index])
+                        elif helper.args.vararg:
+                            new.add(helper.args.vararg.arg)
+                if not new <= seeds[helper]:
+                    seeds[helper] |= new
+                    work.append(helper)
+    return sorted(found)
 
 
 def test_exception_text_never_flows_into_a_user_facing_message() -> None:
@@ -525,4 +617,43 @@ def test_exception_text_flow_detector_kills_its_samples() -> None:
         '    except ValueError as exc:\n'
         '        raise SendRefused(str(exc))\n'
     )
-    assert [r[1] for r in exception_text_flows(src, "execution/send_guard.py")] == [5, 15]
+    assert sorted({r[1] for r in exception_text_flows(src, "execution/send_guard.py")}) == [5, 15]
+
+
+# --- fix round (review MAJOR-1): the reviewer's three flow probes, each refused ------------------------------------
+
+def test_probe_alias_of_exception_text_is_a_flow() -> None:
+    src = ('from ofo.errors import render\n'
+           'def f():\n    try:\n        pass\n    except ValueError as exc:\n        why = str(exc)\n'
+           '        return render("x", text=why)\n')
+    assert exception_text_flows(src, "execution/send_guard.py") == [("execution/send_guard.py", 7, "render")]
+
+
+def test_probe_helper_receiving_the_exception_is_a_flow() -> None:
+    src = ('from ofo.errors import render\n'
+           'def g(e):\n    return render("x", text=str(e))\n'
+           'def f():\n    try:\n        pass\n    except ValueError as exc:\n        return g(exc)\n')
+    assert exception_text_flows(src, "execution/send_guard.py") == [("execution/send_guard.py", 3, "render")]
+
+
+def test_probe_render_explanation_is_a_sink_and_detail_keyword_is_resolved_by_signature() -> None:
+    ex = ('from ofo.errors.explanations import render_explanation\n'
+          'def f(rule):\n    try:\n        pass\n    except ValueError as exc:\n'
+          '        return render_explanation("rule_alert", rule="r", detail=str(exc))\n'
+          'def g():\n    return render_explanation("rule_alert", rule="r", detail="Your stop loss was hit just now")\n')
+    assert exception_text_flows(ex, "rules/actions.py") == [("rules/actions.py", 6, "render_explanation")]
+    assert [r[2] for r in scan_source(ex, "rules/actions.py")] == ["g"]  # detail= of a non-exception call counts
+    dc = ('from dataclasses import dataclass\n@dataclass\nclass Row:\n    detail: str\n'
+          'def f():\n    return Row(detail="Your order was rejected by the exchange")\n')
+    assert len(scan_source(dc, "table/model.py")) == 1
+
+
+def test_mutant_flow_scan_without_alias_taint_misses_the_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mutation: taint only the except name itself -> the alias probe escapes (so the closure is load-bearing)."""
+    src = ('from ofo.errors import render\n'
+           'def f():\n    try:\n        pass\n    except ValueError as exc:\n        why = str(exc)\n'
+           '        return render("x", text=why)\n')
+    monkeypatch.setattr(sys.modules[__name__], "_taint_closure",
+                        lambda fn, seeds: set(seeds) | {h.name for h in ast.walk(fn)
+                                                        if isinstance(h, ast.ExceptHandler) and h.name})
+    assert exception_text_flows(src, "execution/send_guard.py") == []
