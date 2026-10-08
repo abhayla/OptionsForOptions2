@@ -591,7 +591,9 @@ def test_typed_redirect_allows_exactly_the_kite_login_url():
 
 
 @pytest.mark.parametrize("field, bad", [("path", "/p; Domain=.evil.example"), ("value", "v; Domain=.evil.example"),
-                                        ("value", "v" + chr(13) + chr(10) + "X: y"), ("path", "/p" + chr(10))])
+                                        ("value", "v" + chr(13) + chr(10) + "X: y"), ("path", "/p" + chr(10)),
+                                        ("path", "/p" + chr(13)), ("value", "v" + chr(13) + "X: y"),
+                                        ("value", "v" + chr(10) + "X: y"), ("name", "n" + chr(13))])
 def test_a_cookie_with_a_separator_is_refused(field, bad):
     kwargs = {"name": broker_routes.STATE_COOKIE, "path": CALLBACK, "value": "v", field: bad}
     with pytest.raises(ValueError):
