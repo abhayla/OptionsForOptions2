@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit cd8fa7e
+Generated from commit e43cdfb
 
 ## Stage S0
 
@@ -90,7 +90,6 @@ Generated from commit cd8fa7e
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
 | 4a | issue | #138 | - |  |
-| 4a | issue | #140 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -426,7 +425,7 @@ Generated from commit cd8fa7e
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 27 | 5 | 0 | 6 | 0 | 1 | 26 | 0 | 3 | 75 |
+| 4a | 7 | 0 | 27 | 5 | 0 | 5 | 0 | 1 | 26 | 0 | 3 | 74 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
