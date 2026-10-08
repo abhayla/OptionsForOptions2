@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, Str
 
 from ofo.errors import UserFacingError
 from ofo.errors.explanations import ExplanationText
+from ofo_app.closed_namespace import own_names
 
 
 def _catalogue_only(value: object) -> UserFacingError | ExplanationText:
@@ -93,7 +94,7 @@ def _refuse_open_doors(cls: type) -> None:
             continue
         if not (isinstance(base, type) and issubclass(base, ApiModel)):
             raise TypeError(f"{cls.__name__}: an ApiModel inherits only from ApiModel classes, not {base.__name__}")
-    extra = sorted(name for name in cls.__dict__ if name not in _PYDANTIC_NAMESPACE)
+    extra = [name for name in own_names(cls) if name not in _PYDANTIC_NAMESPACE]
     if extra:
         raise TypeError(f"{cls.__name__}: an ApiModel body holds fields only; refused {extra} (no method, property, "
                         f"computed_field, serializer or override may shape a response)")
