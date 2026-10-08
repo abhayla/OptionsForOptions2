@@ -93,14 +93,14 @@ def _refuse_open_doors(cls: type) -> None:
             continue
         if not (isinstance(base, type) and issubclass(base, ApiModel)):
             raise TypeError(f"{cls.__name__}: an ApiModel inherits only from ApiModel classes, not {base.__name__}")
-    extra = sorted(name for name in vars(cls) if name not in _PYDANTIC_NAMESPACE)
+    extra = sorted(name for name in cls.__dict__ if name not in _PYDANTIC_NAMESPACE)
     if extra:
         raise TypeError(f"{cls.__name__}: an ApiModel body holds fields only; refused {extra} (no method, property, "
                         f"computed_field, serializer or override may shape a response)")
-    decorators = cls.__pydantic_decorators__  # type: ignore[attr-defined]
-    hooks = {k: getattr(decorators, k) for k in ("computed_fields", "field_serializers", "model_serializers",
-                                                  "field_validators", "model_validators", "validators",
-                                                  "root_validators")}
+    d = cls.__pydantic_decorators__  # type: ignore[attr-defined]
+    hooks = {"computed_fields": d.computed_fields, "field_serializers": d.field_serializers,
+             "model_serializers": d.model_serializers, "field_validators": d.field_validators,
+             "model_validators": d.model_validators, "validators": d.validators, "root_validators": d.root_validators}
     if any(hooks.values()):
         raise TypeError(f"{cls.__name__}: an ApiModel has no pydantic decorators "
                         f"({[k for k, v in hooks.items() if v]})")
