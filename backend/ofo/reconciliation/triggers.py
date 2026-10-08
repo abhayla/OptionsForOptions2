@@ -74,7 +74,7 @@ def _records(records: object) -> dict[str, StrategyRecord]:
     if not isinstance(records, Mapping):
         raise ReconciliationError(f"records must be a mapping of strategy id -> StrategyRecord, got {records!r}")
     if len(records) > MAX_STRATEGIES:
-        raise ReconciliationError(f"{len(records)} strategies; at most {MAX_STRATEGIES}")
+        raise ReconciliationError(detail=f"{len(records)} strategies; at most {MAX_STRATEGIES}")
     result: dict[str, StrategyRecord] = {}
     seen: set[int] = set()
     for sid, record in records.items():
@@ -113,11 +113,11 @@ def plan_run(
         raise ReconciliationError(f"active ids not among all ids: {sorted(set(active) - set(everyone))}")
     if trigger in NAMES_TRIGGERING_STRATEGY:
         if strategy_id is None or require_id(strategy_id) not in everyone:
-            raise ReconciliationError(f"{trigger.value} must name a known strategy, got {strategy_id!r}")
+            raise ReconciliationError(detail=f"{trigger.value} must name a known strategy, got {strategy_id!r}")
         if all_records[strategy_id].exited:
-            raise ReconciliationError(f"{trigger.value} names strategy {strategy_id!r}, which has exited")
+            raise ReconciliationError(detail=f"{trigger.value} names strategy {strategy_id!r}, which has exited")
     elif strategy_id is not None:
-        raise ReconciliationError(f"{trigger.value} names no single strategy")
+        raise ReconciliationError(detail=f"{trigger.value} names no single strategy")
     if trigger is Trigger.PERIODIC and not active:
         return None  # scheduling only: nothing active, no run needed (coverage is unaffected either way)
     covered = tuple(sorted(sid for sid, record in all_records.items() if not record.exited))
@@ -127,10 +127,10 @@ def plan_run(
 
 def _ids(values: Iterable[str], label: str) -> tuple[str, ...]:
     if isinstance(values, (str, bytes)):
-        raise ReconciliationError(f"{label} must be a collection of ids, not a string")
+        raise ReconciliationError(detail=f"{label} must be a collection of ids, not a string")
     result = tuple(require_id(v) for v in values)
     if len(result) > MAX_STRATEGIES:
-        raise ReconciliationError(f"{label}: at most {MAX_STRATEGIES} ids")
+        raise ReconciliationError(detail=f"{label}: at most {MAX_STRATEGIES} ids")
     if len(set(result)) != len(result):
-        raise ReconciliationError(f"{label} has duplicates")
+        raise ReconciliationError(detail=f"{label} has duplicates")
     return tuple(sorted(result))

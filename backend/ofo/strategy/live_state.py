@@ -32,10 +32,14 @@ __all__ = [
 class LiveStateError(ValueError):
     """A live market state value is invalid."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def _signed(value: object, label: str) -> Decimal:
     if not isinstance(value, Decimal) or not value.is_finite():
-        raise LiveStateError(f"{label} must be a finite decimal.Decimal, got {value!r}")
+        raise LiveStateError(detail=f"{label} must be a finite decimal.Decimal, got {value!r}")
     return value
 
 
@@ -48,18 +52,18 @@ def _check(fn, value: object, label: str, **kw) -> None:
 
 def _count(value: object, label: str, *, signed: bool = False) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or abs(value) > MAX_COUNT or (not signed and value < 0):
-        raise LiveStateError(f"{label} must be an int{'' if signed else ' >= 0'} within {MAX_COUNT}, got {value!r}")
+        raise LiveStateError(detail=f"{label} must be an int{'' if signed else ' >= 0'} within {MAX_COUNT}, got {value!r}")
 
 
 def _pairs(values: object, label: str, check) -> tuple:
     if not isinstance(values, tuple) or len(values) > MAX_NAMED:
-        raise LiveStateError(f"{label} must be a tuple of at most {MAX_NAMED} (name, value) pairs")
+        raise LiveStateError(detail=f"{label} must be a tuple of at most {MAX_NAMED} (name, value) pairs")
     seen: set[str] = set()
     for item in values:
         if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[0], str) or not _NAME.match(item[0]):
-            raise LiveStateError(f"{label}: each entry must be (name, value) with a name matching {_NAME.pattern}")
+            raise LiveStateError(detail=f"{label}: each entry must be (name, value) with a name matching {_NAME.pattern}")
         if item[0] in seen:
-            raise LiveStateError(f"{label}: duplicate name {item[0]!r}")
+            raise LiveStateError(detail=f"{label}: duplicate name {item[0]!r}")
         seen.add(item[0])
         check(item[1], f"{label} {item[0]!r}")
     return values
@@ -67,7 +71,7 @@ def _pairs(values: object, label: str, check) -> tuple:
 
 def _is_bool(value: object, label: str) -> None:
     if not isinstance(value, bool):
-        raise LiveStateError(f"{label} must be True or False, got {value!r}")
+        raise LiveStateError(detail=f"{label} must be True or False, got {value!r}")
 
 
 @dataclass(frozen=True)

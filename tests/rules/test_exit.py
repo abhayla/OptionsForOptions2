@@ -90,7 +90,8 @@ def test_alert_only_prepares_nothing():
     result = evaluate(rule, snap(live_pnl="-5002.50"))
     response = respond(rule, result, strategy_id="S-1", strategy=CONDOR)
     assert response.proposal is None
-    assert response.alert == "Your rule was triggered: Max loss 5000 (live_pnl -5002.50 <= -5000)."
+    # the user's own rule name is quoted word for word (ADR-003 Q226; W-024 fix round UserText slot)
+    assert response.alert == 'Your rule was triggered: "Max loss 5000" (live_pnl -5002.50 <= -5000).'
 
 
 def test_alert_and_prepare_builds_closing_orders_never_submitted():

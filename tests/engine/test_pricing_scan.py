@@ -147,11 +147,54 @@ def _product_files():
     return [p for p in BACKEND.rglob("*.py") if ENGINE not in p.parents and "__pycache__" not in p.parts]
 
 
+#: Files allowed to read `.__dict__` (W-024 round 10; ADR-065: these guards stop accidental misuse only). Each one may
+#: import nothing from `ofo`/`ofo_app` and use no dynamic import (asserted below), so it cannot reach the engine.
+DICT_EXEMPT: dict[str, str] = {
+    "ofo_app/redaction.py": "every log record's __dict__ is a redacting dict (round 10 item 1: redaction at the root)",
+    "ofo_app/closed_namespace.py": "reads an ApiModel subclass's own class body to refuse hooks (round 10 item 2)",
+}
+
+
+def _exempt_violations(path: Path, found: list[str]) -> list[str]:
+    if path.relative_to(BACKEND).as_posix() not in DICT_EXEMPT:
+        return found
+    return [v for v in found if not v.endswith("reads .__dict__ (fail closed)")]
+
+
+def isolation_offences(source: str) -> list[str]:
+    """Why an exempt file is not isolated: any import from ofo/ofo_app, any relative import, any dynamic import."""
+    bad: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            bad += [f"{node.lineno} import {a.name}" for a in node.names if a.name.split(".")[0] in {"ofo", "ofo_app"}]
+            bad += [f"{node.lineno} import {a.name}" for a in node.names if a.name in {"importlib", "sys"}]
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level or mod.split(".")[0] in {"ofo", "ofo_app", "importlib", "sys"}:
+                bad.append(f"{node.lineno} from {'.' * node.level}{mod} import")
+        elif isinstance(node, ast.Name) and node.id in {"__import__", "importlib", "sys"}:
+            bad.append(f"{node.lineno} names {node.id}")
+        elif isinstance(node, ast.Attribute) and node.attr in {"modules", "import_module", "__import__"}:
+            bad.append(f"{node.lineno} .{node.attr}")
+    return bad
+
+
 def test_no_product_module_reaches_a_pricing_function():
     files = _product_files()
     assert len(files) > 50  # the scan really walks the product tree (backend/ofo and backend/ofo_app)
-    bad = [v for p in files for v in violations(p.read_text(encoding="utf-8"), str(p.relative_to(BACKEND)))]
+    bad = [v for p in files
+           for v in _exempt_violations(p, violations(p.read_text(encoding="utf-8"), str(p.relative_to(BACKEND))))]
     assert bad == []
+
+
+@pytest.mark.parametrize("rel", sorted(DICT_EXEMPT))
+def test_every_dict_exempt_file_is_isolated_from_ofo(rel):
+    source = (BACKEND / rel).read_text(encoding="utf-8")
+    assert isolation_offences(source) == []
+    # red-then-green on the same source: one engine import, and the file is refused
+    assert isolation_offences(source + "\nimport ofo.engine\n") != []
+    assert isolation_offences(source + "\nfrom ofo_app import errors\n") != []
+    assert isolation_offences(source + "\nimport importlib\n") != []
 
 
 @pytest.mark.parametrize("source", [

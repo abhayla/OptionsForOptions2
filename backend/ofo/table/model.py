@@ -47,6 +47,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   is the section caption (:func:`scenario_caption`), not a per-column label.
 """
 from __future__ import annotations
+from ofo.errors.explanations import HEALTH_LABEL_TEXT, render_explanation
 
 from dataclasses import dataclass, replace as _replace
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
@@ -97,8 +98,8 @@ class StrategyHealth(Enum):
 
     HEALTHY = "Healthy"
     WATCH = "Watch"
-    ADJUSTMENT_OPPORTUNITY = "Adjustment opportunity"
-    EXIT_CONDITION_REACHED = "Exit condition reached"
+    ADJUSTMENT_OPPORTUNITY = HEALTH_LABEL_TEXT["ADJUSTMENT_OPPORTUNITY"]
+    EXIT_CONDITION_REACHED = HEALTH_LABEL_TEXT["EXIT_CONDITION_REACHED"]
 
 
 @dataclass(frozen=True)
@@ -524,7 +525,8 @@ def scenario_caption(table: Table) -> str:
     SENSEX strategy."""
     if not isinstance(table, Table):
         raise ValueError(f"table must be a Table, got {table!r}")
-    return f"{table.underlying} at expiry | You make/lose"
+    return " | ".join((render_explanation("scenario_caption_left", underlying=table.underlying),
+                      render_explanation("scenario_caption_right")))
 
 
 def visible_columns(table: Table, level: UXLevel) -> tuple[ColumnSpec, ...]:

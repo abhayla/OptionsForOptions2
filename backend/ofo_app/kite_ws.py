@@ -25,6 +25,7 @@ from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidStatus
 
 from ofo.marketdata.kite_provider import KiteProvider
+from ofo_app.redaction import register_secret
 
 log = logging.getLogger("ofo_app.kite_ws")
 _silent = logging.getLogger("ofo_app.kite_ws.wire")  # the library logs request lines (with the token) at DEBUG
@@ -48,6 +49,8 @@ class KiteSocket:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
         self._provider = provider
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
+        register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
+        register_secret(access_token)
         self._clock = clock
         self._connect = connect
         self._sleep = sleep
