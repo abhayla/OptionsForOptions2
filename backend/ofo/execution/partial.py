@@ -465,7 +465,7 @@ def _refetch(plan: ExecutionPlan, reader: BrokerReader, book: OrderBook,
 
 
 def _not_prepared(choice: PartialChoice, a: Assessment | UserFacingError | None,
-                  message: "UserFacingError | UnroutedText | str | None" = None) -> Preparation:
+                  message: UserFacingError | UnroutedText | str | None = None) -> Preparation:
     """Nothing prepared. ``message`` is a render() result, an UnroutedText, or a catalogue template id."""
     if type(message) is str:
         message = render(message)
