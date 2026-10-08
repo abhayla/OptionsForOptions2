@@ -23,8 +23,8 @@ from .model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from .gate_slots import (
-    Clock, DataHealthState, DataInputName, Date, ExecutionStatusName, LegContract, LegRef, Rupees, Strikes, Symbol, VersionStateName,
-    VersionStates, WorstCase,
+    Clock, ContractSymbol, DataHealthState, DataInputName, Date, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from .slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
@@ -534,7 +534,89 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
 )
 
-_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES
+
+# Round 9 part 4: Strategy Guard refusals (ofo.strategy.guard) and the partial-execution flow's remaining texts
+# (slicing refusals, a stale read, broker-versus-platform mismatches). All pending owner read.
+_GUARD_NO_SEND = "No order was sent to Zerodha."
+_GUARD_BLOCKED = "Sending these orders to Zerodha until you acknowledge the change."
+_SLICE_NEXT = "Check the strategy's filled quantities and the contract in Zerodha, then choose again."
+_MISMATCH_BLOCKED = "Completing, retrying or closing this strategy."
+_MISMATCH_NEXT = "Check the order or position in Zerodha, then refresh this strategy from Zerodha and choose again."
+_PORDER = {"order": OrderRef}
+_PCONTRACT = {"contract": ContractSymbol}
+
+_PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("guard_risk_profile_changed", _SV, 301, "This action changes your strategy's risk profile",
+          "The strategy's maximum profit, maximum loss, breakevens, premium, margin or position would differ from "
+          "what it is now.", _GUARD_BLOCKED,
+          "Read the before and after figures shown with this, then acknowledge the change or discard the action."),
+    _gate("guard_not_checked", _SV, 302,
+          "Strategy Guard has not checked this exact action for this strategy and version.",
+          _GUARD_NO_SEND, "Sending these orders to Zerodha.", "Check the action again, then confirm it."),
+    _gate("guard_acknowledgement_required", _SV, 303,
+          "This action changes your strategy's risk profile: {rows}.", _GUARD_NO_SEND, _GUARD_BLOCKED,
+          "Read the before and after figures, acknowledge the change, then confirm again.", {"rows": RiskRows}),
+    _gate("partial_ready_risk_changed", _PE, 114,
+          "This action changes your strategy's risk profile. {count} order(s) ready for your confirmation.",
+          "Nothing is sent to Zerodha until you acknowledge the change and confirm.",
+          "Sending these orders until you acknowledge the change and confirm them.",
+          "Read the before and after figures, then acknowledge the change and confirm the orders, or discard them.",
+          {"count": Count}),
+    _gate("partial_slice_not_whole_lots", _PE, 115,
+          "Nothing prepared: {units} units of {contract} is not a whole number of lots of {lot}.",
+          "Zerodha accepts orders only in whole lots.", _PARTIAL_BLOCKED, _SLICE_NEXT,
+          {"units": Count, "contract": ContractSymbol, "lot": Count}),
+    _gate("partial_slice_freeze_below_lot", _PE, 116,
+          "Nothing prepared: the freeze quantity for {contract} is below one lot of {lot}.",
+          "Orders for this contract cannot be split into whole lots within the freeze quantity.",
+          _PARTIAL_BLOCKED, _SLICE_NEXT, {"contract": ContractSymbol, "lot": Count}),
+    _gate("partial_slice_too_many_orders", _PE, 117,
+          "Nothing prepared: {units} units of {contract} at a freeze of {freeze} would need more than {limit} orders.",
+          "The orders for this contract exceed the number this platform prepares at once.",
+          _PARTIAL_BLOCKED, _SLICE_NEXT,
+          {"units": Count, "contract": ContractSymbol, "freeze": Count, "limit": Count}),
+    _gate("partial_slice_no_lot_size", _PE, 118,
+          "Nothing prepared: the instrument list has {count} instruments with the symbol {contract}, so its lot "
+          "size is unknown.", "Order sizes cannot be checked against the exchange lot size.", _PARTIAL_BLOCKED,
+          "Refresh the instrument list, then choose again.", {"count": Count, "contract": ContractSymbol}),
+    _gate("partial_slice_freeze_unusable", _PE, 120,
+          "Nothing prepared: the freeze quantity for {contract} is not a positive integer.",
+          "Orders for this contract cannot be split without a usable freeze quantity.",
+          _PARTIAL_BLOCKED, _SLICE_NEXT, {"contract": ContractSymbol}),
+    _gate("partial_read_stale", _PE, 119,
+          "Nothing prepared: the stale broker read could not be used; it became too old while the orders were "
+          "being prepared.", "Orders based on an old read could add to positions that have since changed.",
+          _PARTIAL_BLOCKED, "Refresh the strategy's positions from Zerodha, then choose again."),
+    _gate("partial_mismatch_unknown_order", _RM, 301,
+          "Zerodha shows order {order} that the platform has no record of.",
+          "This strategy's positions may include orders the platform did not place.", _MISMATCH_BLOCKED,
+          _MISMATCH_NEXT, _PORDER),
+    _gate("partial_mismatch_other_strategy", _RM, 302, "Order {order} belongs to another strategy.",
+          "The platform cannot count this order toward this strategy.", _MISMATCH_BLOCKED, _MISMATCH_NEXT, _PORDER),
+    _gate("partial_mismatch_order_unmatched", _RM, 303,
+          "Order {order} could not be matched with this strategy's record.",
+          "The platform cannot confirm this order's state.", _MISMATCH_BLOCKED, _MISMATCH_NEXT, _PORDER),
+    _gate("partial_mismatch_order_missing", _RM, 304,
+          "Order {order} is not in Zerodha's order list {seconds}s after it was sent.",
+          "The platform cannot tell whether this order was placed.", _MISMATCH_BLOCKED, _MISMATCH_NEXT,
+          {"order": OrderRef, "seconds": Count}),
+    _gate("partial_mismatch_outside_plan", _RM, 305,
+          "{contract}: Zerodha shows a position outside this strategy's plan.",
+          "The strategy's position does not match its plan.", _MISMATCH_BLOCKED, _MISMATCH_NEXT, _PCONTRACT),
+    _gate("partial_mismatch_quantity", _RM, 306,
+          "{contract}: Zerodha shows {units} units; the plan allows 0 to {limit}.",
+          "The strategy's position does not match its plan.", _MISMATCH_BLOCKED, _MISMATCH_NEXT,
+          {"contract": ContractSymbol, "units": Int, "limit": Int}),
+    _gate("partial_mismatch_fills_differ", _RM, 307,
+          "The fills the platform confirmed ({ledger}) differ from the positions Zerodha shows ({broker}).",
+          "The strategy's position cannot be trusted until the difference is explained.", _MISMATCH_BLOCKED,
+          _MISMATCH_NEXT, {"ledger": UnitsByContract, "broker": UnitsByContract}),
+    _gate("partial_mismatch_unresolved", _RM, 308, "This strategy has an unresolved reconciliation mismatch.",
+          "The strategy's position cannot be trusted until it is reconciled.", _MISMATCH_BLOCKED,
+          "Reconcile this strategy first, then choose again."),
+)
+
+_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

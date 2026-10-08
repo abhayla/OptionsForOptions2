@@ -67,12 +67,13 @@ from typing import Final, Protocol
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.interfaces import MarginPlanner, plan_margin
+from ofo.errors import UserFacingError, display_text, render
+from ofo.errors.explanations import STEP_LABEL_TEXT, render_explanation
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments import ZERODHA, Catalogue
 
 _BUILDER_KEY: Final = object()
-MARGIN_UNVERIFIED: Final = "unverified against real Zerodha margin behaviour (ADR-017 Q26)"
-MARGIN_NOT_USED: Final = "margin impact unknown — not used"
+MARGIN_NOT_USED: Final = render_explanation("margin_note_not_used")
 MAX_SLICES_PER_LEG: Final = 50  # orchestrator default: refuse an absurd split rather than build it
 MAX_BATCH_SIZE: Final = 100  # orchestrator default: sanity cap on a provider's answer
 
@@ -103,9 +104,9 @@ class UnverifiedDefaultConstraints:
 
 
 class StepKind(Enum):
-    PROTECTION = "Establish protection"
-    SHORT_POSITIONS = "Establish short positions"
-    OTHER = "Legs with no protection relation"
+    PROTECTION = STEP_LABEL_TEXT["PROTECTION"]
+    SHORT_POSITIONS = STEP_LABEL_TEXT["SHORT_POSITIONS"]
+    OTHER = STEP_LABEL_TEXT["OTHER"]
 
 
 @dataclass(frozen=True)
@@ -262,9 +263,9 @@ def _margin_order(plan: ExecutionPlan, steps: dict[StepKind, list[str]],
                   planner: MarginPlanner | None) -> tuple[bool, str]:
     """Reorder each step by margin impact (lower first) in place; return (used, note). Fail -> protection only."""
     if planner is None:
-        return False, f"{MARGIN_NOT_USED} (no margin planner)"
+        return False, render_explanation("margin_note_no_planner")
     if not any(len(refs) > 1 for refs in steps.values()):
-        return False, "margin impact not needed: no step has two legs to order"
+        return False, render_explanation("margin_note_not_needed")
     try:
         base = plan_margin(Strategy(tuple(p.leg for p in plan.legs)), planner).total
         impact: dict[str, Decimal] = {}
@@ -275,11 +276,26 @@ def _margin_order(plan: ExecutionPlan, steps: dict[StepKind, list[str]],
                 others = tuple(p.leg for p in plan.legs if p.leg_ref != ref)
                 impact[ref] = base - plan_margin(Strategy(others), planner).total
     except Exception as exc:  # any planner failure: protection-only order, said out loud
-        return False, f"{MARGIN_NOT_USED} ({exc})"
+        return False, render_explanation("margin_note_planner_failed")  # the planner's own error is not shown
     for kind, refs in steps.items():
         if len(refs) > 1:
             steps[kind] = sorted(refs, key=lambda r: impact[r])  # sorted() is stable: ties keep the user's order
-    return True, f"margin impact used as the tie-break within each step; {MARGIN_UNVERIFIED}"
+    return True, render_explanation("margin_note_used")
+
+
+class SliceRefused(ValueError):
+    """A lot or freeze-quantity refusal while slicing orders. ``str(error)`` is the developer detail; ``message`` is the
+    four-part ``UserFacingError`` from ``render()`` (W-024 round 9) and ``text`` is what a user is shown."""
+
+    def __init__(self, *, detail: str, message: UserFacingError) -> None:
+        if type(message) is not UserFacingError:
+            raise TypeError(f"SliceRefused needs a UserFacingError from ofo.errors.render(), got {type(message).__name__}")
+        super().__init__(detail)
+        self.message = message
+
+    @property
+    def text(self) -> str:
+        return display_text(self.message)
 
 
 def _positive_int(value: object, name: str, cap: int | None = None) -> int:
@@ -302,12 +318,14 @@ def _lot_sizes(plan: ExecutionPlan, catalogue: Catalogue) -> dict[str, int]:
     for p in plan.legs:
         found = by_symbol.get(p.contract, [])
         if len(found) != 1:
-            raise ValueError(f"{p.contract}: the catalogue has {len(found)} instruments with that symbol; "
-                             "no lot size, nothing is planned")
+            raise SliceRefused(detail=f"{p.contract}: the catalogue has {len(found)} instruments with that symbol; "
+                               "no lot size, nothing is planned",
+                               message=render("partial_slice_no_lot_size", count=len(found), contract=p.contract))
         lots[p.leg_ref] = _positive_int(found[0], f"catalogue lot size of {p.contract}")
         if p.leg.quantity % lots[p.leg_ref]:
-            raise ValueError(f"{p.contract}: {p.leg.quantity} units is not a whole number of lots of "
-                             f"{lots[p.leg_ref]}")
+            raise SliceRefused(detail=f"{p.contract}: {p.leg.quantity} units is not a whole number of lots of "
+                               f"{lots[p.leg_ref]}", message=render("partial_slice_not_whole_lots", units=p.leg.quantity,
+                                                           contract=p.contract, lot=lots[p.leg_ref]))
     return lots
 
 
@@ -331,16 +349,23 @@ def slice_quantity(constraints: BrokerConstraints, contract: str, units: int, lo
     """THE slicing rule (W-028), shared by every order-preparing path: ``units`` of ``contract`` as orders of at most
     the freeze quantity. With a ``lot``: ``units`` must be whole lots, the freeze is rounded DOWN to whole lots
     (orchestrator default) and a freeze below one lot is refused, so every slice is lot-aligned."""
-    freeze = _positive_int(constraints.freeze_quantity(contract), f"freeze quantity of {contract}")
+    try:
+        freeze = _positive_int(constraints.freeze_quantity(contract), f"freeze quantity of {contract}")
+    except ValueError as exc:
+        raise SliceRefused(detail=str(exc), message=render("partial_slice_freeze_unusable", contract=contract)) from exc
     if lot is not None:
         if units % lot:
-            raise ValueError(f"{units} units of {contract} is not a whole number of lots of {lot}")
+            raise SliceRefused(detail=f"{units} units of {contract} is not a whole number of lots of {lot}",
+                               message=render("partial_slice_not_whole_lots", units=units, contract=contract, lot=lot))
         freeze = freeze // lot * lot
         if freeze == 0:
-            raise ValueError(f"{contract}: the freeze quantity is below one lot of {lot}")
+            raise SliceRefused(detail=f"{contract}: the freeze quantity is below one lot of {lot}",
+                               message=render("partial_slice_freeze_below_lot", contract=contract, lot=lot))
     if -(-units // freeze) > MAX_SLICES_PER_LEG:
-        raise ValueError(f"{contract}: {units} units at a freeze of {freeze} needs more than "
-                         f"{MAX_SLICES_PER_LEG} orders")
+        raise SliceRefused(detail=f"{contract}: {units} units at a freeze of {freeze} needs more than "
+                           f"{MAX_SLICES_PER_LEG} orders",
+                           message=render("partial_slice_too_many_orders", units=units, contract=contract, freeze=freeze,
+                                  limit=MAX_SLICES_PER_LEG))
     full, rest = divmod(units, freeze)
     return (freeze,) * full + ((rest,) if rest else ())
 

@@ -90,6 +90,19 @@ ACTION_TEXT: Mapping[str, str] = MappingProxyType({
 #: The words for a rule template's direction (ofo.rules.templates.Direction) and volatility measure (InputName).
 DIRECTION_TEXT: Mapping[str, str] = MappingProxyType({"AT_OR_ABOVE": "at or above", "AT_OR_BELOW": "at or below"})
 MEASURE_TEXT: Mapping[str, str] = MappingProxyType({"IV": "implied volatility", "IV_PERCENTILE": "IV percentile"})
+#: The four partial-execution choices a user picks (REQ-058 AC-2; the first two spelled as the requirement fixes them).
+CHOICE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "COMPLETE_STRATEGY": "Complete Strategy",
+    "RETRY_FAILED_LEG": "Retry Failed Leg",
+    "REVIEW_MANUALLY": "Review Manually",
+    "CLOSE_PARTIAL_STRATEGY": "Close Partial Strategy",
+})
+#: The order-sequence step names (ofo.execution.sequence.StepKind).
+STEP_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "PROTECTION": "Establish protection",
+    "SHORT_POSITIONS": "Establish short positions",
+    "OTHER": "Legs with no protection relation",
+})
 FOLLOW_UP_TEXT: Mapping[str, str] = MappingProxyType({
     "ALERT_GENERATED": "Alert generated",
     "ORDER_PREPARED": "Order prepared",
@@ -273,6 +286,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("rule_label_profit_target", "rule", "Profit target {amount}", {"amount": Amount}),
     ExplanationTemplate("rule_label_max_loss", "rule", "Max loss {amount}", {"amount": Amount}),
     ExplanationTemplate("rule_label_days_to_expiry", "rule", "{days} days to expiry or fewer", {"days": Days}),
+    # Order-sequence margin notes (ofo.execution.sequence): shown with the prepared order sequence.
+    ExplanationTemplate("margin_note_no_planner", "values_seen", "margin impact unknown — not used (no margin planner)"),
+    ExplanationTemplate("margin_note_planner_failed", "values_seen",
+                        "margin impact unknown — not used (the margin planner failed)"),
+    ExplanationTemplate("margin_note_used", "values_seen",
+                        "margin impact used as the tie-break within each step; unverified against real Zerodha "
+                        "margin behaviour (ADR-017 Q26)"),
+    ExplanationTemplate("margin_note_not_used", "values_seen", "margin impact unknown — not used"),
+    ExplanationTemplate("margin_note_not_needed", "values_seen",
+                        "margin impact not needed: no step has two legs to order"),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
 )
@@ -282,7 +305,7 @@ EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for 
 #: Every fixed label an explanation can print (checked by tests/errors/test_template_pins.py and pinned there).
 LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "input": INPUT_LABEL_TEXT, "op": OP_TEXT, "action": ACTION_TEXT, "follow_up": FOLLOW_UP_TEXT,
-    "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT,
+    "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT, "choice": CHOICE_LABEL_TEXT, "step": STEP_LABEL_TEXT,
 })
 
 

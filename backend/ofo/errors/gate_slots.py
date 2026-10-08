@@ -271,3 +271,115 @@ class Clock(SlotType):
         hour = ist.hour % 12 or 12
         half = "AM" if ist.hour < 12 else "PM"
         return f"{hour:02d}:{ist.minute:02d}:{ist.second:02d} {half}"
+
+
+# --- Round 9 part 4: Strategy Guard rows and exchange contract symbols ------------------------------------------------
+
+_CONTRACT_PATTERN = re.compile(r"[A-Z][A-Z0-9&-]{0,39}")
+RISK_METRICS = ("max profit", "max loss", "breakevens", "net premium", "margin", "position")
+
+
+class ContractSymbol(SlotType):
+    """An exchange trading symbol such as NIFTY2693024000CE: capitals, digits, `&` and `-` only, at most 40."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "ContractSymbol")
+        assert isinstance(value, str)
+        if not _CONTRACT_PATTERN.fullmatch(value):
+            raise ValueError(f"ContractSymbol slot must match {_CONTRACT_PATTERN.pattern!r}, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+def _risk_cell(value: object) -> str:
+    from ofo.engine import UNLIMITED
+
+    if value is UNLIMITED:
+        return "unlimited"
+    if value is None:
+        return "unknown"
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    if isinstance(value, tuple):
+        return ", ".join(f"{v:,}" for v in value) if value else "none"
+    assert isinstance(value, Decimal)
+    return f"{value:,}"
+
+
+def _validate_risk_cell(value: object) -> None:
+    from ofo.engine import UNLIMITED
+
+    if value is UNLIMITED or value is None or isinstance(value, bool):
+        return
+    if type(value) is Decimal:
+        if not value.is_finite() or abs(value) > MONEY_ABS_MAX:
+            raise ValueError("RiskRows cell must be a finite Decimal within the money cap")
+        return
+    if type(value) is tuple and len(value) <= 20 and all(type(v) is Decimal and v.is_finite() for v in value):
+        return
+    raise TypeError(f"RiskRows cell must be a Decimal, a tuple of Decimals, UNLIMITED, None or a bool, got {value!r}")
+
+
+class RiskRows(SlotType):
+    """The changed rows of a Strategy Guard comparison: a tuple of (metric, before, after) with a closed metric set."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, tuple, "RiskRows")
+        assert isinstance(value, tuple)
+        if not 1 <= len(value) <= len(RISK_METRICS):
+            raise ValueError("RiskRows needs 1..6 rows")
+        for row in value:
+            if type(row) is not tuple or len(row) != 3 or row[0] not in RISK_METRICS:
+                raise ValueError(f"RiskRows row must be (metric, before, after) with a known metric, got {row!r}")
+            _validate_risk_cell(row[1])
+            _validate_risk_cell(row[2])
+
+    @staticmethod
+    def format(value: tuple) -> str:
+        return "; ".join(f"{metric}: {_risk_cell(before)} -> {_risk_cell(after)}" for metric, before, after in value)
+
+
+_ORDER_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
+
+
+class OrderRef(SlotType):
+    """A broker order id or the platform's own order key: letters, digits and `_ . : -` only, at most 64."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "OrderRef")
+        assert isinstance(value, str)
+        if not _ORDER_REF_PATTERN.fullmatch(value):
+            raise ValueError(f"OrderRef slot must match {_ORDER_REF_PATTERN.pattern!r}, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class UnitsByContract(SlotType):
+    """Net units per contract: a tuple of (ContractSymbol, int) pairs, at most 100, printed as `SYMBOL: units`."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, tuple, "UnitsByContract")
+        assert isinstance(value, tuple)
+        if len(value) > 100:
+            raise ValueError("UnitsByContract holds at most 100 pairs")
+        for pair in value:
+            if type(pair) is not tuple or len(pair) != 2:
+                raise ValueError(f"UnitsByContract pair must be (contract, units), got {pair!r}")
+            ContractSymbol.validate(pair[0])
+            _require_exact(pair[1], int, "UnitsByContract units")
+            if abs(pair[1]) > 1_000_000_000:
+                raise ValueError("UnitsByContract units exceed the cap")
+
+    @staticmethod
+    def format(value: tuple) -> str:
+        return ", ".join(f"{contract}: {units}" for contract, units in value) if value else "none"

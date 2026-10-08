@@ -73,11 +73,13 @@ from ofo.execution.context import ExecutionAction, ExecutionContext, MarginPlann
 from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, ident
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
-from ofo.execution.sequence import BrokerConstraints, PlannedOrder, exit_orders, sequence_plan
+from ofo.errors.explanations import CHOICE_LABEL_TEXT
+from ofo.execution.sequence import BrokerConstraints, PlannedOrder, SliceRefused, exit_orders, sequence_plan
 from ofo.instruments import ZERODHA, Catalogue, EligibilityRegistry
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
-from ofo.strategy.guard import GuardBinding, GuardDecision, GuardRefused, _decision, assess_risk_change, proposal_hash
+from ofo.strategy.guard import (GuardBinding, GuardDecision, GuardRefused, _decision, acknowledgement_refused,
+                                assess_risk_change, proposal_hash)
 from ofo.strategy.versions import StrategyRecord, VersionError
 
 MAX_POSITION_LINES: Final = 100  # orchestrator default OD-g
@@ -87,10 +89,10 @@ _FAILED_STATES: Final = frozenset({OrderState.REJECTED, OrderState.CANCELLED})
 
 
 class PartialChoice(Enum):
-    COMPLETE_STRATEGY = "Complete Strategy"
-    RETRY_FAILED_LEG = "Retry Failed Leg"
-    REVIEW_MANUALLY = "Review Manually"
-    CLOSE_PARTIAL_STRATEGY = "Close Partial Strategy"
+    COMPLETE_STRATEGY = CHOICE_LABEL_TEXT["COMPLETE_STRATEGY"]
+    RETRY_FAILED_LEG = CHOICE_LABEL_TEXT["RETRY_FAILED_LEG"]
+    REVIEW_MANUALLY = CHOICE_LABEL_TEXT["REVIEW_MANUALLY"]
+    CLOSE_PARTIAL_STRATEGY = CHOICE_LABEL_TEXT["CLOSE_PARTIAL_STRATEGY"]
 
 
 #: ADR-017 Q27 / REQ-058 AC-2: the order the user is offered them in (Complete first).
@@ -230,10 +232,10 @@ def _sync_book(
     for status in statuses:
         view = book.find(status.broker_order_id, status.client_tag)
         if view is None:
-            mismatches.append(f"Zerodha shows order {status.broker_order_id} that the platform has no record of")
+            mismatches.append(_mismatch("partial_mismatch_unknown_order", order=status.broker_order_id))
             continue
         if view.strategy_id != plan.strategy_id:
-            mismatches.append(f"order {status.broker_order_id} belongs to another strategy")
+            mismatches.append(_mismatch("partial_mismatch_other_strategy", order=status.broker_order_id))
             continue
         try:
             if view.broker_order_id is None:  # accepted but its id never recorded: learn it from the read
@@ -246,15 +248,21 @@ def _sync_book(
                 raise ValueError(f"book has broker id {view.broker_order_id!r} for {view.key!r}")
             book.mirror_broker_state(view.key, status.state)
         except (FillConflictError, ValueError) as exc:
-            mismatches.append(f"order {status.broker_order_id}: {exc}")
+            logger.warning("order %s could not be matched: %s", status.broker_order_id, exc)
+            mismatches.append(_mismatch("partial_mismatch_order_unmatched", order=status.broker_order_id))
     now = book.now()
     for view in book.views_for(plan.strategy_id):
         if view.state in TERMINAL_STATES or view.key in seen:
             continue
         if now - book.registered_at(view.key) > grace:  # OD-i: unconfirmed past the grace window
-            mismatches.append(f"order {view.key} is not in Zerodha's order list {grace.total_seconds():.0f}s after "
-                              "it was sent")
+            mismatches.append(_mismatch("partial_mismatch_order_missing", order=view.key,
+                                        seconds=int(grace.total_seconds())))
     return mismatches, reasons
+
+
+def _mismatch(template_id: str, **slots: object) -> str:
+    """One broker-versus-platform difference, as the four-part catalogue text."""
+    return display_text(render(template_id, **slots))
 
 
 def _position_mismatches(plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], book: OrderBook) -> list[str]:
@@ -262,16 +270,17 @@ def _position_mismatches(plan: ExecutionPlan, positions: Sequence[BrokerPosition
     for line in positions:
         planned = plan.by_contract(line.contract)
         if planned is None:
-            out.append(f"{line.contract}: the broker shows a position outside this strategy's plan")
+            out.append(_mismatch("partial_mismatch_outside_plan", contract=line.contract))
             continue
         sign = 1 if planned.leg.action is Action.BUY else -1
         if line.net_quantity * sign < 0 or abs(line.net_quantity) > planned.leg.quantity:
-            out.append(f"{line.contract}: the broker shows {line.net_quantity} units; the plan allows 0 to "
-                       f"{sign * planned.leg.quantity}")
+            out.append(_mismatch("partial_mismatch_quantity", contract=line.contract, units=line.net_quantity,
+                                 limit=sign * planned.leg.quantity))
     ledger = dict(book.positions_for(plan.strategy_id))
     broker = {line.contract: line.net_quantity for line in positions if line.net_quantity}
     if ledger != broker:
-        out.append(f"confirmed fills {ledger} differ from the broker's positions {broker}")
+        out.append(_mismatch("partial_mismatch_fills_differ", ledger=tuple(sorted(ledger.items())),
+                             broker=tuple(sorted(broker.items()))))
     return out
 
 
@@ -302,7 +311,7 @@ def assess(
     mismatches, reasons = _sync_book(plan, statuses, book, read_at, grace)
     mismatches += _position_mismatches(plan, positions, book)
     if book.is_submit_blocked(plan.strategy_id):
-        mismatches.append("this strategy has an unresolved reconciliation mismatch")
+        mismatches.append(_mismatch("partial_mismatch_unresolved"))
 
     held = {p.contract: p for p in positions if p.net_quantity}
     actual: list[Leg] = []
@@ -367,17 +376,13 @@ def _orders_digest(orders: Sequence[Order]) -> str:
     return proposal_hash(rows)
 
 
-@dataclass(frozen=True)
-class UnroutedText:
-    """W-024 round 9: a preparation text still built outside the catalogue (a slicing refusal carrying the sequencer's
-    own reason, a Strategy Guard risk message). Listed in the producer inventory's PENDING ratchet until the
-    sequencer and the guard raise typed refusals; every other preparation text is a render() message."""
-
-    what_happened: str
-
-    def __post_init__(self) -> None:
-        if type(self.what_happened) is not str or not self.what_happened.strip():
-            raise TypeError("UnroutedText needs non-blank text")
+def _refusal_message(exc: ValueError) -> UserFacingError:
+    """The catalogue message for a slicing refusal. The sequencer raises a typed ``SliceRefused``; any other
+    ValueError is a programmer error: logged, never shown, and the user sees the generic nothing-prepared message."""
+    if isinstance(exc, SliceRefused):
+        return exc.message
+    logger.warning("preparation refused for an unexpected reason: %s", exc)
+    return render("partial_nothing_prepared")
 
 
 def _prep(*args: object, **kwargs: object) -> Preparation:
@@ -400,7 +405,7 @@ class Preparation:
                  "plan", "catalogue", "slices", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
-                 gate: SafetyResult | None, message: "UserFacingError | UnroutedText",
+                 gate: SafetyResult | None, message: UserFacingError,
                  book: OrderBook | None = None,
                  strategy_id: str | None = None, cancels: tuple[str, ...] = (),
                  guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
@@ -409,7 +414,7 @@ class Preparation:
         if _mint is not _MINT:
             raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
         orders = tuple(orders)
-        if type(message) not in (UserFacingError, UnroutedText):
+        if type(message) is not UserFacingError:
             raise TypeError(f"a Preparation's message comes from render() (W-024), got {type(message).__name__}")
         for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
                             ("message", message), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
@@ -431,8 +436,7 @@ class Preparation:
     @property
     def text(self) -> str:
         """What the user is shown: all four parts for a catalogue message."""
-        message = self.message
-        return message.what_happened if type(message) is UnroutedText else display_text(message)
+        return display_text(self.message)
 
     @property
     def ready(self) -> bool:
@@ -465,8 +469,8 @@ def _refetch(plan: ExecutionPlan, reader: BrokerReader, book: OrderBook,
 
 
 def _not_prepared(choice: PartialChoice, a: Assessment | UserFacingError | None,
-                  message: UserFacingError | UnroutedText | str | None = None) -> Preparation:
-    """Nothing prepared. ``message`` is a render() result, an UnroutedText, or a catalogue template id."""
+                  message: UserFacingError | str | None = None) -> Preparation:
+    """Nothing prepared. ``message`` is a render() result or a catalogue template id."""
     if type(message) is str:
         message = render(message)
     if type(a) is UserFacingError:
@@ -585,9 +589,8 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     if len(_GATE_ORDERS) >= _MAX_OPEN_GATES:  # one in, one out: the store never grows past the cap
         del _GATE_ORDERS[next(iter(_GATE_ORDERS))]
     _GATE_ORDERS[id(result)] = (result, _orders_digest(orders))  # this gate result belongs to THESE orders
-    message: UserFacingError | UnroutedText = render("partial_ready", count=len(orders))
-    if decision.changes_risk_profile:  # the guard's own message: unrouted until ofo.strategy.guard is (PENDING)
-        message = UnroutedText(f"{decision.message}. {message.what_happened}")
+    message = render("partial_ready_risk_changed" if decision.changes_risk_profile else "partial_ready",
+                     count=len(orders))
     return _prep(choice, a, orders, result, message, book, plan.strategy_id, cancels, decision, plan, catalogue,
                  slices)
 
@@ -615,7 +618,7 @@ def _prepare_missing(
     try:
         seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
     except ValueError as exc:  # W-043 (#71): a slicing refusal is shown with its reason, never raised (as Close, W-036)
-        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
+        return _not_prepared(choice, a, _refusal_message(exc))
     legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
                  for ref in dict.fromkeys(o.leg_ref for o in seq.orders))
     orders = tuple(
@@ -755,7 +758,7 @@ def close_partial_strategy(
     try:
         slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
     except ValueError as exc:  # W-036 (#62): a slicing refusal is shown with its reason, never raised
-        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
+        return _not_prepared(choice, a, _refusal_message(exc))
     exits = {p.leg_ref: e for p, e in pairs}
     orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
                          s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id) for s in slices)
@@ -773,7 +776,8 @@ def close_partial_strategy(
         book.mark_closing(plan.strategy_id, a.read_at)  # Complete/Retry now need a read newer than this one
     except ValueError as exc:  # the read went stale while preparing: undo the preparation, record nothing
         discard_preparation(prep)
-        return _not_prepared(choice, a, UnroutedText(f"Nothing prepared: {exc}."))
+        logger.warning("close choice not recorded: %s", exc)
+        return _not_prepared(choice, a, "partial_read_stale")
     return prep
 
 
@@ -826,10 +830,10 @@ def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: s
     )
     guard = preparation.guard
     if guard is None or guard.binding != binding:
-        raise GuardRefused("Strategy Guard has not checked this exact action; nothing was sent")
+        raise GuardRefused(render("guard_not_checked"))
     if guard.acknowledgement is not None and (
             not isinstance(acknowledgement, str) or not hmac.compare_digest(acknowledgement, guard.acknowledgement)):
-        raise GuardRefused(f"{guard.message}. Acknowledge it to proceed. Nothing was sent.")
+        raise acknowledgement_refused(guard)
     _GATE_ORDERS.pop(id(preparation.gate), None)
     return orders
 
