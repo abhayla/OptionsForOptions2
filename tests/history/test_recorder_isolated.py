@@ -1,7 +1,7 @@
 """W-062 AC-5 (REQ-051): a failing history store never disturbs the live feed; the recorder adds no subscription."""
 import datetime
 
-from _history_fixture import replay_window
+from _history_fixture import at, replay_window
 from test_minute_bars_replay import NIFTY_CE
 
 from ofo.history.recorder import Recorder
@@ -64,8 +64,11 @@ def test_with_a_working_store_the_other_listener_still_gets_every_quote_and_bars
     store = InMemoryHistoryStore()
     delivered, holder, _, _ = run(store)
     assert len(delivered) == len(base)
-    assert holder["rec"].counters["bars_written"] > 40 and holder["rec"].counters["errors"] == 0
-    assert len(store.all_stored()) == holder["rec"].counters["bars_written"]
+    assert holder["rec"].counters["bars_written"] > 25 and holder["rec"].counters["errors"] == 0
+    # live bars inside the recorded 15:08-15:10 feed gap never reach the store (structural, ADR-067)
+    assert store.dropped_in_gap > 0
+    assert len(store.all_stored()) == holder["rec"].counters["bars_written"] - store.dropped_in_gap
+    assert not any(at(15, 8) <= b.minute <= at(15, 10) for b in store.all_stored())
 
 
 def test_an_unsubscribed_recorder_stops_receiving():

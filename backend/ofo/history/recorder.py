@@ -25,6 +25,7 @@ class Recorder:
         self._store = store
         self.builder = builder or MinuteBarBuilder()
         self.counters: Counter = Counter()
+        self._gaps_sent = 0
         self._handle: int | None = None
         self._fanout: FanOut | None = None
 
@@ -44,15 +45,26 @@ class Recorder:
 
     def on_quote(self, quote: NormalizedQuote) -> None:
         try:
-            self._store_bars(self.builder.on_quote(quote))
+            bars = self.builder.on_quote(quote)
+            self._sync_gaps()  # the gap is known to the store BEFORE the bars it makes suspect arrive
+            self._store_bars(bars)
         except Exception as exc:
             self._failed(exc)
 
     def flush(self, now: datetime.datetime) -> None:
         try:
-            self._store_bars(self.builder.flush(now))
+            bars = self.builder.flush(now)
+            self._sync_gaps()
+            self._store_bars(bars)
         except Exception as exc:
             self._failed(exc)
+
+    def _sync_gaps(self) -> None:
+        gaps = self.builder.gaps
+        if len(gaps) > self._gaps_sent:
+            new = gaps[self._gaps_sent:]
+            self._gaps_sent = len(gaps)
+            self._store.record_gaps(new)
 
     def _store_bars(self, bars) -> None:
         if not bars:

@@ -46,7 +46,7 @@ def test_after_a_replay_store_and_recorder_hold_only_minute_bars_one_per_minute(
     _, _, last = replay_window("1506-1512", wire)
     holder["rec"].flush(last + datetime.timedelta(minutes=1))
     stored = store.all_stored()
-    assert len(stored) > 40 and all(type(b) is MinuteBar for b in stored)
+    assert len(stored) > 25 and all(type(b) is MinuteBar for b in stored)
     assert len({(b.instrument_id, b.minute) for b in stored}) == len(stored)  # at most one per instrument-minute
     holder["rec"].detach()  # the fan-out (and through it the provider's own quote book) is the feed's, not the recorder's
     assert not _hold_anything_raw(store) and not _hold_anything_raw(holder["rec"])

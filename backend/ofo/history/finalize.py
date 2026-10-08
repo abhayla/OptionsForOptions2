@@ -74,6 +74,7 @@ class DayResult:
     status: DayStatus
     counts: FinalizeCounts | None
     errors: dict[str, int]
+    gap_minutes_missing: int = 0  # live bars inside a feed gap that Kite has no candle for: dropped, never kept LIVE
 
 
 def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Sequence[str], source: MinuteCandleSource,
@@ -100,13 +101,29 @@ def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Seque
                 errors["out_of_range"] += 1
                 continue
             kite.append(candle)
-    live = store.bars_for_day(day)
-    final, counts = finalize_day(live, kite)
-    store.put_bars(final)
+    try:
+        live = store.bars_for_day(day)
+        gaps = store.gaps(day)
+    except Exception as exc:  # an unreadable store: nothing is changed, the day stays provisional
+        log.warning("history store read failed: %s", type(exc).__name__)
+        errors["store_failed"] += 1
+        return DayResult(DayStatus.PROVISIONAL, None, dict(errors))
+    # the one door to FINAL applies the gap rule itself: inside a gap Kite's candle -> BACKFILLED, no candle -> dropped
+    kite_keys = {_key(b) for b in kite}
+    missing = sum(1 for b in live if in_gap(b.minute, gaps) and _key(b) not in kite_keys)
+    final, counts = finalize_day([b for b in live if not in_gap(b.minute, gaps)],
+                                 [b for b in kite if not in_gap(b.minute, gaps)])
+    final += [replace(b, source=BarSource.BACKFILLED) for b in kite if in_gap(b.minute, gaps)]
+    try:
+        store.replace_day_bars(day, sorted(final, key=_key))
+    except Exception as exc:
+        log.warning("history store write failed: %s", type(exc).__name__)
+        errors["store_failed"] += 1
+        return DayResult(DayStatus.PROVISIONAL, counts, dict(errors), missing)
     fetched_all = not (errors["malformed"] or errors["fetch_failed"])
     status = DayStatus.FINAL if fetched_all else DayStatus.PROVISIONAL
     store.set_day_status(day, status)
-    return DayResult(status, counts, dict(errors))
+    return DayResult(status, counts, dict(errors), missing)
 
 
 # ---- derived bars, on demand ---------------------------------------------------------------------------------------
