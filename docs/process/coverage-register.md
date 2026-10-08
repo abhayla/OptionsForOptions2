@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit ea25358
+Generated from commit 6b81aa5
 
 ## Stage S0
 
@@ -78,6 +78,7 @@ Generated from commit ea25358
 | 4a | decision | ADR-059 | - | When a changed row is a revision and when it is a new contract; delisting heals itself; a second per-expiry guard |
 | 4a | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
 | 4a | decision | ADR-061 | - | IV, Greeks and Estimated Now use each expiry's put-call-parity forward (an implied dividend yield); the payoff's current level stays spot |
+| 4a | decision | ADR-062 | - | Save Draft stores a strategy's definition and activity history durably; live prices are never stored with it |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
@@ -115,6 +116,8 @@ Generated from commit ea25358
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-024 | - | Error classification and user-facing error messages |
+| 4a | work item | W-060 | - | NIFTY 50 and SENSEX index spot with data health, and each expiry's put-call-parity forward for IV and Greeks |
+| 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
 
 ## Stage 4b
 
@@ -418,7 +421,7 @@ Generated from commit ea25358
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 23 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 67 |
+| 4a | 7 | 0 | 24 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 3 | 70 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
