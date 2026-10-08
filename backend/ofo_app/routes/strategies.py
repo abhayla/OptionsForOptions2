@@ -96,7 +96,7 @@ def _strategy_out(stored: store.StoredStrategy) -> dict[str, Any]:
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
-    sf.refuse_live_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # before any query
+    sf.check_map_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # ADR-064, before any query
     limits = {name: sf.decimal_from_text(value, f"risk limit {name!r}") for name, value in body.risk_limits.items()}
     return await store.build_definition(
         db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity) for leg in body.legs],

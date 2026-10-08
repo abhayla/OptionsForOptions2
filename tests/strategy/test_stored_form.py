@@ -51,8 +51,8 @@ def _iron_condor(**fields):
     return sf.build_from_catalogue("NIFTY", IRON_CONDOR, _resolve(), **fields)
 
 
-FILLED = dict(rules_ref="exit-rules-1", risk_limits={"max_loss": Decimal("5000.50"), "max_lots": Decimal("2")},
-              preferences={"display": "compact"})
+FILLED = dict(rules_ref="exit-rules-1", risk_limits={"max_loss": Decimal("5000.50"), "max_capital": Decimal("200000")},
+              preferences={"market_view": "neutral"})
 
 
 @pytest.mark.parametrize("fields", [{}, FILLED], ids=["plain", "rules-limits-preferences"])
@@ -66,16 +66,16 @@ def test_ac5_round_trip_is_exact(fields):
     assert [leg.quantity for leg in back.definition.legs] == [65, 65, 65, 65]
     assert back.contract_ids == (101, 102, 103, 104)
     if fields:
-        assert back.definition.risk_limits == (("max_loss", Decimal("5000.50")), ("max_lots", Decimal("2")))
+        assert back.definition.risk_limits == (("max_capital", Decimal("200000")), ("max_loss", Decimal("5000.50")))
         assert str(dict(back.definition.risk_limits)["max_loss"]) == "5000.50"  # the text form survives
-        assert back.definition.preferences == (("display", "compact"),)
+        assert back.definition.preferences == (("market_view", "neutral"),)
         assert back.definition.rules_ref == "exit-rules-1"
 
 
 def test_ac5_stored_text_has_decimal_strings_and_no_float():
     doc = json.loads(sf.dumps(_iron_condor(**FILLED)))
     assert [leg["strike"] for leg in doc["legs"]] == ["22800", "23000", "22400", "22200"]
-    assert doc["risk_limits"] == {"max_loss": "5000.50", "max_lots": "2"}
+    assert doc["risk_limits"] == {"max_loss": "5000.50", "max_capital": "200000"}
 
     def numbers(obj):
         if isinstance(obj, dict):
@@ -206,20 +206,48 @@ def test_ac5_save_draft_refuses_a_contract_of_another_underlying():
     {"risk_limits": {"ltp": Decimal("101.5")}},
     {"risk_limits": {"max_loss": Decimal("5000"), "margin": Decimal("120000")}},
     {"preferences": {"spot": "22950.35"}},
-    {"preferences": {"iv": "0.12", "display": "compact"}},
+    {"preferences": {"iv": "0.12", "market_view": "neutral"}},
 ], ids=["limit-ltp", "limit-margin", "pref-spot", "pref-iv"])
 def test_ac5_a_live_state_name_in_risk_limits_or_preferences_is_refused_on_save(fields):
     """Review round 2 MAJOR: live market data never enters a strategy through the user-named maps either."""
     with pytest.raises(sf.StoredFormError) as err:
         _iron_condor(**fields)
-    assert err.value.code == sf.LIVE_STATE_FIELD
+    assert err.value.code == sf.UNKNOWN_NAME
 
 
 @pytest.mark.parametrize("key, value", [("risk_limits", {"ltp": "101.5"}), ("preferences", {"spot": "22950.35"})])
 def test_ac5_a_stored_form_with_a_live_state_name_in_a_map_is_refused_on_load(key, value):
     with pytest.raises(sf.StoredFormError) as err:
         sf.from_document(_doc(**{key: value}), _resolve())
-    assert err.value.code == sf.LIVE_STATE_FIELD
+    assert err.value.code == sf.UNKNOWN_NAME
+
+
+#: The 12 spellings the Tier A re-review stored at 9ab20d5 (ADR-064's provenance), plus "Max_Loss" (exact compare).
+REVIEW_SPELLINGS = ["LTP", "Ltp", " ltp", "IV", "Spot", "last_price", "implied_vol", "spot_price", "entry_spot",
+                    "underlying_spot", "mark_price", "prev_close"]
+
+
+@pytest.mark.parametrize("name", REVIEW_SPELLINGS + ["Max_Loss", "max_loss "])
+@pytest.mark.parametrize("map_name", ["risk_limits", "preferences"])
+def test_ac5_adr064_any_name_outside_the_closed_list_is_refused_on_save_and_load(map_name, name):
+    value = Decimal("101.5") if map_name == "risk_limits" else "22950.35"
+    with pytest.raises(sf.StoredFormError) as err:
+        _iron_condor(**{map_name: {name: value}})
+    assert err.value.code == sf.UNKNOWN_NAME and map_name in err.value.detail
+    with pytest.raises(sf.StoredFormError) as err:
+        sf.from_document(_doc(**{map_name: {name: str(value)}}), _resolve())
+    assert err.value.code == sf.UNKNOWN_NAME and map_name in err.value.detail
+
+
+def test_ac5_adr064_every_allowed_name_round_trips_exactly():
+    limits = {"max_loss": Decimal("5000.50"), "max_capital": Decimal("200000"), "max_margin": Decimal("150000.25")}
+    prefs = {"objective": "income", "market_view": "neutral", "risk_preference": "low", "capital": "200000",
+             "expected_range_low": "22400", "expected_range_high": "23000"}
+    saved = _iron_condor(risk_limits=limits, preferences=prefs)
+    back = sf.loads(sf.dumps(saved), _resolve())
+    assert back == saved and sf.dumps(back) == sf.dumps(saved)
+    assert dict(back.definition.risk_limits) == limits and dict(back.definition.preferences) == prefs
+    assert {str(v) for v in dict(back.definition.risk_limits).values()} == {"5000.50", "200000", "150000.25"}
 
 
 def test_ac5_history_entry_round_trip_and_summary():

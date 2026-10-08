@@ -21,7 +21,7 @@ GOLDEN = Strategy((
 ))
 DEFINITION = StrategyDefinition.from_engine(
     "NIFTY", GOLDEN, rules_ref="exit-rules-1", risk_limits={"max_loss": D("8175")},
-    preferences={"expiry_style": "weekly"},
+    preferences={"market_view": "neutral"},
 )
 MARKET_FIELDS = {"spot", "futures", "ltp", "bid", "ask", "volume", "oi", "oi_change", "iv", "greeks", "pnl",
                  "margin", "charges", "distances", "trigger_state", "as_of", "data_health", "entry_price"}
@@ -49,7 +49,7 @@ def test_definition_holds_every_user_decision_and_no_market_data():
         (Action.SELL, Instrument.CE, D("23400"), 75), (Action.BUY, Instrument.CE, D("23600"), 75)]
     assert DEFINITION.rules_ref == "exit-rules-1"
     assert DEFINITION.risk_limits == (("max_loss", D("8175")),)
-    assert DEFINITION.preferences == (("expiry_style", "weekly"),)
+    assert DEFINITION.preferences == (("market_view", "neutral"),)
     definition_fields = {f.name for f in dataclasses.fields(StrategyDefinition)} | {
         f.name for f in dataclasses.fields(DefinitionLeg)}
     assert definition_fields.isdisjoint(MARKET_FIELDS)

@@ -35,8 +35,34 @@ _NAME = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 Contract = tuple[str, Instrument, Union[Decimal, None], datetime.date]
 
 
+#: ADR-064: the only names a definition's maps may use (REQ-025 AC-1's inputs), compared exactly - no case folding,
+#: no trimming. Any other name is refused on every path that builds or loads a definition; a new name needs a new
+#: decision row. A closed list, not a list of forbidden live-market spellings (which missed LTP, Spot, last_price, ...).
+RISK_LIMIT_NAMES = frozenset({"max_loss", "max_capital", "max_margin"})
+PREFERENCE_NAMES = frozenset({"objective", "market_view", "risk_preference", "capital", "expected_range_low",
+                              "expected_range_high"})
+
+
 class DefinitionError(ValueError):
     """A strategy definition (or a change to one) is invalid."""
+
+
+class UnknownNameError(DefinitionError):
+    """A risk-limit or preference name outside ADR-064's closed list. ``map_name`` is 'risk_limits' or 'preferences'."""
+
+    def __init__(self, map_name: str, names: list[str]) -> None:
+        self.map_name = map_name
+        self.names = names
+        allowed = RISK_LIMIT_NAMES if map_name == "risk_limits" else PREFERENCE_NAMES
+        super().__init__(f"{map_name}: unknown name(s) {names}; allowed {sorted(allowed)} (ADR-064)")
+
+
+def check_names(map_name: str, names) -> None:
+    """Refuses (UnknownNameError) any name not in ADR-064's list for ``map_name``; exact comparison."""
+    allowed = {"risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}[map_name]
+    unknown = [n for n in names if not isinstance(n, str) or n not in allowed]
+    if unknown:
+        raise UnknownNameError(map_name, unknown)
 
 
 def _is_int(value: object) -> bool:
@@ -105,6 +131,7 @@ def _named(values: object, label: str, check) -> tuple:
         if not isinstance(item, tuple) or len(item) != 2:
             raise DefinitionError(f"{label}: each entry must be a (name, value) pair, got {item!r}")
         name, value = item
+        check_names(label, [name])  # ADR-064 closed list first: an unknown name gets its own error
         if not isinstance(name, str) or not _NAME.match(name):
             raise DefinitionError(f"{label}: name must match {_NAME.pattern}, got {name!r}")
         if name in seen:

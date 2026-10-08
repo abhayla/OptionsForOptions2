@@ -158,16 +158,16 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
     user = _user()
     before = await _digests(admin_engine)
     ids: dict[str, int] = {}
-    async with app_engine.connect() as conn:
-        async with conn.begin():
-            result = await apply_update(conn, _fixture_rows(SYMBOLS), as_of=AS_OF)
-        assert result.added == 5
-        ids = await _ids(conn)
-        strike_text = dict((await conn.execute(text(
-            "SELECT b.broker_symbol, c.strike::text FROM public.catalogue_contracts c JOIN public.broker_instruments b "
-            "ON b.contract_id = c.id WHERE c.id = ANY(:ids)"), {"ids": list(ids.values())})).all())
     second = None
     try:
+        async with app_engine.connect() as conn:
+            async with conn.begin():
+                result = await apply_update(conn, _fixture_rows(SYMBOLS), as_of=AS_OF)
+            ids = await _ids(conn)
+            assert result.added == 5
+            strike_text = dict((await conn.execute(text(
+                "SELECT b.broker_symbol, c.strike::text FROM public.catalogue_contracts c JOIN public.broker_instruments b "
+                "ON b.contract_id = c.id WHERE c.id = ANY(:ids)"), {"ids": list(ids.values())})).all())
         assert set(ids) == set(SYMBOLS)
         assert all(Decimal(strike_text[s]) == strike for s, _, _, strike, _ in IRON_CONDOR)
         expected = _expected_document(ids, strike_text)
@@ -216,6 +216,9 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
     finally:
         if second is not None:
             await second.dispose()
+        if not ids:  # the load committed but the lookup never ran: find this test's contracts again
+            async with admin_engine.connect() as conn:
+                ids = await _ids(conn)
         await _remove_own_rows(admin_engine, list(ids.values()), user)
     # no other contract was delisted or touched, and nothing of this test is left (run-order independent)
     assert await _digests(admin_engine) == before, f"run {run} left rows behind"
@@ -543,15 +546,21 @@ async def test_ac5_a_body_with_a_live_state_or_unknown_field_is_refused_not_drop
         assert "live_state_field" in response.text and live[0] in response.text
 
 
-@pytest.mark.parametrize("maps", [{"risk_limits": {"ltp": "101.5"}}, {"preferences": {"spot": "22950.35", "iv": "0.12"}}],
-                         ids=["risk_limits", "preferences"])
+#: ADR-064: the 12 spellings the Tier A re-review stored at 9ab20d5, plus exact-compare cases.
+REVIEW_SPELLINGS = ["LTP", "Ltp", " ltp", "IV", "Spot", "last_price", "implied_vol", "spot_price", "entry_spot",
+                    "underlying_spot", "mark_price", "prev_close", "Max_Loss"]
+
+
+@pytest.mark.parametrize("maps", [{m: {n: "101.5"}} for m in ("risk_limits", "preferences") for n in REVIEW_SPELLINGS],
+                         ids=[f"{m}-{n.strip() or 'blank'}{'-lead-space' if n != n.strip() else ''}"
+                              for m in ("risk_limits", "preferences") for n in REVIEW_SPELLINGS])
 @pytest.mark.parametrize("method, path, extra", [("POST", "/strategies", {}),
                                                  ("PUT", "/strategies/1", {"expected_revision": 1})])
 async def test_ac5_a_live_state_name_inside_a_map_is_refused_by_the_api(maps, method, path, extra):
     """Review round 2 MAJOR: a live-market name used as a risk-limit or preference name is 422, before any query."""
     async with _client(_offline_app()) as ac:
         response = await ac.request(method, path, json=BODY | maps | extra)
-    assert response.status_code == 422 and response.json()["error"] == sf.LIVE_STATE_FIELD, response.text
+    assert response.status_code == 422 and response.json()["error"] == sf.UNKNOWN_NAME, response.text
 
 
 BEYOND_BIGINT = 2**63  # one past strategies.id's range

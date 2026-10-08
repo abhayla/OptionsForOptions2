@@ -25,7 +25,7 @@ The form (schema_version 1):
   quantity in units) are JSON integers, never booleans.
 - Unknown keys, missing keys and a schema version this code does not know are refused; nothing is ever dropped or
   defaulted. The form holds no live-market value: its keys are a closed set (``DOCUMENT_KEYS`` / ``LEG_KEYS``), and
-  the user-named maps (risk_limits, preferences) refuse any name in ``LIVE_STATE_NAMES`` (``SavedDefinition``).
+  the user-named maps (risk_limits, preferences) take only ADR-064's closed lists of names (UNKNOWN_NAME otherwise).
 """
 from __future__ import annotations
 
@@ -38,7 +38,13 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
 from ofo.strategy import live_state as _live_state
-from ofo.strategy.definition import DefinitionError, DefinitionLeg, StrategyDefinition
+from ofo.strategy.definition import (
+    DefinitionError,
+    DefinitionLeg,
+    StrategyDefinition,
+    UnknownNameError,
+    check_names,
+)
 
 SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
@@ -69,6 +75,7 @@ CONTRACT_NOT_LIVE = "contract_not_live"
 QUANTITY_NOT_LOT_MULTIPLE = "quantity_not_lot_multiple"
 UNDERLYING_MISMATCH = "underlying_mismatch"
 LIVE_STATE_FIELD = "live_state_field"
+UNKNOWN_NAME = "unknown_name"
 
 
 class StoredFormError(ValueError):
@@ -123,18 +130,24 @@ class SavedDefinition:
             raise StoredFormError(INVALID_DEFINITION, "two legs on the same catalogue contract")
         # Every path to or from the stored form builds a SavedDefinition, so this is the one place the named maps are
         # checked: a risk limit or preference named like live market data (ltp, spot, iv, ...) is refused.
-        refuse_live_names(risk_limits=[n for n, _ in self.definition.risk_limits],
-                          preferences=[n for n, _ in self.definition.preferences])
+        check_map_names(risk_limits=[n for n, _ in self.definition.risk_limits],
+                        preferences=[n for n, _ in self.definition.preferences])
         object.__setattr__(self, "contract_ids", ids)
 
 
-def refuse_live_names(**named: Sequence[str]) -> None:
-    """Refuses (LIVE_STATE_FIELD) any user-chosen name that is a live-market field (REQ-038 AC-1, AC-5)."""
+def check_map_names(**named: Sequence[str]) -> None:
+    """ADR-064: refuses (UNKNOWN_NAME, naming the map) any risk-limit or preference name outside the closed lists in
+    ofo.strategy.definition; exact comparison. StrategyDefinition enforces the same lists on every path."""
     for label, names in named.items():
-        live = sorted(name for name in names if name in LIVE_STATE_NAMES)
-        if live:
-            raise StoredFormError(LIVE_STATE_FIELD, f"{label} names live market data {live}; a strategy never "
-                                                    "stores it (REQ-038 AC-1, AC-5)")
+        try:
+            check_names(label, list(names))
+        except UnknownNameError as exc:
+            raise StoredFormError(UNKNOWN_NAME, str(exc)) from None
+
+
+def _definition_refused(exc: DefinitionError, where: str = "") -> StoredFormError:
+    code = UNKNOWN_NAME if isinstance(exc, UnknownNameError) else INVALID_DEFINITION
+    return StoredFormError(code, f"{where}{exc}")
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -319,7 +332,7 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
         definition = StrategyDefinition(underlying, tuple(legs), rules_ref=doc["rules_ref"], risk_limits=risk_limits,
                                         preferences=tuple(prefs.items()))
     except DefinitionError as exc:
-        raise StoredFormError(INVALID_DEFINITION, str(exc)) from None
+        raise _definition_refused(exc) from None
     saved = SavedDefinition(definition, tuple(ids))
     check_against_catalogue(saved, resolve, require_live=False)
     return saved
@@ -396,7 +409,7 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
         definition = StrategyDefinition(underlying, tuple(legs), rules_ref=rules_ref, risk_limits=risk_limits,
                                         preferences=preferences)
     except DefinitionError as exc:
-        raise StoredFormError(INVALID_DEFINITION, str(exc)) from None
+        raise _definition_refused(exc) from None
     return SavedDefinition(definition, tuple(ids))
 
 
