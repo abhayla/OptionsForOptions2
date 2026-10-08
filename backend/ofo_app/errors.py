@@ -10,10 +10,10 @@ Every error response body the API sends is built here, and only from a `render()
   internal message. The status is kept, and so are only the `Allow` (405) and `WWW-Authenticate` (401) headers; its
   `detail` is never shown or logged;
 - ANY other exception -> `internal_system_request_failed` (500) with a fresh reference id; the exception goes only to
-  the log, beside that reference, through the redaction filter (ofo_app/redaction.py).
+  the log, beside that reference; every log record of the process is redacted (ofo_app/redaction.py, round 10).
 
 Logging (review MAJOR-3): never a request value. A validation error logs only each problem's `loc` and `type` (never
-`input`, `ctx` or `msg`); every record on the boundary's loggers is redacted (secret-keyed values, token-shaped runs).
+`input`, `ctx` or `msg`); every record of every logger is redacted where it is built (held values, keyed values, shapes).
 Starlette's outermost middleware re-raises an exception after its handler ran ("allows servers to log the error"),
 which would hand the raw traceback to the server's logger: `_Boundary`, an inner middleware, answers the exception
 itself and never re-raises.

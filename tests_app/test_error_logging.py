@@ -112,10 +112,12 @@ def test_redact_unit_cases() -> None:
 
 
 async def test_mutant_without_the_filter_leaks(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mutation: make the filter a no-op -> the token reaches the log (so the redaction test is load-bearing)."""
-    from ofo_app import redaction
+    """Mutation: put the stock record factory back -> the token reaches the log (so the redaction test is
+    load-bearing). Round 10: redaction is the log-record factory, no longer a filter on a list of logger names."""
+    from ofo_app import errors
 
-    monkeypatch.setattr(redaction.RedactingFilter, "filter", lambda self, record: True)
+    monkeypatch.setattr(errors, "install_redaction", lambda: None)  # create_app() would re-install it
+    monkeypatch.setattr(logging, "_logRecordFactory", logging.LogRecord)
     caplog.set_level(logging.INFO)
     await _call("GET", "/boom")
     assert SECRET_TOKEN in _logged(caplog)
