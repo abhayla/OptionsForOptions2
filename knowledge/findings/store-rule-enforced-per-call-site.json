@@ -1,0 +1,27 @@
+{
+ "id": "store-rule-enforced-per-call-site",
+ "scope": "generic",
+ "class": "A rule about what a store may hold (which source may sit where, which rank wins, which day is frozen) written separately in each write method or caller instead of in one private writer every write passes through; each fix closes the method a test happened to probe, and any other or future write method (or a second store implementation behind the same interface) bypasses it.",
+ "mechanism": "W-062 history store: the gap rule lived in put_bars, record_gaps and finalize_into; replace_day_bars checked nothing. Round 1 fixed finalize, round 2 fixed put_bars; the verifier then stored LIVE bars inside a gap through replace_day_bars, and the independent review showed a LIVE bar overwriting a KITE bar and a late gap deleting a FINAL day's bars while the day still read FINAL.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "build/W-062-history @ cf57076 (rounds 1-2 red)",
+  "evidence": "independent review probe: A replace_day_bars in gap -> ['LIVE','LIVE']; B LIVE over KITE -> LIVE; C late gap on FINAL day -> [] FINAL; D put_bars -> ['BACKFILLED']"
+ },
+ "fix": "One private writer in the store applies every rule (no LIVE inside a gap; KITE > BACKFILLED > LIVE never lowered; a FINAL day never changed); every public write method calls it; the store interface states the rules and one shared contract test runs against every implementation.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Guarded when the shared store contract test (every write method x every rule, with a mutation per rule) runs against each HistoryStore implementation in CI."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-067.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "W-062 rounds 1 and 2",
+   "evidence": "two verifier reds of the same class (finalize_into, then replace_day_bars)"
+  }
+ ]
+}
