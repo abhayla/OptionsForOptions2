@@ -9,6 +9,8 @@ the at-the-money (ATM) strike. Nothing in this module knows any particular templ
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Mapping, Sequence, Union
@@ -33,8 +35,20 @@ MARKET_VIEWS: tuple[str, ...] = ("bullish", "bearish", "range-bound", "volatile"
 OBJECTIVES: tuple[str, ...] = ("income", "directional", "hedge", "volatility")
 
 
-class TemplateError(ValueError):
-    """A template file, a template definition, or a resolve/match call is invalid."""
+class TemplateError(UserFacing, ValueError):
+    """A template file, a template definition, or a resolve/match call is invalid.
+
+    ``str(error)`` is the developer detail. When the error reaches a user, ``message`` is the four-part
+    ``UserFacingError`` from ``ofo.errors.render()`` (W-024 round 9); the detail is never shown to them."""
+
+    def __init__(self, detail: str, *, message: object | None = None) -> None:
+        super().__init__(detail)
+        if message is not None:
+            from ofo.errors import UserFacingError
+
+            if type(message) is not UserFacingError:
+                raise TypeError(f"TemplateError.message must come from render(), got {type(message).__name__}")
+        self.message = message
 
 
 def _is_int(value: object) -> bool:

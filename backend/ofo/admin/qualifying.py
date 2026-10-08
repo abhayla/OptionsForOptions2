@@ -24,6 +24,7 @@ returns False (fail closed) rather than raising. Entitlement status is an input
 from the entitlement engine (``record_entitlement_status``), never computed here.
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import csv
 import datetime
@@ -117,8 +118,9 @@ class ImportRefusedError(ValueError):
 
     def __init__(self, report: ImportReport) -> None:
         self.report = report
-        rows = ", ".join(f"row {r.row_number} ({r.category.value})" for r in report.problems)
-        super().__init__(f"import of {report.file_name!r} refused; unresolved: {rows}")
+        rows = tuple(render_explanation("import_row_ref", number=r.row_number, category=r.category.value)
+                     for r in report.problems)
+        super().__init__(render_explanation("import_refused", file=repr(report.file_name), rows=rows))
 
 
 class _Unset:
@@ -366,20 +368,20 @@ class QualifyingListService:
         if client_id in seen:
             return ImportRow(
                 row_number, raw, client_id, RowCategory.DUPLICATE_IN_FILE,
-                f"{client_id} also appears on row {seen[client_id]}", edited,
+                render_explanation("import_row_duplicate", client_id=client_id, row=seen[client_id]), edited,
             )
         seen[client_id] = row_number
         existing = self._repo.get(client_id)
         if existing is not None and existing.list_status is ListStatus.INACTIVE:
             return ImportRow(
                 row_number, raw, client_id, RowCategory.INACTIVE_ON_LIST,
-                f"{client_id} is on the list but INACTIVE; reactivate or exclude this row", edited,
+                render_explanation("import_row_inactive", client_id=client_id), edited,
             )
         if existing is not None:
             return ImportRow(
-                row_number, raw, client_id, RowCategory.ALREADY_ON_LIST, f"{client_id} is already on the list", edited
+                row_number, raw, client_id, RowCategory.ALREADY_ON_LIST, render_explanation("import_row_already", client_id=client_id), edited
             )
-        return ImportRow(row_number, raw, client_id, RowCategory.NEW, f"{client_id} will be added", edited)
+        return ImportRow(row_number, raw, client_id, RowCategory.NEW, render_explanation("import_row_new", client_id=client_id), edited)
 
     def preview_import(self, request: ImportRequest) -> ImportReport:
         """Dry run: classify every data row; changes nothing."""
@@ -388,7 +390,7 @@ class QualifyingListService:
         data_rows, blank = self._read_rows(request)
         for row_number, raw in data_rows:
             if row_number in request.excluded_rows:
-                rows.append(ImportRow(row_number, raw, None, RowCategory.EXCLUDED, "excluded by admin", False))
+                rows.append(ImportRow(row_number, raw, None, RowCategory.EXCLUDED, render_explanation("import_row_excluded"), False))
                 continue
             edited = row_number in request.edits
             value = request.edits[row_number] if edited else raw
@@ -398,7 +400,7 @@ class QualifyingListService:
                     raise ValueError(
                         f"row {row_number} cannot be reactivated: it is {row.category.value}, not INACTIVE_ON_LIST"
                     )
-                row = replace(row, category=RowCategory.REACTIVATE, message=f"{row.client_id} will be reactivated")
+                row = replace(row, category=RowCategory.REACTIVATE, message=render_explanation("import_row_reactivated", client_id=row.client_id))
             rows.append(row)
         return ImportReport(request.file_name.strip(), tuple(rows), blank)
 

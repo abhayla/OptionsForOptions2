@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 6b81aa5
+Generated from commit 1b744cc
 
 ## Stage S0
 
@@ -79,13 +79,25 @@ Generated from commit 6b81aa5
 | 4a | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
 | 4a | decision | ADR-061 | - | IV, Greeks and Estimated Now use each expiry's put-call-parity forward (an implied dividend yield); the payoff's current level stays spot |
 | 4a | decision | ADR-062 | - | Save Draft stores a strategy's definition and activity history durably; live prices are never stored with it |
+| 4a | decision | ADR-063 | - | The engine prices with each expiry's implied dividend yield (Black-Scholes-Merton); every Greek, theta included, comes from the engine |
+| 4a | decision | ADR-064 | - | A strategy's risk limits and preferences use a closed list of names; any other name is refused |
+| 4a | decision | ADR-065 | - | Pricing and stale-data guards stop accidental misuse by our own code; deliberate forging is flagged in CI, not resisted at runtime |
+| 4a | decision | ADR-066 | - | Kite Connect's historical candles are used internally only in V1; users see no history screens |
+| 4a | decision | ADR-067 | - | The one-minute history tier is built live from the feed and made final after the close from Kite's own candles |
+| 4a | decision | ADR-068 | - | First screen - a draft's planned entry price, live push cadence, UX level per request, and leg entry in 4a |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
-| 4a | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
+| 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
+| 4a | issue | #138 | - |  |
+| 4a | issue | #148 | - |  |
+| 4a | issue | #151 | - |  |
+| 4a | issue | #154 | - |  |
+| 4a | issue | #155 | - |  |
+| 4a | issue | #156 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -105,6 +117,11 @@ Generated from commit 6b81aa5
 | 4a | requirement | REQ-047 | AC-4 | Adjustment-relevant data is collected even when the user has no adjustment rule (Q165). |
 | 4a | requirement | REQ-048 | - | Market-data pipeline and browser boundary |
 | 4a | requirement | REQ-049 | - | Normalized market data and data health |
+| 4a | requirement | REQ-051 | AC-1 | In V1 historical data, historical simulation and historical adjustment analysis are disabled until a licensed historical source exists; the UI says so (Q180, owner T2 #121). |
+| 4a | requirement | REQ-051 | AC-2 | No complete tick-by-tick history is stored for every option (Q168). |
+| 4a | requirement | REQ-051 | AC-3 | Tiers: real-time, aggregated intraday (1-minute/5-minute), daily, strategy snapshots (active user strategies only). Derived metrics are computed on demand, or materialised only when expensive or useful; they are not stored for every timestamp (Q168; T2 #102). |
+| 4a | requirement | REQ-051 | AC-4 | Aggregated history is built from the live feed where practical and licensed (Q169); a separate historical provider can plug into the same abstraction (Q99). |
+| 4a | requirement | REQ-051 | AC-5 | Historical data and simulation never block live strategy creation, Option Chain, execution or monitoring (Q101 owner note, Q180). |
 | 4a | requirement | REQ-052 | - | Market-data sourcing and licensing |
 | 4a | requirement | REQ-053 | - | Broker authority and contract eligibility |
 | 4a | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
@@ -118,6 +135,8 @@ Generated from commit 6b81aa5
 | 4a | work item | W-024 | - | Error classification and user-facing error messages |
 | 4a | work item | W-060 | - | NIFTY 50 and SENSEX index spot with data health, and each expiry's put-call-parity forward for IV and Greeks |
 | 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
+| 4a | work item | W-062 | - | One-minute history recorded from the live feed and made final from Kite's candles after the close |
+| 4a | work item | W-063 | - | Outcome API - one backend call returns a strategy's table, scenarios, payoff and summary from live inputs |
 
 ## Stage 4b
 
@@ -282,7 +301,8 @@ Generated from commit 6b81aa5
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
 | S6.7 | decision | ADR-013 | - | Historical data, adjustment data and simulation |
-| S6.7 | requirement | REQ-051 | - | Historical storage tiers and simulation |
+| S6.7 | requirement | REQ-051 | AC-6 | Simulation, when built, is simple strategy simulation (EOD default, intraday later), not quant backtesting (Q19, Q100). |
+| S6.7 | requirement | REQ-051 | AC-7 | Simulation results may show best/worst outcome, winning days, drawdown and historical behaviour, and are always labelled historical/simulation, never a future guarantee. |
 
 ## Stage S7
 
@@ -389,6 +409,8 @@ Generated from commit 6b81aa5
 | done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
 | done | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
 | done | finding | F-31 | - | Zerodha grants multi-user Kite Connect access only to a production-ready platform, after a demo; the API fee is waived for active traders |
+| done | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
+| done | finding | F-34 | - | One-minute bars built from our own Kite ticks match Kite's minute candles on close and OI, not on open, high and low; a network drop leaves a gap |
 | done | hypothesis | H1 | - |  |
 | done | hypothesis | H10 | - |  |
 | done | hypothesis | H11 | - |  |
@@ -421,7 +443,7 @@ Generated from commit 6b81aa5
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 24 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 3 | 70 |
+| 4a | 7 | 0 | 30 | 5 | 0 | 10 | 0 | 1 | 31 | 0 | 5 | 89 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
@@ -432,8 +454,8 @@ Generated from commit 6b81aa5
 | S6.4 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 8 | 0 | 0 | 11 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 2 |
-| S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 2 |
+| S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 3 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
 | S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 4 | 0 | 21 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 54 |
+| done | 5 | 4 | 0 | 23 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 56 |

@@ -56,7 +56,7 @@ requirements:
   REQ-048: 4a
   REQ-049: 4a
   REQ-050: S5
-  REQ-051: S6.7
+  REQ-051: {AC-1: 4a, AC-2: 4a, AC-3: 4a, AC-4: 4a, AC-5: 4a, AC-6: S6.7, AC-7: S6.7}   # recording in 4a (W-062, ADR-067); simulation S6.7
   REQ-052: 4a
   REQ-053: 4a
   REQ-054: {AC-1: [4a, 4b], AC-2: all, AC-3: done, AC-4: done}
@@ -140,6 +140,12 @@ decisions:
   ADR-060: [4a, 4b, 4c] # build on the owner's Kite app until demo-ready, then reapply to Zerodha (F-31)
   ADR-061: 4a           # IV/Greeks from each expiry's parity forward; payoff stays on spot (F-32)
   ADR-062: 4a           # Save Draft stores strategies durably (REQ-038 AC-5, W-061)
+  ADR-063: 4a           # the engine owns the dividend yield and every Greek, theta included (W-060 review)
+  ADR-064: 4a           # closed names for a strategy's risk limits and preferences (W-061 review)
+  ADR-065: 4a           # pricing guards: same trust boundary as wording (Q235); W-060 unparked
+  ADR-066: 4a           # Kite historical candles: internal use only in V1 (F-33)
+  ADR-067: 4a           # one-minute history: live first, final from Kite candles (F-34, W-062)
+  ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
@@ -185,6 +191,9 @@ vendor_enquiries:
 
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
+  "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
+  "#155": 4a            # mechanism: a failing step stops commit/push (pipe-masks-gate, 2nd occurrence)
+  "#156": 4a            # PR #149 review minors (check_storable test, stale docstring)
   "#30": 4a
   "#43": 4b
   "#45": 4b
@@ -196,6 +205,9 @@ issues:
   "#115": 4b
   "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
+  "#138": 4a            # W-061 Save Draft test-coverage gaps (verifier, 2026-10-08)
+  "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
+  "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
 
 # Work items whose status is not done.
 work_items:
@@ -207,6 +219,8 @@ work_items:
   W-058: 4a
   W-060: 4a
   W-061: 4a
+  W-062: 4a
+  W-063: 4a
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -241,7 +255,9 @@ findings:
   F-29: 4a        # core data proof (owner's account): field shapes for the Kite adapter
   F-30: 4a        # delisting before expiry (ADR-058, W-057)
   F-31: done      # Zerodha wants a production-ready demo first; fee waiver (decided, ADR-060)
-  F-32: 4a        # live checks: Greeks input decided (ADR-061); staleness rule open for the data path
+  F-32: done      # live checks: Greeks input (ADR-061) and staleness (W-059) decided
+  F-33: 4a        # afternoon capture: intraday strikes, REST charges/history, floats, sessions, expiry close
+  F-34: done      # bars from ticks vs Kite candles (decided, ADR-067)
 
 hypotheses:
   H1: done

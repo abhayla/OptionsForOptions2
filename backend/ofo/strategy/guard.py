@@ -32,6 +32,8 @@ Orchestrator defaults (not stated by the spec):
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import hashlib
 import hmac
 import json
@@ -43,14 +45,34 @@ from typing import Final
 from ofo.engine import PriceBasis, Strategy, net_premium, strategy_metrics
 from ofo.engine.legs import Leg, require_decimal
 from ofo.engine.metrics import _Unlimited
+from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 
-RISK_PROFILE_CHANGED: Final = "This action changes your strategy's risk profile"
+#: REQ-036 AC-5's exact sentence; its words live in the reviewed catalogue (W-024 round 9).
+RISK_PROFILE_CHANGED: Final = CATALOGUE["guard_risk_profile_changed"].what_happened
 MAX_OPEN_DECISIONS: Final = 100  # orchestrator default OD-G4
 _ZERO: Final = Decimal("0")
 
 
-class GuardRefused(ValueError):
-    """The action changes the risk profile and was not acknowledged for this exact proposal, or was never checked."""
+class GuardRefused(UserFacing, ValueError):
+    """The action changes the risk profile and was not acknowledged for this exact proposal, or was never checked.
+
+    W-024 round 9 (REQ-065 AC-2, ADR-003 Q226): the words come only from ``render()``. ``reason`` is the
+    what-happened part (also ``str(error)``); ``text`` is what a user is shown (all four parts). A plain string is
+    refused."""
+
+    def __init__(self, message: UserFacingError) -> None:
+        if type(message) is not UserFacingError:
+            raise TypeError(f"GuardRefused needs a UserFacingError from ofo.errors.render(), got {type(message).__name__}")
+        super().__init__(message.what_happened)
+        self.message = message
+
+    @property
+    def reason(self) -> str:
+        return self.message.what_happened
+
+    @property
+    def text(self) -> str:
+        return display_text(self.message)
 
 
 @dataclass(frozen=True)
@@ -184,6 +206,12 @@ def _decision(binding: GuardBinding, change: RiskChange) -> GuardDecision:
     return GuardDecision(binding, change, secrets.token_urlsafe(32) if change.changes_risk_profile else None)
 
 
+def acknowledgement_refused(decision: GuardDecision) -> GuardRefused:
+    """The refusal for a flagged decision whose acknowledgement was missing or wrong: the changed rows, four parts."""
+    rows = tuple((c.metric, c.before, c.after) for c in decision.change.consequences if c.changed)
+    return GuardRefused(render("guard_acknowledgement_required", rows=rows))
+
+
 class StrategyGuard:
     """Per-strategy decision store. Issued only by the owning flows; redeemed once, for the same binding."""
 
@@ -206,14 +234,11 @@ class StrategyGuard:
     def _find(self, binding: GuardBinding, acknowledgement: object) -> GuardDecision:
         decision = self._open.get(binding)
         if decision is None:
-            raise GuardRefused("Strategy Guard has not checked this exact action for this strategy and version; "
-                               "check it again before proceeding. Nothing was sent.")
+            raise GuardRefused(render("guard_not_checked"))
         if decision.acknowledgement is not None:
             if not isinstance(acknowledgement, str) or not hmac.compare_digest(acknowledgement,
                                                                                 decision.acknowledgement):
-                rows = "; ".join(f"{c.metric}: {c.before!r} -> {c.after!r}" for c in decision.change.consequences
-                                 if c.changed)
-                raise GuardRefused(f"{RISK_PROFILE_CHANGED}: {rows}. Acknowledge it to proceed. Nothing was sent.")
+                raise acknowledgement_refused(decision)
         return decision
 
     def withdraw(self, binding: GuardBinding) -> None:

@@ -34,9 +34,9 @@ def test_interface_lists_every_ac2_operation():
 
 def test_stream_delivers_normalised_quotes_in_arrival_order(replayed):
     provider, seen, _ = replayed
-    assert len(seen) == 7301 == provider.counters["ticks"]
+    assert len(seen) == 7281 == provider.counters["ticks"]
     assert provider.counters["frames"] == 43 and provider.counters["heartbeats"] == 3
-    assert provider.counters["unmapped_token"] == 0
+    assert provider.counters["unmapped_token"] == 20  # INDIA VIX's ticks: not in REQ-072 AC-1 (W-060)
 
 
 def test_option_quote_fields_follow_f29(replayed):
@@ -68,7 +68,7 @@ def test_underlying_and_chain_snapshot(replayed):
 
 def test_master_status_and_metadata(replayed):
     provider, _, items = replayed
-    assert len(provider.instrument_master()) == len(items) == 1088  # 1,091 rows less the 3 index rows outside V1
+    assert len(provider.instrument_master()) == len(items) == 1090  # 1,091 rows less INDIA VIX (NIFTY 50 / SENSEX are NSE_INDEX / BSE_INDEX rows, W-060)
     assert provider.status().health in (DataHealth.AVAILABLE, DataHealth.STALE)
     assert provider.status().connected is True
     assert provider.source_metadata().provider == "zerodha-kite"

@@ -8,6 +8,9 @@ from decimal import Decimal as D
 
 import pytest
 
+from ofo.engine.inputs import SpotReading
+from ofo.rules.inputs import DataHealth
+
 from ofo.engine.black_scholes import IST
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument
@@ -46,13 +49,23 @@ def nifty_leg(action, instrument, strike, entry, ltp=None, iv=None, greeks=None,
     )
 
 
-def nifty_input(legs, spot=GOLDEN_SPOT, valuation=VALUATION) -> StrategyInput:
-    return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=valuation, rate=RATE,
-                         legs=tuple(legs))
+def nifty_input(legs, spot=GOLDEN_SPOT, valuation=VALUATION):
+    return gated(StrategyInput(underlying="NIFTY", valuation_time=valuation, rate=RATE, legs=tuple(legs),
+                               spot=SpotReading(level=spot, at=valuation, health=DataHealth.AVAILABLE)))
+
+
+def gated(si: StrategyInput):
+    """The ModelInputs every product entry takes: the strategy input plus a spot-fallback forward (q = 0) per expiry,
+    so the q = 0 expected values of these fixtures stay exactly as they were (W-060 round 3)."""
+    from ofo.engine.model import model_inputs
+    from ofo.marketdata.forward import spot_fallback_forward
+    return model_inputs(si, {e: spot_fallback_forward(e, si.spot.level, si.spot.at, si.valuation_time, si.rate,
+                                                      days_in_year=si.days_in_year, spot_health=si.spot.health)
+                             for e in {leg.expiry for leg in si.legs}})
 
 
 @pytest.fixture
-def golden() -> StrategyInput:
+def golden():
     return nifty_input(nifty_leg(*row) for row in GOLDEN_LEGS)
 
 

@@ -28,7 +28,7 @@ NOW = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)
 def _provider():
     listed = list(parse_instruments_csv(FIXTURES / "instruments-2026-10-08-subscribed.csv"))
     provider = KiteProvider(listed, clock=lambda: NOW)
-    ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed[:5]] + ["INDEX:NIFTY 50"]
+    ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed[:5]] + ["NSE_INDEX:1001"]  # NIFTY 50: (segment, exchange token), REQ-072 AC-1
     provider.subscribe(ids)
     return provider
 

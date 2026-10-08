@@ -1,0 +1,38 @@
+{
+ "http": 200,
+ "shape": [
+  {
+   "tradingsymbol": "str",
+   "exchange": "str",
+   "instrument_token": "int",
+   "isin": "str",
+   "product": "str",
+   "price": "int",
+   "quantity": "int",
+   "t1_quantity": "int",
+   "realised_quantity": "int",
+   "authorised_quantity": "int",
+   "authorised_date": "str",
+   "opening_quantity": "int",
+   "collateral_quantity": "int",
+   "collateral_type": "str",
+   "discrepancy": "bool",
+   "short_quantity": "int",
+   "used_quantity": "int",
+   "authorisation": {},
+   "average_price": "float",
+   "last_price": "int",
+   "close_price": "float",
+   "pnl": "float",
+   "day_change": "float",
+   "day_change_percentage": "float",
+   "mtf": {
+    "quantity": "int",
+    "used_quantity": "int",
+    "average_price": "int",
+    "value": "int",
+    "initial_margin": "int"
+   }
+  }
+ ]
+}

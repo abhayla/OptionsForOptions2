@@ -1,0 +1,27 @@
+{
+ "id": "ci-path-filter-misses-dependency-change",
+ "scope": "generic",
+ "class": "A CI workflow limited by a path filter to the files of one layer never runs when a change lands only in a layer that layer imports; the dependency change breaks its tests on main with no red check anywhere, and every later PR that does touch the filtered paths inherits failures it did not cause.",
+ "mechanism": "app-tests.yml triggers only on backend/ofo_app/**, tests_app/** and a few files; W-060 (commit c5873ce) changed backend/ofo/instruments and backend/ofo/marketdata/kite_provider.py, which tests_app imports. The app suite did not run on that PR or on main, so 7 app tests went red unseen.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "main at 6448b47 (after W-060), found by the W-062 builder",
+  "evidence": "python -m pytest -c pytest-app.ini tests_app/test_kite_ws.py tests_app/test_catalogue_store.py on main: 7 failed, 19 passed - KeyError no Kite token for 'INDEX:NIFTY 50' (6), catalogue migration segments lack NSE_INDEX/BSE_INDEX (1); gh run list --workflow app-tests.yml: last runs only on build/W-061-save-draft, none for W-060"
+ },
+ "fix": "The app-tests workflow also triggers on every path the app imports (backend/ofo/**); the 7 failures are fixed on main (test ids follow W-060's NSE_INDEX identity; the catalogue migration gains NSE_INDEX/BSE_INDEX, W-060 AC-1).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when the path filter includes backend/ofo/** and a test asserts that every top-level package tests_app imports is covered by the workflow's path filter (red-then-green: remove backend/ofo/** and the test fails)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-046.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "W-060 merge to main",
+   "evidence": "7 app tests red on main, no app-tests run for the W-060 PR"
+  }
+ ]
+}

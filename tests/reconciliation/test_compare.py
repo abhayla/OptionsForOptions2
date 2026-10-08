@@ -336,3 +336,29 @@ def test_ac2_work_is_linear_in_active_strategies(shared):
     assert len(report.covered_strategy_ids) == 200 and len(report.blocked_strategy_ids) == 200
     # Hand count: shared -> the condor's 4 contracts, each one mismatch held by all 200; else one per strategy.
     assert len(report.mismatches) == (4 if shared else 200)
+
+
+def test_mismatch_text_is_a_four_part_catalogue_message_and_next_action_is_its_last_part():
+    """W-024 round 9 (REQ-065 AC-2): the user's text comes from render(); the audit next_action is part four."""
+    broker = {BP22800: 50, SP23000: -75, SC23400: -100, BC23600: 75}
+    (m,) = run(broker, {"IC-1": executed()}, {SC23400: -25}).mismatches
+    assert m.reason == "Zerodha's quantity on 1 contract(s) differs from the platform's record for this strategy."
+    lines = m.text.splitlines()
+    assert len(lines) == 4 and lines[0] == m.reason
+    assert lines[3] == "Next step: " + m.next_action
+
+
+@pytest.mark.parametrize("kind", list(MismatchKind))
+def test_every_mismatch_kind_has_a_template_with_all_four_parts(kind):
+    from ofo.errors import render
+    from ofo.reconciliation.compare import _KIND_TEMPLATE, _NEXT_ACTION
+
+    message = render(_KIND_TEMPLATE[kind], contracts=2)
+    parts = (message.what_happened, message.impact, message.what_is_blocked, message.next_action)
+    assert all(part.strip() for part in parts)
+    assert message.next_action == _NEXT_ACTION[kind]
+
+
+def test_reconciliation_error_refuses_a_plain_string_message():
+    with pytest.raises(TypeError, match="render"):
+        ReconciliationError("detail", message="a plain string")

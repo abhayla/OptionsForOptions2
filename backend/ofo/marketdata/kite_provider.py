@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Callable, Iterable, Sequence
 
 from ofo.engine.legs import Instrument
-from ofo.instruments.models import BSE_FO, NSE_FO, ZERODHA, ListedContract
+from ofo.instruments.models import (BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX, ZERODHA, ListedContract)
 from ofo.marketdata.feed_health import FeedState, QuoteBook
 from ofo.marketdata.kite_frames import RawTick, parse_frame
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus, QuoteListener
@@ -27,13 +27,9 @@ from ofo.rules.inputs import DataHealth
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 SOURCE = SourceMetadata(provider="zerodha-kite", feed_id="kite-ws-full")
 
-#: One small table W-060 (REQ-072) replaces with catalogue segments: Kite token -> (name, underlying key, exchange).
-INDEX_TABLE: dict[int, tuple[str, str, str]] = {
-    256265: ("NIFTY 50", "NIFTY", "NSE"),
-    265: ("SENSEX", "SENSEX", "BSE"),
-    264969: ("INDIA VIX", "INDIA VIX", "NSE"),
-}
-_EXCHANGE_OF_SEGMENT = {NSE_FO: "NSE", BSE_FO: "BSE"}
+# Index identity (REQ-072 AC-1, W-060): the NIFTY 50 and SENSEX rows come from the catalogue's NSE_INDEX / BSE_INDEX
+# segments through the per-broker table, like every option; there is no token table here. INDIA VIX is not in AC-1.
+_EXCHANGE_OF_SEGMENT = {NSE_FO: "NSE", BSE_FO: "BSE", NSE_INDEX: "NSE", BSE_INDEX: "BSE"}
 
 
 def _ist(epoch_seconds: int) -> datetime.datetime:
@@ -51,8 +47,13 @@ class KiteProvider(MarketDataProvider):
             token = int(lc.ref(ZERODHA).broker_token)
             self._by_token[token] = lc
             self._token_of[self._contract_id(lc)] = token
-        for token, (name, _u, _e) in INDEX_TABLE.items():
-            self._token_of[f"INDEX:{name}"] = token
+        # underlying name or index name -> the index contract id, from the catalogue rows only
+        self._index_id: dict[str, str] = {}
+        for lc in self._master:
+            key = (lc.contract.exchange_segment, lc.contract.exchange_token)
+            if key in INDEX_ROWS:
+                name, underlying = INDEX_ROWS[key]
+                self._index_id[name] = self._index_id[underlying] = self._contract_id(lc)
         self.feed = feed or FeedState()
         self.book = QuoteBook(self.feed)
         self._listener: QuoteListener | None = None
@@ -116,18 +117,19 @@ class KiteProvider(MarketDataProvider):
     # ---- normalisation ---------------------------------------------------------------------------------------
     def normalise(self, tick: RawTick, received_at: datetime.datetime) -> NormalizedQuote | None:
         ts = _ist(tick.exchange_ts) if tick.exchange_ts else received_at.astimezone(IST)
-        index = INDEX_TABLE.get(tick.token)
-        if index is not None:
-            name, underlying, exchange = index
-            return NormalizedQuote(
-                instrument_id=f"INDEX:{name}", underlying=underlying, exchange=exchange, segment="INDEX",
-                instrument_type=None, expiry=None, strike=None, ltp=tick.ltp, bid=None, ask=None,
-                volume=None, oi=None, oi_change=None, iv=None, delta=None, gamma=None, theta=None, vega=None,
-                timestamp=ts, source=SOURCE, health=DataHealth.AVAILABLE)
         lc = self._by_token.get(tick.token)
         if lc is None:
             return None
         c = lc.contract
+        index = INDEX_ROWS.get((c.exchange_segment, c.exchange_token))
+        if index is not None:
+            return NormalizedQuote(
+                instrument_id=self._contract_id(lc), underlying=index[1], exchange=_EXCHANGE_OF_SEGMENT[c.exchange_segment],
+                segment=c.exchange_segment, instrument_type=None, expiry=None, strike=None, ltp=tick.ltp, bid=None,
+                ask=None, volume=None, oi=None, oi_change=None, iv=None, delta=None, gamma=None, theta=None, vega=None,
+                timestamp=ts, source=SOURCE, health=DataHealth.AVAILABLE)
+        if c.is_index():  # an index segment row outside AC-1's two: never priced
+            return None
         return NormalizedQuote(
             instrument_id=self._contract_id(lc), underlying=c.name, exchange=_EXCHANGE_OF_SEGMENT[c.exchange_segment],
             segment=c.exchange_segment, instrument_type=Instrument(c.instrument_type), expiry=c.expiry,
@@ -178,10 +180,12 @@ class KiteProvider(MarketDataProvider):
         return list(self._master)
 
     def underlying_quote(self, underlying: str) -> NormalizedQuote | None:
-        for _t, (name, key, _e) in INDEX_TABLE.items():
-            if underlying in (name, key):
-                return self.book.get(f"INDEX:{name}", self._now())
-        return None
+        instrument_id = self._index_id.get(underlying)
+        return None if instrument_id is None else self.book.get(instrument_id, self._now())
+
+    def index_id(self, underlying: str) -> str | None:
+        """The catalogue id ("NSE_INDEX:1001" / "BSE_INDEX:1") of an index by its name or underlying name."""
+        return self._index_id.get(underlying)
 
     def futures_quote(self, underlying: str, expiry: datetime.date) -> NormalizedQuote | None:
         raise NotSupported("Kite futures quotes are not offered in V1")

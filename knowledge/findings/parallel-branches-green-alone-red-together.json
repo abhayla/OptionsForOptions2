@@ -1,0 +1,32 @@
+{
+ "id": "parallel-branches-green-alone-red-together",
+ "scope": "generic",
+ "class": "Two work items built in parallel branches each pass CI on their own base, but one adds a repo-wide guard (an import scan, an inventory, an allowlist) that the other's new code violates; the clash shows only when the branches meet, so a branch merged first can turn the other red after it was verified.",
+ "mechanism": "W-059 (merged) added a test that no file outside the Kite market-data adapter imports Kite modules; W-058 (open, verified at an older base) adds Kite login adapter modules. Each branch was green alone; the combined W-061 branch (W-058 + main) went red.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "PR 134 CI lint-and-test (W-058 + W-059 + W-061)",
+  "evidence": "FAILED tests/marketdata/test_provider_replaceable.py::test_nothing_outside_the_kite_adapter_imports_the_kite_modules - offenders ofo_app/routes/broker.py, ofo/broker/__init__.py, ofo_app/kite_client.py"
+ },
+ "fix": "Before merging any branch, merge the current origin/main into it and re-run CI (merge_when_green refuses a stale base only when GitHub marks it conflicting, not when a guard changed). W-058 was merged with main and its adapter files named in the guard's allowlist with a REQ-063 AC-1 reason.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Mechanism planned (learning L2, second occurrence): issue #154 - require every PR to be tested on the current main before merge (GitHub 'require branches to be up to date', an owner setting); until then the orchestrator merges main into a branch and re-runs both suites before opening or merging its PR."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-063.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "W-058 / W-059 / W-061",
+   "evidence": "PR 134 lint-and-test: 1 failed, 1745 passed"
+  },
+  {
+   "date": "2026-10-08",
+   "where": "W-063 (merged #150) x W-024 round 10",
+   "evidence": "W-024 merged with main: 2 app tests failed (route without ApiModel; error body outside the boundary) and 1 producer-inventory test failed, all on W-063's outcome route; each branch was green alone"
+  }
+ ]
+}

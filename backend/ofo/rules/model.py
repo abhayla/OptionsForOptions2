@@ -8,6 +8,7 @@ does not), otherwise CANNOT_EVALUATE naming the inputs it needs. ``Evaluation.mi
 rule reads that was unusable, whatever the outcome, so a trigger record shows what was not known.
 """
 from __future__ import annotations
+from ofo.errors.explanations import ExplanationText, UserWords, join_explanations, render_explanation, user_words
 
 import datetime
 from dataclasses import dataclass, field
@@ -60,6 +61,13 @@ class Rule:
     action: RuleAction
     description: str = ""
     limits: ComplexityLimits = field(default=DEFAULT_LIMITS, compare=False)
+
+    @property
+    def shown_name(self) -> UserWords | ExplanationText:
+        """The rule's name as the user typed it (description, else id), for a UserText slot (W-024 r10 item 3)."""
+        if type(self.description) is ExplanationText:
+            return self.description
+        return user_words(self.description or self.rule_id)
 
     def __post_init__(self) -> None:
         if not isinstance(self.rule_id, str) or not self.rule_id.strip():
@@ -121,7 +129,7 @@ def evaluate(rule: Rule, snapshot: Snapshot) -> Evaluation:
     decision = decide(rule.condition, snapshot)
     if decision.truth is Truth.UNKNOWN:
         return result(Outcome.CANNOT_EVALUATE, missing=missing,
-                      reason="cannot be decided without: " + ", ".join(_why(snapshot, n) for n in decision.unknown))
+                      reason=render_explanation("rule_cannot_decide", inputs=tuple(_why(snapshot, n) for n in decision.unknown)))
     outcome = Outcome.TRIGGERED if decision.truth is Truth.TRUE else Outcome.NOT_TRIGGERED
     return result(outcome, observations=decision.observations, missing=missing,
                   reason=describe(decision.observations))
@@ -129,9 +137,12 @@ def evaluate(rule: Rule, snapshot: Snapshot) -> Evaluation:
 
 def _why(snapshot: Snapshot, name: InputName) -> str:
     health = snapshot.health_of(name)
-    return f"{name.value} ({'missing' if health is DataHealth.AVAILABLE else health.value})"
+    return render_explanation("rule_input_state", input=name.value,
+                              state="missing" if health is DataHealth.AVAILABLE else health.value)
 
 
-def describe(observations: tuple[Observation, ...]) -> str:
-    """Plain text of the deciding values, e.g. ``live_pnl -5002.50 <= -5000``."""
-    return "; ".join(f"{o.input.value} {o.value} {o.op.value} {o.threshold}" for o in observations)
+def describe(observations: tuple[Observation, ...]) -> ExplanationText:
+    """The deciding values as one explanation line, e.g. ``live_pnl -5002.50 <= -5000`` (empty when none)."""
+    return join_explanations(tuple(render_explanation("rule_observation", input=o.input.value, value=o.value,
+                                                      op=o.op.value, threshold=o.threshold) for o in observations),
+                             "; ")
