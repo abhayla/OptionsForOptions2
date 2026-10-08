@@ -142,7 +142,7 @@ def test_guard_binding_mismatch_is_refused(catalogue, eligibility) -> None:
         real.choice, real.assessment, real.orders, real.gate, real.book, real.plan, real.catalogue)
     discard_preparation(real)  # frees the strategy's one-live-preparation slot for the reach-around below
 
-    prep = Preparation(choice, assessment, orders, gate, "x", guard_book, STRATEGY_ID, (),
+    prep = Preparation(choice, assessment, orders, gate, real.message, guard_book, STRATEGY_ID, (),
                        forged_guard, plan_, catalogue_, _mint=getattr(partial, "_MINT"))
     getattr(partial, "_GATE_ORDERS")[id(gate)] = (gate, getattr(partial, "_orders_digest")(orders))
 
@@ -162,6 +162,6 @@ def test_a_leg_whose_contract_has_no_zerodha_row_is_refused_and_nothing_is_sent(
     book = book_with_three_filled()
     transport = _CountingTransport()
     leg4_order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="has no zerodha row"):
+    with pytest.raises(SendRefused, match="has no Zerodha instrument record"):
         _sink(book, catalogue, transport=transport).resolve_all((_tagged(leg4_order),))
     assert transport.calls == []

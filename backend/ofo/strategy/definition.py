@@ -14,6 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation, strike_text, user_words
 
 import datetime
 import re
@@ -38,6 +39,10 @@ Contract = tuple[str, Instrument, Union[Decimal, None], datetime.date]
 class DefinitionError(ValueError):
     """A strategy definition (or a change to one) is invalid."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
@@ -50,8 +55,8 @@ def contract_sort_key(contract: Contract) -> tuple:
 
 def describe_contract(contract: Contract) -> str:
     underlying, instrument, strike, expiry = contract
-    strike_text = "" if strike is None else f" {strike.normalize():f}"
-    return f"{underlying}{strike_text} {instrument.value} {expiry.isoformat()}"
+    return render_explanation("contract_description", underlying=underlying, strike=strike_text(strike),
+                              instrument=instrument.value, expiry=expiry.isoformat())
 
 
 @dataclass(frozen=True)
@@ -86,8 +91,9 @@ class DefinitionLeg:
         return self.quantity if self.action is Action.BUY else -self.quantity
 
     def describe(self) -> str:
-        strike = "" if self.strike is None else f" {self.strike.normalize():f}"
-        return f"{self.action.value}{strike} {self.instrument.value} {self.expiry.isoformat()} x{self.quantity}"
+        return render_explanation("leg_description", action=self.action.value, strike=strike_text(self.strike),
+                                  instrument=self.instrument.value, expiry=self.expiry.isoformat(),
+                                  quantity=self.quantity)
 
 
 def _named(values: object, label: str, check) -> tuple:
@@ -96,19 +102,19 @@ def _named(values: object, label: str, check) -> tuple:
     elif isinstance(values, tuple):
         items = list(values)
     else:
-        raise DefinitionError(f"{label} must be a mapping or a tuple of (name, value) pairs, got {values!r}")
+        raise DefinitionError(detail=f"{label} must be a mapping or a tuple of (name, value) pairs, got {values!r}")
     if len(items) > MAX_NAMED_VALUES:
-        raise DefinitionError(f"{label}: at most {MAX_NAMED_VALUES} entries, got {len(items)}")
+        raise DefinitionError(detail=f"{label}: at most {MAX_NAMED_VALUES} entries, got {len(items)}")
     seen: set[str] = set()
     out = []
     for item in items:
         if not isinstance(item, tuple) or len(item) != 2:
-            raise DefinitionError(f"{label}: each entry must be a (name, value) pair, got {item!r}")
+            raise DefinitionError(detail=f"{label}: each entry must be a (name, value) pair, got {item!r}")
         name, value = item
         if not isinstance(name, str) or not _NAME.match(name):
-            raise DefinitionError(f"{label}: name must match {_NAME.pattern}, got {name!r}")
+            raise DefinitionError(detail=f"{label}: name must match {_NAME.pattern}, got {name!r}")
         if name in seen:
-            raise DefinitionError(f"{label}: duplicate name {name!r}")
+            raise DefinitionError(detail=f"{label}: duplicate name {name!r}")
         seen.add(name)
         out.append((name, check(name, value)))
     return tuple(sorted(out))
@@ -190,20 +196,21 @@ class StrategyDefinition:
             raise DefinitionError(f"changes_from needs a StrategyDefinition, got {old!r}")
         changes: list[str] = []
         if old.underlying != self.underlying:
-            changes.append(f"underlying {old.underlying} -> {self.underlying}")
+            changes.append(render_explanation("change_underlying", old=old.underlying, new=self.underlying))
         old_legs = {old._leg_key(leg): leg for leg in old.legs}
         new_legs = {self._leg_key(leg): leg for leg in self.legs}
         for key in sorted(old_legs.keys() - new_legs.keys(), key=_leg_sort_key):
-            changes.append(f"removed leg {old_legs[key].describe()}")
+            changes.append(render_explanation("change_leg_removed", leg=old_legs[key].describe()))
         for key in sorted(new_legs.keys() - old_legs.keys(), key=_leg_sort_key):
-            changes.append(f"added leg {new_legs[key].describe()}")
+            changes.append(render_explanation("change_leg_added", leg=new_legs[key].describe()))
         for key in sorted(old_legs.keys() & new_legs.keys(), key=_leg_sort_key):
             before, after = old_legs[key].quantity, new_legs[key].quantity
             if before != after:
-                changes.append(f"quantity of {new_legs[key].describe()} was {before}")
+                changes.append(render_explanation("change_quantity", leg=new_legs[key].describe(), before=before))
         for label in ("rules_ref", "risk_limits", "preferences"):
             if getattr(old, label) != getattr(self, label):
-                changes.append(f"{label} {getattr(old, label)!r} -> {getattr(self, label)!r}")
+                changes.append(render_explanation("change_field", label=label, old=user_words(repr(getattr(old, label))),
+                                                  new=user_words(repr(getattr(self, label)))))
         return tuple(changes)
 
     @staticmethod

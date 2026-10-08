@@ -9,6 +9,7 @@
 Rounding is half-even throughout (to the paisa for money, to the whole unit for estimates).
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final, Sequence
@@ -86,7 +87,7 @@ def estimate_line(label: str, value: str, assumptions: Sequence[str]) -> str:
     stated = [a for a in assumptions if isinstance(a, str) and a.strip()]
     if not stated or len(stated) != len(assumptions):
         raise ValueError("an estimate must state its assumptions (non-empty text each)")
-    return f"Estimated {label}: {value} (estimate; assumes {'; '.join(stated)})"
+    return render_explanation("estimate_line", label=label, value=value, assumptions="; ".join(stated))
 
 
 def describe_estimate(estimate: EstimatedNow, underlying: str) -> str:
@@ -94,14 +95,14 @@ def describe_estimate(estimate: EstimatedNow, underlying: str) -> str:
     if not isinstance(estimate, EstimatedNow):
         raise ValueError(f"estimate must be an EstimatedNow, got {estimate!r}")
     a = estimate.assumptions
-    ivs = ", ".join(_percent(iv) for iv in a.ivs if iv is not None) or "none (futures only)"
+    ivs = ", ".join(_percent(iv) for iv in a.ivs if iv is not None) or render_explanation("estimate_ivs_none")
     return estimate_line(
-        f"P&L now at {underlying} {format_points(estimate.level)}",
+        render_explanation("estimate_label_pnl_now", underlying=underlying, level=format_points(estimate.level)),
         format_approx_rupees(estimate.total),
         [
-            f"{a.model} model",
-            f"IV {ivs}",
-            f"rate {_percent(a.rate)}",
-            f"valued {a.valuation_time.strftime('%Y-%m-%d %H:%M %Z')}",
+            render_explanation("estimate_assume_model", model=a.model),
+            render_explanation("estimate_assume_iv", ivs=ivs),
+            render_explanation("estimate_assume_rate", rate=_percent(a.rate)),
+            render_explanation("estimate_assume_valued", time=a.valuation_time.strftime("%Y-%m-%d %H:%M %Z")),
         ],
     )

@@ -32,6 +32,8 @@ from ofo.strategy.model import (
     TemplateLeg,
 )
 from ofo.strategy.wording import find_banned_phrases, find_position_words
+from ofo import wording as shared_wording
+from ofo.errors import render
 
 DEFAULT_CATALOGUE_PATH: Path = Path(__file__).with_name("catalogue.yaml")
 SCHEMA_PATH: Path = Path(__file__).with_name("template.schema.json")
@@ -111,8 +113,16 @@ def check_wording(template: Template) -> None:
     """ADR-003 banned phrases, and position words only with the constraint that makes them always true."""
     text = f"{template.name} {template.description}"
     banned = find_banned_phrases(text)
+    # W-024 / owner decision Q226: also the shared tokenised checker (bare words, stems, `_`/`-`
+    # splitting). Added ON TOP of this module's own list, so coverage is never narrower than it was.
+    banned += [hit for hit in shared_wording.find_advice_wording(text) if hit not in banned]
     if banned:
         raise TemplateError(f"template {template.id!r}: banned wording {banned} in name/description (ADR-003)")
+    for label, value in (("name", template.name), ("description", template.description)):
+        try:
+            shared_wording.check_platform_text(value, f"template {template.id!r} {label}")
+        except (TypeError, ValueError) as exc:
+            raise TemplateError(str(exc)) from exc
     signs = {(template.leg(c.leg).instrument, c.sign) for c in template.constraints if isinstance(c, SignConstraint)}
     constant_zero = any(
         leg.strike is not None and leg.strike.is_constant and leg.strike.const == 0 for leg in template.legs
@@ -170,13 +180,15 @@ def load_templates(path: Path | str = DEFAULT_CATALOGUE_PATH) -> tuple[Template,
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_StrictLoader)  # noqa: S506 - strict SafeLoader
     except yaml.YAMLError as exc:
-        raise TemplateError(f"{path}: not valid YAML: {exc}") from exc
+        raise TemplateError(detail=f"{path}: not valid YAML: {exc}",
+                            message=render("strategy_catalogue_unreadable")) from exc
     errors = sorted(jsonschema.Draft202012Validator(_schema()).iter_errors(data), key=lambda e: list(e.path))
     if errors:
         details = "; ".join(
             f"at {'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in errors[:5]
         )
-        raise TemplateError(f"{path}: {len(errors)} schema error(s): {details}")
+        raise TemplateError(detail=f"{path}: {len(errors)} schema error(s): {details}",
+                            message=render("strategy_catalogue_invalid", count=len(errors)))
     templates = tuple(_build(raw) for raw in data["templates"])
     for template in templates:
         check_wording(template)
