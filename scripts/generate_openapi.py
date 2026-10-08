@@ -10,6 +10,7 @@ Usage (repo root): python scripts/generate_openapi.py [--out docs/api/openapi.js
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
@@ -20,6 +21,13 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 # Settings require DATABASE_URL; the engine is created lazily, so this placeholder is never connected to.
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://placeholder/placeholder")
+# W-058: the broker routes refuse to start without a configuration; placeholders and a freshly generated key (never a
+# real secret, never used: the document is built without a request).
+os.environ.setdefault("KITE_API_KEY", "placeholder")
+os.environ.setdefault("KITE_API_SECRET", "placeholder")
+os.environ.setdefault("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback")
+os.environ.setdefault("KITE_EXPECTED_USER_ID", "ZZ0000")
+os.environ.setdefault("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
 
 from ofo_app.main import create_app  # noqa: E402
 

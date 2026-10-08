@@ -1,0 +1,27 @@
+{
+ "item": "W-058 live owner-login proof (handover 2026-10-08 NEXT 1)",
+ "date": "2026-10-08",
+ "code": "build/W-058-kite-login @ b4649ac (merged with main 017478e, migration 0007_broker_sessions)",
+ "database": "ADR-048 ofo_test on the Windows VPS PostgreSQL via the tunnel; app connected as the limited ofo_app role",
+ "steps": [
+  "app started on 127.0.0.1:8765 (registered KITE_REDIRECT_URL host), access log off",
+  "GET /broker/zerodha/login -> 302 to https://kite.zerodha.com/connect/login?v=3, single-use state, HttpOnly cookie Max-Age 600, Cache-Control no-store",
+  "owner logged in on Kite's own page; Kite redirected to /kite/callback; the app exchanged the request token and stored the access token",
+  "callback redirected to /broker/connected (frontend path; no frontend running, so the backend answered 404 USER_INPUT_003 - issue filed)"
+ ],
+ "results": {
+  "active_sessions_for_owner": 1,
+  "session_id": 82,
+  "key_id_matches_app_key": true,
+  "ciphertext_bytes": 60,
+  "ciphertext_contains_token_in_plain_text": false,
+  "token_decrypts_only_via_store_reader": true,
+  "kite_user_profile_http": 200,
+  "user_id_equals_KITE_EXPECTED_USER_ID": true,
+  "kite_quote_ltp_http": 200,
+  "nifty50_last_price": "22231.8",
+  "token_in_app_output": false,
+  "app_output_lines": 5
+ },
+ "script": "orchestrator session scratchpad w058_proof.py (reads the session as ofo_app, decrypts through access_token_for, calls /user/profile and /quote/ltp)"
+}
