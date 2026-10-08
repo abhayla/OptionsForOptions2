@@ -28,7 +28,7 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
-| REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-024 blocked: PARKED #30 after rounds 5-7 (2026-09-29; owner set round 7 as the last); allowlist design recommended in the issue if unparked |
+| REQ-065 | Error classification and messages | foundation | normal | next |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-013 | Email change and account deletion | feature | normal | next |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |
