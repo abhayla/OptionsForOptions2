@@ -490,7 +490,7 @@ async def test_ac5_api_answers_not_found_for_another_users_strategy(app_engine):
                 for method, path in (("GET", f"/strategies/{stored.id}"), ("GET", f"/strategies/{stored.id}/history"),
                                      ("POST", f"/strategies/{stored.id}/restore/1?expected_revision=1")):
                     response = await ac.request(method, path)
-                    assert (response.status_code, response.json()) == (404, {"error": "not_found"}), path
+                    assert (response.status_code, response.json()["code"]) == (404, "USER_INPUT_003"), path
         finally:
             await trans.rollback()
 
@@ -543,7 +543,7 @@ async def test_ac5_a_body_with_a_live_state_or_unknown_field_is_refused_not_drop
     assert response.status_code == 422, response.text
     live = [k for k in list(body) + list(body["legs"][0]) if k in sf.LIVE_STATE_NAMES]
     if live:
-        assert "live_state_field" in response.text and live[0] in response.text
+        assert response.json()["code"] == "USER_INPUT_002" and live[0] not in response.text  # generic, never echoed
 
 
 #: ADR-064: the 12 spellings the Tier A re-review stored at 9ab20d5, plus exact-compare cases.
@@ -560,7 +560,7 @@ async def test_ac5_a_live_state_name_inside_a_map_is_refused_by_the_api(maps, me
     """Review round 2 MAJOR: a live-market name used as a risk-limit or preference name is 422, before any query."""
     async with _client(_offline_app()) as ac:
         response = await ac.request(method, path, json=BODY | maps | extra)
-    assert response.status_code == 422 and response.json()["error"] == sf.UNKNOWN_NAME, response.text
+    assert response.status_code == 422 and response.json()["code"] == "STRATEGY_VALIDATION_406", response.text
 
 
 BEYOND_BIGINT = 2**63  # one past strategies.id's range
@@ -575,7 +575,7 @@ BEYOND_BIGINT = 2**63  # one past strategies.id's range
 async def test_ac5_an_id_beyond_the_bigint_range_is_not_found_without_a_query(method, path, body):
     async with _client(_offline_app()) as ac:
         response = await ac.request(method, path, json=body)
-    assert (response.status_code, response.json()) == (404, {"error": "not_found"})
+    assert (response.status_code, response.json()["code"]) == (404, "USER_INPUT_003")
 
 
 async def test_ac5_a_change_based_on_an_old_revision_is_refused_and_writes_nothing(app_engine):
