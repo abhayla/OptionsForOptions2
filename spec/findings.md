@@ -477,3 +477,25 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Bears on: REQ-052 AC-1 (history), REQ-053 (daily load timing), REQ-049 AC-1 (Decimal parsing), REQ-015 (sessions),
   ADR-008 / scenario-calculations §4 (expiry close time), ADR-057/W-057 (retirement), REQ-047/REQ-051 (history source).
   Status: **open** for the history decision and the expiry-close timing; **recorded** for the rest.
+
+## F-34 - One-minute bars built from our own Kite ticks match Kite's minute candles on close and OI, not on open, high and low; a network drop leaves a gap
+- Measured 2026-10-08 ~18:30 IST by the orchestrator on the owner's account (ADR-060), script
+  `docs/research/kite-proof-2026-10-07/history_bars_proof.py`; result `history-bars-2026-10-08.json`. Level P1.
+- Input: the two raw recordings of 2026-10-08 (08:38-09:45 and 14:41-15:26), 74 full market minutes; 1-minute bars
+  built per instrument (index: by exchange timestamp; options: a trade = a rise in cumulative volume, bucketed by last
+  trade time), compared with Kite's `/instruments/historical/<token>/minute?oi=1` for the same day and instrument.
+- **OI matches every minute** (73 of 73 compared on each of 6 SENSEX 08-Oct options). **Close** matches 66-71 of 74 on
+  the options and 72 of 74 on SENSEX, 45 of 74 on NIFTY 50 (largest non-gap miss 3.45 points). **Volume** matches 50-66
+  of 74. Re-run bucketing option trades by the packet's exchange timestamp instead of last trade time: close 70-72 and
+  volume 64-70 of 74, OI unchanged - as good or better, so bars use the exchange timestamp the normalized quote already
+  carries (no last-trade-time field needed).
+- **Open, high and low are approximate**: full-mode ticks are snapshots (about one a second), so trades between them are
+  missed. E.g. NIFTY 50 09:16 high 22,563.45 from ticks vs 22,564.30 in Kite's candle; SENSEX26O0871000PE 09:15 open
+  3.20 vs 3.95. Exact OHLC: 14-61 of 74 per instrument.
+- **A network drop is a real gap**: 15:09 is missing from our bars and 15:08's close is stale (SENSEX 71,404.83 vs
+  Kite 71,346.89, 57.94 points) - the laptop outage of F-32. Kite's candles cover both minutes.
+- **Expired contracts keep their candles the same evening** (the SENSEX 08-Oct options returned 375 candles at ~18:30).
+  Two far-from-the-money SENSEX 15-Oct options returned 0 candles - no trades that day.
+- Meaning: bars from the live feed are good enough for intraday use (REQ-051 AC-4 "where practical") but not an exact
+  record; Kite's own candles are exact and available after the close.
+- Bears on: REQ-051 (AC-3, AC-4), REQ-047 AC-1, ADR-066. Status: **decided** (ADR-067).
