@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (9): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070
+Done (11): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-065, REQ-070, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -16,7 +16,6 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
-| REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | normal | next |
 | REQ-001 | V1 scope: underlyings, leg types, broker | foundation | normal | next |
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
@@ -28,7 +27,6 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
-| REQ-065 | Error classification and messages | foundation | normal | next |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-013 | Email change and account deletion | feature | normal | next |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |
