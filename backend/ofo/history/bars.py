@@ -84,6 +84,13 @@ class _Open:
         self.priced = False
         self.index = index
 
+    def add_trade(self, price: Decimal, volume_delta: int) -> None:
+        self.price(price)
+        self.volume += volume_delta
+
+    def set_oi(self, oi: int) -> None:
+        self.oi = oi
+
     def price(self, p: Decimal) -> None:
         if not self.priced:
             self.open = self.high = self.low = p
@@ -159,10 +166,9 @@ class MinuteBarBuilder:
         if quote.volume is not None:
             self._cum_volume[iid] = quote.volume
             if previous is not None and quote.volume > previous:
-                current.price(quote.ltp)
-                current.volume += quote.volume - previous
+                current.add_trade(quote.ltp, quote.volume - previous)
         if quote.oi is not None:
-            current.oi = quote.oi
+            current.set_oi(quote.oi)
         return closed
 
     def mark_gap(self, start: datetime.datetime, end: datetime.datetime) -> None:
