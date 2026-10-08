@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping
 
+from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 from ofo.strategy.definition import MAX_TEXT, Contract, contract_sort_key, describe_contract
 from ofo.strategy.versions import MAX_FUTURE_SKEW, MAX_UNITS, Position, StrategyRecord, VersionError, check_contract
 
@@ -43,7 +44,17 @@ STANDALONE = "standalone"
 
 
 class ReconciliationError(ValueError):
-    """Invalid reconciliation input, or a resolution that is not allowed in the current state."""
+    """Invalid reconciliation input, or a resolution that is not allowed in the current state.
+
+    ``str(error)`` is the developer detail (a malformed input, named with its value); it is never shown to a user.
+    When an error does reach a user, ``message`` is the four-part ``UserFacingError`` from ``ofo.errors.render()``
+    (W-024 round 9); the detail stays beside it for the log."""
+
+    def __init__(self, detail: str = "", *, message: object | None = None) -> None:
+        super().__init__(detail)
+        if message is not None and type(message) is not UserFacingError:
+            raise TypeError(f"ReconciliationError.message must come from render(), got {type(message).__name__}")
+        self.message = message
 
 
 class MismatchKind(Enum):
@@ -60,27 +71,25 @@ class MismatchKind(Enum):
     STANDALONE_CHANGED = "standalone position changed"
 
 
-_NEXT_ACTION = {
-    MismatchKind.MISSING_PLATFORM_POSITION: "Reconcile this strategy: adopt the broker position, prepare a closing or "
-    "restoring order, mark as requiring attention, or (if the broker is flat) mark the strategy exited.",
-    MismatchKind.QUANTITY_MISMATCH: "Reconcile this strategy: adopt the broker position, prepare a closing or "
-    "restoring order, or mark as requiring attention.",
-    MismatchKind.EXTERNAL_MODIFICATION: "Review the change made outside the platform, then reconcile: adopt the "
-    "broker position, prepare a closing or restoring order, or mark as requiring attention.",
-    MismatchKind.PARTIAL_EXECUTION: "Partially executed: Complete Strategy, Retry Failed Leg, Review Manually or "
-    "Close Partial Strategy.",
-    MismatchKind.UNEXPECTED_BROKER_POSITION: "Choose how to group it: add to an existing strategy, create a new "
-    "strategy, or leave it standalone. No strategy is blocked.",
-    MismatchKind.STANDALONE_CHANGED: "Review the standalone position and update its recorded quantity. No strategy "
-    "is blocked.",
+#: The catalogue template for each kind (ofo.errors.templates): the user's four-part text comes only from render().
+_KIND_TEMPLATE = {
+    MismatchKind.MISSING_PLATFORM_POSITION: "recon_missing_platform_position",
+    MismatchKind.UNEXPECTED_BROKER_POSITION: "recon_unexpected_broker_position",
+    MismatchKind.QUANTITY_MISMATCH: "recon_quantity_mismatch",
+    MismatchKind.STRIKE_MISMATCH: "recon_strike_mismatch",
+    MismatchKind.SIDE_MISMATCH: "recon_side_mismatch",
+    MismatchKind.EXPIRY_MISMATCH: "recon_expiry_mismatch",
+    MismatchKind.EXTERNAL_MODIFICATION: "recon_external_modification",
+    MismatchKind.PARTIAL_EXECUTION: "recon_partial_execution",
+    MismatchKind.STANDALONE_CHANGED: "recon_standalone_changed",
 }
-for _kind in (MismatchKind.STRIKE_MISMATCH, MismatchKind.SIDE_MISMATCH, MismatchKind.EXPIRY_MISMATCH):
-    _NEXT_ACTION[_kind] = _NEXT_ACTION[MismatchKind.QUANTITY_MISMATCH]
+#: The next-action part of each kind's template: what the audit record keeps (``Mismatch.next_action``).
+_NEXT_ACTION = {kind: CATALOGUE[template_id].next_action for kind, template_id in _KIND_TEMPLATE.items()}
 
 
 def _check_aware_datetime(value: object, label: str) -> None:
     if not isinstance(value, datetime.datetime) or value.tzinfo is None or value.utcoffset() is None:
-        raise ReconciliationError(f"{label} must be a timezone-aware datetime, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be a timezone-aware datetime, got {value!r}")
 
 
 def _check_units(value: object, label: str) -> None:
@@ -92,36 +101,36 @@ def _check_units(value: object, label: str) -> None:
     what lets every downstream int arithmetic (differences, shares) stay exact and comparable.
     """
     if isinstance(value, bool) or not isinstance(value, int) or abs(value) > MAX_UNITS:
-        raise ReconciliationError(f"{label} must be an int within +/-{MAX_UNITS}, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be an int within +/-{MAX_UNITS}, got {value!r}")
 
 
 def _check_contract_pairs(value: object, label: str) -> None:
     if not isinstance(value, tuple):
-        raise ReconciliationError(f"{label} must be a tuple of (contract, units) pairs, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be a tuple of (contract, units) pairs, got {value!r}")
     for item in value:
         if not isinstance(item, tuple) or len(item) != 2:
-            raise ReconciliationError(f"{label}: each entry must be a (contract, units) pair, got {item!r}")
+            raise ReconciliationError(detail=f"{label}: each entry must be a (contract, units) pair, got {item!r}")
         contract, units = item
         try:
             check_contract(contract)
         except VersionError as exc:
-            raise ReconciliationError(f"{label}: {exc}") from exc
+            raise ReconciliationError(detail=f"{label}: {exc}") from exc
         _check_units(units, f"{label} units")
 
 
 def _check_breakdown(value: object, label: str) -> None:
     if not isinstance(value, tuple):
-        raise ReconciliationError(f"{label} must be a tuple of (holder, contract, units) triples, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be a tuple of (holder, contract, units) triples, got {value!r}")
     for item in value:
         if not isinstance(item, tuple) or len(item) != 3:
-            raise ReconciliationError(f"{label}: each entry must be a (holder, contract, units) triple, got {item!r}")
+            raise ReconciliationError(detail=f"{label}: each entry must be a (holder, contract, units) triple, got {item!r}")
         holder, contract, units = item
         if not isinstance(holder, str) or not holder.strip():
-            raise ReconciliationError(f"{label}: holder must be a non-empty string, got {holder!r}")
+            raise ReconciliationError(detail=f"{label}: holder must be a non-empty string, got {holder!r}")
         try:
             check_contract(contract)
         except VersionError as exc:
-            raise ReconciliationError(f"{label}: {exc}") from exc
+            raise ReconciliationError(detail=f"{label}: {exc}") from exc
         _check_units(units, f"{label} units")
 
 
@@ -147,26 +156,41 @@ class Mismatch:
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, MismatchKind):
-            raise ReconciliationError(f"mismatch kind must be a MismatchKind, got {self.kind!r}")
+            raise ReconciliationError(detail=f"mismatch kind must be a MismatchKind, got {self.kind!r}")
         if not isinstance(self.strategy_ids, tuple) or not all(
             isinstance(sid, str) and sid.strip() for sid in self.strategy_ids
         ):
-            raise ReconciliationError(f"mismatch strategy_ids must be a tuple of non-empty strings, got "
+            raise ReconciliationError(detail=f"mismatch strategy_ids must be a tuple of non-empty strings, got "
                                       f"{self.strategy_ids!r}")
         if len(set(self.strategy_ids)) != len(self.strategy_ids):
-            raise ReconciliationError(f"mismatch strategy_ids has duplicates: {self.strategy_ids!r}")
+            raise ReconciliationError(detail=f"mismatch strategy_ids has duplicates: {self.strategy_ids!r}")
         _check_aware_datetime(self.at, "mismatch at")
         _check_contract_pairs(self.broker_state, "mismatch broker_state")
         _check_contract_pairs(self.platform_state, "mismatch platform_state")
         _check_contract_pairs(self.difference, "mismatch difference")
         _check_breakdown(self.platform_breakdown, "mismatch platform_breakdown")
         if not isinstance(self.next_action, str) or not self.next_action.strip() or len(self.next_action) > MAX_TEXT:
-            raise ReconciliationError(f"mismatch next_action must be a non-empty string of at most {MAX_TEXT} "
+            raise ReconciliationError(detail=f"mismatch next_action must be a non-empty string of at most {MAX_TEXT} "
                                       f"chars, got {self.next_action!r}")
 
     @property
     def blocks(self) -> bool:
         return bool(self.strategy_ids)
+
+    @property
+    def message(self) -> UserFacingError:
+        """The four-part text for this mismatch (REQ-065 AC-2), from the catalogue template of its kind."""
+        return render(_KIND_TEMPLATE[self.kind], contracts=len(self.difference))
+
+    @property
+    def reason(self) -> str:
+        """The what-happened part."""
+        return self.message.what_happened
+
+    @property
+    def text(self) -> str:
+        """What the user is shown: all four parts."""
+        return display_text(self.message)
 
     def describe(self) -> str:
         diff = ", ".join(f"{describe_contract(c)} {units:+d}" for c, units in self.difference)
@@ -190,21 +214,21 @@ class ReconciliationReport:
         _check_aware_datetime(self.at, "report at")
         _check_contract_pairs(self.broker, "report broker")
         if not isinstance(self.mismatches, tuple) or not all(isinstance(m, Mismatch) for m in self.mismatches):
-            raise ReconciliationError(f"report mismatches must be a tuple of Mismatch, got {self.mismatches!r}")
+            raise ReconciliationError(detail=f"report mismatches must be a tuple of Mismatch, got {self.mismatches!r}")
         if not isinstance(self.shares, tuple):
-            raise ReconciliationError(f"report shares must be a tuple of (strategy id, Position), got {self.shares!r}")
+            raise ReconciliationError(detail=f"report shares must be a tuple of (strategy id, Position), got {self.shares!r}")
         seen: set[str] = set()
         for item in self.shares:
             if not isinstance(item, tuple) or len(item) != 2:
-                raise ReconciliationError(f"report shares: each entry must be (strategy id, Position), got {item!r}")
+                raise ReconciliationError(detail=f"report shares: each entry must be (strategy id, Position), got {item!r}")
             sid, position = item
             if not isinstance(sid, str) or not sid.strip():
-                raise ReconciliationError(f"report shares: strategy id must be a non-empty string, got {sid!r}")
+                raise ReconciliationError(detail=f"report shares: strategy id must be a non-empty string, got {sid!r}")
             if sid in seen:
-                raise ReconciliationError(f"report shares has duplicate strategy id {sid!r}")
+                raise ReconciliationError(detail=f"report shares has duplicate strategy id {sid!r}")
             seen.add(sid)
             if not isinstance(position, Position):
-                raise ReconciliationError(f"report shares[{sid!r}] must be a Position, got {position!r}")
+                raise ReconciliationError(detail=f"report shares[{sid!r}] must be a Position, got {position!r}")
         # Not a field (no effect on equality or repr): a per-strategy lookup, so recording a run that covers every
         # strategy reads each share once instead of scanning all shares per strategy (W-037).
         object.__setattr__(self, "_share_by_id", dict(self.shares))
@@ -223,7 +247,7 @@ class ReconciliationReport:
         position = self._share_by_id.get(strategy_id) if isinstance(strategy_id, str) else None
         if position is not None:
             return position
-        raise ReconciliationError(f"strategy {strategy_id!r} was not covered by this reconciliation run")
+        raise ReconciliationError(detail=f"strategy {strategy_id!r} was not covered by this reconciliation run")
 
 
 # ---- input validation ----------------------------------------------------------------------------------------
@@ -233,17 +257,17 @@ def units_map(value: object, label: str) -> dict[Contract, int]:
     if isinstance(value, Position):
         return value.as_dict()
     if not isinstance(value, Mapping):
-        raise ReconciliationError(f"{label} must be a Position or a mapping of contract -> signed units, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be a Position or a mapping of contract -> signed units, got {value!r}")
     if len(value) > MAX_CONTRACTS:
-        raise ReconciliationError(f"{label} has {len(value)} contracts; at most {MAX_CONTRACTS}")
+        raise ReconciliationError(detail=f"{label} has {len(value)} contracts; at most {MAX_CONTRACTS}")
     result: dict[Contract, int] = {}
     for contract, units in value.items():
         try:
             check_contract(contract)
         except VersionError as exc:
-            raise ReconciliationError(f"{label}: {exc}") from exc
+            raise ReconciliationError(detail=f"{label}: {exc}") from exc
         if isinstance(units, bool) or not isinstance(units, int) or abs(units) > MAX_UNITS:
-            raise ReconciliationError(f"{label}: units must be an int within +/-{MAX_UNITS}, got {units!r}")
+            raise ReconciliationError(detail=f"{label}: units must be an int within +/-{MAX_UNITS}, got {units!r}")
         if units:
             result[contract] = units
     return result
@@ -251,31 +275,31 @@ def units_map(value: object, label: str) -> dict[Contract, int]:
 
 def require_time(at: object, clock: Callable[[], datetime.datetime]) -> datetime.datetime:
     if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None:
-        raise ReconciliationError(f"reconciliation time must be a timezone-aware datetime, got {at!r}")
+        raise ReconciliationError(detail=f"reconciliation time must be a timezone-aware datetime, got {at!r}")
     if at > clock() + MAX_FUTURE_SKEW:
-        raise ReconciliationError(f"reconciliation time {at.isoformat()} is in the future")
+        raise ReconciliationError(detail=f"reconciliation time {at.isoformat()} is in the future")
     return at
 
 
 def require_id(value: object, label: str = "strategy id") -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT or value == STANDALONE:
-        raise ReconciliationError(f"{label} must be a non-empty string of at most {MAX_TEXT} chars (not "
+        raise ReconciliationError(detail=f"{label} must be a non-empty string of at most {MAX_TEXT} chars (not "
                                   f"{STANDALONE!r}), got {value!r}")
     return value
 
 
 def _records(strategies: object) -> dict[str, StrategyRecord]:
     if not isinstance(strategies, Mapping):
-        raise ReconciliationError(f"strategies must be a mapping of strategy id -> StrategyRecord, got {strategies!r}")
+        raise ReconciliationError(detail=f"strategies must be a mapping of strategy id -> StrategyRecord, got {strategies!r}")
     if len(strategies) > MAX_STRATEGIES:
-        raise ReconciliationError(f"{len(strategies)} strategies; at most {MAX_STRATEGIES}")
+        raise ReconciliationError(detail=f"{len(strategies)} strategies; at most {MAX_STRATEGIES}")
     seen: set[int] = set()
     for sid, record in strategies.items():
         require_id(sid)
         if not isinstance(record, StrategyRecord):
-            raise ReconciliationError(f"strategy {sid!r} must be a StrategyRecord, got {record!r}")
+            raise ReconciliationError(detail=f"strategy {sid!r} must be a StrategyRecord, got {record!r}")
         if id(record) in seen:
-            raise ReconciliationError(f"strategy {sid!r} is the same record as another id; one record, one id")
+            raise ReconciliationError(detail=f"strategy {sid!r} is the same record as another id; one record, one id")
         seen.add(id(record))
     return dict(strategies)
 
@@ -514,7 +538,7 @@ def broker_share(
     try:
         return Position.of(units)
     except VersionError as exc:
-        raise ReconciliationError(f"strategy {sid!r}: broker share is not a valid position: {exc}") from exc
+        raise ReconciliationError(detail=f"strategy {sid!r}: broker share is not a valid position: {exc}") from exc
 
 
 def unexplained_changes(previous: object, current: object, platform_fills: object) -> dict[Contract, int]:

@@ -482,7 +482,59 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Check the strategy's orders in Zerodha before preparing anything again."),
 )
 
-_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES
+
+# Reconciliation mismatches (ofo.reconciliation.compare, REQ-060 AC-3): one template per MismatchKind. Each
+# `next_action` is the exact sentence the comparison recorded before round 9 (the audit record keeps it); the other
+# three parts are new (pending owner read).
+_REC_IMPACT = "P&L, Greeks and rule checks for this strategy cannot be trusted until this is resolved."
+_REC_BLOCKED = "New orders and automatic rule triggers for the strategies this mismatch names."
+_REC_NONE_BLOCKED = "Nothing: no strategy is blocked by this mismatch."
+_REC_RECONCILE = (
+    "Reconcile this strategy: adopt the broker position, prepare a closing or restoring order, or mark as requiring "
+    "attention."
+)
+_REC_SLOT = {"contracts": Count}
+
+_RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("recon_missing_platform_position", _RM, 201,
+          "Zerodha shows none of the position this strategy holds on {contracts} contract(s).",
+          _REC_IMPACT, _REC_BLOCKED,
+          "Reconcile this strategy: adopt the broker position, prepare a closing or restoring order, mark as "
+          "requiring attention, or (if the broker is flat) mark the strategy exited.", _REC_SLOT),
+    _gate("recon_unexpected_broker_position", _RM, 202,
+          "Zerodha shows a position on {contracts} contract(s) that no strategy or recorded standalone position holds.",
+          "The platform's record does not include this position.", _REC_NONE_BLOCKED,
+          "Choose how to group it: add to an existing strategy, create a new strategy, or leave it standalone. "
+          "No strategy is blocked.", _REC_SLOT),
+    _gate("recon_quantity_mismatch", _RM, 203,
+          "Zerodha's quantity on {contracts} contract(s) differs from the platform's record for this strategy.",
+          _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
+    _gate("recon_strike_mismatch", _RM, 204,
+          "Zerodha shows this strategy's quantity on a different strike from the one recorded ({contracts} "
+          "contract(s) involved).", _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
+    _gate("recon_side_mismatch", _RM, 205,
+          "Zerodha shows the opposite side (buy or sell) from the platform's record on {contracts} contract(s).",
+          _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
+    _gate("recon_expiry_mismatch", _RM, 206,
+          "Zerodha shows this strategy's quantity on a different expiry from the one recorded ({contracts} "
+          "contract(s) involved).", _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
+    _gate("recon_external_modification", _RM, 207,
+          "A change on {contracts} contract(s) was made outside the platform; no platform order or fill explains it.",
+          _REC_IMPACT, _REC_BLOCKED,
+          "Review the change made outside the platform, then reconcile: adopt the broker position, prepare a "
+          "closing or restoring order, or mark as requiring attention.", _REC_SLOT),
+    _gate("recon_partial_execution", _RM, 208,
+          "This strategy is partly executed on {contracts} contract(s): Zerodha shows part of the planned quantity.",
+          _REC_IMPACT, _REC_BLOCKED,
+          "Partially executed: Complete Strategy, Retry Failed Leg, Review Manually or Close Partial Strategy.",
+          _REC_SLOT),
+    _gate("recon_standalone_changed", _RM, 209,
+          "A recorded standalone position changed on {contracts} contract(s).",
+          "The recorded standalone quantity no longer matches Zerodha.", _REC_NONE_BLOCKED,
+          "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
+)
+
+_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

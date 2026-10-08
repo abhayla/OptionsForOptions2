@@ -59,7 +59,6 @@ PENDING: dict[str, dict[str, int]] = {
     'execution/sequence.py': {'<module>': 2, '_margin_order': 1},
     'instruments/models.py': {'find_ref': 1},
     'instruments/sources.py': {'<module>': 1},
-    'reconciliation/compare.py': {'<module>': 6, '_check_aware_datetime': 1, '_check_breakdown': 3, '_check_contract_pairs': 2, '_check_units': 1, '_records': 1, 'require_id': 1, 'units_map': 3},
     'reconciliation/resolution.py': {'_require_text': 1},
     'reconciliation/triggers.py': {'_ids': 3, '_records': 1, 'plan_run': 3},
     'rules/actions.py': {'respond': 1},
