@@ -18,7 +18,10 @@ from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
 from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import Instrument, require_price
 
-MODEL: Final = "Black-Scholes (European, no dividends)"
+MODEL: Final = (
+    "Black-Scholes-Merton (European, each expiry's implied dividend yield from put-call parity; "
+    "\"estimated from spot\" when the forward is unavailable)"
+)  # ADR-061, ADR-063
 
 
 @dataclass(frozen=True)
@@ -54,7 +57,7 @@ def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decim
     ``level`` is index points, not money, but it must be finite, > 0 and have at most 2 decimal places (the
     exchange quotes index levels to 0.01), so a float-built level cannot enter. An exact breakeven with more
     decimals (see metrics) is rounded to 0.01 by the caller before it is estimated. ``dividend_yield`` is the
-    implied yield q of the legs' expiry (ADR-063), applied to every leg; default 0 = no dividends.
+    implied yield q of the legs' expiry (ADR-063), applied to every leg; default 0 (q = 0, the spot fallback of ADR-061).
     """
     if not isinstance(inputs, StrategyInput):
         raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
