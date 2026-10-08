@@ -256,7 +256,7 @@ def test_ac5_history_entry_round_trip_and_summary():
     new = sf.build_from_catalogue("NIFTY", [IRON_CONDOR[0], sf.LegChoice(105, Action.BUY, LOT), *IRON_CONDOR[2:]],
                                   _resolve(catalogue))
     summary = sf.change_summary(old, new)
-    assert summary == "removed leg BUY 23000 CE 2026-10-13 x65; added leg BUY 23100 CE 2026-10-13 x65"
+    assert sf.render_summary(summary) == "removed leg BUY 23000 CE 2026-10-13 x65; added leg BUY 23100 CE 2026-10-13 x65"
     at = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
     entry = sf.HistoryEntry(1, at, summary, old)
     doc = json.loads(json.dumps(sf.entry_to_document(entry)), parse_float=lambda s: pytest.fail("float " + s))
@@ -265,3 +265,21 @@ def test_ac5_history_entry_round_trip_and_summary():
     with pytest.raises(sf.StoredFormError) as err:
         sf.entry_from_document(doc, _resolve(catalogue))
     assert err.value.code == sf.UNKNOWN_KEY
+
+
+@pytest.mark.parametrize("text", [
+    '[{"kind": "no_such_kind"}]',
+    '[{"kind": "legs_reordered", "extra": 1}]',
+    '[{"kind": "underlying", "old": "NIFTY plus more words", "new": "SENSEX"}]',  # a slot that does not validate
+    '[{"kind": "field", "label": "ltp", "old": "a", "new": "b"}]',
+    '{"kind": "legs_reordered"}',
+    'removed leg BUY 23000 CE',
+    '',
+])
+def test_a_summary_outside_the_closed_shape_is_refused_on_write_and_a_fixed_line_on_read(text):
+    with pytest.raises(sf.StoredFormError):
+        sf.check_summary_text(text)
+    shown = sf.render_summary(text)
+    assert shown == "this change could not be shown"  # the catalogue fallback, never the raw text
+    from ofo.errors.explanations import ExplanationText
+    assert type(shown) is ExplanationText

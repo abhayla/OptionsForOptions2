@@ -184,6 +184,7 @@ async def save_draft(conn: Any, user_ref: str, saved: sf.SavedDefinition) -> Sto
 
 
 async def _write_history(conn: Any, strategy_id: int, summary: str, current_text: str) -> int:
+    summary = sf.check_summary_text(summary)  # closed shape or refused: no text that is not catalogue data is stored
     version = sf.check_schema_version(sf.parse_json(current_text))
     return int((await conn.execute(_INSERT_HISTORY, {"id": strategy_id, "summary": summary,
                                                      "definition": current_text, "version": version})).scalar_one())
@@ -204,8 +205,8 @@ async def _locked(conn: Any, user_ref: str, strategy_id: int) -> Any:
 async def _summary(conn: Any, current_text: str, new: sf.SavedDefinition) -> str:
     try:
         old = await _read(conn, current_text)
-    except sf.StoredFormError as exc:  # the replaced text no longer reads (e.g. a contract's terms changed)
-        return f"definition replaced (the previous one could not be compared: {exc.code})"
+    except sf.StoredFormError:  # the replaced text no longer reads (e.g. a contract's terms changed)
+        return sf.unreadable_replacement_summary()
     return sf.change_summary(old, new)
 
 
@@ -248,7 +249,7 @@ async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
         sf.check_against_catalogue(saved, resolve, require_live=True)
         if sf.parse_json(row.definition_text) == sf.parse_json(entry_text):
             return _stored(row, saved)
-        await _write_history(conn, row.id, f"restored entry {seq}", row.definition_text)
+        await _write_history(conn, row.id, sf.summary_text([{"kind": "restored", "seq": seq}]), row.definition_text)
         written = await _write_definition(conn, row.id, entry_text)
     return _stored(written, saved)
 

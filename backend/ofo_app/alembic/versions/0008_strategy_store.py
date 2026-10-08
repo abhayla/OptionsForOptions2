@@ -276,7 +276,7 @@ def upgrade() -> None:
             strategy_id               BIGINT      NOT NULL REFERENCES {STRATEGIES} (id),
             seq                       INTEGER     NOT NULL CHECK (seq > 0),
             at                        TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-            change_summary            TEXT        NOT NULL CHECK (change_summary <> ''),
+            change_summary            TEXT        NOT NULL CHECK (change_summary <> ''),  -- canonical JSON of change items (closed shape), rendered through the catalogue on read
             definition                JSONB       NOT NULL,
             definition_schema_version INTEGER     NOT NULL CHECK (definition_schema_version > 0),
             CONSTRAINT strategy_history_one_seq UNIQUE (strategy_id, seq),{_definition_checks("strategy_history")}

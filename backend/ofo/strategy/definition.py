@@ -222,28 +222,96 @@ class StrategyDefinition:
         """Every meaningful difference from ``old``, described; empty when nothing meaningful changed."""
         if not isinstance(old, StrategyDefinition):
             raise DefinitionError(f"changes_from needs a StrategyDefinition, got {old!r}")
-        changes: list[str] = []
+        return render_change_items(self.change_items(old))
+
+    def change_items(self, old: "StrategyDefinition") -> tuple[dict, ...]:
+        """The same differences as DATA (a closed shape, see ``render_change_items``): what an activity-history entry
+        stores, so the text a user reads is always rendered from the catalogue, never kept as text."""
+        if not isinstance(old, StrategyDefinition):
+            raise DefinitionError(f"changes_from needs a StrategyDefinition, got {old!r}")
+        items: list[dict] = []
         if old.underlying != self.underlying:
-            changes.append(render_explanation("change_underlying", old=old.underlying, new=self.underlying))
+            items.append({"kind": "underlying", "old": old.underlying, "new": self.underlying})
         old_legs = {old._leg_key(leg): leg for leg in old.legs}
         new_legs = {self._leg_key(leg): leg for leg in self.legs}
         for key in sorted(old_legs.keys() - new_legs.keys(), key=_leg_sort_key):
-            changes.append(render_explanation("change_leg_removed", leg=old_legs[key].describe()))
+            items.append({"kind": "leg_removed", "leg": _leg_data(old_legs[key])})
         for key in sorted(new_legs.keys() - old_legs.keys(), key=_leg_sort_key):
-            changes.append(render_explanation("change_leg_added", leg=new_legs[key].describe()))
+            items.append({"kind": "leg_added", "leg": _leg_data(new_legs[key])})
         for key in sorted(old_legs.keys() & new_legs.keys(), key=_leg_sort_key):
             before, after = old_legs[key].quantity, new_legs[key].quantity
             if before != after:
-                changes.append(render_explanation("change_quantity", leg=new_legs[key].describe(), before=before))
+                items.append({"kind": "quantity", "leg": _leg_data(new_legs[key]), "before": before})
         for label in ("rules_ref", "risk_limits", "preferences"):
             if getattr(old, label) != getattr(self, label):
-                changes.append(render_explanation("change_field", label=label, old=user_words(repr(getattr(old, label))),
-                                                  new=user_words(repr(getattr(self, label)))))
-        return tuple(changes)
+                items.append({"kind": "field", "label": label, "old": repr(getattr(old, label)),
+                              "new": repr(getattr(self, label))})
+        return tuple(items)
 
     @staticmethod
     def _leg_key(leg: DefinitionLeg) -> tuple:
         return (leg.action, leg.instrument, leg.strike, leg.expiry)
+
+
+def _leg_data(leg: DefinitionLeg) -> dict:
+    return {"action": leg.action.value, "instrument": leg.instrument.value,
+            "strike": None if leg.strike is None else str(leg.strike), "expiry": leg.expiry.isoformat(),
+            "quantity": leg.quantity}
+
+
+_LEG_KEYS = frozenset({"action", "instrument", "strike", "expiry", "quantity"})
+#: kind -> its exact keys. A closed shape: anything else is refused, never rendered.
+_ITEM_KEYS = {"underlying": {"kind", "old", "new"}, "leg_removed": {"kind", "leg"}, "leg_added": {"kind", "leg"},
+              "quantity": {"kind", "leg", "before"}, "field": {"kind", "label", "old", "new"},
+              "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"}}
+_FIELD_LABELS = frozenset({"rules_ref", "risk_limits", "preferences"})
+
+
+def _leg_text(leg: object):
+    if not isinstance(leg, dict) or set(leg) != _LEG_KEYS:
+        raise DefinitionError(detail="a change item's leg is not in the closed shape")
+    strike = leg["strike"]
+    return render_explanation(
+        "leg_description", action=Action(leg["action"]).value,
+        strike=strike_text(None if strike is None else Decimal(strike)), instrument=Instrument(leg["instrument"]).value,
+        expiry=datetime.date.fromisoformat(leg["expiry"]).isoformat(), quantity=leg["quantity"])
+
+
+def render_change_items(items: object) -> tuple:
+    """Catalogue text (``render_explanation`` results) for change items; DefinitionError on any shape or value that
+    does not validate (an unknown kind, an extra key, a slot of the wrong type). Used on write and on read."""
+    if not isinstance(items, (list, tuple)):
+        raise DefinitionError(detail="change items must be a list")
+    out = []
+    try:
+        for item in items:
+            if not isinstance(item, dict) or item.get("kind") not in _ITEM_KEYS or set(item) != _ITEM_KEYS[item["kind"]]:
+                raise DefinitionError(detail="a change item is not in the closed shape")
+            kind = item["kind"]
+            if kind == "underlying":
+                out.append(render_explanation("change_underlying", old=item["old"], new=item["new"]))
+            elif kind == "leg_removed":
+                out.append(render_explanation("change_leg_removed", leg=_leg_text(item["leg"])))
+            elif kind == "leg_added":
+                out.append(render_explanation("change_leg_added", leg=_leg_text(item["leg"])))
+            elif kind == "quantity":
+                out.append(render_explanation("change_quantity", leg=_leg_text(item["leg"]), before=item["before"]))
+            elif kind == "field":
+                if item["label"] not in _FIELD_LABELS:
+                    raise DefinitionError(detail="a change item names an unknown field")
+                out.append(render_explanation("change_field", label=item["label"], old=user_words(item["old"]),
+                                              new=user_words(item["new"])))
+            elif kind == "restored":
+                out.append(render_explanation("change_restored", seq=item["seq"]))
+            elif kind == "legs_reordered":
+                out.append(render_explanation("change_legs_reordered"))
+            else:
+                out.append(render_explanation("change_replaced_unreadable"))
+    except DefinitionError:
+        raise
+    except (TypeError, ValueError, KeyError, ArithmeticError) as exc:  # a slot that does not validate
+        raise DefinitionError(detail=f"a change item does not validate: {type(exc).__name__}") from None
+    return tuple(out)
 
 
 def _leg_sort_key(key: tuple) -> tuple:

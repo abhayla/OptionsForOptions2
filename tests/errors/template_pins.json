@@ -787,6 +787,18 @@
     "sha256": "b3dd87b7c5a4629854c939988cf5eef42db5d299bc93d07605903f54c8d53850",
     "reviewed": "pending owner read"
   },
+  "explanation:change_replaced_unreadable": {
+    "sha256": "c7692dc667877e2edcbbe91269b77bc9e3321b598765d1ca30ef2783b6a12c30",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_summary_unreadable": {
+    "sha256": "548a4176bbdf71eb4edccc2a8cb9f02048c35cedb67281fab9231b7b8f6abb40",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_restored": {
+    "sha256": "c53d645b0fb03a149778f19d05684d10a558200fd84e3ae2ad7ad8b4ba04a3a7",
+    "reviewed": "pending owner read"
+  },
   "labels:builder": {
     "sha256": "866a68d37f774fa8ac4070f883ab7155174140bc8f6180d9e95cb7bf0e1d7e94",
     "reviewed": "pending owner read"

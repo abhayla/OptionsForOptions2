@@ -34,7 +34,7 @@ from ofo.engine.legs import Action
 from ofo.errors import UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
-from ofo_app.api_models import IDENTIFIER_MAX, ApiModel, Identifier
+from ofo_app.api_models import IDENTIFIER_MAX, ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import Failure
 from ofo_app.routes.broker import current_user_ref
@@ -139,12 +139,12 @@ class StrategyListOut(ApiModel):
 
 
 class EntryOut(ApiModel):
-    """One activity-history entry. The change summary is not returned: it is catalogue text kept as plain text in the
-    database, and a response may carry catalogue text only as the `render_explanation()` object."""
+    """One activity-history entry. The summary is rendered from stored data through the catalogue on every read."""
 
     schema_version: int
     seq: int
     at: datetime.datetime
+    change_summary: CatalogueText
     definition: DefinitionOut
 
 
@@ -260,7 +260,7 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
     async def work():
         docs = [sf.entry_to_document(e) for e in await store.history(db, user_ref, strategy_id)]
         return HistoryOut.model_validate({"entries": [
-            {k: v for k, v in doc.items() if k != "change_summary"} for doc in docs]})
+            doc | {"change_summary": sf.render_summary(doc["change_summary"])} for doc in docs]})
     return await _run(db, work, form_status=409)
 
 

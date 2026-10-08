@@ -384,7 +384,7 @@ async def test_ac5_restore_is_a_new_entry_and_never_deletes_history(app_engine):
             assert restored.saved == stored.saved
             after = await _history_rows(conn, stored.id)
             assert after[:1] == before and [r[0] for r in after] == [1, 2]
-            assert after[1][1] == "restored entry 1"
+            assert sf.render_summary(after[1][1]) == "restored entry 1"
             with pytest.raises(store.StrategyStoreError) as err:
                 await store.restore(conn, user, stored.id, 9, expected_revision=3)
             assert err.value.code == store.HISTORY_NOT_FOUND

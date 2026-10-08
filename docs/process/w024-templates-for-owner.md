@@ -220,6 +220,9 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `change_quantity` | values_seen | quantity of {leg} was {before} |
 | `change_field` | values_seen | {label} {old} -> {new} |
 | `change_legs_reordered` | values_seen | legs reordered |
+| `change_replaced_unreadable` | values_seen | definition replaced, the previous one could not be compared |
+| `change_summary_unreadable` | values_seen | this change could not be shown |
+| `change_restored` | values_seen | restored entry {seq} |
 | `scenario_caption_left` | values_seen | {underlying} at expiry |
 | `scenario_caption_right` | values_seen | You make/lose |
 

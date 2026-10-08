@@ -37,10 +37,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import join_explanations, render_explanation
 from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import (
     DefinitionError,
+    render_change_items,
     DefinitionLeg,
     StrategyDefinition,
     UnknownNameError,
@@ -414,12 +415,44 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
     return SavedDefinition(definition, tuple(ids))
 
 
+def summary_text(items: Sequence[Mapping[str, Any]]) -> str:
+    """The stored form of a history summary: canonical JSON of change items in the closed shape (see
+    ``render_change_items``). Refuses (StoredFormError) anything that does not render from the catalogue."""
+    try:
+        render_change_items(list(items))
+    except DefinitionError as exc:
+        raise StoredFormError(MALFORMED, f"history summary: {exc}") from None
+    return json.dumps(list(items), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def check_summary_text(text: str) -> str:
+    """The stored summary text, if it parses and renders; StoredFormError otherwise (the write path calls this)."""
+    try:
+        items = json.loads(text)
+    except (TypeError, ValueError):
+        raise StoredFormError(MALFORMED, "history summary is not JSON") from None
+    return summary_text(items)
+
+
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:
-    """Plain words for an activity-history entry: the meaningful changes, or the cosmetic one."""
-    changes = new.definition.changes_from(old.definition)
-    if changes:
-        return "; ".join(changes)
-    return render_explanation("change_legs_reordered")
+    """The activity-history summary as stored data: the meaningful changes, or the cosmetic one."""
+    items = new.definition.change_items(old.definition)
+    return summary_text(items or [{"kind": "legs_reordered"}])
+
+
+def unreadable_replacement_summary() -> str:
+    return summary_text([{"kind": "replaced_unreadable"}])
+
+
+def render_summary(text: str):
+    """Catalogue text for a stored summary: its items joined with '; '. A stored value that is not in the closed
+    shape (an unknown kind, a slot that does not validate, text that is not JSON) is shown as a fixed catalogue line,
+    never raw."""
+    try:
+        items = json.loads(text)
+        return join_explanations(render_change_items(items), "; ")
+    except (TypeError, ValueError, DefinitionError):
+        return render_explanation("change_summary_unreadable")
 
 
 # ----------------------------------------------------------------------------------------------------------------
