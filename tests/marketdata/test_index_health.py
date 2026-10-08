@@ -1,0 +1,150 @@
+"""REQ-072 AC-2 (W-060): NIFTY 50 and SENSEX carry the same feed-state health as option quotes (REQ-049 AC-2); a
+stale or missing index value is shown as such and never used silently in a calculation.
+
+Replays the real 2026-10-08 recording, then inserts a gap (nothing for 5 s, longer than FEED_STALE) and a disconnect.
+"""
+import datetime
+from decimal import Decimal
+
+import pytest
+
+from ofo.instruments.models import NSE_INDEX
+from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
+from ofo.marketdata.forward import ForwardUnavailable, parity_forward
+from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.rules.inputs import DataHealth
+
+from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
+
+SEC = datetime.timedelta(seconds=1)
+RATE = Decimal("0.065")
+EXPIRY = datetime.date(2026, 10, 13)
+
+
+def _live():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    return provider, clock, replay(provider, clock)
+
+
+def _forward(provider, at):
+    return parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"),
+                          EXPIRY, at, RATE)
+
+
+def test_live_index_values_are_available_and_from_the_index_segments():
+    provider, _clock, end = _live()
+    nifty, sensex = provider.underlying_quote("NIFTY 50"), provider.underlying_quote("SENSEX")
+    assert (nifty.instrument_id, nifty.segment, nifty.ltp, nifty.health) == (
+        "NSE_INDEX:1001", NSE_INDEX, Decimal("22533.25"), DataHealth.AVAILABLE)
+    assert (sensex.instrument_id, sensex.ltp, sensex.health) == ("BSE_INDEX:1", Decimal("72443.48"), DataHealth.AVAILABLE)
+    assert provider.underlying_quote("NIFTY") == nifty
+    assert provider.counters["unmapped_token"] == 20  # INDIA VIX's ticks: not in AC-1, never priced
+    assert _forward(provider, end).spot_timestamp == nifty.timestamp  # the spot's time travels with the forward
+
+
+def test_inserted_gap_makes_the_index_stale_and_the_forward_falls_back_shown_as_stale():
+    """One stale policy (W-060 round 3): a stale spot computes with its label; the stale snapshot's option quotes are
+    not AVAILABLE, so the forward falls back to spot and says so - the combined label is built in model_inputs."""
+    provider, clock, end = _live()
+    gap_end = end + 5 * SEC
+    assert 5 * SEC > FEED_STALE
+    clock.now = gap_end
+    nifty = provider.underlying_quote("NIFTY")
+    assert nifty is not None and nifty.health is DataHealth.STALE  # shown as stale, not dropped
+    option = provider.book.get("NSE_FO:44614", gap_end)
+    assert option.health is nifty.health  # same health state as the option quotes
+    stale = _forward(provider, gap_end)
+    assert (stale.source, stale.spot_health, stale.label) == ("spot fallback", DataHealth.STALE, "estimated from spot")
+    provider.on_frame(b"\x00", gap_end)  # data (a heartbeat) resumes
+    assert provider.underlying_quote("NIFTY").health is DataHealth.AVAILABLE
+    live = _forward(provider, gap_end)
+    assert (live.source, live.spot_health) == ("parity", DataHealth.AVAILABLE)
+
+
+def test_disconnect_past_the_window_is_unavailable_and_refuses():
+    provider, clock, end = _live()
+    provider.on_disconnected(end)
+    clock.now = end + RECONNECT_WINDOW + SEC
+    assert provider.underlying_quote("SENSEX").health is DataHealth.UNAVAILABLE
+    with pytest.raises(ForwardUnavailable, match="unavailable"):
+        _forward(provider, clock.now)
+
+
+def test_missing_index_value_refuses():
+    items = [lc for lc in listed() if not lc.contract.is_index()]  # a catalogue without the index rows
+    clock_at = recorded_frames()[0][0]
+    provider = KiteProvider(items, clock=lambda: clock_at)
+    assert provider.underlying_quote("NIFTY") is None
+    with pytest.raises(ForwardUnavailable, match="missing"):
+        parity_forward([], provider.underlying_quote("NIFTY"), EXPIRY,
+                       datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE)
+
+
+# ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
+from ofo.engine.inputs import LegInput, StrategyInput  # noqa: E402
+from ofo.engine.model import model_inputs  # noqa: E402
+from ofo.engine.legs import Action, Instrument  # noqa: E402
+from ofo.scenario.config import ScenarioSettings  # noqa: E402
+from ofo.scenario.levels import build_level_set  # noqa: E402
+from ofo.scenario.spot import SpotRefused, spot_reading  # noqa: E402
+from ofo.scenario.views import View, scenario_values  # noqa: E402
+
+VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
+
+
+def _inputs(reading):
+    leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
+                   strike=Decimal("22550"), expiry=EXPIRY, quantity=65, premium=Decimal("100.00"), iv=Decimal("0.12"))
+    return StrategyInput(underlying="NIFTY", valuation_time=VALUATION, rate=RATE, legs=(leg,), spot=reading)
+
+
+def _gated(inputs, provider):
+    fwd = parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"), EXPIRY,
+                         VALUATION, RATE)
+    return model_inputs(inputs, {EXPIRY: fwd})
+
+
+def _scenario(model):
+    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    return ls, [scenario_values(ls, model, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
+
+
+def test_live_scenario_records_the_spot_and_its_time():
+    provider, _clock, _end = _live()
+    quote = provider.underlying_quote("NIFTY")
+    ls, outputs = _scenario(_gated(_inputs(spot_reading(quote)), provider))
+    assert ls.current == Decimal("22533.25") and ls.spot_at == quote.timestamp and ls.data_label is None
+    for out in outputs:
+        assert (out.spot_level, out.spot_at, out.data_label) == (Decimal("22533.25"), quote.timestamp, None)
+
+
+def test_stale_spot_computes_but_every_output_is_labelled_stale_with_its_time():
+    provider, clock, end = _live()
+    clock.now = end + 5 * SEC  # the inserted gap
+    quote = provider.underlying_quote("NIFTY")
+    reading = spot_reading(quote)
+    assert reading.health is DataHealth.STALE
+    hhmm = quote.timestamp.astimezone(IST).strftime("%H:%M")
+    assert hhmm == "09:20"
+    ls, outputs = _scenario(_gated(_inputs(reading), provider))
+    assert ls.data_label == "stale since 09:20 IST"
+    for out in outputs:
+        assert out.available and out.data_label == "stale since 09:20 IST"
+        assert (out.spot_level, out.spot_at) == (Decimal("22533.25"), quote.timestamp)
+    # Estimated Now used the stale snapshot's fallback forward: both labels, never silent
+    assert outputs[1].output_label == "stale since 09:20 IST; estimated from spot"
+
+
+def test_unavailable_or_missing_spot_refuses_the_scenario():
+    provider, clock, end = _live()
+    provider.on_disconnected(end)
+    clock.now = end + RECONNECT_WINDOW + SEC
+    reading = spot_reading(provider.underlying_quote("NIFTY"))
+    assert reading.health is DataHealth.UNAVAILABLE
+    with pytest.raises(SpotRefused, match="unavailable"):
+        model_inputs(_inputs(reading), {})
+    with pytest.raises(SpotRefused, match="missing"):
+        spot_reading(None)
+    with pytest.raises(ValueError, match="SpotReading"):  # no reading at all: there is no bare level to fall to
+        _inputs(None)

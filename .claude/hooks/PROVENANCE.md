@@ -34,7 +34,7 @@ check must never block a session start).
 | File | Source (Capability Library) | sha256 |
 |---|---|---|
 | `agent_budget_required.py` | `capabilities/hooks/agent-budget-required/agent_budget_required.py` | `6ee63c53840d4b4e0da9ec951974e772e1c7cf7944ef4b1e8e509f66a8dea656` |
-| `agent_model_required.py` | `capabilities/hooks/agent-model-required/agent_model_required.py` | `0a4bee0f5909060875c8dc12c37e02d850200a30aeb655f0330ddb642520544f` |
+| `agent_model_required.py` | `capabilities/hooks/agent-model-required/agent_model_required.py` | `6f27dc8158e6169253d7bf42603a0c03006ece8a3db22993de43e1dde070f5dd` |
 | `evidence_claim_guard.py` | `capabilities/hooks/evidence-claim-guard/evidence_claim_guard.py` | `dfb055113b7e99277aaeb59b7257713aafc5966edc4d9ff23359010df27c2795` |
 | `spec_basis_gate.py` | `capabilities/hooks/spec-basis-gate/spec_basis_gate.py` | `41c03f672708adf9ddc574d92b730cb215d8475e844fdcd5c4a5ceb72ef0012b` |
 | `answer_writeback_guard.py` | `capabilities/hooks/answer-writeback-guard/answer_writeback_guard.py` | `853080d94788d213ddca12d4238aded45704ade2a5db4cde5c84331eefb88409` |

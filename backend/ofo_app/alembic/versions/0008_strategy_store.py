@@ -25,10 +25,10 @@ Changes (owner-run, one transaction):
   definition_schema_version) and on strategy_history (strategy_id, change_summary, definition,
   definition_schema_version); column UPDATE on strategies (definition, updated_at) only; USAGE on both id sequences.
   No DELETE, no TRUNCATE, no UPDATE on history, no EXECUTE.
-- public.ofo_assert_app_role_allowlist: 0006's text plus block 11 for these tables.
+- public.ofo_assert_app_role_allowlist: 0007's text plus block 11 for these tables.
 
-Revision ID: 0007_strategy_store
-Revises: 0006_broker_sessions
+Revision ID: 0008_strategy_store
+Revises: 0007_broker_sessions
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0007_strategy_store"
-down_revision = "0006_broker_sessions"
+revision = "0008_strategy_store"
+down_revision = "0007_broker_sessions"
 branch_labels = None
 depends_on = None
 
@@ -54,14 +54,14 @@ def _load(filename: str, name: str):
     return module
 
 
-_M6 = _load("0006_broker_sessions.py", "ofo_migration_0006_for_0007")
-_M5 = _M6._M5
-_M4 = _M6._M4
-_M3 = _M6._M3
-_PREV = _M6._PREV  # 0002
-_BASE = _M6._BASE  # 0001
+_M7 = _load("0007_broker_sessions.py", "ofo_migration_0007_for_0008")
+_M5 = _M7._M5
+_M4 = _M7._M4
+_M3 = _M7._M3
+_PREV = _M7._PREV  # 0002
+_BASE = _M7._BASE  # 0001
 
-SEARCH_PATH = _M6.SEARCH_PATH
+SEARCH_PATH = _M7.SEARCH_PATH
 STRATEGY_SQLSTATE = "OF008"  # a delete, a rewrite of history, or a definition change that skips its history entry
 
 STRATEGIES = "public.strategies"
@@ -230,7 +230,7 @@ _INSERT_BEFORE = _PREV._INSERT_BEFORE
 
 
 def extend_allowlist(previous_sql: str) -> str:
-    """0006's allowlist text plus block 11. Fails closed (RuntimeError) on a changed shape or a block 11 already in."""
+    """0007 allowlist text plus block 11. Fails closed (RuntimeError) on a changed shape or a block 11 already in."""
     headers = previous_sql.count("CREATE FUNCTION") + previous_sql.count("CREATE OR REPLACE FUNCTION")
     if headers != 1 or previous_sql.count(_INSERT_BEFORE) != 1 or ALLOWLIST_BLOCK_MARKER in previous_sql:
         raise RuntimeError("previous allowlist SQL changed shape: cannot add the strategy store checks safely")
@@ -239,7 +239,7 @@ def extend_allowlist(previous_sql: str) -> str:
 
 
 def previous_allowlist_sql() -> str:
-    return _M6.extended_allowlist_sql()
+    return _M7.extended_allowlist_sql()
 
 
 def extended_allowlist_sql() -> str:
@@ -327,7 +327,7 @@ def downgrade() -> None:
         """
     )
     role = _BASE._app_role()
-    op.execute(_M6.extended_allowlist_sql())
+    op.execute(_M7.extended_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {_BASE.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")
     op.execute(f"DROP TABLE {HISTORY}")
     op.execute(f"DROP TABLE {STRATEGIES}")

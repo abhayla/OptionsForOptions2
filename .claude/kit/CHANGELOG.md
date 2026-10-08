@@ -4,6 +4,42 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.7.0 — every agent and dispatch runs on the routed model and effort (OD-73)
+
+1. Why: in 13 real sessions the main session carried 57.9% of list-price spend, builders defined as the mid-size
+   model were dispatched on the large one 12.2% of the time, and no agent stated an effort level (defaults differ
+   silently between models). Model aliases also moved on their own: the last call of one model version and the first
+   of the next were 11 hours apart, with nothing to tell anyone.
+2. `.claude/kit/model-routing.yaml` (new, kit-owned) is the one routing table: classes lookup, checking, building,
+   review_b, design, review_a, verify_a and escalation, each with a model alias, an effort, `use_for` and `never_for`;
+   an `agents:` map naming the class of every agent file; and `reviewed_for`, the model id each alias was last
+   reviewed for (the only place a dated model id is allowed).
+3. Agents: `builder.md` gains `effort: medium`, `verifier.md` gains `effort: high` (it stays on the large model),
+   and a new read-only `Explore.md` (small model, `effort: medium`, no edit tools, 40 turns) overrides the built-in
+   search agent. A Factory test fails an agent whose model or effort differs from its class.
+4. Hook `agent_model_required.py` now checks the choice: the model must be a known alias
+   (the four family aliases; case and spaces ignored; `inherit` and a dated id are refused); opus needs a `Why Opus:` line of 12+ characters by default
+   (`FACTORY_REQUIRE_OPUS_REASON=0` turns that off); the escalation model needs its own reason line, always. Every
+   refusal lists the table's classes with model and effort. A reason label counts only at the start of a line (a label
+   inside a sentence, the refusal text pasted back, or a placeholder like `<reason>` is no reason). The fork exemption
+   is an exact match of `subagent_type` (`forklift` is not exempt); `AGENT_MODEL_REQUIRED=0` stays.
+5. The deliver skill names the model and effort of every dispatch (builder, verifier and review per tier, the
+   escalation review after the same class fails twice, Explore for search) and runs
+   `python tools/model_mix.py --alarms` at intake.
+6. `tools/model_mix.py` (new, kit-owned) reads a Claude Code transcripts folder without any network call and prints
+   output and cache-read tokens per role and model, counting each message once. It prints
+   `NEW MODEL: <alias> latest id <id> differs from reviewed <id> - re-check the effort table` when the latest model
+   of a family differs from `reviewed_for`, `UNROUTED MODEL: <id>` for a model of a family the table does not name,
+   and `NO TRANSCRIPTS: <path>` (in every mode) when the folder is missing. It always exits 0.
+7. Migration: a project's own agent files (under `.claude/agents/`, not the kit's three) need an `effort:` line
+   chosen from the table; run `python tools/kit_settings.py .` so the settings file carries the changed hook; run
+   `python tools/model_mix.py` once to see the project's own mix. When `model_mix.py` prints `NEW MODEL` or
+   `UNROUTED MODEL`, do NOT edit `.claude/kit/` (kit-owned, replaced by the next upgrade): record it as a finding
+   with scope generic so `kit_harvest.py` brings it to the Factory, and carry on. A dispatch with a dated model id, or opus without
+   a `Why Opus:` line, is now refused. Adds `tools/model_mix.py`, `.claude/kit/model-routing.yaml` and
+   `.claude/agents/Explore.md`; replaces the hook, the builder and verifier agents, the deliver skill and this file
+   (kit-owned).
+
 ## 1.6.0 — owner questions are checked against the spec; every answer is written back (OD-69)
 
 1. Why: the spec-first rule was text only; a word-match lookup found the right decision for 4 of 4 questions worded

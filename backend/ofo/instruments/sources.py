@@ -6,6 +6,7 @@ itself) cites a current Zerodha source and date; a rule is never hard-coded with
 `tests/instruments/test_sources.py` asserts every registry entry carries both.
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 from dataclasses import dataclass
 from datetime import date
@@ -48,10 +49,7 @@ SOURCES: dict[str, SourceRef] = {
         rule="instrument_list_url",
         url="https://api.kite.trade/instruments",
         captured_on="2026-09-29",
-        note=(
-            "Kite Connect's public instrument dump (no login required); the source of every "
-            "contract, lot size, tick size and strike in the catalogue."
-        ),
+        note=render_explanation("source_note_instrument_list"),
     ),
 }
 

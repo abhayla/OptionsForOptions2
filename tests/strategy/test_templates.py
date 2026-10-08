@@ -128,6 +128,11 @@ BAD_FILES = [
     ("futures leg with a strike", NAKED_CALL.replace("instrument: CE", "instrument: FUT"), "should not be valid"),
     ("banned advice wording", NAKED_CALL.replace('"Sell a call."', '"The best way to sell a call."'),
      "banned wording"),
+    # W-024 / Q226: wording only the shared tokenised checker catches (a stem, and `_`-joined words).
+    ("Q226 stem wording", NAKED_CALL.replace('"Sell a call."', '"Our recommendation: sell a call."'),
+     "banned wording"),
+    ("underscore-joined advice", NAKED_CALL.replace('"Sell a call."', '"you_should_buy a call."'),
+     "banned wording"),
     ("misspelled leg key", NAKED_CALL.replace("quantity_multiplier", "qty_multiplier"), "qty_multiplier"),
     ("YAML merge key", NAKED_CALL.replace("    constraints: []", "    constraints: []\n    <<: {x: 1}"),
      "merge keys"),

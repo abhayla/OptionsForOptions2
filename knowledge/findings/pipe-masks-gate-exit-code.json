@@ -1,0 +1,32 @@
+{
+ "id": "pipe-masks-gate-exit-code",
+ "scope": "generic",
+ "class": "A failing step does not stop the step after it: a gate piped into a filter (`gate | tail`) takes the filter's exit status, and a command on its own line (or after `;`) runs whatever the line before returned - so a following commit, push or merge goes ahead after a failed gate; chaining with && is not enough when the gate's output is piped.",
+ "mechanism": "The W-024 round-10 builder ran the CI mirror piped to tail and chained the push with &&; tail exited 0, the pricing-scan failure did not stop the push, and a red branch reached origin.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "build/W-024-r10 @ e7b934f",
+  "evidence": "builder report: ci_local 12 passed, 2 failed (tests/engine/test_pricing_scan.py) yet `git push` ran in the same && chain after `| tail`"
+ },
+ "fix": "Run a gate as its own command (no pipe), or with `set -o pipefail`, and read its summary from the log file it writes; briefs state this rule.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Mechanism planned (learning L2, second occurrence): issue #155 - a project PreToolUse hook refusing commit/push/merge after a piped or newline-separated earlier step without &&; until it lands, gates run as their own tool call and commit/push as separate calls after the gate's result is read."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-046.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "W-024 round 10",
+   "evidence": "red branch pushed past a piped gate"
+  },
+  {
+   "date": "2026-10-08",
+   "where": "orchestrator, W-024 merge-conflict resolution",
+   "evidence": "a resolution script stopped on its own assert, but `git add && git commit` on the next line still ran and committed conflict markers into the merge commit; caught before push and amended (agit grep for markers on HEAD: no match after the amend)"
+  }
+ ]
+}

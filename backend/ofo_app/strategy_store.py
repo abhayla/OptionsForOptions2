@@ -4,7 +4,7 @@ Spec basis: REQ-038 AC-5 ("A strategy's definition and its activity history are 
 presses Save Draft, survive a restart, and load back exactly as saved; live prices are never saved inside the
 strategy."); REQ-038 AC-2 (activity-history entries with restore before the first execution); ADR-016 (no silent
 contract substitution); REQ-054 AC-3 / ADR-057 (legs link the catalogue's internal contract id). Schema: migration
-0007_strategy_store. The stored form is ofo.strategy.stored_form.
+0008_strategy_store. The stored form is ofo.strategy.stored_form.
 
 Copy from: legacy-reuse rows ``app/models/strategies.py`` (REFERENCE) and ``app/api/routes/strategy.py`` (REFERENCE /
 SKIP: float P&L and optional strategy_id are not copied).

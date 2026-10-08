@@ -59,7 +59,7 @@ def test_futures_leg_estimate_uses_cost_of_carry(condor_inputs):
     from ofo.engine.inputs import StrategyInput
 
     fut = leg_input(Action.BUY, Instrument.FUT, None, "23250.00", "23240.00", contract="NIFTY26OCTFUT")
-    inputs = StrategyInput("NIFTY", D("23200"), condor_inputs.valuation_time, D("0.065"), (fut,))
+    inputs = StrategyInput("NIFTY", condor_inputs.spot, condor_inputs.valuation_time, D("0.065"), (fut,))
     est = estimate_now(inputs, D("23500"))
     assert est.marks == (D("23541.89"),)  # 23500 x e^(0.065 x 10/365)
     assert est.total == D("21891.75")  # (23541.89 - 23250.00) x 75

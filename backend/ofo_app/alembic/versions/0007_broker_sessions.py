@@ -20,10 +20,11 @@ Changes (owner-run, one transaction):
 - Grants: the application role gets SELECT, column INSERT on (user_ref, broker, key_id), column UPDATE on
   (ended_at, end_reason, token_ciphertext), USAGE on the id sequence. No DELETE, no TRUNCATE, no EXECUTE.
 - public.ofo_assert_app_role_allowlist: 0005's text plus block 10 for this table (privileges, columns, sequence,
-  the active-session index, the guard trigger and its pinned body).
+  the active-session index, the guard trigger and its pinned body). 0006_index_segments leaves the allowlist function
+  unchanged, so 0005's text is still the previous one (renumbered from 0006 after main's 0006 merged).
 
-Revision ID: 0006_broker_sessions
-Revises: 0005_contract_lifecycle
+Revision ID: 0007_broker_sessions
+Revises: 0006_index_segments
 """
 
 from __future__ import annotations
@@ -33,8 +34,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0006_broker_sessions"
-down_revision = "0005_contract_lifecycle"
+revision = "0007_broker_sessions"
+down_revision = "0006_index_segments"
 branch_labels = None
 depends_on = None
 
@@ -49,7 +50,7 @@ def _load(filename: str, name: str):
     return module
 
 
-_M5 = _load("0005_contract_lifecycle.py", "ofo_migration_0005_for_0006")
+_M5 = _load("0005_contract_lifecycle.py", "ofo_migration_0005_for_0007")
 _M4 = _M5._M4
 _M3 = _M5._M3
 _PREV = _M5._PREV  # 0002

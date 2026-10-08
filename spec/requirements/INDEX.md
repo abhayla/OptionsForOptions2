@@ -71,7 +71,7 @@ Requirements: 74; sections: 18
 | REQ-048 | Market-data pipeline and browser boundary | core | Approved |
 | REQ-049 | Normalized market data and data health | core | Approved |
 | REQ-050 | Shared computation and scale | feature | Specified |
-| REQ-051 | Historical storage tiers and simulation | feature | Specified |
+| REQ-051 | Historical storage tiers and simulation | feature | Approved |
 | REQ-052 | Market-data sourcing and licensing | core | Approved |
 | REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | Approved |
 

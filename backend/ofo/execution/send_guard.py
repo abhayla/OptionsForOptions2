@@ -22,6 +22,8 @@ sends. Threat model (agreed): accidental misuse by future platform code, not a m
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -29,6 +31,7 @@ from decimal import Decimal
 from typing import Final, Protocol
 
 from ofo.engine import Action
+from ofo.errors import UserFacingError, display_text, render
 from ofo.instruments import ZERODHA, Catalogue, MissingBrokerRef
 from ofo.orders import TERMINAL_STATES, Order, OrderBook
 from ofo.strategy.definition import DefinitionLeg
@@ -37,8 +40,30 @@ from ofo.strategy.versions import StrategyRecord, Version
 _MINT: Final = object()  # only this module builds a broker request
 
 
-class SendRefused(ValueError):
-    """An order is not one the strategy's record, the catalogue and the ledger allow; nothing was sent."""
+class SendRefused(UserFacing, ValueError):
+    """An order is not one the strategy's record, the catalogue and the ledger allow; nothing was sent.
+
+    W-024 round 9 (REQ-065 AC-2, ADR-003 Q226): the words come only from ``render()``. ``message`` is the four-part
+    ``UserFacingError``; ``reason`` is its what-happened part (kept for the audit record and ``str(error)``), ``text``
+    is what a user is shown (all four parts). A plain string is refused."""
+
+    def __init__(self, message: UserFacingError) -> None:
+        if type(message) is not UserFacingError:
+            raise TypeError(f"SendRefused needs a UserFacingError from ofo.errors.render(), got {type(message).__name__}")
+        super().__init__(message.what_happened)
+        self.message = message
+
+    @property
+    def reason(self) -> str:
+        return self.message.what_happened
+
+    @property
+    def text(self) -> str:
+        return display_text(self.message)
+
+
+def _refuse(template_id: str, **slots: object) -> SendRefused:
+    return SendRefused(render(template_id, **slots))
 
 
 @dataclass(frozen=True)
@@ -57,7 +82,7 @@ class _BrokerRequest:
 
     def __post_init__(self) -> None:
         if self._mint is not _MINT:
-            raise SendRefused("a broker request is built only by the broker sink")
+            raise _refuse("send_request_not_from_sink")
 
 
 class _Transport(Protocol):
@@ -70,7 +95,7 @@ def executable_version(record: StrategyRecord, number: int) -> Version:
     """The version being executed must be the record's active or pending proposed version."""
     live = {v.number for v in (record.active_version, record.proposed_version) if v is not None}
     if number not in live:
-        raise SendRefused(f"version v{number} is neither the active nor the pending version of this strategy")
+        raise _refuse("send_version_not_live", version=number)
     return record.version(number)
 
 
@@ -83,17 +108,16 @@ def allowed_or_refuse(
     opposite side, units <= held - open exits. Held units come from the fill ledger, open units from the book."""
     reducing = choice == "close"
     if choice not in ("complete", "retry", "close"):
-        raise SendRefused(f"the choice {choice!r} sends no orders")
+        raise _refuse("send_choice_unknown")
     wanted: dict[str, int] = {}
     for order in orders:
         if order.strategy_id != strategy_id or order.version_id != f"v{version.number}":
-            raise SendRefused(f"order {order.leg_ref!r} does not belong to this strategy version")
+            raise _refuse("send_order_wrong_version")
         leg = planned.get(order.contract)
         if leg is None or leg[0] != order.leg_ref:
-            raise SendRefused(f"{order.contract!r} is not a leg of version v{version.number}; nothing was sent")
+            raise _refuse("send_contract_not_a_leg", version=version.number)
         if (order.side is leg[1]) == reducing:
-            raise SendRefused(f"{order.side.value} {order.contract} is not the "
-                              f"{'reducing' if reducing else 'planned'} side of that leg; nothing was sent")
+            raise _refuse("send_side_not_allowed")
         wanted[order.contract] = wanted.get(order.contract, 0) + order.quantity
     views = book.views_for(strategy_id)
     for contract, units in wanted.items():
@@ -105,8 +129,7 @@ def allowed_or_refuse(
                          if v.contract == contract and v.side is send_side and v.state not in TERMINAL_STATES)
         room = (held if reducing else planned_units - held) - open_units
         if units > room:
-            raise SendRefused(f"{units} units of {contract} exceed what the strategy allows ({max(room, 0)}); "
-                              "nothing was sent")
+            raise _refuse("send_quantity_exceeds", units=units, room=max(room, 0))
 
 
 Slot = tuple[str, "Decimal | None", object]
@@ -123,11 +146,11 @@ def _catalogue_symbol(catalogue: Catalogue, underlying: str, leg: DefinitionLeg)
                if e.contract.name == underlying and e.contract.instrument_type == leg.instrument.value
                and e.contract.expiry == leg.expiry and (leg.strike is None or e.contract.strike == leg.strike)]
     if len(matches) != 1:
-        raise SendRefused(f"the catalogue has {len(matches)} instruments for {leg.describe()}; nothing was sent")
+        raise _refuse("send_catalogue_not_one", count=len(matches))
     try:
         return matches[0].ref(ZERODHA).broker_symbol
     except MissingBrokerRef as exc:
-        raise SendRefused(f"{leg.describe()}: {exc}; nothing was sent") from exc
+        raise _refuse("send_no_zerodha_record") from exc
 
 
 class _BrokerSink:
@@ -139,7 +162,7 @@ class _BrokerSink:
     def __init__(self, transport: _Transport, *, book: OrderBook, strategy_id: str, catalogue: Catalogue | None,
                  choice: str, leg_slots: Mapping[str, Slot]) -> None:
         if not isinstance(catalogue, Catalogue):
-            raise SendRefused("the broker sink needs the catalogue to derive trading symbols; nothing was sent")
+            raise _refuse("send_catalogue_missing")
         record = book.record_for(strategy_id)  # an unbound strategy has no sink
         resolved: dict[int, _BrokerRequest] = {}
 
@@ -148,30 +171,29 @@ class _BrokerSink:
             requests: list[_BrokerRequest] = []
             for order in orders:
                 if not isinstance(order, Order) or order.strategy_id != strategy_id:
-                    raise SendRefused("the order does not belong to this strategy; nothing was sent")
+                    raise _refuse("send_order_other_strategy")
                 vid = order.version_id
                 if not isinstance(vid, str) or not vid.startswith("v") or not vid[1:].isdigit():
-                    raise SendRefused(f"no version {vid!r}; nothing was sent")
+                    raise _refuse("send_version_unreadable")
                 version = executable_version(record, int(vid[1:]))
                 definition = version.definition
                 slot = leg_slots.get(order.leg_ref)
                 leg = next((d for d in definition.legs if _slot(d) == slot), None)
                 if leg is None:
-                    raise SendRefused(f"{order.leg_ref!r} is not a leg of v{version.number}; nothing was sent")
+                    raise _refuse("send_leg_not_in_version", version=version.number)
                 symbol = _catalogue_symbol(catalogue, definition.underlying, leg)
                 if order.contract != symbol:
-                    raise SendRefused(f"{order.contract!r} is not the catalogue symbol {symbol!r} of leg "
-                                      f"{order.leg_ref!r}; nothing was sent")
+                    raise _refuse("send_symbol_mismatch")
                 side = leg.action if choice != "close" else (Action.SELL if leg.action is Action.BUY else Action.BUY)
                 if order.side is not side:
-                    raise SendRefused(f"{order.side.value} is not the side of leg {order.leg_ref!r}; nothing was sent")
+                    raise _refuse("send_side_not_leg_side")
                 one = dataclasses.replace(order, contract=symbol, side=side)
                 allowed_or_refuse(choice=choice, orders=(one,), version=version,
                                   planned={symbol: (order.leg_ref, leg.action, leg.quantity)}, book=book,
                                   strategy_id=strategy_id)
                 derived.append(one)
                 if not isinstance(order.client_tag, str):
-                    raise SendRefused("the platform client tag is missing; nothing was sent")
+                    raise _refuse("send_client_tag_missing")
                 requests.append(_BrokerRequest(strategy_id, f"v{version.number}", order.leg_ref, symbol, side,
                                                one.quantity, order.price, order.client_tag, _mint=_MINT))
             by_contract: dict[str, list[Order]] = {}
@@ -191,7 +213,7 @@ class _BrokerSink:
 
         def submit(request: _BrokerRequest) -> str:
             if resolved.pop(id(request), None) is not request:
-                raise SendRefused("this sink did not resolve that request (or it was already sent)")
+                raise _refuse("send_request_not_resolved")
             return transport.submit(request)
 
         object.__setattr__(self, "resolve_all", resolve_all)

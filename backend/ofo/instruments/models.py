@@ -25,7 +25,20 @@ FUTURE_TYPE = "FUT"
 # derivatives only. Any other segment is outside V1.
 NSE_FO = "NSE_FO"
 BSE_FO = "BSE_FO"
-EXCHANGE_SEGMENTS: frozenset[str] = frozenset({NSE_FO, BSE_FO})
+# REQ-072 AC-1: the two index segments, for the NIFTY 50 and SENSEX rows ONLY. Identity stays (segment, exchange
+# token), so the NIFTY 50 row (NSE_INDEX, 1001) is a different contract from Zerodha's NSE cash row that shares
+# exchange token 1001 (F-10); cash rows are never in the vocabulary at all.
+NSE_INDEX = "NSE_INDEX"
+BSE_INDEX = "BSE_INDEX"
+INDEX_SEGMENTS: frozenset[str] = frozenset({NSE_INDEX, BSE_INDEX})
+DERIVATIVE_SEGMENTS: frozenset[str] = frozenset({NSE_FO, BSE_FO})
+EXCHANGE_SEGMENTS: frozenset[str] = DERIVATIVE_SEGMENTS | INDEX_SEGMENTS
+INDEX_TYPE = "INDEX"
+#: The only index rows (REQ-072 AC-1): (segment, exchange token) -> (index name, the derivatives' underlying name).
+INDEX_ROWS: dict[tuple[str, int], tuple[str, str]] = {
+    (NSE_INDEX, 1001): ("NIFTY 50", "NIFTY"),
+    (BSE_INDEX, 1): ("SENSEX", "SENSEX"),
+}
 
 # One broker code vocabulary (REQ-054 AC-3). V1 has only Zerodha (REQ-054 AC-2).
 ZERODHA = "zerodha"
@@ -34,6 +47,10 @@ BROKER_CODES: frozenset[str] = frozenset({ZERODHA})
 
 class MissingBrokerRef(ValueError):
     """A contract has no row for the broker (or the broker code is unknown): it cannot be traded there."""
+
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
 
 
 def check_broker_code(broker: object) -> str:
@@ -86,6 +103,9 @@ class Contract:
     def is_future(self) -> bool:
         return self.instrument_type == FUTURE_TYPE
 
+    def is_index(self) -> bool:
+        return self.exchange_segment in INDEX_SEGMENTS
+
 
 @dataclass(frozen=True)
 class BrokerRef:
@@ -129,4 +149,4 @@ def find_ref(contract: Contract, refs, broker: str) -> BrokerRef:
     for r in refs:
         if r.broker == broker:
             return r
-    raise MissingBrokerRef(f"{contract.id} has no {broker} row; it cannot be traded at {broker}")
+    raise MissingBrokerRef(detail=f"{contract.id} has no {broker} row; it cannot be traded at {broker}")

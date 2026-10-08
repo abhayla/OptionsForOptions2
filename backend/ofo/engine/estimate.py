@@ -7,6 +7,7 @@ cost-of-carry fair value. The mark goes through the engine's one P&L sign conven
 quantity. The result carries its assumptions so a display can label it (REQ-032 AC-5).
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import datetime
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
 from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import Instrument, require_price
 
-MODEL: Final = "Black-Scholes (European, no dividends)"
+MODEL: Final = render_explanation("estimate_model_name")  # ADR-061, ADR-063
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,10 @@ class EstimateAssumptions:
     days_in_year: int
     ivs: tuple[Decimal | None, ...]
     years_to_expiry: tuple[Decimal, ...]
+    # ADR-063: the dividend yield q each leg was valued with, and where it came from ("parity", "spot fallback",
+    # or "none" when no yield was given, q = 0)
+    dividend_yields: tuple[Decimal, ...] = ()
+    yield_sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -43,12 +48,14 @@ class EstimatedNow:
     kind: Literal["estimate"] = "estimate"
 
 
-def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
+def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decimal = Decimal("0"),
+                 yield_source: str = "none") -> EstimatedNow:
     """Estimated Now P&L of the whole strategy if the underlying were at ``level`` at the valuation time.
 
     ``level`` is index points, not money, but it must be finite, > 0 and have at most 2 decimal places (the
     exchange quotes index levels to 0.01), so a float-built level cannot enter. An exact breakeven with more
-    decimals (see metrics) is rounded to 0.01 by the caller before it is estimated.
+    decimals (see metrics) is rounded to 0.01 by the caller before it is estimated. ``dividend_yield`` is the
+    implied yield q of the legs' expiry (ADR-063), applied to every leg; default 0 (q = 0, the spot fallback of ADR-061).
     """
     if not isinstance(inputs, StrategyInput):
         raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
@@ -58,11 +65,12 @@ def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
     for leg_input in inputs.legs:
         years = year_fraction(inputs.valuation_time, leg_input.expiry, days_in_year=inputs.days_in_year)
         if leg_input.instrument is Instrument.FUT:
-            mark = forward_price(level, years, inputs.rate)
+            mark = forward_price(level, years, inputs.rate, dividend_yield=dividend_yield)
         else:
             if leg_input.iv is None:
                 raise ValueError(f"leg {leg_input.contract} has no IV; an estimate needs one for every option leg")
-            mark = bs_price(leg_input.instrument, level, leg_input.strike, years, inputs.rate, leg_input.iv)
+            mark = bs_price(leg_input.instrument, level, leg_input.strike, years, inputs.rate, leg_input.iv,
+                            dividend_yield=dividend_yield)
         marks.append(mark)
         years_list.append(years)
     leg_pnls = tuple(_legs.position_pnl(li.leg, mark) for li, mark in zip(inputs.legs, marks))
@@ -78,6 +86,8 @@ def estimate_now(inputs: StrategyInput, level: Decimal) -> EstimatedNow:
             days_in_year=inputs.days_in_year,
             ivs=tuple(li.iv for li in inputs.legs),
             years_to_expiry=tuple(years_list),
+            dividend_yields=tuple(dividend_yield for _ in inputs.legs),
+            yield_sources=tuple(yield_source for _ in inputs.legs),
         ),
     )
 

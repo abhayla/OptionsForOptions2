@@ -137,7 +137,7 @@ def test_a_preparation_cannot_be_built_directly(catalogue, eligibility) -> None:
     be changed afterwards."""
     real = _complete(book_with_three_filled(), catalogue, eligibility)
     with pytest.raises(ValueError, match="made only by the strategy's execution flow"):
-        Preparation(real.choice, real.assessment, real.orders, real.gate, "x", real.book, STRATEGY_ID)
+        Preparation(real.choice, real.assessment, real.orders, real.gate, real.message, real.book, STRATEGY_ID)
     with pytest.raises(AttributeError):
         real.orders = ()  # type: ignore[misc]
 
@@ -145,7 +145,7 @@ def test_a_preparation_cannot_be_built_directly(catalogue, eligibility) -> None:
 def _reach_around(real: Preparation, orders: tuple[Order, ...], forge_gate: bool) -> Preparation:
     """In-process bypass of the mint (the verifier's getattr route): used only to prove the LATER lines hold."""
     discard_preparation(real)
-    prep = Preparation(real.choice, real.assessment, orders, real.gate, "x", real.book, STRATEGY_ID, (),
+    prep = Preparation(real.choice, real.assessment, orders, real.gate, real.message, real.book, STRATEGY_ID, (),
                        real.guard, real.plan, real.catalogue, _mint=getattr(partial, "_MINT"))
     if forge_gate:  # also forge the gate-to-orders binding
         getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")(orders))
@@ -219,6 +219,7 @@ _ALLOWED_LEG_SHAPES = {
     "orders/model.py:FillEvent": "an inbound broker fact, keyed to a broker order that belongs to a strategy",
     "engine/inputs.py:LegInput": "a calculation input",
     "execution/review.py:ReviewLine": "a display row of the pre-execution review; it has no route to the broker",
+    "outcome/service.py:OutcomeLeg": "a display row of the outcome view (W-063); it has no route to the broker",
 }
 
 
@@ -381,7 +382,7 @@ def test_sink_refuses_an_unknown_strategy_and_never_calls_the_transport(catalogu
     """Round 3: Order('S-NOSUCH', ...) is refused at the sink; a sink for an unbound strategy cannot even open."""
     transport = CountingTransport()
     order = Order("S-NOSUCH", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="belong to this strategy; nothing"):  # the sink's own check
+    with pytest.raises(SendRefused, match="does not belong to this strategy"):  # the sink's own check
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     with pytest.raises(ValueError, match="no strategy record"):
         send_guard._BrokerSink(transport, book=book_with_three_filled(), strategy_id="S-NOSUCH", catalogue=catalogue,
@@ -393,14 +394,14 @@ def test_sink_derives_side_from_the_leg_never_from_the_order(catalogue) -> None:
     """Round 3: leg-4 is a BUY; an order claiming SELL for it is refused at the sink (the side is derived)."""
     transport = CountingTransport()
     order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.SELL, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="is not the side of leg"):
+    with pytest.raises(SendRefused, match="is not the side of its leg"):
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     assert transport.calls == []
 
 
 def test_sink_needs_the_catalogue(catalogue) -> None:
     """Round 3: without the catalogue the sink cannot derive a symbol, so it refuses to open."""
-    with pytest.raises(SendRefused, match="needs the catalogue"):
+    with pytest.raises(SendRefused, match="needs the instrument catalogue"):
         _sink(book_with_three_filled(), None)
 
 
@@ -462,7 +463,7 @@ def test_an_aliased_submit_confirmed_works_only_through_the_real_flow(catalogue,
     transport = CountingTransport()
     real = _complete(book_with_three_filled(), catalogue, eligibility)
     with pytest.raises(ValueError, match="made only by the strategy's execution flow"):
-        Preparation(real.choice, real.assessment, real.orders, real.gate, "x", real.book, STRATEGY_ID)
+        Preparation(real.choice, real.assessment, real.orders, real.gate, real.message, real.book, STRATEGY_ID)
     send_it(real, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1", submitter=transport)
     assert len(transport.calls) == 1
 
@@ -524,7 +525,7 @@ def test_send_time_grounding_uses_the_catalogue(catalogue, eligibility) -> None:
     legs[2], legs[3] = (PlannedLeg("leg-3", CONTRACTS[3], legs[2].leg), PlannedLeg("leg-4", CONTRACTS[2], legs[3].leg))
     order = Order(STRATEGY_ID, "leg-4", CONTRACTS[2], Action.BUY, LOT, D("44.00"), version_id="v1")
     discard_preparation(real)
-    prep = Preparation(real.choice, real.assessment, (order,), real.gate, "x", book, STRATEGY_ID, (), real.guard,
+    prep = Preparation(real.choice, real.assessment, (order,), real.gate, real.message, book, STRATEGY_ID, (), real.guard,
                        ExecutionPlan(STRATEGY_ID, tuple(legs)), real.catalogue, _mint=getattr(partial, "_MINT"))
     getattr(partial, "_GATE_ORDERS")[id(real.gate)] = (real.gate, getattr(partial, "_orders_digest")((order,)))
     transport = CountingTransport()

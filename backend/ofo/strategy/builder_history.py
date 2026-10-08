@@ -37,17 +37,18 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from ofo.engine.legs import Leg
+from ofo.errors.explanations import BUILDER_LABEL_TEXT
 
 #: The seven change labels named in W-016 / REQ-070 AC-2, plus the two recording restore and undo (AC-3, AC-4).
-LABEL_ORIGINAL = "Original suggested setup"
-LABEL_STRIKE = "User modified strike"
-LABEL_QUANTITY = "User changed quantity"
-LABEL_ADD_LEG = "User added leg"
-LABEL_REMOVE_LEG = "User removed leg"
-LABEL_EXPIRY = "User changed expiry"
-LABEL_ALTERNATIVE = "Setup changed to alternative"
-LABEL_RESTORE = "User restored an earlier configuration"
-LABEL_UNDO = "User undid the last change"
+LABEL_ORIGINAL = BUILDER_LABEL_TEXT["ORIGINAL"]
+LABEL_STRIKE = BUILDER_LABEL_TEXT["STRIKE"]
+LABEL_QUANTITY = BUILDER_LABEL_TEXT["QUANTITY"]
+LABEL_ADD_LEG = BUILDER_LABEL_TEXT["ADD_LEG"]
+LABEL_REMOVE_LEG = BUILDER_LABEL_TEXT["REMOVE_LEG"]
+LABEL_EXPIRY = BUILDER_LABEL_TEXT["EXPIRY"]
+LABEL_ALTERNATIVE = BUILDER_LABEL_TEXT["ALTERNATIVE"]
+LABEL_RESTORE = BUILDER_LABEL_TEXT["RESTORE"]
+LABEL_UNDO = BUILDER_LABEL_TEXT["UNDO"]
 
 #: Hard cap on legs in one Builder session and on how far an expiry edit may move a leg, so a malformed or
 #: runaway edit fails closed instead of silently accepted (builder-common.md input-domain checklist).

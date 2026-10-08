@@ -8,7 +8,11 @@ the user logs in on Zerodha's own page. REQ-015 AC-9: the token is stored only a
   server-side, bound to the user).
 - ``GET <path of KITE_REDIRECT_URL>`` (``/kite/callback``): consumes the state, checks Kite's answer, exchanges the
   request token, stores the access token encrypted, then 302 to a fixed frontend path with no token and no query.
-  Every refusal is a fixed message keyed by a code (W-024's catalogue wires them later); nothing is stored.
+  Every refusal raises `BrokerLoginRefused` carrying a `render()` message from the reviewed catalogue
+  (ofo/errors/templates.py, `_BROKER_LOGIN_TEMPLATES`); the one error boundary (ofo_app/errors.py) answers it, with
+  the status of its error class and the no-leak headers. Nothing is stored on a refusal.
+- Both routes declare a typed `BrokerRedirectOut` and answer with `errors.typed_redirect` (a 302 with no body): no
+  Response is built here (W-024 round 9 part 6).
 - The state is bound to the browser that started the login: a short-lived HttpOnly, SameSite=Lax cookie (Secure when
   the redirect URL is https) set on the login route, required and matched on the callback (login CSRF).
 - Kite's user_id must equal KITE_EXPECTED_USER_ID, else refused with nothing stored and the active session untouched
@@ -33,19 +37,23 @@ import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from urllib.parse import parse_qsl
 
 from ofo.broker.kite_auth import KiteAuthPort, login_url
+from ofo.errors import UserFacing, UserFacingError, render
+from ofo_app.api_models import ApiModel
 from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
 from ofo_app.broker_token_store import store_session
 from ofo_app.db import get_db
+from ofo_app.errors import Failure, RedirectCookie, typed_redirect
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
 
 log = logging.getLogger(__name__)
@@ -62,22 +70,38 @@ SECRET_QUERY_KEYS = frozenset({"request_token", "state", "access_token"})
 #: ADR-051 V1 is single-user: the owner. Platform login replaces this dependency later.
 V1_OWNER_REF = "owner"
 
-#: Fixed refusal messages keyed by code (W-024's catalogue wires them later). Never echo Kite's text.
-MESSAGES = {
-    "broker_login_not_completed": "Zerodha login was not completed",
-    "broker_state_invalid": "This Zerodha login link has expired or was already used. Start the login again.",
-    "broker_login_busy": "Too many Zerodha logins are in progress. Wait a few minutes and start the login again.",
-    "broker_user_mismatch": "This Zerodha account is not the one connected to this platform. Nothing was changed.",
-    "kite_no_user_id": "Zerodha did not return a session. Start the login again.",
-    "kite_token_exception": "Zerodha did not accept this login. Start the login again.",
-    "kite_input_exception": "Zerodha did not accept this login. Start the login again.",
-    "kite_no_access_token": "Zerodha did not return a session. Start the login again.",
-    "kite_refused": "Zerodha did not accept this login. Start the login again.",
-    "kite_unavailable": "Zerodha could not be reached. Nothing was saved; start the login again.",
-    "broker_store_failed": "The Zerodha session could not be saved. Start the login again.",
-}
-_STATUS = {"kite_unavailable": 502, "broker_store_failed": 500, "broker_login_busy": 429, "broker_user_mismatch": 403}
-_NO_LEAK_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+#: Every refusal code; each is a template id in the reviewed catalogue (ofo/errors/templates.py). Never Kite's text.
+REFUSAL_CODES = frozenset({
+    "broker_login_not_completed", "broker_state_invalid", "broker_login_busy", "broker_user_mismatch",
+    "kite_no_user_id", "kite_token_exception", "kite_input_exception", "kite_no_access_token", "kite_refused",
+    "kite_unavailable", "kite_busy", "broker_store_failed",
+})
+#: Refusals whose cause is our own capacity or Zerodha, not our code: answered 429 / 503 / 502, never 500.
+FAILURE_BY_CODE = MappingProxyType({
+    "broker_login_busy": Failure.CAPACITY,
+    "kite_busy": Failure.UPSTREAM_BUSY,
+    "kite_unavailable": Failure.UPSTREAM_BAD_GATEWAY,
+})
+
+
+class BrokerLoginRefused(UserFacing, Exception):
+    """A refused Zerodha login: carries only its `render()` message; the error boundary shows it, at the status of
+    its failure source when it has one, and clears the login-state cookie (``clear_cookie``) on every refusal."""
+
+    def __init__(self, code: str, clear_cookie: RedirectCookie | None = None) -> None:
+        if code not in REFUSAL_CODES:
+            raise ValueError("not a broker login refusal code")
+        self.message: UserFacingError = render(code)
+        super().__init__(code)
+        self.code = code
+        self.failure: Failure | None = FAILURE_BY_CODE.get(code)
+        self.clear_cookie = clear_cookie
+
+
+class BrokerRedirectOut(ApiModel):
+    """Names the redirect a broker route answers with (the 302 itself has no body)."""
+
+    redirect: Literal["zerodha_login", "connected"]
 
 
 class StateCapReached(Exception):
@@ -137,6 +161,17 @@ def runtime(request: Request) -> BrokerRuntime:
     return request.app.state.broker
 
 
+def _state_cookie(rt: BrokerRuntime, nonce: str | None = None) -> RedirectCookie:
+    """The login-state cookie: set with ``nonce``, cleared (Max-Age=0, same Path) without one."""
+    return RedirectCookie(STATE_COOKIE, rt.config.callback_path, value=nonce,
+                          max_age=STATE_TTL_SECONDS if nonce else None,
+                          secure=rt.config.redirect_url.startswith("https://"))
+
+
+def _refused(rt: BrokerRuntime, code: str) -> BrokerLoginRefused:
+    return BrokerLoginRefused(code, clear_cookie=_state_cookie(rt))
+
+
 def current_user_ref() -> str:
     return V1_OWNER_REF
 
@@ -147,26 +182,18 @@ async def get_kite_auth(request: Request) -> AsyncIterator[KiteAuthPort]:
         yield HttpKiteAuth(rt.config.api_key, rt.config.api_secret.get_secret_value(), client)
 
 
-def _refuse(code: str) -> JSONResponse:
-    log.info("zerodha login refused: %s", code)  # the code only, never a token, checksum or Kite body
-    return JSONResponse(status_code=_STATUS.get(code, 400), content={"code": code, "message": MESSAGES[code]},
-                        headers=_NO_LEAK_HEADERS)
-
-
 router = APIRouter()
 
 
-@router.get(LOGIN_PATH)
-async def zerodha_login(request: Request, user_ref: str = Depends(current_user_ref)) -> Response:
+@router.get(LOGIN_PATH, response_model=BrokerRedirectOut, status_code=302)
+async def zerodha_login(request: Request, user_ref: str = Depends(current_user_ref)) -> object:
     rt = runtime(request)
     try:
         state, nonce = rt.states.issue(user_ref)
     except StateCapReached:
-        return _refuse("broker_login_busy")
-    response = RedirectResponse(login_url(rt.config.api_key, state), status_code=302, headers=_NO_LEAK_HEADERS)
-    response.set_cookie(STATE_COOKIE, nonce, max_age=STATE_TTL_SECONDS, path=rt.config.callback_path, httponly=True,
-                        secure=rt.config.redirect_url.startswith("https://"), samesite="lax")
-    return response
+        raise _refused(rt, "broker_login_busy") from None
+    cookie = _state_cookie(rt, nonce)
+    return typed_redirect(BrokerRedirectOut(redirect="zerodha_login"), login_url(rt.config.api_key, state), cookie)
 
 
 async def kite_callback(
@@ -176,31 +203,30 @@ async def kite_callback(
     state: str | None = Query(default=None),
     kite: KiteAuthPort = Depends(get_kite_auth),
     db: AsyncSession = Depends(get_db),
-) -> Response:
+) -> object:
     rt = runtime(request)
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))
     if user_ref is None:
-        return _refuse("broker_state_invalid")
+        raise _refused(rt, "broker_state_invalid")
     if status != "success" or not request_token:
-        return _refuse("broker_login_not_completed")
+        raise _refused(rt, "broker_login_not_completed")
     try:
         session = await kite.exchange(request_token)
     except KiteExchangeError as exc:
-        return _refuse(exc.code if exc.code in MESSAGES else "kite_refused")
+        code = exc.code if exc.code in REFUSAL_CODES else "kite_refused"
+        raise _refused(rt, code) from None
     except Exception:  # noqa: BLE001 - fail closed, and never let an exception text near a log or the browser
-        return _refuse("kite_unavailable")
+        raise _refused(rt, "kite_unavailable") from None
     if not secrets.compare_digest(session.user_id, rt.config.expected_user_id):
-        return _refuse("broker_user_mismatch")  # nothing stored; the active session is not replaced
+        raise _refused(rt, "broker_user_mismatch")  # nothing stored; the active session is not replaced
     try:
         async with db.begin():
             await store_session(db, user_ref, session.access_token, rt.cipher)
     except Exception:  # noqa: BLE001 - any error between exchange and commit stores nothing
-        return _refuse("broker_store_failed")
+        raise _refused(rt, "broker_store_failed") from None
     finally:
         del session
-    response = RedirectResponse(CONNECTED_FRONTEND_PATH, status_code=302, headers=_NO_LEAK_HEADERS)
-    response.delete_cookie(STATE_COOKIE, path=rt.config.callback_path)
-    return response
+    return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
 
 
 class CallbackQueryFilter(logging.Filter):
@@ -241,5 +267,6 @@ def install_access_log_filter(paths: tuple[str, ...]) -> CallbackQueryFilter:
 def mount(app: FastAPI, config: BrokerConfig) -> None:
     app.state.broker = BrokerRuntime(config=config, cipher=TokenCipher(config.token_key), states=StateStore())
     app.include_router(router)
-    app.add_api_route(config.callback_path, kite_callback, methods=["GET"], include_in_schema=True)
+    app.add_api_route(config.callback_path, kite_callback, methods=["GET"], include_in_schema=True,
+                      response_model=BrokerRedirectOut, status_code=302)
     install_access_log_filter((config.callback_path,))

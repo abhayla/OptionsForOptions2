@@ -32,6 +32,10 @@ _RESERVED_KEY_PREFIX = "$"
 class PayloadValidationError(ValueError):
     """Raised when an audit payload contains a reserved key or is not JSON-serialisable."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
     """Recursively reject non-string keys and keys starting with the reserved "$" prefix (nested
@@ -44,10 +48,10 @@ def check_payload_safe(payload: Any, *, _path: str = "payload") -> None:
     if isinstance(payload, Mapping):
         for key, value in payload.items():
             if not isinstance(key, str):
-                raise PayloadValidationError(f"{_path}: non-string key {key!r} is not allowed")
+                raise PayloadValidationError(detail=f"{_path}: non-string key {key!r} is not allowed")
             if key.startswith(_RESERVED_KEY_PREFIX):
                 raise PayloadValidationError(
-                    f"{_path}.{key}: keys starting with '{_RESERVED_KEY_PREFIX}' are reserved for "
+                    detail=f"{_path}.{key}: keys starting with '{_RESERVED_KEY_PREFIX}' are reserved for "
                     "internal type tags and cannot appear in a caller's payload"
                 )
             _check_payload_safe(value, _path=f"{_path}.{key}")

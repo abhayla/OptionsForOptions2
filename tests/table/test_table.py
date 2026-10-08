@@ -17,7 +17,7 @@ from ofo.engine.black_scholes import Greeks
 from ofo.table.columns import ColumnId
 from ofo.table.model import CellKind, StrategyHealth, TOTAL_ROW_ID, build_table
 
-from conftest import GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
 
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
@@ -340,3 +340,53 @@ def test_build_table_rejects_level_set_without_scenario(golden, golden_scenario)
     level_set, _values = golden_scenario
     with pytest.raises(ValueError):
         build_table(golden, level_set=level_set)
+
+
+def _stale_model():
+    """The reviewer's repro: a stale spot with a parity forward (implied yield 0.0776) on the golden legs."""
+    import dataclasses
+    import datetime
+    from ofo.engine.inputs import SpotReading, StrategyInput
+    from ofo.engine.model import model_inputs
+    from ofo.marketdata.forward import PARITY, spot_fallback_forward
+    from ofo.rules.inputs import DataHealth
+    legs = tuple(nifty_leg(*row) for row in GOLDEN_LEGS)
+    stale = SpotReading(GOLDEN_SPOT, VALUATION - datetime.timedelta(minutes=10), DataHealth.STALE)
+    si = StrategyInput(underlying="NIFTY", valuation_time=VALUATION, rate=RATE, legs=legs, spot=stale)
+    fb = spot_fallback_forward(NIFTY_EXPIRY, stale.level, stale.at, VALUATION, RATE, spot_health=stale.health)
+    fpar = dataclasses.replace(fb, source=PARITY, implied_yield=D("0.0776"))
+    return model_inputs(si, {NIFTY_EXPIRY: fpar})
+
+
+def test_round4_stale_scenario_under_a_live_table_is_refused(golden):
+    from ofo.scenario.config import ScenarioSettings
+    from ofo.scenario.levels import build_level_set
+    from ofo.scenario.views import View, scenario_values
+    ms = _stale_model()
+    ls = build_level_set(ms, ScenarioSettings().for_index("NIFTY"))
+    sv = scenario_values(ls, ms, View.ESTIMATED_NOW)
+    build_table(ms, level_set=ls, scenario=sv)  # the stale table with its own stale scenario is fine
+    with pytest.raises(ValueError):
+        build_table(golden, level_set=ls, scenario=sv)  # live table, stale level set and scenario
+
+
+def test_round4_level_set_from_another_spot_is_refused(golden):
+    from ofo.scenario.config import ScenarioSettings
+    from ofo.scenario.levels import build_level_set
+    from ofo.scenario.views import scenario_values
+    other = nifty_input((nifty_leg(*row) for row in GOLDEN_LEGS), spot=D("23500"))
+    ls = build_level_set(other, ScenarioSettings().for_index("NIFTY"))
+    with pytest.raises(ValueError):
+        build_table(golden, level_set=ls, scenario=scenario_values(ls, other))
+
+
+def test_round4_stale_scenario_is_refused_even_with_a_matching_level_set(golden, golden_scenario):
+    """The level set matches the live table; the scenario was computed on a stale reading: still refused."""
+    from ofo.scenario.config import ScenarioSettings
+    from ofo.scenario.levels import build_level_set
+    from ofo.scenario.views import View, scenario_values
+    level_set, _values = golden_scenario
+    ms = _stale_model()
+    stale_sv = scenario_values(build_level_set(ms, ScenarioSettings().for_index("NIFTY")), ms, View.ESTIMATED_NOW)
+    with pytest.raises(ValueError):
+        build_table(golden, level_set=level_set, scenario=stale_sv)
