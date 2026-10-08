@@ -29,6 +29,10 @@ class EstimateAssumptions:
     days_in_year: int
     ivs: tuple[Decimal | None, ...]
     years_to_expiry: tuple[Decimal, ...]
+    # ADR-063: the dividend yield q each leg was valued with, and where it came from ("parity", "spot fallback",
+    # or "none" when no yield was given, q = 0)
+    dividend_yields: tuple[Decimal, ...] = ()
+    yield_sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -43,7 +47,8 @@ class EstimatedNow:
     kind: Literal["estimate"] = "estimate"
 
 
-def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decimal = Decimal("0")) -> EstimatedNow:
+def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decimal = Decimal("0"),
+                 yield_source: str = "none") -> EstimatedNow:
     """Estimated Now P&L of the whole strategy if the underlying were at ``level`` at the valuation time.
 
     ``level`` is index points, not money, but it must be finite, > 0 and have at most 2 decimal places (the
@@ -80,6 +85,8 @@ def estimate_now(inputs: StrategyInput, level: Decimal, *, dividend_yield: Decim
             days_in_year=inputs.days_in_year,
             ivs=tuple(li.iv for li in inputs.legs),
             years_to_expiry=tuple(years_list),
+            dividend_yields=tuple(dividend_yield for _ in inputs.legs),
+            yield_sources=tuple(yield_source for _ in inputs.legs),
         ),
     )
 

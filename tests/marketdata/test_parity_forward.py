@@ -295,3 +295,16 @@ def test_scenario_estimated_now_uses_the_forward_and_payoff_keeps_spot(replayed)
     assert at_exp.totals == scenario_values(ls, inputs, View.AT_EXPIRY).totals
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
     assert scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: fallback}).model_label == FALLBACK_LABEL
+
+
+def test_estimate_assumptions_state_the_yield_and_its_source(replayed):
+    f = _forward(replayed, "NIFTY", D(2026, 10, 13))
+    inputs = _one_call(f.spot)
+    ls = build_level_set(inputs, ScenarioSettings().for_index("NIFTY"))
+    a = scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: f}).assumptions
+    assert a.dividend_yields == (f.implied_yield,) and a.yield_sources == ("parity",) and f.implied_yield > 0
+    fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
+    b = scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: fallback}).assumptions
+    assert b.dividend_yields == (Decimal(0),) and b.yield_sources == ("spot fallback",)
+    c = scenario_values(ls, inputs, View.ESTIMATED_NOW).assumptions
+    assert c.dividend_yields == (Decimal(0),) and c.yield_sources == ("none",)

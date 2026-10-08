@@ -98,7 +98,8 @@ def estimate_now_on_forward(inputs: StrategyInput, level: Decimal, forwards: For
         if fwd is None:
             raise ForwardUnavailable(f"no forward for expiry {leg.expiry} (leg {leg.contract}); estimate refused")
         fwd = _matching(_check(fwd), inputs)
-        single = estimate_now(dataclasses.replace(inputs, legs=(leg,)), level, dividend_yield=fwd.implied_yield)
+        single = estimate_now(dataclasses.replace(inputs, legs=(leg,)), level, dividend_yield=fwd.implied_yield,
+                              yield_source=fwd.source)
         used.append(fwd)
         leg_pnls.append(single.leg_pnls[0])
     return ForwardEstimate(level, tuple(f.implied_yield for f in used), tuple(leg_pnls), sum(leg_pnls, Decimal(0)),

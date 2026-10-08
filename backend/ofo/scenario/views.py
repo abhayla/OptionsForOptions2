@@ -10,6 +10,7 @@ that level rounded half-even to 0.01 points (the exchange's quote precision), an
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
@@ -63,7 +64,9 @@ def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEF
                     forwards: Forwards | None = None) -> ScenarioValues:
     """Values of ``view`` at every column of ``level_set``, all from the engine.
 
-    ``forwards`` (ADR-061): each expiry's parity forward; Estimated Now marks every leg at S e^(-qT) of its expiry.
+    ``forwards`` (ADR-061, ADR-063): each expiry's parity forward; Estimated Now values every leg with the level S
+    and its expiry's implied yield q (the engine owns q; nothing is rescaled), and the assumptions state q and its
+    source per leg.
     Without it the estimate is on spot and is labelled "estimated from spot" - never silently. At Expiry and the
     level columns (CURRENT, the range) always stay on spot.
     """
@@ -87,7 +90,10 @@ def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEF
     if forwards is not None:
         on_fwd = estimate_now_grid_on_forward(inputs, quoted, forwards)
         rows = tuple(tuple(e.leg_pnls[i] for e in on_fwd) for i in range(len(inputs.legs)))
-        assumptions = estimate_now_grid(inputs, quoted[:1])[0].assumptions
+        assumptions = dataclasses.replace(
+            estimate_now_grid(inputs, quoted[:1])[0].assumptions,
+            dividend_yields=tuple(forwards[leg.expiry].implied_yield for leg in inputs.legs),
+            yield_sources=tuple(forwards[leg.expiry].source for leg in inputs.legs))
         return ScenarioValues(view, LABELS[view], "estimate", levels, True, None, tuple(e.total for e in on_fwd),
                               rows, assumptions, quoted, on_fwd[0].label)
     estimates = estimate_now_grid(inputs, quoted)
