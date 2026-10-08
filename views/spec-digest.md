@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (68)
+## Decisions (69)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -74,6 +74,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-066 2026-10-08: Kite Connect includes historical candles (F-33). [refines ADR-014]
 - ADR-067 2026-10-08: The platform records a one-minute bar (open, high, low, close, volume, OI) for every instrument its feed already carries, built from the live ticks a… [refines ADR-066]
 - ADR-068 2026-10-08: (1) A draft leg's entry price is its planned entry: the leg's LTP captured when the leg is added (or the mid of bid and ask when no LTP exists), show… [refines ADR-035]
+- ADR-069 2026-10-09: The values of a strategy definition's rules reference, risk limits and preferences are short identifiers or numbers only - letters, digits, underscor… [refines ADR-064]
 
 ## Requirements (74)
 
