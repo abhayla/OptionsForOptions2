@@ -2,6 +2,7 @@
 name: builder
 description: Implements one work item in its own worktree — writes code and tests for the work item's acceptance criteria. Never writes evidence files and never marks a work item or its ACs as verified; that is the verifier's job.
 model: sonnet
+effort: medium
 isolation: worktree
 tools: Read, Grep, Glob, Edit, Write, Bash
 disallowedTools: Agent
