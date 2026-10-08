@@ -8,7 +8,7 @@ does not), otherwise CANNOT_EVALUATE naming the inputs it needs. ``Evaluation.mi
 rule reads that was unusable, whatever the outcome, so a trigger record shows what was not known.
 """
 from __future__ import annotations
-from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
+from ofo.errors.explanations import ExplanationText, UserWords, join_explanations, render_explanation, user_words
 
 import datetime
 from dataclasses import dataclass, field
@@ -61,6 +61,13 @@ class Rule:
     action: RuleAction
     description: str = ""
     limits: ComplexityLimits = field(default=DEFAULT_LIMITS, compare=False)
+
+    @property
+    def shown_name(self) -> UserWords | ExplanationText:
+        """The rule's name as the user typed it (description, else id), for a UserText slot (W-024 r10 item 3)."""
+        if type(self.description) is ExplanationText:
+            return self.description
+        return user_words(self.description or self.rule_id)
 
     def __post_init__(self) -> None:
         if not isinstance(self.rule_id, str) or not self.rule_id.strip():

@@ -14,7 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation, strike_text
+from ofo.errors.explanations import render_explanation, strike_text, user_words
 
 import datetime
 import re
@@ -209,8 +209,8 @@ class StrategyDefinition:
                 changes.append(render_explanation("change_quantity", leg=new_legs[key].describe(), before=before))
         for label in ("rules_ref", "risk_limits", "preferences"):
             if getattr(old, label) != getattr(self, label):
-                changes.append(render_explanation("change_field", label=label, old=repr(getattr(old, label)),
-                                                  new=repr(getattr(self, label))))
+                changes.append(render_explanation("change_field", label=label, old=user_words(repr(getattr(old, label))),
+                                                  new=user_words(repr(getattr(self, label)))))
         return tuple(changes)
 
     @staticmethod

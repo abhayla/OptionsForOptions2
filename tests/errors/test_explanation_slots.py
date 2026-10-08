@@ -72,10 +72,35 @@ def test_values_slot_joins_typed_items_only() -> None:
 
 
 def test_user_text_is_quoted_word_for_word_and_never_an_exception() -> None:
-    line = render_explanation("rule_alert", rule="Max loss 3000", detail=render_explanation("rule_no_condition_detail"))
+    from ofo.errors.explanations import user_words  # noqa: F401 (minted through the request layer below)
+    from ofo.rules.model import Always, Rule, RuleAction, RuleKind
+
+    rule = Rule("r1", RuleKind.ENTRY, Always(), RuleAction.ALERT_ONLY, description="Max loss 3000")
+    line = render_explanation("rule_alert", rule=rule.shown_name, detail=render_explanation("rule_no_condition_detail"))
     assert line == 'Your rule was triggered: "Max loss 3000" (no condition).'
     with pytest.raises(TypeError):
         UserText.validate(ValueError("Max loss 3000"))
+    with pytest.raises(TypeError):  # round 10 item 3: a plain str (the shape of str(e)) is refused
+        render_explanation("rule_alert", rule="Max loss 3000", detail=render_explanation("rule_no_condition_detail"))
+
+
+def test_user_text_from_an_exception_outside_the_request_layer_raises() -> None:
+    """W-024 round 10 item 3: UserText(str(e)), UserWords(str(e)) and user_words(str(e)) from this (non-request)
+    module all raise; the slot refuses a plain str."""
+    from ofo.errors.explanations import UserWords, user_words
+
+    try:
+        raise RuntimeError("kite failed: use strike 22,550")
+    except RuntimeError as e:
+        for make in (lambda: UserText(str(e)), lambda: UserWords(str(e)), lambda: user_words(str(e)),
+                     lambda: UserText.validate(str(e))):
+            with pytest.raises(TypeError):
+                make()
+
+
+def test_request_layer_is_pinned() -> None:
+    """A new module allowed to mint user text fails here until reviewed."""
+    assert set(ex.REQUEST_LAYER) == {"ofo.admin.client_id", "ofo.rules.model", "ofo.strategy.definition"}
 
 
 def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: pytest.MonkeyPatch) -> None:

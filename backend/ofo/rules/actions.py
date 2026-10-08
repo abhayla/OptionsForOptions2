@@ -55,7 +55,7 @@ def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: S
     if not isinstance(strategy_id, str) or not strategy_id.strip():
         raise ValueError("every prepared order belongs to a strategy: strategy_id is required")
     detail = describe(evaluation.observations) or render_explanation("rule_no_condition_detail")
-    alert = render_explanation("rule_alert", rule=rule.description or rule.rule_id, detail=detail)
+    alert = render_explanation("rule_alert", rule=rule.shown_name, detail=detail)
     if rule.action is RuleAction.ALERT_ONLY:
         return RuleResponse(alert, None)
     if rule.kind is RuleKind.EXIT:

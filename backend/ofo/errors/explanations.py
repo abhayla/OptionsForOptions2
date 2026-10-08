@@ -114,21 +114,63 @@ class Quoted(SlotType):
         return f'"{str.__str__(value)}"'
 
 
+_USER_WORDS_MINT = object()
+
+#: The request-parsing layer (W-024 round 10 item 3): the modules where a value the user typed first enters the
+#: domain. Only code IN these modules can mint `UserWords`; each entry names the request field it parses.
+REQUEST_LAYER: Mapping[str, str] = MappingProxyType({
+    "ofo.admin.client_id": "the Client ID an admin types (normalise_client_id)",
+    "ofo.rules.model": "a rule's name and description the user typed (Rule.shown_name)",
+    "ofo.strategy.definition": "the strategy settings the user changed (rules_ref, risk_limits, preferences)",
+})
+
+
+class UserWords(str):
+    """The user's own words, as parsed from a request field. Made ONLY by `user_words()` called from a module of
+    `REQUEST_LAYER`; a direct call raises, so text from an exception (`str(e)`) built anywhere else cannot become
+    user text."""
+
+    __slots__ = ()
+
+    def __new__(cls, text: str, _mint: object = None) -> "UserWords":
+        if _mint is not _USER_WORDS_MINT:
+            raise TypeError("UserWords is made only by user_words() in the request-parsing layer")
+        return super().__new__(cls, text)
+
+
+def user_words(value: object) -> UserWords:
+    """Mint `UserWords` from a request field's value. Callable only from a `REQUEST_LAYER` module (fail closed: an
+    unknown caller is refused); an exception, a non-`str` or a blank value is refused."""
+    import sys
+
+    caller = sys._getframe(1).f_globals.get("__name__")  # noqa: SLF001 - the caller's module is the door
+    if caller not in REQUEST_LAYER:
+        raise TypeError(f"user_words() is callable only from the request-parsing layer, not {caller!r}")
+    if isinstance(value, BaseException):
+        raise TypeError("an exception is never user text")
+    _require_exact(value, str, "UserText")
+    if not str.__str__(value).strip():
+        raise ValueError("UserText must not be blank")
+    return UserWords(value, _USER_WORDS_MINT)
+
+
 class UserText(Quoted):
     """The user's own words (a rule name they typed, a value they entered), quoted word for word in the labelled place
     the template gives it (ADR-003 Q226: "Zerodha's or the user's own text is only quoted, word for word, in a
-    labelled field"). Never an exception's text (tests/errors/test_producer_inventory.py: exception_text_flows). A
-    platform line (an `ExplanationText`, e.g. a default rule description) is accepted and quoted the same way."""
+    labelled field"). Round 10 item 3: the slot takes only `UserWords` (minted by the request-parsing layer) or an
+    `ExplanationText` (a platform line, e.g. a default rule description); a plain `str` - e.g. `str(e)` - is refused,
+    and `UserText(...)` itself raises."""
+
+    def __new__(cls, *args: object, **kwargs: object) -> "UserText":
+        raise TypeError("UserText is a slot type; user text is minted only by user_words() in the request layer")
 
     @staticmethod
     def validate(value: object) -> None:
         if isinstance(value, BaseException):
             raise TypeError("an exception is never a slot value")
-        if type(value) is ExplanationText:
+        if type(value) is ExplanationText or type(value) is UserWords:
             return
-        _require_exact(value, str, "UserText")
-        if not str.__str__(value).strip():
-            raise ValueError("UserText must not be blank")
+        raise TypeError(f"UserText slot takes UserWords from the request layer, got {type(value).__name__}")
 
 
 #: Plain-language names of every rule input (units as REQ-041 AC-4 / ofo.rules.inputs define them), by enum name.

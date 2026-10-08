@@ -13,7 +13,7 @@ malformed value become a valid one: upper() folds 'ı'/'ß'/'ſ' into A-Z, and a
 whitespace such as NBSP. Anything that fails raises ``MalformedClientIdError``; nothing is silently repaired.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import render_explanation, user_words
 
 import re
 
@@ -35,5 +35,5 @@ def normalise_client_id(raw: object) -> str:
         raise MalformedClientIdError(str(exc)) from exc
     candidate = token.upper()
     if CLIENT_ID_PATTERN.fullmatch(candidate) is None:
-        raise MalformedClientIdError(render_explanation("client_id_not_valid", value=token))
+        raise MalformedClientIdError(render_explanation("client_id_not_valid", value=user_words(token)))
     return candidate
