@@ -1,0 +1,977 @@
+{
+  "components": {
+    "schemas": {
+      "CellOut": {
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "per_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Unit"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
+          }
+        },
+        "required": [
+          "value",
+          "display",
+          "kind",
+          "reason",
+          "side",
+          "per_unit",
+          "vendor"
+        ],
+        "title": "CellOut",
+        "type": "object"
+      },
+      "ColumnOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_scenario_level": {
+            "title": "Is Scenario Level",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "markers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Markers",
+            "type": "array"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "is_scenario_level",
+          "markers",
+          "visible"
+        ],
+        "title": "ColumnOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LegIn": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "captured_at": {
+            "description": "when the planned entry was captured (ADR-068)",
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "instrument_id": {
+            "examples": [
+              "NSE_FO:44624"
+            ],
+            "minLength": 1,
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "lots": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000.0,
+            "title": "Lots",
+            "type": "integer"
+          },
+          "planned_entry": {
+            "description": "the planned entry price, a decimal string (never a float)",
+            "examples": [
+              "104.65"
+            ],
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Planned Entry",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "action",
+          "lots",
+          "planned_entry",
+          "captured_at"
+        ],
+        "title": "LegIn",
+        "type": "object"
+      },
+      "LegOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          },
+          "instrument_id": {
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "lot_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Size"
+          },
+          "lots": {
+            "title": "Lots",
+            "type": "integer"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "planned_entry": {
+            "title": "Planned Entry",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "symbol",
+          "action",
+          "instrument",
+          "strike",
+          "expiry",
+          "lots",
+          "lot_size",
+          "quantity",
+          "planned_entry",
+          "captured_at",
+          "ltp",
+          "iv",
+          "health",
+          "label"
+        ],
+        "title": "LegOut",
+        "type": "object"
+      },
+      "LevelOut": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "zero_pnl": {
+            "title": "Zero Pnl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "current",
+          "zero_pnl"
+        ],
+        "title": "LevelOut",
+        "type": "object"
+      },
+      "MarginOut": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "state": {
+            "const": "NOT_AVAILABLE_YET",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason"
+        ],
+        "title": "MarginOut",
+        "type": "object"
+      },
+      "OutcomeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/LegIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Legs",
+            "type": "array"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "ux_level": {
+            "default": "standard",
+            "enum": [
+              "guided",
+              "standard",
+              "advanced"
+            ],
+            "title": "Ux Level",
+            "type": "string"
+          },
+          "view": {
+            "default": "at_expiry",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "legs"
+        ],
+        "title": "OutcomeRequest",
+        "type": "object"
+      },
+      "OutcomeResponse": {
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/LegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "margin": {
+            "$ref": "#/components/schemas/MarginOut"
+          },
+          "output_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "spot_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Level"
+          },
+          "state": {
+            "enum": [
+              "COMPUTED",
+              "NOT_CONNECTED",
+              "REFUSED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Label"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "underlying": {
+            "title": "Underlying",
+            "type": "string"
+          },
+          "ux_level": {
+            "title": "Ux Level",
+            "type": "string"
+          },
+          "valuation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation"
+          }
+        },
+        "required": [
+          "state",
+          "underlying",
+          "ux_level",
+          "status_label",
+          "reason",
+          "output_label",
+          "valuation",
+          "spot_level",
+          "spot_at",
+          "legs",
+          "margin",
+          "table",
+          "scenario",
+          "payoff",
+          "summary"
+        ],
+        "title": "OutcomeResponse",
+        "type": "object"
+      },
+      "PayoffOut": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "points"
+        ],
+        "title": "PayoffOut",
+        "type": "object"
+      },
+      "PointOut": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "pnl": {
+            "title": "Pnl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "pnl"
+        ],
+        "title": "PointOut",
+        "type": "object"
+      },
+      "RowOut": {
+        "properties": {
+          "cells": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CellOut"
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "row_id": {
+            "title": "Row Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "cells"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
+      "ScenarioOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelOut"
+            },
+            "title": "Levels",
+            "type": "array"
+          },
+          "output_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "view": {
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view",
+          "label",
+          "kind",
+          "available",
+          "unavailable_reason",
+          "output_label",
+          "levels",
+          "totals",
+          "step",
+          "start",
+          "end"
+        ],
+        "title": "ScenarioOut",
+        "type": "object"
+      },
+      "SummaryOut": {
+        "properties": {
+          "breakevens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breakevens",
+            "type": "array"
+          },
+          "lower_be": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Be"
+          },
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
+          },
+          "max_loss_unlimited": {
+            "title": "Max Loss Unlimited",
+            "type": "boolean"
+          },
+          "max_profit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit"
+          },
+          "max_profit_unlimited": {
+            "title": "Max Profit Unlimited",
+            "type": "boolean"
+          },
+          "risk_boundaries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Boundaries",
+            "type": "array"
+          },
+          "upper_be": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upper Be"
+          },
+          "what_can_i_lose": {
+            "title": "What Can I Lose",
+            "type": "string"
+          },
+          "what_can_i_make": {
+            "title": "What Can I Make",
+            "type": "string"
+          },
+          "where_do_i_start_losing": {
+            "title": "Where Do I Start Losing",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what_can_i_lose",
+          "what_can_i_make",
+          "where_do_i_start_losing",
+          "max_profit",
+          "max_loss",
+          "max_profit_unlimited",
+          "max_loss_unlimited",
+          "breakevens",
+          "lower_be",
+          "upper_be",
+          "risk_boundaries"
+        ],
+        "title": "SummaryOut",
+        "type": "object"
+      },
+      "TableOut": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "output_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "spot_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Level"
+          },
+          "underlying": {
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "underlying",
+          "spot_level",
+          "spot_at",
+          "output_label",
+          "columns",
+          "rows"
+        ],
+        "title": "TableOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OptionsForOptions2 API - outcome",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/strategies/outcome": {
+      "post": {
+        "operationId": "strategy_outcome_api_strategies_outcome_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Outcome"
+      }
+    }
+  }
+}
