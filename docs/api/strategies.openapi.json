@@ -111,7 +111,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StrategyIn"
+                "$ref": "#/components/schemas/StrategyUpdateIn"
               }
             }
           }
@@ -196,6 +196,16 @@
             "schema": {
               "type": "integer",
               "title": "Seq"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "title": "Expected Revision"
             }
           }
         ],
@@ -321,6 +331,66 @@
           "legs"
         ],
         "title": "StrategyIn"
+      },
+      "StrategyUpdateIn": {
+        "properties": {
+          "underlying": {
+            "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/LegIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Legs"
+          },
+          "rules_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules Ref"
+          },
+          "risk_limits": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Risk Limits",
+            "description": "name -> decimal as a string"
+          },
+          "preferences": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Preferences"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "description": "The revision this change was based on (409 revision_conflict if another change landed since)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "underlying",
+          "legs",
+          "expected_revision"
+        ],
+        "title": "StrategyUpdateIn"
       },
       "ValidationError": {
         "properties": {
