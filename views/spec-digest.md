@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (59)
+## Decisions (63)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -65,6 +65,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-057 2026-10-07: Correction of ADR-052. [amends ADR-052; amends ADR-050]
 - ADR-058 2026-10-07: A stored contract stops being live in either of two ways - its expiry has passed (ADR-057), or the daily list no longer carries it while its expiry i… [amends ADR-057]
 - ADR-059 2026-10-07: For a list row whose token is held by a live stored contract, the change is a revision of that contract only if the underlying, option type and excha… [amends ADR-058; amends ADR-057]
+- ADR-060 2026-10-08: Zerodha grants multi-user Kite Connect access only to production-ready platforms and asks for a demo first (F-31). [amends ADR-034; amends ADR-051; amends ADR-054]
+- ADR-061 2026-10-08: For each expiry, the underlying level fed to the Black-Scholes model is the forward implied by that expiry's own option prices, expressed as an impli… [amends ADR-056]
+- ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition and its activity history in the database; they survive a restart and load back exactly as saved; li… [none — adds one acceptance criterion to REQ-038 o…]
+- ADR-063 2026-10-08: The calculation engine takes the implied continuous dividend yield q of ADR-061 as an input and computes the option price, implied volatility and eve… [refines ADR-061]
 
 ## Requirements (74)
 
@@ -105,7 +109,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-035 [Approved]: Single strategy table
 - REQ-036 [Approved]: Strategy-only execution
 - REQ-037 [Approved]: Strategy modification
-- REQ-038 [Verified]: Strategy definition, live state and versions
+- REQ-038 [Approved]: Strategy definition, live state and versions
 - REQ-039 [Approved]: Strategy state machine and exception states
 - REQ-040 [Verified]: Activity timeline and rule-trigger audit
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults
@@ -143,7 +147,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (179)
+## Spec sections (181)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -234,6 +238,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-28 - Payments, GST and advertising gates (stream S1b, not re-read b…
 - ## F-29 - Core data proof on the owner's own account: live Kite login, q…
 - ## F-30 - The exchange removes contracts before their expiry and reuses…
+- ## F-31 - Zerodha grants multi-user Kite Connect access only to a produc…
+- ## F-32 - Live market-hours checks on the owner's account: one Kite WebS…
 
 ### spec/open-questions.md
 

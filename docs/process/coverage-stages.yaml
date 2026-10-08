@@ -137,6 +137,10 @@ decisions:
   ADR-057: 4a           # identity holds while live; token retires after expiry; W-057
   ADR-058: 4a           # delisting before expiry; counting truncation guard; W-057
   ADR-059: 4a           # revision vs new contract; reinstatement; per-expiry guard; W-057
+  ADR-060: [4a, 4b, 4c] # build on the owner's Kite app until demo-ready, then reapply to Zerodha (F-31)
+  ADR-061: 4a           # IV/Greeks from each expiry's parity forward; payoff stays on spot (F-32)
+  ADR-062: 4a           # Save Draft stores strategies durably (REQ-038 AC-5, W-061)
+  ADR-063: 4a           # the engine owns the dividend yield and every Greek, theta included (W-060 review)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
@@ -192,6 +196,7 @@ issues:
   "#112": S8
   "#115": 4b
   "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
+  "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
 
 # Work items whose status is not done.
 work_items:
@@ -200,6 +205,8 @@ work_items:
   W-011: S8
   W-017: 4b
   W-024: 4a
+  W-060: 4a
+  W-061: 4a
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -233,6 +240,8 @@ findings:
   F-28: S3        # payments / GST / ads facts, re-read in Stage 3
   F-29: 4a        # core data proof (owner's account): field shapes for the Kite adapter
   F-30: 4a        # delisting before expiry (ADR-058, W-057)
+  F-31: done      # Zerodha wants a production-ready demo first; fee waiver (decided, ADR-060)
+  F-32: 4a        # live checks: Greeks input decided (ADR-061); staleness rule open for the data path
 
 hypotheses:
   H1: done

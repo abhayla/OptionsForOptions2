@@ -4,12 +4,13 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (10): REQ-020, REQ-032, REQ-033, REQ-038, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070
+Done (9): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
 | REQ-015 | Zerodha connection | core | normal | next |
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
+| REQ-038 | Strategy definition, live state and versions | core | normal | next |
 | REQ-048 | Market-data pipeline and browser boundary | core | normal | next |
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
