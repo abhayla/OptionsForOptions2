@@ -1,0 +1,119 @@
+# Model and effort routing table (REQ-051). One table for the Factory and every kit project.
+#
+# Every agent definition and every Agent dispatch picks its model and effort from the class of the job.
+# Models are named by family alias (opus, sonnet, haiku, fable). An alias resolves to the latest model of its
+# family, so a new model generation needs no edit here (OD-42, OD-46). The one place a dated model id is allowed
+# is the `reviewed_for` map at the end: it records the id each alias resolved to when this table was last
+# reviewed. When `python tools/model_mix.py` prints NEW MODEL, re-check the effort of every class of that family,
+# then update `reviewed_for`.
+#
+# Effort levels: low, medium, high, xhigh, max. Effort defaults differ silently between models, so every agent
+# file states its own `effort:` line (the class below decides which).
+#
+# The capabilities/ file is the source; templates/project-os/.claude/kit/model-routing.yaml is a byte-identical copy
+# (a test fails when they differ). Edit the source, then copy it across.
+
+classes:
+  lookup:
+    model: haiku
+    effort: medium
+    use_for:
+      - read-only search and lookup across a codebase (the Explore agent)
+      - locating files, symbols and call sites
+      - collecting facts for a decision someone else makes
+    never_for:
+      - building
+      - verifying risky work
+      - judging whether something is correct
+
+  checking:
+    model: haiku
+    effort: low
+    use_for:
+      - format, lint and schema checks
+      - classification and extraction from text
+      - mechanical single-step transformations
+      - the kit live proof
+    never_for:
+      - long agent loops (at low effort the small model skips searches, stops early and reports done without checks)
+      - building
+      - anything that needs a judgement call
+
+  building:
+    model: sonnet
+    effort: medium
+    use_for:
+      - implementing a work item with a clear brief and a machine-checkable gate
+      - writing and maintaining tests
+      - routine debugging and refactoring
+    never_for:
+      - fuzzy multi-file design without a design pass first
+      - verifying its own work
+      - Tier A review
+
+  review_b:
+    model: sonnet
+    effort: high
+    use_for:
+      - Tier B review (diff-focused, time-boxed, no mutation testing)
+      - Tier B verifier (fresh context, read-only)
+    never_for:
+      - Tier A review
+      - building the work it reviews
+
+  design:
+    model: opus
+    effort: high
+    use_for:
+      - fuzzy spec or multi-file design
+      - hard debugging
+      - planning and difficult tradeoff analysis
+    never_for:
+      - routine implementation with a clear brief
+      - mechanical checks
+      - read-only lookup
+
+  review_a:
+    model: opus
+    effort: xhigh
+    use_for:
+      - Tier A review (adversarial, fresh context, mutation tests on every guard)
+      - changes that delete or move data, production deploys, auth, secrets, migrations, hooks that run in every session
+    never_for:
+      - Tier B or Tier C work
+      - building the work it reviews
+
+  verify_a:
+    model: opus
+    effort: high
+    use_for:
+      - Tier A verifier (fresh context, read-only, one evidence block per acceptance criterion)
+    never_for:
+      - Tier B or Tier C work
+      - building the work it verifies
+
+  escalation:
+    model: fable
+    effort: high
+    use_for:
+      - same failure class red twice after fix rounds (independent review)
+      - a design Opus already failed
+      - the owner names it
+    never_for:
+      - first attempts
+      - routine building, review or lookup
+      - any dispatch without a `Why Fable:` line
+
+# The class of every agent file (.claude/agents/<name>.md). A test fails an agent file missing from this map,
+# or whose `model` or `effort` differs from its class.
+agents:
+  builder: building
+  verifier: verify_a
+  Explore: lookup
+
+# The model id each alias resolved to when the table was last reviewed (the only dated ids allowed in config).
+reviewed_for:
+  opus: claude-opus-5-5
+  sonnet: claude-sonnet-5-5
+  haiku: claude-haiku-5-5
+  fable: claude-fable-5-1

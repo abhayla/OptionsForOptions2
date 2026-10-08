@@ -31,3 +31,5 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 | `tools/pathsafe.py` | `tools/pathsafe.py` | `1aecb7d961f51a99bd2e2c98bba453f6c244bb9e4e62b6d44d1b0dac93ae7a87` |
 | `tools/run_smoke.py` | `tools/run_smoke.py` | `af5d1d41194e7fdcca73149df18876890808bd50268e93faeeea27e9d079d5cc` |
 | `tools/trace_check.py` | `tools/trace_check.py` | `4bd03cc53cd8d157fbe1f9c2ad1f2f37bcf45372231f2994f1ab05910a160064` |
+| `tools/model_mix.py` | `tools/model_mix.py` | `827b49eacba847c31bb85e169ea0f202e524b02d7b31f98aa7b23206d834e5f5` |
+| `.claude/kit/model-routing.yaml` | `capabilities/routing/model-routing.yaml` | `bb2332a7e95b1d2e4c74dcf545c587c87326962b697b7717ea55d9cc0a0c48b5` |
