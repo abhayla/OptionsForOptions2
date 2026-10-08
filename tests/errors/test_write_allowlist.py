@@ -142,7 +142,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
 class Hit:
     line: int
     message: str
-    statement: str | None  # source of the enclosing SIMPLE statement; None for a compound one
+    statement: str | None  # source of the innermost statement holding the hit
 
 
 def _parents(tree: ast.AST) -> dict[int, ast.AST]:
@@ -313,10 +313,11 @@ def scan_source(source: str, module: str = "ofo.sample", is_package: bool = Fals
     hits: list[Hit] = []
 
     def hit(node: ast.AST, message: str) -> None:
+        # The innermost statement: for a compound one (a `for`/`with` target) that is its whole
+        # source, keywords included, which no entry pattern (a plain statement) can full-match.
         stmt = _enclosing_statement(node, parents)
-        simple = stmt is not None and not hasattr(stmt, "body")
         hits.append(Hit(getattr(node, "lineno", 0), message,
-                        ast.get_source_segment(source, stmt) if simple else None))
+                        ast.get_source_segment(source, stmt) if stmt is not None else None))
 
     for node in ast.walk(tree):
         # --- writes, found by context ------------------------------------------------------------

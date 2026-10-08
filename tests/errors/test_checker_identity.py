@@ -149,6 +149,15 @@ def test_each_caller_message_path_raises_on_a_swapped_checker(
         CALLER_PATHS[label]()
 
 
+def test_a_reference_held_from_before_the_swap_still_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The entry point checks itself: a caller that took the function before the swap (no module
+    read afterwards, so the module's read guard never runs) is refused too."""
+    held = ofo.wording.check_platform_text
+    _swap(monkeypatch, "find_advice_wording", lambda text: [])
+    with pytest.raises(ofo.wording.CheckerChanged):
+        held("You should buy this, it is the best trade", "held reference")
+
+
 def test_caller_paths_work_with_the_original_checker() -> None:
     with pytest.raises(ValueError, match="banned wording"):
         _safety_flag()
