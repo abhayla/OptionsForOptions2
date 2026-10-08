@@ -34,7 +34,12 @@ def _catalogue_only(value: object) -> UserFacingError | ExplanationText:
 
 
 def _serialize(value: UserFacingError | ExplanationText) -> object:
-    return value.as_dict() if type(value) is UserFacingError else str.__str__(value)
+    """Fail closed (round 10 item 2): only a catalogue value is written; anything else raises, never passes."""
+    if type(value) is UserFacingError:
+        return value.as_dict()
+    if type(value) is ExplanationText:
+        return str.__str__(value)
+    raise TypeError(f"a CatalogueText field holds {type(value).__name__}, not a render()/render_explanation() result")
 
 
 CatalogueText = Annotated[object, PlainValidator(_catalogue_only), PlainSerializer(_serialize)]
@@ -66,14 +71,57 @@ def check_field_type(tp: Any, where: str) -> None:
     raise TypeError(f"{where}: {tp!r} is not allowed in an API response (free text must be CatalogueText)")
 
 
+#: Everything pydantic itself puts in a subclass's own namespace, plus the class-statement dunders. A subclass body may
+#: hold field annotations, `model_config` and a docstring ONLY (round 10 item 2): any other entry - a method, property,
+#: `computed_field`, `field_serializer`, `model_serializer`, a `model_dump`/`model_construct` override, a descriptor -
+#: is refused at class creation. A closed allowlist of names, so an unforeseen hook fails closed.
+_PYDANTIC_NAMESPACE = frozenset({
+    "__abstractmethods__", "__annotations__", "__class_vars__", "__doc__", "__firstlineno__", "__hash__", "__module__",
+    "__qualname__", "__orig_bases__", "__parameters__", "__private_attributes__", "__pydantic_complete__",
+    "__pydantic_computed_fields__", "__pydantic_core_schema__", "__pydantic_custom_init__", "__pydantic_decorators__",
+    "__pydantic_fields__", "__pydantic_generic_metadata__", "__pydantic_parent_namespace__", "__pydantic_post_init__",
+    "__pydantic_serializer__", "__pydantic_setattr_handlers__", "__pydantic_validator__", "__signature__",
+    "__static_attributes__", "_abc_impl", "model_config", "__annotate__", "__annotate_func__",
+    "__annotations_cache__",
+})
+
+
+def _refuse_open_doors(cls: type) -> None:
+    """Raise TypeError unless `cls` is a closed ApiModel: data fields only, no hook that can write a response body."""
+    for base in cls.__mro__[1:]:
+        if base in ApiModel.__mro__:
+            continue
+        if not (isinstance(base, type) and issubclass(base, ApiModel)):
+            raise TypeError(f"{cls.__name__}: an ApiModel inherits only from ApiModel classes, not {base.__name__}")
+    extra = sorted(name for name in vars(cls) if name not in _PYDANTIC_NAMESPACE)
+    if extra:
+        raise TypeError(f"{cls.__name__}: an ApiModel body holds fields only; refused {extra} (no method, property, "
+                        f"computed_field, serializer or override may shape a response)")
+    decorators = cls.__pydantic_decorators__  # type: ignore[attr-defined]
+    hooks = {k: getattr(decorators, k) for k in ("computed_fields", "field_serializers", "model_serializers",
+                                                  "field_validators", "model_validators", "validators",
+                                                  "root_validators")}
+    if any(hooks.values()):
+        raise TypeError(f"{cls.__name__}: an ApiModel has no pydantic decorators "
+                        f"({[k for k, v in hooks.items() if v]})")
+
+
 class ApiModel(BaseModel):
     """Base of every response model: closed, frozen, and free-text-proof by construction."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     @classmethod
+    def model_construct(cls, *args: Any, **kwargs: Any) -> Any:  # noqa: D102
+        raise TypeError(f"{cls.__name__}.model_construct skips validation; an ApiModel is built only by validation")
+
+    def model_copy(self, *args: Any, **kwargs: Any) -> Any:  # noqa: D102
+        raise TypeError(f"{type(self).__name__}.model_copy(update=...) skips validation; build a new ApiModel instead")
+
+    @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         super().__pydantic_init_subclass__(**kwargs)
+        _refuse_open_doors(cls)
         for name, info in cls.model_fields.items():
             annotation = info.annotation
             if info.metadata:  # Annotated[...] was unpacked: compare the original alias by identity

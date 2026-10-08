@@ -83,6 +83,28 @@ def test_overriding_model_dump_is_refused():
                 return {"note": "free text"}
 
 
+def test_a_mixin_base_carrying_a_hook_is_refused():
+    from ofo_app.api_models import ApiModel
+
+    class Mixin:
+        def model_dump(self, *a, **k):  # noqa: ANN201
+            return {"note": "free text"}
+
+    with pytest.raises(TypeError):
+        class Bad(Mixin, ApiModel):
+            ok: bool
+
+
+def test_model_copy_with_update_raises():
+    from ofo_app.api_models import ApiModel
+
+    class Out(ApiModel):
+        ok: bool
+
+    with pytest.raises(TypeError):
+        Out(ok=True).model_copy(update={"ok": "free text"})
+
+
 def test_a_closed_subclass_still_builds_and_serialises():
     from ofo_app.api_models import ApiModel
 
