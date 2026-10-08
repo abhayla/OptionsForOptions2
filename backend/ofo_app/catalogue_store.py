@@ -466,12 +466,14 @@ async def apply_update(
     await conn.execute(_LOCK, {"k": CATALOGUE_UPDATE_LOCK_KEY})
     live = await _load_live(conn)
     for contract_id, listed, _ in live:
-        if listed.contract.expiry is None:
+        if listed.contract.expiry is None and not listed.contract.is_index():  # an index never expires (REQ-072 AC-1)
             raise CatalogueStoreError(f"stored contract id={contract_id} {_label(listed)} has no expiry; cannot tell "
                                       "when its token retires (ADR-057); nothing written")
     # ADR-057: a live contract whose expiry is before the load date is retired; its token is free from now on.
-    retiring = [(cid, listed, is_listed) for cid, listed, is_listed in live if listed.contract.expiry < update_date]
-    kept = [item for item in live if item[1].contract.expiry >= update_date]
+    retiring = [(cid, listed, is_listed) for cid, listed, is_listed in live if listed.contract.expiry is not None
+                and listed.contract.expiry < update_date]
+    kept = [item for item in live
+            if item[1].contract.expiry is None or item[1].contract.expiry >= update_date]
     contract_ids = {listed.id: cid for cid, listed, _ in kept}
     catalogue = _catalogue_of(kept)
     before = {e.id: e for e in catalogue.all_entries()}
@@ -487,10 +489,10 @@ async def apply_update(
             continue
         check_storable(row)
         label = _label(row)
-        if row.contract.expiry is None:
+        if row.contract.expiry is None and not row.contract.is_index():
             raise CatalogueStoreError(f"contract {label}: has no expiry; cannot tell when its token retires "
                                       "(ADR-057); the list is refused, nothing written")
-        if row.contract.expiry < update_date:  # ADR-059: a stale row is skipped, never loaded (the domain skips too)
+        if row.contract.expiry is not None and row.contract.expiry < update_date:  # ADR-059: a stale row is skipped, never loaded (the domain skips too)
             continue
         refs = {r.broker: r for r in row.broker_refs}
         if ZERODHA not in refs or len(refs) != len(row.broker_refs):
