@@ -1,8 +1,9 @@
 """W-024 round 9, step 1 (REQ-065 AC-2, ADR-003 Q226): inventory of every user-facing text producer.
 
-The rule is a SHAPE, not a list of names: a string literal (plain or f-string) in backend/ofo that reads as a
-sentence a person is meant to read - it starts with a capital letter, a currency sign or a `{slot}`, and holds at
-least three words - is user-facing text. The one place such text may live is the reviewed catalogue,
+The rule is a SHAPE, not a list of names: a string literal (plain or f-string) in backend/ofo that holds at least
+two words separated by a space, whatever its first letter or case ("leg expired before execution" counts as much as
+"Leg expired"), is user-facing text unless its POSITION shows it is not (below). A position this scan cannot
+classify is a producer too (fail closed). The one place such text may live is the reviewed catalogue,
 `backend/ofo/errors/templates.py`, whose text reaches a user only through `render()`.
 
 Not user-facing, by position (each is a shape too): a docstring; an argument of a logging call (`logger.info`, ...);
@@ -23,6 +24,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import sys
 from collections import defaultdict
 
 import pytest
@@ -47,20 +49,55 @@ _WORD = re.compile(r"[A-Za-z]")
 
 #: Producers not routed through render() yet (out of round 9's five-module scope), file -> functions. Ratchet.
 PENDING: dict[str, dict[str, int]] = {
-    'admin/client_id.py': {'normalise_client_id': 1},
-    'admin/qualifying.py': {'_classify_one': 4, 'preview_import': 1},
-    'engine/display.py': {'describe_estimate': 1, 'estimate_line': 1},
+    'adjustment/registry.py': {'calculator': 1, 'get': 1, 'load_rows': 7, 'register_calculator': 3},
+    'admin/client_id.py': {'normalise_client_id': 2},
+    'admin/qualifying.py': {'__init__': 2, '_classify_one': 4, 'preview_import': 2},
+    'audit/catalogue.py': {'<module>': 31},
+    'audit/log.py': {'from_events': 1},
+    'audit/models.py': {'_reject_naive_datetime': 1, 'canonical_json': 1},
+    'engine/black_scholes.py': {'_solve_iv': 2},
+    'engine/display.py': {'describe_estimate': 6, 'estimate_line': 1},
     'engine/estimate.py': {'<module>': 1},
+    'engine/interfaces.py': {'__post_init__': 2},
+    'engine/metrics.py': {'strategy_metrics': 1},
+    'errors/classes.py': {'<module>': 9},
+    'errors/model.py': {'verify': 3},
     'execution/alternatives.py': {'record_alternative_choice': 1},
-    'execution/review.py': {'_notes': 1},
+    'execution/partial.py': {'assess': 3, 'submit_confirmed': 2},
+    'execution/review.py': {'_notes': 2, 'execution_review': 4},
+    'execution/safety.py': {'__post_init__': 1},
+    'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1, 'slice_quantity': 1},
+    'instruments/models.py': {'check_broker_code': 1},
     'instruments/sources.py': {'<module>': 1},
-    'rules/actions.py': {'respond': 1},
-    'rules/model.py': {'describe': 1},
+    'marketdata/health.py': {'evaluate_health': 1},
+    'marketdata/quote.py': {'__post_init__': 3},
+    'orders/model.py': {'<module>': 1, 'apply_fill': 1, 'clear_reconciliation_block': 1, 'reconcile_cumulative': 1},
+    'range/pick_lists.py': {'<module>': 1, '__post_init__': 1},
+    'reconciliation/blocking.py': {'blocked_strategy_ids': 3},
+    'reconciliation/compare.py': {'<module>': 9, '__post_init__': 7, '_check_breakdown': 1, '_check_contract_pairs': 1, 'compare': 3, 'describe': 2, 'require_id': 1, 'unexplained_changes': 3},
+    'reconciliation/resolution.py': {'<module>': 7, '_require_audit': 1, '_require_record': 1, '_start': 8, 'adopt_broker_position': 1, 'mark_exited_broker_flat': 2, 'prepare_closing_order': 2, 'record_report': 5},
+    'reconciliation/triggers.py': {'<module>': 8, '_records': 3, 'plan_run': 2},
+    'rules/actions.py': {'respond': 2},
+    'rules/defaults.py': {'resolve_adjustment_rules': 3},
+    'rules/model.py': {'_why': 1, 'describe': 1, 'evaluate': 1},
     'rules/plan.py': {'<module>': 2},
-    'scenario/views.py': {'<module>': 1, 'scenario_values': 1},
-    'strategy/builder_history.py': {'<module>': 9},
-    'strategy/definition.py': {'changes_from': 1, 'describe': 1, 'describe_contract': 1},
-    'table/model.py': {'<module>': 1, 'scenario_caption': 1},
+    'scenario/levels.py': {'build_level_set': 1},
+    'scenario/views.py': {'<module>': 2, 'scenario_values': 1},
+    'strategy/builder_history.py': {'<module>': 9, '__init__': 1, '_check_legs': 4, '_check_no_duplicate_with_others': 1, '_check_not_executed': 1, '_entry_by_seq': 1, '_leg_at': 1, 'add_leg': 1, 'change_expiry': 2, 'change_strike': 1, 'remove_leg': 1, 'rename': 1, 'reorder_legs': 1, 'restore': 1, 'toggle_display': 1, 'undo': 1},
+    'strategy/definition.py': {'__post_init__': 11, '_limit_value': 1, '_preference_value': 1, 'changes_from': 6, 'describe': 1, 'describe_contract': 1, 'from_engine': 1},
+    'strategy/guard.py': {'compare_risk': 3},
+    'strategy/linear.py': {'parse_expression': 4},
+    'strategy/live_state.py': {'__post_init__': 8, '_pairs': 1},
+    'strategy/loader.py': {'_build': 2, '_construct_unique_mapping': 2, 'check_catalogue': 2, 'check_wording': 4, 'load_templates': 2},
+    'strategy/matching.py': {'<module>': 1, '_fit': 2, 'match': 1, 'match_shape': 1},
+    'strategy/model.py': {'__post_init__': 18, '_check_constraints': 6, '_check_legs': 5, 'resolve_params': 2, 'resolve_template': 5, 'violation': 3, 'violations': 4},
+    'strategy/modification.py': {'__post_init__': 8, '_engine_legs': 2, '_gate_legs': 1, '_guard_binding': 1, '_pending_binding': 1, 'apply_changes': 8, 'confirm_modification': 3, 'execute_confirmed_modification': 1, 'prepare_confirmed_modification': 6, 'propose_modification': 3},
+    'strategy/versions.py': {'__init__': 1, '__post_init__': 10, '_add_version': 1, '_append_history': 1, '_check_time': 2, '_definition_from': 3, '_refuse_if_exited': 1, '_refuse_while_blocked': 2, 'apply_result': 7, 'check_contract': 6, 'check_observation': 5, 'confirm': 3, 'edit': 4, 'mark_exited': 4, 'propose_execution': 3, 'reconcile': 6, 'restore': 3, 'version': 1},
+    'table/columns.py': {'<module>': 6},
+    'table/model.py': {'<module>': 2, '_greek_cell': 1, '_iv_cell': 2, '_leg_per_unit_greeks': 1, '_leg_row': 8, '_money': 1, '_net_premium_cell': 2, '_percent_cell': 1, '_points': 1, '_text': 1, '_total_pnl_percent_cell': 4, '_total_row': 10, 'scenario_caption': 1},
+    'timeline/catalogue.py': {'<module>': 12},
+    'timeline/log.py': {'from_entries': 3},
+    'timeline/records.py': {'__post_init__': 2, 'from_evaluation': 3},
 }
 
 
@@ -73,12 +110,9 @@ def _text(node: ast.AST) -> str | None:
 
 
 def is_sentence_shaped(text: str) -> bool:
-    """A sentence a person reads: starts with a capital, a currency sign or a `{slot}`, at least three words."""
-    stripped = text.strip()
-    if not stripped or not (stripped[0].isupper() or stripped[0] in "{₹"):
-        return False
-    # words are whitespace-separated tokens holding a letter: an identifier such as VERSION_NOT_EXECUTABLE is one
-    return sum(1 for token in stripped.split() if _WORD.search(token)) >= 3
+    """Sentence-like: at least two words (tokens holding a letter) separated by a space, whatever the case."""
+    # an identifier such as VERSION_NOT_EXECUTABLE or a path such as a/b.py is one token, not a sentence
+    return sum(1 for token in text.split() if _WORD.search(token)) >= 2
 
 
 def _call_name(call: ast.Call) -> str:
@@ -95,6 +129,18 @@ def _excluded(chain: list[ast.AST]) -> bool:
     node, parent = chain[-1], chain[-2] if len(chain) > 1 else None
     if isinstance(parent, ast.Expr):
         return True  # docstring or bare expression statement
+    if isinstance(parent, ast.Dict) and any(node is key for key in parent.keys):
+        return True  # a dict key is a lookup name, never shown
+    for index, link in enumerate(chain[:-1]):
+        below = chain[index + 1]
+        if isinstance(link, ast.Subscript) and below is link.slice:
+            return True  # a forward-reference type such as tuple[str, "Decimal | None"]
+        if isinstance(link, ast.AnnAssign) and below is link.annotation:
+            return True
+        if isinstance(link, ast.arg) and below is link.annotation:
+            return True
+        if isinstance(link, (ast.FunctionDef, ast.AsyncFunctionDef)) and below is link.returns:
+            return True
     for ancestor in reversed(chain[:-1]):
         if isinstance(ancestor, ast.Assert):
             return True
@@ -246,3 +292,45 @@ def test_catalogue_file_is_the_one_home() -> None:
     assert scan_source(src, CATALOGUE_FILE) == []
     assert scan_source(src, "errors/gate_slots.py") == []
     assert len(scan_source(src, "errors/other.py")) == 1
+
+
+# --- round 9 part 5: the detector fails closed on lowercase shapes -------------------------------------------------
+
+def _capital_only_shape(text: str) -> bool:
+    """The old, fail-open shape (kept here as the mutant): capital/currency/slot start and three words."""
+    stripped = text.strip()
+    if not stripped or not (stripped[0].isupper() or stripped[0] in "{\u20b9"):
+        return False
+    return sum(1 for token in stripped.split() if _WORD.search(token)) >= 3
+
+
+LOWERCASE_SAMPLES = (
+    'def f():\n    raise TemplateError("leg expired before execution")\n',
+    'def f(x):\n    return f"legs have expired: {x}"\n',
+    'def f(x):\n    return f"leg {x} expired before execution"\n',
+    'def f():\n    return "not available"\n',
+    'LABEL = "rule triggered"\n',
+)
+
+
+@pytest.mark.parametrize("src", LOWERCASE_SAMPLES)
+def test_lowercase_user_text_is_flagged(src: str) -> None:
+    assert len(scan_source(src, "m.py")) == 1
+
+
+@pytest.mark.parametrize("src", LOWERCASE_SAMPLES)
+def test_mutant_capital_letter_condition_lets_lowercase_text_through(src: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mutation: re-add the capital-letter condition -> the lowercase samples escape, so the test above would be red."""
+    monkeypatch.setattr(sys.modules[__name__], "is_sentence_shaped", _capital_only_shape)
+    assert scan_source(src, "m.py") == []
+
+
+def test_single_words_identifiers_keys_and_annotations_are_not_sentences() -> None:
+    src = (
+        'import typing\n'
+        'KEY = {"market data": 1}\n'
+        'def f(a: "Decimal | None", b="sold") -> "list[int] | None":\n'
+        '    x: "weakref.Ref[Foo, Bar]" = None\n'
+        '    return typing.cast(tuple[str, "Decimal | None"], VERSION_NOT_EXECUTABLE)\n'
+    )
+    assert scan_source(src, "m.py") == []
