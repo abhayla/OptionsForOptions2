@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
+from ofo import wording as _wording
 from ofo.wording import check_platform_text, normalise_for_duplicate_check
 
 from .classes import ErrorClass
@@ -149,6 +150,52 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(fields)
 
 
+#: ADR-056 decision (1): "a runtime identity check of the wording checker". The functions of
+#: `ofo.wording` that a message's check runs (directly or through each other), and the data they
+#: read. Captured at import; compared on every build and every read.
+_CHECKER_FUNCTIONS: tuple[str, ...] = (
+    "check_platform_text", "find_advice_wording", "find_q226_bare_words", "tokenise", "_prepare",
+    "_without_exceptions", "is_blank_after_normalising", "normalise_for_wording_scan",
+    "is_nfkc_clean_latin", "normalise_for_duplicate_check",
+)
+_CHECKER_DATA: tuple[str, ...] = (
+    "Q226_BARE_WORDS", "Q226_NAMED_EXCEPTIONS", "ADVICE_WORDING_PATTERNS", "_COMPILED_PATTERNS",
+    "_TOKEN", "_EXCEPTION_PATTERNS", "_NEGATION", "_FORMAT_CATEGORY", "_ALLOWED_PLATFORM_TEXT",
+)
+
+
+class CheckerChanged(RuntimeError):
+    """The wording checker is not the one captured at import: no message is built or shown."""
+
+
+def _make_identity_check() -> Callable[[], None]:
+    """Capture every checker function object AND its `__code__` object, every checker data object,
+    and the two checker functions this module itself calls, at import. The returned function raises
+    `CheckerChanged` (fail closed) when any of them differs from the captured one: a rebound
+    module attribute (`ofo.wording.find_advice_wording = f`), a swapped code object
+    (`find_advice_wording.__code__ = g.__code__`), or a rebound name in this module. The captured
+    values live only in this closure."""
+    functions = tuple((name, getattr(_wording, name)) for name in _CHECKER_FUNCTIONS)
+    codes = tuple((name, fn.__code__) for name, fn in functions)
+    data = tuple((name, getattr(_wording, name)) for name in _CHECKER_DATA)
+    own_check, own_dedupe = check_platform_text, normalise_for_duplicate_check
+    missing = object()
+
+    def verify() -> None:
+        for (name, fn), (_, code) in zip(functions, codes):
+            if getattr(_wording, name, missing) is not fn:
+                raise CheckerChanged(f"ofo.wording.{name} is not the function captured at import")
+            if fn.__code__ is not code:
+                raise CheckerChanged(f"ofo.wording.{name}.__code__ is not the code captured at import")
+        for name, value in data:
+            if getattr(_wording, name, missing) is not value:
+                raise CheckerChanged(f"ofo.wording.{name} is not the object captured at import")
+        if check_platform_text is not own_check or normalise_for_duplicate_check is not own_dedupe:
+            raise CheckerChanged("ofo.errors.model's checker names are not the functions captured at import")
+
+    return verify
+
+
 def _make_machinery() -> tuple[
     Callable[[], object],
     Callable[..., UserFacingError],
@@ -162,6 +209,7 @@ def _make_machinery() -> tuple[
     claimed = False
     issued: "weakref.WeakKeyDictionary[UserFacingError, Mapping[str, Any]]" = weakref.WeakKeyDictionary()
     checked = _checked
+    verify_checker = _make_identity_check()
 
     def claim_render_token() -> object:
         nonlocal claimed
@@ -183,6 +231,7 @@ def _make_machinery() -> tuple[
     ) -> UserFacingError:
         if _token is not token:
             raise ValueError("_build requires render()'s token; build a message with ofo.errors.render()")
+        verify_checker()
         fields = checked({
             "error_class": error_class,
             "code": code,
@@ -202,10 +251,11 @@ def _make_machinery() -> tuple[
             raise ValueError("this UserFacingError was not issued by render() and carries no message")
         # Re-checked on every read: an entry written into the registry by any other route (it is
         # reachable with getclosurevars) is refused before a user sees it.
+        verify_checker()
         return checked(fields)
 
     return claim_render_token, build, fields_of
 
 
 _claim_render_token, _build, _fields_of = _make_machinery()
-del _make_machinery
+del _make_machinery, _make_identity_check
