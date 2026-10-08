@@ -141,6 +141,7 @@ decisions:
   ADR-061: 4a           # IV/Greeks from each expiry's parity forward; payoff stays on spot (F-32)
   ADR-062: 4a           # Save Draft stores strategies durably (REQ-038 AC-5, W-061)
   ADR-063: 4a           # the engine owns the dividend yield and every Greek, theta included (W-060 review)
+  ADR-064: 4a           # closed names for a strategy's risk limits and preferences (W-061 review)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
