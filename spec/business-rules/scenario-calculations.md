@@ -65,7 +65,9 @@ calculation engine.
   price position**, e.g. `22,900 | 22,909 0-P&L | 23,000 | 23,047 CURRENT | 23,100 …` (Q33C, Q33D = C).
 - Two views of the same columns (Q33A = C): **At Expiry** (default; the formulas in §1) and **Estimated Now**
   (model-based value before expiry using time and IV; labelled as an estimate). **Default model (delegated
-  overnight, ADR-045; changeable in configuration):** European Black-Scholes, no dividends, time = calendar days / 365
+  overnight, ADR-045; changeable in configuration):** European Black-Scholes with each expiry's implied dividend
+  yield from put-call parity (ADR-061, 2026-10-08: the engine is given S e^(-qT); fallback to spot labelled
+  "estimated from spot"), time = calendar days / 365
   to expiry at 15:30 IST, continuous risk-free rate as an explicit input, each leg at its own IV (implied from its LTP
   where one exists); a futures leg at a what-if level is valued at level x e^(rT). Model prices are rounded to ₹0.01 and
   Greeks to 4 dp at the boundary; money stays Decimal. Core check: Hull reference S=42, K=40, r=10%, sigma=20%, T=0.5 →

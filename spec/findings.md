@@ -387,3 +387,61 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   unexpired contract) would refuse every daily list after such a clean-up and freeze the catalogue, the failure Q257
   was written to avoid. The bhavcopy alone cannot date the removal (it may omit untraded contracts); Zerodha's list can.
 - Bears on: ADR-057, REQ-053 (Q244, Q257), REQ-054 AC-3, W-057, F-21. Status: **decided** (ADR-058).
+
+## F-31 - Zerodha grants multi-user Kite Connect access only to a production-ready platform, after a demo; the API fee is waived for active traders
+- Read 2026-10-08 by the orchestrator from the owner's mailbox (with the owner's request). Level P1 (Zerodha's own
+  written words).
+- Ticket 403947 (talk@rainmatter.com, reply of 2026-09-29 to the owner's 2026-09-28 request): "To review your request
+  for multi-user access, kindly provide": a complete workflow and how trades are executed; the specific use case;
+  whether the platform is in Production or Beta - "permissions are granted only for production-ready platforms"; "A
+  demo video showcasing the complete functionality"; the website/application link with demo credentials; the API
+  endpoints required (Holdings, Positions, Orders, Portfolio, Trade Book ...); unique and additional features; whether
+  use is limited to Holdings, Portfolio, Positions, Order Book and Trade Book; a SEBI RA registration number if the
+  platform "provides investment research, recommendations, or advisory services"; the market-data endpoints required
+  (Quote, Historical Data, WebSocket). "If required, we will schedule a demo call." The owner's five questions
+  (eligibility, WebSocket data, display to the same client, limits, AP conditions) were not answered.
+- The ticket was set to "resolved" on 2026-10-01 because no reply came within 24 hours; reapplying needs the ticket
+  reopened or a new one.
+- Zerodha email of 2026-10-07 ("Free API subscription for active users"): from October 2026, an account with Rs 2,000
+  or more brokerage in a calendar month gets 500 developer credits (= Rs 500), which renew its Kite Connect app the
+  next month; below Rs 2,000 the regular Rs 500 charge applies.
+- Meaning: Zerodha's answer to Q210/Q258 depends on a working product, so waiting for it before building cannot end;
+  a per-user own-app path (Q210 option) costs an active trader nothing.
+- Bears on: Q210, Q258, Q259, Q261, ADR-034, ADR-051, ADR-054, REQ-015, REQ-052. Status: **decided** (ADR-060).
+
+## F-32 - Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness
+- Measured 2026-10-08 08:38-09:45 IST (window 09:15-09:45) under ADR-051/ADR-060, throwaway script
+  `docs/research/kite-proof-2026-10-07/kite_live_checks.py`, summary (no personal data) in `live-2026-10-08/summary.json`;
+  raw frames kept outside the repo (`D:\Abhay\Ventures\ofo-kite-ticks\2026-10-08\`, 108,113,971 bytes gzip). Level P1.
+- Subscription: 1,091 instruments on ONE connection, full mode (NIFTY 13-Oct 216 + 19-Oct 208, SENSEX 08-Oct 336 +
+  15-Oct 328, NIFTY 50, SENSEX, INDIA VIX); every one ticked at least once; 17,380 frames, 1,214,932 ticks, 1,336
+  heartbeats, 0 unplanned disconnects, 0 error messages (2 text messages, type `instruments_meta`).
+- Feed: the longest gap without a data frame in market hours was 0.51 s (360 samples, 5 s apart). Receive time minus
+  exchange timestamp: median 0.63 s, 95th percentile 1.12 s (includes clock skew).
+- Forced reconnect at 09:30:00.150: reconnected and re-subscribed in 1.628 s, first data 2.171 s, data gap 2.176 s.
+  The gap was shorter than the 3 s feed-stale threshold sampled every 5 s, so the feed-stale flag was NOT exercised
+  live (not proven; to be proven by replaying these frames with an inserted gap).
+- Per-contract quiet periods: 99.5% of inter-tick intervals were 30 s or less, but at any moment a median of 59
+  contracts (max 354 of 1,091) had sent no tick for over 60 s while the feed was live - Kite sends nothing when a
+  contract does not change. So the existing rule "older than 60 s = stale" (backend/ofo/marketdata/health.py
+  `stale_after`) would mark about 5% of a healthy chain stale at any time. Staleness must follow the feed's state for
+  the subscription, not the age of a contract's last change.
+- History: the frame file read back complete (17,380 of 17,380 frames, 1,214,932 ticks). Size about 1.6 MB per
+  minute gzip for 1,091 instruments, so about 600 MB per full trading day per feed.
+- Engine on live prices (7 snapshots 09:18-09:45, the 21 strikes nearest the money per expiry, bid-ask mid): the
+  engine's own IV reprices every option to Rs 0.00; IV 12.1-14.6% (NIFTY), 27-31% (SENSEX expiring that day),
+  12.8-17.3% (SENSEX 15-Oct); INDIA VIX 14.06-14.20; no Greek sign violation. With index SPOT as the input, the call and
+  put at the same strike differ by a median 1.2-10.5 vol points; with the put-call-parity forward, 0.02-0.26 points.
+  The forward sat 12.76-77.06 points below spot. Up to 5 of 42 IV solves per snapshot failed, all deep in-the-money
+  calls priced below the intrinsic value that SPOT implies (e.g. NIFTY 21,950 CE at 531.75 against a floor of 542.37).
+  The forward's spread across strikes was 0.9-13.5 points except SENSEX 15-Oct at 09:18 (97.5 points, the opening
+  minutes), so the forward needs a quality check, not only a strike count.
+- Kite exposes no Greeks or IV anywhere (quote, WebSocket), so "our Greeks against Kite's" cannot be run; the check
+  became internal consistency (above).
+- ADR-030 Phase-0 checks: live ticks 30 min - PASS; full chain rebuild - PASS (every contract ticked; bid and ask on
+  216/216, 208/208, 334/336, 271-328 contracts); Greeks against Kite - NOT POSSIBLE (no Kite Greeks), internal check
+  PASS with the forward, FAIL with spot; stale flagged - PARTIAL (per-contract ages measured; feed-stale not
+  exercised); forced reconnect - PASS (2.2 s); history persisted - PASS; fan-out to 100/1,000 users - NOT RUN (frames
+  recorded for the replay); licence status - recorded in F-23, F-31; next-morning token expiry - running (to be added).
+- Bears on: REQ-048, REQ-049 (AC-2 health), REQ-072 (AC-3), REQ-047 AC-4, REQ-051, ADR-015, ADR-030, ADR-061.
+  Status: **decided** for the Greeks input (ADR-061); **open** for the staleness rule (the data-path work item).
