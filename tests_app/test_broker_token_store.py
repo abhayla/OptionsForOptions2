@@ -26,6 +26,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ofo.broker.session import EndReason, expected_expiry
+from ofo.errors import render
 from ofo_app import broker_token_store as store
 from ofo_app.broker_config import BrokerSettings, load_broker_config
 from ofo_app.broker_crypto import NONCE_BYTES, TokenCipher, TokenDecryptError, associated_data
@@ -454,7 +455,7 @@ async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(
         assert (await _login(ac)).status_code == 302
     async with AsyncClient(transport=ASGITransport(app=_app(maker, user, other_account)), base_url="http://t") as ac:
         refused = await _login(ac)
-    assert (refused.status_code, refused.json()["code"]) == (403, "broker_user_mismatch")
+    assert (refused.status_code, refused.json()) == (403, render("broker_user_mismatch").as_dict())
     (row,) = await _rows(admin_engine, user)
     assert row["ended_at"] is None and row["token_ciphertext"] is not None
 
