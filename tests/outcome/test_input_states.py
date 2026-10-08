@@ -63,8 +63,9 @@ def test_one_leg_stale_is_computed_with_its_label(replayed):
     out = build_outcome(d, _with_leg(snap, STALE_LEG, dataclasses.replace(q, health=DataHealth.STALE)))
     assert out.state is OutcomeState.COMPUTED
     hhmm = q.timestamp.astimezone(IST).strftime("%H:%M")
-    assert _leg(out, STALE_LEG).label == f"stale since {hhmm} IST"
-    assert f"NIFTY26O1323000CE: stale since {hhmm} IST" in out.output_label
+    leg = _leg(out, STALE_LEG)
+    assert leg.label == f"stale since {hhmm} IST" and leg.strike == Decimal("23000")
+    assert f"{leg.symbol}: stale since {hhmm} IST" in out.output_label
 
 
 def test_leg_with_no_quote_keeps_expiry_scenarios_and_shows_no_live_pnl(replayed):
