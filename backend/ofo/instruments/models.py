@@ -35,6 +35,10 @@ BROKER_CODES: frozenset[str] = frozenset({ZERODHA})
 class MissingBrokerRef(ValueError):
     """A contract has no row for the broker (or the broker code is unknown): it cannot be traded there."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def check_broker_code(broker: object) -> str:
     """Fail closed on any broker code outside the one vocabulary."""
@@ -129,4 +133,4 @@ def find_ref(contract: Contract, refs, broker: str) -> BrokerRef:
     for r in refs:
         if r.broker == broker:
             return r
-    raise MissingBrokerRef(f"{contract.id} has no {broker} row; it cannot be traded at {broker}")
+    raise MissingBrokerRef(detail=f"{contract.id} has no {broker} row; it cannot be traded at {broker}")

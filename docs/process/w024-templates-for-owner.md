@@ -155,6 +155,10 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `margin_note_used` | values_seen | margin impact used as the tie-break within each step; unverified against real Zerodha margin behaviour (ADR-017 Q26) |
 | `margin_note_not_used` | values_seen | margin impact unknown — not used |
 | `margin_note_not_needed` | values_seen | margin impact not needed: no step has two legs to order |
+| `flag_unlimited_loss` | values_seen | This strategy's possible loss has no upper limit if the market moves far enough. |
+| `flag_multi_expiry` | values_seen | This strategy has legs on more than one expiry; its exact at-expiry maximum loss cannot be computed. |
+| `flag_charges_unavailable` | values_seen | A charges estimate is not available for this strategy. |
+| `flag_stale_on_exit` | values_seen | Prices shown may be stale — confirm to continue. |
 
 ## Explanation labels
 

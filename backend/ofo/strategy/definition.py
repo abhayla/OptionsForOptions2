@@ -38,6 +38,10 @@ Contract = tuple[str, Instrument, Union[Decimal, None], datetime.date]
 class DefinitionError(ValueError):
     """A strategy definition (or a change to one) is invalid."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
@@ -96,19 +100,19 @@ def _named(values: object, label: str, check) -> tuple:
     elif isinstance(values, tuple):
         items = list(values)
     else:
-        raise DefinitionError(f"{label} must be a mapping or a tuple of (name, value) pairs, got {values!r}")
+        raise DefinitionError(detail=f"{label} must be a mapping or a tuple of (name, value) pairs, got {values!r}")
     if len(items) > MAX_NAMED_VALUES:
-        raise DefinitionError(f"{label}: at most {MAX_NAMED_VALUES} entries, got {len(items)}")
+        raise DefinitionError(detail=f"{label}: at most {MAX_NAMED_VALUES} entries, got {len(items)}")
     seen: set[str] = set()
     out = []
     for item in items:
         if not isinstance(item, tuple) or len(item) != 2:
-            raise DefinitionError(f"{label}: each entry must be a (name, value) pair, got {item!r}")
+            raise DefinitionError(detail=f"{label}: each entry must be a (name, value) pair, got {item!r}")
         name, value = item
         if not isinstance(name, str) or not _NAME.match(name):
-            raise DefinitionError(f"{label}: name must match {_NAME.pattern}, got {name!r}")
+            raise DefinitionError(detail=f"{label}: name must match {_NAME.pattern}, got {name!r}")
         if name in seen:
-            raise DefinitionError(f"{label}: duplicate name {name!r}")
+            raise DefinitionError(detail=f"{label}: duplicate name {name!r}")
         seen.add(name)
         out.append((name, check(name, value)))
     return tuple(sorted(out))

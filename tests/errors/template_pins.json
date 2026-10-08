@@ -606,5 +606,21 @@
   "labels:step": {
     "sha256": "709f6a1550537067f51a0bbcbbbc9c5e5143cd8ede2175cc19691861d8b2406a",
     "reviewed": "pending owner read"
+  },
+  "explanation:flag_unlimited_loss": {
+    "sha256": "bbcba16f62412da13fab75d67b9e8521396ddd519846e3775eca9835bbc4839b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_multi_expiry": {
+    "sha256": "be35ccb08f119e2bf63048158bf4a222c4ea00f626d296c96eb2794d54f361ae",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_charges_unavailable": {
+    "sha256": "3277b725277cbd197c1b92b8c2132ff784a3b34004ad9113557759a51c3379b7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_stale_on_exit": {
+    "sha256": "11d6c754afbdf3fdbb48ee8d9ffd43b12331c45edc65ccae979b265f3982dea6",
+    "reviewed": "pending owner read"
   }
 }

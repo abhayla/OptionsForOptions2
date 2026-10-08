@@ -296,6 +296,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("margin_note_not_used", "values_seen", "margin impact unknown — not used"),
     ExplanationTemplate("margin_note_not_needed", "values_seen",
                         "margin impact not needed: no step has two legs to order"),
+    # Pre-execution risk flags (ofo.execution.safety): warnings shown beside a passed gate, not errors.
+    ExplanationTemplate("flag_unlimited_loss", "values_seen",
+                        "This strategy's possible loss has no upper limit if the market moves far enough."),
+    ExplanationTemplate("flag_multi_expiry", "values_seen",
+                        "This strategy has legs on more than one expiry; its exact at-expiry maximum loss cannot "
+                        "be computed."),
+    ExplanationTemplate("flag_charges_unavailable", "values_seen",
+                        "A charges estimate is not available for this strategy."),
+    ExplanationTemplate("flag_stale_on_exit", "values_seen", "Prices shown may be stale — confirm to continue."),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
 )

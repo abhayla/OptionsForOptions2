@@ -30,6 +30,7 @@ from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, El
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
+from ofo.errors.explanations import render_explanation
 
 logger = logging.getLogger("ofo.execution.safety")
 
@@ -121,7 +122,7 @@ class Flag:
     message: str
 
     def __post_init__(self) -> None:
-        shared_wording.check_platform_text(self.message, f"Flag {getattr(self.code, 'value', self.code)} message")
+        shared_wording.check_platform_text(self.message, f"flag message of {getattr(self.code, 'value', self.code)}")
 
 
 @dataclass(frozen=True)
@@ -434,14 +435,11 @@ def _risk_flags(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Flag], 
     elif strategy.is_single_expiry:
         max_loss = strategy_metrics(strategy).max_loss
         if max_loss is UNLIMITED:
-            flags.append(Flag(FlagCode.UNLIMITED_LOSS,
-                              "This strategy's possible loss has no upper limit if the market moves far enough."))
+            flags.append(Flag(FlagCode.UNLIMITED_LOSS, render_explanation("flag_unlimited_loss")))
     else:
-        flags.append(Flag(FlagCode.MULTI_EXPIRY,
-                          "This strategy has legs on more than one expiry; its exact at-expiry maximum loss cannot "
-                          "be computed."))
+        flags.append(Flag(FlagCode.MULTI_EXPIRY, render_explanation("flag_multi_expiry")))
     if ctx.charges_estimate is None:
-        flags.append(Flag(FlagCode.CHARGES_UNAVAILABLE, "A charges estimate is not available for this strategy."))
+        flags.append(Flag(FlagCode.CHARGES_UNAVAILABLE, render_explanation("flag_charges_unavailable")))
     return flags, max_loss
 
 
@@ -454,7 +452,7 @@ EXIT_NOT_REQUIRED: frozenset[CheckCode] = frozenset({
     CheckCode.DATA_UNHEALTHY,
     CheckCode.ENTITLEMENT_REQUIRED,
 })
-STALE_ON_EXIT = "Prices shown may be stale — confirm to continue."
+STALE_ON_EXIT = render_explanation("flag_stale_on_exit")
 
 
 def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:

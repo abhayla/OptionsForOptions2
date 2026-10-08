@@ -89,7 +89,7 @@ class Resolution:
 
 def _require_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT:
-        raise ReconciliationError(f"{label} must be a non-empty string of at most {MAX_TEXT} chars, got {value!r}")
+        raise ReconciliationError(detail=f"{label} must be a non-empty string of at most {MAX_TEXT} chars, got {value!r}")
     return value
 
 
