@@ -38,7 +38,7 @@ def test_ac6_estimated_now_labelled_estimate_from_engine(golden, settings):
     assert values.assumptions.model == MODEL
     assert values.assumptions.ivs == tuple(leg.iv for leg in golden.legs)
     for level, total in zip(values.levels, values.totals):
-        assert total == estimate_now(golden, level).total, level
+        assert total == estimate_now(golden.inputs, level).total, level
     # An estimate before expiry is not the expiry number (time value remains 10 days out).
     exact = scenario_values(ls, golden, View.AT_EXPIRY)
     at = values.levels.index(D("23047"))
@@ -72,7 +72,7 @@ def test_ac6_estimate_at_exact_breakeven_uses_quoted_level():
     values = scenario_values(ls, inputs, View.ESTIMATED_NOW)
     at = values.levels.index(D("23100.625"))
     assert values.estimated_levels[at] == D("23100.62")
-    assert values.totals[at] == estimate_now(inputs, D("23100.62")).total
+    assert values.totals[at] == estimate_now(inputs.inputs, D("23100.62")).total
     assert scenario_values(ls, inputs, View.AT_EXPIRY).totals[at] == D("0")
 
 
@@ -81,6 +81,6 @@ def test_views_fail_closed(golden, settings):
     ls = build_level_set(golden, settings.for_index("NIFTY"))
     with pytest.raises(ValueError, match="view must be a View"):
         scenario_values(ls, golden, "estimated_now")
-    other = dataclasses.replace(golden, underlying_level=D("23100"))
+    other = nifty_input(golden.legs, spot=D("23100"))
     with pytest.raises(ValueError, match="different strategy input"):
         scenario_values(ls, other, View.AT_EXPIRY)

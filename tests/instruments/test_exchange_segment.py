@@ -26,7 +26,8 @@ COLLISION_ROWS = (
 
 
 def test_segment_vocabulary_is_closed_and_zerodha_exchange_maps_into_it() -> None:
-    assert EXCHANGE_SEGMENTS == frozenset({"NSE_FO", "BSE_FO"})
+    # REQ-072 AC-1 (W-060) adds the two index segments for the NIFTY 50 / SENSEX rows only
+    assert EXCHANGE_SEGMENTS == frozenset({"NSE_FO", "BSE_FO", "NSE_INDEX", "BSE_INDEX"})
     assert ZERODHA_EXCHANGE_TO_SEGMENT == {"NFO": "NSE_FO", "BFO": "BSE_FO"}
     for bad in ("NFO", "BFO", "NSE", "nse_fo", "", None):
         with pytest.raises(ValueError):
@@ -37,17 +38,18 @@ def test_segment_vocabulary_is_closed_and_zerodha_exchange_maps_into_it() -> Non
 
 def test_the_real_nse_1001_collision_rows_are_skipped_as_outside_v1_never_loaded() -> None:
     parsed = parse_instruments_stream(io.StringIO(HEADER + COLLISION_ROWS))
-    assert parsed.skipped_outside_v1 == 2
-    assert [r.id for r in parsed] == [InstrumentId("NSE_FO", 73908)]
+    # W-060: the NIFTY 50 INDICES row is now loaded as (NSE_INDEX, 1001); the cash row sharing 1001 is still skipped
+    assert parsed.skipped_outside_v1 == 1
+    assert [r.id for r in parsed] == [InstrumentId("NSE_INDEX", 1001), InstrumentId("NSE_FO", 73908)]
     cat = Catalogue()
-    assert cat.load(parsed) == 1
-    assert [e.ref("zerodha").broker_symbol for e in cat.all_entries()] == ["NIFTY26SEP23150CE"]
+    assert cat.load(parsed) == 2
+    assert sorted(e.ref("zerodha").broker_symbol for e in cat.all_entries()) == ["NIFTY 50", "NIFTY26SEP23150CE"]
 
 
 def test_an_outside_v1_row_with_garbage_never_stops_the_load_but_an_in_scope_one_does() -> None:
     garbage_nse = "x,y,Z,Z,0,not-a-date,abc,,,EQ,NSE,NSE\n"
     parsed = parse_instruments_stream(io.StringIO(HEADER + garbage_nse + COLLISION_ROWS))
-    assert parsed.skipped_outside_v1 == 3 and len(parsed) == 1
+    assert parsed.skipped_outside_v1 == 2 and len(parsed) == 2  # W-060: the NIFTY 50 index row is loaded
     broken_nfo = "18920451,,NIFTY26SEP23200CE,NIFTY,0,2026-09-29,23200,0.05,65,CE,NFO-OPT,NFO\n"
     with pytest.raises(ValueError, match="exchange_token"):
         parse_instruments_stream(io.StringIO(HEADER + broken_nfo))

@@ -33,8 +33,8 @@ def listed():
 
 
 def all_instrument_ids(provider_listed) -> list[str]:
-    ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in provider_listed]
-    return ids + ["INDEX:NIFTY 50", "INDEX:SENSEX", "INDEX:INDIA VIX"]
+    # the NIFTY 50 / SENSEX index rows are catalogue rows (NSE_INDEX / BSE_INDEX, W-060); INDIA VIX is not listed
+    return [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in provider_listed]
 
 
 def replay(provider: KiteProvider, clock: Clock, frames=None) -> datetime.datetime:

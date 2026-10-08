@@ -5,7 +5,8 @@ from decimal import Decimal as D
 import pytest
 
 from ofo.engine.black_scholes import IST
-from ofo.engine.inputs import LegInput, StrategyInput
+from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
+from ofo.rules.inputs import DataHealth
 from ofo.engine.legs import Action, Instrument
 
 EXPIRY = datetime.date(2026, 10, 27)
@@ -43,7 +44,7 @@ def leg_input(action, instrument, strike, entry, ltp=None, iv=None, **overrides)
 def condor_inputs() -> StrategyInput:
     return StrategyInput(
         underlying="NIFTY",
-        underlying_level=SPOT,
+        spot=SpotReading(level=SPOT, at=VALUATION, health=DataHealth.AVAILABLE),
         valuation_time=VALUATION,
         rate=RATE,
         legs=tuple(leg_input(*row) for row in IRON_CONDOR),

@@ -55,8 +55,17 @@ def test_estimated_now_line_exact_text(condor_inputs):
     """AC-5: the Estimated Now result renders as a labelled, approximate line with its model, IVs, rate and time."""
     text = describe_estimate(estimate_now(condor_inputs, D("23500")), "NIFTY")
     assert text == (
-        "Estimated P&L now at NIFTY 23,500: ~−₹1,009 (estimate; assumes Black-Scholes (European, no dividends) "
-        "model; IV 11.7%, 10.9%, 9.3%, 10.2%; rate 6.5%; valued 2026-10-17 15:30 IST)"
+        "Estimated P&L now at NIFTY 23,500: ~−₹1,009 (estimate; assumes Black-Scholes-Merton (European, each "
+        "expiry's implied dividend yield from put-call parity; \"estimated from spot\" when the forward is "
+        "unavailable) model; IV 11.7%, 10.9%, 9.3%, 10.2%; rate 6.5%; valued 2026-10-17 15:30 IST)"
     )
     for banned in ("guarantee", "you should", "best trade"):
         assert banned not in text.lower()
+
+
+def test_estimate_model_text_names_the_implied_yield_never_no_dividends():
+    """ADR-061/ADR-063: the model stated beside Estimated Now is the one the engine runs."""
+    from ofo.engine.estimate import MODEL
+    assert "Black-Scholes-Merton" in MODEL and "implied dividend yield" in MODEL and "put-call parity" in MODEL
+    assert "estimated from spot" in MODEL
+    assert "no dividend" not in MODEL.lower()
