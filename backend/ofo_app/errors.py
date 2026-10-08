@@ -24,10 +24,12 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -57,16 +59,47 @@ STATUS_BY_CLASS: dict[ErrorClass, int] = {
 KEPT_HEADERS: frozenset[str] = frozenset({"allow", "www-authenticate"})
 
 
+#: Sent on every error body (W-058 merge): an error answer is never cached, and the page it is shown on never sends
+#: its address on (the Zerodha callback's address carries the single-use request token in its query).
+NO_LEAK_HEADERS: Mapping[str, str] = MappingProxyType({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
 def _body(message: UserFacingError, status: int, headers: Mapping[str, str] | None = None) -> JSONResponse:
-    return JSONResponse(status_code=status, content=message.as_dict(), headers=dict(headers or {}))
+    return JSONResponse(status_code=status, content=message.as_dict(), headers={**NO_LEAK_HEADERS, **(headers or {})})
 
 
 def typed_response(model: ApiModel, status_code: int) -> JSONResponse:
     """A success body at a non-default status (e.g. /health's 503), built only from a typed `ApiModel`, whose fields
-    cannot hold free text (ofo_app/api_models.py). The one other place a Response is constructed."""
+    cannot hold free text (ofo_app/api_models.py). One of the two other places a Response is constructed."""
     if not isinstance(model, ApiModel):
         raise TypeError(f"typed_response needs an ApiModel, got {type(model).__name__}")
     return JSONResponse(status_code=status_code, content=model.model_dump(mode="json"))
+
+
+@dataclass(frozen=True)
+class RedirectCookie:
+    """A cookie a redirect sets (``value`` given) or clears (``value`` None). Always HttpOnly and SameSite=Lax."""
+
+    name: str
+    path: str
+    value: str | None = None
+    max_age: int | None = None
+    secure: bool = False
+
+
+def typed_redirect(model: ApiModel, location: str, cookie: RedirectCookie | None = None) -> RedirectResponse:
+    """A 302 with NO body (W-058: the Zerodha login link and the callback's landing): the route's declared typed
+    `ApiModel` names which redirect it is, and the answer carries only the `Location`, the no-leak headers and at most
+    one cookie. The other place a Response is constructed outside the error handlers; it holds no text a user reads."""
+    if not isinstance(model, ApiModel):
+        raise TypeError(f"typed_redirect needs an ApiModel, got {type(model).__name__}")
+    response = RedirectResponse(location, status_code=302, headers=dict(NO_LEAK_HEADERS))
+    if cookie is not None and cookie.value is None:
+        response.delete_cookie(cookie.name, path=cookie.path, secure=cookie.secure, httponly=True, samesite="lax")
+    elif cookie is not None:
+        response.set_cookie(cookie.name, cookie.value, max_age=cookie.max_age, path=cookie.path, httponly=True,
+                            secure=cookie.secure, samesite="lax")
+    return response
 
 
 def _reference() -> str:

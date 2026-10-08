@@ -19,6 +19,7 @@ No automatic retry: a request token is single use (ADR-016 spirit; no silent re-
 from __future__ import annotations
 
 import logging
+from typing import Protocol
 
 import httpx
 
@@ -43,7 +44,13 @@ class KiteTokenException(Exception):
     """Kite answered TokenException on an authenticated call: the access token no longer works."""
 
 
-def _error_type(response: httpx.Response) -> str | None:
+class _JsonAnswer(Protocol):
+    """Kite's HTTP answer, as far as reading its error type needs (structural: any object with ``json()``)."""
+
+    def json(self) -> object: ...
+
+
+def _error_type(response: _JsonAnswer) -> str | None:
     try:
         body = response.json()
     except ValueError:

@@ -830,5 +830,49 @@
   "explanation:strike_part": {
     "sha256": "df724f7b312f4aca5800ce73e7718683070a5c9da44f8a115ef3f03f10069da1",
     "reviewed": "pending owner read"
+  },
+  "broker_login_not_completed": {
+    "sha256": "35ac62f3dcfd7ee915488b7df6849a9bf0d94410d4aa0c0d3be653a8faf43d32",
+    "reviewed": "pending owner read"
+  },
+  "broker_state_invalid": {
+    "sha256": "e4968f1d86d46c67f30f1fb6ee059b9df418a88204c051a0fed99d36d47f3d0e",
+    "reviewed": "pending owner read"
+  },
+  "broker_login_busy": {
+    "sha256": "5caa66f285084c526812b3bcec1c282b3877d3613c8d31e0e8e76117058cf3a8",
+    "reviewed": "pending owner read"
+  },
+  "broker_user_mismatch": {
+    "sha256": "ede2af92e443bea5d293016aa91191ea7ece443ebbf029510ca11b81ca849065",
+    "reviewed": "pending owner read"
+  },
+  "kite_no_user_id": {
+    "sha256": "1eca0489b87630b6063c5fa619ae88d18a2d2d713475f26efb0f0a328cd1b807",
+    "reviewed": "pending owner read"
+  },
+  "kite_no_access_token": {
+    "sha256": "4edecd4d7db5802731077124359a965d206f40701c51be96ead3231b99e7e7a7",
+    "reviewed": "pending owner read"
+  },
+  "kite_token_exception": {
+    "sha256": "568cf92f0fa96de686945447610186d2107cdd65d578557f51b3492c3473f5c3",
+    "reviewed": "pending owner read"
+  },
+  "kite_input_exception": {
+    "sha256": "43302e5c2d5b151dad1910f483b3a274845aa1bc6415f905483b866ea00d2fa6",
+    "reviewed": "pending owner read"
+  },
+  "kite_refused": {
+    "sha256": "1b2432b0bc455ed487fc2a11cd5d52c0e71399419129a97260ca32d48c052a01",
+    "reviewed": "pending owner read"
+  },
+  "kite_unavailable": {
+    "sha256": "a1e7bf034ecb374d0b5ce0418c31b8c86577c30ac96905ab88d65a55ecd3bab9",
+    "reviewed": "pending owner read"
+  },
+  "broker_store_failed": {
+    "sha256": "ba71bfcd26c7ebea01cd1e0b4617fadfde5122b02e22e564476748f87fdd3e18",
+    "reviewed": "pending owner read"
   }
 }
