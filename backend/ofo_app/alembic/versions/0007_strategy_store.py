@@ -75,7 +75,7 @@ HISTORY_TRIGGER = "strategy_history_guard"
 
 UNDERLYINGS = ("NIFTY", "SENSEX")
 STATUSES = ("draft",)
-FIXED_COLUMNS = ("id", "user_ref", "underlying", "status", "created_at", "definition_schema_version")
+FIXED_COLUMNS = ("id", "user_ref", "underlying", "status", "created_at", "definition_schema_version", "revision")
 
 STRATEGIES_INSERT_COLUMNS = ("user_ref", "underlying", "definition", "definition_schema_version")
 STRATEGIES_UPDATE_COLUMNS = ("definition", "updated_at")
@@ -117,6 +117,7 @@ def _strategies_guard_sql() -> str:
                 NEW.created_at := clock_timestamp();
                 NEW.updated_at := NEW.created_at;
                 NEW.status := 'draft';
+                NEW.revision := 1;
                 RETURN NEW;
             END IF;
             IF {changed} THEN
@@ -128,6 +129,9 @@ def _strategies_guard_sql() -> str:
                     ORDER BY h.seq DESC LIMIT 1) IS DISTINCT FROM OLD.definition THEN
                 RAISE EXCEPTION 'strategies: the definition of strategy % changes only after its history entry', OLD.id
                     USING ERRCODE = '{STRATEGY_SQLSTATE}';
+            END IF;
+            IF NEW.definition IS DISTINCT FROM OLD.definition THEN
+                NEW.revision := OLD.revision + 1;
             END IF;
             NEW.updated_at := clock_timestamp();
             RETURN NEW;
@@ -259,6 +263,7 @@ def upgrade() -> None:
             updated_at                TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
             definition                JSONB       NOT NULL,
             definition_schema_version INTEGER     NOT NULL CHECK (definition_schema_version > 0),
+            revision                  INTEGER     NOT NULL DEFAULT 1 CHECK (revision > 0),
             CONSTRAINT strategies_definition_underlying CHECK (
                 (definition ->> 'underlying') IS NOT DISTINCT FROM underlying),{_definition_checks("strategies")}
         )

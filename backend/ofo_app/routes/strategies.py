@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -67,6 +67,11 @@ class StrategyIn(BaseModel):
     _no_live = model_validator(mode="before")(_refuse_live_state)
 
 
+class StrategyUpdateIn(StrategyIn):
+    expected_revision: int = Field(gt=0, description="The revision this change was based on (409 revision_conflict "
+                                                     "if another change landed since)")
+
+
 def _error(status: int, code: str, detail: Optional[str] = None) -> JSONResponse:
     content = {"error": code} if detail is None else {"error": code, "detail": detail}
     return JSONResponse(status_code=status, content=content)
@@ -78,17 +83,20 @@ def _refused(exc: Exception, form_status: int) -> JSONResponse:
             return _error(404, store.NOT_FOUND)
         if exc.code == store.HISTORY_NOT_FOUND:
             return _error(404, exc.code)
+        if exc.code == store.REVISION_CONFLICT:
+            return _error(409, exc.code, exc.detail)
         return _error(422, exc.code, exc.detail)
     assert isinstance(exc, sf.StoredFormError)
     return _error(form_status, exc.code, exc.detail)
 
 
 def _strategy_out(stored: store.StoredStrategy) -> dict[str, Any]:
-    return {"id": stored.id, "status": stored.status, "created_at": stored.created_at.isoformat(),
+    return {"id": stored.id, "status": stored.status, "revision": stored.revision, "created_at": stored.created_at.isoformat(),
             "updated_at": stored.updated_at.isoformat(), "definition": sf.to_document(stored.saved)}
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
+    sf.refuse_live_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # before any query
     limits = {name: sf.decimal_from_text(value, f"risk limit {name!r}") for name, value in body.risk_limits.items()}
     return await store.build_definition(
         db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity) for leg in body.legs],
@@ -136,10 +144,12 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.put("/strategies/{strategy_id}")
-async def update_strategy(strategy_id: int, body: StrategyIn, db: Any = Depends(get_db),
+async def update_strategy(strategy_id: int, body: StrategyUpdateIn, db: Any = Depends(get_db),
                           user_ref: str = Depends(current_user_ref)) -> JSONResponse:
     async def work():
-        return _strategy_out(await store.update(db, user_ref, strategy_id, await _definition(db, body)))
+        store.check_strategy_id(strategy_id)  # before the catalogue is read
+        return _strategy_out(await store.update(db, user_ref, strategy_id, await _definition(db, body),
+                                                expected_revision=body.expected_revision))
     return await _run(db, work, form_status=422)
 
 
@@ -152,8 +162,8 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.post("/strategies/{strategy_id}/restore/{seq}")
-async def restore_strategy(strategy_id: int, seq: int, db: Any = Depends(get_db),
-                           user_ref: str = Depends(current_user_ref)) -> JSONResponse:
+async def restore_strategy(strategy_id: int, seq: int, expected_revision: int = Query(gt=0),
+                           db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> JSONResponse:
     async def work():
-        return _strategy_out(await store.restore(db, user_ref, strategy_id, seq))
+        return _strategy_out(await store.restore(db, user_ref, strategy_id, seq, expected_revision=expected_revision))
     return await _run(db, work, form_status=409)

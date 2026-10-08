@@ -58,7 +58,7 @@ INSUFFICIENT_PRIVILEGE = "42501"
 CHECK_VIOLATION = "23514"
 LIVE_COLUMN_WORDS = {"ltp", "bid", "ask", "volume", "oi", "iv", "delta", "gamma", "theta", "vega", "pnl", "margin",
                      "spot", "price"}  # the brief's list; LIVE_STATE_NAMES (from the LiveState classes) is checked too
-STRATEGY_COLUMNS = {"id", "user_ref", "underlying", "status", "created_at", "updated_at", "definition",
+STRATEGY_COLUMNS = {"id", "user_ref", "underlying", "status", "created_at", "updated_at", "definition", "revision",
                     "definition_schema_version"}
 HISTORY_COLUMNS = {"id", "strategy_id", "seq", "at", "change_summary", "definition", "definition_schema_version"}
 
@@ -119,9 +119,45 @@ def _client(app) -> AsyncClient:
 # ---------------------------------------------------------------------------------------------------------------
 
 
-async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new_engine(app_engine):
+async def _digests(admin_engine) -> dict[str, str]:
+    """One md5 per public table over every row: equal before and after means the test left nothing behind."""
+    async with admin_engine.connect() as conn:
+        names = [r[0] for r in await conn.execute(text(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY 1"))]
+        return {name: (await conn.execute(text(
+            f"SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) FROM public.\"{name}\" x"
+        ))).scalar_one() for name in names}
+
+
+async def _remove_own_rows(admin_engine, contract_ids: list[int], user_ref: str) -> None:
+    """Deletes exactly this test's rows - its strategies and their history, its contracts and every row that names
+    them - in one owner transaction with the guard triggers off for that transaction only (session_replication_role
+    is LOCAL; CI's admin role is the superuser that ran the migrations). Nothing else is touched (digest check)."""
+    async with admin_engine.connect() as conn:
+        async with conn.begin():
+            await conn.execute(text("SET LOCAL session_replication_role = replica"))
+            await conn.execute(text("DELETE FROM public.strategy_history WHERE strategy_id IN "
+                                    "(SELECT id FROM public.strategies WHERE user_ref = :u)"), {"u": user_ref})
+            await conn.execute(text("DELETE FROM public.strategies WHERE user_ref = :u"), {"u": user_ref})
+            tables = [r[0] for r in await conn.execute(text(
+                "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' "
+                "AND column_name = 'contract_id' ORDER BY 1"))]
+            for table in tables:
+                await conn.execute(text(f'DELETE FROM public."{table}" WHERE contract_id = ANY(:ids)'),
+                                   {"ids": contract_ids})
+            await conn.execute(text("DELETE FROM public.catalogue_contracts WHERE id = ANY(:ids)"),
+                               {"ids": contract_ids})
+
+
+@pytest.mark.parametrize("run", [1, 2], ids=["first-run", "second-run-same-database"])
+async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new_engine(app_engine, admin_engine,
+                                                                                         run):
+    """Runs twice on the same database: the second run would fail ``added == 5`` if the first left its rows."""
     url = os.environ["TEST_DATABASE_URL"]
     user = _user()
+    before = await _digests(admin_engine)
+    ids: dict[str, int] = {}
     async with app_engine.connect() as conn:
         async with conn.begin():
             result = await apply_update(conn, _fixture_rows(SYMBOLS), as_of=AS_OF)
@@ -130,11 +166,11 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
         strike_text = dict((await conn.execute(text(
             "SELECT b.broker_symbol, c.strike::text FROM public.catalogue_contracts c JOIN public.broker_instruments b "
             "ON b.contract_id = c.id WHERE c.id = ANY(:ids)"), {"ids": list(ids.values())})).all())
-    assert set(ids) == set(SYMBOLS)
-    assert all(Decimal(strike_text[s]) == strike for s, _, _, strike, _ in IRON_CONDOR)
-    expected = _expected_document(ids, strike_text)
     second = None
     try:
+        assert set(ids) == set(SYMBOLS)
+        assert all(Decimal(strike_text[s]) == strike for s, _, _, strike, _ in IRON_CONDOR)
+        expected = _expected_document(ids, strike_text)
         # Save Draft
         maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
         async with _client(_app(maker, user)) as ac:
@@ -159,15 +195,17 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
             listed = await ac.get("/strategies")
             assert [s["id"] for s in listed.json()["strategies"]] == [strategy_id]
             # edit one strike (the bought call 23000 -> 23100) and save: one history entry, holding the original
-            edited = await ac.put(f"/strategies/{strategy_id}", json=_body(ids, wing=WING))
+            edited = await ac.put(f"/strategies/{strategy_id}", json=_body(ids, wing=WING, expected_revision=1))
             assert edited.status_code == 200, edited.text
             assert edited.json()["definition"]["legs"][1]["contract_id"] == ids[WING]
+            assert edited.json()["revision"] == 2
             history = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
             assert [(e["seq"], e["definition"]) for e in history] == [(1, expected)]
             assert "23000" in history[0]["change_summary"] and "23100" in history[0]["change_summary"]
             # restore entry 1: the original definition again; the edited one is kept as entry 2
-            restored = await ac.post(f"/strategies/{strategy_id}/restore/1")
+            restored = await ac.post(f"/strategies/{strategy_id}/restore/1", params={"expected_revision": 2})
             assert restored.status_code == 200 and restored.json()["definition"] == expected
+            assert restored.json()["revision"] == 3
             history = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
             assert [e["seq"] for e in history] == [1, 2]
             assert history[0]["definition"] == expected
@@ -176,19 +214,11 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
         async with second.connect() as conn:
             assert await _columns(conn) == {"strategies": STRATEGY_COLUMNS, "strategy_history": HISTORY_COLUMNS}
     finally:
-        engine = second or app_engine
-        async with engine.connect() as conn:
-            async with conn.begin():
-                # The database refuses retiring a contract before its expiry by its own clock, so the five are
-                # delisted through the catalogue's admin path (ADR-058/059: force with a reason and an actor, which
-                # appends an ADMIN_CHANGE_RECORDED audit event). Delisted = not live; nothing is deleted.
-                # as_of is NOW: the audit event's timestamp must be within 60 s of the database clock (ADR-023 Q256).
-                # After 2026-10-13 the same load simply retires the five (their expiry has passed).
-                await apply_update(conn, [], as_of=datetime.now(IST), force=True, actor="test-w061-core-proof",
-                                   reason="W-061 core proof cleanup: the five test contracts leave the live catalogue")
-            assert await _ids(conn) == {}
         if second is not None:
             await second.dispose()
+        await _remove_own_rows(admin_engine, list(ids.values()), user)
+    # no other contract was delisted or touched, and nothing of this test is left (run-order independent)
+    assert await _digests(admin_engine) == before, f"run {run} left rows behind"
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -267,7 +297,7 @@ async def test_ac5_the_guard_refuses_even_the_owner(admin_engine, sql):
         trans = await conn.begin()
         try:
             ids, stored = await _with_draft(conn, _user())
-            await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING))
+            await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING), expected_revision=1)
             await _expect_refused(conn, sql, GUARD_SQLSTATE, {"id": stored.id})
         finally:
             await trans.rollback()
@@ -327,12 +357,12 @@ async def test_ac5_update_writes_the_previous_definition_to_history_then_the_new
         try:
             ids, stored = await _with_draft(conn, _user())
             assert await _history_rows(conn, stored.id) == []
-            edited = await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING))
+            edited = await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING), expected_revision=1)
             assert edited.saved.contract_ids[1] == ids[WING]
             (entry,) = await store.history(conn, stored.user_ref, stored.id)
             assert entry.seq == 1 and entry.saved == stored.saved
             # saving the same definition again is not a change: no entry
-            await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING))
+            await store.update(conn, stored.user_ref, stored.id, await _saved_in(conn, stored.user_ref, ids, WING), expected_revision=2)
             assert len(await _history_rows(conn, stored.id)) == 1
         finally:
             await trans.rollback()
@@ -345,15 +375,15 @@ async def test_ac5_restore_is_a_new_entry_and_never_deletes_history(app_engine):
         try:
             ids, stored = await _with_draft(conn, _user())
             user = stored.user_ref
-            await store.update(conn, user, stored.id, await _saved_in(conn, user, ids, WING))
+            await store.update(conn, user, stored.id, await _saved_in(conn, user, ids, WING), expected_revision=1)
             before = await _history_rows(conn, stored.id)
-            restored = await store.restore(conn, user, stored.id, 1)
+            restored = await store.restore(conn, user, stored.id, 1, expected_revision=2)
             assert restored.saved == stored.saved
             after = await _history_rows(conn, stored.id)
             assert after[:1] == before and [r[0] for r in after] == [1, 2]
             assert after[1][1] == "restored entry 1"
             with pytest.raises(store.StrategyStoreError) as err:
-                await store.restore(conn, user, stored.id, 9)
+                await store.restore(conn, user, stored.id, 9, expected_revision=3)
             assert err.value.code == store.HISTORY_NOT_FOUND
         finally:
             await trans.rollback()
@@ -371,7 +401,7 @@ async def test_ac5_an_error_inside_update_stores_nothing(app_engine, monkeypatch
                 raise RuntimeError("injected after the history insert")
             monkeypatch.setattr(store, "_write_definition", boom)
             with pytest.raises(RuntimeError, match="injected"):
-                await store.update(conn, stored.user_ref, stored.id, new)
+                await store.update(conn, stored.user_ref, stored.id, new, expected_revision=1)
             assert await _history_rows(conn, stored.id) == []
             assert (await store.load(conn, stored.user_ref, stored.id)).saved == stored.saved
         finally:
@@ -471,6 +501,12 @@ class _NoDb:
     async def execute(self, *a, **k):
         raise AssertionError("the request reached the database")
 
+    async def commit(self):
+        raise AssertionError("a refused request committed")
+
+    async def rollback(self):  # the route rolls back on every refusal
+        return None
+
 
 def _offline_app():
     app = create_app()
@@ -505,3 +541,51 @@ async def test_ac5_a_body_with_a_live_state_or_unknown_field_is_refused_not_drop
     live = [k for k in list(body) + list(body["legs"][0]) if k in sf.LIVE_STATE_NAMES]
     if live:
         assert "live_state_field" in response.text and live[0] in response.text
+
+
+@pytest.mark.parametrize("maps", [{"risk_limits": {"ltp": "101.5"}}, {"preferences": {"spot": "22950.35", "iv": "0.12"}}],
+                         ids=["risk_limits", "preferences"])
+@pytest.mark.parametrize("method, path, extra", [("POST", "/strategies", {}),
+                                                 ("PUT", "/strategies/1", {"expected_revision": 1})])
+async def test_ac5_a_live_state_name_inside_a_map_is_refused_by_the_api(maps, method, path, extra):
+    """Review round 2 MAJOR: a live-market name used as a risk-limit or preference name is 422, before any query."""
+    async with _client(_offline_app()) as ac:
+        response = await ac.request(method, path, json=BODY | maps | extra)
+    assert response.status_code == 422 and response.json()["error"] == sf.LIVE_STATE_FIELD, response.text
+
+
+BEYOND_BIGINT = 2**63  # one past strategies.id's range
+
+
+@pytest.mark.parametrize("method, path, body", [
+    ("GET", f"/strategies/{BEYOND_BIGINT}", None),
+    ("GET", f"/strategies/{BEYOND_BIGINT}/history", None),
+    ("PUT", f"/strategies/{BEYOND_BIGINT}", BODY | {"expected_revision": 1}),
+    ("POST", f"/strategies/{BEYOND_BIGINT}/restore/1?expected_revision=1", None),
+])
+async def test_ac5_an_id_beyond_the_bigint_range_is_not_found_without_a_query(method, path, body):
+    async with _client(_offline_app()) as ac:
+        response = await ac.request(method, path, json=body)
+    assert (response.status_code, response.json()) == (404, {"error": "not_found"})
+
+
+async def test_ac5_a_change_based_on_an_old_revision_is_refused_and_writes_nothing(app_engine):
+    """Two edits from the same loaded revision: the second is refused (409 revision_conflict), nothing written."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, _user())
+            assert stored.revision == 1
+            first = await store.update(conn, stored.user_ref, stored.id,
+                                       await _saved_in(conn, stored.user_ref, ids, WING), expected_revision=1)
+            assert first.revision == 2
+            history = await _history_rows(conn, stored.id)
+            for call in (store.update(conn, stored.user_ref, stored.id, stored.saved, expected_revision=1),
+                         store.restore(conn, stored.user_ref, stored.id, 1, expected_revision=1)):
+                with pytest.raises(store.StrategyStoreError) as err:
+                    await call
+                assert err.value.code == store.REVISION_CONFLICT
+            assert await _history_rows(conn, stored.id) == history
+            assert (await store.load(conn, stored.user_ref, stored.id)).saved == first.saved
+        finally:
+            await trans.rollback()

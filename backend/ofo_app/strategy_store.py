@@ -36,6 +36,7 @@ from ofo_app.catalogue_store import load_contract
 NOT_FOUND = "not_found"
 HISTORY_NOT_FOUND = "history_entry_not_found"
 UNDERLYING_FIXED = "underlying_fixed"
+REVISION_CONFLICT = "revision_conflict"
 
 
 class StrategyStoreError(ValueError):
@@ -53,6 +54,7 @@ class StoredStrategy:
     created_at: datetime
     updated_at: datetime
     saved: sf.SavedDefinition
+    revision: int
 
 
 @dataclass(frozen=True)
@@ -64,7 +66,9 @@ class StrategySummary:
     updated_at: datetime
 
 
-_COLUMNS = "id, user_ref, status, created_at, updated_at, definition::text AS definition_text"
+_COLUMNS = "id, user_ref, status, created_at, updated_at, revision, definition::text AS definition_text"
+BIGINT_MAX = 2**63 - 1  # strategies.id (BIGSERIAL)
+INTEGER_MAX = 2**31 - 1  # strategy_history.seq and strategies.revision (INTEGER)
 _INSERT = text(
     "INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
     f"VALUES (:user_ref, :underlying, CAST(:definition AS JSONB), :version) RETURNING {_COLUMNS}")
@@ -85,10 +89,22 @@ _HISTORY_ONE = text("SELECT definition::text AS definition_text FROM public.stra
 _EXISTING_IDS = text("SELECT id FROM public.catalogue_contracts WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 
 
-def _check_id(value: Any, what: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise StrategyStoreError(NOT_FOUND, f"{what} {value!r}")
+def _check_id(value: Any, what: str, limit: int = BIGINT_MAX, code: str = NOT_FOUND) -> int:
+    """An id outside its column's range cannot exist: answered before any query (never a database range error)."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= limit:
+        raise StrategyStoreError(code, f"{what} {value!r}")
     return value
+
+
+def check_strategy_id(value: Any) -> int:
+    return _check_id(value, "strategy")
+
+
+def _check_revision(row: Any, expected_revision: Any) -> None:
+    """Optimistic concurrency: a write names the revision it was based on; another write since then refuses it."""
+    if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision != row.revision:
+        raise StrategyStoreError(REVISION_CONFLICT, f"strategy {row.id} is at revision {row.revision}, the change was "
+                                                    f"based on {expected_revision!r}; reload and apply it again")
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -145,7 +161,7 @@ async def build_definition(conn: Any, underlying: str, choices: Sequence[sf.LegC
 
 def _stored(row: Any, saved: sf.SavedDefinition) -> StoredStrategy:
     return StoredStrategy(id=int(row.id), user_ref=row.user_ref, status=row.status, created_at=row.created_at,
-                          updated_at=row.updated_at, saved=saved)
+                          updated_at=row.updated_at, saved=saved, revision=int(row.revision))
 
 
 async def _check_saveable(conn: Any, saved: sf.SavedDefinition) -> str:
@@ -193,12 +209,16 @@ async def _summary(conn: Any, current_text: str, new: sf.SavedDefinition) -> str
     return sf.change_summary(old, new)
 
 
-async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefinition) -> StoredStrategy:
+async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefinition, *,
+                 expected_revision: int) -> StoredStrategy:
     """A new definition for a draft: history entry of the previous definition first, then the new one, all or
-    nothing. The caller commits."""
+    nothing. ``expected_revision`` is the revision the change was based on (REVISION_CONFLICT otherwise, nothing
+    written). The caller commits."""
+    _check_id(strategy_id, "strategy")
     document = await _check_saveable(conn, saved)
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
+        _check_revision(row, expected_revision)
         if row.underlying != saved.definition.underlying:
             raise StrategyStoreError(UNDERLYING_FIXED, f"strategy {strategy_id} is on {row.underlying}; a strategy on "
                                                        f"{saved.definition.underlying} is a new strategy")
@@ -210,13 +230,16 @@ async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefi
     return _stored(written, saved)
 
 
-async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int) -> StoredStrategy:
+async def restore(conn: Any, user_ref: str, strategy_id: int, seq: int, *,
+                  expected_revision: int) -> StoredStrategy:
     """Makes history entry ``seq`` current; the replaced definition is written as a new entry first (nothing is
-    deleted). The entry's contracts must still be live with the same terms. The caller commits."""
+    deleted). The entry's contracts must still be live with the same terms; ``expected_revision`` as in update.
+    The caller commits."""
+    _check_id(strategy_id, "strategy")
+    _check_id(seq, "history entry", INTEGER_MAX, HISTORY_NOT_FOUND)
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
-        if isinstance(seq, bool) or not isinstance(seq, int) or seq <= 0:
-            raise StrategyStoreError(HISTORY_NOT_FOUND, f"history entry {seq!r}")
+        _check_revision(row, expected_revision)
         entry_text = (await conn.execute(_HISTORY_ONE, {"id": row.id, "seq": seq})).scalar_one_or_none()
         if entry_text is None:
             raise StrategyStoreError(HISTORY_NOT_FOUND, f"strategy {strategy_id} has no history entry {seq}")

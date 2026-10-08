@@ -202,6 +202,26 @@ def test_ac5_save_draft_refuses_a_contract_of_another_underlying():
     assert err.value.code == sf.UNDERLYING_MISMATCH
 
 
+@pytest.mark.parametrize("fields", [
+    {"risk_limits": {"ltp": Decimal("101.5")}},
+    {"risk_limits": {"max_loss": Decimal("5000"), "margin": Decimal("120000")}},
+    {"preferences": {"spot": "22950.35"}},
+    {"preferences": {"iv": "0.12", "display": "compact"}},
+], ids=["limit-ltp", "limit-margin", "pref-spot", "pref-iv"])
+def test_ac5_a_live_state_name_in_risk_limits_or_preferences_is_refused_on_save(fields):
+    """Review round 2 MAJOR: live market data never enters a strategy through the user-named maps either."""
+    with pytest.raises(sf.StoredFormError) as err:
+        _iron_condor(**fields)
+    assert err.value.code == sf.LIVE_STATE_FIELD
+
+
+@pytest.mark.parametrize("key, value", [("risk_limits", {"ltp": "101.5"}), ("preferences", {"spot": "22950.35"})])
+def test_ac5_a_stored_form_with_a_live_state_name_in_a_map_is_refused_on_load(key, value):
+    with pytest.raises(sf.StoredFormError) as err:
+        sf.from_document(_doc(**{key: value}), _resolve())
+    assert err.value.code == sf.LIVE_STATE_FIELD
+
+
 def test_ac5_history_entry_round_trip_and_summary():
     old = _iron_condor()
     catalogue = dict(CATALOGUE) | {105: (Instrument.CE, Decimal("23100"))}

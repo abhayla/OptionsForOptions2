@@ -24,7 +24,8 @@ The form (schema_version 1):
   the same, so the stored text is exact. A JSON float anywhere is refused. Integers (schema_version, contract_id,
   quantity in units) are JSON integers, never booleans.
 - Unknown keys, missing keys and a schema version this code does not know are refused; nothing is ever dropped or
-  defaulted. The form holds no live-market value: its keys are a closed set (``DOCUMENT_KEYS`` / ``LEG_KEYS``).
+  defaulted. The form holds no live-market value: its keys are a closed set (``DOCUMENT_KEYS`` / ``LEG_KEYS``), and
+  the user-named maps (risk_limits, preferences) refuse any name in ``LIVE_STATE_NAMES`` (``SavedDefinition``).
 """
 from __future__ import annotations
 
@@ -67,6 +68,7 @@ CONTRACT_TERMS_CHANGED = "contract_terms_changed"
 CONTRACT_NOT_LIVE = "contract_not_live"
 QUANTITY_NOT_LOT_MULTIPLE = "quantity_not_lot_multiple"
 UNDERLYING_MISMATCH = "underlying_mismatch"
+LIVE_STATE_FIELD = "live_state_field"
 
 
 class StoredFormError(ValueError):
@@ -119,7 +121,20 @@ class SavedDefinition:
                 raise StoredFormError(MISSING_CONTRACT_ID, f"a contract id is a positive integer, got {contract_id!r}")
         if len(set(ids)) != len(ids):
             raise StoredFormError(INVALID_DEFINITION, "two legs on the same catalogue contract")
+        # Every path to or from the stored form builds a SavedDefinition, so this is the one place the named maps are
+        # checked: a risk limit or preference named like live market data (ltp, spot, iv, ...) is refused.
+        refuse_live_names(risk_limits=[n for n, _ in self.definition.risk_limits],
+                          preferences=[n for n, _ in self.definition.preferences])
         object.__setattr__(self, "contract_ids", ids)
+
+
+def refuse_live_names(**named: Sequence[str]) -> None:
+    """Refuses (LIVE_STATE_FIELD) any user-chosen name that is a live-market field (REQ-038 AC-1, AC-5)."""
+    for label, names in named.items():
+        live = sorted(name for name in names if name in LIVE_STATE_NAMES)
+        if live:
+            raise StoredFormError(LIVE_STATE_FIELD, f"{label} names live market data {live}; a strategy never "
+                                                    "stores it (REQ-038 AC-1, AC-5)")
 
 
 # ----------------------------------------------------------------------------------------------------------------
