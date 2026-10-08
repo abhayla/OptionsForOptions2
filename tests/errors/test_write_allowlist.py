@@ -6,37 +6,43 @@ Spec basis:
 - ADR-003 Q235: the checks "stop accidental misuse by the platform's own code" and "are flagged in CI
   when code reaches into their internals".
 
-Root cause of rounds 5-7 (issue 30): each round listed the code shapes that rebind the checker
-(`ofo.wording.x = f`, `from ofo import wording; wording.x = f`, ...) and each verifier found a shape
-not on the list (a relative import, a variable holding a module, `importlib.import_module(...)`).
-This scan does not ask WHICH object is written. It allows exactly these, by AST shape:
+Root cause of rounds 5-7 (issue 30): each round listed the code shapes that rebind the checker and
+each verifier found a shape not on the list. This scan does not ask WHICH object is written. Writes
+are found by the AST node's `ctx` (Store / Del), so every statement form (`=`, `+=`, `del`, `for`,
+`with ... as`, comprehension targets) is seen. Allowed, by AST shape only:
 
-1. A store or delete whose target is a plain name (`x = ...`, `del x`): rebinding a name in the
-   current scope never changes another module.
-2. A store or delete of an attribute (or item) whose chain is rooted at the name `self` or `cls`
-   (`self.a = 1`, `self.a.b = 1`, `cls.x += 1`, `self.d[k] = v`).
-3. A store or delete of an item of a plain name (`d[k] = v`, `del d[k]`): a local container.
+1. A store or delete of a plain name (`x = ...`, `del x`).
+2. A store or delete of an item chain on a plain name (`d[k] = v`, `d[a][b] = v`, `del d[k]`).
+3. An attribute (or item) write rooted at `self`/`cls` ONLY when that name is the first parameter of
+   a function defined directly in a class body (not a staticmethod), and the name is never rebound
+   in that function (assignment, for/with/walrus/comprehension target, except-as, import-as, del,
+   global/nonlocal, match capture, a nested def/class of that name). Fix round 1: judged by binding,
+   not by the name text (`self = wording; self.x = f` and `def patch(self, f): self.x = f` fail).
 
-Every other attribute or item write fails: `m.x = f`, `del m.x`, `m.x += 1`, `for m.x in ...`,
-`with f() as m.x`, `[... for m.x in ...]`, `ofo.wording.X[0] = 1`, whatever import form bound `m`.
-The scan finds writes by the AST node's `ctx` (Store / Del), so a new statement form that writes
-an attribute is still seen. A write whose chain root is not a name (`f().x = 1`) cannot be
-classified and fails ("fail closed").
+Everything else that writes an attribute fails, and a write whose chain root is not a name
+(`f().x = 1`) cannot be classified and fails ("fail closed").
 
-Banned outright, as a call or as a bare reference, by name or by attribute (`builtins.setattr`):
-`setattr`, `delattr`, `vars`, `globals`, `__import__`, `exec`, `eval`, `import_module`
-(`importlib.import_module`); and any access to `.__dict__`, `.__setattr__` or `.__delattr__`, or
-those names as string constants (`getattr(m, "__dict__")`). The ONLY exception shape, with no list:
-`object.__setattr__(self, "<field>", value)` as a statement directly in the body of `__post_init__`
-of a class decorated `@dataclass(frozen=True)` / `@dataclasses.dataclass(frozen=True)`.
+Banned outright, as a call, a bare reference, an attribute, an imported name or a string constant:
+`setattr`, `delattr`, `vars`, `globals`, `__import__`, `exec`, `eval`, `import_module`, `reload`,
+`setitem`, `delitem` (operator), `__builtins__`; the attributes `__dict__`, `__globals__`,
+`__setattr__`, `__delattr__`, `__setitem__`, `__delitem__`; any `.modules` of a name bound to `sys`
+(so no store/del/update/pop on sys.modules, direct or aliased); `.update/.pop/.popitem/.clear/
+.setdefault` called on a name bound by an import (a module or another module's object) or on an
+attribute chain rooted at one; and (fix round 1, finding 1) any `from <ofo.wording> import <name>`,
+absolute or relative, so a caller holds the module and every rebind is a module-attribute write.
 
-Existing code that writes outside these shapes is listed in `ALLOWLIST` (file, line pattern,
-reason); `test_allowlist_entries_are_printed_and_each_still_matches` prints every entry and fails
-when one no longer matches anything (a stale exception is removed, not kept).
+The ONLY exception shape, with no list: `object.__setattr__(self, ...)` inside `__post_init__(self)`
+of a class decorated `@dataclass(frozen=True)` / `@dataclasses.dataclass(frozen=True)`, `self` bound
+as in rule 3, not inside a nested def/lambda/class.
 
-Not claimed: a name assembled at run time (`getattr(builtins, "set" + "attr")`), or code outside
-backend/ofo. Q235 puts deliberate runtime replacement out of scope beyond this CI flag and the
-ADR-056 runtime identity check in `ofo.errors.model`.
+Existing code outside these shapes is listed in `ALLOWLIST` (file, statement pattern, reason). A
+pattern must FULL-match the source of the one simple statement that holds the hit (fix round 1,
+finding 4), so a second statement on the same line (`a; wording.f = g`) is judged on its own.
+
+Not claimed: a name assembled at run time (`getattr(builtins, "set" + "attr")`), a method called
+unbound with a module as `self` (`C.m(wording, f)`), or code outside backend/ofo. Q235 puts
+deliberate runtime replacement out of scope beyond this CI flag and the runtime checks in
+`ofo.wording` (read-only module, identity check on every read) and `ofo.errors.model`.
 """
 from __future__ import annotations
 
@@ -48,69 +54,87 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_OFO_DIR = REPO_ROOT / "backend" / "ofo"
+BACKEND_DIR = REPO_ROOT / "backend"
+BACKEND_OFO_DIR = BACKEND_DIR / "ofo"
 
 #: Roots whose attributes a method may write: the instance or the class being defined.
 ALLOWED_WRITE_ROOTS: frozenset[str] = frozenset({"self", "cls"})
 
-#: Builtins / functions that write, read-for-write or execute by name. A call OR a bare reference
-#: fails (`s = setattr; s(m, "x", f)`), as does importing one by name.
-BANNED_NAMES: frozenset[str] = frozenset(
-    {"setattr", "delattr", "vars", "globals", "__import__", "exec", "eval", "import_module"}
-)
+#: Names that write, read-for-write, execute or reload by name.
+BANNED_NAMES: frozenset[str] = frozenset({
+    "setattr", "delattr", "vars", "globals", "__import__", "exec", "eval", "import_module", "reload",
+    "setitem", "delitem", "__builtins__",
+})
 
 #: Attribute names that hand out or write an object's namespace.
-BANNED_DUNDERS: frozenset[str] = frozenset({"__dict__", "__setattr__", "__delattr__"})
+BANNED_DUNDERS: frozenset[str] = frozenset({
+    "__dict__", "__globals__", "__builtins__", "__setattr__", "__delattr__", "__setitem__", "__delitem__",
+})
+
+#: Mapping-mutating methods refused on an imported name or a chain rooted at one.
+MUTATING_METHODS: frozenset[str] = frozenset({"update", "pop", "popitem", "clear", "setdefault"})
+
+#: The checker module: nothing may be imported FROM it by name.
+CHECKER_MODULE = "ofo.wording"
+
+_FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 @dataclass(frozen=True)
 class AllowlistEntry:
-    """One reviewed exception: the file (relative to backend/ofo), a regex the offending source line
-    must match, and why the write is safe."""
+    """One reviewed exception: the file (relative to backend/ofo), a regex that must FULL-match the
+    source of the simple statement holding the hit, and why the write is safe."""
 
     file: str
-    line_pattern: str
+    statement: str
     reason: str
 
 
-#: The ONLY exceptions to the scan. Each is printed by the test and must still match a hit.
-#: Every entry writes a field of an object this module itself just built or owns (never a module),
-#: through a local name the self/cls rule cannot see as the instance. Patterns are anchored to the
-#: exact statement, so a new write in the same file is not excused by an old entry.
 _DECIMAL_CONTEXT = "a decimal.localcontext() copy bound by `with ... as ctx`: thread-local arithmetic precision"
 ALLOWLIST: tuple[AllowlistEntry, ...] = (
-    AllowlistEntry("audit/log.py", r"^\s*log\._events = list\(events\)$",
+    AllowlistEntry("audit/log.py", r"log\._events = list\(events\)",
                    "AuditLog.load: `log = cls()` two lines up; fills the new log, then verifies it"),
-    AllowlistEntry("engine/metrics.py", r"^\s*ctx\.prec = 60$", _DECIMAL_CONTEXT),
-    AllowlistEntry("table/model.py", r"^\s*ctx\.prec = 50$", _DECIMAL_CONTEXT),
-    AllowlistEntry("entitlements/ledger.py", r'^\s*object\.__setattr__\(history, "(user_id|events)", ',
+    AllowlistEntry("engine/metrics.py", r"ctx\.prec = 60", _DECIMAL_CONTEXT),
+    AllowlistEntry("table/model.py", r"ctx\.prec = 50", _DECIMAL_CONTEXT),
+    AllowlistEntry("entitlements/ledger.py", r'object\.__setattr__\(history, "user_id", user_id\)',
                    "_restore: `history = object.__new__(StoredHistory)` just above; fills a frozen record"),
-    AllowlistEntry("entitlements/ledger.py", r"^\s*object\.__setattr__\(built, name, value\)$",
+    AllowlistEntry("entitlements/ledger.py", r'object\.__setattr__\(history, "events", tuple\(events\)\)',
+                   "_restore: `history = object.__new__(StoredHistory)` just above; fills a frozen record"),
+    AllowlistEntry("entitlements/ledger.py", r"object\.__setattr__\(built, name, value\)",
                    "EntitlementLedger._with: `built = object.__new__(EntitlementLedger)` just above"),
-    AllowlistEntry("execution/partial.py", r"^\s*object\.__setattr__\(self, name, value\)$",
+    AllowlistEntry("execution/partial.py", r"object\.__setattr__\(self, name, value\)",
                    "Preparation.__init__ fills its own fields; its __setattr__ refuses every later change"),
-    AllowlistEntry("execution/partial.py", r'^\s*object\.__setattr__\(preparation, "_consumed", True\)$',
+    AllowlistEntry("execution/partial.py", r'object\.__setattr__\(preparation, "_consumed", True\)',
                    "marks a Preparation (type-checked just above) as used, so it cannot be sent twice"),
-    AllowlistEntry("execution/send_guard.py", r'^\s*object\.__setattr__\(self, "(resolve_all|submit)", ',
+    AllowlistEntry("execution/send_guard.py", r'object\.__setattr__\(self, "(resolve_all|submit)", (resolve_all|submit)\)',
                    "the send sink's __init__ fills its own two closures; its __setattr__ refuses changes"),
-    AllowlistEntry("instruments/catalogue.py", r"^\s*entry\.currently_listed = False$",
+    AllowlistEntry("instruments/catalogue.py", r"entry\.currently_listed = False",
                    "an entry of the catalogue's own self._entries dict, iterated just above"),
-    AllowlistEntry("marketdata/health.py", r'^\s*object\.__setattr__\(final, "validation_errors", ',
+    AllowlistEntry("marketdata/health.py",
+                   r'object\.__setattr__\(final, "validation_errors", final\.validation_errors \+ \(result\.reason,\)\)',
                    "`final = dataclasses.replace(...)` just above: a fresh frozen copy this function returns"),
-    AllowlistEntry("orders/model.py", r"^\s*object\.__setattr__\(clone, (f\.name|\"_state\"), ",
+    AllowlistEntry("orders/model.py", r"object\.__setattr__\(clone, f\.name, getattr\(self, f\.name\)\)",
                    "Order._copy_with: `clone = object.__new__(Order)` just above"),
-    AllowlistEntry("orders/model.py", r'^\s*object\.__setattr__\(updated, "broker_order_id", boid\)$',
+    AllowlistEntry("orders/model.py", r'object\.__setattr__\(clone, "_state", state\)',
+                   "Order._copy_with: `clone = object.__new__(Order)` just above"),
+    AllowlistEntry("orders/model.py", r'object\.__setattr__\(updated, "broker_order_id", boid\)',
                    "OrderBook: `updated = order._copy_with(...)` just above, a copy the book owns"),
-    AllowlistEntry("reconciliation/compare.py", r"^\s*by_(expiry|strike)\.setdefault\(.*\)\[other\] = None$",
+    AllowlistEntry("reconciliation/compare.py",
+                   r"by_(expiry|strike)\.setdefault\(\(other\[:2\], diff\[other\], other\[[23]\]\), \{\}\)\[other\] = None",
                    "a local dict of dicts built in this function (setdefault returns the inner dict)"),
-    AllowlistEntry("rules/conditions.py", r'^\s*object\.__setattr__\(node, "children", children\)$',
+    AllowlistEntry("rules/conditions.py", r'object\.__setattr__\(node, "children", children\)',
                    "_check_children, called from AllOf/AnyOf __post_init__ with that node: freezes its children"),
-    AllowlistEntry("strategy/versions.py", r"^\s*object\.__setattr__\(self, name, value\)$",
+    AllowlistEntry("strategy/versions.py", r"object\.__setattr__\(self, name, value\)",
                    "StrategyRecord._set: the record's own fields; its __setattr__ refuses outside writes"),
-    AllowlistEntry("timeline/log.py", r'^\s*object\.__setattr__\(self, "_(strategy_id|clock|entries|follow_ups|recorded)", ',
+    AllowlistEntry("timeline/log.py",
+                   r'object\.__setattr__\(self, "_(strategy_id|clock|entries|follow_ups|recorded)", '
+                   r'(_require_id\(strategy_id, "strategy_id"\)|clock|\[\]|\{\})\)',
                    "Timeline.__init__ (a __slots__ class) fills its own five slots"),
-    AllowlistEntry("timeline/log.py", r"^\s*timeline\._(follow_ups|recorded)\[entry\.(seq|content)\] = ",
+    AllowlistEntry("timeline/log.py", r"timeline\._(follow_ups\[entry\.seq\] = \{\}|recorded\[entry\.content\] = entry\.seq)",
                    "Timeline.load: rebuilds the index dicts of the timeline it just built and verified"),
+    AllowlistEntry("wording.py", r"_this_module\.__class__ = _FrozenModule",
+                   "ofo.wording makes ITSELF read-only (fix round 1, the structural guarantee); runs once at import"),
 )
 
 
@@ -118,10 +142,18 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
 class Hit:
     line: int
     message: str
+    statement: str | None  # source of the enclosing SIMPLE statement; None for a compound one
+
+
+def _parents(tree: ast.AST) -> dict[int, ast.AST]:
+    parents: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+    return parents
 
 
 def _write_root(node: ast.AST) -> ast.AST:
-    """The node at the bottom of an Attribute/Subscript chain (`self` in `self.a[k].b`)."""
     while isinstance(node, (ast.Attribute, ast.Subscript)):
         node = node.value
     return node
@@ -134,6 +166,61 @@ def _is_item_chain(node: ast.AST) -> bool:
     while isinstance(node, ast.Subscript):
         node = node.value
     return isinstance(node, ast.Name)
+
+
+def _own_scope(fn: ast.AST) -> list[ast.AST]:
+    """Every node inside `fn`'s body, not descending into a nested def, lambda or class (their
+    own nodes are listed, so a nested `def self` is seen as a binding)."""
+    found: list[ast.AST] = []
+    stack: list[ast.AST] = list(getattr(fn, "body", []))
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        if isinstance(node, _SCOPE_NODES):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _binds(node: ast.AST, name: str) -> bool:
+    """True if `node` (re)binds or unbinds `name` in the scope it sits in."""
+    if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, (ast.Store, ast.Del)):
+        return True
+    if isinstance(node, ast.ExceptHandler) and node.name == name:
+        return True
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return any((a.asname or a.name.split(".")[0]) == name for a in node.names)
+    if isinstance(node, (ast.Global, ast.Nonlocal)):
+        return name in node.names
+    if isinstance(node, (*_FUNCTION_NODES, ast.ClassDef)) and node.name == name:
+        return True
+    if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name == name:
+        return True
+    if isinstance(node, ast.MatchMapping) and node.rest == name:
+        return True
+    return False
+
+
+def _is_bound_instance(root: ast.Name, parents: dict[int, ast.AST]) -> bool:
+    """Rule 3: `root` (`self`/`cls`) is the first parameter of the innermost function around it,
+    that function sits directly in a class body, is not a staticmethod, and never rebinds it."""
+    if root.id not in ALLOWED_WRITE_ROOTS:
+        return False
+    node: ast.AST = root
+    while id(node) in parents:
+        node = parents[id(node)]
+        if isinstance(node, (*_FUNCTION_NODES, ast.Lambda, ast.ClassDef)):
+            break
+    else:
+        return False
+    if not isinstance(node, _FUNCTION_NODES) or not isinstance(parents.get(id(node)), ast.ClassDef):
+        return False
+    if any(isinstance(d, ast.Name) and d.id == "staticmethod" for d in node.decorator_list):
+        return False
+    positional = [*node.args.posonlyargs, *node.args.args]
+    if not positional or positional[0].arg != root.id:
+        return False
+    return not any(_binds(n, root.id) for n in _own_scope(node))
 
 
 def _is_dataclass_frozen(decorator: ast.AST) -> bool:
@@ -153,10 +240,8 @@ def _is_dataclass_frozen(decorator: ast.AST) -> bool:
     )
 
 
-def _allowed_post_init_setattr_calls(tree: ast.AST) -> set[int]:
-    """`id()` of every `object.__setattr__` Attribute node in the one allowed shape:
-    `object.__setattr__(self, "<str>", value)` as an expression statement directly in the body of
-    `__post_init__(self, ...)` of a frozen-dataclass class body."""
+def _allowed_post_init_setattr(tree: ast.AST, parents: dict[int, ast.AST]) -> set[int]:
+    """`id()` of every `object.__setattr__` Attribute node in the one allowed shape."""
     allowed: set[int] = set()
     for cls_node in ast.walk(tree):
         if not isinstance(cls_node, ast.ClassDef):
@@ -166,9 +251,7 @@ def _allowed_post_init_setattr_calls(tree: ast.AST) -> set[int]:
         for fn in cls_node.body:
             if not (isinstance(fn, ast.FunctionDef) and fn.name == "__post_init__"):
                 continue
-            if not fn.args.args or fn.args.args[0].arg != "self":
-                continue
-            for call in _walk_own_scope(fn):
+            for call in _own_scope(fn):
                 if not isinstance(call, ast.Call):
                     continue
                 func = call.func
@@ -181,57 +264,104 @@ def _allowed_post_init_setattr_calls(tree: ast.AST) -> set[int]:
                     and not call.keywords
                     and isinstance(call.args[0], ast.Name)
                     and call.args[0].id == "self"
+                    and _is_bound_instance(call.args[0], parents)
                 ):
                     allowed.add(id(func))
     return allowed
 
 
-def _walk_own_scope(fn: ast.FunctionDef) -> list[ast.AST]:
-    """Every node inside `fn`'s body, NOT descending into a nested def, lambda or class (whose
-    `self` is another object)."""
-    found: list[ast.AST] = []
-    stack: list[ast.AST] = list(fn.body)
-    while stack:
-        node = stack.pop()
-        found.append(node)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-            continue
-        stack.extend(ast.iter_child_nodes(node))
-    return found
+def _resolve_from(node: ast.ImportFrom, module: str, is_package: bool) -> str:
+    """The absolute module an `ImportFrom` reads from (`from ..wording import x` in ofo.errors.slots
+    -> ofo.wording)."""
+    if node.level == 0:
+        return node.module or ""
+    package = module.split(".") if is_package else module.split(".")[:-1]
+    base = package[: len(package) - (node.level - 1)] if node.level > 1 else package
+    return ".".join([*base, *([node.module] if node.module else [])])
 
 
-def scan_source(source: str, filename: str = "<sample>") -> list[Hit]:
-    """Every write/reach in `source` outside the allowed shapes (module docstring)."""
-    tree = ast.parse(source, filename=filename)
-    allowed_setattr = _allowed_post_init_setattr_calls(tree)
-    hits: list[Hit] = []
+def _import_bound_names(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """(every name bound by an import statement, the names bound to the `sys` module)."""
+    imported: set[str] = set()
+    sys_names: set[str] = set()
     for node in ast.walk(tree):
-        line = getattr(node, "lineno", 0)
-        # --- writes, found by context so every statement form is covered ---------------------
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                imported.add(bound)
+                if alias.name == "sys":
+                    sys_names.add(bound)
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imported.add(alias.asname or alias.name)
+    return imported, sys_names
+
+
+def _enclosing_statement(node: ast.AST, parents: dict[int, ast.AST]) -> ast.stmt | None:
+    while node is not None and not isinstance(node, ast.stmt):
+        node = parents.get(id(node))
+    return node
+
+
+def scan_source(source: str, module: str = "ofo.sample", is_package: bool = False) -> list[Hit]:
+    """Every write/reach in `source` outside the allowed shapes (module docstring). `module` is the
+    dotted name of the file, used to resolve relative imports."""
+    tree = ast.parse(source)
+    parents = _parents(tree)
+    allowed_setattr = _allowed_post_init_setattr(tree, parents)
+    imported, sys_names = _import_bound_names(tree)
+    hits: list[Hit] = []
+
+    def hit(node: ast.AST, message: str) -> None:
+        stmt = _enclosing_statement(node, parents)
+        simple = stmt is not None and not hasattr(stmt, "body")
+        hits.append(Hit(getattr(node, "lineno", 0), message,
+                        ast.get_source_segment(source, stmt) if simple else None))
+
+    for node in ast.walk(tree):
+        # --- writes, found by context ------------------------------------------------------------
         if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
             verb = "deletes" if isinstance(node.ctx, ast.Del) else "writes"
             root = _write_root(node)
             if not isinstance(root, ast.Name):
-                hits.append(Hit(line, f"{verb} through a {type(root).__name__} root: cannot classify (fail closed)"))
+                hit(node, f"{verb} through a {type(root).__name__} root: cannot classify (fail closed)")
             elif _is_item_chain(node):
-                pass  # rule 3: an item (of an item ...) of a plain name: a container, not a module
-            elif root.id not in ALLOWED_WRITE_ROOTS:
+                pass  # rule 2
+            elif not _is_bound_instance(root, parents):
                 kind = "an attribute" if isinstance(node, ast.Attribute) else "an item"
-                hits.append(Hit(line, f"{verb} {kind} rooted at {root.id!r} (only self/cls roots are allowed)"))
-        # --- banned names, as a call or as a reference -----------------------------------------
+                hit(node, f"{verb} {kind} rooted at {root.id!r} (not the bound self/cls of a method)")
+        # --- banned names ---------------------------------------------------------------------
         if isinstance(node, ast.Name) and node.id in BANNED_NAMES:
-            hits.append(Hit(line, f"uses {node.id}"))
+            hit(node, f"uses {node.id}")
         if isinstance(node, ast.Attribute) and node.attr in BANNED_NAMES:
-            hits.append(Hit(line, f"uses .{node.attr}"))
+            hit(node, f"uses .{node.attr}")
         if isinstance(node, ast.ImportFrom):
+            source_module = _resolve_from(node, module, is_package)
             for alias in node.names:
-                if alias.name in BANNED_NAMES or alias.name == "*" and node.module in {"importlib", "builtins"}:
-                    hits.append(Hit(line, f"imports {alias.name} from {node.module}"))
-        # --- namespace dunders -----------------------------------------------------------------
+                if alias.name in BANNED_NAMES or (alias.name == "*" and source_module in {"importlib", "builtins", "operator", "sys"}):
+                    hit(node, f"imports {alias.name} from {source_module}")
+                if source_module == CHECKER_MODULE:
+                    hit(node, f"imports {alias.name!r} from {CHECKER_MODULE} by name (use the module: wording.<fn>)")
+                if source_module == "sys" and alias.name == "modules":
+                    hit(node, "imports sys.modules")
+        # --- namespace dunders ----------------------------------------------------------------
         if isinstance(node, ast.Attribute) and node.attr in BANNED_DUNDERS and id(node) not in allowed_setattr:
-            hits.append(Hit(line, f"reaches .{node.attr}"))
+            hit(node, f"reaches .{node.attr}")
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in BANNED_DUNDERS | BANNED_NAMES:
-            hits.append(Hit(line, f"names {node.value!r} as a string"))
+            hit(node, f"names {node.value!r} as a string")
+        # --- sys.modules, any form ------------------------------------------------------------
+        if (isinstance(node, ast.Attribute) and node.attr == "modules"
+                and isinstance(node.value, ast.Name) and node.value.id in sys_names):
+            hit(node, f"reaches {node.value.id}.modules")
+        # --- mapping mutation on an imported name ---------------------------------------------
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in MUTATING_METHODS):
+            receiver_root = _write_root(node.func.value)
+            if not isinstance(receiver_root, ast.Name):
+                if isinstance(node.func.value, (ast.Attribute, ast.Subscript)):
+                    hit(node, f".{node.func.attr}() on a {type(receiver_root).__name__} root: cannot classify (fail closed)")
+            elif receiver_root.id in imported:
+                hit(node, f".{node.func.attr}() on {receiver_root.id!r}, a name bound by an import")
     return hits
 
 
@@ -239,42 +369,49 @@ def _source_files() -> list[Path]:
     return sorted(p for p in BACKEND_OFO_DIR.rglob("*.py") if "__pycache__" not in p.parts)
 
 
-def _rel(path: Path) -> str:
-    return path.relative_to(BACKEND_OFO_DIR).as_posix()
+def _module_of(path: Path) -> tuple[str, bool]:
+    parts = list(path.relative_to(BACKEND_DIR).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        return ".".join(parts[:-1]), True
+    return ".".join(parts), False
 
 
-def _entry_for(path: Path, source_line: str) -> AllowlistEntry | None:
-    for entry in ALLOWLIST:
-        if entry.file == _rel(path) and re.search(entry.line_pattern, source_line):
-            return entry
-    return None
+def offences_in(rel: str, source: str, module: str = "ofo.sample", is_package: bool = False) -> tuple[list[str], list[AllowlistEntry]]:
+    """(offences, allowlist entries used) for `source` as if it were backend/ofo/<rel>."""
+    offences: list[str] = []
+    used: list[AllowlistEntry] = []
+    for h in scan_source(source, module, is_package):
+        entry = None
+        if h.statement is not None:
+            entry = next((e for e in ALLOWLIST if e.file == rel and re.fullmatch(e.statement, h.statement)), None)
+        if entry is None:
+            offences.append(f"backend/ofo/{rel}:{h.line}: {h.message}: {h.statement}")
+        else:
+            used.append(entry)
+    return offences, used
 
 
 def scan_tree() -> tuple[list[str], dict[AllowlistEntry, int]]:
     """(offences not covered by an allowlist entry, hits per allowlist entry) over backend/ofo."""
     offences: list[str] = []
-    used: dict[AllowlistEntry, int] = {e: 0 for e in ALLOWLIST}
+    counts: dict[AllowlistEntry, int] = {e: 0 for e in ALLOWLIST}
     for path in _source_files():
-        source = path.read_text(encoding="utf-8")
-        lines = source.splitlines()
-        for hit in scan_source(source, str(path)):
-            text = lines[hit.line - 1] if 0 < hit.line <= len(lines) else ""
-            entry = _entry_for(path, text)
-            if entry is None:
-                offences.append(f"backend/ofo/{_rel(path)}:{hit.line}: {hit.message}: {text.strip()}")
-            else:
-                used[entry] += 1
-    return offences, used
+        module, is_package = _module_of(path)
+        found, used = offences_in(path.relative_to(BACKEND_OFO_DIR).as_posix(), path.read_text(encoding="utf-8"),
+                                  module, is_package)
+        offences += found
+        for entry in used:
+            counts[entry] += 1
+    return offences, counts
 
 
 # --- The scan over backend/ofo -------------------------------------------------------------------
 
 def test_backend_ofo_writes_only_through_self_or_cls_or_a_named_allowlist_entry() -> None:
-    """ADR-056 (1): no code in backend/ofo writes an attribute of anything but `self`/`cls`, or uses
-    setattr/delattr/vars/globals/import_module/__import__/exec/eval/__dict__/__setattr__, outside the
-    named ALLOWLIST. Prints every allowlist entry, so the exceptions are visible in the test log."""
+    """ADR-056 (1): the scan over backend/ofo is clean outside the named ALLOWLIST. Prints every
+    allowlist entry, so the exceptions are visible in the test log."""
     for entry in ALLOWLIST:
-        print(f"ALLOWLIST backend/ofo/{entry.file}  /{entry.line_pattern}/  - {entry.reason}")
+        print(f"ALLOWLIST backend/ofo/{entry.file}  /{entry.statement}/  - {entry.reason}")
     offences, _ = scan_tree()
     assert not offences, "\n".join(offences)
 
@@ -282,18 +419,29 @@ def test_backend_ofo_writes_only_through_self_or_cls_or_a_named_allowlist_entry(
 def test_every_allowlist_entry_still_matches_a_hit() -> None:
     """A stale exception (its code was changed or removed) is deleted, not kept."""
     _, used = scan_tree()
-    stale = [f"{e.file} /{e.line_pattern}/" for e, n in used.items() if n == 0]
+    stale = [f"{e.file} /{e.statement}/" for e, n in used.items() if n == 0]
     assert not stale, "allowlist entries that match nothing: " + "; ".join(stale)
 
 
-def test_allowlist_entry_does_not_excuse_another_line_in_its_file() -> None:
-    """An entry excuses its exact statement only: a module write in the same file is still a hit."""
-    entry = next(e for e in ALLOWLIST if e.file == "engine/metrics.py")
-    assert re.search(entry.line_pattern, "        ctx.prec = 60")
-    assert not re.search(entry.line_pattern, "        wording.find_advice_wording = f")
+def test_allowlist_does_not_excuse_a_second_statement_on_the_same_line() -> None:
+    """Fix round 1, finding 4: the reviewer's one-line repro is flagged."""
+    line = 'object.__setattr__(final, "validation_errors", ()); wording.find_advice_wording = f\n'
+    offences, _ = offences_in("marketdata/health.py", "from ofo import wording\n" + line)
+    assert any("rooted at 'wording'" in o for o in offences), offences
+    exact = 'object.__setattr__(final, "validation_errors", final.validation_errors + (result.reason,))\n'
+    assert offences_in("marketdata/health.py", exact)[0] == []  # the entry itself still excuses its statement
+    tail = exact.rstrip("\n") + "; setattr(wording, 'x', f)\n"
+    assert offences_in("marketdata/health.py", tail)[0] != []
 
 
-# --- Samples the scan must flag (each a shape a verifier used or named in issue 30) --------------
+def test_allowlist_does_not_excuse_a_compound_statement() -> None:
+    """A hit inside a compound statement header (a `for`/`with` target) has no single statement to
+    match, so no entry can excuse it."""
+    offences, _ = offences_in("engine/metrics.py", "for ctx.prec in [60]:\n    pass\n")
+    assert offences
+
+
+# --- Samples the scan must flag ------------------------------------------------------------------
 
 FLAGGED = {
     # The two round-7 escapes ADR-056 names (issue 30, round-7 comment).
@@ -363,6 +511,61 @@ FLAGGED = {
         "@dataclass(frozen=True)\nclass C:\n    def __post_init__(self):\n"
         "        def h(self):\n            object.__setattr__(self, 'x', 1)"
     ),
+    "object.__setattr__ after self rebound in __post_init__": (
+        "@dataclass(frozen=True)\nclass C:\n    def __post_init__(self):\n"
+        "        self = wording\n        object.__setattr__(self, 'x', f)"
+    ),
+    # Fix round 1, finding 2: self/cls judged by binding, not by name.
+    "module-level self = wording": "from ofo import wording\nself = wording\nself.x = f",
+    "module-level for self": "from ofo import wording\nfor self in [wording]:\n    self.x = f",
+    "plain function with a self parameter": "def patch(self, f):\n    self.x = f",
+    "method rebinds self by assignment": "class C:\n    def m(self):\n        self = wording\n        self.x = f",
+    "method rebinds self by for": "class C:\n    def m(self):\n        for self in [wording]:\n            self.x = f",
+    "method rebinds self by with": "class C:\n    def m(self):\n        with cm() as self:\n            self.x = f",
+    "method rebinds self by walrus": "class C:\n    def m(self):\n        (self := wording)\n        self.x = f",
+    "method rebinds self by except-as": (
+        "class C:\n    def m(self):\n        try:\n            pass\n        except E as self:\n            self.x = f"
+    ),
+    "method rebinds self by import-as": "class C:\n    def m(self):\n        import ofo.wording as self\n        self.x = f",
+    "method rebinds self by del": "class C:\n    def m(self):\n        del self\n        self.x = f",
+    "method declares global self": "class C:\n    def m(self):\n        global self\n        self.x = f",
+    "method defines a nested def self": "class C:\n    def m(self):\n        def self():\n            pass\n        self.x = f",
+    "method rebinds self by match capture": (
+        "class C:\n    def m(self, v):\n        match v:\n            case self:\n                self.x = f"
+    ),
+    "method rebinds self in a comprehension": "class C:\n    def m(self):\n        [0 for self in [wording]]\n        self.x = f",
+    "nested def with a self parameter": "class C:\n    def m(self):\n        def h(self):\n            self.x = f",
+    "lambda with a self parameter": "class C:\n    def m(self):\n        g = lambda self: [0 for self.x in [f]]",
+    "staticmethod with a self parameter": "class C:\n    @staticmethod\n    def m(self):\n        self.x = f",
+    "self is not the first parameter": "class C:\n    def m(other, self):\n        self.x = f",
+    "cls in a plain function": "def m(cls):\n    cls.x = f",
+    # Fix round 1, finding 3.
+    "__globals__": "g = fn.__globals__",
+    "__globals__.update": "fn.__globals__.update(find_advice_wording=f)",
+    "__builtins__ name": "__builtins__['setattr'](m, 'x', f)",
+    "__builtins__ attribute": "b = fn.__builtins__",
+    "__setitem__": "d.__setitem__(k, v)",
+    "__delitem__": "d.__delitem__(k)",
+    "sys.modules store": "import sys\nsys.modules['ofo.wording'] = fake",
+    "sys.modules delete": "import sys\ndel sys.modules['ofo.wording']",
+    "sys.modules aliased module": "import sys as s\ns.modules.pop('ofo.wording')",
+    "sys.modules held in a variable": "import sys\nmods = sys.modules\nmods['ofo.wording'] = fake",
+    "from sys import modules": "from sys import modules\nmodules['ofo.wording'] = fake",
+    "sys.modules update": "import sys\nsys.modules.update({'ofo.wording': fake})",
+    "operator.setitem": "import operator\noperator.setitem(d, k, v)",
+    "operator.delitem": "import operator\noperator.delitem(d, k)",
+    "from operator import setitem": "from operator import setitem",
+    "importlib.reload": "import importlib\nimportlib.reload(m)",
+    "from importlib import reload": "from importlib import reload",
+    "update on an imported module": "from ofo import wording\nwording.update(x=f)",
+    "pop on an imported object": "from ofo.timeline.why import INPUT_LABELS\nINPUT_LABELS.pop('x')",
+    "clear on a chain from an import": "import ofo.timeline.why as why\nwhy.INPUT_LABELS.clear()",
+    "setdefault on a chain from an import": "from ofo import wording\nwording.X.setdefault('k', f)",
+    "update on a call root (fail closed)": "get().d.update(x=f)",
+    # Fix round 1, finding 1: nothing imported from ofo.wording by name.
+    "from ofo.wording import name": "from ofo.wording import check_platform_text",
+    "from ofo.wording import star": "from ofo.wording import *",
+    "from ofo.wording import as": "from ofo.wording import find_advice_wording as fw",
 }
 
 
@@ -371,16 +574,36 @@ def test_scan_flags_each_bypass_shape(label: str) -> None:
     assert scan_source(FLAGGED[label]) != [], label
 
 
+@pytest.mark.parametrize("module,source", [
+    ("ofo.errors.slots", "from ..wording import is_blank_after_normalising"),
+    ("ofo.timeline.why", "from ..wording import check_platform_text"),
+    ("ofo.execution", "from ..wording import check_platform_text"),  # package __init__: is_package below
+    ("ofo.marketdata.disconnect", "from .wording import x"),  # ofo.marketdata.wording: another module
+])
+def test_scan_flags_a_relative_from_import_of_a_checker_name(module: str, source: str) -> None:
+    is_package = module == "ofo.execution"
+    hits = scan_source(source, module, is_package)
+    if module == "ofo.marketdata.disconnect":
+        assert all("ofo.wording" not in h.message for h in hits)  # resolves elsewhere: not the checker
+        return
+    assert any("from ofo.wording by name" in h.message for h in hits), hits
+
+
 CLEAN = {
     "self attribute": "class C:\n    def f(self):\n        self.x = 1",
     "self nested attribute": "class C:\n    def f(self):\n        self.a.b = 1",
     "self item": "class C:\n    def f(self, k):\n        self._d[k] = 1",
     "del self item": "class C:\n    def f(self, k):\n        del self._d[k]",
     "cls augmented": "class C:\n    @classmethod\n    def f(cls):\n        cls.n += 1",
+    "async method": "class C:\n    async def f(self):\n        self.x = 1",
+    "method with a nested def not named self": "class C:\n    def f(self):\n        def h(x):\n            return x\n        self.x = h",
     "plain name": "x = 1\nx += 1\ndel x",
     "local item": "d = {}\nd['k'] = 1\nd['a']['b'] = 2\ndel d['k']",
     "reading a module attribute": "from ofo import wording\nhits = wording.find_advice_wording('x')",
+    "module import of the checker": "from ofo import wording as shared_wording\nimport ofo.wording",
     "getattr on an object": "v = getattr(obj, 'name', None)",
+    "update on a local dict": "d = {}\nd.update(a=1)\nself_d = d.pop('a')",
+    "update on own module-level dict": "LABELS = {}\nLABELS.update(a=1)",
     "frozen dataclass __post_init__": (
         "@dataclass(frozen=True)\nclass C:\n    def __post_init__(self):\n"
         "        if self.x:\n            object.__setattr__(self, 'x', tuple(self.x))"

@@ -21,6 +21,7 @@ of returns or of reduced losses.
 from __future__ import annotations
 
 import re
+import types
 import unicodedata
 
 #: Unicode category "Cf" = "Format": zero-width space/joiner/non-joiner, byte-order mark, bidi
@@ -105,6 +106,7 @@ def _prepare(text: str) -> str:
 def tokenise(text: str) -> list[str]:
     """`_prepare`, then split into letter/digit tokens. `_`, `-`, spaces and punctuation all
     separate words."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     return _TOKEN.findall(_prepare(text))
 
 
@@ -131,6 +133,7 @@ def find_q226_bare_words(text: str) -> list[str]:
     """Every Q226/Q230 banned word present in `text` (any word form: a token starting with it) and
     not inside an exact named exception, as its Q226 label (e.g. "guarantee*"), in
     `Q226_BARE_WORDS` order."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     tokens = _TOKEN.findall(_without_exceptions(_prepare(text)))
     found: list[str] = []
     for word in Q226_BARE_WORDS:
@@ -150,6 +153,7 @@ def normalise_for_wording_scan(text: str) -> str:
     before matching, so a word-stem pattern (or an emptiness check) cannot be dodged by whitespace,
     invisible-character or compatibility-character tricks.
     """
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     text = unicodedata.normalize("NFKC", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != _FORMAT_CATEGORY)
     text = text.casefold()
@@ -165,6 +169,7 @@ def normalise_for_wording_scan(text: str) -> str:
 def find_advice_wording(text: str) -> list[str]:
     """Return every ADR-003/Q226 advice-wording hit in `text`: first the Q226 bare words (by their
     Q226 label), then the phrase families (by label). Empty list means the text is clean."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     joined = " ".join(tokenise(text))
     phrases = [label for pattern, label in _COMPILED_PATTERNS if pattern.search(joined)]
     return find_q226_bare_words(text) + phrases
@@ -173,6 +178,7 @@ def find_advice_wording(text: str) -> list[str]:
 def is_blank_after_normalising(text: str) -> bool:
     """True if `text` has no visible content once zero-width/format characters are stripped and
     whitespace is collapsed (catches e.g. a field that is only a zero-width space)."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     return normalise_for_wording_scan(text) == ""
 
 
@@ -180,6 +186,7 @@ def normalise_for_duplicate_check(text: str) -> str:
     """As `normalise_for_wording_scan`, plus strips all punctuation — so 'Same.' and 'Same' (or two
     template parts differing only by a full stop) compare equal. W-024 round-3 verifier finding:
     parts differing only by punctuation were not flagged as duplicates."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     base = normalise_for_wording_scan(text)
     return re.sub(r"[^\w\s]", "", base, flags=re.UNICODE)
 
@@ -208,6 +215,7 @@ def is_nfkc_clean_latin(text: str) -> bool:
     pattern). NFKC handles the fullwidth case (folds to ASCII, so the wording scan sees it); this
     check refuses the Cyrillic/other-script case outright rather than trying to transliterate it.
     """
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     normalised = unicodedata.normalize("NFKC", text)
     return bool(_ALLOWED_PLATFORM_TEXT.match(normalised))
 
@@ -218,6 +226,7 @@ def check_platform_text(text: object, where: str) -> None:
     ₹ and punctuation (no confusable other-script letters); and no ADR-003/Q226/Q230 wording.
     Raises TypeError / ValueError naming `where`. Zerodha's or the user's own words never go
     through this: they are quoted in a labelled field (Q226)."""
+    _verify_checker()  # fix round 1: every public entry point fails closed on a swapped checker
     if type(text) is not str:
         raise TypeError(f"{where}: platform text must be exactly str, got {type(text).__name__}")
     if is_blank_after_normalising(text):
@@ -227,3 +236,85 @@ def check_platform_text(text: object, where: str) -> None:
     hits = find_advice_wording(text)
     if hits:
         raise ValueError(f"{where}: platform text contains banned wording {hits}: {text!r}")
+
+
+class CheckerChanged(RuntimeError):
+    """The wording checker is not the one captured at import (ADR-056 decision (1)): nothing is
+    checked, built or shown with it."""
+
+
+#: ADR-056 decision (1): "a runtime identity check of the wording checker". Every function of this
+#: module whose result decides whether text passes, and every table they read. Captured once at
+#: import; every public entry point compares them (object identity AND `__code__` identity) first.
+_SELF_CHECKED_FUNCTIONS: tuple[str, ...] = (
+    "_prepare", "tokenise", "_without_exceptions", "find_q226_bare_words", "normalise_for_wording_scan",
+    "find_advice_wording", "is_blank_after_normalising", "normalise_for_duplicate_check",
+    "is_nfkc_clean_latin", "check_platform_text",
+)
+_SELF_CHECKED_DATA: tuple[str, ...] = (
+    "Q226_BARE_WORDS", "Q226_NAMED_EXCEPTIONS", "ADVICE_WORDING_PATTERNS", "_COMPILED_PATTERNS",
+    "_TOKEN", "_EXCEPTION_PATTERNS", "_NEGATION", "_FORMAT_CATEGORY", "_ALLOWED_PLATFORM_TEXT",
+)
+
+import ofo.wording as _this_module  # noqa: E402  (this module, partly initialised: every name above exists)
+
+
+def _make_verifier() -> "types.FunctionType":
+    # Reads go through ModuleType's own __getattribute__, not the guarded one below (no recursion).
+    raw = types.ModuleType.__getattribute__
+    functions = tuple((name, raw(_this_module, name)) for name in _SELF_CHECKED_FUNCTIONS)
+    codes = tuple(fn.__code__ for _, fn in functions)
+    data = tuple((name, raw(_this_module, name)) for name in _SELF_CHECKED_DATA)
+    missing = object()
+
+    def current(name: str) -> object:
+        try:
+            return raw(_this_module, name)
+        except AttributeError:
+            return missing
+
+    def verify() -> None:
+        for (name, fn), code in zip(functions, codes):
+            if current(name) is not fn:
+                raise CheckerChanged(f"ofo.wording.{name} is not the function captured at import")
+            if fn.__code__ is not code:
+                raise CheckerChanged(f"ofo.wording.{name}.__code__ is not the code captured at import")
+        for name, value in data:
+            if current(name) is not value:
+                raise CheckerChanged(f"ofo.wording.{name} is not the object captured at import")
+
+    return verify
+
+
+_verify_checker = _make_verifier()
+
+
+def _make_frozen_module_class(verify: "types.FunctionType") -> type:
+    """Structural guarantee (run-discipline B8, fix round 1). Callers reach the checker only as
+    `wording.<name>` (the CI scan refuses `from ofo.wording import <name>`), so every read goes
+    through this class:
+    - reading any checked name runs `verify` first (the ORIGINAL verifier, held in this closure),
+      so a caller never receives a swapped entry point (`check_platform_text` itself);
+    - `ofo.wording.<name> = f` / `del ofo.wording.<name>` raise, whatever import form reached it.
+    Only a write into the module's namespace dict gets past the second point (`vars()`/`__dict__`,
+    refused by the CI scan); the first point then refuses the next read."""
+    raw = types.ModuleType.__getattribute__
+    guarded = frozenset(_SELF_CHECKED_FUNCTIONS) | frozenset(_SELF_CHECKED_DATA)
+
+    class _FrozenModule(types.ModuleType):
+        def __getattribute__(self, name: str) -> object:
+            if name in guarded:
+                verify()
+            return raw(self, name)
+
+        def __setattr__(self, name: str, value: object) -> None:
+            raise AttributeError(f"ofo.wording is read-only: cannot set {name!r} (ADR-056)")
+
+        def __delattr__(self, name: str) -> None:
+            raise AttributeError(f"ofo.wording is read-only: cannot delete {name!r} (ADR-056)")
+
+    return _FrozenModule
+
+
+_FrozenModule = _make_frozen_module_class(_verify_checker)
+_this_module.__class__ = _FrozenModule

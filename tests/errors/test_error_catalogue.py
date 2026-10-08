@@ -418,7 +418,12 @@ def test_ast_no_bypass_of_render_outside_the_catalogue_module() -> None:
         if "__pycache__" in path.parts or path in _CATALOGUE_MODULE_FILES:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        offenders += [f"{path.relative_to(REPO_ROOT)}:{o}" for o in _render_bypass_offences(tree)]
+        offences = _render_bypass_offences(tree)
+        if path == BACKEND_OFO_DIR / "wording.py":
+            # W-024 round 8 fix round 1: ofo.wording makes ITSELF read-only with one statement,
+            # `_this_module.__class__ = _FrozenModule` (named allowlist entry in test_write_allowlist.py).
+            offences = [o for o in offences if not o.endswith("assigns to an attribute of a checker module (.__class__)")]
+        offenders += [f"{path.relative_to(REPO_ROOT)}:{o}" for o in offences]
     assert not offenders, "\n".join(offenders)
 
 

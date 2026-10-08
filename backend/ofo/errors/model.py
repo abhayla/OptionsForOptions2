@@ -27,7 +27,6 @@ from types import MappingProxyType
 from typing import Any
 
 from ofo import wording as _wording
-from ofo.wording import check_platform_text, normalise_for_duplicate_check
 
 from .classes import ErrorClass
 from .slots import ExternalText
@@ -139,8 +138,8 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
     seen: dict[str, str] = {}
     for name in _PART_NAMES:
         text = fields[name]
-        check_platform_text(text, f"UserFacingError.{name}")
-        key = normalise_for_duplicate_check(text)
+        _wording.check_platform_text(text, f"UserFacingError.{name}")
+        key = _wording.normalise_for_duplicate_check(text)
         if key in seen:
             raise ValueError(f"UserFacingError.{name} is a duplicate of {seen[key]}: {text!r}")
         seen[key] = name
@@ -156,29 +155,29 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
 _CHECKER_FUNCTIONS: tuple[str, ...] = (
     "check_platform_text", "find_advice_wording", "find_q226_bare_words", "tokenise", "_prepare",
     "_without_exceptions", "is_blank_after_normalising", "normalise_for_wording_scan",
-    "is_nfkc_clean_latin", "normalise_for_duplicate_check",
+    "is_nfkc_clean_latin", "normalise_for_duplicate_check", "_make_verifier",
+    "_make_frozen_module_class",
 )
 _CHECKER_DATA: tuple[str, ...] = (
     "Q226_BARE_WORDS", "Q226_NAMED_EXCEPTIONS", "ADVICE_WORDING_PATTERNS", "_COMPILED_PATTERNS",
     "_TOKEN", "_EXCEPTION_PATTERNS", "_NEGATION", "_FORMAT_CATEGORY", "_ALLOWED_PLATFORM_TEXT",
+    "_SELF_CHECKED_FUNCTIONS", "_SELF_CHECKED_DATA", "_verify_checker", "_FrozenModule",
 )
 
 
-class CheckerChanged(RuntimeError):
-    """The wording checker is not the one captured at import: no message is built or shown."""
+CheckerChanged = _wording.CheckerChanged
 
 
 def _make_identity_check() -> Callable[[], None]:
-    """Capture every checker function object AND its `__code__` object, every checker data object,
-    and the two checker functions this module itself calls, at import. The returned function raises
-    `CheckerChanged` (fail closed) when any of them differs from the captured one: a rebound
-    module attribute (`ofo.wording.find_advice_wording = f`), a swapped code object
-    (`find_advice_wording.__code__ = g.__code__`), or a rebound name in this module. The captured
-    values live only in this closure."""
+    """Caller-side second layer (fix round 1): `ofo.wording` checks itself on every public call
+    (`ofo.wording.CheckerChanged`), and this builder checks again, because a swapped ENTRY POINT
+    (`check_platform_text` itself) never runs the original's own check. Captures every checker
+    function object AND its `__code__` object and every checker data object at import; the returned
+    function raises `CheckerChanged` (fail closed) when any differs. Values live only in this closure.
+    This module calls the checker only as `_wording.<fn>(...)` (no name imported from ofo.wording)."""
     functions = tuple((name, getattr(_wording, name)) for name in _CHECKER_FUNCTIONS)
     codes = tuple((name, fn.__code__) for name, fn in functions)
     data = tuple((name, getattr(_wording, name)) for name in _CHECKER_DATA)
-    own_check, own_dedupe = check_platform_text, normalise_for_duplicate_check
     missing = object()
 
     def verify() -> None:
@@ -190,8 +189,6 @@ def _make_identity_check() -> Callable[[], None]:
         for name, value in data:
             if getattr(_wording, name, missing) is not value:
                 raise CheckerChanged(f"ofo.wording.{name} is not the object captured at import")
-        if check_platform_text is not own_check or normalise_for_duplicate_check is not own_dedupe:
-            raise CheckerChanged("ofo.errors.model's checker names are not the functions captured at import")
 
     return verify
 

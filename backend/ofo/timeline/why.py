@@ -17,7 +17,7 @@ from ofo.rules.model import RuleAction
 from ofo.strategy.wording import find_banned_phrases
 from ofo.timeline.catalogue import FollowUpKind
 from ofo.timeline.records import FollowUp, RuleTriggerRecord
-from ofo.wording import check_platform_text, find_advice_wording
+from ofo import wording as shared_wording
 
 #: Plain-language names of every rule input (units as REQ-041 AC-4 / ofo.rules.inputs define them).
 INPUT_LABELS: dict[InputName, str] = {
@@ -67,7 +67,7 @@ def advice_words_in(text: str) -> list[str]:
     kept so coverage is never narrower) plus the shared Q226/Q230 checker (``ofo.wording.find_advice_wording``: every
     word form of the five words, ADR-003 phrase families)."""
     found = find_banned_phrases(text)
-    return found + [hit for hit in find_advice_wording(text) if hit not in found]
+    return found + [hit for hit in shared_wording.find_advice_wording(text) if hit not in found]
 
 
 def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowUp] = ()) -> str:
@@ -125,5 +125,5 @@ def _own(template: str, *data: object) -> str:
     found = advice_words_in(own_words)
     if found:
         raise ValueError(f"the platform's own answer wording contains advice phrases {found}: {template!r}")
-    check_platform_text(own_words, "why_did_this_trigger")  # the same check every platform message passes
+    shared_wording.check_platform_text(own_words, "why_did_this_trigger")  # the same check every platform message passes
     return template.format(*data)

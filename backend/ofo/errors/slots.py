@@ -25,7 +25,7 @@ from enum import Enum, unique
 from ofo.engine.legs import Instrument as _EngineInstrument
 from ofo.execution.safety import CheckCode
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-from ofo.wording import is_blank_after_normalising
+from ofo import wording as shared_wording
 
 #: Input-domain cap (builder brief checklist "absurd sizes"): no rupee amount shown in an error
 #: exceeds ₹1 lakh crore (10^12). Anything larger is a bug upstream, refused rather than printed.
@@ -235,7 +235,7 @@ class ExternalText(SlotType):
         if type(value.source) is not ExternalSource:
             raise TypeError(f"ExternalText.source must be an ExternalSource, got {type(value.source).__name__}")
         _require_exact(value.text, str, "ExternalText.text")
-        if is_blank_after_normalising(value.text):
+        if shared_wording.is_blank_after_normalising(value.text):
             # Round 6: `.strip()` kept a zero-width space ("​") as text; an empty-looking
             # quote in Zerodha's field is refused like any blank one.
             raise ValueError("ExternalText requires non-blank text (invisible characters alone are blank)")

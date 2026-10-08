@@ -28,7 +28,7 @@ from ofo.execution.context import (
 )
 from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-from ofo.wording import check_platform_text
+from ofo import wording as shared_wording
 
 logger = logging.getLogger("ofo.execution.safety")
 
@@ -91,7 +91,7 @@ class CheckFailure:
     def __post_init__(self) -> None:
         # W-024 round 6 (ADR-003, Q226/Q230): the reason is shown to the user, so it passes the same check as every
         # platform message.
-        check_platform_text(self.reason, f"CheckFailure {getattr(self.code, 'value', self.code)} reason")
+        shared_wording.check_platform_text(self.reason, f"CheckFailure {getattr(self.code, 'value', self.code)} reason")
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ class Flag:
     message: str
 
     def __post_init__(self) -> None:
-        check_platform_text(self.message, f"Flag {getattr(self.code, 'value', self.code)} message")
+        shared_wording.check_platform_text(self.message, f"Flag {getattr(self.code, 'value', self.code)} message")
 
 
 @dataclass(frozen=True)
