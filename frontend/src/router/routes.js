@@ -43,6 +43,9 @@ export const routes = [
   { path: '/', redirect: '/home' },
   ...sectionRoutes,
   ...settingsRoutes,
+  { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
+  { path: '/broker/connected', name: 'broker-connected', component: () => import('../pages/BrokerConnectedPage.vue'), meta: { title: 'Zerodha connected', section: 'settings' } },
+  { path: '/broker/refused', name: 'broker-refused', component: () => import('../pages/BrokerRefusedPage.vue'), meta: { title: 'Zerodha login not completed', section: 'settings' } },
   { path: '/health-status', name: 'health-status', component: () => import('../pages/HealthPage.vue'), meta: { title: 'System health', section: 'system' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../pages/NotFoundPage.vue'), meta: { title: 'Page not found' } },
 ]

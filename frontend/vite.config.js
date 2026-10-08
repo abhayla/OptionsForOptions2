@@ -9,8 +9,8 @@ import path from 'path'
 const apiTarget = process.env.OFO_API_TARGET || 'http://127.0.0.1:8000'
 
 const proxy = {
-  // /api/health -> <apiTarget>/health
-  '/api': { target: apiTarget, changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, '') },
+  // /api/health -> <apiTarget>/health; /api/strategies/* keeps its prefix (the outcome route is served at /api/strategies/outcome)
+  '/api': { target: apiTarget, changeOrigin: true, rewrite: (p) => (p.startsWith('/api/strategies/') ? p : p.replace(/^\/api/, '')) },
   '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
 }
 
