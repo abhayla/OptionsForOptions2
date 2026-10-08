@@ -16,6 +16,8 @@ the user logs in on Zerodha's own page. REQ-015 AC-9: the token is stored only a
 - At most MAX_LIVE_STATES unexpired states are held; over the cap the login is refused, never silently evicted.
 - The query string of ANY access-log line whose query carries request_token, state or access_token is dropped
   (``CallbackQueryFilter``, key-based, any path).
+- Stated limitation: the login must start on the same host as KITE_REDIRECT_URL (localhost vs 127.0.0.1 drops
+  the cookie; the callback then fails closed).
 - Stated limitation: states live in this process's memory, so with several workers (or after a restart) a callback
   that lands on another worker fails closed as "expired or already used". V1 runs one worker (ADR-051).
 

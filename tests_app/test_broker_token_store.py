@@ -200,6 +200,7 @@ async def test_a_kite_token_exception_marks_the_session_expired():
     assert engine.begun == 1
     ((sql, params),) = engine.conn.calls
     assert sql.startswith("UPDATE") and params["reason"] == "expired" and "token_ciphertext = NULL" in sql
+    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read
 
 
 async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
@@ -210,6 +211,7 @@ async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
     ((sql, params),) = engine.conn.calls
     assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
+    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read
 
 
 def test_cipher_repr_and_key_id_never_show_the_key():
@@ -455,3 +457,71 @@ async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(
     assert (refused.status_code, refused.json()["code"]) == (403, "broker_user_mismatch")
     (row,) = await _rows(admin_engine, user)
     assert row["ended_at"] is None and row["token_ciphertext"] is not None
+
+
+class RacingEngine:
+    """The real engine, but a re-login lands (committed) just before the store opens its own ending transaction:
+    the window between reading session 1 and ending it."""
+
+    def __init__(self, engine, user_ref: str, cipher: TokenCipher) -> None:
+        self.engine, self.user_ref, self.cipher = engine, user_ref, cipher
+        self.raced = 0
+
+    def begin(self):
+        racer = self
+
+        class _Tx:
+            async def __aenter__(self):
+                async with racer.engine.begin() as other:
+                    await store.store_session(other, racer.user_ref, "ACtok_fake_second_login", racer.cipher)
+                racer.raced += 1
+                self._ctx = racer.engine.begin()
+                return await self._ctx.__aenter__()
+
+            async def __aexit__(self, *exc):
+                return await self._ctx.__aexit__(*exc)
+
+        return _Tx()
+
+
+async def _assert_second_session_survives(admin_engine, app_engine, user: str, cipher: TokenCipher) -> None:
+    first, second = await _rows(admin_engine, user)
+    assert (first["end_reason"], first["token_ciphertext"]) == ("replaced", None)
+    assert second["ended_at"] is None and second["token_ciphertext"] is not None
+    async with app_engine.connect() as conn:
+        assert await store.access_token_for(conn, user, cipher, engine=app_engine) == "ACtok_fake_second_login"
+
+
+async def test_a_late_token_exception_on_session_1_never_ends_session_2(app_engine, admin_engine):
+    user, cipher = _user(), _cipher()
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, cipher)
+    racing = RacingEngine(app_engine, user, cipher)
+
+    async def call(token):
+        assert token == ACCESS_TOKEN
+        raise KiteTokenException()
+
+    with pytest.raises(KiteTokenException):
+        async with app_engine.connect() as conn:
+            await store.call_with_token(conn, user, cipher, call, engine=racing)
+    assert racing.raced == 1
+    await _assert_second_session_survives(admin_engine, app_engine, user, cipher)
+
+
+async def test_the_expiry_path_ends_only_the_row_it_read(app_engine, admin_engine):
+    user, cipher = _user(), _cipher()
+    async with app_engine.begin() as conn:
+        session_id = await store.store_session(conn, user, ACCESS_TOKEN, cipher)
+    # the owner moves session 1's expected expiry into the past; the guard stamps that column, so it is disabled for
+    # this one statement inside the owner's transaction and enabled again before the transaction ends
+    async with admin_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE public.broker_sessions DISABLE TRIGGER broker_sessions_guard"))
+        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() "
+                                "- interval '1 hour' WHERE id = :i"), {"i": session_id})
+        await conn.execute(text("ALTER TABLE public.broker_sessions ENABLE TRIGGER broker_sessions_guard"))
+    racing = RacingEngine(app_engine, user, cipher)
+    async with app_engine.connect() as conn:
+        assert await store.access_token_for(conn, user, cipher, engine=racing) is None
+    assert racing.raced == 1
+    await _assert_second_session_survives(admin_engine, app_engine, user, cipher)
