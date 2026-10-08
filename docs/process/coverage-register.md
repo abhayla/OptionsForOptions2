@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit b863791
+Generated from commit 223c754
 
 ## Stage S0
 
@@ -88,6 +88,7 @@ Generated from commit b863791
 | 4a | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
+| 4a | issue | #138 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -423,7 +424,7 @@ Generated from commit b863791
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 26 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 3 | 72 |
+| 4a | 7 | 0 | 26 | 5 | 0 | 5 | 0 | 1 | 26 | 0 | 3 | 73 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
