@@ -75,7 +75,6 @@ test('every number on the screen equals the API response text for the condor', a
   expect(api.summary.max_profit).toBe('4754.75')
   expect(api.summary.max_loss).toBe('8245.25')
   expect(api.summary.breakevens).toEqual(['22326.85', '22873.15'])
-  await page.getByTestId('summary-details').locator('summary').click()
   await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit)
   await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss)
   await expect(page.getByTestId('breakevens')).toHaveText(api.summary.breakevens.join(', '))

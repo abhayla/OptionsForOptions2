@@ -55,7 +55,9 @@ describe('AC-3 helpers', () => {
 
 describe('ADR-008: no client maths on the outcome response (second layer)', () => {
   const SRC = path.resolve(__dirname, '../src')
-  const ALLOWED = new Set([path.join('lib', 'chartGeometry.js')]) // pixel positions only, never displayed
+  // Named exceptions, each with its reason: PayoffChart hands numbers to chart.js to DRAW the line (its tooltip and labels
+  // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display).
+  const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
@@ -73,7 +75,8 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])
   })
-  it('the only file allowed to parse a payoff string is chartGeometry.js', () => {
-    expect([...ALLOWED]).toEqual([path.join('lib', 'chartGeometry.js')])
+  it('only the two named files may parse an API number, and they exist', () => {
+    expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue')])
+    for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
   })
 })

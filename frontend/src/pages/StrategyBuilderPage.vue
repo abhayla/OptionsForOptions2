@@ -5,14 +5,19 @@
      States: loading, computed, stale (computed with a labelled leg), not-connected, refused, error, no-draft.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
+import SummaryCards from '@/components/strategy/SummaryCards.vue'
+import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
+import StrategyActions from '@/components/strategy/StrategyActions.vue'
+import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 
 const route = useRoute()
+const router = useRouter()
 const state = ref('loading') // loading | computed | stale | not-connected | refused | error | no-draft
 const data = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
@@ -54,9 +59,14 @@ async function load() {
 }
 
 onMounted(load)
+watch(() => route.query.ux, load)
+const setUx = (ux) => router.replace({ query: { ...route.query, ux } })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
 const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
+const headerUnderlying = computed(() => data.value?.underlying ?? readDraft()?.underlying ?? '')
+const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
+const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
 </script>
 
@@ -64,6 +74,8 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
   <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
+
+    <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
 
     <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
       Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
@@ -95,26 +107,30 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         </ul>
       </div>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-3" data-testid="summary-cards">
-        <div class="rounded border border-line bg-surface p-3"><h2 class="text-xs font-medium text-ink-muted">What can I lose?</h2><p data-testid="sum-lose">{{ data.summary.what_can_i_lose }}</p></div>
-        <div class="rounded border border-line bg-surface p-3"><h2 class="text-xs font-medium text-ink-muted">What can I make?</h2><p data-testid="sum-make">{{ data.summary.what_can_i_make }}</p></div>
-        <div class="rounded border border-line bg-surface p-3"><h2 class="text-xs font-medium text-ink-muted">Where do I start losing?</h2><p data-testid="sum-start">{{ data.summary.where_do_i_start_losing }}</p></div>
-      </div>
+      <SummaryCards
+        class="mt-4"
+        :max-profit="maxProfit"
+        :max-loss="maxLoss"
+        :breakevens="data.summary.breakevens"
+        :what-can-i-make="data.summary.what_can_i_make"
+        :what-can-i-lose="data.summary.what_can_i_lose"
+        :where-i-start-losing="data.summary.where_do_i_start_losing"
+        :current-spot="data.spot_level"
+        :underlying="data.underlying"
+        :last-updated="data.valuation"
+      />
+      <p class="mt-2 text-sm text-ink-muted" data-testid="margin">{{ data.margin.reason }}</p>
 
-      <details class="mt-3 rounded border border-line bg-surface p-3 text-sm" data-testid="summary-details">
-        <summary class="cursor-pointer font-medium">Details</summary>
-        <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
-          <dt>Max profit</dt><dd data-testid="max-profit">{{ data.summary.max_profit_unlimited ? 'Unlimited' : data.summary.max_profit }}</dd>
-          <dt>Max loss</dt><dd data-testid="max-loss">{{ data.summary.max_loss_unlimited ? 'Unlimited' : data.summary.max_loss }}</dd>
-          <dt>Breakevens</dt><dd data-testid="breakevens">{{ data.summary.breakevens.join(', ') }}</dd>
-          <dt>Index level now</dt><dd data-testid="spot-level">{{ data.spot_level }}</dd>
-          <dt>Margin</dt><dd data-testid="margin">{{ data.margin.reason }}</dd>
-        </dl>
-      </details>
-
-      <div class="mt-4"><PayoffChart :points="data.payoff.points" :current-level="data.spot_level" /></div>
+      <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>
-      <StrategyTable :table="data.table" :ux-level="uxLevel" />
+      <StrategyTable
+        :table="data.table"
+        :ux-level="uxLevel"
+        :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+        :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+      />
+      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" @recalculate="load" />
+      <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>
 </template>
