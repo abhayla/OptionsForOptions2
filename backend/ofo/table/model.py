@@ -437,6 +437,19 @@ def build_table(
     if strategy_health is not None and not isinstance(strategy_health, StrategyHealth):
         raise ValueError(f"strategy_health must be a StrategyHealth, got {strategy_health!r}")
 
+    if level_set is not None and scenario is not None:
+        # one table, one set of inputs: the same check scenario_values makes, so a stale scenario can never sit
+        # under a live label (REQ-072 AC-2, W-060 round 4)
+        if level_set.index != inputs.underlying or level_set.current != inputs.spot_level:
+            raise ValueError("level_set was built for a different strategy input (index or current level differs)")
+        if level_set.spot_at != inputs.spot_at or level_set.data_label != inputs.data_label:
+            raise ValueError("level_set was built on a different spot reading (time or health differs)")
+        if (scenario.spot_level != inputs.spot_level or scenario.spot_at != inputs.spot_at
+                or scenario.data_label != inputs.data_label):
+            raise ValueError("scenario was computed on a different spot reading (level, time or health differs)")
+        if scenario.levels != level_set.levels:
+            raise ValueError("scenario was computed over a different level set")
+
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
