@@ -7,9 +7,18 @@ classify is a producer too (fail closed). The one place such text may live is th
 `backend/ofo/errors/templates.py`, whose text reaches a user only through `render()`.
 
 Not user-facing, by position (each is a shape too): a docstring; an argument of a logging call (`logger.info`, ...);
-a message of a raised BUILT-IN exception (ValueError, TypeError, ... : a programmer error, never shown); an assert
-message; a pattern passed to `re.compile`/`re.search`/...; the forbidden-wording data of `ofo/wording.py` and
+an assert message; a pattern passed to `re.compile`/`re.search`/...; the forbidden-wording data of `ofo/wording.py` and
 `ofo/strategy/wording.py` (the second layer: the phrases it refuses are not text it shows).
+
+Round 9 part 6 (structural, run-discipline B8): the guarantee sits at the API boundary (backend/ofo_app/errors.py):
+a user sees an exception's text only when the exception is an `ofo.errors.UserFacing` (its render() message), and
+the INTERNAL_SYSTEM template for anything else. So a literal passed to the constructor of a NON-UserFacing exception
+class is developer detail by construction and is not counted; a literal passed to a `UserFacing` type counts unless it
+binds (by the real `inspect.signature`) to its `detail` parameter. The callee is resolved by IMPORT SOURCE (the
+scanned module's own global, i.e. its class or the object its `from x import y` bound), never by identifier text; an
+attribute call, a name shadowed in an enclosing function, or a module that does not import is unresolved, and the
+literal stays counted (fail closed). `test_exception_text_never_flows_into_a_user_facing_message` closes the other
+route: an `except ... as e` name used inside `render(...)` or a `UserFacing` constructor.
 
 Fail closed: any sentence-shaped literal anywhere else fails this test, naming file, line and function. A producer
 whose text could not be classified (a sentence-shaped literal in a position this scan does not recognise) is a
@@ -417,3 +426,103 @@ def test_single_words_identifiers_keys_and_annotations_are_not_sentences() -> No
         '    return typing.cast(tuple[str, "Decimal | None"], VERSION_NOT_EXECUTABLE)\n'
     )
     assert scan_source(src, "m.py") == []
+
+
+# --- round 9 part 6: narrowing by structure (the API boundary hides every non-UserFacing exception) ----------------
+
+def test_non_user_facing_project_exception_text_is_developer_detail() -> None:
+    """Resolved by import source: compare.py imports VersionError (not UserFacing); its own module defines it."""
+    src = 'def f(x):\n    raise VersionError(f"version {x} cannot be edited now")\n'
+    assert scan_source(src, "reconciliation/compare.py") == []
+    assert scan_source(src, "strategy/versions.py") == []
+
+
+def test_user_facing_type_text_counts_unless_it_binds_to_detail() -> None:
+    src = (
+        'def f(x):\n'
+        '    raise ReconciliationError(f"strategy {x} has exited here")\n'  # binds to `detail`: hidden
+        'def g(x):\n'
+        '    raise ReconciliationError(detail="d", message="Leg 1 has already expired.")\n'  # message: shown
+        'def h(x):\n'
+        '    raise SendRefused("Leg 1 has already expired.")\n'  # SendRefused(message): shown
+    )
+    assert [r[2] for r in scan_source(src, "reconciliation/resolution.py")] == ["g", "h"]  # h: no SendRefused import
+    assert [r[2] for r in scan_source(src, "execution/send_guard.py")[2:]] == ["h"]  # resolved: a UserFacing type
+    assert [r[2] for r in scan_source(src, "execution/send_guard.py")] == ["f", "g", "h"]  # no such import: counted
+
+
+def test_shadowed_or_attribute_callee_is_unresolved_and_counted() -> None:
+    src = (
+        'def f(VersionError):\n'
+        '    raise VersionError("version cannot be edited now")\n'
+        'def g(mod):\n'
+        '    raise mod.VersionError("version cannot be edited now")\n'
+    )
+    assert [r[2] for r in scan_source(src, "reconciliation/compare.py")] == ["f", "g"]
+
+
+def test_mutant_treating_user_facing_types_as_detail_lets_shown_text_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mutation: drop the UserFacing branch (every exception counts as developer detail) -> the shown text escapes."""
+    src = 'def h():\n    raise SendRefused("Leg 1 has already expired.")\n'
+    assert len(scan_source(src, "execution/send_guard.py")) == 1
+    original = _exception_flow
+
+    def mutant(call: ast.Call, chain: list[ast.AST], rel: str) -> bool | None:
+        result = original(call, chain, rel)
+        return True if result is False else result
+
+    monkeypatch.setattr(sys.modules[__name__], "_exception_flow", mutant)
+    assert scan_source(src, "execution/send_guard.py") == []
+
+
+def exception_text_flows(source: str, rel: str) -> list[tuple[str, int, str]]:
+    """Every use of an `except ... as e` name inside `render(...)` or inside a non-detail argument of a `UserFacing`
+    constructor: the one route by which a hidden exception's text could still reach a user."""
+    tree = ast.parse(source)
+    found: list[tuple[str, int, str]] = []
+
+    def walk(node: ast.AST, chain: list[ast.AST], bound: frozenset[str]) -> None:
+        for child in ast.iter_child_nodes(node):
+            names = bound | {child.name} if isinstance(child, ast.ExceptHandler) and child.name else bound
+            child_chain = chain + [child]
+            if isinstance(child, ast.Name) and child.id in bound:
+                for index in range(len(child_chain) - 2, -1, -1):
+                    link = child_chain[index]
+                    if not isinstance(link, ast.Call):
+                        continue
+                    if _call_name(link) == "render" or _exception_flow(link, child_chain, rel) is False:
+                        found.append((rel, child.lineno, child.id))
+                        break
+            walk(child, child_chain, names)
+
+    walk(tree, [tree], frozenset())
+    return found
+
+
+def test_exception_text_never_flows_into_a_user_facing_message() -> None:
+    rows = []
+    for path in sorted(ROOT.rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        rows.extend(exception_text_flows(path.read_text(encoding="utf-8"), rel))
+    assert not rows, f"exception text flowing into a user-facing message: {rows}"
+
+
+def test_exception_text_flow_detector_kills_its_samples() -> None:
+    src = (
+        'def f():\n'
+        '    try:\n'
+        '        pass\n'
+        '    except ValueError as exc:\n'
+        '        raise SendRefused(render("x", text=str(exc)))\n'
+        'def g():\n'
+        '    try:\n'
+        '        pass\n'
+        '    except ValueError as exc:\n'
+        '        raise ReconciliationError(detail=f"bad: {exc}") from exc\n'
+        'def h():\n'
+        '    try:\n'
+        '        pass\n'
+        '    except ValueError as exc:\n'
+        '        raise SendRefused(str(exc))\n'
+    )
+    assert [r[1] for r in exception_text_flows(src, "execution/send_guard.py")] == [5, 15]
