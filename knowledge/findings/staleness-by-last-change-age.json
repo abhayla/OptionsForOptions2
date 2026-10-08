@@ -10,9 +10,12 @@
  },
  "fix": "Health follows the feed's state for the subscription (connected, subscribed, heartbeats and data frames arriving) and the contract's last-known value stays current while the feed is live; a contract's own age is shown as information, never as stale by itself. Decided in the data-path work item.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "A replay test over the recorded 2026-10-08 frames: with the feed live, no contract may be marked stale; with an inserted gap longer than the feed threshold, every contract must be."
+  "status": "guarded",
+  "checks": [
+   "tests/marketdata/test_feed_health_replay.py::test_no_contract_is_stale_after_61_s_while_the_feed_is_live",
+   "tests/marketdata/test_feed_health_replay.py::test_inserted_gap_makes_every_contract_stale_then_data_resumes"
+  ],
+  "note": "W-059 replays the recorded 2026-10-08 frames: 61 s with the feed live leaves all 983 ticked contracts available; a 5 s gap makes all 983 stale and data resuming makes them available. The old per-quote age rule flags all 983 on the same replay (test_the_old_per_quote_age_rule_is_the_defect). Not covered: a provider other than Kite must use ofo.marketdata.feed_health itself; health.build_quote still ages by timestamp for non-feed sources."
  },
  "spec_ref": [
   "spec/requirements/REQ-049.md"
