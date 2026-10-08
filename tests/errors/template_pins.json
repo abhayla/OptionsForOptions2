@@ -215,6 +215,14 @@
     "sha256": "3d700cafffea9c8c0569201c985a27e8b5d8131c5a72e83c74dd9aec7eb4d3a8",
     "reviewed": "pending owner read"
   },
+  "strategy_catalogue_unreadable": {
+    "sha256": "0c12f0940dc21ad6fa48ba5dd23523e146c3557e7774421ff28995d45f4f457c",
+    "reviewed": "pending owner read"
+  },
+  "strategy_catalogue_invalid": {
+    "sha256": "85b38b7a9de1e0bd43e9b53f3d4b6ed197a5bc89a393e6b24cd174accefe9f40",
+    "reviewed": "pending owner read"
+  },
   "marketdata_disconnected": {
     "sha256": "a87e6f1bded6de61cf847696a990b1061ab3015635ee40eb59b1c530c7f99d9e",
     "reviewed": "pending owner read"

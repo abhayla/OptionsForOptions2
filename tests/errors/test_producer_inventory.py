@@ -72,7 +72,6 @@ PENDING: dict[str, dict[str, int]] = {
     'strategy/definition.py': {'_named': 5, 'changes_from': 1, 'describe': 1, 'describe_contract': 1},
     'strategy/guard.py': {'<module>': 1, '_find': 3},
     'strategy/live_state.py': {'_count': 1, '_is_bool': 1, '_pairs': 3, '_signed': 1},
-    'strategy/loader.py': {'load_templates': 2},
     'strategy/versions.py': {'_require_aware': 1, '_require_text': 1},
     'table/model.py': {'<module>': 1, 'scenario_caption': 1},
 }
@@ -112,6 +111,8 @@ def _excluded(chain: list[ast.AST]) -> bool:
     for ancestor in reversed(chain[:-1]):
         if isinstance(ancestor, ast.Assert):
             return True
+        if isinstance(ancestor, ast.keyword) and ancestor.arg == "detail":
+            return True  # a labelled developer detail beside a render() message (e.g. TemplateError(detail=, message=))
         if isinstance(ancestor, ast.Raise):
             exc = ancestor.exc
             name = _call_name(exc) if isinstance(exc, ast.Call) else ""
@@ -241,6 +242,16 @@ def test_detector_fails_closed_on_unknown_positions() -> None:
     """A sentence in a position the scan does not recognise (a dict value, a default argument) still counts."""
     src = 'LABELS = {"a": "Your rule was triggered today."}\ndef f(x="Market data is unavailable now."):\n    pass\n'
     assert [(r[1], r[2]) for r in scan_source(src, "m.py")] == [(1, "<module>"), (2, "f")]
+
+
+def test_detail_keyword_is_developer_text_but_a_positional_text_is_not() -> None:
+    src = (
+        'def f(p):\n'
+        '    raise TemplateError(detail=f"{p}: not valid YAML here", message=render("x"))\n'
+        'def g(p):\n'
+        '    raise TemplateError(f"{p}: not valid YAML here")\n'
+    )
+    assert [r[2] for r in scan_source(src, "m.py")] == ["g"]
 
 
 def test_catalogue_file_is_the_one_home() -> None:

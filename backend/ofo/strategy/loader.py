@@ -33,6 +33,7 @@ from ofo.strategy.model import (
 )
 from ofo.strategy.wording import find_banned_phrases, find_position_words
 from ofo import wording as shared_wording
+from ofo.errors import render
 
 DEFAULT_CATALOGUE_PATH: Path = Path(__file__).with_name("catalogue.yaml")
 SCHEMA_PATH: Path = Path(__file__).with_name("template.schema.json")
@@ -179,13 +180,15 @@ def load_templates(path: Path | str = DEFAULT_CATALOGUE_PATH) -> tuple[Template,
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_StrictLoader)  # noqa: S506 - strict SafeLoader
     except yaml.YAMLError as exc:
-        raise TemplateError(f"{path}: not valid YAML: {exc}") from exc
+        raise TemplateError(detail=f"{path}: not valid YAML: {exc}",
+                            message=render("strategy_catalogue_unreadable")) from exc
     errors = sorted(jsonschema.Draft202012Validator(_schema()).iter_errors(data), key=lambda e: list(e.path))
     if errors:
         details = "; ".join(
             f"at {'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in errors[:5]
         )
-        raise TemplateError(f"{path}: {len(errors)} schema error(s): {details}")
+        raise TemplateError(detail=f"{path}: {len(errors)} schema error(s): {details}",
+                            message=render("strategy_catalogue_invalid", count=len(errors)))
     templates = tuple(_build(raw) for raw in data["templates"])
     for template in templates:
         check_wording(template)

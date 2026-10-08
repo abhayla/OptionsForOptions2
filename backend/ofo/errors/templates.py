@@ -354,6 +354,14 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "An internal error stopped the safety checks. Execution is blocked and no order has been submitted.",
           "The platform could not finish checking this strategy before execution.", _EXEC,
           "Try again in a few minutes; contact support if this keeps happening."),
+    # Strategy template catalogue (ofo.strategy.loader): the user sees this; the developer detail stays on the error.
+    _gate("strategy_catalogue_unreadable", _IS, 102, "The strategy template list could not be read.",
+          "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
+          "Build the strategy leg by leg for now; contact support if this keeps happening."),
+    _gate("strategy_catalogue_invalid", _IS, 103,
+          "The strategy template list has {count} problem(s) and could not be loaded.",
+          "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
+          "Build the strategy leg by leg for now; contact support if this keeps happening.", {"count": Count}),
     # REQ-049 AC-5's exact sentence is the what-happened part (owner-cited); the other three are new.
     _gate("marketdata_disconnected", _MD, 120,
           "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",
