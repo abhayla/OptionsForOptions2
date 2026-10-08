@@ -145,6 +145,7 @@ decisions:
   ADR-065: 4a           # pricing guards: same trust boundary as wording (Q235); W-060 unparked
   ADR-066: 4a           # Kite historical candles: internal use only in V1 (F-33)
   ADR-067: 4a           # one-minute history: live first, final from Kite candles (F-34, W-062)
+  ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
@@ -213,6 +214,7 @@ work_items:
   W-060: 4a
   W-061: 4a
   W-062: 4a
+  W-063: 4a
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
