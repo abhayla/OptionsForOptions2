@@ -85,6 +85,13 @@ ADVICE_WORDING_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\b(won ?t|will not|wont) los\w*\b", "won't lose"),
     (r"\bloss(es)? ?free\b", "loss-free"),
     (r"\b(profit|return|gain)s? (is |are |was |were |will be )?certain\w*\b", "profit is certain"),
+    # W-024 round 9: the round-8 verifier's misses (issue 30). The verb family of "reduced losses" (reduce, lower,
+    # cut, shrink; not "limit": "the loss is limited to the premium" is a fact) in either order, and a return
+    # named with a figure before "certain".
+    (r"\b(reduc|lower|cut|shrink)\w* (your |the |any |all |my )?loss(es)?\b", "lowers losses"),
+    (r"\bloss(es)? (is |are |was |were |will be |get |gets |are being |is being )?"
+     r"(reduc|lower|cut|shrunk|shrink)\w*\b", "losses are reduced"),
+    (r"\b(profit|return|gain)s?\b(?: \w+){0,4} (is |are |was |were |will be )certain\w*\b", "returns are certain"),
 )
 
 _COMPILED_PATTERNS: tuple[tuple["re.Pattern[str]", str], ...] = tuple(
