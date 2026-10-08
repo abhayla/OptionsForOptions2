@@ -32,6 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ofo.errors import ErrorClass, UserFacingError, render, user_message_of
+from ofo_app.api_models import ApiModel
 from ofo_app.redaction import install_redaction
 
 log = logging.getLogger("ofo_app.main")
@@ -58,6 +59,14 @@ KEPT_HEADERS: frozenset[str] = frozenset({"allow", "www-authenticate"})
 
 def _body(message: UserFacingError, status: int, headers: Mapping[str, str] | None = None) -> JSONResponse:
     return JSONResponse(status_code=status, content=message.as_dict(), headers=dict(headers or {}))
+
+
+def typed_response(model: ApiModel, status_code: int) -> JSONResponse:
+    """A success body at a non-default status (e.g. /health's 503), built only from a typed `ApiModel`, whose fields
+    cannot hold free text (ofo_app/api_models.py). The one other place a Response is constructed."""
+    if not isinstance(model, ApiModel):
+        raise TypeError(f"typed_response needs an ApiModel, got {type(model).__name__}")
+    return JSONResponse(status_code=status_code, content=model.model_dump(mode="json"))
 
 
 def _reference() -> str:
