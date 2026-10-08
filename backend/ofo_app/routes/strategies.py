@@ -22,6 +22,7 @@ STORED definition no longer reads (unknown schema version, contract id gone, ter
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
@@ -120,8 +121,8 @@ class StrategyOut(ApiModel):
     id: int
     status: Identifier
     revision: int
-    created_at: Identifier
-    updated_at: Identifier
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
     definition: DefinitionOut
 
 
@@ -129,8 +130,8 @@ class SummaryOut(ApiModel):
     id: int
     underlying: Literal["NIFTY", "SENSEX"]
     status: Identifier
-    created_at: Identifier
-    updated_at: Identifier
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
 
 class StrategyListOut(ApiModel):
@@ -143,7 +144,7 @@ class EntryOut(ApiModel):
 
     schema_version: int
     seq: int
-    at: Identifier
+    at: datetime.datetime
     definition: DefinitionOut
 
 
@@ -191,7 +192,7 @@ def _refused(exc: Exception, form_status: int) -> Exception:
 def _strategy_out(stored: store.StoredStrategy) -> StrategyOut:
     return StrategyOut.model_validate({
         "id": stored.id, "status": stored.status, "revision": stored.revision,
-        "created_at": stored.created_at.isoformat(), "updated_at": stored.updated_at.isoformat(),
+        "created_at": stored.created_at, "updated_at": stored.updated_at,
         "definition": sf.to_document(stored.saved)})
 
 
@@ -230,8 +231,8 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
     async def work():
         rows = await store.list_strategies(db, user_ref)
         return StrategyListOut.model_validate({"strategies": [
-            {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at.isoformat(),
-             "updated_at": r.updated_at.isoformat()} for r in rows]})
+            {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
+             "updated_at": r.updated_at} for r in rows]})
     return await _run(db, work, form_status=409)
 
 
