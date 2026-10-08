@@ -18,6 +18,8 @@ from typing import Final, Literal
 from ofo.engine import scenario_grid
 from ofo.engine.estimate import EstimateAssumptions, estimate_now_grid
 from ofo.engine.inputs import StrategyInput
+from ofo.marketdata.forward import FALLBACK_LABEL
+from ofo.scenario.forward_model import Forwards, estimate_now_grid_on_forward
 from ofo.scenario.levels import LevelSet
 
 _QUOTE: Final = Decimal("0.01")
@@ -50,14 +52,21 @@ class ScenarioValues:
     leg_rows: tuple[tuple[Decimal, ...], ...] | None
     assumptions: EstimateAssumptions | None = None
     estimated_levels: tuple[Decimal, ...] | None = None
+    model_label: str | None = None  # "estimated from spot" unless every leg's expiry used its parity forward
 
 
 def _missing_iv(inputs: StrategyInput) -> list[str]:
     return [leg.contract for leg in inputs.legs if leg.leg.is_option and leg.iv is None]
 
 
-def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEFAULT_VIEW) -> ScenarioValues:
-    """Values of ``view`` at every column of ``level_set``, all from the engine."""
+def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEFAULT_VIEW,
+                    forwards: Forwards | None = None) -> ScenarioValues:
+    """Values of ``view`` at every column of ``level_set``, all from the engine.
+
+    ``forwards`` (ADR-061): each expiry's parity forward; Estimated Now marks every leg at S e^(-qT) of its expiry.
+    Without it the estimate is on spot and is labelled "estimated from spot" - never silently. At Expiry and the
+    level columns (CURRENT, the range) always stay on spot.
+    """
     if not isinstance(level_set, LevelSet):
         raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
     if not isinstance(inputs, StrategyInput):
@@ -75,6 +84,12 @@ def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEF
         reason = f"Estimated Now is unavailable: no implied volatility for {', '.join(missing)}"
         return ScenarioValues(view, LABELS[view], "estimate", levels, False, reason, None, None)
     quoted = tuple(level.quantize(_QUOTE, rounding=ROUND_HALF_EVEN) for level in levels)
+    if forwards is not None:
+        on_fwd = estimate_now_grid_on_forward(inputs, quoted, forwards)
+        rows = tuple(tuple(e.leg_pnls[i] for e in on_fwd) for i in range(len(inputs.legs)))
+        assumptions = estimate_now_grid(inputs, quoted[:1])[0].assumptions
+        return ScenarioValues(view, LABELS[view], "estimate", levels, True, None, tuple(e.total for e in on_fwd),
+                              rows, assumptions, quoted, on_fwd[0].label)
     estimates = estimate_now_grid(inputs, quoted)
     leg_rows = tuple(tuple(e.leg_pnls[i] for e in estimates) for i in range(len(inputs.legs)))
     return ScenarioValues(
@@ -88,4 +103,5 @@ def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEF
         leg_rows=leg_rows,
         assumptions=estimates[0].assumptions,
         estimated_levels=quoted,
+        model_label=FALLBACK_LABEL,
     )
