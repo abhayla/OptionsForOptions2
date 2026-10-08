@@ -17,6 +17,7 @@ Breakevens, max loss and every P&L come from the engine (:func:`ofo.engine.strat
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Final
@@ -25,6 +26,7 @@ from ofo.engine import UNLIMITED, strategy_metrics
 from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import require_price
 from ofo.scenario.config import ScenarioConfig
+from ofo.scenario.spot import check_spot
 
 DAYS_IN_YEAR: Final = Decimal(365)
 MAX_EXPECTED_MOVE_DAYS: Final = 3660
@@ -96,6 +98,8 @@ class LevelSet:
     upper_be: Decimal | None
     risk_boundaries: tuple[Decimal, ...]
     expected_move_points: Decimal | None
+    spot_at: datetime | None = None  # REQ-072 AC-3: the spot's time, recorded beside the calculation
+    data_label: str | None = None  # "stale since HH:MM IST" etc. (REQ-049 AC-4); None when live
 
     @property
     def levels(self) -> tuple[Decimal, ...]:
@@ -160,7 +164,8 @@ def build_level_set(
         raise ValueError(f"config is for {config.index}, the strategy is on {inputs.underlying}")
     if expected_move is not None and not isinstance(expected_move, ExpectedMove):
         raise ValueError(f"expected_move must be an ExpectedMove, got {expected_move!r}")
-    spot = require_price(inputs.underlying_level, "current level", allow_zero=False)
+    reading, label = check_spot(inputs)  # refuses a missing/unavailable spot; never a bare level (REQ-072 AC-2)
+    spot = require_price(reading.level, "current level", allow_zero=False)
     strategy = inputs.strategy
     metrics = strategy_metrics(strategy)  # raises MultiExpiryError: no exact at-expiry payoff to lay out
     strikes = sorted({leg.strike for leg in strategy.legs if leg.is_option})
@@ -206,6 +211,8 @@ def build_level_set(
     return LevelSet(
         index=config.index,
         current=spot,
+        spot_at=reading.at,
+        data_label=label,
         step=step,
         start=start,
         end=end,

@@ -11,7 +11,7 @@ from decimal import Decimal
 import pytest
 
 from ofo.engine.black_scholes import implied_volatility, year_fraction
-from ofo.engine.inputs import LegInput, StrategyInput
+from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.marketdata.forward import (FALLBACK_LABEL, PARITY, SPOT_FALLBACK, ExpiryForward, ForwardUnavailable,
                                     mid_price, parity_forward)
@@ -261,7 +261,8 @@ def _one_call(spot):
     leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
                    strike=Decimal("22550"), expiry=D(2026, 10, 13), quantity=65, premium=Decimal("100.00"),
                    iv=Decimal("0.12"))
-    return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE, legs=(leg,))
+    return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE, legs=(leg,),
+                         spot=SpotReading(level=spot, at=VALUATION, health=DataHealth.AVAILABLE))
 
 
 def test_estimated_now_marks_at_the_effective_level_per_hull(replayed):

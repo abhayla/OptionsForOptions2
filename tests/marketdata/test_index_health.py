@@ -76,3 +76,65 @@ def test_missing_index_value_refuses():
     with pytest.raises(ForwardUnavailable, match="missing"):
         parity_forward([], provider.underlying_quote("NIFTY"), EXPIRY,
                        datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE)
+
+
+# ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
+from ofo.engine.inputs import LegInput, StrategyInput  # noqa: E402
+from ofo.engine.legs import Action, Instrument  # noqa: E402
+from ofo.scenario.config import ScenarioSettings  # noqa: E402
+from ofo.scenario.levels import build_level_set  # noqa: E402
+from ofo.scenario.spot import SpotRefused, spot_reading  # noqa: E402
+from ofo.scenario.views import View, scenario_values  # noqa: E402
+
+VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
+
+
+def _inputs(reading):
+    leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
+                   strike=Decimal("22550"), expiry=EXPIRY, quantity=65, premium=Decimal("100.00"), iv=Decimal("0.12"))
+    level = reading.level if reading is not None else Decimal("22533.25")
+    return StrategyInput(underlying="NIFTY", underlying_level=level, valuation_time=VALUATION, rate=RATE, legs=(leg,),
+                         spot=reading)
+
+
+def _scenario(inputs):
+    ls = build_level_set(inputs, ScenarioSettings().for_index("NIFTY"))
+    return ls, [scenario_values(ls, inputs, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
+
+
+def test_live_scenario_records_the_spot_and_its_time():
+    provider, _clock, _end = _live()
+    quote = provider.underlying_quote("NIFTY")
+    ls, outputs = _scenario(_inputs(spot_reading(quote)))
+    assert ls.current == Decimal("22533.25") and ls.spot_at == quote.timestamp and ls.data_label is None
+    for out in outputs:
+        assert (out.spot_level, out.spot_at, out.data_label) == (Decimal("22533.25"), quote.timestamp, None)
+
+
+def test_stale_spot_computes_but_every_output_is_labelled_stale_with_its_time():
+    provider, clock, end = _live()
+    clock.now = end + 5 * SEC  # the inserted gap
+    quote = provider.underlying_quote("NIFTY")
+    reading = spot_reading(quote)
+    assert reading.health is DataHealth.STALE
+    hhmm = quote.timestamp.astimezone(IST).strftime("%H:%M")
+    assert hhmm == "09:20"
+    ls, outputs = _scenario(_inputs(reading))
+    assert ls.data_label == "stale since 09:20 IST"
+    for out in outputs:
+        assert out.available and out.data_label == "stale since 09:20 IST"
+        assert (out.spot_level, out.spot_at) == (Decimal("22533.25"), quote.timestamp)
+
+
+def test_unavailable_or_missing_spot_refuses_the_scenario():
+    provider, clock, end = _live()
+    provider.on_disconnected(end)
+    clock.now = end + RECONNECT_WINDOW + SEC
+    reading = spot_reading(provider.underlying_quote("NIFTY"))
+    assert reading.health is DataHealth.UNAVAILABLE
+    with pytest.raises(SpotRefused, match="unavailable"):
+        build_level_set(_inputs(reading), ScenarioSettings().for_index("NIFTY"))
+    with pytest.raises(SpotRefused, match="missing"):
+        spot_reading(None)
+    with pytest.raises(SpotRefused, match="bare level"):  # no reading at all: never a bare level
+        build_level_set(_inputs(None), ScenarioSettings().for_index("NIFTY"))

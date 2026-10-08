@@ -81,6 +81,6 @@ def test_views_fail_closed(golden, settings):
     ls = build_level_set(golden, settings.for_index("NIFTY"))
     with pytest.raises(ValueError, match="view must be a View"):
         scenario_values(ls, golden, "estimated_now")
-    other = dataclasses.replace(golden, underlying_level=D("23100"))
+    other = dataclasses.replace(golden, underlying_level=D("23100"), spot=dataclasses.replace(golden.spot, level=D("23100")))
     with pytest.raises(ValueError, match="different strategy input"):
         scenario_values(ls, other, View.AT_EXPIRY)

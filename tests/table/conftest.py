@@ -8,6 +8,9 @@ from decimal import Decimal as D
 
 import pytest
 
+from ofo.engine.inputs import SpotReading
+from ofo.rules.inputs import DataHealth
+
 from ofo.engine.black_scholes import IST
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument
@@ -48,7 +51,7 @@ def nifty_leg(action, instrument, strike, entry, ltp=None, iv=None, greeks=None,
 
 def nifty_input(legs, spot=GOLDEN_SPOT, valuation=VALUATION) -> StrategyInput:
     return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=valuation, rate=RATE,
-                         legs=tuple(legs))
+                         legs=tuple(legs), spot=SpotReading(level=spot, at=valuation, health=DataHealth.AVAILABLE))
 
 
 @pytest.fixture

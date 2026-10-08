@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from ofo.engine.black_scholes import IST
-from ofo.engine.inputs import LegInput, StrategyInput
+from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
+from ofo.rules.inputs import DataHealth
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.parser import parse_instruments_csv
@@ -62,7 +63,7 @@ def nifty_leg(action, instrument, strike, entry, ltp=None, iv=None, expiry=NIFTY
 
 def nifty_input(legs, spot=GOLDEN_SPOT) -> StrategyInput:
     return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE,
-                         legs=tuple(legs))
+                         legs=tuple(legs), spot=SpotReading(level=spot, at=VALUATION, health=DataHealth.AVAILABLE))
 
 
 @pytest.fixture
@@ -101,4 +102,4 @@ def sensex(catalogue) -> StrategyInput:
             iv=D(iv),
         ))
     return StrategyInput(underlying="SENSEX", underlying_level=SENSEX_SPOT, valuation_time=SENSEX_VALUATION,
-                         rate=RATE, legs=tuple(legs))
+                         rate=RATE, legs=tuple(legs), spot=SpotReading(level=SENSEX_SPOT, at=SENSEX_VALUATION, health=DataHealth.AVAILABLE))

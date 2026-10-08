@@ -11,6 +11,7 @@ that level rounded half-even to 0.01 points (the exchange's quote precision), an
 from __future__ import annotations
 
 import dataclasses
+import datetime
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
@@ -22,6 +23,7 @@ from ofo.engine.inputs import StrategyInput
 from ofo.marketdata.forward import FALLBACK_LABEL
 from ofo.scenario.forward_model import Forwards, estimate_now_grid_on_forward
 from ofo.scenario.levels import LevelSet
+from ofo.scenario.spot import check_spot
 
 _QUOTE: Final = Decimal("0.01")
 
@@ -54,6 +56,10 @@ class ScenarioValues:
     assumptions: EstimateAssumptions | None = None
     estimated_levels: tuple[Decimal, ...] | None = None
     model_label: str | None = None  # "estimated from spot" unless every leg's expiry used its parity forward
+    # REQ-072 AC-2/AC-3: the spot the calculation used, its time, and "stale since HH:MM IST" when not live
+    spot_level: Decimal | None = None
+    spot_at: datetime.datetime | None = None
+    data_label: str | None = None
 
 
 def _missing_iv(inputs: StrategyInput) -> list[str]:
@@ -62,6 +68,23 @@ def _missing_iv(inputs: StrategyInput) -> list[str]:
 
 def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEFAULT_VIEW,
                     forwards: Forwards | None = None) -> ScenarioValues:
+    """Values of ``view`` over ``level_set``, each carrying the spot level, its time and its data label.
+
+    The spot is gated again here (:func:`ofo.scenario.spot.check_spot`): a missing or unavailable spot refuses, a
+    stale one computes with the label on the result.
+    """
+    if not isinstance(inputs, StrategyInput):
+        raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
+    reading, label = check_spot(inputs)
+    if not isinstance(level_set, LevelSet):
+        raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
+    if level_set.spot_at != reading.at or level_set.data_label != label:
+        raise ValueError("level_set was built on a different spot reading (time or health differs)")
+    result = _values(level_set, inputs, view, forwards)
+    return dataclasses.replace(result, spot_level=reading.level, spot_at=reading.at, data_label=label)
+
+
+def _values(level_set: LevelSet, inputs: StrategyInput, view: View, forwards: Forwards | None) -> ScenarioValues:
     """Values of ``view`` at every column of ``level_set``, all from the engine.
 
     ``forwards`` (ADR-061, ADR-063): each expiry's parity forward; Estimated Now values every leg with the level S

@@ -17,6 +17,7 @@ from ofo.engine.black_scholes import DAYS_IN_YEAR, IV_LOWER, IV_UPPER, Greeks
 from ofo.engine.interfaces import ChargesBreakdown, MarginRequirement
 from ofo.engine.legs import Action, Instrument, Leg, require_price
 from ofo.engine.strategy import Strategy
+from ofo.rules.inputs import DataHealth
 
 _IV_MIN: Final = Decimal(repr(IV_LOWER))
 _IV_MAX: Final = Decimal(repr(IV_UPPER))
@@ -64,6 +65,22 @@ class LegInput:
 
 
 @dataclass(frozen=True)
+class SpotReading:
+    """The index value a calculation is built on, with its time and data health (REQ-072 AC-2/AC-3, W-060)."""
+
+    level: Decimal
+    at: datetime.datetime
+    health: DataHealth
+
+    def __post_init__(self) -> None:
+        require_price(self.level, "spot level", allow_zero=False)
+        if not isinstance(self.at, datetime.datetime) or self.at.tzinfo is None:
+            raise ValueError(f"a spot reading needs a timezone-aware time, got {self.at!r}")
+        if not isinstance(self.health, DataHealth):
+            raise ValueError(f"a spot reading needs a DataHealth, got {self.health!r}")
+
+
+@dataclass(frozen=True)
 class StrategyInput:
     """A whole strategy as the engine receives it. ``rate`` is annual, continuously compounded (0.065 = 6.5 %)."""
 
@@ -75,10 +92,16 @@ class StrategyInput:
     days_in_year: int = DAYS_IN_YEAR
     margin: MarginRequirement | None = None
     charges: ChargesBreakdown | None = None
+    spot: SpotReading | None = None  # required by every scenario (ofo.scenario.spot)
 
     def __post_init__(self) -> None:
         _name(self.underlying, "underlying")
         require_price(self.underlying_level, "underlying_level", allow_zero=False)
+        if self.spot is not None:
+            if not isinstance(self.spot, SpotReading):
+                raise ValueError(f"spot must be a SpotReading, got {self.spot!r}")
+            if self.spot.level != self.underlying_level:
+                raise ValueError(f"spot reading {self.spot.level} differs from underlying_level {self.underlying_level}")
         if not isinstance(self.valuation_time, datetime.datetime) or self.valuation_time.tzinfo is None:
             raise ValueError(f"valuation_time must be a timezone-aware datetime, got {self.valuation_time!r}")
         if not isinstance(self.rate, Decimal) or not self.rate.is_finite():
