@@ -94,7 +94,7 @@ def test_a_live_bar_replaces_a_live_bar_but_a_kite_candle_replaces_a_live_bar(st
 # ---- rule 3: a FINAL day never changes, through every write method -----------------------------------------------------
 @pytest.fixture
 def final(store):
-    store.put_bars([bar(OUT), bar(at(12, 0), BarSource.KITE)])
+    store.put_bars([bar(OUT), bar(at(12, 0), BarSource.KITE), bar(at(12, 30))])  # 12:30 stays LIVE (Kite lacks it)
     store.apply_candles(DAY, [bar(OUT, BarSource.KITE)])
     store.set_day_status(DAY, DayStatus.FINAL)
     return store, {b.minute: (b.source, b.close) for b in store.bars_for_day(DAY)}
@@ -112,7 +112,9 @@ def test_put_bars_is_refused_on_a_final_day(final):
 
 def test_replace_day_bars_is_refused_on_a_final_day(final):
     store, before = final
-    store.replace_day_bars(DAY, [bar(at(13, 0))])
+    store.replace_day_bars(DAY, [bar(at(13, 0))])  # would also delete the kept LIVE 12:30 bar
+    assert snapshot(store) == before
+    store.replace_day_bars(DAY, [])
     assert snapshot(store) == before
 
 
