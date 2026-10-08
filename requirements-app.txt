@@ -9,6 +9,8 @@ pydantic==2.12.5
 pydantic-settings==2.12.0
 httpx==0.28.1
 uvicorn==0.38.0
+# Kite market-data socket (W-059); pin from abhayla/algochanakya@bf9faf7:backend/requirements.txt (ADR-047).
+websockets==16.0
 pytest==8.4.2
 pytest-asyncio==1.2.0
 # Migration SQL parse check (W-056 fix round 1): libpg_query, PostgreSQL's own parser, in tests_app only.

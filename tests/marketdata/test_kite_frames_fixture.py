@@ -18,8 +18,8 @@ IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 # Zerodha instrument_token for each name in the proof (from instruments-2026-10-08-subscribed.csv).
 NIFTY_50 = 256265
 SENSEX = 265
-NIFTY_CE = 11421186  # NIFTY26O1322550CE, NFO exchange token 44614
-NIFTY_PE = 11421442  # NIFTY26O1322550PE, NFO exchange token 44615
+NIFTY_CE = 11421186  # the NIFTY 22550 call of 2026-10-13, NFO exchange token 44614
+NIFTY_PE = 11421442  # the NIFTY 22550 put of 2026-10-13, NFO exchange token 44615
 SENSEX_CE = 227668741  # SENSEX26O0872500CE, BFO exchange token 889331
 
 
