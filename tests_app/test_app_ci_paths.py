@@ -48,3 +48,23 @@ def test_every_imported_backend_package_is_covered_by_the_push_and_pull_request_
         paths = _paths(event)
         for package in sorted(_imported_backend_packages()):
             assert f"backend/{package}/**" in paths, f"{event} paths of app-tests.yml miss backend/{package}/**"
+
+
+def _fixture_dirs_the_app_tests_open() -> set[str]:
+    """Repo directories outside tests_app/ that the app tests read fixtures from, e.g. `"tests" / "fixtures"`."""
+    import re
+
+    found: set[str] = set()
+    for path in (ROOT / "tests_app").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if re.search(r"""["']tests["']\s*/\s*["']fixtures["']|tests/fixtures""", source):
+            found.add("tests/fixtures/**")
+    return found
+
+
+def test_the_fixture_directories_the_app_tests_open_are_covered_by_the_push_and_pull_request_paths() -> None:
+    needed = _fixture_dirs_the_app_tests_open()
+    assert "tests/fixtures/**" in needed, "test_kite_ws.py reads tests/fixtures/kite_ws; the scan lost it"
+    for event in ("push", "pull_request"):
+        for wanted in sorted(needed):
+            assert wanted in _paths(event), f"{event} paths of app-tests.yml miss {wanted}"

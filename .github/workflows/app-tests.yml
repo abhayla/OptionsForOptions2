@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'backend/ofo/**'
+      - 'tests/fixtures/**'
       - 'backend/ofo_app/**'
       - 'tests_app/**'
       - 'requirements-app.txt'
@@ -21,6 +22,7 @@ on:
   pull_request:
     paths:
       - 'backend/ofo/**'
+      - 'tests/fixtures/**'
       - 'backend/ofo_app/**'
       - 'tests_app/**'
       - 'requirements-app.txt'

@@ -244,6 +244,10 @@ def check_storable(row: ListedContract | Contract) -> None:
     if contract.expiry is not None and (not isinstance(contract.expiry, date) or isinstance(contract.expiry, datetime)):
         raise CatalogueStoreError(f"{where}: expiry {contract.expiry!r} is not a date")
     for ref in row.broker_refs:
+        # The database allows a zero lot or tick only under Zerodha's INDICES segment (it cannot see the contract's own
+        # segment from the broker table); the contract's segment is checked here.
+        if (ref.lot_size == 0 or ref.tick_size == 0) and not contract.is_index():
+            raise CatalogueStoreError(f"{where}: a zero lot or tick size is allowed only on an index contract")
         _check_decimal(ref.tick_size, f"{ref.broker} tick_size", TICK_SCALE, TICK_LIMIT, where)
         _check_int(ref.lot_size, f"{ref.broker} lot_size", where)
         _check_int(ref.freeze_limit, f"{ref.broker} freeze_limit", where, optional=True)

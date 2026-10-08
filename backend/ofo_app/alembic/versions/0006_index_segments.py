@@ -13,12 +13,15 @@ Changes (owner-run, one transaction):
   new segments.
 - catalogue_contracts_supported_underlying also admits exactly the two index rows the domain defines
   (ofo.instruments.models.INDEX_ROWS: NIFTY 50 / NSE_INDEX, SENSEX / BSE_INDEX; a test asserts equal), and the
-  instrument-type CHECK admits INDEX only on an index segment (CE / PE / FUT stay derivative-only).
+  instrument-type CHECK admits INDEX only on an index segment (CE / PE / FUT stay derivative-only). A third CHECK
+  (catalogue_contracts_index_identity) pins each index to its own exchange token (1001 / 1), no expiry, strike 0.
 - public.broker_instruments: lot_size and tick_size stay > 0 for every row except Zerodha's INDICES segment, where an
   index row has no lot and no tick (0 allowed there only). The broker table does not hold the platform segment, so the
-  CHECK reads the broker's own segment code; the contract-side CHECKs above keep an option out of an index segment.
-- Downgrade: refuses while any contract uses NSE_INDEX or BSE_INDEX (rows are never deleted), then restores the
-  previous CHECKs.
+  CHECK reads the broker's own segment code (a CHECK cannot read another table); the store (check_storable) refuses a
+  zero lot or tick on a non-index contract. Named gap: a hand-written SQL insert of an option's broker row under
+  broker_segment 'INDICES' with lot 0 is not refused by the database.
+- Downgrade: runs the allowlist check before and after, refuses while any contract uses NSE_INDEX or BSE_INDEX (rows
+  are never deleted), then restores the previous CHECKs.
 
 Revision ID: 0006_index_segments
 Revises: 0005_contract_lifecycle
@@ -82,6 +85,10 @@ extended_allowlist_sql = _M5.extended_allowlist_sql
 
 #: The index rows (ofo.instruments.models.INDEX_ROWS: name, segment) and the derivative pairs (0004's SUPPORTED).
 INDEX_PAIRS = (("NIFTY 50", "NSE_INDEX"), ("SENSEX", "BSE_INDEX"))
+#: (name, segment, exchange token) of the two index rows: the database pins the token too (a test asserts all of it
+#: equal to ofo.instruments.models.INDEX_ROWS).
+INDEX_IDENTITY = (("NIFTY 50", "NSE_INDEX", 1001), ("SENSEX", "BSE_INDEX", 1))
+INDEX_IDENTITY_CONSTRAINT = "catalogue_contracts_index_identity"
 INSTRUMENT_TYPES = ("CE", "PE", "FUT")
 INDEX_TYPE = "INDEX"
 #: Zerodha's `segment` value of an index row; the broker row carries it as broker_segment.
@@ -130,7 +137,14 @@ def _set_checks(segments: tuple[str, ...], with_index: bool) -> list[str]:
     lot_rule = f"lot_size > 0 OR (broker_segment = '{INDEX_BROKER_SEGMENT}' AND lot_size = 0)" if with_index else "lot_size > 0"
     tick_rule = (f"(tick_size > 0 AND tick_size <> 'NaN') OR (broker_segment = '{INDEX_BROKER_SEGMENT}' AND tick_size = 0)"
                  if with_index else "tick_size > 0 AND tick_size <> 'NaN'")
+    # An index row: only the two the domain defines, with their own exchange token, no expiry and no strike (strike
+    # is NOT NULL DEFAULT 0 in this schema, so "no strike" is 0). The instrument type has its own CHECK above.
+    identity = " OR ".join(f"(name = '{n}' AND exchange_segment = '{s}' AND exchange_token = {t})"
+                           for n, s, t in INDEX_IDENTITY)
+    identity_rule = (f"exchange_segment NOT IN ({_M4._quoted(INDEX_SEGMENTS)}) "
+                     f"OR (({identity}) AND expiry IS NULL AND strike = 0)")
     return [
+        f"ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS {INDEX_IDENTITY_CONSTRAINT}",
         f"ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS {SEGMENT_CONSTRAINT}",
         f"ALTER TABLE {TABLE} ADD CONSTRAINT {SEGMENT_CONSTRAINT} "
         f"CHECK (exchange_segment IN ({_M4._quoted(segments)}))",
@@ -142,7 +156,8 @@ def _set_checks(segments: tuple[str, ...], with_index: bool) -> list[str]:
         f"ALTER TABLE {BROKER_TABLE} ADD CONSTRAINT {LOT_CONSTRAINT} CHECK ({lot_rule})",
         _drop_checks_on(BROKER_TABLE, "tick_size"),
         f"ALTER TABLE {BROKER_TABLE} ADD CONSTRAINT {TICK_CONSTRAINT} CHECK ({tick_rule})",
-    ]
+    ] + ([f"ALTER TABLE {TABLE} ADD CONSTRAINT {INDEX_IDENTITY_CONSTRAINT} CHECK ({identity_rule})"]
+         if with_index else [])
 
 
 def upgrade() -> None:
@@ -156,16 +171,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    role = _BASE._app_role()
+    allowlist = _BASE.ALLOWLIST_FUNCTION
+    op.execute(f"SELECT {allowlist}('{role}', 'pre')")
+    op.execute(f"LOCK TABLE {TABLE}, {BROKER_TABLE} IN ACCESS EXCLUSIVE MODE")
+    # Refuses while any index contract exists (rows are never deleted). Plain SQL, no nested quoting.
     op.execute(
         f"""
         DO $down$
-        DECLARE
-            uses_index BOOLEAN := FALSE;
         BEGIN
-            EXECUTE 'LOCK TABLE {TABLE}, {BROKER_TABLE} IN ACCESS EXCLUSIVE MODE';
-            EXECUTE 'SELECT EXISTS (SELECT 1 FROM {TABLE} WHERE exchange_segment IN ({_M4._quoted(INDEX_SEGMENTS)}))'
-                INTO uses_index;
-            IF uses_index THEN
+            IF EXISTS (SELECT 1 FROM {TABLE} WHERE exchange_segment IN ({_M4._quoted(INDEX_SEGMENTS)})) THEN
                 RAISE EXCEPTION 'refusing to downgrade {revision}: the catalogue holds index contracts (never deleted)';
             END IF;
         END
@@ -174,5 +189,4 @@ def downgrade() -> None:
     )
     for statement in _set_checks(PREVIOUS_SEGMENTS, False):
         op.execute(statement)
-    role = _BASE._app_role()
-    op.execute(f"SELECT {_BASE.ALLOWLIST_FUNCTION}('{role}', 'post')")
+    op.execute(f"SELECT {allowlist}('{role}', 'post')")
