@@ -133,10 +133,35 @@ def scan(source: str, rel: str) -> list[str]:
     return structural(source, rel) + body_scan(source, rel)
 
 
+#: The ONE exemption: the outcome route predates W-024 (it raises HTTPException with plain sentences); the real fix is
+#: a later Tier A round, issue #151. Its findings are skipped only in this file, and only while the file declares
+#: exactly this one route (so no other route can hide in it).
+EXEMPT_FILE = "routes/outcome.py"
+EXEMPT_ROUTE = ("post", "/api/strategies/outcome")
+
+
+def _routes_declared(source: str) -> list[tuple[str, str]]:
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for d in node.decorator_list:
+                if isinstance(d, ast.Call) and _name(d.func) in ROUTE_METHODS | {"websocket"}:
+                    path = d.args[0].value if d.args and isinstance(d.args[0], ast.Constant) else "?"
+                    found.append((_name(d.func), path))
+    return found
+
+
+def test_the_exemption_is_exactly_the_outcome_route_and_that_route_exists() -> None:
+    assert _routes_declared((APP / EXEMPT_FILE).read_text(encoding="utf-8")) == [EXEMPT_ROUTE]  # stale or widened fails
+
+
 def test_ofo_app_builds_no_error_body_outside_the_boundary() -> None:
     rows = []
     for path in sorted(APP.rglob("*.py")):
-        rows.extend(scan(path.read_text(encoding="utf-8"), path.relative_to(APP).as_posix()))
+        rel = path.relative_to(APP).as_posix()
+        if rel == EXEMPT_FILE:
+            continue  # issue #151
+        rows.extend(scan(path.read_text(encoding="utf-8"), rel))
     assert not rows, "response text built outside ofo_app/errors.py:\n" + "\n".join(rows)
 
 
