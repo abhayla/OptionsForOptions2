@@ -182,7 +182,9 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
                 # The database refuses retiring a contract before its expiry by its own clock, so the five are
                 # delisted through the catalogue's admin path (ADR-058/059: force with a reason and an actor, which
                 # appends an ADMIN_CHANGE_RECORDED audit event). Delisted = not live; nothing is deleted.
-                await apply_update(conn, [], as_of=AS_OF, force=True, actor="test-w061-core-proof",
+                # as_of is NOW: the audit event's timestamp must be within 60 s of the database clock (ADR-023 Q256).
+                # After 2026-10-13 the same load simply retires the five (their expiry has passed).
+                await apply_update(conn, [], as_of=datetime.now(IST), force=True, actor="test-w061-core-proof",
                                    reason="W-061 core proof cleanup: the five test contracts leave the live catalogue")
             assert await _ids(conn) == {}
         if second is not None:
