@@ -1,0 +1,8 @@
+{
+ "started": "2026-10-08T15:11:22+05:30",
+ "probes": 12,
+ "network_errors": 6,
+ "last_ok": "2026-10-08T17:56:24+05:30",
+ "first_fail": null,
+ "last_network_error": "2026-10-08T17:41:24+05:30 URLError"
+}
