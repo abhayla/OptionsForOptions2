@@ -9,7 +9,9 @@ Adapted from `abhayla/algochanakya@bf9faf7:.claude/agents/options-greeks-reviewe
 defaults (7% rate, 252 trading days) are NOT this project's: the values below come from the spec.
 
 ## Spec values (check every change against these, not against memory)
-- Model: European Black-Scholes, no dividends, time = calendar days / 365 to expiry at 15:30 IST, continuous rate as an
+- Model: European Black-Scholes-Merton with each expiry's implied dividend yield q from put-call parity (ADR-061,
+  ADR-063: the engine owns q and every Greek, theta included; callers never rescale an engine output; payoff and the
+  CURRENT column stay on spot), time = calendar days / 365 to expiry at 15:30 IST, continuous rate as an
   explicit input, each leg at its own IV implied from its LTP (`spec/business-rules/scenario-calculations.md` §4, ADR-008).
 - Rate: an admin setting, default 6.5% p.a. (Q248, `spec/open-questions.md`). Never hardcoded in the engine.
 - Formulas in `scenario-calculations.md` are locked; one engine owns every P&L/payoff/Greek number (ADR-008).
