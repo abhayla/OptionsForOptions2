@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import types
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, Mapping
@@ -59,39 +60,49 @@ def join_labels(*labels: str | None) -> str | None:
     return "; ".join(parts) if parts else None
 
 
-@dataclass(frozen=True)
-class ExpiryModel:
-    """What the engine is given for one expiry: the level S (live spot), the yield q and their provenance."""
+class _Gated:
+    """Immutable, and not a dataclass: it cannot be constructed, copied (``dataclasses.replace``) or mutated outside
+    this module's gate functions, so a hand-built or edited model with a bare level cannot exist (B8: a structural
+    guarantee, not a detector)."""
 
-    expiry: datetime.date
-    level: Decimal
-    dividend_yield: Decimal
-    source: str  # "parity" or "spot fallback"
-    label: str | None  # data label and/or "estimated from spot", joined with "; "
-    forward: ExpiryForward
-    spot_at: datetime.datetime
-    _token: object = dataclasses.field(default=None, repr=False, compare=False)
+    __slots__: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        if self._token is not _TOKEN:
-            raise TypeError("an ExpiryModel is built only by ofo.engine.model.expiry_model (REQ-072 AC-2)")
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError(f"a {type(self).__name__} is built only by ofo.engine.model (REQ-072 AC-2)")
+
+    @classmethod
+    def _make(cls, token: object, **fields: object):  # noqa: ANN206
+        if token is not _TOKEN:
+            raise TypeError(f"a {cls.__name__} is built only by ofo.engine.model (REQ-072 AC-2)")
+        obj = object.__new__(cls)
+        for name in cls.__slots__:
+            object.__setattr__(obj, name, fields[name])
+        return obj
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"{type(self).__name__} is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{type(self).__name__} is immutable")
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({', '.join(f'{n}={getattr(self, n)!r}' for n in self.__slots__)})"
 
 
-@dataclass(frozen=True)
-class ModelInputs:
-    """A gated strategy input: built only by :func:`model_inputs`; every product model number starts here."""
+class ExpiryModel(_Gated):
+    """What the engine is given for one expiry: the level S (live spot), the yield q and their provenance.
+    Fields: expiry, level, dividend_yield, source ("parity" / "spot fallback"), label (data label and/or "estimated
+    from spot", joined with "; "), forward, spot_at."""
 
-    inputs: StrategyInput
-    spot_level: Decimal
-    spot_at: datetime.datetime
-    data_label: str | None
-    expiries: Mapping[datetime.date, ExpiryModel]
-    label: str | None  # the whole strategy's label: data label, plus "estimated from spot" if any expiry fell back
-    _token: object = dataclasses.field(default=None, repr=False, compare=False)
+    __slots__ = ("expiry", "level", "dividend_yield", "source", "label", "forward", "spot_at")
 
-    def __post_init__(self) -> None:
-        if self._token is not _TOKEN:
-            raise TypeError("a ModelInputs is built only by ofo.engine.model.model_inputs (REQ-072 AC-2)")
+
+class ModelInputs(_Gated):
+    """A gated strategy input: built only by :func:`model_inputs`; every product model number starts here.
+    Fields: inputs, spot_level, spot_at, data_label, expiries, label (the data label, plus "estimated from spot" if
+    any expiry fell back)."""
+
+    __slots__ = ("inputs", "spot_level", "spot_at", "data_label", "expiries", "label")
 
     # read-only views of the strategy input, so a consumer never needs the raw input to arrange its output
     @property
@@ -139,8 +150,9 @@ def expiry_model(reading: SpotReading, fwd: ExpiryForward, *, underlying: str = 
         raise ForwardUnavailable(f"an ExpiryForward is required (ADR-061), got {fwd!r}")
     _refuse_mismatch(fwd.expiry, (("spot level", fwd.spot, reading.level), ("spot time", fwd.spot_timestamp, reading.at),
                                   ("spot health", fwd.spot_health, reading.health)))
-    return ExpiryModel(fwd.expiry, reading.level, fwd.implied_yield, fwd.source,
-                       join_labels(data_label(reading), fwd.label), fwd, reading.at, _TOKEN)
+    return ExpiryModel._make(_TOKEN, expiry=fwd.expiry, level=reading.level, dividend_yield=fwd.implied_yield,
+                             source=fwd.source, label=join_labels(data_label(reading), fwd.label), forward=fwd,
+                             spot_at=reading.at)
 
 
 def model_inputs(inputs: StrategyInput, forwards: Forwards) -> ModelInputs:
@@ -165,8 +177,9 @@ def model_inputs(inputs: StrategyInput, forwards: Forwards) -> ModelInputs:
         expiries[leg.expiry] = em
     dlabel = data_label(reading)
     fell_back = any(em.forward.label for em in expiries.values())
-    return ModelInputs(inputs, reading.level, reading.at, dlabel, dict(expiries),
-                       join_labels(dlabel, FALLBACK_LABEL if fell_back else None), _TOKEN)
+    return ModelInputs._make(_TOKEN, inputs=inputs, spot_level=reading.level, spot_at=reading.at, data_label=dlabel,
+                             expiries=types.MappingProxyType(dict(expiries)),
+                             label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
 
 
 def _require(model: object) -> ModelInputs:
