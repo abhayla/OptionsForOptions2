@@ -4,20 +4,15 @@ A plan with no exit or no adjustment rule is valid and still monitored; the miss
 blocked (Q141, Q155: "You may want to consider defining an exit condition").
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 from dataclasses import dataclass
 
 from ofo.rules.inputs import Snapshot
 from ofo.rules.model import Evaluation, Rule, RuleKind, evaluate
 
-NO_EXIT_RULE = (
-    "No exit rule is defined. This strategy is still monitored, but no exit alert of yours will fire. "
-    "You may want to consider defining an exit condition."
-)
-NO_ADJUSTMENT_RULE = (
-    "No adjustment rule is defined. This strategy is still monitored; the platform may point out an adjustment "
-    "opportunity, but no rule of yours will trigger."
-)
+NO_EXIT_RULE = render_explanation("plan_no_exit_rule")
+NO_ADJUSTMENT_RULE = render_explanation("plan_no_adjustment_rule")
 
 
 @dataclass(frozen=True)

@@ -191,6 +191,9 @@ vendor_enquiries:
 
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
+  "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
+  "#155": 4a            # mechanism: a failing step stops commit/push (pipe-masks-gate, 2nd occurrence)
+  "#156": 4a            # PR #149 review minors (check_storable test, stale docstring)
   "#30": 4a
   "#43": 4b
   "#45": 4b
@@ -204,6 +207,7 @@ issues:
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#138": 4a            # W-061 Save Draft test-coverage gaps (verifier, 2026-10-08)
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
+  "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
 
 # Work items whose status is not done.
 work_items:

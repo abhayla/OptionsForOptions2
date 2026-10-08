@@ -5,7 +5,8 @@ source, health and version in the text is a field of those records, printed exac
 ``str``, the timestamp via ``isoformat``). Nothing is recomputed, estimated or looked up elsewhere. A follow-up that
 was not recorded is said to be "not recorded", never assumed.
 
-Wording is decision-support (ADR-003): it opens with "Your rule was triggered" and never advises what to do.
+Every line comes from the explanation catalogue (`ofo.errors.explanations`, W-024 round 9: not an error, so
+REQ-065 AC-2's four parts do not apply). Wording is decision-support (ADR-003): it opens with "Your rule was triggered" and never advises what to do.
 """
 from __future__ import annotations
 
@@ -17,54 +18,24 @@ from ofo.rules.model import RuleAction
 from ofo.strategy.wording import find_banned_phrases
 from ofo.timeline.catalogue import FollowUpKind
 from ofo.timeline.records import FollowUp, RuleTriggerRecord
+from ofo import wording as shared_wording
+from ofo.errors.explanations import (
+    ACTION_TEXT, FOLLOW_UP_TEXT, INPUT_LABEL_TEXT, OP_TEXT, render_explanation,
+)
 
-#: Plain-language names of every rule input (units as REQ-041 AC-4 / ofo.rules.inputs define them).
-INPUT_LABELS: dict[InputName, str] = {
-    InputName.UNDERLYING_LEVEL: "underlying level",
-    InputName.UNDERLYING_MOVE_POINTS: "underlying move (points)",
-    InputName.UNDERLYING_MOVE_PCT: "underlying move (%)",
-    InputName.DISTANCE_TO_SHORT_STRIKE: "distance to the nearest short strike (points)",
-    InputName.DISTANCE_TO_BREAKEVEN: "distance to the nearest breakeven (points)",
-    InputName.NET_PREMIUM: "net premium (Rs)",
-    InputName.LIVE_PNL: "live P&L (Rs)",
-    InputName.PNL_PCT_OF_MAX_PROFIT: "P&L as % of max profit",
-    InputName.PNL_PCT_OF_MAX_LOSS: "loss as % of max loss",
-    InputName.DTE: "days to expiry",
-    InputName.TIME_OF_DAY: "time of day (minutes after midnight IST)",
-    InputName.IV: "implied volatility",
-    InputName.IV_PERCENTILE: "IV percentile",
-    InputName.DELTA: "delta",
-    InputName.GAMMA: "gamma",
-    InputName.THETA: "theta",
-    InputName.VEGA: "vega",
-}
-
-OP_WORDS: dict[Op, str] = {
-    Op.GTE: "at or above",
-    Op.GT: "above",
-    Op.LTE: "at or below",
-    Op.LT: "below",
-}
-
-ACTION_WORDS: dict[RuleAction, str] = {
-    RuleAction.ALERT_ONLY: "alert only",
-    RuleAction.ALERT_AND_PREPARE_ORDERS: "alert and prepare orders for your review",
-}
-
-FOLLOW_UP_LABELS: dict[FollowUpKind, str] = {
-    FollowUpKind.ALERT_GENERATED: "Alert generated",
-    FollowUpKind.ORDER_PREPARED: "Order prepared",
-    FollowUpKind.CONFIRMATION_REQUIRED: "Confirmation required",
-    FollowUpKind.EXECUTED: "Executed",
-    FollowUpKind.BROKER_REPORTED: "Broker reported",
-    FollowUpKind.RECONCILIATION_SUCCEEDED: "Reconciliation succeeded",
-}
+#: Plain-language names (re-exported from the explanation catalogue, keyed by enum member).
+INPUT_LABELS: dict[InputName, str] = {name: INPUT_LABEL_TEXT[name.name] for name in InputName}
+OP_WORDS: dict[Op, str] = {op: OP_TEXT[op.name] for op in Op}
+ACTION_WORDS: dict[RuleAction, str] = {action: ACTION_TEXT[action.name] for action in RuleAction}
+FOLLOW_UP_LABELS: dict[FollowUpKind, str] = {kind: FOLLOW_UP_TEXT[kind.name] for kind in FollowUpKind}
 
 
 def advice_words_in(text: str) -> list[str]:
-    """ADR-003 advice phrases found in ``text``. The one call site of the shared wording checker, so moving to the
-    stricter shared module (W-024) is a one-line change here."""
-    return find_banned_phrases(text)
+    """ADR-003 advice phrases found in ``text``: the phrase list this module used before (``find_banned_phrases``,
+    kept so coverage is never narrower) plus the shared Q226/Q230 checker (``ofo.wording.find_advice_wording``: every
+    word form of the five words, ADR-003 phrase families)."""
+    found = find_banned_phrases(text)
+    return found + [hit for hit in shared_wording.find_advice_wording(text) if hit not in found]
 
 
 def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowUp] = ()) -> str:
@@ -79,46 +50,28 @@ def why_did_this_trigger(record: RuleTriggerRecord, follow_ups: Iterable[FollowU
             raise ValueError(f"{follow_up.kind.value} is given twice")
         recorded[follow_up.kind] = follow_up
 
-    lines = [
-        _own("Your rule was triggered: {} ({} rule {}).", _quoted(record.rule_text), record.rule_kind.value,
-             record.rule_id),
-    ]
+    line = render_explanation
+    lines = [line("why_triggered", rule_text=record.rule_text, kind=record.rule_kind.value, rule_id=record.rule_id)]
     if record.observations:
         for o in record.observations:
-            lines.append(_own(f"Condition met: {INPUT_LABELS[o.input]} was {{}}, {OP_WORDS[o.op]} the threshold {{}}.",
-                              o.value, o.threshold))
+            lines.append(line("why_condition_met", input=o.input, value=o.value, op=o.op, threshold=o.threshold))
     else:
-        lines.append(_own("Condition met: this rule has no market condition; it applies as soon as it is checked."))
+        lines.append(line("why_no_condition"))
     if record.missing:
-        lines.append(_own("Not available when checked: " + ", ".join(INPUT_LABELS[n] for n in record.missing) + "."))
-    lines.append(_own("Checked at: {}.", record.timestamp.isoformat()))
-    lines.append(_own("Market data: source {}, health {}.", _quoted(record.source), record.data_health.value))
+        lines.append(line("why_not_available", inputs=tuple(record.missing)))
+    lines.append(line("why_checked_at", time=record.timestamp.isoformat()))
+    lines.append(line("why_market_data", source=record.source, health=record.data_health.value))
     if record.active_version is not None:
-        lines.append(_own("Active strategy version: {}.", record.active_version))
+        lines.append(line("why_active_version", version=record.active_version))
     else:
-        lines.append(_own("Active strategy version: none (not yet executed); evaluated against planned version {}.",
-                          record.planned_version))
-    lines.append(_own(f"The rule's chosen action: {ACTION_WORDS[record.action]}."))
+        lines.append(line("why_planned_version", version=record.planned_version))
+    lines.append(line("why_action", action=record.action))
     for kind in FollowUpKind:
         follow_up = recorded.get(kind)
         if follow_up is None:
-            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: not recorded."))
+            lines.append(line("why_follow_up_missing", follow_up=kind))
         elif kind.is_yes_no:
-            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: {'yes' if follow_up.answer else 'no'}."))
+            lines.append(line("why_follow_up_yes_no", follow_up=kind, answer=bool(follow_up.answer)))
         else:
-            lines.append(_own(f"{FOLLOW_UP_LABELS[kind]}: {{}}.", _quoted(str(follow_up.answer))))
+            lines.append(line("why_follow_up_answer", follow_up=kind, answer=str(follow_up.answer)))
     return "\n".join(lines)
-
-
-def _quoted(data: str) -> str:
-    """Recorded text (the user's rule text, the source name, what the broker reported) printed as quoted data."""
-    return f'"{data}"'
-
-
-def _own(template: str, *data: object) -> str:
-    """Fill ``template`` with recorded ``data``. The platform's own words (the template with every data slot empty)
-    must pass the ADR-003 wording check, else ValueError; the data is printed as recorded and never rewritten."""
-    found = advice_words_in(template.format(*("" for _ in data)))
-    if found:
-        raise ValueError(f"the platform's own answer wording contains advice phrases {found}: {template!r}")
-    return template.format(*data)

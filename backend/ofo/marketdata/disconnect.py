@@ -10,29 +10,52 @@ gets no disconnect message - that would misreport the cause.
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import datetime
 from dataclasses import dataclass
 
+from ofo.errors import UserFacingError, display_text, render
 from ofo.marketdata.availability import MonitoringStatus
-from ofo.rules.inputs import IST
 
-_MESSAGE = "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused."
+
+def disconnect_error(last_updated: datetime.datetime) -> UserFacingError:
+    """The four-part message (REQ-065 AC-2) from the catalogue template ``marketdata_disconnected`` (W-024 round 9):
+    AC-5's exact sentence is its what-happened part. ``last_updated`` must be timezone-aware, shown in IST."""
+    if not isinstance(last_updated, datetime.datetime) or last_updated.tzinfo is None:
+        raise ValueError(f"last_updated must be a timezone-aware datetime, got {last_updated!r}")
+    return render("marketdata_disconnected", time=last_updated)
 
 
 def disconnect_message(last_updated: datetime.datetime) -> str:
-    """Build the AC-5 status text; ``last_updated`` must be timezone-aware, shown converted to IST."""
-    if not isinstance(last_updated, datetime.datetime) or last_updated.tzinfo is None:
-        raise ValueError(f"last_updated must be a timezone-aware datetime, got {last_updated!r}")
-    ist_time = last_updated.astimezone(IST).strftime("%I:%M:%S %p")
-    return _MESSAGE.format(time=ist_time)
+    """The AC-5 status sentence: the what-happened part of :func:`disconnect_error`."""
+    return disconnect_error(last_updated).what_happened
 
 
 @dataclass(frozen=True)
-class DisconnectStatus:
-    """The AC-5 status shown for a strategy paused because the feed is disconnected."""
+class DisconnectStatus(UserFacing):
+    """The AC-5 status shown for a strategy paused because the feed is disconnected. ``error`` is the four-part
+    message; ``message`` its AC-5 sentence; ``text`` what the user is shown (all four parts)."""
 
-    message: str
+    error: UserFacingError
     last_updated: datetime.datetime
+
+    def __post_init__(self) -> None:
+        if type(self.error) is not UserFacingError:
+            raise TypeError(f"DisconnectStatus needs a UserFacingError from render(), got {type(self.error).__name__}")
+
+    @property
+    def message(self) -> str:
+        return self.error.what_happened
+
+    @property
+    def user_message(self) -> UserFacingError:
+        """The four-part message a user is shown (`ofo.errors.UserFacing`): kept in `error`, not `message`."""
+        return self.error
+
+    @property
+    def text(self) -> str:
+        return display_text(self.error)
 
 
 def disconnect_status_for_strategy(
@@ -52,4 +75,4 @@ def disconnect_status_for_strategy(
         raise ValueError(f"monitoring_status must be a MonitoringStatus, got {monitoring_status!r}")
     if feed_connected or monitoring_status is not MonitoringStatus.PAUSED:
         return None
-    return DisconnectStatus(message=disconnect_message(last_updated), last_updated=last_updated)
+    return DisconnectStatus(error=disconnect_error(last_updated), last_updated=last_updated)

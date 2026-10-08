@@ -65,16 +65,20 @@ MAX_FUTURE_SKEW = datetime.timedelta(seconds=60)
 class VersionError(ValueError):
     """A history/version operation is not allowed in the current state, or its input is invalid."""
 
+    def __init__(self, *args: object, detail: str | None = None) -> None:
+        """``detail`` marks developer-only input-validation text: it is never shown to a user."""
+        super().__init__(*args) if detail is None else super().__init__(detail)
+
 
 def _require_aware(at: object, label: str) -> datetime.datetime:
     if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None:
-        raise VersionError(f"{label} must be a timezone-aware datetime, got {at!r}")
+        raise VersionError(detail=f"{label} must be a timezone-aware datetime, got {at!r}")
     return at
 
 
 def _require_text(value: object, label: str, *, allow_empty: bool = False) -> str:
     if not isinstance(value, str) or len(value) > MAX_TEXT or (not allow_empty and not value.strip()):
-        raise VersionError(f"{label} must be a {'' if allow_empty else 'non-empty '}string of at most {MAX_TEXT} chars")
+        raise VersionError(detail=f"{label} must be a {'' if allow_empty else 'non-empty '}string of at most {MAX_TEXT} chars")
     return value
 
 
