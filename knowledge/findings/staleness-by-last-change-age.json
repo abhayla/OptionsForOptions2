@@ -1,0 +1,27 @@
+{
+ "id": "staleness-by-last-change-age",
+ "scope": "generic",
+ "class": "Any data-health rule that calls an instrument stale because its last tick or exchange timestamp is older than a fixed age misflags every quiet but current instrument on a feed that sends only changes, so a healthy chain shows a share of its contracts as stale at all times.",
+ "mechanism": "Kite's WebSocket sends a packet only when a contract changes; far strikes stay unchanged for minutes while the connection is live. backend/ofo/marketdata/health.py marks a quote stale when its timestamp is older than stale_after (60 s).",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "live market-hours checks, docs/research/kite-proof-2026-10-07/live-2026-10-08/summary.json",
+  "evidence": "09:15-09:45, feed never quiet for more than 0.51 s, yet a median 59 and max 354 of 1,091 contracts had no tick for over 60 s (staleness_timeline inst_stale_gt_60s); 99.5% of inter-tick intervals were 30 s or less"
+ },
+ "fix": "Health follows the feed's state for the subscription (connected, subscribed, heartbeats and data frames arriving) and the contract's last-known value stays current while the feed is live; a contract's own age is shown as information, never as stale by itself. Decided in the data-path work item.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "A replay test over the recorded 2026-10-08 frames: with the feed live, no contract may be marked stale; with an inserted gap longer than the feed threshold, every contract must be."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "F-32 live checks",
+   "evidence": "inst_stale_gt_60s median 59 of 1,091 with feed_stale false in all 360 samples"
+  }
+ ]
+}

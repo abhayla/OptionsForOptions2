@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 453da81
+Generated from commit ea25358
 
 ## Stage S0
 
@@ -76,10 +76,13 @@ Generated from commit 453da81
 | 4a | decision | ADR-057 | - | A contract keeps its identity while it is live, even if its expiry moves; a token is retired only after the contract has expired |
 | 4a | decision | ADR-058 | - | A contract also leaves the market when the list stops carrying it; the truncated-download guard counts removals instead of refusing any one |
 | 4a | decision | ADR-059 | - | When a changed row is a revision and when it is a new contract; delisting heals itself; a second per-expiry guard |
+| 4a | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
+| 4a | decision | ADR-061 | - | IV, Greeks and Estimated Now use each expiry's put-call-parity forward (an implied dividend yield); the payoff's current level stays spot |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
+| 4a | finding | F-32 | - | Live market-hours checks on the owner's account: one Kite WebSocket carries both full two-expiry chains; IV from index spot is wrong on every chain; "no tick for 60 s" is not staleness |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
 | 4a | issue | #30 | - |  |
@@ -124,6 +127,7 @@ Generated from commit 453da81
 | 4b | decision | ADR-050 | - | One instrument identity across brokers, broker-specific data in a per-broker table, and the order-path safeguards for the broker phase |
 | 4b | decision | ADR-054 | - | Prepared orders reach Zerodha through Kite's own order page (offsite basket), pending Zerodha's confirmation |
 | 4b | decision | ADR-056 | - | How the core is judged and what it needs before it starts (error messages, pricing model, gates, fan-out test, chain levels) |
+| 4b | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
 | 4b | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
 | 4b | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | 4b | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
@@ -165,6 +169,7 @@ Generated from commit 453da81
 | 4c | decision | ADR-010 | - | Monitoring, the Strategy Plan and the Live Position view |
 | 4c | decision | ADR-028 | - | Notifications |
 | 4c | decision | ADR-053 | - | V1 uses each user's own Zerodha feed, and monitoring pauses visibly when that user's daily session has ended |
+| 4c | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
 | 4c | open area | OA-10 | - | alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits |
 | 4c | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
 | 4c | requirement | REQ-041 | - | Rule engine: entry, exit and rule defaults |
@@ -182,6 +187,7 @@ Generated from commit 453da81
 | S5 | decision | ADR-022 | - | Zerodha Client ID binding, account transfer and anti-abuse |
 | S5 | decision | ADR-039 | - | Connecting an already-trialled Zerodha Client ID ends a running trial |
 | S5 | decision | ADR-040 | - | WhatsApp OTP is sent through the shared Notifier gateway |
+| S5 | issue | #129 | - |  |
 | S5 | requirement | REQ-002 | - | Account boundaries |
 | S5 | requirement | REQ-003 | - | Public multi-user SaaS |
 | S5 | requirement | REQ-004 | - | Responsive web, desktop and mobile priorities |
@@ -379,6 +385,7 @@ Generated from commit 453da81
 | done | finding | F-19 | - | The framework applies to all brokers from 1 April 2026; Zerodha allows up to two static IPs, used only by the client and immediate family |
 | done | finding | F-20 | - | Index F&O today: NIFTY lot 65 expiring Tuesdays (some Mondays), SENSEX lot 20 expiring Thursdays |
 | done | finding | F-25 | - | Regulated entities, Authorised Persons included, may not associate with unregistered advisers or anyone making return claims |
+| done | finding | F-31 | - | Zerodha grants multi-user Kite Connect access only to a production-ready platform, after a demo; the API fee is waived for active traders |
 | done | hypothesis | H1 | - |  |
 | done | hypothesis | H10 | - |  |
 | done | hypothesis | H11 | - |  |
@@ -411,10 +418,10 @@ Generated from commit 453da81
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 21 | 4 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 64 |
-| 4b | 1 | 0 | 6 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 39 |
-| 4c | 0 | 0 | 4 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 10 |
-| S5 | 2 | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 11 | 0 | 0 | 17 |
+| 4a | 7 | 0 | 23 | 5 | 0 | 4 | 0 | 1 | 26 | 0 | 1 | 67 |
+| 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
+| 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
+| S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
 | S6.1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
 | S6.2 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | 1 | 7 | 0 | 0 | 11 |
@@ -426,4 +433,4 @@ Generated from commit 453da81
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
 | S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
 | all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
-| done | 5 | 4 | 0 | 20 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 53 |
+| done | 5 | 4 | 0 | 21 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 54 |
