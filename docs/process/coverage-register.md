@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 4c8b64d
+Generated from commit 1b744cc
 
 ## Stage S0
 
@@ -95,6 +95,9 @@ Generated from commit 4c8b64d
 | 4a | issue | #138 | - |  |
 | 4a | issue | #148 | - |  |
 | 4a | issue | #151 | - |  |
+| 4a | issue | #154 | - |  |
+| 4a | issue | #155 | - |  |
+| 4a | issue | #156 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -440,7 +443,7 @@ Generated from commit 4c8b64d
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 30 | 5 | 0 | 7 | 0 | 1 | 31 | 0 | 5 | 86 |
+| 4a | 7 | 0 | 30 | 5 | 0 | 10 | 0 | 1 | 31 | 0 | 5 | 89 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |

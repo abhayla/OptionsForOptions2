@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "A required 'branch is up to date with main' setting on the protected branch would force a re-run on the combined state; until then the orchestrator merges main into every open branch after each merge to main."
+  "note": "Mechanism planned (learning L2, second occurrence): issue #154 - require every PR to be tested on the current main before merge (GitHub 'require branches to be up to date', an owner setting); until then the orchestrator merges main into a branch and re-runs both suites before opening or merging its PR."
  },
  "spec_ref": [
   "spec/requirements/REQ-063.md"
@@ -22,6 +22,11 @@
    "date": "2026-10-08",
    "where": "W-058 / W-059 / W-061",
    "evidence": "PR 134 lint-and-test: 1 failed, 1745 passed"
+  },
+  {
+   "date": "2026-10-08",
+   "where": "W-063 (merged #150) x W-024 round 10",
+   "evidence": "W-024 merged with main: 2 app tests failed (route without ApiModel; error body outside the boundary) and 1 producer-inventory test failed, all on W-063's outcome route; each branch was green alone"
   }
  ]
 }
