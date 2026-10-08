@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 544ccd8
+Generated from commit 0b3a74c
 
 ## Stage S0
 
@@ -133,11 +133,7 @@ Generated from commit 544ccd8
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
-| 4a | work item | W-024 | - | Error classification and user-facing error messages |
-| 4a | work item | W-060 | - | NIFTY 50 and SENSEX index spot with data health, and each expiry's put-call-parity forward for IV and Greeks |
 | 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
-| 4a | work item | W-062 | - | One-minute history recorded from the live feed and made final from Kite's candles after the close |
-| 4a | work item | W-063 | - | Outcome API - one backend call returns a strategy's table, scenarios, payoff and summary from live inputs |
 
 ## Stage 4b
 
@@ -444,7 +440,7 @@ Generated from commit 544ccd8
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 30 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 5 | 90 |
+| 4a | 7 | 0 | 30 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 1 | 86 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |

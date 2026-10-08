@@ -73,7 +73,7 @@ Requirements: 74; sections: 18
 | REQ-050 | Shared computation and scale | feature | Specified |
 | REQ-051 | Historical storage tiers and simulation | feature | Approved |
 | REQ-052 | Market-data sourcing and licensing | core | Approved |
-| REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | Approved |
+| REQ-072 | Index spot prices for NIFTY 50 and SENSEX | core | Verified |
 
 ## Monitoring (2)
 
@@ -136,7 +136,7 @@ Requirements: 74; sections: 18
 |---|---|---|---|
 | REQ-063 | Security boundaries | foundation | Approved |
 | REQ-064 | Audit log | foundation | Approved |
-| REQ-065 | Error classification and messages | foundation | Approved |
+| REQ-065 | Error classification and messages | foundation | Verified |
 | REQ-066 | Compliance gates | feature | Specified |
 | REQ-074 | Security incident reporting and log retention | foundation | Specified |
 
