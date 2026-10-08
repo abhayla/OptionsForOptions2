@@ -16,6 +16,7 @@ planner interface, Zerodha's own figure stays final. Unknown means unknown: a va
 - broker: Zerodha, the only V1 broker (ADR-012, ADR-029: brokers sit behind adapters).
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 from dataclasses import dataclass
 from decimal import Decimal
@@ -68,8 +69,8 @@ def _lines(plan: ExecutionPlan, seq: OrderSequence) -> tuple[ReviewLine, ...]:
 
 
 def _notes(seq: OrderSequence) -> tuple[str, ...]:
-    notes = [f"{u.leg_ref}: {u.reason}" for u in seq.undetermined]
-    notes += [f"{', '.join(u.leg_refs)}: {u.units} sold units have no protective leg (naked)" for u in seq.unprotected]
+    notes = [render_explanation("review_note_undetermined", leg=u.leg_ref, reason=u.reason) for u in seq.undetermined]
+    notes += [render_explanation("review_note_naked", legs=", ".join(u.leg_refs), units=u.units) for u in seq.unprotected]
     return tuple(notes)
 
 
@@ -85,18 +86,18 @@ def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
         metrics = strategy_metrics(strategy)
         max_loss, max_profit = metrics.max_loss, metrics.max_profit
     except MultiExpiryError:
-        unknown += [("max_loss", "legs expire on different dates; exact at-expiry values do not exist"),
-                    ("max_profit", "legs expire on different dates; exact at-expiry values do not exist")]
+        multi_expiry = render_explanation("review_unknown_multi_expiry")
+        unknown += [("max_loss", multi_expiry), ("max_profit", multi_expiry)]
     current = None
     if all(p.leg.ltp is not None for p in plan.legs):
         current = strategy.live_pnl()
     else:
-        unknown.append(("current_pnl", "no current price (LTP) for every leg"))
+        unknown.append(("current_pnl", render_explanation("review_unknown_no_ltp")))
     margin = None
     try:
         margin = plan_margin(strategy, planner).total
     except Exception as exc:  # fail closed to "unknown": never a made-up figure
-        unknown.append(("margin_required", f"the margin estimate is unavailable ({exc})"))
+        unknown.append(("margin_required", render_explanation("review_unknown_margin")))  # the planner's own error is not shown
     seq = sequence_plan(plan, planner, constraints)
     return ExecutionReview(plan.strategy_id, margin, max_loss, max_profit, current, len(plan.legs), _lines(plan, seq),
                            BROKER, seq.margin_note, _notes(seq), tuple(unknown))

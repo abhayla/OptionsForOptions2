@@ -159,6 +159,49 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `flag_multi_expiry` | values_seen | This strategy has legs on more than one expiry; its exact at-expiry maximum loss cannot be computed. |
 | `flag_charges_unavailable` | values_seen | A charges estimate is not available for this strategy. |
 | `flag_stale_on_exit` | values_seen | Prices shown may be stale — confirm to continue. |
+| `label_client_id` | values_seen | Client ID |
+| `client_id_not_valid` | values_seen | {value} is not a Client ID (expected 6 characters: 2 letters + 4 digits or 3 letters + 3 digits, e.g. AB1234 or ABC123) |
+| `import_row_ref` | values_seen | row {number} ({category}) |
+| `import_refused` | values_seen | import of {file} refused; unresolved: {rows} |
+| `import_row_duplicate` | values_seen | {client_id} also appears on row {row} |
+| `import_row_inactive` | values_seen | {client_id} is on the list but INACTIVE; reactivate or exclude this row |
+| `import_row_already` | values_seen | {client_id} is already on the list |
+| `import_row_new` | values_seen | {client_id} will be added |
+| `import_row_excluded` | values_seen | excluded by admin |
+| `import_row_reactivated` | values_seen | {client_id} will be reactivated |
+| `estimate_line` | values_seen | Estimated {label}: {value} (estimate; assumes {assumptions}) |
+| `estimate_label_pnl_now` | values_seen | P&L now at {underlying} {level} |
+| `estimate_ivs_none` | values_seen | none (futures only) |
+| `estimate_assume_model` | values_seen | {model} model |
+| `estimate_assume_iv` | values_seen | IV {ivs} |
+| `estimate_assume_rate` | values_seen | rate {rate} |
+| `estimate_assume_valued` | values_seen | valued {time} |
+| `estimate_model_name` | values_seen | Black-Scholes (European, no dividends) |
+| `alternative_choice_reason` | values_seen | User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code}) |
+| `review_note_undetermined` | values_seen | {leg}: {reason} |
+| `review_note_naked` | values_seen | {legs}: {units} sold units have no protective leg (naked) |
+| `review_unknown_multi_expiry` | values_seen | legs expire on different dates; exact at-expiry values do not exist |
+| `review_unknown_no_ltp` | values_seen | no current price (LTP) for every leg |
+| `review_unknown_margin` | values_seen | the margin estimate is unavailable |
+| `source_note_instrument_list` | values_seen | Kite Connect's public instrument dump (no login required); the source of every contract, lot size, tick size and strike in the catalogue. |
+| `rule_alert` | what_triggered | Your rule was triggered: {rule} ({detail}). |
+| `rule_no_condition_detail` | values_seen | no condition |
+| `rule_cannot_decide` | values_seen | cannot be decided without: {inputs} |
+| `rule_input_state` | values_seen | {input} ({state}) |
+| `rule_observation` | values_seen | {input} {value} {op} {threshold} |
+| `plan_no_exit_rule` | rule | No exit rule is defined. This strategy is still monitored, but no exit alert of yours will fire. You may want to consider defining an exit condition. |
+| `plan_no_adjustment_rule` | rule | No adjustment rule is defined. This strategy is still monitored; the platform may point out an adjustment opportunity, but no rule of yours will trigger. |
+| `scenario_estimated_unavailable` | values_seen | Estimated Now is unavailable: no implied volatility for {legs} |
+| `scenario_caption` | values_seen | {underlying} at expiry | You make/lose |
+| `contract_description` | values_seen | {underlying}{strike} {instrument} {expiry} |
+| `leg_description` | values_seen | {action}{strike} {instrument} {expiry} x{quantity} |
+| `change_underlying` | values_seen | underlying {old} -> {new} |
+| `change_leg_removed` | values_seen | removed leg {leg} |
+| `change_leg_added` | values_seen | added leg {leg} |
+| `change_quantity` | values_seen | quantity of {leg} was {before} |
+| `change_field` | values_seen | {label} {old} -> {new} |
+| `scenario_caption_left` | values_seen | {underlying} at expiry |
+| `scenario_caption_right` | values_seen | You make/lose |
 
 ## Explanation labels
 
@@ -172,3 +215,6 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | measure | implied volatility; IV percentile |
 | choice | Complete Strategy; Retry Failed Leg; Review Manually; Close Partial Strategy |
 | step | Establish protection; Establish short positions; Legs with no protection relation |
+| builder | Original suggested setup; User modified strike; User changed quantity; User added leg; User removed leg; User changed expiry; Setup changed to alternative; User restored an earlier configuration; User undid the last change |
+| scenario_view | At Expiry; Estimated Now (estimate) |
+| health | Healthy; Watch; Adjustment opportunity; Exit condition reached |

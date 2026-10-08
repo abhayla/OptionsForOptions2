@@ -9,6 +9,7 @@ An inserted breakeven can be an exact level with more than two decimals (engine 
 that level rounded half-even to 0.01 points (the exchange's quote precision), and the estimated level is recorded.
 """
 from __future__ import annotations
+from ofo.errors.explanations import SCENARIO_VIEW_LABEL_TEXT, render_explanation
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -31,8 +32,8 @@ class View(Enum):
 DEFAULT_VIEW: Final = View.AT_EXPIRY
 
 LABELS: Final = {
-    View.AT_EXPIRY: "At Expiry",
-    View.ESTIMATED_NOW: "Estimated Now (estimate)",
+    View.AT_EXPIRY: SCENARIO_VIEW_LABEL_TEXT["AT_EXPIRY"],
+    View.ESTIMATED_NOW: SCENARIO_VIEW_LABEL_TEXT["ESTIMATED_NOW"],
 }
 
 
@@ -72,7 +73,7 @@ def scenario_values(level_set: LevelSet, inputs: StrategyInput, view: View = DEF
         return ScenarioValues(view, LABELS[view], "exact", levels, True, None, grid.totals, grid.leg_rows)
     missing = _missing_iv(inputs)
     if missing:
-        reason = f"Estimated Now is unavailable: no implied volatility for {', '.join(missing)}"
+        reason = render_explanation("scenario_estimated_unavailable", legs=", ".join(missing))
         return ScenarioValues(view, LABELS[view], "estimate", levels, False, reason, None, None)
     quoted = tuple(level.quantize(_QUOTE, rounding=ROUND_HALF_EVEN) for level in levels)
     estimates = estimate_now_grid(inputs, quoted)

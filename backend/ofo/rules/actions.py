@@ -5,6 +5,7 @@ needs the user's confirmation (invariant: no order without a user confirmation e
 its strategy id (ADR-002). Wording is decision-support (ADR-003, ADR-011 Q149): "Your rule was triggered".
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import datetime
 from dataclasses import dataclass
@@ -53,8 +54,8 @@ def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: S
         raise ValueError(f"rule {rule.rule_id!r} was not triggered ({evaluation.outcome.value}); nothing to respond")
     if not isinstance(strategy_id, str) or not strategy_id.strip():
         raise ValueError("every prepared order belongs to a strategy: strategy_id is required")
-    detail = describe(evaluation.observations) or "no condition"
-    alert = f"Your rule was triggered: {rule.description or rule.rule_id} ({detail})."
+    detail = describe(evaluation.observations) or render_explanation("rule_no_condition_detail")
+    alert = render_explanation("rule_alert", rule=rule.description or rule.rule_id, detail=detail)
     if rule.action is RuleAction.ALERT_ONLY:
         return RuleResponse(alert, None)
     if rule.kind is RuleKind.EXIT:

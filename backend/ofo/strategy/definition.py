@@ -14,6 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import datetime
 import re
@@ -55,7 +56,8 @@ def contract_sort_key(contract: Contract) -> tuple:
 def describe_contract(contract: Contract) -> str:
     underlying, instrument, strike, expiry = contract
     strike_text = "" if strike is None else f" {strike.normalize():f}"
-    return f"{underlying}{strike_text} {instrument.value} {expiry.isoformat()}"
+    return render_explanation("contract_description", underlying=underlying, strike=strike_text,
+                              instrument=instrument.value, expiry=expiry.isoformat())
 
 
 @dataclass(frozen=True)
@@ -91,7 +93,9 @@ class DefinitionLeg:
 
     def describe(self) -> str:
         strike = "" if self.strike is None else f" {self.strike.normalize():f}"
-        return f"{self.action.value}{strike} {self.instrument.value} {self.expiry.isoformat()} x{self.quantity}"
+        return render_explanation("leg_description", action=self.action.value, strike=strike,
+                                  instrument=self.instrument.value, expiry=self.expiry.isoformat(),
+                                  quantity=self.quantity)
 
 
 def _named(values: object, label: str, check) -> tuple:
@@ -194,20 +198,21 @@ class StrategyDefinition:
             raise DefinitionError(f"changes_from needs a StrategyDefinition, got {old!r}")
         changes: list[str] = []
         if old.underlying != self.underlying:
-            changes.append(f"underlying {old.underlying} -> {self.underlying}")
+            changes.append(render_explanation("change_underlying", old=old.underlying, new=self.underlying))
         old_legs = {old._leg_key(leg): leg for leg in old.legs}
         new_legs = {self._leg_key(leg): leg for leg in self.legs}
         for key in sorted(old_legs.keys() - new_legs.keys(), key=_leg_sort_key):
-            changes.append(f"removed leg {old_legs[key].describe()}")
+            changes.append(render_explanation("change_leg_removed", leg=old_legs[key].describe()))
         for key in sorted(new_legs.keys() - old_legs.keys(), key=_leg_sort_key):
-            changes.append(f"added leg {new_legs[key].describe()}")
+            changes.append(render_explanation("change_leg_added", leg=new_legs[key].describe()))
         for key in sorted(old_legs.keys() & new_legs.keys(), key=_leg_sort_key):
             before, after = old_legs[key].quantity, new_legs[key].quantity
             if before != after:
-                changes.append(f"quantity of {new_legs[key].describe()} was {before}")
+                changes.append(render_explanation("change_quantity", leg=new_legs[key].describe(), before=before))
         for label in ("rules_ref", "risk_limits", "preferences"):
             if getattr(old, label) != getattr(self, label):
-                changes.append(f"{label} {getattr(old, label)!r} -> {getattr(self, label)!r}")
+                changes.append(render_explanation("change_field", label=label, old=repr(getattr(old, label)),
+                                                  new=repr(getattr(self, label))))
         return tuple(changes)
 
     @staticmethod

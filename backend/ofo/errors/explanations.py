@@ -28,6 +28,8 @@ def check_explanation_wording(text: str, where: str) -> None:
     """The platform's own words of an explanation: the old timeline phrase list AND the shared Q226/Q230 checker."""
     from ofo.strategy.wording import find_banned_phrases
 
+    if not any(ch.isalpha() for ch in text):
+        return  # a template of slots and punctuation only ("{a}: {b}") holds no platform words to check
     found = find_banned_phrases(text)
     found += [hit for hit in _wording.find_advice_wording(text) if hit not in found]
     if found:
@@ -102,6 +104,28 @@ STEP_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "PROTECTION": "Establish protection",
     "SHORT_POSITIONS": "Establish short positions",
     "OTHER": "Legs with no protection relation",
+})
+#: The labels of the Builder's change history (W-016 / REQ-070 AC-2 to AC-4) and of the scenario and health tables.
+BUILDER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "ORIGINAL": "Original suggested setup",
+    "STRIKE": "User modified strike",
+    "QUANTITY": "User changed quantity",
+    "ADD_LEG": "User added leg",
+    "REMOVE_LEG": "User removed leg",
+    "EXPIRY": "User changed expiry",
+    "ALTERNATIVE": "Setup changed to alternative",
+    "RESTORE": "User restored an earlier configuration",
+    "UNDO": "User undid the last change",
+})
+SCENARIO_VIEW_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "AT_EXPIRY": "At Expiry",
+    "ESTIMATED_NOW": "Estimated Now (estimate)",
+})
+HEALTH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "HEALTHY": "Healthy",
+    "WATCH": "Watch",
+    "ADJUSTMENT_OPPORTUNITY": "Adjustment opportunity",
+    "EXIT_CONDITION_REACHED": "Exit condition reached",
 })
 FOLLOW_UP_TEXT: Mapping[str, str] = MappingProxyType({
     "ALERT_GENERATED": "Alert generated",
@@ -305,6 +329,82 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("flag_charges_unavailable", "values_seen",
                         "A charges estimate is not available for this strategy."),
     ExplanationTemplate("flag_stale_on_exit", "values_seen", "Prices shown may be stale — confirm to continue."),
+    # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
+    ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
+    ExplanationTemplate("client_id_not_valid", "values_seen",
+                        "{value} is not a Client ID (expected 6 characters: 2 letters + 4 digits or 3 letters + 3 "
+                        "digits, e.g. AB1234 or ABC123)", {"value": Recorded}),
+    ExplanationTemplate("import_row_ref", "values_seen", "row {number} ({category})",
+                        {"number": Recorded, "category": Recorded}),
+    ExplanationTemplate("import_refused", "values_seen", "import of {file} refused; unresolved: {rows}",
+                        {"file": Recorded, "rows": Recorded}),
+    ExplanationTemplate("import_row_duplicate", "values_seen", "{client_id} also appears on row {row}",
+                        {"client_id": Recorded, "row": Recorded}),
+    ExplanationTemplate("import_row_inactive", "values_seen",
+                        "{client_id} is on the list but INACTIVE; reactivate or exclude this row",
+                        {"client_id": Recorded}),
+    ExplanationTemplate("import_row_already", "values_seen", "{client_id} is already on the list",
+                        {"client_id": Recorded}),
+    ExplanationTemplate("import_row_new", "values_seen", "{client_id} will be added", {"client_id": Recorded}),
+    ExplanationTemplate("import_row_excluded", "values_seen", "excluded by admin"),
+    ExplanationTemplate("import_row_reactivated", "values_seen", "{client_id} will be reactivated",
+                        {"client_id": Recorded}),
+    ExplanationTemplate("estimate_line", "values_seen", "Estimated {label}: {value} (estimate; assumes {assumptions})",
+                        {"label": Recorded, "value": Recorded, "assumptions": Recorded}),
+    ExplanationTemplate("estimate_label_pnl_now", "values_seen", "P&L now at {underlying} {level}",
+                        {"underlying": Recorded, "level": Recorded}),
+    ExplanationTemplate("estimate_ivs_none", "values_seen", "none (futures only)"),
+    ExplanationTemplate("estimate_assume_model", "values_seen", "{model} model", {"model": Recorded}),
+    ExplanationTemplate("estimate_assume_iv", "values_seen", "IV {ivs}", {"ivs": Recorded}),
+    ExplanationTemplate("estimate_assume_rate", "values_seen", "rate {rate}", {"rate": Recorded}),
+    ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": Recorded}),
+    ExplanationTemplate("estimate_model_name", "values_seen", "Black-Scholes (European, no dividends)"),
+    ExplanationTemplate("alternative_choice_reason", "values_seen",
+                        "User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code})",
+                        {"chosen": Recorded, "instrument": Recorded, "original": Recorded, "code": Recorded}),
+    ExplanationTemplate("review_note_undetermined", "values_seen", "{leg}: {reason}",
+                        {"leg": Recorded, "reason": Recorded}),
+    ExplanationTemplate("review_note_naked", "values_seen", "{legs}: {units} sold units have no protective leg (naked)",
+                        {"legs": Recorded, "units": Recorded}),
+    ExplanationTemplate("review_unknown_multi_expiry", "values_seen",
+                        "legs expire on different dates; exact at-expiry values do not exist"),
+    ExplanationTemplate("review_unknown_no_ltp", "values_seen", "no current price (LTP) for every leg"),
+    ExplanationTemplate("review_unknown_margin", "values_seen", "the margin estimate is unavailable"),
+    ExplanationTemplate("source_note_instrument_list", "values_seen",
+                        "Kite Connect's public instrument dump (no login required); the source of every contract, "
+                        "lot size, tick size and strike in the catalogue."),
+    ExplanationTemplate("rule_alert", "what_triggered", "Your rule was triggered: {rule} ({detail}).",
+                        {"rule": Recorded, "detail": Recorded}),
+    ExplanationTemplate("rule_no_condition_detail", "values_seen", "no condition"),
+    ExplanationTemplate("rule_cannot_decide", "values_seen", "cannot be decided without: {inputs}",
+                        {"inputs": Recorded}),
+    ExplanationTemplate("rule_input_state", "values_seen", "{input} ({state})", {"input": Recorded, "state": Recorded}),
+    ExplanationTemplate("rule_observation", "values_seen", "{input} {value} {op} {threshold}",
+                        {"input": Recorded, "value": Recorded, "op": Recorded, "threshold": Recorded}),
+    ExplanationTemplate("plan_no_exit_rule", "rule",
+                        "No exit rule is defined. This strategy is still monitored, but no exit alert of yours will "
+                        "fire. You may want to consider defining an exit condition."),
+    ExplanationTemplate("plan_no_adjustment_rule", "rule",
+                        "No adjustment rule is defined. This strategy is still monitored; the platform may point out "
+                        "an adjustment opportunity, but no rule of yours will trigger."),
+    ExplanationTemplate("scenario_estimated_unavailable", "values_seen",
+                        "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": Recorded}),
+    # The caption is the PAIR "<underlying> at expiry | You make/lose" (Q227): two reviewed halves, joined by " | ".
+    ExplanationTemplate("scenario_caption_left", "values_seen", "{underlying} at expiry", {"underlying": Recorded}),
+    ExplanationTemplate("scenario_caption_right", "values_seen", "You make/lose"),
+    ExplanationTemplate("contract_description", "values_seen", "{underlying}{strike} {instrument} {expiry}",
+                        {"underlying": Recorded, "strike": Recorded, "instrument": Recorded, "expiry": Recorded}),
+    ExplanationTemplate("leg_description", "values_seen", "{action}{strike} {instrument} {expiry} x{quantity}",
+                        {"action": Recorded, "strike": Recorded, "instrument": Recorded, "expiry": Recorded,
+                         "quantity": Recorded}),
+    ExplanationTemplate("change_underlying", "values_seen", "underlying {old} -> {new}",
+                        {"old": Recorded, "new": Recorded}),
+    ExplanationTemplate("change_leg_removed", "values_seen", "removed leg {leg}", {"leg": Recorded}),
+    ExplanationTemplate("change_leg_added", "values_seen", "added leg {leg}", {"leg": Recorded}),
+    ExplanationTemplate("change_quantity", "values_seen", "quantity of {leg} was {before}",
+                        {"leg": Recorded, "before": Recorded}),
+    ExplanationTemplate("change_field", "values_seen", "{label} {old} -> {new}",
+                        {"label": Recorded, "old": Recorded, "new": Recorded}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
 )
@@ -315,6 +415,7 @@ EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for 
 LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "input": INPUT_LABEL_TEXT, "op": OP_TEXT, "action": ACTION_TEXT, "follow_up": FOLLOW_UP_TEXT,
     "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT, "choice": CHOICE_LABEL_TEXT, "step": STEP_LABEL_TEXT,
+    "builder": BUILDER_LABEL_TEXT, "scenario_view": SCENARIO_VIEW_LABEL_TEXT, "health": HEALTH_LABEL_TEXT,
 })
 
 

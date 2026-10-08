@@ -18,6 +18,7 @@ Q190/Q191; ADR-016 Q44 (never silent substitution).
   Limited user's adjustment needs Pro until it is known.
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import dataclasses
 import datetime
@@ -73,9 +74,9 @@ def record_alternative_choice(
     legs = list(definition.legs)
     legs[index] = dataclasses.replace(legs[index], strike=chosen_strike)
     changed = dataclasses.replace(definition, legs=tuple(legs))
-    reason = (
-        f"User chose {chosen_strike:,} {leg.instrument.value} instead of unavailable {leg.strike:,} "
-        f"{leg.instrument.value} ({failure.code.value})"
+    reason = render_explanation(
+        "alternative_choice_reason", chosen=f"{chosen_strike:,}", instrument=leg.instrument.value,
+        original=f"{leg.strike:,}", code=failure.code.value,
     )
     return record.edit(changed, at=at, initiator=actor, reason=reason)
 

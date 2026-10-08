@@ -7,6 +7,7 @@ cost-of-carry fair value. The mark goes through the engine's one P&L sign conven
 quantity. The result carries its assumptions so a display can label it (REQ-032 AC-5).
 """
 from __future__ import annotations
+from ofo.errors.explanations import render_explanation
 
 import datetime
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
 from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import Instrument, require_price
 
-MODEL: Final = "Black-Scholes (European, no dividends)"
+MODEL: Final = render_explanation("estimate_model_name")
 
 
 @dataclass(frozen=True)
