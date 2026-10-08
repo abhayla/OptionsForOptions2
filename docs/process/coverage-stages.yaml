@@ -191,6 +191,9 @@ vendor_enquiries:
 
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
+  "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
+  "#155": 4a            # mechanism: a failing step stops commit/push (pipe-masks-gate, 2nd occurrence)
+  "#156": 4a            # PR #149 review minors (check_storable test, stale docstring)
   "#30": 4a
   "#43": 4b
   "#45": 4b

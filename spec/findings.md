@@ -496,6 +496,13 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Kite 71,346.89, 57.94 points) - the laptop outage of F-32. Kite's candles cover both minutes.
 - **Expired contracts keep their candles the same evening** (the SENSEX 08-Oct options returned 375 candles at ~18:30).
   Two far-from-the-money SENSEX 15-Oct options returned 0 candles - no trades that day.
+- Added 2026-10-08 from the W-062 replay (`tests/fixtures/kite_history/`, 56 full minutes outside the drop, 8
+  instruments incl. NIFTY26O1322550CE/PE, which the first run did not measure): **OI is not exact on every minute** - one
+  miss, NIFTY26O1322550PE at 09:21 (ours 4,367,480, Kite 4,612,660): the exchange stamped the OI change 09:22:00 and
+  Kite counts it in the 09:21 candle; assigning boundary-stamped OI to the earlier minute fixed that case and broke
+  NIFTY26O1322550CE at 09:22, so it was not adopted. Close matched 3-4 of 7 minutes on the NIFTY rows, 7 of 7 on every
+  SENSEX row; volume 7 of 7 on every option. The after-close final copy (ADR-067) replaces all such minutes with Kite's
+  candles.
 - Meaning: bars from the live feed are good enough for intraday use (REQ-051 AC-4 "where practical") but not an exact
   record; Kite's own candles are exact and available after the close.
 - Bears on: REQ-051 (AC-3, AC-4), REQ-047 AC-1, ADR-066. Status: **decided** (ADR-067).
