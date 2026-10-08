@@ -198,6 +198,8 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `plan_no_adjustment_rule` | rule | No adjustment rule is defined. This strategy is still monitored; the platform may point out an adjustment opportunity, but no rule of yours will trigger. |
 | `scenario_estimated_unavailable` | values_seen | Estimated Now is unavailable: no implied volatility for {legs} |
 | `scenario_caption` | values_seen | {underlying} at expiry | You make/lose |
+| `strike_none` | values_seen | '' |
+| `strike_part` | values_seen | ' {strike}' |
 | `contract_description` | values_seen | {underlying}{strike} {instrument} {expiry} |
 | `leg_description` | values_seen | {action}{strike} {instrument} {expiry} x{quantity} |
 | `change_underlying` | values_seen | underlying {old} -> {new} |

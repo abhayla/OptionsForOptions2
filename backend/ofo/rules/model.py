@@ -8,7 +8,7 @@ does not), otherwise CANNOT_EVALUATE naming the inputs it needs. ``Evaluation.mi
 rule reads that was unusable, whatever the outcome, so a trigger record shows what was not known.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 
 import datetime
 from dataclasses import dataclass, field
@@ -134,7 +134,8 @@ def _why(snapshot: Snapshot, name: InputName) -> str:
                               state="missing" if health is DataHealth.AVAILABLE else health.value)
 
 
-def describe(observations: tuple[Observation, ...]) -> str:
-    """Plain text of the deciding values, e.g. ``live_pnl -5002.50 <= -5000``."""
-    return "; ".join(render_explanation("rule_observation", input=o.input.value, value=o.value, op=o.op.value,
-                                        threshold=o.threshold) for o in observations)
+def describe(observations: tuple[Observation, ...]) -> ExplanationText:
+    """The deciding values as one explanation line, e.g. ``live_pnl -5002.50 <= -5000`` (empty when none)."""
+    return join_explanations(tuple(render_explanation("rule_observation", input=o.input.value, value=o.value,
+                                                      op=o.op.value, threshold=o.threshold) for o in observations),
+                             "; ")

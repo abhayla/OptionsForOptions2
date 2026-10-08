@@ -32,7 +32,7 @@ from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, El
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import ExplanationText, render_explanation
 
 logger = logging.getLogger("ofo.execution.safety")
 
@@ -124,6 +124,8 @@ class Flag:
     message: str
 
     def __post_init__(self) -> None:
+        if type(self.message) is ExplanationText:  # a render_explanation() line: keep and check its plain text
+            object.__setattr__(self, "message", str.__str__(self.message))
         shared_wording.check_platform_text(self.message, f"flag message of {getattr(self.code, 'value', self.code)}")
 
 

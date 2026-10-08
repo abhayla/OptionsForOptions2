@@ -101,7 +101,7 @@ class Explained(SlotType):
 
 class Quoted(SlotType):
     """Recorded text (the user's rule text, a source name, a broker answer), printed quoted: never our wording. A
-    platform line stored as that text (an `ExplanationText`) is printed as it is, unquoted."""
+    platform line stored as that text (an `ExplanationText`) is accepted and quoted the same way."""
 
     @staticmethod
     def validate(value: object) -> None:
@@ -111,8 +111,6 @@ class Quoted(SlotType):
 
     @staticmethod
     def format(value: str) -> str:
-        if type(value) is ExplanationText:
-            return str.__str__(value)
         return f'"{str.__str__(value)}"'
 
 
@@ -120,7 +118,7 @@ class UserText(Quoted):
     """The user's own words (a rule name they typed, a value they entered), quoted word for word in the labelled place
     the template gives it (ADR-003 Q226: "Zerodha's or the user's own text is only quoted, word for word, in a
     labelled field"). Never an exception's text (tests/errors/test_producer_inventory.py: exception_text_flows). A
-    platform line (an `ExplanationText`, e.g. a default rule description) is printed as it is."""
+    platform line (an `ExplanationText`, e.g. a default rule description) is accepted and quoted the same way."""
 
     @staticmethod
     def validate(value: object) -> None:

@@ -822,5 +822,13 @@
   "internal_system_service_unavailable": {
     "sha256": "4d9aa6ca113ec5aa7743737f5bb1fc430154ac0a626417d5447ffd8e11ebc7ea",
     "reviewed": "pending owner read"
+  },
+  "explanation:strike_none": {
+    "sha256": "5e723d5dd5f18b85bbee0259ebd6775a0c1b93aa882f4d74fa3343cec20bcbd3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:strike_part": {
+    "sha256": "df724f7b312f4aca5800ce73e7718683070a5c9da44f8a115ef3f03f10069da1",
+    "reviewed": "pending owner read"
   }
 }
