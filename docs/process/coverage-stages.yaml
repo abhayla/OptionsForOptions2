@@ -139,6 +139,7 @@ decisions:
   ADR-059: 4a           # revision vs new contract; reinstatement; per-expiry guard; W-057
   ADR-060: [4a, 4b, 4c] # build on the owner's Kite app until demo-ready, then reapply to Zerodha (F-31)
   ADR-061: 4a           # IV/Greeks from each expiry's parity forward; payoff stays on spot (F-32)
+  ADR-062: 4a           # Save Draft stores strategies durably (REQ-038 AC-5, W-061)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
