@@ -299,7 +299,10 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
         response = await _login(ac)
     # the browser: a fixed path, no query, no cookie, no token anywhere
     assert response.status_code == 302 and response.headers["location"] == broker_routes.CONNECTED_FRONTEND_PATH
-    assert response.headers["referrer-policy"] == "no-referrer" and "set-cookie" not in response.headers
+    assert response.headers["referrer-policy"] == "no-referrer"
+    # the only cookie sent is the login cookie being cleared (empty value, Max-Age=0), never a session or token
+    cookies = response.headers.get_list("set-cookie")
+    assert len(cookies) == 1 and cookies[0].startswith(broker_routes.STATE_COOKIE + '=""') and "Max-Age=0" in cookies[0]
     _no_secret(response.content, "the response body")
     _no_secret(repr(response.headers.multi_items()).encode(), "the response headers")
     _no_secret(repr(dict(response.cookies)).encode(), "the cookies")
