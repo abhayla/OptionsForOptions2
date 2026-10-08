@@ -61,13 +61,23 @@ def nifty_leg(action, instrument, strike, entry, ltp=None, iv=None, expiry=NIFTY
     )
 
 
-def nifty_input(legs, spot=GOLDEN_SPOT) -> StrategyInput:
-    return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE,
-                         legs=tuple(legs), spot=SpotReading(level=spot, at=VALUATION, health=DataHealth.AVAILABLE))
+def nifty_input(legs, spot=GOLDEN_SPOT):
+    return gated(StrategyInput(underlying="NIFTY", valuation_time=VALUATION, rate=RATE, legs=tuple(legs),
+                               spot=SpotReading(level=spot, at=VALUATION, health=DataHealth.AVAILABLE)))
+
+
+def gated(si: StrategyInput):
+    """The ModelInputs every product entry takes: the strategy input plus a spot-fallback forward (q = 0) per expiry,
+    so the q = 0 expected values of these fixtures stay exactly as they were (W-060 round 3)."""
+    from ofo.engine.model import model_inputs
+    from ofo.marketdata.forward import spot_fallback_forward
+    return model_inputs(si, {e: spot_fallback_forward(e, si.spot.level, si.spot.at, si.valuation_time, si.rate,
+                                                      days_in_year=si.days_in_year, spot_health=si.spot.health)
+                             for e in {leg.expiry for leg in si.legs}})
 
 
 @pytest.fixture
-def golden() -> StrategyInput:
+def golden():
     return nifty_input(nifty_leg(*row) for row in GOLDEN_LEGS)
 
 
@@ -101,5 +111,5 @@ def sensex(catalogue) -> StrategyInput:
             premium=D(entry),
             iv=D(iv),
         ))
-    return StrategyInput(underlying="SENSEX", underlying_level=SENSEX_SPOT, valuation_time=SENSEX_VALUATION,
-                         rate=RATE, legs=tuple(legs), spot=SpotReading(level=SENSEX_SPOT, at=SENSEX_VALUATION, health=DataHealth.AVAILABLE))
+    return gated(StrategyInput(underlying="SENSEX", valuation_time=SENSEX_VALUATION, rate=RATE, legs=tuple(legs),
+                               spot=SpotReading(level=SENSEX_SPOT, at=SENSEX_VALUATION, health=DataHealth.AVAILABLE)))

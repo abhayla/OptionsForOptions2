@@ -53,9 +53,12 @@ from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
 from enum import Enum
 from typing import Sequence
 
-from ofo.engine.black_scholes import GREEK_STEP, Greeks, bs_greeks_unrounded, year_fraction
+import datetime
+
+from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.display import format_points, format_rupees
-from ofo.engine.inputs import LegInput, StrategyInput
+from ofo.engine.inputs import LegInput
+from ofo.engine.model import ModelInputs, leg_greeks_unrounded
 from ofo.engine.legs import Action, Instrument, live_pnl
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
 from ofo.scenario.levels import LevelSet
@@ -147,6 +150,10 @@ class Table:
     columns: tuple[ColumnSpec, ...]
     rows: tuple[Row, ...]
     underlying: str
+    # REQ-072 AC-2/AC-3 (W-060 round 3): the spot every Greek used, its time, and the joined data/model label
+    spot_level: Decimal | None = None
+    spot_at: datetime.datetime | None = None
+    output_label: str | None = None
 
     @property
     def column_ids(self) -> tuple[object, ...]:
@@ -207,7 +214,7 @@ def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
     return ratio.quantize(_PERCENT_STEP, rounding=ROUND_HALF_EVEN)
 
 
-def _leg_per_unit_greeks(leg: LegInput, inputs: StrategyInput) -> tuple[Greeks | None, str | None]:
+def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | None, str | None]:
     """The platform's UNROUNDED per-unit Black-Scholes Greeks for one leg (AC-6), or ``None`` with a reason.
 
     A futures leg always has a value (:data:`_FUTURES_PER_UNIT_GREEKS`, never excluded from a total). An option
@@ -218,12 +225,8 @@ def _leg_per_unit_greeks(leg: LegInput, inputs: StrategyInput) -> tuple[Greeks |
         return _FUTURES_PER_UNIT_GREEKS, None
     if leg.iv is None:
         return None, "no implied volatility for this leg"
-    years = year_fraction(inputs.valuation_time, leg.expiry, days_in_year=inputs.days_in_year)
-    greeks = bs_greeks_unrounded(
-        leg.instrument, inputs.underlying_level, leg.strike, years, inputs.rate, leg.iv,
-        days_in_year=inputs.days_in_year,
-    )
-    return greeks, None
+    # W-060 round 3: the engine at the gated live spot with the leg's expiry yield q (ADR-061, ADR-063)
+    return leg_greeks_unrounded(inputs, leg), None
 
 
 def _signed(value: Decimal, action: Action, quantity: int) -> Decimal:
@@ -255,7 +258,7 @@ def _iv_cell(leg: LegInput) -> Cell:
     return Cell(leg.iv, f"{leg.iv}", CellKind.IV)
 
 
-def _leg_row(index: int, leg: LegInput, inputs: StrategyInput, level_columns: Sequence[Decimal],
+def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
              scenario: ScenarioValues | None, leg_position: int, status: str | None) -> Row:
     core = leg.leg
     entry_value = core.entry_price * core.quantity
@@ -316,7 +319,7 @@ def _leg_row(index: int, leg: LegInput, inputs: StrategyInput, level_columns: Se
     return Row(str(index), cells)
 
 
-def _total_pnl_percent_cell(inputs: StrategyInput, unrealized: Decimal | None) -> Cell:
+def _total_pnl_percent_cell(inputs: ModelInputs, unrealized: Decimal | None) -> Cell:
     """TOTAL P&L % = unrealized P&L / max loss x 100, half-up to 0.1 % (Q233); "—" with a reason otherwise."""
     if unrealized is None:
         return _percent_cell(None, "not every leg has an LTP")
@@ -335,7 +338,7 @@ def _total_pnl_percent_cell(inputs: StrategyInput, unrealized: Decimal | None) -
     return Cell(value, f"{value:+}%", CellKind.PERCENT)
 
 
-def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns: Sequence[Decimal],
+def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: Sequence[Decimal],
                scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
     legs = inputs.legs
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
@@ -403,7 +406,7 @@ def _total_row(inputs: StrategyInput, level_set: LevelSet | None, level_columns:
 
 
 def build_table(
-    inputs: StrategyInput,
+    inputs: ModelInputs,
     *,
     level_set: LevelSet | None = None,
     scenario: ScenarioValues | None = None,
@@ -419,8 +422,8 @@ def build_table(
     ``leg_statuses`` (parallel to ``inputs.legs``, one text or ``None`` per leg) and ``strategy_health`` are the
     Status column's caller-supplied values (fix round: Status is not computed here — see the module docstring).
     """
-    if not isinstance(inputs, StrategyInput):
-        raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
+    if not isinstance(inputs, ModelInputs):
+        raise ValueError(f"inputs must be a ModelInputs (ofo.engine.model.model_inputs), got {inputs!r}")
     if level_set is not None and not isinstance(level_set, LevelSet):
         raise ValueError(f"level_set must be a LevelSet, got {level_set!r}")
     if scenario is not None and not isinstance(scenario, ScenarioValues):
@@ -449,7 +452,7 @@ def build_table(
         for i, leg in enumerate(inputs.legs, start=1)
     ]
     rows.append(_total_row(inputs, level_set, level_columns, scenario, strategy_health))
-    return Table(tuple(columns), tuple(rows), inputs.underlying)
+    return Table(tuple(columns), tuple(rows), inputs.underlying, inputs.spot_level, inputs.spot_at, inputs.label)
 
 
 def _leading_kind(cid: ColumnId) -> CellKind:

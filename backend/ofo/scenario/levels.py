@@ -23,10 +23,9 @@ from enum import Enum
 from typing import Final
 
 from ofo.engine import UNLIMITED, strategy_metrics
-from ofo.engine.inputs import StrategyInput
 from ofo.engine.legs import require_price
+from ofo.engine.model import ModelInputs
 from ofo.scenario.config import ScenarioConfig
-from ofo.scenario.spot import check_spot
 
 DAYS_IN_YEAR: Final = Decimal(365)
 MAX_EXPECTED_MOVE_DAYS: Final = 3660
@@ -114,7 +113,7 @@ def _ceil_to(value: Decimal, unit: Decimal) -> Decimal:
     return (value / unit).to_integral_value(rounding=ROUND_CEILING) * unit
 
 
-def _lower_upper(inputs: StrategyInput, breakevens: tuple[Decimal, ...], step: Decimal) -> tuple[Decimal | None, ...]:
+def _lower_upper(inputs: ModelInputs, breakevens: tuple[Decimal, ...], step: Decimal) -> tuple[Decimal | None, ...]:
     """Lower/Upper BE summary values (Q213).
 
     Two or more breakevens: the lowest and the highest. Exactly one: it is the edge of the profit zone, so it is the
@@ -149,23 +148,26 @@ def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[De
 
 
 def build_level_set(
-    inputs: StrategyInput,
+    inputs: ModelInputs,
     config: ScenarioConfig,
     *,
     expected_move: ExpectedMove | None = None,
     override: RangeOverride | None = None,
 ) -> LevelSet:
-    """The one level set every scenario consumer (table and payoff graph) uses (AC-8)."""
-    if not isinstance(inputs, StrategyInput):
-        raise ValueError(f"inputs must be a StrategyInput, got {inputs!r}")
+    """The one level set every scenario consumer (table and payoff graph) uses (AC-8).
+
+    ``inputs`` is a gated :class:`~ofo.engine.model.ModelInputs` (REQ-072 AC-2): the spot was refused there if it was
+    missing or unavailable; CURRENT and the range stay on that spot (ADR-061).
+    """
+    if not isinstance(inputs, ModelInputs):
+        raise ValueError(f"inputs must be a ModelInputs (ofo.engine.model.model_inputs), got {inputs!r}")
     if not isinstance(config, ScenarioConfig):
         raise ValueError(f"config must be a ScenarioConfig, got {config!r}")
     if config.index != inputs.underlying:
         raise ValueError(f"config is for {config.index}, the strategy is on {inputs.underlying}")
     if expected_move is not None and not isinstance(expected_move, ExpectedMove):
         raise ValueError(f"expected_move must be an ExpectedMove, got {expected_move!r}")
-    reading, label = check_spot(inputs)  # refuses a missing/unavailable spot; never a bare level (REQ-072 AC-2)
-    spot = require_price(reading.level, "current level", allow_zero=False)
+    spot = require_price(inputs.spot_level, "current level", allow_zero=False)
     strategy = inputs.strategy
     metrics = strategy_metrics(strategy)  # raises MultiExpiryError: no exact at-expiry payoff to lay out
     strikes = sorted({leg.strike for leg in strategy.legs if leg.is_option})
@@ -211,8 +213,8 @@ def build_level_set(
     return LevelSet(
         index=config.index,
         current=spot,
-        spot_at=reading.at,
-        data_label=label,
+        spot_at=inputs.spot_at,
+        data_label=inputs.data_label,
         step=step,
         start=start,
         end=end,

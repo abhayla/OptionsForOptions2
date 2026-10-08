@@ -11,8 +11,10 @@ Answer states (run-discipline B4 (d)), each a distinct outcome:
 - 3 or more usable strikes: ``source == "parity"``.
 - fewer than 3: ``source == "spot fallback"``, q = 0, the effective spot is spot itself, and ``label`` is
   "estimated from spot" so every IV and Greek built on it carries that label - never silent.
-- spot missing, or its health is not AVAILABLE: :class:`ForwardUnavailable` (refuse; a stale index value is never used
-  silently, REQ-072 AC-2).
+- spot missing, UNHEALTHY or UNAVAILABLE: :class:`ForwardUnavailable` (refused).
+- spot STALE or DELAYED: computed from the option quotes of the same snapshot (each quote must itself be AVAILABLE,
+  so a stale snapshot falls back to spot) and ``spot_health`` records it; :func:`ofo.engine.model.model_inputs`
+  labels every output "stale since HH:MM IST" - the one stale policy, never used silently (REQ-072 AC-2).
 - T at or below zero (the valuation is at or after the expiry close): :class:`ForwardUnavailable` (expired).
 - a median forward at or below zero (absurd quotes): :class:`ForwardUnavailable`, never a raw math error.
 - a strike with ask below bid on either leg: skipped and counted in ``crossed_skipped``.
@@ -75,6 +77,7 @@ class ExpiryForward:
     days_in_year: int = DAYS_IN_YEAR
     strikes_considered: int = 0
     crossed_skipped: int = 0
+    spot_health: DataHealth = DataHealth.AVAILABLE
 
     @property
     def label(self) -> str | None:
@@ -110,8 +113,8 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
         raise ValueError(f"rate must be a finite decimal.Decimal, got {rate!r}")
     if spot is None or spot.ltp is None:
         raise ForwardUnavailable("index spot is missing; the forward (and every IV/Greek on it) is refused")
-    if spot.health is not DataHealth.AVAILABLE:
-        raise ForwardUnavailable(f"index spot is {spot.health.value}; never used silently in a calculation")
+    if spot.health in (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE):
+        raise ForwardUnavailable(f"index spot is {spot.health.value}; never used in a calculation")
     try:
         years = year_fraction(valuation, expiry)
     except ValueError as exc:
@@ -151,7 +154,7 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
                              effective_spot=spot.ltp, strikes_used=len(values), quality_spread=quality,
                              source=SPOT_FALLBACK, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years,
                              rate=rate, valuation_time=valuation, strikes_considered=len(near),
-                             crossed_skipped=crossed)
+                             crossed_skipped=crossed, spot_health=spot.health)
     f = statistics.median(values)
     if not math.isfinite(f) or f <= 0:
         raise ForwardUnavailable(f"the median parity forward is {f}, not a positive level; the chain is unusable")
@@ -160,4 +163,21 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
                          implied_yield=Decimal(repr(q)).quantize(_YIELD_STEP, rounding=ROUND_HALF_EVEN),
                          effective_spot=_q2(f * math.exp(-r * t)), strikes_used=len(values), quality_spread=quality,
                          source=PARITY, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years, rate=rate,
-                         valuation_time=valuation, strikes_considered=len(near), crossed_skipped=crossed)
+                         valuation_time=valuation, strikes_considered=len(near), crossed_skipped=crossed,
+                         spot_health=spot.health)
+
+
+def spot_fallback_forward(expiry: datetime.date, spot: Decimal, spot_at: datetime.datetime,
+                          valuation: datetime.datetime, rate: Decimal, *, days_in_year: int = DAYS_IN_YEAR,
+                          spot_health: DataHealth = DataHealth.AVAILABLE) -> ExpiryForward:
+    """The ADR-061 fallback when no chain snapshot is at hand: q = 0, labelled "estimated from spot", never silent."""
+    if not isinstance(rate, Decimal) or not rate.is_finite():
+        raise ValueError(f"rate must be a finite decimal.Decimal, got {rate!r}")
+    try:
+        years = year_fraction(valuation, expiry, days_in_year=days_in_year)
+    except ValueError as exc:
+        raise ForwardUnavailable(f"expired: {exc}") from exc
+    return ExpiryForward(expiry=expiry, forward=_q2(float(spot) * math.exp(float(rate) * float(years))),
+                         implied_yield=Decimal(0), effective_spot=spot, strikes_used=0, quality_spread=None,
+                         source=SPOT_FALLBACK, spot=spot, spot_timestamp=spot_at, years=years, rate=rate,
+                         valuation_time=valuation, days_in_year=days_in_year, spot_health=spot_health)
