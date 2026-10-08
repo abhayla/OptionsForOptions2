@@ -32,10 +32,36 @@ def _is_private(name: str) -> bool:
     return name.startswith("_") and not name.startswith("__")
 
 
+def _gated_names(tree: ast.AST) -> set[str]:
+    """Local names bound to ModelInputs/ExpiryModel: imported (with or without ``as``) or assigned (``T = ModelInputs``)."""
+    names: set[str] = set(FORGEABLE)
+
+    def is_gated(expr: ast.AST) -> bool:
+        return (isinstance(expr, ast.Name) and expr.id in names) or (isinstance(expr, ast.Attribute)
+                                                                      and expr.attr in FORGEABLE)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("ofo.engine"):
+            names.update(a.asname for a in node.names if a.name in FORGEABLE and a.asname)
+    for _ in range(3):  # chains of aliases: T = ModelInputs; U = T
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and is_gated(node.value):
+                names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+            elif isinstance(node, ast.AnnAssign) and node.value is not None and is_gated(node.value)                     and isinstance(node.target, ast.Name):
+                names.add(node.target.id)
+    return names
+
+
 def violations(source: str, where: str = "<src>") -> list[str]:
     """Every pricing access in one product module's source (empty = clean)."""
     found: list[str] = []
     tree = ast.parse(source)
+    gated = _gated_names(tree)
+
+    def is_gated(expr: ast.AST) -> bool:
+        return (isinstance(expr, ast.Name) and expr.id in gated) or (isinstance(expr, ast.Attribute)
+                                                                      and expr.attr in FORGEABLE)
+
     module_names: set[str] = set()  # local names bound to an ofo.engine module object
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -75,14 +101,32 @@ def violations(source: str, where: str = "<src>") -> list[str]:
         elif isinstance(node, ast.Attribute) and node.attr == "modules" and isinstance(node.value, ast.Name) \
                 and node.value.id == "sys":
             found.append(f"{where}:{node.lineno} reads sys.modules (fail closed)")
+        elif isinstance(node, ast.ClassDef):
+            if any(is_gated(b) for b in node.bases) or any(
+                    kw.arg == "metaclass" and is_gated(kw.value) for kw in node.keywords):
+                found.append(f"{where}:{node.lineno} class {node.name} subclasses a gated type (fail closed)")
         elif isinstance(node, ast.Call):
             fn = node.func
             name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
             args = node.args
-            if name == "__new__" and isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name) \
-                    and fn.value.id == "object" \
-                    and (not args or not isinstance(args[0], ast.Name) or args[0].id in FORGEABLE):
-                found.append(f"{where}:{node.lineno} object.__new__ on a gated type or an unresolved class (fail closed)")
+            if name in ("__new__", "__setattr__") and isinstance(fn, ast.Attribute):
+                if is_gated(fn.value):
+                    found.append(f"{where}:{node.lineno} .{name} on a gated type (fail closed)")
+                elif isinstance(fn.value, ast.Name) and fn.value.id == "object" and (
+                        not args or is_gated(args[0]) or (name == "__new__" and not isinstance(args[0], ast.Name))):
+                    found.append(f"{where}:{node.lineno} object.{name} on a gated type or an unresolved class "
+                                 f"(fail closed)")
+            if name in ("getattr", "hasattr", "setattr", "delattr") and len(args) >= 2:
+                target, attr = args[0], args[1]
+                root = target
+                while isinstance(root, ast.Attribute):
+                    root = root.value
+                engine_obj = is_gated(target) or (isinstance(root, ast.Name) and root.id in module_names)
+                if engine_obj and isinstance(attr, ast.Constant) and isinstance(attr.value, str) \
+                        and attr.value.startswith("_"):
+                    found.append(f"{where}:{node.lineno} {name}(..., {attr.value!r}) on an engine object")
+                elif engine_obj and name != "getattr" and not isinstance(attr, ast.Constant):
+                    found.append(f"{where}:{node.lineno} {name} on an engine object by a computed name")
             if name == "vars":
                 found.append(f"{where}:{node.lineno} vars(...) (fail closed)")
             if name == "getattr" and len(args) >= 2:
@@ -137,6 +181,20 @@ def test_no_product_module_reaches_a_pricing_function():
     "from ofo.engine import model\nx = model._anything",
     "from ofo.engine.model import _helper",
     "x = vars(obj)",
+    # round 4b: the verifier's shapes and alias variants
+    "from ofo.engine import model\nx = getattr(model, '_bs')",
+    "from ofo.engine import model\nx = hasattr(model, '_estimate')",
+    "from ofo.engine import model\nsetattr(model, '_TOKEN', 1)",
+    "from ofo.engine import model\nx = hasattr(model, name)",
+    "from ofo.engine.model import ModelInputs\nx = ModelInputs.__new__(ModelInputs)",
+    "from ofo.engine.model import ModelInputs as X\nx = X.__new__(X)",
+    "from ofo.engine.model import ModelInputs\nT = ModelInputs\nx = T.__new__(T)",
+    "from ofo.engine.model import ExpiryModel\nT = ExpiryModel\nobject.__setattr__(T, 'a', 1)",
+    "from ofo.engine.model import ModelInputs as X\nobject.__new__(X)",
+    "from ofo.engine import model\nx = model.ModelInputs.__new__(model.ModelInputs)",
+    "from ofo.engine.model import ModelInputs\nclass Evil(ModelInputs):\n    pass",
+    "from ofo.engine.model import ModelInputs as X\nclass Evil(X):\n    pass",
+    "from ofo.engine.model import ExpiryModel\nT = ExpiryModel\nclass Evil(T):\n    pass",
 ])
 def test_scan_catches_every_shape(source):
     assert violations(source), source
