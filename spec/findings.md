@@ -443,5 +443,37 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   PASS with the forward, FAIL with spot; stale flagged - PARTIAL (per-contract ages measured; feed-stale not
   exercised); forced reconnect - PASS (2.2 s); history persisted - PASS; fan-out to 100/1,000 users - NOT RUN (frames
   recorded for the replay); licence status - recorded in F-23, F-31; next-morning token expiry - running (to be added).
+- Afternoon run (2026-10-08 14:41-15:45, 1,603 instruments after the intraday strike additions of F-33): a forced
+  disconnect with a 10 s pause at 14:51:02 was flagged stale at 14:51:08 (feed age 6.34 s), data resumed after a
+  13.47 s gap, and the feed was flagged live again at 14:51:18 - **the feed-stale flag is now proven live (PASS)**.
+  An unplanned laptop network outage (DNS failures, 15:08:13-15:10:08) was flagged stale after 7.88 s and recovered by
+  itself with 16 s retries. 1,617,672 ticks; the frame file read back complete (11,075 of 11,075 frames).
 - Bears on: REQ-048, REQ-049 (AC-2 health), REQ-072 (AC-3), REQ-047 AC-4, REQ-051, ADR-015, ADR-030, ADR-061.
-  Status: **decided** for the Greeks input (ADR-061); **open** for the staleness rule (the data-path work item).
+  Status: **decided** for the Greeks input (ADR-061) and the staleness rule (W-059, merged: health follows the feed).
+
+## F-33 - Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live
+- Measured 2026-10-08 14:39-16:40 IST by the orchestrator on the owner's account (ADR-060), scripts
+  `docs/research/kite-proof-2026-10-07/kite_rest_capture.py` and `kite_live_checks.py --tag pm`; replies in
+  `rest-2026-10-08/` (market data in full; personal endpoints as key names and types only). Level P1.
+- **Strikes are added during the trading day.** Kite's instrument list at 08:05 had 108 NIFTY 13-Oct strikes
+  (20,050-25,400); at 14:39 it had 236 (17,150-28,900) - 128 added, none removed; NIFTY 19-Oct the same (104 -> 232);
+  SENSEX unchanged. A once-a-day instrument load misses strikes listed after it ran.
+- **REST endpoints during market hours** (all HTTP 200): `/quote` with live depth (NIFTY26O1322000CE bid 298.25 x 65,
+  ask 298.95 x 780 at 14:59:40); `/margins/basket` for a 1-lot NIFTY iron condor initial 291,444.67, final 66,003.57;
+  `/charges/orders` returns Zerodha's own breakdown per order (one leg: brokerage 20, STT 7.3125, exchange 1.7320875,
+  SEBI 0.004875, stamp 0, GST 3.91265325, total 32.96211575); `/instruments/historical` returns minute candles with OI
+  for today (344 for NIFTY 50 and for an option) and 21 daily candles for NIFTY 50 - **so the owner's Kite Connect plan
+  includes historical data**, contrary to REQ-052 AC-1 "with no historical data" (open for owner decision).
+- **Money arrives as binary floats** (e.g. initial margin `291444.67000000004`, charges `32.962115749999995`): the
+  adapter must parse JSON numbers as Decimal from their text (never through float), or rupee totals pick up error.
+- **Several Kite sessions coexist.** Logins at 08:38, 14:41 and 14:52 each issued a working token; the 08:38 token still
+  answered after the later logins (its 14:45 and 15:00 probes passed). A new login does not end the previous token.
+- **The SENSEX 08-Oct expiry close was NOT recorded live**: the laptop's internet dropped from about 15:26 to 16:26 and
+  the feed stopped at 15:26. Recovered afterwards from historical minute candles: SENSEX's last index candle is 15:29
+  (71,593.24); the expiring options have candles until 15:39 (e.g. SENSEX26O0872500CE 0.05, 72500PE 905.00, volume and
+  OI still changing). Why options trade after 15:30 when the engine's expiry close is 15:30 is **unmeasured** (BSE
+  closing session or a data artefact) - to check against BSE's published session timings.
+- **Expired contracts stay in the instrument list the same evening** (398 SENSEX 08-Oct rows in the 16:30 BFO list).
+- Bears on: REQ-052 AC-1 (history), REQ-053 (daily load timing), REQ-049 AC-1 (Decimal parsing), REQ-015 (sessions),
+  ADR-008 / scenario-calculations §4 (expiry close time), ADR-057/W-057 (retirement), REQ-047/REQ-051 (history source).
+  Status: **open** for the history decision and the expiry-close timing; **recorded** for the rest.
