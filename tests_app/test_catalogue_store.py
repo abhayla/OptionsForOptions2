@@ -972,14 +972,22 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
 
     raw = download_instruments_csv()
     contracts = parse_rows_naming_the_row(io.StringIO(raw))
-    scoped = _in_scope(contracts)
-    file_counts = Counter((c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped)
-    assert all(file_counts[k] > 0 for k in PROOF_CATEGORIES), file_counts
+    in_scope = _in_scope(contracts)
 
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             as_of = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            # ADR-059 / REQ-053: the store skips in-scope rows already expired on the load date (the live file keeps
+            # listing a just-expired expiry for a day); the oracle applies the same rule (Catalogue.update's
+            # `expiry is None or expiry >= update_date`, which is inline there and so cannot be imported)
+            load_day = as_of.astimezone(IST).date()
+            scoped = [c for c in in_scope if c.contract.expiry is None or c.contract.expiry >= load_day]
+            excluded_expired = len(in_scope) - len(scoped)
+            assert excluded_expired >= 0
+            file_counts = Counter(
+                (c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped)
+            assert all(file_counts[k] > 0 for k in PROOF_CATEGORIES), file_counts
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             result = await apply_update(conn, contracts, as_of=as_of)
             rows = (await conn.execute(text(
@@ -997,7 +1005,7 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
 
             named = [first("NIFTY", "FUT"), first("SENSEX", "FUT"), first("NIFTY", "CE"), first("NIFTY", "PE"),
                      first("SENSEX", "CE")]
-            lines = [f"W-053 PROOF file rows={len(contracts)} in_scope={len(scoped)} table={sum(table_counts.values())}"]
+            lines = [f"W-053 PROOF file rows={len(contracts)} in_scope={len(in_scope)} excluded_expired={excluded_expired} loaded={len(scoped)} table={sum(table_counts.values())}"]
             lines += [f"W-053 PROOF count {k[0]}/{k[1]}/{k[2]} file={file_counts[k]} table={table_counts[k]}"
                       for k in PROOF_CATEGORIES]
             for c in named:
