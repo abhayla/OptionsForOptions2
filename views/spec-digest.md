@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (62)
+## Decisions (64)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -68,6 +68,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-060 2026-10-08: Zerodha grants multi-user Kite Connect access only to production-ready platforms and asks for a demo first (F-31). [amends ADR-034; amends ADR-051; amends ADR-054]
 - ADR-061 2026-10-08: For each expiry, the underlying level fed to the Black-Scholes model is the forward implied by that expiry's own option prices, expressed as an impli… [amends ADR-056]
 - ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition and its activity history in the database; they survive a restart and load back exactly as saved; li… [none — adds one acceptance criterion to REQ-038 o…]
+- ADR-063 2026-10-08: The calculation engine takes the implied continuous dividend yield q of ADR-061 as an input and computes the option price, implied volatility and eve… [refines ADR-061]
+- ADR-064 2026-10-08: A strategy definition's `risk_limits` may only use the names max_loss, max_capital and max_margin, and its `preferences` only objective, market_view,… [refines ADR-062]
 
 ## Requirements (74)
 
