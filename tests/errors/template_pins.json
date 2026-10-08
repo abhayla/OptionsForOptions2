@@ -446,5 +446,65 @@
   "recon_standalone_changed": {
     "sha256": "4c4212afb077a0ccf637cf81cb677131da47760ae752a6f1d8a4f64ce12e918a",
     "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_enter_now": {
+    "sha256": "68655d4e057bcd15c3e901b36abeedac6810cac00748806feb5fdb2005b7b058",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_underlying_level": {
+    "sha256": "e437c92496076d120411a0450b954826977d99142c4541c5a6846fceb184120a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_underlying_range": {
+    "sha256": "802c1d72946de2e5427cbec676773b059d75142aa7ae4c875652677ce4c16c38",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_net_credit": {
+    "sha256": "c40a8e94d8d7c8f2178c31389b4a191b51073c3459aa75b747aabfe0fc4946c7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_net_debit": {
+    "sha256": "f7f2040cfecc8f29f68e11a20ea8409f35c8a6db52fcebfafcca426d2cc4b03e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_volatility_between": {
+    "sha256": "53e41857af1010d421ebbc60b15fa1696beb77e858e5d865e3a5f6b66602efac",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_volatility_at_or_above": {
+    "sha256": "9001af373c4563b6bc3148c997bdf733a388401f47a3dbc6e024fcfc6060a743",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_volatility_at_or_below": {
+    "sha256": "be2391bf4728075017d95345899d2813d5587f00e6c75597fd46e981fa9ba6e5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_time_window": {
+    "sha256": "0088ddb174a420d7549de9fc7a72a7fae6089b0c359673b09761c50ff651bb18",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_profit_target": {
+    "sha256": "77a7b4ed5b7d571bf0fb6aabf1c09a59a6a29114a5fbc50ef58d75af845aae3e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_max_loss": {
+    "sha256": "b3c0c25f389b002ed0f281bc3f07f598e085a31b5d5f765d1cf5da2ca03e8bb4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_days_to_expiry": {
+    "sha256": "0630f4c78f52b1f70d56873ca3d8d987c823ad17cf14570de4bb63bf84f72f29",
+    "reviewed": "pending owner read"
+  },
+  "explanation:rule_label_days_to_expiry_from": {
+    "sha256": "a1e300f20399c185e4cc1ecde425dfc1121d1bbd663d6710c66f12170b9f5681",
+    "reviewed": "pending owner read"
+  },
+  "labels:direction": {
+    "sha256": "d9e97c8aef1f47f71e9034a44054cf6e7a6dd41e6418a9fb1492468ed70872b1",
+    "reviewed": "pending owner read"
+  },
+  "labels:measure": {
+    "sha256": "3f846bc27a7f7568f3103b0ecb1d119e6217ed55a39ead3f01d67bbcca5723d0",
+    "reviewed": "pending owner read"
   }
 }

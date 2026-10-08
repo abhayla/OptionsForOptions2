@@ -11,6 +11,7 @@ reported) is printed exactly as stored, quoted, and never scanned as our wording
 """
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -86,6 +87,9 @@ ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "ALERT_ONLY": "alert only",
     "ALERT_AND_PREPARE_ORDERS": "alert and prepare orders for your review",
 })
+#: The words for a rule template's direction (ofo.rules.templates.Direction) and volatility measure (InputName).
+DIRECTION_TEXT: Mapping[str, str] = MappingProxyType({"AT_OR_ABOVE": "at or above", "AT_OR_BELOW": "at or below"})
+MEASURE_TEXT: Mapping[str, str] = MappingProxyType({"IV": "implied volatility", "IV_PERCENTILE": "IV percentile"})
 FOLLOW_UP_TEXT: Mapping[str, str] = MappingProxyType({
     "ALERT_GENERATED": "Alert generated",
     "ORDER_PREPARED": "Order prepared",
@@ -127,10 +131,58 @@ def _follow_up() -> type:
     return FollowUpKind
 
 
+def _direction() -> type:
+    from ofo.rules.templates import Direction
+    return Direction
+
+
 InputLabel = _enum_slot("InputLabel", _input_name, INPUT_LABEL_TEXT)
 OpWords = _enum_slot("OpWords", _op, OP_TEXT)
 ActionWords = _enum_slot("ActionWords", _action, ACTION_TEXT)
 FollowUpLabel = _enum_slot("FollowUpLabel", _follow_up, FOLLOW_UP_TEXT)
+DirectionWords = _enum_slot("DirectionWords", _direction, DIRECTION_TEXT)
+MeasureWords = _enum_slot("MeasureWords", _input_name, MEASURE_TEXT)
+
+
+class Amount(SlotType):
+    """A rule threshold the user typed (a level, a rupee amount, a bound): exactly `Decimal` or `int`, finite."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) not in (Decimal, int):
+            raise TypeError(f"Amount slot requires Decimal or int, got {type(value).__name__}")
+        if isinstance(value, Decimal) and not value.is_finite():
+            raise ValueError("Amount slot requires a finite number")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
+class Days(SlotType):
+    """A whole number of days to expiry: exactly `int`, 0 or more."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, int, "Days")
+        if value < 0:  # type: ignore[operator]
+            raise ValueError("Days slot requires a value >= 0")
+
+    @staticmethod
+    def format(value: int) -> str:
+        return str(value)
+
+
+class ClockHm(SlotType):
+    """A time of day in IST, hours and minutes: exactly `datetime.time`."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.time, "ClockHm")
+
+    @staticmethod
+    def format(value: datetime.time) -> str:
+        return value.isoformat("minutes")
 
 
 class InputLabels(SlotType):
@@ -202,6 +254,27 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"follow_up": FollowUpLabel, "answer": YesNo}),
     ExplanationTemplate("why_follow_up_answer", "rule", "{follow_up}: {answer}.",
                         {"follow_up": FollowUpLabel, "answer": Quoted}),
+    # Rule labels (ofo.rules.templates, REQ-041 AC-2/AC-3): the description a rule shows in lists and in "why".
+    ExplanationTemplate("rule_label_enter_now", "rule", "Enter now"),
+    ExplanationTemplate("rule_label_underlying_level", "rule", "Underlying {direction} {level}",
+                        {"direction": DirectionWords, "level": Amount}),
+    ExplanationTemplate("rule_label_underlying_range", "rule", "Underlying between {low} and {high}",
+                        {"low": Amount, "high": Amount}),
+    ExplanationTemplate("rule_label_net_credit", "rule", "Net credit at least Rs {target}", {"target": Amount}),
+    ExplanationTemplate("rule_label_net_debit", "rule", "Net debit at most Rs {target}", {"target": Amount}),
+    ExplanationTemplate("rule_label_volatility_between", "rule", "{measure} between {low} and {high}",
+                        {"measure": MeasureWords, "low": Amount, "high": Amount}),
+    ExplanationTemplate("rule_label_volatility_at_or_above", "rule", "{measure} at or above {low}",
+                        {"measure": MeasureWords, "low": Amount}),
+    ExplanationTemplate("rule_label_volatility_at_or_below", "rule", "{measure} at or below {high}",
+                        {"measure": MeasureWords, "high": Amount}),
+    ExplanationTemplate("rule_label_time_window", "rule", "Between {start} and {end} IST",
+                        {"start": ClockHm, "end": ClockHm}),
+    ExplanationTemplate("rule_label_profit_target", "rule", "Profit target {amount}", {"amount": Amount}),
+    ExplanationTemplate("rule_label_max_loss", "rule", "Max loss {amount}", {"amount": Amount}),
+    ExplanationTemplate("rule_label_days_to_expiry", "rule", "{days} days to expiry or fewer", {"days": Days}),
+    ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
+                        {"days": Days, "time": ClockHm}),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})
@@ -209,6 +282,7 @@ EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for 
 #: Every fixed label an explanation can print (checked by tests/errors/test_template_pins.py and pinned there).
 LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "input": INPUT_LABEL_TEXT, "op": OP_TEXT, "action": ACTION_TEXT, "follow_up": FOLLOW_UP_TEXT,
+    "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT,
 })
 
 

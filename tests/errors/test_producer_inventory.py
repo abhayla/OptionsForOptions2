@@ -64,7 +64,6 @@ PENDING: dict[str, dict[str, int]] = {
     'rules/actions.py': {'respond': 1},
     'rules/model.py': {'describe': 1},
     'rules/plan.py': {'<module>': 2},
-    'rules/templates.py': {'entry_level_reached': 1, 'entry_premium_target': 2, 'entry_range': 1, 'entry_time_window': 1, 'entry_volatility': 1, 'exit_max_loss': 1, 'exit_profit_target': 1, 'exit_time': 2, 'exit_underlying_level': 1},
     'scenario/views.py': {'<module>': 1, 'scenario_values': 1},
     'strategy/builder_history.py': {'<module>': 9},
     'strategy/definition.py': {'_named': 5, 'changes_from': 1, 'describe': 1, 'describe_contract': 1},

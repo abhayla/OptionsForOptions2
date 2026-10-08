@@ -119,6 +119,19 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `why_follow_up_missing` | rule | {follow_up}: not recorded. |
 | `why_follow_up_yes_no` | rule | {follow_up}: {answer}. |
 | `why_follow_up_answer` | rule | {follow_up}: {answer}. |
+| `rule_label_enter_now` | rule | Enter now |
+| `rule_label_underlying_level` | rule | Underlying {direction} {level} |
+| `rule_label_underlying_range` | rule | Underlying between {low} and {high} |
+| `rule_label_net_credit` | rule | Net credit at least Rs {target} |
+| `rule_label_net_debit` | rule | Net debit at most Rs {target} |
+| `rule_label_volatility_between` | rule | {measure} between {low} and {high} |
+| `rule_label_volatility_at_or_above` | rule | {measure} at or above {low} |
+| `rule_label_volatility_at_or_below` | rule | {measure} at or below {high} |
+| `rule_label_time_window` | rule | Between {start} and {end} IST |
+| `rule_label_profit_target` | rule | Profit target {amount} |
+| `rule_label_max_loss` | rule | Max loss {amount} |
+| `rule_label_days_to_expiry` | rule | {days} days to expiry or fewer |
+| `rule_label_days_to_expiry_from` | rule | {days} days to expiry or fewer, from {time} IST |
 
 ## Explanation labels
 
@@ -128,3 +141,5 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | op | at or above; above; at or below; below |
 | action | alert only; alert and prepare orders for your review |
 | follow_up | Alert generated; Order prepared; Confirmation required; Executed; Broker reported; Reconciliation succeeded |
+| direction | at or above; at or below |
+| measure | implied volatility; IV percentile |
