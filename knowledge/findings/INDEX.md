@@ -2,7 +2,7 @@
 
 # Findings index
 
-25 finding(s), generated from `knowledge/findings/*.json`.
+26 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -20,6 +20,7 @@
 | instrument-identity-keyed-on-one-broker | Any instrument store whose identity is one broker's own token or trading symbol cannot hold the same contract's identifiers from another broker, and every table, cache and subscription that joins on that broker id has to be re-keyed when a second broker arrives; the identifier the exchange itself assigns is the one every broker shares. | unguarded | occurrences, scope, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | scope, spec_ref |
 | normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | guarded | occurrences, scope, spec_ref |
+| parallel-branches-green-alone-red-together | Two work items built in parallel branches each pass CI on their own base, but one adds a repo-wide guard (an import scan, an inventory, an allowlist) that the other's new code violates; the clash shows only when the branches meet, so a branch merged first can turn the other red after it was verified. | unguarded | occurrences, scope, spec_ref |
 | pre-existing-failure-claim-not-checked-on-base | Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes. | unguarded | occurrences, scope, spec_ref |
 | privilege-guard-as-denylist | Any guard that protects data by refusing a list of forbidden privilege paths (superuser, a named role membership, table ownership) misses every path not on the list, because a database grants power through many routes (database ownership, schema ownership, role membership, default PUBLIC grants); the guard must instead assert that the role's effective privileges are exactly an allowed set. Wider shape of secret-filter-by-key-name: a denylist over an open-ended space is never complete. | guarded | scope, spec_ref |
 | research-finding-held-in-chat | Any research finding proven during a session but reported only in chat (or held back until a decision) is lost to the next reader and lets work proceed on assumptions the finding contradicts; findings must be written to the spec findings list, the spec sections they bear on and (for failure classes) the registry in the same turn they are proven, before any decision or implementation. | unguarded | scope, spec_ref |
