@@ -15,7 +15,7 @@ from fastapi import FastAPI
 
 from ofo_app import errors
 from ofo_app.db import close_db
-from ofo_app.routes import health
+from ofo_app.routes import health, outcome
 
 log = logging.getLogger(__name__)
 
@@ -30,4 +30,5 @@ def create_app() -> FastAPI:
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan)
     errors.install(app)
     app.include_router(health.router)
+    app.include_router(outcome.router)
     return app
