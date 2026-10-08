@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from typing import Iterable, Protocol
 
-from ofo.history.bars import BarSource, MinuteBar, minute_of, session_gaps
+from ofo.history.bars import BarSource, MinuteBar, minute_in_gap, session_gaps
 
 _RANK = {BarSource.LIVE: 0, BarSource.BACKFILLED: 1, BarSource.KITE: 2}
 
@@ -177,7 +177,7 @@ class InMemoryHistoryStore:
         return self._status.get(day) is DayStatus.FINAL
 
     def _in_gap(self, minute: datetime.datetime) -> bool:
-        return any(minute_of(s) <= minute <= minute_of(e) for s, e in self._gaps)
+        return any(minute_in_gap(minute, g) for g in self._gaps)
 
     def gaps(self, day: datetime.date) -> list[Gap]:
         return sorted(g for g in self._gaps if g[0].date() == day)

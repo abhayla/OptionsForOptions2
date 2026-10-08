@@ -95,6 +95,14 @@ class _Open:
 
 
 
+def minute_in_gap(minute: datetime.datetime, gap: tuple[datetime.datetime, datetime.datetime]) -> bool:
+    """THE test of a minute against a gap: the minute [m, m+60s) overlaps the half-open gap [s, e). A minute that only
+    touches an end point (the 15:30 minute of a gap ending at 15:30:00) is not inside; a minute a real gap covers even
+    partly is (conservative: it is then BACKFILLED from Kite or dropped)."""
+    start, end = gap
+    return minute < end and minute + ONE_MINUTE > start
+
+
 def session_gaps(start: datetime.datetime, end: datetime.datetime,
                  min_length: datetime.timedelta = FEED_GAP_AFTER) -> list[tuple[datetime.datetime, datetime.datetime]]:
     """The part of a quiet spell that lies inside a trading session (09:15:00-15:30:00 IST on the day it falls on).

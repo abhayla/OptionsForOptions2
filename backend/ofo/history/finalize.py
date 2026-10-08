@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Iterable, Sequence
 
-from ofo.history.bars import ONE_MINUTE, BarSource, MinuteBar, minute_of
+from ofo.history.bars import ONE_MINUTE, BarSource, MinuteBar, minute_in_gap, minute_of
 from ofo.history.candles import CandleError, MinuteCandleSource
 from ofo.history.store import DayStatus, FinalizeCounts, HistoryStore
 
@@ -44,7 +44,7 @@ def finalize_day(live: Iterable[MinuteBar], kite: Iterable[MinuteBar]) -> tuple[
 
 def in_gap(minute: datetime.datetime, gaps: Sequence[Gap]) -> bool:
     """A minute is touched by a gap when the gap overlaps any part of it."""
-    return any(minute_of(start) <= minute <= minute_of(end) for start, end in gaps)
+    return any(minute_in_gap(minute, g) for g in gaps)
 
 
 def fill_gaps(live: Iterable[MinuteBar], kite: Iterable[MinuteBar], gaps: Sequence[Gap]) -> list[MinuteBar]:
