@@ -47,10 +47,11 @@ def test_real_fixture_with_the_1509_candle_removed_is_absent_not_live_and_neighb
 
 def test_a_live_gap_minute_kite_lacks_is_dropped_and_counted_once():
     store = InMemoryHistoryStore()
-    store.put_bars([one_bar(at(15, 8))])
-    store._gaps.add((at(15, 8, 14), at(15, 10, 8)))  # a persisted LIVE row whose gap was recorded after it was stored
+    store.put_bars([one_bar(at(10, 0))])  # stored while the feed was still thought healthy
+    store.record_gaps([(at(10, 0, 5), at(10, 1, 59))])  # the gap is learned afterwards: the stored LIVE bar is removed
+    store.put_bars([one_bar(at(10, 1))])  # and a late LIVE bar there never gets in
     result = finalize_into(store, DAY, ["X:1"], InMemoryCandleSource([]), start=START, end=END)
-    assert result.gap_minutes_missing == 1
+    assert result.gap_minutes_missing == 2  # both minutes (10:00 and 10:01) are inside the gap and Kite has neither
     assert not any(b.source is BarSource.LIVE for b in store.bars_for_day(DAY)) and store.bars_for_day(DAY) == []
 
 
@@ -63,14 +64,14 @@ def test_a_late_live_bar_inside_a_recorded_gap_never_reaches_the_store():
 
 def test_a_store_that_raises_while_finalizing_leaves_the_day_provisional_without_raising():
     class ReadFails(InMemoryHistoryStore):
-        def bars_for_day(self, day):
+        def day_status(self, day):
             raise RuntimeError("db down")
 
     class WriteFails(InMemoryHistoryStore):
-        def replace_day_bars(self, day, bars):
+        def apply_candles(self, day, candles):
             raise RuntimeError("db down")
 
     for store in (ReadFails(), WriteFails()):
         result = finalize_into(store, DAY, list(candle_bars()), InMemoryCandleSource(kite_all(W)), start=START, end=END)
         assert result.status is DayStatus.PROVISIONAL and result.errors == {"store_failed": 1}
-        assert store.day_status(DAY) is DayStatus.PROVISIONAL
+        assert InMemoryHistoryStore.day_status(store, DAY) is DayStatus.PROVISIONAL

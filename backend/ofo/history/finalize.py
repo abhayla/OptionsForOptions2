@@ -16,18 +16,11 @@ from typing import Iterable, Sequence
 
 from ofo.history.bars import ONE_MINUTE, BarSource, MinuteBar, minute_of
 from ofo.history.candles import CandleError, MinuteCandleSource
-from ofo.history.store import DayStatus, HistoryStore
+from ofo.history.store import DayStatus, FinalizeCounts, HistoryStore
 
 log = logging.getLogger("ofo.history")
 
 Gap = tuple[datetime.datetime, datetime.datetime]
-
-
-@dataclass(frozen=True)
-class FinalizeCounts:
-    replaced: int  # a live bar replaced by Kite's candle
-    kept_live: int  # a live bar Kite has no candle for: stays LIVE
-    kite_only: int  # a minute Kite has and the live feed never produced
 
 
 def _key(bar: MinuteBar) -> tuple[str, datetime.datetime]:
@@ -102,27 +95,18 @@ def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Seque
                 continue
             kite.append(candle)
     try:
-        live = store.bars_for_day(day)
-        gaps = store.gaps(day)
-    except Exception as exc:  # an unreadable store: nothing is changed, the day stays provisional
-        log.warning("history store read failed: %s", type(exc).__name__)
+        if store.day_status(day) is DayStatus.FINAL:  # a FINAL day never changes; finalizing again is a no-op
+            return DayResult(DayStatus.FINAL, None, dict(errors))
+        # the store applies the gap rule and decides each bar's source (KITE, or BACKFILLED inside a gap)
+        counts = store.apply_candles(day, kite)
+        missing = store.gap_minutes_missing(day)
+        fetched_all = not (errors["malformed"] or errors["fetch_failed"])
+        status = DayStatus.FINAL if fetched_all else DayStatus.PROVISIONAL
+        store.set_day_status(day, status)
+    except Exception as exc:  # an unreadable or unwritable store: the day stays provisional
+        log.warning("history store failed: %s", type(exc).__name__)
         errors["store_failed"] += 1
         return DayResult(DayStatus.PROVISIONAL, None, dict(errors))
-    # the one door to FINAL applies the gap rule itself: inside a gap Kite's candle -> BACKFILLED, no candle -> dropped
-    kite_keys = {_key(b) for b in kite}
-    missing = sum(1 for b in live if in_gap(b.minute, gaps) and _key(b) not in kite_keys)
-    final, counts = finalize_day([b for b in live if not in_gap(b.minute, gaps)],
-                                 [b for b in kite if not in_gap(b.minute, gaps)])
-    final += [replace(b, source=BarSource.BACKFILLED) for b in kite if in_gap(b.minute, gaps)]
-    try:
-        store.replace_day_bars(day, sorted(final, key=_key))
-    except Exception as exc:
-        log.warning("history store write failed: %s", type(exc).__name__)
-        errors["store_failed"] += 1
-        return DayResult(DayStatus.PROVISIONAL, counts, dict(errors), missing)
-    fetched_all = not (errors["malformed"] or errors["fetch_failed"])
-    status = DayStatus.FINAL if fetched_all else DayStatus.PROVISIONAL
-    store.set_day_status(day, status)
     return DayResult(status, counts, dict(errors), missing)
 
 

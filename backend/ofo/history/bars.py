@@ -22,6 +22,11 @@ from ofo.rules.inputs import DataHealth
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 ONE_MINUTE = datetime.timedelta(minutes=1)
+SESSION_OPEN = datetime.time(9, 15)
+SESSION_CLOSE = datetime.time(15, 30)
+#: a quiet spell across ALL subscribed instruments longer than this is a feed gap (the longest healthy quiet spell
+#: measured on 2026-10-08 was 1.0 s with 8 instruments, 0.51 s with 1,091; the laptop outage was 114 s).
+FEED_GAP_AFTER = datetime.timedelta(seconds=5)
 
 
 class BarSource(enum.Enum):
@@ -89,9 +94,27 @@ class _Open:
         self.close = p
 
 
-#: a quiet spell across ALL subscribed instruments longer than this is a feed gap (the longest healthy quiet spell
-#: measured on 2026-10-08 was 1.0 s with 8 instruments, 0.51 s with 1,091; the laptop outage was 114 s).
-FEED_GAP_AFTER = datetime.timedelta(seconds=5)
+
+def session_gaps(start: datetime.datetime, end: datetime.datetime,
+                 min_length: datetime.timedelta = FEED_GAP_AFTER) -> list[tuple[datetime.datetime, datetime.datetime]]:
+    """The part of a quiet spell that lies inside a trading session (09:15:00-15:30:00 IST on the day it falls on).
+
+    Quiet time before the open or after the close is a closed market, not a feed gap (ADR-067: "a gap in the feed";
+    F-33: expiring SENSEX options traded until 15:39 - those minutes stay LIVE and finalize replaces them). A spell
+    across midnight yields the tail of the first day and the head of the last; whole days between are not session
+    time we can know about (no holiday calendar here). Pieces of ``min_length`` or less are dropped."""
+    start, end = start.astimezone(IST), end.astimezone(IST)
+    pieces = []
+    day = start.date()
+    while day <= end.date():
+        lo = datetime.datetime.combine(day, SESSION_OPEN, IST)
+        hi = datetime.datetime.combine(day, SESSION_CLOSE, IST)
+        if day == start.date() or day == end.date():  # whole days in between are skipped
+            a, b = max(start, lo), min(end, hi)
+            if b - a > min_length:
+                pieces.append((a, b))
+        day += datetime.timedelta(days=1)
+    return pieces
 
 
 class MinuteBarBuilder:
@@ -136,9 +159,9 @@ class MinuteBarBuilder:
 
     def mark_gap(self, start: datetime.datetime, end: datetime.datetime) -> None:
         """A feed gap (from the feed-state events or the quote timestamps): nothing seen across it can be a trade."""
-        self.gaps.append((start, end))
-        for iid in self._cum_volume:
+        for iid in self._cum_volume:  # whatever the clock, a silence means the volume baseline is no longer known
             self._cum_volume[iid] = None
+        self.gaps.extend(session_gaps(start, end, self._gap_after))
 
     def _watch_feed(self, ts: datetime.datetime) -> None:
         if self._last_seen is not None and ts - self._last_seen > self._gap_after:
