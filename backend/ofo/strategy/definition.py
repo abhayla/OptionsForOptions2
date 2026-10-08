@@ -55,11 +55,11 @@ class DefinitionError(ValueError):
 class UnknownNameError(DefinitionError):
     """A risk-limit or preference name outside ADR-064's closed list. ``map_name`` is 'risk_limits' or 'preferences'."""
 
-    def __init__(self, map_name: str, names: list[str]) -> None:
+    def __init__(self, map_name: str, names: list[str], text: str) -> None:
+        """``text`` is developer detail (built where the error is raised, as a DefinitionError's is)."""
         self.map_name = map_name
         self.names = names
-        allowed = RISK_LIMIT_NAMES if map_name == "risk_limits" else PREFERENCE_NAMES
-        super().__init__(f"{map_name}: unknown name(s) {names}; allowed {sorted(allowed)} (ADR-064)")
+        super().__init__(text)
 
 
 def check_names(map_name: str, names) -> None:
@@ -67,7 +67,8 @@ def check_names(map_name: str, names) -> None:
     allowed = {"risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}[map_name]
     unknown = [n for n in names if not isinstance(n, str) or n not in allowed]
     if unknown:
-        raise UnknownNameError(map_name, unknown)
+        raise UnknownNameError(
+            map_name, unknown, f"{map_name}: unknown name(s) {unknown}; allowed {sorted(allowed)} (ADR-064)")
 
 
 def _is_int(value: object) -> bool:

@@ -219,6 +219,7 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `change_leg_added` | values_seen | added leg {leg} |
 | `change_quantity` | values_seen | quantity of {leg} was {before} |
 | `change_field` | values_seen | {label} {old} -> {new} |
+| `change_legs_reordered` | values_seen | legs reordered |
 | `scenario_caption_left` | values_seen | {underlying} at expiry |
 | `scenario_caption_right` | values_seen | You make/lose |
 

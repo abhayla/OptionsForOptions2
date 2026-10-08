@@ -37,6 +37,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
+from ofo.errors.explanations import render_explanation
 from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import (
     DefinitionError,
@@ -84,7 +85,7 @@ class StoredFormError(ValueError):
     def __init__(self, code: str, detail: str) -> None:
         self.code = code
         self.detail = detail
-        super().__init__(f"{code}: {detail}")
+        super().__init__(": ".join((code, detail)))
 
 
 @dataclass(frozen=True)
@@ -280,7 +281,7 @@ def _date_from(value: Any, where: str) -> datetime.date:
     return day
 
 
-def check_schema_version(doc: Any, where: str = "stored definition") -> int:
+def check_schema_version(doc: Any, where: str = "stored_definition") -> int:
     if not isinstance(doc, dict):
         raise StoredFormError(MALFORMED, f"{where} must be a JSON object, got {type(doc).__name__}")
     if "schema_version" not in doc:
@@ -296,7 +297,7 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
     """The stored form -> a SavedDefinition, refusing (StoredFormError) anything that is not exactly the form, and any
     leg whose contract id the catalogue no longer holds or whose terms changed."""
     check_schema_version(doc)
-    doc = _exact_keys(doc, DOCUMENT_KEYS, "stored definition")
+    doc = _exact_keys(doc, DOCUMENT_KEYS, "stored_definition")
     underlying = doc["underlying"]
     if not isinstance(underlying, str):
         raise StoredFormError(MALFORMED, f"underlying must be a string, got {underlying!r}")
@@ -306,17 +307,17 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
     legs: list[DefinitionLeg] = []
     ids: list[int] = []
     for i, raw in enumerate(raw_legs):
-        where = f"leg {i + 1}"
+        where = f"leg_{i + 1}"
         raw = _exact_keys(raw, LEG_KEYS, where)
-        contract_id = _int_from(raw["contract_id"], f"{where} contract_id", MISSING_CONTRACT_ID)
+        contract_id = _int_from(raw["contract_id"], f"{where}.contract_id", MISSING_CONTRACT_ID)
         if contract_id <= 0:
             raise StoredFormError(MISSING_CONTRACT_ID, f"{where} contract_id must be positive, got {contract_id}")
-        instrument = _enum_from(Instrument, raw["instrument"], f"{where} instrument")
-        strike = None if raw["strike"] is None else _decimal_from(raw["strike"], f"{where} strike")
+        instrument = _enum_from(Instrument, raw["instrument"], f"{where}.instrument")
+        strike = None if raw["strike"] is None else _decimal_from(raw["strike"], f"{where}.strike")
         try:
-            legs.append(DefinitionLeg(_enum_from(Action, raw["action"], f"{where} action"), instrument, strike,
-                                      _date_from(raw["expiry"], f"{where} expiry"),
-                                      _int_from(raw["quantity"], f"{where} quantity")))
+            legs.append(DefinitionLeg(_enum_from(Action, raw["action"], f"{where}.action"), instrument, strike,
+                                      _date_from(raw["expiry"], f"{where}.expiry"),
+                                      _int_from(raw["quantity"], f"{where}.quantity")))
         except DefinitionError as exc:
             raise StoredFormError(INVALID_DEFINITION, f"{where}: {exc}") from None
         ids.append(contract_id)
@@ -324,7 +325,7 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
     prefs = doc["preferences"]
     if not isinstance(limits, dict) or not isinstance(prefs, dict):
         raise StoredFormError(MALFORMED, "risk_limits and preferences must be JSON objects")
-    risk_limits = tuple((name, _decimal_from(value, f"risk limit {name!r}")) for name, value in limits.items())
+    risk_limits = tuple((name, _decimal_from(value, f"risk_limit.{name!r}")) for name, value in limits.items())
     for name, value in prefs.items():
         if not isinstance(value, str):
             raise StoredFormError(MALFORMED, f"preference {name!r} must be a string, got {value!r}")
@@ -418,7 +419,7 @@ def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:
     changes = new.definition.changes_from(old.definition)
     if changes:
         return "; ".join(changes)
-    return "legs reordered"
+    return render_explanation("change_legs_reordered")
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -453,13 +454,13 @@ def entry_to_document(entry: HistoryEntry) -> dict[str, Any]:
 
 
 def entry_from_document(doc: Any, resolve: Resolver) -> HistoryEntry:
-    check_schema_version(doc, "history entry")
-    doc = _exact_keys(doc, ENTRY_KEYS, "history entry")
+    check_schema_version(doc, "history_entry")
+    doc = _exact_keys(doc, ENTRY_KEYS, "history_entry")
     if not isinstance(doc["at"], str):
         raise StoredFormError(MALFORMED, f"history at must be an ISO datetime string, got {doc['at']!r}")
     try:
         at = datetime.datetime.fromisoformat(doc["at"])
     except ValueError:
         raise StoredFormError(MALFORMED, f"history at {doc['at']!r} is not an ISO datetime") from None
-    return HistoryEntry(_int_from(doc["seq"], "history seq"), at, doc["change_summary"],
+    return HistoryEntry(_int_from(doc["seq"], "history_seq"), at, doc["change_summary"],
                         from_document(doc["definition"], resolve))

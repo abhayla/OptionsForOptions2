@@ -560,6 +560,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"leg": Recorded, "before": Recorded}),
     ExplanationTemplate("change_field", "values_seen", "{label} {old} -> {new}",
                         {"label": Recorded, "old": UserText, "new": UserText}),
+    ExplanationTemplate("change_legs_reordered", "values_seen", "legs reordered"),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
 )
