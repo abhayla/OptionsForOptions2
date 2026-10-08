@@ -70,7 +70,7 @@ def _lines(plan: ExecutionPlan, seq: OrderSequence) -> tuple[ReviewLine, ...]:
 
 def _notes(seq: OrderSequence) -> tuple[str, ...]:
     notes = [render_explanation("review_note_undetermined", leg=u.leg_ref, reason=u.reason) for u in seq.undetermined]
-    notes += [render_explanation("review_note_naked", legs=", ".join(u.leg_refs), units=u.units) for u in seq.unprotected]
+    notes += [render_explanation("review_note_naked", legs=tuple(u.leg_refs), units=u.units) for u in seq.unprotected]
     return tuple(notes)
 
 

@@ -118,8 +118,8 @@ class ImportRefusedError(ValueError):
 
     def __init__(self, report: ImportReport) -> None:
         self.report = report
-        rows = ", ".join(render_explanation("import_row_ref", number=r.row_number, category=r.category.value)
-                         for r in report.problems)
+        rows = tuple(render_explanation("import_row_ref", number=r.row_number, category=r.category.value)
+                     for r in report.problems)
         super().__init__(render_explanation("import_refused", file=repr(report.file_name), rows=rows))
 
 

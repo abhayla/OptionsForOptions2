@@ -14,7 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import render_explanation, strike_text
 
 import datetime
 import re
@@ -55,8 +55,7 @@ def contract_sort_key(contract: Contract) -> tuple:
 
 def describe_contract(contract: Contract) -> str:
     underlying, instrument, strike, expiry = contract
-    strike_text = "" if strike is None else f" {strike.normalize():f}"
-    return render_explanation("contract_description", underlying=underlying, strike=strike_text,
+    return render_explanation("contract_description", underlying=underlying, strike=strike_text(strike),
                               instrument=instrument.value, expiry=expiry.isoformat())
 
 
@@ -92,8 +91,7 @@ class DefinitionLeg:
         return self.quantity if self.action is Action.BUY else -self.quantity
 
     def describe(self) -> str:
-        strike = "" if self.strike is None else f" {self.strike.normalize():f}"
-        return render_explanation("leg_description", action=self.action.value, strike=strike,
+        return render_explanation("leg_description", action=self.action.value, strike=strike_text(self.strike),
                                   instrument=self.instrument.value, expiry=self.expiry.isoformat(),
                                   quantity=self.quantity)
 

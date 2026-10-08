@@ -15,6 +15,7 @@ import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from enum import Enum
 from types import MappingProxyType
 
 from ofo import wording as _wording
@@ -39,29 +40,97 @@ def check_explanation_wording(text: str, where: str) -> None:
 
 # --- typed slots --------------------------------------------------------------------------------------------------
 
+_EXPLANATION_MINT = object()
+
+
+class ExplanationText(str):
+    """A finished explanation line: made ONLY by `render_explanation()` (fix round, review MAJOR-1/MAJOR-2). A typed
+    API field (ofo_app.api_models.CatalogueText) and the `Explained` slot accept this type and refuse a plain str, so
+    text built anywhere else cannot pass as an explanation. Joining or slicing one gives a plain `str` again."""
+
+    __slots__ = ()
+
+    def __new__(cls, text: str, _mint: object = None) -> "ExplanationText":
+        if _mint is not _EXPLANATION_MINT:
+            raise TypeError("ExplanationText is made only by render_explanation()")
+        return super().__new__(cls, text)
+
+
+#: A recorded single value: no whitespace, at most 64 characters, so it can never carry a sentence.
+_TOKEN_MAX = 64
+
+
 class Recorded(SlotType):
-    """A recorded value printed exactly as stored: exactly `str`, `int` or `Decimal` (str of it)."""
+    """A recorded VALUE printed exactly as stored (fix round, review MAJOR-1: no free text). Accepted: `int` (not
+    bool), `Decimal`, a date/time, an `Enum` member's value, an `ExplanationText`, or a `str` that is one token (no
+    whitespace, at most 64 characters: an id, a symbol, a code, a number). A sentence is refused: the user's own
+    words go in a `UserText` slot (quoted), a nested explanation in an `Explained` slot."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if type(value) not in (str, int, Decimal):
-            raise TypeError(f"Recorded slot requires str, int or Decimal, got {type(value).__name__}")
+        if isinstance(value, BaseException):
+            raise TypeError("an exception is never a slot value")
+        if type(value) in (int, Decimal, datetime.date, datetime.time, datetime.datetime, ExplanationText):
+            return
+        if isinstance(value, Enum) and type(value.value) in (str, int):
+            Recorded.validate(value.value)
+            return
+        if type(value) is str and value and len(value) <= _TOKEN_MAX and not any(ch.isspace() for ch in value):
+            return
+        raise TypeError(f"Recorded slot takes a typed value or one token, got {type(value).__name__} {value!r:.40}")
 
     @staticmethod
     def format(value: object) -> str:
-        return str(value)
+        if isinstance(value, Enum):
+            return str(value.value)
+        return str.__str__(value) if isinstance(value, str) else str(value)
 
 
-class Quoted(SlotType):
-    """Recorded text (the user's rule text, a source name, a broker answer), printed quoted: never our wording."""
+class Explained(SlotType):
+    """A nested explanation line: exactly an `ExplanationText` from `render_explanation()`."""
 
     @staticmethod
     def validate(value: object) -> None:
+        if type(value) is not ExplanationText:
+            raise TypeError(f"Explained slot takes a render_explanation() result, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class Quoted(SlotType):
+    """Recorded text (the user's rule text, a source name, a broker answer), printed quoted: never our wording. A
+    platform line stored as that text (an `ExplanationText`) is printed as it is, unquoted."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is ExplanationText:
+            return
         _require_exact(value, str, "Quoted")
 
     @staticmethod
     def format(value: str) -> str:
+        if type(value) is ExplanationText:
+            return str.__str__(value)
         return f'"{str.__str__(value)}"'
+
+
+class UserText(Quoted):
+    """The user's own words (a rule name they typed, a value they entered), quoted word for word in the labelled place
+    the template gives it (ADR-003 Q226: "Zerodha's or the user's own text is only quoted, word for word, in a
+    labelled field"). Never an exception's text (tests/errors/test_producer_inventory.py: exception_text_flows). A
+    platform line (an `ExplanationText`, e.g. a default rule description) is printed as it is."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if isinstance(value, BaseException):
+            raise TypeError("an exception is never a slot value")
+        if type(value) is ExplanationText:
+            return
+        _require_exact(value, str, "UserText")
+        if not str.__str__(value).strip():
+            raise ValueError("UserText must not be blank")
 
 
 #: Plain-language names of every rule input (units as REQ-041 AC-4 / ofo.rules.inputs define them), by enum name.
@@ -253,6 +322,48 @@ class YesNo(SlotType):
 
 # --- the catalogue ------------------------------------------------------------------------------------------------
 
+class Values(SlotType):
+    """A list of recorded values or explanation lines, joined with ", " by the formatter (never by a caller): a
+    non-empty tuple whose items each pass `Recorded`, or one `ExplanationText` (e.g. a "none" line)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is ExplanationText:
+            return
+        if type(value) is not tuple or not value:
+            raise TypeError(f"Values slot takes a non-empty tuple, got {type(value).__name__}")
+        for item in value:
+            Recorded.validate(item)
+
+    @staticmethod
+    def format(value: object) -> str:
+        if type(value) is ExplanationText:
+            return str.__str__(value)
+        return ", ".join(Recorded.format(item) for item in value)  # type: ignore[union-attr]
+
+
+class LegacyRecorded(SlotType):
+    """KNOWN GAP (fix round, review MAJOR-1): the old free `str` slot, kept ONLY for the templates in
+    `LEGACY_SLOT_TEMPLATES`, whose callers are in backend/ofo/engine and backend/ofo/scenario (owned by W-060 while it
+    is open). tests/errors/test_explanation_slots.py pins that set so it can only shrink."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if isinstance(value, BaseException):
+            raise TypeError("an exception is never a slot value")
+        if type(value) not in (str, int, Decimal, ExplanationText):
+            raise TypeError(f"slot requires str, int or Decimal, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
+LEGACY_SLOT_TEMPLATES: frozenset[str] = frozenset({"estimate_line", "estimate_assume_iv",
+                                                   "estimate_assume_valued", "scenario_estimated_unavailable"})
+JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | "})
+
+
 @dataclass(frozen=True)
 class ExplanationTemplate:
     """One reviewed line of an explanation: its field, its text (`{slot}` placeholders) and typed slots."""
@@ -333,11 +444,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
     ExplanationTemplate("client_id_not_valid", "values_seen",
                         "{value} is not a Client ID (expected 6 characters: 2 letters + 4 digits or 3 letters + 3 "
-                        "digits, e.g. AB1234 or ABC123)", {"value": Recorded}),
+                        "digits, e.g. AB1234 or ABC123)", {"value": UserText}),
     ExplanationTemplate("import_row_ref", "values_seen", "row {number} ({category})",
                         {"number": Recorded, "category": Recorded}),
     ExplanationTemplate("import_refused", "values_seen", "import of {file} refused; unresolved: {rows}",
-                        {"file": Recorded, "rows": Recorded}),
+                        {"file": Recorded, "rows": Values}),
     ExplanationTemplate("import_row_duplicate", "values_seen", "{client_id} also appears on row {row}",
                         {"client_id": Recorded, "row": Recorded}),
     ExplanationTemplate("import_row_inactive", "values_seen",
@@ -350,14 +461,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("import_row_reactivated", "values_seen", "{client_id} will be reactivated",
                         {"client_id": Recorded}),
     ExplanationTemplate("estimate_line", "values_seen", "Estimated {label}: {value} (estimate; assumes {assumptions})",
-                        {"label": Recorded, "value": Recorded, "assumptions": Recorded}),
+                        {"label": LegacyRecorded, "value": LegacyRecorded, "assumptions": LegacyRecorded}),
     ExplanationTemplate("estimate_label_pnl_now", "values_seen", "P&L now at {underlying} {level}",
                         {"underlying": Recorded, "level": Recorded}),
     ExplanationTemplate("estimate_ivs_none", "values_seen", "none (futures only)"),
     ExplanationTemplate("estimate_assume_model", "values_seen", "{model} model", {"model": Recorded}),
-    ExplanationTemplate("estimate_assume_iv", "values_seen", "IV {ivs}", {"ivs": Recorded}),
+    ExplanationTemplate("estimate_assume_iv", "values_seen", "IV {ivs}", {"ivs": LegacyRecorded}),
     ExplanationTemplate("estimate_assume_rate", "values_seen", "rate {rate}", {"rate": Recorded}),
-    ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": Recorded}),
+    ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": LegacyRecorded}),
     ExplanationTemplate("estimate_model_name", "values_seen", "Black-Scholes (European, no dividends)"),
     ExplanationTemplate("alternative_choice_reason", "values_seen",
                         "User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code})",
@@ -365,7 +476,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("review_note_undetermined", "values_seen", "{leg}: {reason}",
                         {"leg": Recorded, "reason": Recorded}),
     ExplanationTemplate("review_note_naked", "values_seen", "{legs}: {units} sold units have no protective leg (naked)",
-                        {"legs": Recorded, "units": Recorded}),
+                        {"legs": Values, "units": Recorded}),
     ExplanationTemplate("review_unknown_multi_expiry", "values_seen",
                         "legs expire on different dates; exact at-expiry values do not exist"),
     ExplanationTemplate("review_unknown_no_ltp", "values_seen", "no current price (LTP) for every leg"),
@@ -374,10 +485,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Kite Connect's public instrument dump (no login required); the source of every contract, "
                         "lot size, tick size and strike in the catalogue."),
     ExplanationTemplate("rule_alert", "what_triggered", "Your rule was triggered: {rule} ({detail}).",
-                        {"rule": Recorded, "detail": Recorded}),
+                        {"rule": UserText, "detail": Explained}),
     ExplanationTemplate("rule_no_condition_detail", "values_seen", "no condition"),
     ExplanationTemplate("rule_cannot_decide", "values_seen", "cannot be decided without: {inputs}",
-                        {"inputs": Recorded}),
+                        {"inputs": Values}),
     ExplanationTemplate("rule_input_state", "values_seen", "{input} ({state})", {"input": Recorded, "state": Recorded}),
     ExplanationTemplate("rule_observation", "values_seen", "{input} {value} {op} {threshold}",
                         {"input": Recorded, "value": Recorded, "op": Recorded, "threshold": Recorded}),
@@ -388,14 +499,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "No adjustment rule is defined. This strategy is still monitored; the platform may point out "
                         "an adjustment opportunity, but no rule of yours will trigger."),
     ExplanationTemplate("scenario_estimated_unavailable", "values_seen",
-                        "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": Recorded}),
+                        "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": LegacyRecorded}),
     # The caption is the PAIR "<underlying> at expiry | You make/lose" (Q227): two reviewed halves, joined by " | ".
     ExplanationTemplate("scenario_caption_left", "values_seen", "{underlying} at expiry", {"underlying": Recorded}),
     ExplanationTemplate("scenario_caption_right", "values_seen", "You make/lose"),
+    ExplanationTemplate("strike_part", "values_seen", " {strike}", {"strike": Recorded}),
+    ExplanationTemplate("strike_none", "values_seen", ""),
     ExplanationTemplate("contract_description", "values_seen", "{underlying}{strike} {instrument} {expiry}",
-                        {"underlying": Recorded, "strike": Recorded, "instrument": Recorded, "expiry": Recorded}),
+                        {"underlying": Recorded, "strike": Explained, "instrument": Recorded, "expiry": Recorded}),
     ExplanationTemplate("leg_description", "values_seen", "{action}{strike} {instrument} {expiry} x{quantity}",
-                        {"action": Recorded, "strike": Recorded, "instrument": Recorded, "expiry": Recorded,
+                        {"action": Recorded, "strike": Explained, "instrument": Recorded, "expiry": Recorded,
                          "quantity": Recorded}),
     ExplanationTemplate("change_underlying", "values_seen", "underlying {old} -> {new}",
                         {"old": Recorded, "new": Recorded}),
@@ -404,7 +517,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_quantity", "values_seen", "quantity of {leg} was {before}",
                         {"leg": Recorded, "before": Recorded}),
     ExplanationTemplate("change_field", "values_seen", "{label} {old} -> {new}",
-                        {"label": Recorded, "old": Recorded, "new": Recorded}),
+                        {"label": Recorded, "old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
 )
@@ -419,11 +532,12 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
 })
 
 
-def _make_render_explanation() -> Callable[..., str]:
+def _make_render_explanation() -> Callable[..., ExplanationText]:
     snapshot = {t.id: (t.text, tuple(t.slots.items())) for t in _EXPLANATIONS}
     check = check_explanation_wording
+    mint = _EXPLANATION_MINT
 
-    def render_explanation(template_id: str, **slots: object) -> str:
+    def render_explanation(template_id: str, **slots: object) -> ExplanationText:
         """The only way to build an explanation line: fill `template_id`'s typed slots. Fails closed on an unknown
         id, a missing/extra slot or a wrong slot type; re-checks the fixed words on every call."""
         if template_id not in snapshot:
@@ -437,10 +551,29 @@ def _make_render_explanation() -> Callable[..., str]:
         for name, slot_type in slot_types:
             slot_type.validate(slots[name])
             formatted[name] = slot_type.format(slots[name])
-        return text.format(**formatted)
+        return ExplanationText(text.format(**formatted), mint)
 
     return render_explanation
 
 
 render_explanation = _make_render_explanation()
 del _make_render_explanation
+
+
+def join_explanations(parts: tuple[ExplanationText, ...] | list[ExplanationText], sep: str = ", ") -> ExplanationText:
+    """Explanation lines joined into one: every part must be a `render_explanation()` result, the separator one of
+    `JOIN_SEPARATORS`. So a joined line is still an `ExplanationText` and still holds only catalogue words."""
+    if sep not in JOIN_SEPARATORS:
+        raise ValueError(f"separator must be one of {sorted(JOIN_SEPARATORS)}, got {sep!r}")
+    parts = tuple(parts)
+    for part in parts:
+        if type(part) is not ExplanationText:
+            raise TypeError(f"join_explanations takes render_explanation() results, got {type(part).__name__}")
+    return ExplanationText(sep.join(parts), _EXPLANATION_MINT)
+
+
+def strike_text(strike: Decimal | None) -> ExplanationText:
+    """The optional strike part of a contract or leg description: " 23600", or nothing for a future."""
+    if strike is None:
+        return render_explanation("strike_none")
+    return render_explanation("strike_part", strike=format(strike.normalize(), "f"))

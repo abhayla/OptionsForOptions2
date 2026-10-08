@@ -122,7 +122,7 @@ def evaluate(rule: Rule, snapshot: Snapshot) -> Evaluation:
     decision = decide(rule.condition, snapshot)
     if decision.truth is Truth.UNKNOWN:
         return result(Outcome.CANNOT_EVALUATE, missing=missing,
-                      reason=render_explanation("rule_cannot_decide", inputs=", ".join(_why(snapshot, n) for n in decision.unknown)))
+                      reason=render_explanation("rule_cannot_decide", inputs=tuple(_why(snapshot, n) for n in decision.unknown)))
     outcome = Outcome.TRIGGERED if decision.truth is Truth.TRUE else Outcome.NOT_TRIGGERED
     return result(outcome, observations=decision.observations, missing=missing,
                   reason=describe(decision.observations))

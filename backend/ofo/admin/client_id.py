@@ -35,5 +35,5 @@ def normalise_client_id(raw: object) -> str:
         raise MalformedClientIdError(str(exc)) from exc
     candidate = token.upper()
     if CLIENT_ID_PATTERN.fullmatch(candidate) is None:
-        raise MalformedClientIdError(render_explanation("client_id_not_valid", value=repr(token)))
+        raise MalformedClientIdError(render_explanation("client_id_not_valid", value=token))
     return candidate
