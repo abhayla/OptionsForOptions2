@@ -485,7 +485,7 @@ async def test_ac5_api_answers_not_found_for_another_users_strategy(app_engine):
                     return None
             async with _client(_app(_Maker(), "someone-else")) as ac:
                 for method, path in (("GET", f"/strategies/{stored.id}"), ("GET", f"/strategies/{stored.id}/history"),
-                                     ("POST", f"/strategies/{stored.id}/restore/1")):
+                                     ("POST", f"/strategies/{stored.id}/restore/1?expected_revision=1")):
                     response = await ac.request(method, path)
                     assert (response.status_code, response.json()) == (404, {"error": "not_found"}), path
         finally:
