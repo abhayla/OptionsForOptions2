@@ -17,6 +17,19 @@ FORBIDDEN = {"bs_price", "implied_volatility", "bs_greeks", "bs_greeks_unrounded
              "estimate_now_grid", "_price", "_solve_iv", "_greek_floats"}
 PRICING_MODULES = {"ofo.engine.black_scholes", "ofo.engine.estimate"}
 DYNAMIC_IMPORTS = {"__import__", "import_module"}
+# engine-private names (round 4): the gate token, the constructor and the module aliases that hold the pricing code
+ENGINE_PRIVATE = {"_bs", "_estimate", "_TOKEN", "_make"}
+# modules whose single-underscore names are the gate's or the pricing code's (other engine modules, e.g. metrics,
+# keep private helper names that are not a way round the gate)
+PRICING_PACKAGE = {"ofo.engine", "ofo.engine.model", "ofo.engine.black_scholes", "ofo.engine.estimate"}
+
+
+FORGEABLE = {"ModelInputs", "ExpiryModel"}  # the gated types: an instance may only come from model_inputs()
+
+
+def _is_private(name: str) -> bool:
+    """A single-underscore name (not a dunder): private to the engine package."""
+    return name.startswith("_") and not name.startswith("__")
 
 
 def violations(source: str, where: str = "<src>") -> list[str]:
@@ -41,6 +54,8 @@ def violations(source: str, where: str = "<src>") -> list[str]:
                 full = f"{mod}.{alias.name}"
                 if alias.name == "*" and mod.startswith("ofo.engine"):
                     found.append(f"{where}:{node.lineno} 'from {mod} import *' (fail closed)")
+                elif mod in PRICING_PACKAGE and _is_private(alias.name):
+                    found.append(f"{where}:{node.lineno} imports engine-private {alias.name} from {mod}")
                 elif alias.name in FORBIDDEN:
                     found.append(f"{where}:{node.lineno} imports {alias.name} from {mod}")
                 elif full in PRICING_MODULES:
@@ -52,10 +67,24 @@ def violations(source: str, where: str = "<src>") -> list[str]:
             found.append(f"{where}:{node.lineno} names {node.id}")
         elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN:
             found.append(f"{where}:{node.lineno} accesses .{node.attr}")
+        elif isinstance(node, ast.Attribute) and (node.attr in ENGINE_PRIVATE or (
+                _is_private(node.attr) and isinstance(node.value, ast.Name) and node.value.id in module_names)):
+            found.append(f"{where}:{node.lineno} accesses engine-private .{node.attr}")
+        elif isinstance(node, ast.Attribute) and node.attr == "__dict__":
+            found.append(f"{where}:{node.lineno} reads .__dict__ (fail closed)")
+        elif isinstance(node, ast.Attribute) and node.attr == "modules" and isinstance(node.value, ast.Name) \
+                and node.value.id == "sys":
+            found.append(f"{where}:{node.lineno} reads sys.modules (fail closed)")
         elif isinstance(node, ast.Call):
             fn = node.func
             name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
             args = node.args
+            if name == "__new__" and isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name) \
+                    and fn.value.id == "object" \
+                    and (not args or not isinstance(args[0], ast.Name) or args[0].id in FORGEABLE):
+                found.append(f"{where}:{node.lineno} object.__new__ on a gated type or an unresolved class (fail closed)")
+            if name == "vars":
+                found.append(f"{where}:{node.lineno} vars(...) (fail closed)")
             if name == "getattr" and len(args) >= 2:
                 target, attr = args[0], args[1]
                 if isinstance(attr, ast.Constant) and attr.value in FORBIDDEN:
@@ -98,6 +127,16 @@ def test_no_product_module_reaches_a_pricing_function():
     "import importlib\nimportlib.import_module(name)",
     "__import__('ofo.engine.estimate')",
     "from .black_scholes import bs_price",
+    # round 4: the reviewer's five shapes, plus the remaining private/forging shapes
+    "from ofo.engine.model import _bs\nf = vars(_bs)['bs_price']",
+    "from ofo.engine import model\nf = model._bs.__dict__['bs' + '_price']",
+    "import sys\nbs = sys.modules['ofo.engine.black_scholes']",
+    "from ofo.engine.model import _TOKEN, ModelInputs\nModelInputs._make(_TOKEN)",
+    "from ofo.engine.model import _estimate as e\nx = e.__dict__",
+    "from ofo.engine.model import ModelInputs\no = object.__new__(ModelInputs)",
+    "from ofo.engine import model\nx = model._anything",
+    "from ofo.engine.model import _helper",
+    "x = vars(obj)",
 ])
 def test_scan_catches_every_shape(source):
     assert violations(source), source
@@ -107,6 +146,8 @@ def test_scan_catches_every_shape(source):
     "from ofo.engine.black_scholes import GREEK_STEP, Greeks",
     "from ofo.engine.model import ModelInputs, leg_greeks_unrounded",
     "x = getattr(position, name)",
+    "from ofo.engine.metrics import _Unlimited",
+    "clone = object.__new__(Order)",
     '"""bs_greeks in a docstring is not code"""',
 ])
 def test_scan_passes_the_allowed_shapes(source):
