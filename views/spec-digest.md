@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (61)
+## Decisions (62)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -67,6 +67,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-059 2026-10-07: For a list row whose token is held by a live stored contract, the change is a revision of that contract only if the underlying, option type and excha… [amends ADR-058; amends ADR-057]
 - ADR-060 2026-10-08: Zerodha grants multi-user Kite Connect access only to production-ready platforms and asks for a demo first (F-31). [amends ADR-034; amends ADR-051; amends ADR-054]
 - ADR-061 2026-10-08: For each expiry, the underlying level fed to the Black-Scholes model is the forward implied by that expiry's own option prices, expressed as an impli… [amends ADR-056]
+- ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition and its activity history in the database; they survive a restart and load back exactly as saved; li… [none — adds one acceptance criterion to REQ-038 o…]
 
 ## Requirements (74)
 
