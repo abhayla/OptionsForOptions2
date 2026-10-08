@@ -381,7 +381,7 @@ def test_sink_refuses_an_unknown_strategy_and_never_calls_the_transport(catalogu
     """Round 3: Order('S-NOSUCH', ...) is refused at the sink; a sink for an unbound strategy cannot even open."""
     transport = CountingTransport()
     order = Order("S-NOSUCH", "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="belong to this strategy; nothing"):  # the sink's own check
+    with pytest.raises(SendRefused, match="does not belong to this strategy"):  # the sink's own check
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     with pytest.raises(ValueError, match="no strategy record"):
         send_guard._BrokerSink(transport, book=book_with_three_filled(), strategy_id="S-NOSUCH", catalogue=catalogue,
@@ -393,14 +393,14 @@ def test_sink_derives_side_from_the_leg_never_from_the_order(catalogue) -> None:
     """Round 3: leg-4 is a BUY; an order claiming SELL for it is refused at the sink (the side is derived)."""
     transport = CountingTransport()
     order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.SELL, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="is not the side of leg"):
+    with pytest.raises(SendRefused, match="is not the side of its leg"):
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     assert transport.calls == []
 
 
 def test_sink_needs_the_catalogue(catalogue) -> None:
     """Round 3: without the catalogue the sink cannot derive a symbol, so it refuses to open."""
-    with pytest.raises(SendRefused, match="needs the catalogue"):
+    with pytest.raises(SendRefused, match="needs the instrument catalogue"):
         _sink(book_with_three_filled(), None)
 
 

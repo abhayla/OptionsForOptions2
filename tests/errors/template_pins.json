@@ -342,5 +342,73 @@
   "labels:follow_up": {
     "sha256": "9ea3822caab667b50053a5219bccd942515f9f785d3a431571e4c865bb4d03f9",
     "reviewed": "pending owner read"
+  },
+  "send_request_not_from_sink": {
+    "sha256": "067ff5f74d8588119766118b4d938e9d26acd42ee2cd759b35a4d1d86d1e1d8b",
+    "reviewed": "pending owner read"
+  },
+  "send_version_not_live": {
+    "sha256": "164dd3232e11984da1cf3b80f89852744c6d6c0e14026f192dc9f3ea4dabd64a",
+    "reviewed": "pending owner read"
+  },
+  "send_choice_unknown": {
+    "sha256": "a4c589ed6842a0f4df74f2ce41f843f0b23fec56a9c3e56bef1b0a57d843573c",
+    "reviewed": "pending owner read"
+  },
+  "send_order_wrong_version": {
+    "sha256": "99fb57d443ad7171daa947a46ddb1e1224378b59e914e28e89438e529e6980eb",
+    "reviewed": "pending owner read"
+  },
+  "send_contract_not_a_leg": {
+    "sha256": "60eb767677af6eb671e0b4e6d62707c2a5e20f210ee193701e13d83653a38d90",
+    "reviewed": "pending owner read"
+  },
+  "send_side_not_allowed": {
+    "sha256": "591d994bd3f6c07ead05c4862955bbde9237a66af10fa9adc86bfbfb1e341e39",
+    "reviewed": "pending owner read"
+  },
+  "send_quantity_exceeds": {
+    "sha256": "d29e0722f0edb16a22d29eb8ef38a08563c2efb81066fa1aa0e51bdcab01a716",
+    "reviewed": "pending owner read"
+  },
+  "send_catalogue_not_one": {
+    "sha256": "c8cba8da5592823286f2f8960186880dee03b673ba6452275a591d6450fb740a",
+    "reviewed": "pending owner read"
+  },
+  "send_no_zerodha_record": {
+    "sha256": "6948cae0b8628854d2e86ca6057ce864d69a428eb4d2c02d656af83fff26ae0c",
+    "reviewed": "pending owner read"
+  },
+  "send_catalogue_missing": {
+    "sha256": "eb909ed554d0e06ba459830fa9582473afa86544e67c85020cd0cceac85b6113",
+    "reviewed": "pending owner read"
+  },
+  "send_order_other_strategy": {
+    "sha256": "9c8f1c5c6829186ddf78ea1f6d90d74dfac5ad221c6ce97b5012f889d077f150",
+    "reviewed": "pending owner read"
+  },
+  "send_version_unreadable": {
+    "sha256": "3424976eae4f2b0fa9ab8ffc164c858edaa78fff3fac593ca1743a198c046d32",
+    "reviewed": "pending owner read"
+  },
+  "send_leg_not_in_version": {
+    "sha256": "76a93d7a0d686720732485b6aa6c26c9d6b2a6fff0c72a50fd59d83f249f14c2",
+    "reviewed": "pending owner read"
+  },
+  "send_symbol_mismatch": {
+    "sha256": "8e107763b3de9476b1b223224ee5b062bc022d8041e163e55c3aebf3efe90ff0",
+    "reviewed": "pending owner read"
+  },
+  "send_side_not_leg_side": {
+    "sha256": "3546d61f5f7011177ee4183e5f0b28ea9c8dd9832d75c580453961d1cc607478",
+    "reviewed": "pending owner read"
+  },
+  "send_client_tag_missing": {
+    "sha256": "1dd1906c751ee9957ed0a6abf20d52e750b1985af07d050782dc7baa6b120bb9",
+    "reviewed": "pending owner read"
+  },
+  "send_request_not_resolved": {
+    "sha256": "54797dbddabebb38a79436b6c4ab7bc59024e770a4cb5e76a3ce593930bc26a3",
+    "reviewed": "pending owner read"
   }
 }

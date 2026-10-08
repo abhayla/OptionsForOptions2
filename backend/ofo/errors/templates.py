@@ -424,7 +424,65 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"time": Clock}),
 )
 
-_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES
+
+# Broker sink refusals (ofo.execution.send_guard, REQ-036): raised before anything is sent; each keeps the meaning of
+# the message the sink raised before round 9 and adds the other three parts (pending owner read).
+_SEND_IMPACT = "No order was sent to Zerodha."
+_SEND_BLOCKED = "Sending these orders to Zerodha."
+_SEND_REPREPARE = "Prepare the orders again from the strategy's current version, then confirm them."
+_SEND_SUPPORT = "Try again in a few minutes; contact support if this keeps happening."
+_VERSION_NOTE = "The orders would not match the version of the strategy this action is meant for."
+_WRONG_SIDE = " A wrong side could add to a position instead of completing or closing it."
+
+_SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("send_request_not_from_sink", _IS, 201, "A broker request was built outside the broker sink.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
+    _gate("send_version_not_live", _SV, 201,
+          "Version v{version} is neither the active nor the pending version of this strategy.",
+          _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE, {"version": Count}),
+    _gate("send_choice_unknown", _IS, 202, "The chosen action sends no orders.", _SEND_IMPACT, _SEND_BLOCKED,
+          "Choose Complete Strategy, Retry Failed Leg or Close Partial Strategy, then try again."),
+    _gate("send_order_wrong_version", _SV, 202, "An order does not belong to this strategy version.",
+          _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE),
+    _gate("send_contract_not_a_leg", _SV, 203, "An order names a contract that is not a leg of version v{version}.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_REPREPARE, {"version": Count}),
+    _gate("send_side_not_allowed", _SV, 204, "An order's side is not the side this action sends for that leg.",
+          _SEND_IMPACT + _WRONG_SIDE, _SEND_BLOCKED, _SEND_REPREPARE),
+    _gate("send_quantity_exceeds", _SV, 205,
+          "{units} units in an order exceed what the strategy allows ({room} units remain for that contract).",
+          _SEND_IMPACT + " A larger quantity could take the position past the strategy's plan.", _SEND_BLOCKED,
+          _SEND_REPREPARE, {"units": Count, "room": Count}),
+    _gate("send_catalogue_not_one", _MD, 201,
+          "The instrument catalogue has {count} instruments for a leg of this strategy; exactly one is needed.",
+          _SEND_IMPACT + " No trading symbol can be chosen for that leg.", _SEND_BLOCKED,
+          "Refresh the instrument list, then prepare the orders again.", {"count": Count}),
+    _gate("send_no_zerodha_record", _MD, 202,
+          "A leg has no Zerodha instrument record, so no trading symbol can be derived for it.",
+          _SEND_IMPACT + " No symbol is guessed.", _SEND_BLOCKED,
+          "Refresh the instrument list, then replace or remove this leg."),
+    _gate("send_catalogue_missing", _IS, 203,
+          "The broker sink needs the instrument catalogue to derive trading symbols.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
+    _gate("send_order_other_strategy", _SV, 206, "An order does not belong to this strategy.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_REPREPARE),
+    _gate("send_version_unreadable", _SV, 207, "An order names a strategy version that cannot be read.",
+          _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE),
+    _gate("send_leg_not_in_version", _SV, 208, "An order names a leg that is not part of version v{version}.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_REPREPARE, {"version": Count}),
+    _gate("send_symbol_mismatch", _SV, 209, "An order's contract is not the catalogue symbol of its leg.",
+          _SEND_IMPACT + " The symbol is always taken from the catalogue, never from the order.", _SEND_BLOCKED,
+          _SEND_REPREPARE),
+    _gate("send_side_not_leg_side", _SV, 210, "An order's side is not the side of its leg.",
+          _SEND_IMPACT + _WRONG_SIDE, _SEND_BLOCKED, _SEND_REPREPARE),
+    _gate("send_client_tag_missing", _IS, 204, "The platform's client tag is missing from an order.",
+          _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
+    _gate("send_request_not_resolved", _IS, 205,
+          "The broker sink did not resolve this request, or it was already sent.",
+          _SEND_IMPACT + " Each request is sent once at most.", _SEND_BLOCKED,
+          "Check the strategy's orders in Zerodha before preparing anything again."),
+)
+
+_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

@@ -162,6 +162,6 @@ def test_a_leg_whose_contract_has_no_zerodha_row_is_refused_and_nothing_is_sent(
     book = book_with_three_filled()
     transport = _CountingTransport()
     leg4_order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="has no zerodha row"):
+    with pytest.raises(SendRefused, match="has no Zerodha instrument record"):
         _sink(book, catalogue, transport=transport).resolve_all((_tagged(leg4_order),))
     assert transport.calls == []

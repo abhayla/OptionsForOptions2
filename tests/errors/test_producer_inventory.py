@@ -56,7 +56,6 @@ PENDING: dict[str, dict[str, int]] = {
     'execution/partial.py': {'<module>': 2, '_authorised_orders': 2, '_not_prepared': 1, '_position_mismatches': 2, '_prepare_missing': 1, '_sync_book': 1, 'close_partial_strategy': 2},
     'execution/review.py': {'_notes': 1},
     'execution/safety.py': {'<module>': 1, '__post_init__': 1, '_risk_flags': 3},
-    'execution/send_guard.py': {'_catalogue_symbol': 1, 'allowed_or_refuse': 3, 'resolve_all': 3},
     'execution/sequence.py': {'<module>': 2, '_margin_order': 1},
     'instruments/models.py': {'find_ref': 1},
     'instruments/sources.py': {'<module>': 1},

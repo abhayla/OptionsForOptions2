@@ -247,3 +247,17 @@ def test_preparation_refuses_a_plain_string_message() -> None:
     prep = partial._not_prepared(partial.PartialChoice.REVIEW_MANUALLY, None, "partial_waiting")
     assert prep.reason == partial.WAITING
     assert len(prep.text.splitlines()) == 4
+
+
+def test_send_refused_refuses_a_plain_string_and_shows_four_parts() -> None:
+    """Structural door (B8): SendRefused carries a render() message; `.reason` is part one, `.text` all four."""
+    from ofo.execution.send_guard import SendRefused, _refuse
+
+    with pytest.raises(TypeError, match="ofo.errors.render"):
+        SendRefused("a plain string reason")  # type: ignore[arg-type]
+    refusal = _refuse("send_quantity_exceeds", units=130, room=65)
+    assert str(refusal) == refusal.reason == (
+        "130 units in an order exceed what the strategy allows (65 units remain for that contract).")
+    lines = refusal.text.splitlines()
+    assert len(lines) == 4 and lines[0] == refusal.reason
+    assert lines[2] == "Blocked: Sending these orders to Zerodha."
