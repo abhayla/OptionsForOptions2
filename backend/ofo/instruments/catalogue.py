@@ -18,6 +18,7 @@ from typing import Iterable, Union
 
 from ofo.audit import AuditLog, EventType
 from ofo.instruments.models import (
+    INDEX_ROWS,
     FUTURE_TYPE,
     OPTION_TYPES,
     BSE_FO,
@@ -158,6 +159,8 @@ class Catalogue:
 
     @staticmethod
     def _in_scope(contract: Contract) -> bool:
+        if contract.is_index():  # REQ-072 AC-1: the NIFTY 50 and SENSEX index rows only, by (segment, token)
+            return (contract.exchange_segment, contract.exchange_token) in INDEX_ROWS
         return (
             contract.name in SUPPORTED_UNDERLYINGS
             and contract.exchange_segment == SUPPORTED_UNDERLYINGS[contract.name]

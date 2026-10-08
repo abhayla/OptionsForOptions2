@@ -116,8 +116,8 @@ def test_subscriber_that_never_drains_does_not_delay_or_stop_others():
     replay(provider, clock)
     assert fan.pump_one(stuck, limit=0) == 0  # never drained
     fan.pump_one(1)  # only the healthy subscriber drains
-    assert len(fast) == 7301  # the other subscriber got every update
-    assert fan.dropped(stuck) == 7301 - 100 and fan.is_lagging(stuck) is True
+    assert len(fast) == 7281  # the other subscriber got every update
+    assert fan.dropped(stuck) == 7281 - 100 and fan.is_lagging(stuck) is True
     assert fan.queue_len(stuck) == 100  # bounded: drop-oldest
     assert fan.is_lagging(1) is False
 

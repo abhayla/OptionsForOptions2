@@ -20,7 +20,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, TextIO
 
-from ofo.instruments.models import BSE_FO, NSE_FO, ZERODHA, BrokerRef, Contract, ListedContract
+from ofo.instruments.models import (BSE_FO, BSE_INDEX, INDEX_ROWS, INDEX_TYPE, NSE_FO, NSE_INDEX, ZERODHA, BrokerRef,
+                                    Contract, ListedContract)
 
 REQUIRED_COLUMNS = (
     "instrument_token",
@@ -86,11 +87,49 @@ def zerodha_segment(exchange: str) -> str | None:
     return ZERODHA_EXCHANGE_TO_SEGMENT.get(exchange.strip())
 
 
+#: REQ-072 AC-1: Zerodha's `segment` = INDICES on `exchange` NSE / BSE -> the platform's index segment. Only the rows
+#: in `INDEX_ROWS` (NIFTY 50 = NSE 1001, SENSEX = BSE 1) are taken; every other index (INDIA VIX ...) and every cash
+#: row - including NSE cash rows that share exchange token 1001 (F-10) - stays outside, skipped and counted.
+ZERODHA_INDEX_SEGMENT: dict[str, str] = {"NSE": NSE_INDEX, "BSE": BSE_INDEX}
+
+
+def zerodha_index_row(row: dict) -> tuple[str, int, str, str] | None:
+    """(segment, exchange token, index name, underlying) for a NIFTY 50 / SENSEX index row, else None."""
+    if row["segment"].strip() != "INDICES":
+        return None
+    segment = ZERODHA_INDEX_SEGMENT.get(row["exchange"].strip())
+    try:
+        token = int(row["exchange_token"])
+    except ValueError:
+        return None
+    known = INDEX_ROWS.get((segment, token)) if segment else None
+    if known is None or known[0] != row["tradingsymbol"].strip():
+        return None
+    return segment, token, known[0], known[1]
+
+
+def zerodha_index_listed(*, instrument_token: int, segment: str, exchange_token: int, name: str, broker_segment: str,
+                         seen_on: Optional[date] = None) -> ListedContract:
+    """An index row as a contract (no expiry, strike, lot or tick: it is not tradable) plus Zerodha's row."""
+    contract = Contract(exchange_segment=segment, exchange_token=exchange_token, name=name, expiry=None,
+                        strike=Decimal(0), tick_size=Decimal(0), lot_size=0, instrument_type=INDEX_TYPE)
+    ref = BrokerRef(broker=ZERODHA, broker_token=str(instrument_token), broker_symbol=name,
+                    broker_segment=broker_segment, lot_size=0, tick_size=Decimal(0), seen_on=seen_on)
+    return ListedContract(contract=contract, broker_refs=(ref,))
+
+
 def _parse_rows(rows: Iterable[dict], seen_on: Optional[date], skipped: list[int]) -> Iterator[ListedContract]:
     for row in rows:
         missing = [c for c in REQUIRED_COLUMNS if c not in row]
         if missing:
             raise ValueError(f"instrument row missing columns: {missing}")
+        index = zerodha_index_row(row)
+        if index is not None:
+            segment, token, name, _underlying = index
+            yield zerodha_index_listed(instrument_token=_parse_int(row["instrument_token"], "instrument_token"),
+                                       segment=segment, exchange_token=token, name=name,
+                                       broker_segment=row["segment"].strip(), seen_on=seen_on)
+            continue
         if zerodha_segment(row["exchange"]) is None:
             skipped[0] += 1  # outside V1: not parsed further, so its other columns can never stop the load
             continue

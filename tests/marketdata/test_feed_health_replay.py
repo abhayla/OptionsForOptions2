@@ -39,14 +39,14 @@ def test_the_old_per_quote_age_rule_is_the_defect():
             volume=q.volume, oi=q.oi, oi_change=None, iv=None, delta=None, gamma=None, theta=None, vega=None,
             timestamp=q.timestamp, source=q.source, now=later)
         flagged += rebuilt.health is DataHealth.STALE
-    assert flagged == 983
+    assert flagged == 982
 
 
 def test_no_contract_is_stale_after_61_s_while_the_feed_is_live():
     provider, clock, end = _live_provider()
     now = _heartbeats(provider, clock, end, 61)
     quotes = provider.book.quotes(now)
-    assert len(quotes) == 983
+    assert len(quotes) == 982
     assert {q.health for q in quotes} == {DataHealth.AVAILABLE}
     # the contract's own age is information only
     assert now - provider.book.last_changed_at("NSE_FO:44614") > 60 * SEC
@@ -57,7 +57,7 @@ def test_inserted_gap_makes_every_contract_stale_then_data_resumes():
     gap_end = end + 5 * SEC  # 5 s with nothing at all, longer than FEED_STALE
     assert 5 * SEC > FEED_STALE
     assert {q.health for q in provider.book.quotes(gap_end)} == {DataHealth.STALE}
-    assert len(provider.book.quotes(gap_end)) == 983
+    assert len(provider.book.quotes(gap_end)) == 982
     clock.now = gap_end
     provider.on_frame(b"\x00", gap_end)  # data (a heartbeat) resumes
     assert {q.health for q in provider.book.quotes(gap_end)} == {DataHealth.AVAILABLE}
