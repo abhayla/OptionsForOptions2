@@ -209,8 +209,8 @@ def test_delta_on_the_real_nifty_forward_follows_hull(replayed):
 
 
 def _one_call(spot):
-    leg = LegInput(underlying="NIFTY", contract="NIFTY26OCT22550CE", action=Action.BUY, instrument=Instrument.CE,
-                   strike=Decimal("22550"), expiry=D(2026, 10, 13), quantity=75, premium=Decimal("100.00"),
+    leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
+                   strike=Decimal("22550"), expiry=D(2026, 10, 13), quantity=65, premium=Decimal("100.00"),
                    iv=Decimal("0.12"))
     return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE, legs=(leg,))
 
@@ -219,12 +219,12 @@ def test_estimated_now_marks_at_the_effective_level_per_hull(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
     est = estimate_now_on_forward(_one_call(f.spot), f.spot, {f.expiry: f})
     h = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, float(f.implied_yield), 0.12)
-    expected = (Decimal(repr(h["price"])).quantize(TOL) - Decimal("100.00")) * 75
-    assert abs(est.total - expected) <= Decimal("0.75")  # one paisa of price rounding x 75
+    expected = (Decimal(repr(h["price"])).quantize(TOL) - Decimal("100.00")) * 65
+    assert abs(est.total - expected) <= Decimal("0.65")  # one paisa of price rounding x 65 (one lot)
     assert est.leg_levels == (f.effective_spot,) and est.label is None
     no_yield = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, 0.0, 0.12)["price"]
-    on_spot = (Decimal(repr(no_yield)).quantize(TOL) - Decimal("100.00")) * 75
-    assert abs(est.total - on_spot) > Decimal("100")  # spot would be visibly off (about 25 points x delta x 75)
+    on_spot = (Decimal(repr(no_yield)).quantize(TOL) - Decimal("100.00")) * 65
+    assert abs(est.total - on_spot) > Decimal("100")  # spot would be visibly off (about 25 points x delta x 65)
 
 
 def test_estimate_refuses_a_leg_with_no_forward(replayed):
