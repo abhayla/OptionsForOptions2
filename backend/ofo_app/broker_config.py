@@ -35,6 +35,8 @@ class BrokerSettings(BaseSettings):
     KITE_API_KEY: str = ""
     KITE_API_SECRET: SecretStr = SecretStr("")
     KITE_REDIRECT_URL: str = ""
+    #: The one Zerodha user id whose login may connect (V1 single user, ADR-051); a login by anyone else is refused.
+    KITE_EXPECTED_USER_ID: str = ""
     BROKER_TOKEN_KEY: SecretStr = SecretStr("")
 
 
@@ -44,6 +46,7 @@ class BrokerConfig:
     api_secret: SecretStr
     redirect_url: str
     callback_path: str
+    expected_user_id: str
     token_key: bytes
 
     def __repr__(self) -> str:  # never print the key bytes
@@ -72,6 +75,7 @@ def load_broker_config(settings: BrokerSettings | None = None) -> BrokerConfig:
     missing = [name for name, value in (("KITE_API_KEY", s.KITE_API_KEY),
                                         ("KITE_API_SECRET", s.KITE_API_SECRET.get_secret_value()),
                                         ("KITE_REDIRECT_URL", s.KITE_REDIRECT_URL),
+                                        ("KITE_EXPECTED_USER_ID", s.KITE_EXPECTED_USER_ID),
                                         ("BROKER_TOKEN_KEY", s.BROKER_TOKEN_KEY.get_secret_value())) if not value]
     if missing:
         raise BrokerConfigError("broker routes refuse to start: missing " + ", ".join(missing))
@@ -82,4 +86,4 @@ def load_broker_config(settings: BrokerSettings | None = None) -> BrokerConfig:
     if parts.scheme not in ("http", "https") or not parts.netloc or not parts.path.startswith("/") or parts.query:
         raise BrokerConfigError("KITE_REDIRECT_URL must be an absolute http(s) URL with a path and no query")
     return BrokerConfig(api_key=s.KITE_API_KEY, api_secret=s.KITE_API_SECRET, redirect_url=s.KITE_REDIRECT_URL,
-                        callback_path=parts.path, token_key=key)
+                        callback_path=parts.path, expected_user_id=s.KITE_EXPECTED_USER_ID, token_key=key)

@@ -1,7 +1,7 @@
 """Broker session lifecycle and the Kite login adapter port (W-058, REQ-015 AC-6/AC-7/AC-9)."""
 from __future__ import annotations
 
-from ofo.broker.kite_auth import KITE_LOGIN_BASE, KiteAuthPort, checksum, login_url
+from ofo.broker.kite_auth import KITE_LOGIN_BASE, KiteAuthPort, KiteSession, checksum, login_url
 from ofo.broker.session import (
     BROKER_ZERODHA,
     IST,
@@ -23,6 +23,7 @@ __all__ = [
     "BrokerSession",
     "EndReason",
     "KiteAuthPort",
+    "KiteSession",
     "SessionState",
     "checksum",
     "disconnect",

@@ -18,6 +18,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from ofo.broker.kite_auth import KiteSession
 from ofo_app.broker_config import BrokerConfig, BrokerConfigError, BrokerSettings, load_broker_config
 from ofo_app.db import get_db
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
@@ -29,6 +30,7 @@ API_SECRET = "kite_fake_secret_value"
 REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"
 ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"
 CALLBACK = "/kite/callback"
+USER_ID = "AB1234"
 CREDENTIAL_WORDS = ("password", "pin", "otp", "totp", "twofa", "2fa")
 
 
@@ -39,7 +41,7 @@ def _key() -> str:
 def _config() -> BrokerConfig:
     return load_broker_config(BrokerSettings(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
                                              KITE_REDIRECT_URL="http://127.0.0.1:8000" + CALLBACK,
-                                             BROKER_TOKEN_KEY=_key()))
+                                             KITE_EXPECTED_USER_ID=USER_ID, BROKER_TOKEN_KEY=_key()))
 
 
 class RecordingDB:
@@ -57,19 +59,19 @@ class RecordingDB:
 
 
 class FakeKite:
-    def __init__(self, answer: str | Exception = ACCESS_TOKEN) -> None:
+    def __init__(self, answer: KiteSession | Exception = KiteSession(ACCESS_TOKEN, USER_ID)) -> None:
         self.answer = answer
         self.calls: list[str] = []
 
-    async def exchange(self, request_token: str) -> str:
+    async def exchange(self, request_token: str) -> KiteSession:
         self.calls.append(request_token)
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
 
 
-def _app(kite: FakeKite, db: RecordingDB):
-    app = create_app(_config())
+def _app(kite: FakeKite, db: RecordingDB, config: BrokerConfig | None = None):
+    app = create_app(config or _config())
 
     async def _db():
         yield db
@@ -160,13 +162,84 @@ def test_state_store_expires_after_ten_minutes_and_is_single_use():
     now = [1000.0]
     store = broker_routes.StateStore(clock=lambda: now[0])
     assert store.ttl == 600
-    a, b = store.issue("u-a"), store.issue("u-b")
-    assert a != b and len(a) >= 40
+    (a, na), (b, nb) = store.issue("u-a"), store.issue("u-b")
+    assert a != b and len(a) >= 40 and na != nb
     now[0] += 599
-    assert store.consume(a) == "u-a"
-    assert store.consume(a) is None
+    assert store.consume(a, na) == "u-a"
+    assert store.consume(a, na) is None
     now[0] += 1  # b is now exactly 600 s old
-    assert store.consume(b) is None
+    assert store.consume(b, nb) is None
+
+
+def test_a_state_needs_the_browser_nonce_it_was_issued_with():
+    store = broker_routes.StateStore(clock=lambda: 0.0)
+    (a, na), (b, nb) = store.issue("u-a"), store.issue("u-b")
+    assert store.consume(a, nb) is None and store.consume(a, na) is None  # a wrong nonce burns the state
+    assert store.consume(b, None) is None
+
+
+def test_live_states_are_capped_and_purging_counts_only_the_oldest():
+    now = [0.0]
+    store = broker_routes.StateStore(clock=lambda: now[0])
+    assert store.cap == 20
+    for _ in range(20):
+        store.issue("u")
+    before = store.ops
+    for _ in range(1000):
+        with pytest.raises(broker_routes.StateCapReached):
+            store.issue("u")
+    assert store.ops - before == 1000  # one look at the oldest state per refused call, never a scan
+    assert len(store._states) == 20  # nothing evicted
+    now[0] = 600.0
+    before = store.ops
+    store.issue("u")  # all 20 expired: purged in one pass, then the new one is held
+    assert store.ops - before == 20 and len(store._states) == 1
+
+
+async def test_the_login_route_refuses_over_the_cap():
+    app = _app(FakeKite(), RecordingDB())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        codes = [(await ac.get(broker_routes.LOGIN_PATH)).status_code for _ in range(21)]
+        last = await ac.get(broker_routes.LOGIN_PATH)
+    assert codes[:20] == [302] * 20 and codes[20] == 429
+    assert last.json() == {"code": "broker_login_busy", "message": broker_routes.MESSAGES["broker_login_busy"]}
+
+
+async def test_the_login_cookie_is_httponly_lax_and_scoped_to_the_callback():
+    async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
+        cookie = (await ac.get(broker_routes.LOGIN_PATH)).headers["set-cookie"].lower()
+    assert cookie.startswith(broker_routes.STATE_COOKIE + "=")
+    assert "httponly" in cookie and "samesite=lax" in cookie and f"path={CALLBACK}" in cookie
+    assert "max-age=600" in cookie and "secure" not in cookie  # http redirect URL: Secure would never be sent back
+    https = load_broker_config(BrokerSettings(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
+                                              KITE_REDIRECT_URL="https://example.com" + CALLBACK,
+                                              KITE_EXPECTED_USER_ID=USER_ID, BROKER_TOKEN_KEY=_key()))
+    async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB(), https)),
+                           base_url="http://t") as ac:
+        assert "secure" in (await ac.get(broker_routes.LOGIN_PATH)).headers["set-cookie"].lower()
+
+
+@pytest.mark.parametrize("cookie", [None, "someone-elses-nonce"])
+async def test_a_callback_without_the_login_browsers_cookie_is_refused(cookie):
+    kite = FakeKite()
+    async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
+        state = await _state(ac)
+        ac.cookies.clear()
+        if cookie:
+            ac.cookies.set(broker_routes.STATE_COOKIE, cookie, path=CALLBACK)
+        response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
+                                                  "state": state})
+    assert response.json()["code"] == "broker_state_invalid" and kite.calls == []
+
+
+async def test_another_zerodha_account_is_refused_and_nothing_is_written():
+    kite = FakeKite(KiteSession(ACCESS_TOKEN, "XY9999"))
+    async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
+        state = await _state(ac)
+        response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
+                                                  "state": state})
+    assert (response.status_code, response.json()["code"]) == (403, "broker_user_mismatch")
+    assert ACCESS_TOKEN not in response.text and kite.calls == [REQUEST_TOKEN]
 
 
 async def test_an_expired_state_is_refused_without_an_exchange():
@@ -260,7 +333,9 @@ def _kite_client(handler) -> tuple[HttpKiteAuth, list[httpx.Request]]:
 async def test_exchange_posts_the_documented_form_and_returns_the_access_token():
     auth, seen = _kite_client(lambda r: httpx.Response(200, json={
         "status": "success", "data": {"user_id": "AB1234", "access_token": ACCESS_TOKEN}}))
-    assert await auth.exchange(REQUEST_TOKEN) == ACCESS_TOKEN
+    session = await auth.exchange(REQUEST_TOKEN)
+    assert (session.access_token, session.user_id) == (ACCESS_TOKEN, "AB1234")
+    assert ACCESS_TOKEN not in repr(session)
     (request,) = seen
     assert (request.method, str(request.url)) == ("POST", "https://api.kite.trade/session/token")
     assert request.headers["x-kite-version"] == "3"
@@ -274,6 +349,7 @@ async def test_exchange_posts_the_documented_form_and_returns_the_access_token()
     (httpx.Response(200, json={"status": "success", "data": {"user_id": "AB1234"}}), "kite_no_access_token"),
     (httpx.Response(200, json={"status": "success", "data": {"access_token": ""}}), "kite_no_access_token"),
     (httpx.Response(200, text="not json"), "kite_unavailable"),
+    (httpx.Response(200, json={"status": "success", "data": {"access_token": ACCESS_TOKEN}}), "kite_no_user_id"),
     (httpx.Response(403, json={"status": "error", "message": "Token is invalid or has expired.",
                                "error_type": "TokenException"}), "kite_token_exception"),
     (httpx.Response(400, json={"status": "error", "message": "Invalid `checksum`.",
@@ -307,7 +383,8 @@ async def test_timeouts_and_network_errors_are_unavailable_without_retry(error):
 
 def _settings(**over) -> BrokerSettings:
     base = dict(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
-                KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", BROKER_TOKEN_KEY=_key())
+                KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", KITE_EXPECTED_USER_ID=USER_ID,
+                BROKER_TOKEN_KEY=_key())
     return BrokerSettings(**{**base, **over})
 
 
@@ -318,6 +395,7 @@ def _settings(**over) -> BrokerSettings:
     {"KITE_API_KEY": ""},
     {"KITE_API_SECRET": ""},
     {"KITE_REDIRECT_URL": ""},
+    {"KITE_EXPECTED_USER_ID": ""},
     {"KITE_REDIRECT_URL": "/kite/callback"},
     {"KITE_REDIRECT_URL": "http://127.0.0.1:8000/kite/callback?x=1"},
 ])
@@ -389,3 +467,29 @@ async def test_uvicorn_access_log_drops_the_callback_query():
     lines = [r.getMessage() for r in records]
     assert any(CALLBACK in line for line in lines), lines
     assert all(REQUEST_TOKEN not in line and "request_token" not in line for line in lines), lines
+
+
+def _access_record(path: str) -> logging.LogRecord:
+    return logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, '%s - "%s %s HTTP/%s" %d',
+                             ("127.0.0.1:5000", "GET", path, "1.1", 400), None)
+
+
+@pytest.mark.parametrize("path", [
+    CALLBACK + "/?request_token=" + REQUEST_TOKEN + "&state=x",
+    "/api" + CALLBACK + "?status=success&request_token=" + REQUEST_TOKEN,
+    "/anything?state=abc",
+    "/elsewhere?access_token=" + ACCESS_TOKEN,
+    "/elsewhere?REQUEST_TOKEN=" + REQUEST_TOKEN,
+])
+def test_the_access_log_filter_redacts_by_query_key_on_any_path(path):
+    record = _access_record(path)
+    broker_routes.CallbackQueryFilter().filter(record)
+    message = record.getMessage()
+    assert "?" not in message and REQUEST_TOKEN not in message and ACCESS_TOKEN not in message
+    assert path.split("?")[0] in message
+
+
+def test_the_access_log_filter_keeps_an_ordinary_query():
+    record = _access_record("/health?verbose=1")
+    broker_routes.CallbackQueryFilter().filter(record)
+    assert "/health?verbose=1" in record.getMessage()

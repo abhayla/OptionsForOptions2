@@ -8,6 +8,7 @@ docs/research/kite-proof-2026-10-07/kite_core_proof.py). Success: HTTP 200, ``{"
 Every answer state maps to one code (run-discipline B4 d); nothing about the answer body is ever logged or raised:
 - 200 with data.access_token          -> the token
 - 200 without an access token         -> KiteExchangeError("kite_no_access_token")
+- 200 without a user_id               -> KiteExchangeError("kite_no_user_id")
 - 403 / TokenException                -> KiteExchangeError("kite_token_exception")   (expired or used request token)
 - 400 / InputException                -> KiteExchangeError("kite_input_exception")   (bad checksum or input)
 - any other 4xx                       -> KiteExchangeError("kite_refused")
@@ -21,7 +22,7 @@ import logging
 
 import httpx
 
-from ofo.broker.kite_auth import checksum
+from ofo.broker.kite_auth import KiteSession, checksum
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class HttpKiteAuth:
     def __repr__(self) -> str:
         return f"HttpKiteAuth(api_key={self._api_key!r})"
 
-    async def exchange(self, request_token: str) -> str:
+    async def exchange(self, request_token: str) -> KiteSession:
         form = {"api_key": self._api_key, "request_token": request_token,
                 "checksum": checksum(self._api_key, request_token, self._api_secret)}
         try:
@@ -79,7 +80,10 @@ class HttpKiteAuth:
             token = data.get("access_token") if isinstance(data, dict) else None
             if not isinstance(token, str) or not token or body.get("status") != "success":
                 raise KiteExchangeError("kite_no_access_token")
-            return token
+            user_id = data.get("user_id")
+            if not isinstance(user_id, str) or not user_id:
+                raise KiteExchangeError("kite_no_user_id")
+            return KiteSession(access_token=token, user_id=user_id)
         if status >= 500:
             raise KiteExchangeError("kite_unavailable")
         error_type = _error_type(response)

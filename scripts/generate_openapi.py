@@ -26,6 +26,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://placeholder/placehol
 os.environ.setdefault("KITE_API_KEY", "placeholder")
 os.environ.setdefault("KITE_API_SECRET", "placeholder")
 os.environ.setdefault("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback")
+os.environ.setdefault("KITE_EXPECTED_USER_ID", "ZZ0000")
 os.environ.setdefault("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
 
 from ofo_app.main import create_app  # noqa: E402

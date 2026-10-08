@@ -15,6 +15,7 @@ Copy from: legacy-reuse row 9 (algochanakya app/api/routes/auth.py:60-175, REFER
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlencode
 
@@ -36,8 +37,19 @@ def checksum(api_key: str, request_token: str, api_secret: str) -> str:
     return hashlib.sha256((api_key + request_token + api_secret).encode("utf-8")).hexdigest()
 
 
+@dataclass(frozen=True)
+class KiteSession:
+    """What a successful exchange returns: the access token and the Zerodha user id it belongs to."""
+
+    access_token: str
+    user_id: str
+
+    def __repr__(self) -> str:  # never print the token
+        return f"KiteSession(user_id={self.user_id!r})"
+
+
 class KiteAuthPort(Protocol):
     """Exchanges a request token for an access token (POST /session/token). The app implements it; the api key and
     secret come from one credentials source behind the implementation (Q210 open; ADR-051 V1 uses the platform app)."""
 
-    async def exchange(self, request_token: str) -> str: ...
+    async def exchange(self, request_token: str) -> KiteSession: ...

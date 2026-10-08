@@ -27,6 +27,7 @@ from sqlalchemy.pool import NullPool
 os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")
 os.environ.setdefault("KITE_API_SECRET", "test_placeholder_secret")
 os.environ.setdefault("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback")
+os.environ.setdefault("KITE_EXPECTED_USER_ID", "ZZ0000")
 os.environ.setdefault("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
 
 DB_SKIP_REASON ="TEST_DATABASE_URL is unset: database tests need real PostgreSQL (ADR-048); never SQLite"

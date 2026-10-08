@@ -76,6 +76,7 @@ jobs:
           echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
           echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
           echo "KITE_REDIRECT_URL=http://127.0.0.1:8000/kite/callback" >> "$GITHUB_ENV"
+          echo "KITE_EXPECTED_USER_ID=ZZ0000" >> "$GITHUB_ENV"
           echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
 
       # Standard library only, so it may run before the install step.
@@ -160,6 +161,7 @@ jobs:
           echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
           echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
           echo "KITE_REDIRECT_URL=http://127.0.0.1:8000/kite/callback" >> "$GITHUB_ENV"
+          echo "KITE_EXPECTED_USER_ID=ZZ0000" >> "$GITHUB_ENV"
           echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
 
       - name: Install backend dependencies

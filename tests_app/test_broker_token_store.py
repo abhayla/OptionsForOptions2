@@ -69,6 +69,27 @@ class _Nested:
         return False
 
 
+class FakeEngine:
+    """Hands out its own recording connection: what ran there ran in a separate, committed transaction."""
+
+    def __init__(self) -> None:
+        self.conn = FakeConn()
+        self.begun = 0
+
+    def begin(self):
+        engine = self
+
+        class _Tx:
+            async def __aenter__(self):
+                engine.begun += 1
+                return engine.conn
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Tx()
+
+
 class FakeConn:
     """Records every statement; answers the store's four statements as PostgreSQL would for one new session."""
 
@@ -140,7 +161,8 @@ def test_each_encryption_uses_a_fresh_nonce():
 async def test_access_token_for_decrypts_the_active_row():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    assert await store.access_token_for(FakeConn(active_row=(7, cipher.key_id, blob)), "u-1", cipher) == ACCESS_TOKEN
+    assert await store.access_token_for(FakeConn(active_row=(7, cipher.key_id, blob, False)), "u-1", cipher,
+                                        engine=FakeEngine()) == ACCESS_TOKEN
 
 
 @pytest.mark.parametrize("case", ["no_row", "other_key", "copied_row", "tampered", "no_ciphertext"])
@@ -150,30 +172,44 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
     rows = {
         "no_row": None,
-        "other_key": (7, _cipher().key_id, blob),
-        "copied_row": (8, cipher.key_id, blob),
-        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1])),
-        "no_ciphertext": (7, cipher.key_id, None),
+        "other_key": (7, _cipher().key_id, blob, False),
+        "copied_row": (8, cipher.key_id, blob, False),
+        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), False),
+        "no_ciphertext": (7, cipher.key_id, None, False),
     }
-    assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher) is None
+    assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher, engine=FakeEngine()) is None
     assert all(ACCESS_TOKEN not in r.getMessage() for r in caplog.records)
 
 
 async def test_a_kite_token_exception_marks_the_session_expired():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, False))
     seen = []
 
     async def call(token):
         seen.append(token)
         raise KiteTokenException()
 
+    engine = FakeEngine()
     with pytest.raises(KiteTokenException):
-        await store.call_with_token(conn, "u-1", cipher, call)
+        await store.call_with_token(conn, "u-1", cipher, call, engine=engine)
     assert seen == [ACCESS_TOKEN]
-    sql, params = conn.calls[-1]
+    # the end ran in the engine's own transaction, not in the caller's (whose rollback would undo it)
+    assert not any(sql.startswith("UPDATE") for sql, _ in conn.calls)
+    assert engine.begun == 1
+    ((sql, params),) = engine.conn.calls
     assert sql.startswith("UPDATE") and params["reason"] == "expired" and "token_ciphertext = NULL" in sql
+
+
+async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
+    cipher = _cipher()
+    blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
+    conn, engine = FakeConn(active_row=(7, cipher.key_id, blob, True)), FakeEngine()
+    assert await store.access_token_for(conn, "u-1", cipher, engine=engine) is None
+    assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
+    ((sql, params),) = engine.conn.calls
+    assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
 
 
 def test_cipher_repr_and_key_id_never_show_the_key():
@@ -195,6 +231,7 @@ def _user() -> str:
 def _app(maker, user_ref: str, kite_handler):
     config = load_broker_config(BrokerSettings(
         KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET, KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback",
+        KITE_EXPECTED_USER_ID="AB1234",
         BROKER_TOKEN_KEY=base64.urlsafe_b64encode(os.urandom(32)).decode()))
     app = create_app(config)
 
@@ -271,12 +308,21 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     _no_secret(bytes(row["token_ciphertext"]), "the stored ciphertext")
     _no_secret(row["whole"].encode(), "the stored row")
     assert row["ended_at"] is None and row["end_reason"] is None
-    # every log record from every logger
-    for record in caplog.records:
+    # every log record from every logger, except the lines the TEST HARNESS's own client emits: httpx logs each
+    # request the test sends ("HTTP Request: GET http://t/kite/callback?...request_token=..."), which is the test
+    # typing the redirect URL, not the server logging it. Only those records (host t) are left out.
+    harness = [r for r in caplog.records if r.name == "httpx" and "http://t/" in r.getMessage()]
+    server = [r for r in caplog.records if r not in harness]
+    for record in server:
         _no_secret((record.getMessage() + repr(record.args) + (record.exc_text or "")).encode(), record.name)
+    # the server's own outbound Kite client logs, and they hold none of the three
+    outbound = [r for r in server if r.name == "httpx" and "api.kite.trade" in r.getMessage()]
+    assert outbound, [r.getMessage() for r in caplog.records]
+    for record in outbound:
+        _no_secret(record.getMessage().encode(), "the outbound Kite client log")
     # the adapter returns the original token
     async with maker() as session:
-        assert await store.access_token_for(session, user, app.state.broker.cipher) == ACCESS_TOKEN
+        assert await store.access_token_for(session, user, app.state.broker.cipher, engine=app_engine) == ACCESS_TOKEN
     # the database's expected expiry agrees with the domain rule
     assert row["expected_expiry"] == expected_expiry(row["started_at"])
 
@@ -307,7 +353,7 @@ async def test_ending_destroys_the_token_keeps_the_row_and_touches_nothing_else(
     assert (row["end_reason"], row["token_ciphertext"]) == (reason.value, None) and row["ended_at"] is not None
     assert await _other_tables(admin_engine) == before
     async with app_engine.connect() as conn:
-        assert await store.access_token_for(conn, user, cipher) is None
+        assert await store.access_token_for(conn, user, cipher, engine=app_engine) is None
 
 
 async def test_a_ciphertext_copied_to_another_row_does_not_decrypt(app_engine):
@@ -321,8 +367,8 @@ async def test_a_ciphertext_copied_to_another_row_does_not_decrypt(app_engine):
                 ).scalar_one()
         await conn.execute(text("UPDATE public.broker_sessions SET token_ciphertext = :c WHERE id = :i"),
                            {"c": blob, "i": b_id})
-        assert await store.access_token_for(conn, b, cipher) is None
-        assert await store.access_token_for(conn, a, cipher) == ACCESS_TOKEN
+        assert await store.access_token_for(conn, b, cipher, engine=app_engine) is None
+        assert await store.access_token_for(conn, a, cipher, engine=app_engine) == ACCESS_TOKEN
 
 
 @pytest.mark.parametrize("statement", [
@@ -372,3 +418,37 @@ async def test_an_ended_row_never_changes_and_one_active_session_per_user(app_en
             await conn.execute(text("INSERT INTO public.broker_sessions (user_ref, broker, key_id) "
                                     "VALUES (:u, 'zerodha', 'k')"), {"u": user})
         await conn.rollback()
+
+
+async def test_a_token_exception_inside_the_callers_transaction_still_ends_the_session(app_engine, admin_engine):
+    user, cipher = _user(), _cipher()
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, cipher)
+
+    async def call(token):
+        raise KiteTokenException()
+
+    with pytest.raises(KiteTokenException):
+        async with app_engine.begin() as conn:  # this transaction rolls back on the re-raise
+            await store.call_with_token(conn, user, cipher, call, engine=app_engine)
+    (row,) = await _rows(admin_engine, user)
+    assert (row["end_reason"], row["token_ciphertext"]) == ("expired", None) and row["ended_at"] is not None
+    async with app_engine.connect() as conn:
+        assert await store.access_token_for(conn, user, cipher, engine=app_engine) is None
+
+
+async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(app_engine, admin_engine):
+    user = _user()
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+
+    def other_account(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "success", "data": {"user_id": "XY9999",
+                                                                       "access_token": "ACtok_fake_other"}})
+
+    async with AsyncClient(transport=ASGITransport(app=_app(maker, user, _kite_ok)), base_url="http://t") as ac:
+        assert (await _login(ac)).status_code == 302
+    async with AsyncClient(transport=ASGITransport(app=_app(maker, user, other_account)), base_url="http://t") as ac:
+        refused = await _login(ac)
+    assert (refused.status_code, refused.json()["code"]) == (403, "broker_user_mismatch")
+    (row,) = await _rows(admin_engine, user)
+    assert row["ended_at"] is None and row["token_ciphertext"] is not None
