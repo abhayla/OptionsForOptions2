@@ -192,6 +192,7 @@ issues:
   "#112": S8
   "#115": 4b
   "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
+  "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
 
 # Work items whose status is not done.
 work_items:
