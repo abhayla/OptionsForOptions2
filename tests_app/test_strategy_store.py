@@ -70,7 +70,7 @@ def _user() -> str:
 
 def _fixture_rows(symbols: list[str] | None = None):
     with FIXTURE.open(encoding="utf-8", newline="") as stream:
-        rows = parse_rows_naming_the_row(stream).rows
+        rows = list(parse_rows_naming_the_row(stream))  # ParsedInstruments is a list of ListedContract
     if symbols is None:
         return rows
     picked = [r for r in rows if r.ref("zerodha").broker_symbol in symbols]
