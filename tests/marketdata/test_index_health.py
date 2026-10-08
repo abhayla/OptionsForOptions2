@@ -43,7 +43,9 @@ def test_live_index_values_are_available_and_from_the_index_segments():
     assert _forward(provider, end).spot_timestamp == nifty.timestamp  # the spot's time travels with the forward
 
 
-def test_inserted_gap_makes_the_index_stale_and_the_calculation_refuses():
+def test_inserted_gap_makes_the_index_stale_and_the_forward_falls_back_shown_as_stale():
+    """One stale policy (W-060 round 3): a stale spot computes with its label; the stale snapshot's option quotes are
+    not AVAILABLE, so the forward falls back to spot and says so - the combined label is built in model_inputs."""
     provider, clock, end = _live()
     gap_end = end + 5 * SEC
     assert 5 * SEC > FEED_STALE
@@ -52,11 +54,12 @@ def test_inserted_gap_makes_the_index_stale_and_the_calculation_refuses():
     assert nifty is not None and nifty.health is DataHealth.STALE  # shown as stale, not dropped
     option = provider.book.get("NSE_FO:44614", gap_end)
     assert option.health is nifty.health  # same health state as the option quotes
-    with pytest.raises(ForwardUnavailable, match="stale"):
-        _forward(provider, gap_end)
+    stale = _forward(provider, gap_end)
+    assert (stale.source, stale.spot_health, stale.label) == ("spot fallback", DataHealth.STALE, "estimated from spot")
     provider.on_frame(b"\x00", gap_end)  # data (a heartbeat) resumes
     assert provider.underlying_quote("NIFTY").health is DataHealth.AVAILABLE
-    assert _forward(provider, gap_end).source == "parity"
+    live = _forward(provider, gap_end)
+    assert (live.source, live.spot_health) == ("parity", DataHealth.AVAILABLE)
 
 
 def test_disconnect_past_the_window_is_unavailable_and_refuses():
@@ -80,6 +83,7 @@ def test_missing_index_value_refuses():
 
 # ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
 from ofo.engine.inputs import LegInput, StrategyInput  # noqa: E402
+from ofo.engine.model import model_inputs  # noqa: E402
 from ofo.engine.legs import Action, Instrument  # noqa: E402
 from ofo.scenario.config import ScenarioSettings  # noqa: E402
 from ofo.scenario.levels import build_level_set  # noqa: E402
@@ -92,20 +96,24 @@ VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 def _inputs(reading):
     leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
                    strike=Decimal("22550"), expiry=EXPIRY, quantity=65, premium=Decimal("100.00"), iv=Decimal("0.12"))
-    level = reading.level if reading is not None else Decimal("22533.25")
-    return StrategyInput(underlying="NIFTY", underlying_level=level, valuation_time=VALUATION, rate=RATE, legs=(leg,),
-                         spot=reading)
+    return StrategyInput(underlying="NIFTY", valuation_time=VALUATION, rate=RATE, legs=(leg,), spot=reading)
 
 
-def _scenario(inputs):
-    ls = build_level_set(inputs, ScenarioSettings().for_index("NIFTY"))
-    return ls, [scenario_values(ls, inputs, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
+def _gated(inputs, provider):
+    fwd = parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"), EXPIRY,
+                         VALUATION, RATE)
+    return model_inputs(inputs, {EXPIRY: fwd})
+
+
+def _scenario(model):
+    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    return ls, [scenario_values(ls, model, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
 
 
 def test_live_scenario_records_the_spot_and_its_time():
     provider, _clock, _end = _live()
     quote = provider.underlying_quote("NIFTY")
-    ls, outputs = _scenario(_inputs(spot_reading(quote)))
+    ls, outputs = _scenario(_gated(_inputs(spot_reading(quote)), provider))
     assert ls.current == Decimal("22533.25") and ls.spot_at == quote.timestamp and ls.data_label is None
     for out in outputs:
         assert (out.spot_level, out.spot_at, out.data_label) == (Decimal("22533.25"), quote.timestamp, None)
@@ -119,11 +127,13 @@ def test_stale_spot_computes_but_every_output_is_labelled_stale_with_its_time():
     assert reading.health is DataHealth.STALE
     hhmm = quote.timestamp.astimezone(IST).strftime("%H:%M")
     assert hhmm == "09:20"
-    ls, outputs = _scenario(_inputs(reading))
+    ls, outputs = _scenario(_gated(_inputs(reading), provider))
     assert ls.data_label == "stale since 09:20 IST"
     for out in outputs:
         assert out.available and out.data_label == "stale since 09:20 IST"
         assert (out.spot_level, out.spot_at) == (Decimal("22533.25"), quote.timestamp)
+    # Estimated Now used the stale snapshot's fallback forward: both labels, never silent
+    assert outputs[1].output_label == "stale since 09:20 IST; estimated from spot"
 
 
 def test_unavailable_or_missing_spot_refuses_the_scenario():
@@ -133,8 +143,8 @@ def test_unavailable_or_missing_spot_refuses_the_scenario():
     reading = spot_reading(provider.underlying_quote("NIFTY"))
     assert reading.health is DataHealth.UNAVAILABLE
     with pytest.raises(SpotRefused, match="unavailable"):
-        build_level_set(_inputs(reading), ScenarioSettings().for_index("NIFTY"))
+        model_inputs(_inputs(reading), {})
     with pytest.raises(SpotRefused, match="missing"):
         spot_reading(None)
-    with pytest.raises(SpotRefused, match="bare level"):  # no reading at all: never a bare level
-        build_level_set(_inputs(None), ScenarioSettings().for_index("NIFTY"))
+    with pytest.raises(ValueError, match="SpotReading"):  # no reading at all: there is no bare level to fall to
+        _inputs(None)

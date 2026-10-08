@@ -20,7 +20,7 @@ def test_inputs_carry_every_ac2_field_and_feed_the_engine(condor_inputs):
     first = leg_input(BUY, PE, "22800", "42.50", "38.20", "0.117446", greeks=greeks)
     full = StrategyInput(
         underlying="NIFTY",
-        underlying_level=SPOT,
+        spot=condor_inputs.spot,
         valuation_time=VALUATION,
         rate=RATE,
         legs=(first,) + condor_inputs.legs[1:],
@@ -30,7 +30,7 @@ def test_inputs_carry_every_ac2_field_and_feed_the_engine(condor_inputs):
     leg = full.legs[0]
     assert (leg.underlying, leg.contract, leg.expiry, leg.quantity) == ("NIFTY", "NIFTY26OCT22800PE", EXPIRY, 75)
     assert (leg.premium, leg.ltp, leg.iv, leg.greeks) == (D("42.50"), D("38.20"), D("0.117446"), greeks)
-    assert (full.underlying_level, full.margin.total, full.charges.total) == (D("23200"), D("41250.00"), D("94.40"))
+    assert (full.spot.level, full.margin.total, full.charges.total) == (D("23200"), D("41250.00"), D("94.40"))
     assert leg.leg == Leg(BUY, PE, D("22800"), EXPIRY, 75, D("42.50"), D("38.20"))
     assert isinstance(full.strategy, Strategy)
     assert full.strategy.live_pnl() == D("1365.00")
@@ -68,8 +68,8 @@ def test_futures_leg_input_has_no_strike_or_iv():
 @pytest.mark.parametrize(
     "overrides, message",
     [
-        (dict(underlying_level=D("0")), "underlying_level"),
-        (dict(underlying_level=D(23200.1)), "underlying_level"),
+        (dict(spot=D("23200")), "SpotReading"),  # W-060 round 3: there is no bare level
+        (dict(spot=None), "SpotReading"),
         (dict(valuation_time=datetime.datetime(2026, 10, 17, 15, 30)), "timezone-aware"),
         (dict(rate=0.065), "rate"),
         (dict(rate=D("Infinity")), "rate"),
@@ -83,7 +83,7 @@ def test_futures_leg_input_has_no_strike_or_iv():
 def test_invalid_strategy_input_fails_closed(condor_inputs, overrides, message):
     """AC-2: strategy-level inputs are validated; a leg on another underlying is refused."""
     fields = dict(
-        underlying="NIFTY", underlying_level=SPOT, valuation_time=VALUATION, rate=RATE, legs=condor_inputs.legs
+        underlying="NIFTY", spot=condor_inputs.spot, valuation_time=VALUATION, rate=RATE, legs=condor_inputs.legs
     )
     fields.update(overrides)
     with pytest.raises(ValueError, match=message):

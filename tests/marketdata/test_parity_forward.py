@@ -19,7 +19,7 @@ from ofo.marketdata.kite_provider import IST, SOURCE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
-from ofo.scenario.forward_model import estimate_now_on_forward, greeks_on_forward, iv_on_forward
+from ofo.engine.model import estimate, expiry_model, greeks, implied_vol, model_inputs
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
 
@@ -36,6 +36,24 @@ EXPECTED = {
     ("SENSEX", D(2026, 10, 15)): (Decimal("72443.48"), Decimal("72452.96"), 21, Decimal("72359.39")),
 }
 TOL = Decimal("0.01")
+
+
+def _reading(f):
+    """The spot reading a forward was read on (its level, time and health)."""
+    return SpotReading(level=f.spot, at=f.spot_timestamp, health=f.spot_health)
+
+
+# W-060 round 3: the product path is ofo.engine.model (one gate); these helpers call it the way product code does.
+def iv_on_forward(kind, price, strike, f):
+    return implied_vol(expiry_model(_reading(f), f), kind, price, strike)
+
+
+def greeks_on_forward(kind, strike, vol, f):
+    return greeks(expiry_model(_reading(f), f), kind, strike, vol)
+
+
+def estimate_now_on_forward(inputs, level, forwards):
+    return estimate(model_inputs(inputs, forwards), level)
 
 
 @pytest.fixture(scope="module")
@@ -150,7 +168,7 @@ def test_state_fewer_than_three_strikes_falls_back_with_the_label():
     assert iv_on_forward(Instrument.PE, Decimal("100.00"), Decimal("22000"), f).label == "estimated from spot"
 
 
-@pytest.mark.parametrize("spot", [None, "stale", "unavailable"])
+@pytest.mark.parametrize("spot", [None, "unhealthy", "unavailable"])
 def test_state_spot_missing_or_not_available_refuses(spot):
     quote = None if spot is None else _spot(health=DataHealth(spot))
     with pytest.raises(ForwardUnavailable):
@@ -234,7 +252,7 @@ def test_theta_carries_the_yield_term(replayed, key, strike, vol, q, theta):
 
 def test_estimate_refuses_a_forward_read_for_another_valuation_rate_or_day_count(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
-    inputs = _one_call(f.spot)
+    inputs = _one_call(f)
     for bad in (dataclasses.replace(f, valuation_time=VALUATION + datetime.timedelta(minutes=1)),
                 dataclasses.replace(f, rate=Decimal("0.07")), dataclasses.replace(f, days_in_year=252)):
         with pytest.raises(ForwardUnavailable, match="different"):
@@ -257,21 +275,21 @@ def test_delta_on_the_real_nifty_forward_follows_hull(replayed):
     assert abs(float(g.delta) - h["delta"]) <= 1e-4
 
 
-def _one_call(spot):
+def _one_call(f):
     leg = LegInput(underlying="NIFTY", contract="NSE_FO:44614", action=Action.BUY, instrument=Instrument.CE,
                    strike=Decimal("22550"), expiry=D(2026, 10, 13), quantity=65, premium=Decimal("100.00"),
                    iv=Decimal("0.12"))
-    return StrategyInput(underlying="NIFTY", underlying_level=spot, valuation_time=VALUATION, rate=RATE, legs=(leg,),
-                         spot=SpotReading(level=spot, at=VALUATION, health=DataHealth.AVAILABLE))
+    return StrategyInput(underlying="NIFTY", valuation_time=VALUATION, rate=RATE, legs=(leg,), spot=_reading(f))
 
 
 def test_estimated_now_marks_at_the_effective_level_per_hull(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
-    est = estimate_now_on_forward(_one_call(f.spot), f.spot, {f.expiry: f})
+    est = estimate_now_on_forward(_one_call(f), f.spot, {f.expiry: f})
     h = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, float(f.implied_yield), 0.12)
     expected = (Decimal(repr(h["price"])).quantize(TOL) - Decimal("100.00")) * 65
     assert abs(est.total - expected) <= Decimal("0.65")  # one paisa of price rounding x 65 (one lot)
-    assert est.dividend_yields == (f.implied_yield,) and est.level == f.spot and est.label is None
+    assert est.assumptions.dividend_yields == (f.implied_yield,) and est.level == f.spot and est.label is None
+    assert (est.spot_level, est.spot_at) == (f.spot, f.spot_timestamp)
     no_yield = _hull_call(float(f.spot), 22550.0, float(f.years), 0.065, 0.0, 0.12)["price"]
     on_spot = (Decimal(repr(no_yield)).quantize(TOL) - Decimal("100.00")) * 65
     assert abs(est.total - on_spot) > Decimal("100")  # spot would be visibly off (about 25 points x delta x 65)
@@ -280,32 +298,31 @@ def test_estimated_now_marks_at_the_effective_level_per_hull(replayed):
 def test_estimate_refuses_a_leg_with_no_forward(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 19))
     with pytest.raises(ForwardUnavailable):
-        estimate_now_on_forward(_one_call(f.spot), f.spot, {f.expiry: f})
+        estimate_now_on_forward(_one_call(f), f.spot, {f.expiry: f})
 
 
 def test_scenario_estimated_now_uses_the_forward_and_payoff_keeps_spot(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
-    inputs = _one_call(f.spot)
-    ls = build_level_set(inputs, ScenarioSettings().for_index("NIFTY"))
-    assert ls.current == f.spot  # CURRENT column and the range stay on spot
-    on_fwd = scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: f})
-    on_spot = scenario_values(ls, inputs, View.ESTIMATED_NOW)
-    assert on_fwd.model_label is None and on_spot.model_label == "estimated from spot"
-    assert on_fwd.totals != on_spot.totals
-    at_exp = scenario_values(ls, inputs, View.AT_EXPIRY, forwards={f.expiry: f})
-    assert at_exp.totals == scenario_values(ls, inputs, View.AT_EXPIRY).totals
+    inputs = _one_call(f)
+    on_fwd_model = model_inputs(inputs, {f.expiry: f})
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
-    assert scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: fallback}).model_label == FALLBACK_LABEL
+    on_spot_model = model_inputs(inputs, {f.expiry: fallback})
+    ls = build_level_set(on_fwd_model, ScenarioSettings().for_index("NIFTY"))
+    assert ls.current == f.spot  # CURRENT column and the range stay on spot
+    on_fwd = scenario_values(ls, on_fwd_model, View.ESTIMATED_NOW)
+    on_spot = scenario_values(ls, on_spot_model, View.ESTIMATED_NOW)
+    assert on_fwd.model_label is None and on_spot.model_label == FALLBACK_LABEL == "estimated from spot"
+    assert on_fwd.totals != on_spot.totals
+    assert scenario_values(ls, on_fwd_model, View.AT_EXPIRY).totals ==         scenario_values(ls, on_spot_model, View.AT_EXPIRY).totals
 
 
 def test_estimate_assumptions_state_the_yield_and_its_source(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
-    inputs = _one_call(f.spot)
-    ls = build_level_set(inputs, ScenarioSettings().for_index("NIFTY"))
-    a = scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: f}).assumptions
+    inputs = _one_call(f)
+    model = model_inputs(inputs, {f.expiry: f})
+    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    a = scenario_values(ls, model, View.ESTIMATED_NOW).assumptions
     assert a.dividend_yields == (f.implied_yield,) and a.yield_sources == ("parity",) and f.implied_yield > 0
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
-    b = scenario_values(ls, inputs, View.ESTIMATED_NOW, forwards={f.expiry: fallback}).assumptions
+    b = scenario_values(ls, model_inputs(inputs, {f.expiry: fallback}), View.ESTIMATED_NOW).assumptions
     assert b.dividend_yields == (Decimal(0),) and b.yield_sources == ("spot fallback",)
-    c = scenario_values(ls, inputs, View.ESTIMATED_NOW).assumptions
-    assert c.dividend_yields == (Decimal(0),) and c.yield_sources == ("none",)
