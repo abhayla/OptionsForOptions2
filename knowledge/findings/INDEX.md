@@ -2,7 +2,7 @@
 
 # Findings index
 
-28 finding(s), generated from `knowledge/findings/*.json`.
+29 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -30,6 +30,7 @@
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | scope, spec_ref |
 | staleness-by-last-change-age | Any data-health rule that calls an instrument stale because its last tick or exchange timestamp is older than a fixed age misflags every quiet but current instrument on a feed that sends only changes, so a healthy chain shows a share of its contracts as stale at all times. | guarded | occurrences, scope, spec_ref |
 | state-with-no-working-exit | Any non-terminal state of a lifecycle (strategy, order, proposal) from which every action the system offers is refused leaves the user stuck with no path forward except acting outside the platform; the explanation shown for that state then points at actions that do not work. A transition table checked only pair-by-pair (is each allowed move allowed?) cannot see this: it needs a reachability check that every reachable non-terminal state has at least one action that succeeds. | unguarded | occurrences, scope, spec_ref |
+| store-rule-enforced-per-call-site | A rule about what a store may hold (which source may sit where, which rank wins, which day is frozen) written separately in each write method or caller instead of in one private writer every write passes through; each fix closes the method a test happened to probe, and any other or future write method (or a second store implementation behind the same interface) bypasses it. | unguarded | occurrences, scope, spec_ref |
 | test-asserts-implementation-output | Any test whose expected value was produced by running the code under test (instead of taken from the spec or an independent computation) passes whatever the code does, so a defect in the code is locked in as the 'correct' answer and the suite stays green. | unguarded | occurrences, scope, spec_ref |
 | trust-broker-status-word | Any handling of broker/execution results that decides the outcome from the latest message (its status word, or the last reported position) instead of an invariant over the whole sequence can hide or clear a position mismatch, letting a new edit or execution start on an unreconciled position. | unguarded | occurrences, scope, spec_ref |
 | verifier-writes-outside-sandbox | Any agent whose role is read-only but which can run a shell can write files outside its sandbox; a role boundary stated only in the agent's prompt is not enforced, so its output (here evidence files marked pass/fail with verified_by set by itself) can land in the main checkout and be committed as if the orchestrator had recorded it. | guarded | occurrences, scope, spec_ref |
