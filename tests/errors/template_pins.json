@@ -814,5 +814,13 @@
   "user_input_request_not_available": {
     "sha256": "11c795ba45e0011039572240bb6205f6127787a56591c789659aeb541279bd92",
     "reviewed": "pending owner read"
+  },
+  "entitlement_access_sign_in_required": {
+    "sha256": "dbe6af4fed56c9531c4e98e08eea5f5bac8329d5e1e850a2f87e3e15bf9543d5",
+    "reviewed": "pending owner read"
+  },
+  "internal_system_service_unavailable": {
+    "sha256": "4d9aa6ca113ec5aa7743737f5bb1fc430154ac0a626417d5447ffd8e11ebc7ea",
+    "reviewed": "pending owner read"
   }
 }

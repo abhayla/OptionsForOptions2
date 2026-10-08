@@ -633,6 +633,15 @@ _BOUNDARY_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The page or action you asked for is not available here.",
           "Nothing was changed.", "This request.",
           "Go back to the previous page and choose again."),
+    # Fix round (review MINOR): a 401 is a sign-in problem, a 503 a service that is down for now, not a 500.
+    _gate("entitlement_access_sign_in_required", _EA, 2,
+          "You are not signed in, or your sign-in has ended.",
+          "Your account's strategies and actions cannot be shown or changed.", "This request, until you sign in.",
+          "Sign in again, then repeat the action."),
+    _gate("internal_system_service_unavailable", _IS, 3,
+          "This service is not available at the moment.",
+          "The action you asked for was not carried out.", "This request, while the service is unavailable.",
+          "Wait a few minutes and try again."),
 )
 
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES

@@ -123,6 +123,8 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `internal_system_request_failed` | INTERNAL_SYSTEM_002 | An unexpected server error stopped this request (reference {reference}). | The action you asked for was not completed. | This request, until the issue is resolved. | Try again in a few minutes; contact support with the reference if this keeps happening. |
 | `user_input_request_invalid` | USER_INPUT_002 | Some of the values sent with this request are missing or not in the expected form. | The request was not carried out. | This request, until its values are corrected. | Check the values you entered and try again. |
 | `user_input_request_not_available` | USER_INPUT_003 | The page or action you asked for is not available here. | Nothing was changed. | This request. | Go back to the previous page and choose again. |
+| `entitlement_access_sign_in_required` | ENTITLEMENT_ACCESS_002 | You are not signed in, or your sign-in has ended. | Your account's strategies and actions cannot be shown or changed. | This request, until you sign in. | Sign in again, then repeat the action. |
+| `internal_system_service_unavailable` | INTERNAL_SYSTEM_003 | This service is not available at the moment. | The action you asked for was not carried out. | This request, while the service is unavailable. | Wait a few minutes and try again. |
 
 ## Explanation templates (`backend/ofo/errors/explanations.py`, not errors: no four parts)
 
