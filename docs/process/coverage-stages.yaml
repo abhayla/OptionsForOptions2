@@ -203,6 +203,7 @@ work_items:
   W-011: S8
   W-017: 4b
   W-024: 4a
+  W-059: 4a
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
