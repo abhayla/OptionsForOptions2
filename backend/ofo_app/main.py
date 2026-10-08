@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
-from ofo_app.routes import broker, health
+from ofo_app.routes import broker, health, strategies
 
 log = logging.getLogger(__name__)
 
@@ -39,4 +39,5 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.add_exception_handler(Exception, _internal_error)
     app.include_router(health.router)
     broker.mount(app, config)
+    app.include_router(strategies.router)  # W-061: Save Draft and activity history
     return app
