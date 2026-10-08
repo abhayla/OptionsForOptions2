@@ -18,7 +18,10 @@ What is redacted, by VALUE and by shape (`redact`):
   registered at run time (`register_secret`, e.g. the Kite access token handed to the market-data socket);
 - the value after a secret-named key (`access_token=...`, `"password": "..."`);
 - any run of 20 or more token characters holding both a letter and a digit: the shape of a Kite access token (32
-  letters and digits), an api key, a checksum or a base64/hex secret.
+  letters and digits), an api key, a checksum or a base64/hex secret - EXCEPT a run that is exactly one of the
+  catalogue's own message codes (`CATALOGUE_CODES`: a closed set of public identifiers such as
+  `BROKER_AUTHENTICATION_302`, handed in by `ofo_app.errors` from `ofo.errors.CATALOGUE` through `keep_public_codes`,
+  because this module imports nothing from `ofo`), so the code of a shown error stays readable in the log.
 """
 
 from __future__ import annotations
@@ -49,6 +52,14 @@ _KEYED = re.compile(
     r"(?P<value>[^\s'\",;&}\])]+)"
 )
 _RUN = re.compile(r"[A-Za-z0-9+=_\-]{20,}")
+#: The closed set of catalogue message codes (public, reviewed identifiers): never redacted as a token shape.
+CATALOGUE_CODES: frozenset[str] = frozenset()
+
+
+def keep_public_codes(codes: frozenset[str]) -> None:
+    """Hold the catalogue's message codes: a token-shaped run equal to one of them is left as it is."""
+    global CATALOGUE_CODES
+    CATALOGUE_CODES = frozenset(codes)
 
 _held: tuple[str, ...] = ()
 _held_lock = threading.Lock()
@@ -66,6 +77,8 @@ def register_secret(value: object) -> None:
 
 def _shape(match: re.Match[str]) -> str:
     run = match.group(0)
+    if run in CATALOGUE_CODES:
+        return run
     return REDACTED if re.search(r"[A-Za-z]", run) and re.search(r"[0-9]", run) else run
 
 

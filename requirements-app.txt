@@ -15,5 +15,7 @@ pytest==8.4.2
 pytest-asyncio==1.2.0
 # Migration SQL parse check (W-056 fix round 1): libpg_query, PostgreSQL's own parser, in tests_app only.
 pglast==8.4
+# Broker token encryption at rest (W-058): AES-256-GCM; pin from abhayla/algochanakya@bf9faf7:backend/requirements.txt.
+cryptography==46.0.3
 # Workflow-path test (tests_app/test_app_ci_paths.py) parses the workflow file.
 PyYAML==6.0.3

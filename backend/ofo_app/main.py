@@ -14,8 +14,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ofo_app import errors
+from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
-from ofo_app.routes import health, outcome
+from ofo_app.routes import broker, health, outcome
 
 log = logging.getLogger(__name__)
 
@@ -26,9 +27,13 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await close_db()
 
 
-def create_app() -> FastAPI:
+def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
+    """Builds the app. The broker routes refuse to start without a valid broker configuration (W-058):
+    ``load_broker_config`` raises BrokerConfigError, so the app is never built without its token key."""
+    config = broker_config if broker_config is not None else load_broker_config()
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan)
     errors.install(app)
     app.include_router(health.router)
     app.include_router(outcome.router)
+    broker.mount(app, config)
     return app

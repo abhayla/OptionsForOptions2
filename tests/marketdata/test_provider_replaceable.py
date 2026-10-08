@@ -66,11 +66,24 @@ def test_fanout_and_feed_health_run_unchanged_on_a_second_provider():
     assert fake.book.get("X:1", T0 + datetime.timedelta(seconds=61)).health is DataHealth.AVAILABLE
 
 
-def test_nothing_outside_the_kite_adapter_imports_the_kite_modules():
-    adapter_files = {"kite_frames.py", "kite_provider.py", "kite_ws.py"}
+ADAPTER_FILES = {"kite_frames.py", "kite_provider.py", "kite_ws.py"}  # the market-data Kite adapter (by name)
+#: The broker-login Kite adapter (W-058), by path relative to backend/. REQ-063 AC-1: "Broker, market-data and
+#: payment integrations each sit behind an adapter." Each entry is part of that adapter, not domain code.
+BROKER_ADAPTER_PATHS = {
+    "ofo/broker/kite_auth.py": "the Kite login port itself (login URL, checksum, KiteAuthPort) - REQ-063 AC-1",
+    "ofo/broker/__init__.py": "re-exports the Kite login port for the adapter's callers - REQ-063 AC-1",
+    "ofo_app/kite_client.py": "the HTTP implementation of the Kite login port - REQ-063 AC-1",
+    "ofo_app/routes/broker.py": "composition root wiring the Kite login port to its HTTP client - REQ-063 AC-1",
+    "ofo_app/broker_token_store.py": "the broker adapter's token store: ends a session on Kite's TokenException "
+                                     "(adapter error type) - REQ-063 AC-1",
+}
+
+
+def _kite_importers(root: pathlib.Path, allowed_paths) -> list[str]:
     offenders = []
-    for path in BACKEND.rglob("*.py"):
-        if path.name in adapter_files:
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
+        if path.name in ADAPTER_FILES or rel in allowed_paths:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             names = []
@@ -79,8 +92,18 @@ def test_nothing_outside_the_kite_adapter_imports_the_kite_modules():
             elif isinstance(node, ast.ImportFrom):
                 names = [(node.module or "")] + [f"{node.module}.{a.name}" for a in node.names]
             if any(n.split(".")[-1].startswith("kite_") or ".kite_" in n or n.startswith("kite_") for n in names):
-                offenders.append(f"{path.relative_to(BACKEND)}: {names}")
-    assert offenders == []
+                offenders.append(f"{rel}: {names}")
+    return offenders
+
+
+def test_nothing_outside_the_kite_adapter_imports_the_kite_modules():
+    assert _kite_importers(BACKEND, BROKER_ADAPTER_PATHS) == []
+
+
+def test_every_allowlisted_broker_adapter_file_exists_and_cites_req_063():
+    for rel, reason in BROKER_ADAPTER_PATHS.items():
+        assert (BACKEND / rel).is_file(), rel
+        assert "REQ-063 AC-1" in reason
 
 
 def test_the_import_scan_would_catch_a_leak(tmp_path):
@@ -89,3 +112,14 @@ def test_the_import_scan_would_catch_a_leak(tmp_path):
     node = next(n for n in ast.walk(ast.parse(leak.read_text())) if isinstance(n, ast.ImportFrom))
     names = [(node.module or "")] + [f"{node.module}.{a.name}" for a in node.names]
     assert any(".kite_" in n for n in names)
+
+
+def test_a_new_importer_of_the_broker_login_port_is_still_flagged(tmp_path):
+    # the same scanner on a tree holding one allowlisted adapter file and one domain file importing the Kite port
+    (tmp_path / "ofo_app" / "routes").mkdir(parents=True)
+    (tmp_path / "ofo" / "strategy").mkdir(parents=True)
+    (tmp_path / "ofo_app" / "routes" / "broker.py").write_text("from ofo.broker.kite_auth import login_url\n")
+    (tmp_path / "ofo" / "strategy" / "leaky.py").write_text("from ofo.broker.kite_auth import checksum\n")
+    (tmp_path / "ofo" / "strategy" / "broker.py").write_text("from ofo_app.kite_client import HttpKiteAuth\n")
+    flagged = _kite_importers(tmp_path, BROKER_ADAPTER_PATHS)
+    assert sorted(f.split(":")[0] for f in flagged) == ["ofo/strategy/broker.py", "ofo/strategy/leaky.py"]
