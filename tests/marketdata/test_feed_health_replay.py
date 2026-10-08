@@ -4,7 +4,7 @@ Replays the real 2026-10-08 recording. RCA: the per-quote age rule (health.py, s
 current contract stale while the feed is live, because Kite sends only changes (F-32)."""
 import datetime
 
-from _kite_fixture import all_instrument_ids, new_provider, replay
+from _kite_fixture import all_instrument_ids, new_provider, recorded_frames, replay
 
 from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
 from ofo.marketdata.health import build_quote
@@ -69,6 +69,8 @@ def test_disconnect_session_end_and_never_connected():
     assert {q.health for q in provider.book.quotes(end + RECONNECT_WINDOW)} == {DataHealth.STALE}
     assert {q.health for q in provider.book.quotes(end + RECONNECT_WINDOW + SEC)} == {DataHealth.UNAVAILABLE}
     provider.on_connected(end + 40 * SEC)
+    assert {q.health for q in provider.book.quotes(end + 41 * SEC)} == {DataHealth.STALE}  # until the first data frame
+    provider.on_frame(next(f for _, f in recorded_frames() if len(f) > 1), end + 41 * SEC)
     assert {q.health for q in provider.book.quotes(end + 41 * SEC)} == {DataHealth.AVAILABLE}
     provider.on_session_ended(end + 42 * SEC)  # 403 at connect: no retry
     assert {q.health for q in provider.book.quotes(end + 42 * SEC)} == {DataHealth.UNAVAILABLE}

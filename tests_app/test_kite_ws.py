@@ -187,3 +187,25 @@ async def test_over_3000_tokens_are_cut_and_counted():
         sock.stop()
         await asyncio.wait_for(task, 10)
     assert len(got[0]["v"]) == 3000 and sock.over_limit == len(provider.subscribed_tokens()) - 3000
+
+
+async def test_accept_then_drop_server_is_not_retried_every_second():
+    """Opening a connection does not reset the backoff; only the first data frame does."""
+    provider = _provider()
+    holder = {"delays": []}
+
+    async def handler(ws):
+        await ws.recv()
+        await ws.close()  # accepts, then drops without ever sending data
+
+    async def sleep(seconds):
+        holder["delays"].append(seconds)
+        if len(holder["delays"]) == 4:
+            holder["sock"].stop()
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        sock = holder["sock"] = KiteSocket(provider, api_key=API_KEY, access_token=TOKEN, clock=lambda: NOW,
+                                           base_url=f"ws://127.0.0.1:{port}", sleep=sleep)
+        assert await asyncio.wait_for(sock.run(), 10) == STOPPED
+    assert holder["delays"] == [1, 2, 4, 8]

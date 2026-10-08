@@ -37,19 +37,28 @@ class FeedState:
         self.session_ended = False
         self._last_activity: datetime.datetime | None = None
         self._disconnected_at: datetime.datetime | None = None
+        self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
 
     def on_connected(self, now: datetime.datetime) -> None:
         self.connected = True
         self._disconnected_at = None
         self._last_activity = now  # a fresh connection starts the 'something must arrive' clock
+        self._awaiting_data = True
 
     def on_activity(self, now: datetime.datetime) -> None:
-        """A data frame or a heartbeat arrived."""
+        """A heartbeat arrived: the link is alive, but it proves nothing about prices."""
         self._last_activity = now
 
+    def on_data(self, now: datetime.datetime) -> None:
+        """A well-formed data frame with at least one tick arrived: quotes are current again."""
+        self._last_activity = now
+        self._awaiting_data = False
+
     def on_disconnected(self, now: datetime.datetime) -> None:
-        self.connected = False
-        self._disconnected_at = now
+        """Only the connected -> disconnected transition starts the outage clock; a failed retry must not restart it."""
+        if self.connected:
+            self.connected = False
+            self._disconnected_at = now
 
     def on_session_ended(self, now: datetime.datetime) -> None:
         self.connected = False
@@ -64,7 +73,7 @@ class FeedState:
                 return DataHealth.UNAVAILABLE  # never connected
             return (DataHealth.STALE if now - self._disconnected_at <= self.reconnect_window
                     else DataHealth.UNAVAILABLE)
-        if self._last_activity is None or now - self._last_activity > self.feed_stale:
+        if self._awaiting_data or self._last_activity is None or now - self._last_activity > self.feed_stale:
             return DataHealth.STALE
         return DataHealth.AVAILABLE
 
@@ -94,6 +103,9 @@ class QuoteBook:
     def __init__(self, feed: FeedState) -> None:
         self.feed = feed
         self._entries: dict[str, BookEntry] = {}
+
+    def remove(self, instrument_id: str) -> None:
+        self._entries.pop(instrument_id, None)
 
     def update(self, quote: NormalizedQuote) -> None:
         self._entries[quote.instrument_id] = BookEntry(quote, quote.timestamp)

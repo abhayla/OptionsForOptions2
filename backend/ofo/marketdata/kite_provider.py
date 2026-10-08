@@ -69,7 +69,11 @@ class KiteProvider(MarketDataProvider):
     def on_frame(self, data: bytes, received_at: datetime.datetime) -> list[NormalizedQuote]:
         """A binary message: a data frame or a heartbeat. Returns the quotes it produced, in order."""
         result = parse_frame(data)
-        self.feed.on_activity(received_at)
+        if result.malformed == 0:  # only a well-formed frame or a heartbeat is activity
+            if result.ticks:
+                self.feed.on_data(received_at)
+            else:
+                self.feed.on_activity(received_at)
         self.counters["frames"] += 1
         self.counters["heartbeats"] += result.heartbeat
         self.counters["unknown_packets"] += result.unknown_packets
@@ -77,7 +81,11 @@ class KiteProvider(MarketDataProvider):
         self.counters["malformed"] += result.malformed
         out = []
         for tick in result.ticks:
-            quote = self.normalise(tick, received_at)
+            try:
+                quote = self.normalise(tick, received_at)
+            except (ValueError, KeyError):  # unknown instrument type / segment, invalid value: skip, never raise
+                self.counters["unmappable"] += 1
+                continue
             if quote is None:
                 self.counters["unmapped_token"] += 1
                 continue
@@ -132,10 +140,11 @@ class KiteProvider(MarketDataProvider):
 
     # ---- MarketDataProvider ----------------------------------------------------------------------------------
     def subscribe(self, instrument_ids: Sequence[str]) -> None:
+        unknown = [i for i in instrument_ids if i not in self._token_of]
+        if unknown:  # validate everything first: a bad id subscribes nothing
+            raise KeyError(f"no Kite token for instrument(s) {unknown[:5]!r}")
         for i in instrument_ids:
-            token = self._token_of.get(i)
-            if token is None:
-                raise KeyError(f"no Kite token for instrument {i!r}")
+            token = self._token_of[i]
             if token not in self._wanted:
                 self._wanted.add(token)
                 self._added.append(token)
@@ -143,6 +152,7 @@ class KiteProvider(MarketDataProvider):
 
     def unsubscribe(self, instrument_ids: Sequence[str]) -> None:
         for i in instrument_ids:
+            self.book.remove(i)  # no stale price may outlive the subscription
             token = self._token_of.get(i)
             if token in self._wanted:
                 self._wanted.discard(token)

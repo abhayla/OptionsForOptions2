@@ -39,7 +39,7 @@ class FakeProvider(MarketDataProvider):
     def source_metadata(self): return SourceMetadata(provider="fake", feed_id="fake-1")
 
     def push(self, instrument_id: str, ltp: str, at: datetime.datetime):
-        self.feed.on_activity(at)
+        self.feed.on_data(at)
         q = NormalizedQuote(
             instrument_id=instrument_id, underlying="NIFTY", exchange="NSE", segment="INDEX", instrument_type=None,
             expiry=None, strike=None, ltp=Decimal(ltp), bid=None, ask=None, volume=None, oi=None, oi_change=None,
@@ -58,6 +58,7 @@ def test_fanout_and_feed_health_run_unchanged_on_a_second_provider():
     assert fake.subscribed == ["X:1"]  # one vendor subscription for two subscribers
     fake.feed.on_connected(T0)
     fake.push("X:1", "100.50", T0)
+    fan.pump()
     assert [q.ltp for q in got] == [Decimal("100.50")] * 2
     # the same health rule: 61 s with the feed live (activity every second) keeps the quiet contract available
     for s in range(1, 62):

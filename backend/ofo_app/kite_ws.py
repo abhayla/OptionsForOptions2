@@ -53,6 +53,7 @@ class KiteSocket:
         self._sleep = sleep
         self._stop = False
         self.connections = 0
+        self._backoff = BACKOFF_START
         self.over_limit = 0
 
     def stop(self) -> None:
@@ -60,12 +61,11 @@ class KiteSocket:
 
     async def run(self) -> str:
         """Run until stopped or the session ends. Returns ``STOPPED`` or ``SESSION_ENDED``."""
-        backoff = BACKOFF_START
+        self._backoff = BACKOFF_START  # reset only by the first data frame of a connection, not by opening one
         while not self._stop:
             try:
                 async with self._connect(self._url, logger=_silent, open_timeout=10) as ws:
                     self.connections += 1
-                    backoff = BACKOFF_START
                     self._provider.on_connected(self._clock())
                     log.info("kite socket connected")
                     await self._subscribe_all(ws)
@@ -82,8 +82,8 @@ class KiteSocket:
                 self._dropped("closed")
             if self._stop:
                 break
-            await self._sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX)
+            await self._sleep(self._backoff)
+            self._backoff = min(self._backoff * 2, BACKOFF_MAX)
         return STOPPED
 
     def _dropped(self, reason: str) -> None:
@@ -116,6 +116,8 @@ class KiteSocket:
                 await self._send_changes(ws)
                 continue
             if isinstance(message, bytes):
+                if len(message) > 1:  # a data frame (not a heartbeat) proves the connection is useful
+                    self._backoff = BACKOFF_START
                 self._provider.on_frame(message, self._clock())
             else:
                 self._provider.on_text(message)

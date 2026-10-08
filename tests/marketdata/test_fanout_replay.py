@@ -19,6 +19,7 @@ def test_1000_subscribers_share_one_vendor_subscription_per_instrument():
     assert provider.counters["vendor_subscribe"] == len(ids) == 1091  # 1 per instrument, not 1,000 per instrument
     assert len(provider.subscribed_tokens()) == 1091
     replay(provider, clock)
+    fan.pump()
 
     first = inboxes[0]
     assert len(first) == 7301  # every tick of the recording reached the subscriber
@@ -39,6 +40,7 @@ def test_last_unsubscribe_releases_the_vendor_subscription_and_a_bad_subscriber_
     h_good = fan.subscribe(good.append, [NIFTY_CE_ID])
     assert provider.counters["vendor_subscribe"] == 1
     replay(provider, clock)
+    fan.pump()
     assert good and fan.listener_errors == len(good)  # the bad one failed every time, the good one got every update
     fan.unsubscribe(h_bad)
     assert len(provider.subscribed_tokens()) == 1  # still one subscriber left
