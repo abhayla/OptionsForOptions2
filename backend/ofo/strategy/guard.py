@@ -32,6 +32,8 @@ Orchestrator defaults (not stated by the spec):
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import hashlib
 import hmac
 import json
@@ -51,7 +53,7 @@ MAX_OPEN_DECISIONS: Final = 100  # orchestrator default OD-G4
 _ZERO: Final = Decimal("0")
 
 
-class GuardRefused(ValueError):
+class GuardRefused(UserFacing, ValueError):
     """The action changes the risk profile and was not acknowledged for this exact proposal, or was never checked.
 
     W-024 round 9 (REQ-065 AC-2, ADR-003 Q226): the words come only from ``render()``. ``reason`` is the

@@ -8,6 +8,8 @@ the user's explicit choice (AC-5, ADR-016 Q44). Reason texts are decision-suppor
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import dataclasses
 import datetime
 import logging
@@ -84,7 +86,7 @@ class FlagCode(str, Enum):
 
 
 @dataclass(frozen=True)
-class CheckFailure:
+class CheckFailure(UserFacing):
     """One failed check. Its words come only from `render()` (W-024 round 9, REQ-065 AC-2, ADR-003 Q226): `message`
     is the four-part `UserFacingError`; a plain string is refused, so no reason text can be built here by hand."""
 

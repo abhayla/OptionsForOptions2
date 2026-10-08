@@ -9,6 +9,8 @@ Public surface:
   `external_text`); no public constructor.
 - `MessageTemplate`, `CATALOGUE`: the fixed, reviewed template catalogue.
 - `render`: the only way to build a `UserFacingError`.
+- `UserFacing`, `user_message_of`: the marker for exceptions/results whose message is shown to a user (round 9
+  part 6); the API boundary shows only their message, and the INTERNAL_SYSTEM template for anything else.
 - Slot types: `Money`, `PnLMoney`, `Int`, `Count`, `Time`, `Instrument`, `Underlying`, `Code`,
   `ExternalText` (with its closed `ExternalSource` label).
 """
@@ -30,10 +32,13 @@ from .slots import (
 )
 from .gate_slots import LegValue
 from .templates import CATALOGUE, MessageTemplate, display_text, render
+from .user_facing import UserFacing, user_message_of
 
 __all__ = [
     "ErrorClass",
     "UserFacingError",
+    "UserFacing",
+    "user_message_of",
     "MessageTemplate",
     "CATALOGUE",
     "render",

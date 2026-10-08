@@ -26,6 +26,8 @@ A strategy's "broker share" of a contract is broker[c] - standalone[c] - the oth
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import datetime
 from dataclasses import dataclass
 from enum import Enum
@@ -43,7 +45,7 @@ MAX_STRATEGIES = 1_000
 STANDALONE = "standalone"
 
 
-class ReconciliationError(ValueError):
+class ReconciliationError(UserFacing, ValueError):
     """Invalid reconciliation input, or a resolution that is not allowed in the current state.
 
     ``str(error)`` is the developer detail (a malformed input, named with its value); it is never shown to a user.
@@ -135,7 +137,7 @@ def _check_breakdown(value: object, label: str) -> None:
 
 
 @dataclass(frozen=True)
-class Mismatch:
+class Mismatch(UserFacing):
     """One recorded mismatch (AC-3): time, broker state, platform state, difference and required next action.
 
     Validated on construction (W-021 fix round, class: an audit write not validated before commit) so a hand-built

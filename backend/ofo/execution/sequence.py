@@ -59,6 +59,8 @@ is singled out). A sold option with no protector is naked in full.
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -283,7 +285,7 @@ def _margin_order(plan: ExecutionPlan, steps: dict[StepKind, list[str]],
     return True, render_explanation("margin_note_used")
 
 
-class SliceRefused(ValueError):
+class SliceRefused(UserFacing, ValueError):
     """A lot or freeze-quantity refusal while slicing orders. ``str(error)`` is the developer detail; ``message`` is the
     four-part ``UserFacingError`` from ``render()`` (W-024 round 9) and ``text`` is what a user is shown."""
 

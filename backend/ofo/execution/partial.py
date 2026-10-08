@@ -55,6 +55,8 @@ Orchestrator defaults (not stated by the spec; each also marked where it is used
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import dataclasses
 import logging
 import datetime
@@ -389,7 +391,7 @@ def _prep(*args: object, **kwargs: object) -> Preparation:
     return Preparation(*args, _mint=_MINT, **kwargs)  # type: ignore[arg-type]
 
 
-class Preparation:
+class Preparation(UserFacing):
     """Orders prepared for one user choice. Nothing is sent until ``submit_confirmed``; usable once.
 
     A ready preparation is the strategy's ONE live preparation (held on the ``OrderBook``) until it is sent or the

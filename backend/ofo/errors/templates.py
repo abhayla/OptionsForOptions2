@@ -616,7 +616,27 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Reconcile this strategy first, then choose again."),
 )
 
-_TEMPLATES = _TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+# --- Round 9 part 6: the API boundary (backend/ofo_app/errors.py). Any exception that is not `UserFacing` shows the
+# first; a request the API cannot read, or an address it does not serve, shows the other two. The exception's own
+# text is logged with the reference, never shown. New: awaiting the owner's read.
+_BOUNDARY_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("internal_system_request_failed", _IS, 2,
+          "An unexpected server error stopped this request (reference {reference}).",
+          "The action you asked for was not completed.", "This request, until the issue is resolved.",
+          "Try again in a few minutes; contact support with the reference if this keeps happening.",
+          {"reference": Code}),
+    _gate("user_input_request_invalid", _UI, 2,
+          "Some of the values sent with this request are missing or not in the expected form.",
+          "The request was not carried out.", "This request, until its values are corrected.",
+          "Check the values you entered and try again."),
+    _gate("user_input_request_not_available", _UI, 3,
+          "The page or action you asked for is not available here.",
+          "Nothing was changed.", "This request.",
+          "Go back to the previous page and choose again."),
+)
+
+_TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+              + _BOUNDARY_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

@@ -802,5 +802,17 @@
   "explanation:scenario_caption_right": {
     "sha256": "01539a0a723b92cc0c968e3d387e3d400356a13ca3dbc95014226918928aee45",
     "reviewed": "pending owner read"
+  },
+  "internal_system_request_failed": {
+    "sha256": "4f095fe7e05e55af2c4b0fb18cc1d0d42de745fba38fc673235664471648d49e",
+    "reviewed": "pending owner read"
+  },
+  "user_input_request_invalid": {
+    "sha256": "71e6dfe713654ab145072c2112f9ee8a28b2ec8d30957a0fd63751e979e22dcb",
+    "reviewed": "pending owner read"
+  },
+  "user_input_request_not_available": {
+    "sha256": "11c795ba45e0011039572240bb6205f6127787a56591c789659aeb541279bd92",
+    "reviewed": "pending owner read"
   }
 }

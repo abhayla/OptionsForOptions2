@@ -49,44 +49,34 @@ _WORD = re.compile(r"[A-Za-z]")
 
 #: Producers not routed through render() yet (out of round 9's five-module scope), file -> functions. Ratchet.
 PENDING: dict[str, dict[str, int]] = {
-    'adjustment/registry.py': {'calculator': 1, 'get': 1, 'load_rows': 7, 'register_calculator': 3},
     'audit/catalogue.py': {'<module>': 31},
-    'audit/log.py': {'from_events': 1},
-    'audit/models.py': {'_reject_naive_datetime': 1, 'canonical_json': 1},
-    'engine/black_scholes.py': {'_solve_iv': 2},
     'engine/display.py': {'describe_estimate': 1},
     'engine/interfaces.py': {'__post_init__': 2},
-    'engine/metrics.py': {'strategy_metrics': 1},
     'errors/classes.py': {'<module>': 9},
-    'errors/model.py': {'verify': 3},
     'execution/partial.py': {'assess': 3, 'submit_confirmed': 2},
     'execution/safety.py': {'__post_init__': 1},
     'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1, 'slice_quantity': 1},
-    'instruments/models.py': {'check_broker_code': 1},
     'marketdata/health.py': {'evaluate_health': 1},
+    'marketdata/kite_provider.py': {'<module>': 2},
     'marketdata/quote.py': {'__post_init__': 3},
-    'orders/model.py': {'<module>': 1, 'apply_fill': 1, 'clear_reconciliation_block': 1, 'reconcile_cumulative': 1},
+    'orders/model.py': {'<module>': 1},
     'range/pick_lists.py': {'<module>': 1, '__post_init__': 1},
-    'reconciliation/blocking.py': {'blocked_strategy_ids': 3},
     'reconciliation/compare.py': {'<module>': 9, '__post_init__': 7, '_check_breakdown': 1, '_check_contract_pairs': 1, 'compare': 3, 'describe': 2, 'require_id': 1, 'unexplained_changes': 3},
-    'reconciliation/resolution.py': {'<module>': 7, '_require_audit': 1, '_require_record': 1, '_start': 8, 'adopt_broker_position': 1, 'mark_exited_broker_flat': 2, 'prepare_closing_order': 2, 'record_report': 5},
-    'reconciliation/triggers.py': {'<module>': 8, '_records': 3, 'plan_run': 2},
+    'reconciliation/resolution.py': {'<module>': 7, 'record_report': 1},
+    'reconciliation/triggers.py': {'<module>': 8},
     'rules/defaults.py': {'resolve_adjustment_rules': 3},
     'scenario/levels.py': {'build_level_set': 1},
-    'strategy/builder_history.py': {'__init__': 1, '_check_legs': 4, '_check_no_duplicate_with_others': 1, '_check_not_executed': 1, '_entry_by_seq': 1, '_leg_at': 1, 'add_leg': 1, 'change_expiry': 2, 'change_strike': 1, 'remove_leg': 1, 'rename': 1, 'reorder_legs': 1, 'restore': 1, 'toggle_display': 1, 'undo': 1},
-    'strategy/definition.py': {'__post_init__': 11, '_limit_value': 1, '_preference_value': 1, 'changes_from': 1, 'from_engine': 1},
+    'strategy/builder_history.py': {'__init__': 1},
+    'strategy/definition.py': {'_limit_value': 1},
     'strategy/guard.py': {'compare_risk': 3},
-    'strategy/linear.py': {'parse_expression': 4},
-    'strategy/live_state.py': {'__post_init__': 8, '_pairs': 1},
-    'strategy/loader.py': {'_build': 2, '_construct_unique_mapping': 2, 'check_catalogue': 2, 'check_wording': 4, 'load_templates': 2},
-    'strategy/matching.py': {'<module>': 1, '_fit': 2, 'match': 1, 'match_shape': 1},
-    'strategy/model.py': {'__post_init__': 18, '_check_constraints': 6, '_check_legs': 5, 'resolve_params': 2, 'resolve_template': 5, 'violation': 3, 'violations': 4},
-    'strategy/modification.py': {'__post_init__': 8, '_engine_legs': 2, '_gate_legs': 1, '_guard_binding': 1, '_pending_binding': 1, 'apply_changes': 8, 'confirm_modification': 3, 'execute_confirmed_modification': 1, 'prepare_confirmed_modification': 6, 'propose_modification': 3},
-    'strategy/versions.py': {'__init__': 1, '__post_init__': 10, '_add_version': 1, '_append_history': 1, '_check_time': 2, '_definition_from': 3, '_refuse_if_exited': 1, '_refuse_while_blocked': 2, 'apply_result': 7, 'check_contract': 6, 'check_observation': 5, 'confirm': 3, 'edit': 4, 'mark_exited': 4, 'propose_execution': 3, 'reconcile': 6, 'restore': 3, 'version': 1},
+    'strategy/live_state.py': {'_pairs': 1},
+    'strategy/loader.py': {'check_wording': 2, 'load_templates': 1},
+    'strategy/matching.py': {'<module>': 1, '_fit': 2},
+    'strategy/model.py': {'violation': 3, 'violations': 4},
+    'strategy/versions.py': {'__post_init__': 2, 'apply_result': 1, 'check_contract': 1, 'check_observation': 2, 'propose_execution': 2, 'reconcile': 2, 'restore': 1},
     'table/columns.py': {'<module>': 6},
     'table/model.py': {'_greek_cell': 1, '_iv_cell': 2, '_leg_per_unit_greeks': 1, '_leg_row': 8, '_money': 1, '_net_premium_cell': 2, '_percent_cell': 1, '_points': 1, '_text': 1, '_total_pnl_percent_cell': 4, '_total_row': 10},
     'timeline/catalogue.py': {'<module>': 12},
-    'timeline/log.py': {'from_entries': 3},
     'timeline/records.py': {'__post_init__': 2, 'from_evaluation': 3},
 }
 
@@ -114,7 +104,107 @@ def _call_name(call: ast.Call) -> str:
     return ""
 
 
-def _excluded(chain: list[ast.AST]) -> bool:
+_UNRESOLVED = object()
+
+
+def _module_name(rel: str) -> str:
+    parts = rel[:-3].split("/")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(["ofo", *parts])
+
+
+def _bound_in(function: ast.AST, name: str) -> bool:
+    """True when `name` is bound inside `function` (argument, assignment, def, import, ...): a local that shadows
+    the module's name, so the callee cannot be resolved by the module's import source (fail closed)."""
+    args = getattr(function, "args", None)
+    if args is not None:
+        every = [*args.posonlyargs, *args.args, *args.kwonlyargs, *(a for a in (args.vararg, args.kwarg) if a)]
+        if any(a.arg == name for a in every):
+            return True
+    for node in ast.walk(function):
+        if node is function:
+            continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)) and node.id == name:
+            return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
+            return True
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and any(
+                (a.asname or a.name.split(".")[0]) == name for a in node.names):
+            return True
+        if isinstance(node, ast.ExceptHandler) and node.name == name:
+            return True
+    return False
+
+
+def resolve_callee(call: ast.Call, chain: list[ast.AST], rel: str) -> object:
+    """The object a call's callee names, resolved by IMPORT SOURCE: the module-level global of the scanned module
+    (its own class, or the object a `from x import y` bound there), via the imported module itself. Returns
+    `_UNRESOLVED` for any shape it cannot resolve: an attribute call, a name bound locally in an enclosing function,
+    a module that does not import, a name it does not hold."""
+    if not isinstance(call.func, ast.Name):
+        return _UNRESOLVED
+    name = call.func.id
+    if any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and _bound_in(n, name) for n in chain):
+        return _UNRESOLVED
+    import builtins
+    import importlib
+
+    try:
+        module = importlib.import_module(_module_name(rel))
+    except Exception:  # an unknown module (a test sample) or one that cannot import: fail closed
+        module = None
+    if module is not None and name in vars(module):
+        return vars(module)[name]
+    if module is None and name in BUILTIN_EXCEPTIONS:
+        return getattr(builtins, name)
+    if module is not None and hasattr(builtins, name):
+        return getattr(builtins, name)
+    return _UNRESOLVED
+
+
+#: The one parameter of a `UserFacing` type that holds developer text (`str(error)`), never shown: the boundary shows
+#: only `user_message`. Matched against the parameter the literal BINDS to in the real signature, not the source text.
+DETAIL_PARAMETER = "detail"
+
+
+def _bound_parameter(call: ast.Call, chain: list[ast.AST], target: type) -> str | None:
+    """The parameter of `target(...)` that the scanned literal's argument binds to, by `inspect.signature`; None when
+    it cannot be told (a *args/**kwargs splat, a signature that cannot be read): fail closed."""
+    import inspect
+
+    index = next(i for i, node in enumerate(chain) if node is call)
+    below = chain[index + 1]
+    try:
+        params = list(inspect.signature(target).parameters.values())
+    except (TypeError, ValueError):
+        return None
+    if isinstance(below, ast.keyword):
+        return below.arg if any(p.name == below.arg for p in params) else None
+    if below in call.args and not any(isinstance(a, ast.Starred) for a in call.args):
+        position = call.args.index(below)
+        positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        return positional[position].name if position < len(positional) else None
+    return None
+
+
+def _exception_flow(call: ast.Call, chain: list[ast.AST], rel: str) -> bool | None:
+    """True: the call builds a NON-user-facing exception (its text is developer detail; the API boundary shows the
+    INTERNAL_SYSTEM template instead). False: it builds a `UserFacing` type (its text would be shown: a producer).
+    None: not an exception class, or unresolvable (the caller keeps scanning, so the literal stays counted)."""
+    from ofo.errors import UserFacing
+
+    target = resolve_callee(call, chain, rel)
+    if not isinstance(target, type):
+        return None
+    if issubclass(target, UserFacing):
+        return _bound_parameter(call, chain, target) == DETAIL_PARAMETER  # detail: hidden; else shown
+    if issubclass(target, BaseException):
+        return True
+    return None
+
+
+def _excluded(chain: list[ast.AST], rel: str = "") -> bool:
     """True when the literal sits in a position that is never shown to a user (see module docstring)."""
     node, parent = chain[-1], chain[-2] if len(chain) > 1 else None
     if isinstance(parent, ast.Expr):
@@ -141,6 +231,9 @@ def _excluded(chain: list[ast.AST]) -> bool:
             name = _call_name(exc) if isinstance(exc, ast.Call) else ""
             return name in BUILTIN_EXCEPTIONS
         if isinstance(ancestor, ast.Call):
+            flow = _exception_flow(ancestor, chain, rel)
+            if flow is not None:
+                return flow  # True: developer detail of a non-UserFacing exception; False: text into a UserFacing
             name = _call_name(ancestor)
             func = ancestor.func
             if isinstance(func, ast.Attribute) and name in LOG_METHODS:
@@ -168,7 +261,7 @@ def scan_source(source: str, rel: str) -> list[tuple[str, int, str, str]]:
             child_chain = chain + [child]
             child_function = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else function
             text = _text(child)
-            if text is not None and is_sentence_shaped(text) and not _excluded(child_chain):
+            if text is not None and is_sentence_shaped(text) and not _excluded(child_chain, rel):
                 found.append((rel, child.lineno, function, text))
             if isinstance(child, ast.JoinedStr):
                 continue  # its pieces are part of the f-string already reported (or not)

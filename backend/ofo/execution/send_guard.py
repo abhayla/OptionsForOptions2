@@ -22,6 +22,8 @@ sends. Threat model (agreed): accidental misuse by future platform code, not a m
 """
 from __future__ import annotations
 
+from ofo.errors.user_facing import UserFacing
+
 import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -38,7 +40,7 @@ from ofo.strategy.versions import StrategyRecord, Version
 _MINT: Final = object()  # only this module builds a broker request
 
 
-class SendRefused(ValueError):
+class SendRefused(UserFacing, ValueError):
     """An order is not one the strategy's record, the catalogue and the ledger allow; nothing was sent.
 
     W-024 round 9 (REQ-065 AC-2, ADR-003 Q226): the words come only from ``render()``. ``message`` is the four-part

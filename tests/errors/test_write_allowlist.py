@@ -121,6 +121,11 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
                    "marks a Preparation (type-checked just above) as used, so it cannot be sent twice"),
     AllowlistEntry("execution/send_guard.py", r'object\.__setattr__\(self, "(resolve_all|submit)", (resolve_all|submit)\)',
                    "the send sink's __init__ fills its own two closures; its __setattr__ refuses changes"),
+    AllowlistEntry("marketdata/fanout.py", r"sub\.lagging = (False|True)",
+                   "W-059 fan-out: `sub = self._subs[handle]` just above; the fan-out's own private per-subscriber "
+                   "record (no text, a queue-state flag)"),
+    AllowlistEntry("marketdata/fanout.py", r"sub\.dropped \+= 1",
+                   "W-059 fan-out: `sub = self._subs[handle]` just above; counts quotes dropped from its own queue"),
     AllowlistEntry("instruments/catalogue.py", r"entry\.currently_listed = False",
                    "an entry of the catalogue's own self._entries dict, iterated just above"),
     AllowlistEntry("marketdata/health.py",
