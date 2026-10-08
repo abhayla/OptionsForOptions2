@@ -81,7 +81,7 @@ def test_ending_does_not_change_the_session_identity():
         s.user_ref, s.broker, s.started_at, s.expected_expiry)
 
 
-# ---- expected_expiry: the next 06:00 IST after login (an expectation until F-31 measures it) ----
+# ---- expected_expiry: the next 06:00 IST after login (an expectation until F-32 measures it) ----
 
 
 @pytest.mark.parametrize(

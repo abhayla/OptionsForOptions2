@@ -75,7 +75,7 @@ def _aware(at: datetime, name: str) -> datetime:
 def expected_expiry(login_at: datetime) -> datetime:
     """The next 06:00 IST strictly after ``login_at``.
 
-    This is an EXPECTATION, to be confirmed by the 2026-10-09 morning token-expiry measurement (F-31). Kite's own
+    This is an EXPECTATION, to be confirmed by the 2026-10-09 morning token-expiry measurement (F-32). Kite's own
     TokenException always wins: a session is EXPIRED as soon as Kite refuses its token, whatever this time says.
     The same rule holds every day of the week (a Saturday login expires on Sunday at 06:00 IST).
     """
