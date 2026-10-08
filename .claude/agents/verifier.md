@@ -2,6 +2,7 @@
 name: verifier
 description: Independently checks one work item against its requirement's acceptance criteria, adversarially ("how could this fail?"). Cannot edit or write any file; returns one evidence block per AC, which the orchestrator records as the evidence file.
 model: opus
+effort: high
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write, MultiEdit, NotebookEdit, Agent
 maxTurns: 40

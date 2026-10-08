@@ -194,6 +194,7 @@ issues:
   "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
   "#155": 4a            # mechanism: a failing step stops commit/push (pipe-masks-gate, 2nd occurrence)
   "#156": 4a            # PR #149 review minors (check_storable test, stale docstring)
+  "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#30": 4a
   "#43": 4b
   "#45": 4b

@@ -74,6 +74,25 @@ requires it), evidence, trace check, review, PR, merge, status update.
     stays the same). Never on an ordinary merge. First publish of a project: publish once, then
     create `views/status-page.json` as `{"url": "<the link>"}` and commit it.
 
+## Model and effort per dispatch
+
+Name the model (by alias) and the effort on every dispatch; the choice comes from `.claude/kit/model-routing.yaml`,
+and the dispatch hook refuses an unknown model, `opus` without a `Why Opus:` line and `fable` without a
+`Why Fable:` line. At intake run `python tools/model_mix.py --alarms`. On a `NEW MODEL` or `UNROUTED MODEL` line do
+not edit `.claude/kit/` (kit-owned, replaced by the next kit upgrade): record it as a finding with scope generic, so
+`kit_harvest` carries it to the kit's maintainers, and continue with the table as it is.
+On `NO TRANSCRIPTS: <path>` the report could not find this project's transcripts: check the path and continue (it is not an alarm).
+
+| Dispatch | Model / effort |
+|---|---|
+| builder | builder sonnet/medium, always (the building class, whatever the tier; a fuzzy multi-file spec gets a design pass first on opus/high with a `Why Opus:` line) |
+| verifier, Tier B | verifier sonnet/high |
+| verifier, Tier A | verifier opus/high |
+| review, Tier B | review sonnet/high |
+| review, Tier A | review opus/xhigh |
+| independent review after the same class fails twice | fable/high with a `Why Fable:` line |
+| read-only search across the codebase | the `Explore` agent (haiku/medium) |
+
 ## Tier table
 
 | Tier | What runs |
