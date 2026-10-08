@@ -60,8 +60,8 @@ SNAPSHOT = text(
 
 
 def _migration():
-    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0005_contract_lifecycle.py"  # the head (W-057)
-    spec = importlib.util.spec_from_file_location("ofo_migration_0005_test", path)
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0006_index_segments.py"  # the head (W-060)
+    spec = importlib.util.spec_from_file_location("ofo_migration_0006_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
