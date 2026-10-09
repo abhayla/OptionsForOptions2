@@ -35,10 +35,7 @@ class View(Enum):
 
 DEFAULT_VIEW: Final = View.AT_EXPIRY
 
-LABELS: Final = {
-    View.AT_EXPIRY: SCENARIO_VIEW_LABEL_TEXT["AT_EXPIRY"],
-    View.ESTIMATED_NOW: SCENARIO_VIEW_LABEL_TEXT["ESTIMATED_NOW"],
-}
+LABELS: Final = {view: render_explanation("scenario_view_label", view=view) for view in View}
 
 
 @dataclass(frozen=True)
