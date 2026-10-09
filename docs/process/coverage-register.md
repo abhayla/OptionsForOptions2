@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 95cc56f
+Generated from commit 8e80d82
 
 ## Stage S0
 
@@ -85,6 +85,7 @@ Generated from commit 95cc56f
 | 4a | decision | ADR-066 | - | Kite Connect's historical candles are used internally only in V1; users see no history screens |
 | 4a | decision | ADR-067 | - | The one-minute history tier is built live from the feed and made final after the close from Kite's own candles |
 | 4a | decision | ADR-068 | - | First screen - a draft's planned entry price, live push cadence, UX level per request, and leg entry in 4a |
+| 4a | decision | ADR-069 | - | A strategy's settings values are short identifiers or numbers; sentences are refused |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
@@ -100,7 +101,6 @@ Generated from commit 95cc56f
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
 | 4a | issue | #163 | - |  |
-| 4a | issue | #165 | - |  |
 | 4a | issue | #167 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
@@ -136,7 +136,7 @@ Generated from commit 95cc56f
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
-| 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
+| 4a | work item | W-066 | - | Outcome text from the catalogue - every outcome, table and summary sentence minted from reviewed templates |
 
 ## Stage 4b
 
@@ -444,7 +444,7 @@ Generated from commit 95cc56f
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 30 | 5 | 0 | 14 | 0 | 1 | 31 | 0 | 1 | 89 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 13 | 0 | 1 | 31 | 0 | 1 | 89 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |

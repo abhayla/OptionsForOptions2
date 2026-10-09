@@ -79,7 +79,6 @@ PENDING: dict[str, dict[str, int]] = {
     'rules/defaults.py': {'resolve_adjustment_rules': 3},
     'scenario/levels.py': {'build_level_set': 1},
     'strategy/builder_history.py': {'__init__': 1},
-    'strategy/definition.py': {'_limit_value': 1},
     'strategy/guard.py': {'compare_risk': 3},
     'strategy/live_state.py': {'_pairs': 1},
     'strategy/loader.py': {'check_wording': 2, 'load_templates': 1},

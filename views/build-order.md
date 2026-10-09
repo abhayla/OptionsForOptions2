@@ -10,7 +10,7 @@ Done (11): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 |---|---|---|---|---|
 | REQ-015 | Zerodha connection | core | normal | next |
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
-| REQ-038 | Strategy definition, live state and versions | core | normal | blocked: its own work item W-061 blocked: PARKED 2026-10-09 by the owner: Tier A verification failed REQ-038 AC-5 on 3 defects - issue #165 (fix first on the next session) |
+| REQ-038 | Strategy definition, live state and versions | core | normal | next |
 | REQ-048 | Market-data pipeline and browser boundary | core | normal | next |
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
