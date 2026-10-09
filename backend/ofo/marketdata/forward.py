@@ -34,13 +34,14 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final, Iterable, Literal
 
 from ofo.engine.black_scholes import DAYS_IN_YEAR, year_fraction
+from ofo.errors.explanations import render_explanation
 from ofo.engine.legs import Instrument
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
 PARITY: Final = "parity"
 SPOT_FALLBACK: Final = "spot fallback"
-FALLBACK_LABEL: Final = "estimated from spot"
+FALLBACK_LABEL: Final = render_explanation("label_estimated_from_spot")
 STRIKES_NEAR: Final = 21
 MIN_STRIKES: Final = 3
 QUALITY_WIDTH: Final = Decimal("0.05")
