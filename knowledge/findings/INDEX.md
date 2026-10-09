@@ -2,10 +2,11 @@
 
 # Findings index
 
-33 finding(s), generated from `knowledge/findings/*.json`.
+34 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
+| absolute-path-from-one-machine | A script that names one machine's absolute path (a drive letter, a user folder, a checkout location) as its only location for the repo, a secrets file or a data folder works only on that machine; on a second machine it fails, or worse, silently reads or writes somewhere else. Locations must be derived from the script's own path or an environment variable, with any default searched, not assumed. | unguarded | occurrences, scope, spec_ref |
 | advice-wording-denylist-per-module | Any decision-support wording guard (ADR-003) written as its own exact-substring list inside each module lets word-stem and spacing variants of banned advice through, and the separate lists drift apart, so the same banned sentence passes in one module and fails in another. | unguarded | occurrences, scope, spec_ref |
 | agent-worktree-from-stale-local-main | Any isolated agent worktree created from the orchestrator's LOCAL main starts from whatever that checkout last pulled; if merges landed on origin since, the agent builds on a stale base, misses files the work depends on (its own work item) and invents substitutes that conflict later. | unguarded | occurrences, scope, spec_ref |
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | scope, spec_ref |
