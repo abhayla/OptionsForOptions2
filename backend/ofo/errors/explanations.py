@@ -303,7 +303,9 @@ class Amount(SlotType):
 
     @staticmethod
     def format(value: object) -> str:
-        return f"{value:f}" if isinstance(value, Decimal) else str(value)  # plain notation, never 1E+3
+        if isinstance(value, Decimal):  # plain notation, never 1E+3; a negative zero prints without its sign
+            return f"{abs(value):f}" if value.is_zero() else f"{value:f}"
+        return str(value)
 
 
 class Days(SlotType):
@@ -401,7 +403,7 @@ class SignedAmount(SlotType):
 
     @staticmethod
     def format(value: Decimal) -> str:
-        return f"{value:+f}"  # plain notation, never +1E+2
+        return f"{abs(value):+f}" if value.is_zero() else f"{value:+f}"  # plain notation, never +1E+2 or -0
 
 
 class HourMinute(SlotType):

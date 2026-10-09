@@ -18,11 +18,17 @@ from ofo.engine.legs import Action, Instrument
 
 #: Template id prefixes of every text the outcome API renders (outcome, legs, data labels, summary, scenario, table).
 OUTCOME_PREFIXES = ("outcome_", "leg_label_", "data_label_", "label_", "summary_", "scenario_", "cell_", "table_")
-OPEN_SLOT_NAMES = {"Recorded", "LegacyRecorded", "str", "Values"}
+#: ALLOW-list of the closed slot types an outcome template may use. Anything else (Quoted, UserText, Recorded,
+#: LegacyRecorded, Values, str, or a type added later) turns the detection test red until it is reviewed and listed here.
+CLOSED_SLOT_TYPES = frozenset({
+    ex.Rupees, ex.Points, ex.SignedAmount, ex.Amount, ex.HourMinute, ex.ClockSeconds, ex.UnderlyingName,
+    ex.InstrumentRef, ex.LegRef, ex.LegRefs, ex.HealthWord, ex.ExpiryDate, ex.CellText,
+    ex.Explained, ex.ScenarioViewLabel, ex.ColumnLabel, ex.HealthLabel,
+})
 
 
 def _outcome_templates() -> dict[str, ex.ExplanationTemplate]:
-    return {tid: t for tid, t in EXPLANATIONS.items() if tid.startswith(OUTCOME_PREFIXES)}
+    return {tid: t for tid, t in ex.EXPLANATIONS.items() if tid.startswith(OUTCOME_PREFIXES)}
 
 
 def test_the_catalogue_enumeration_finds_the_outcome_templates() -> None:
@@ -33,16 +39,41 @@ def test_the_catalogue_enumeration_finds_the_outcome_templates() -> None:
         assert must in found
 
 
+def _slots_outside_the_allow_list() -> dict[str, list[str]]:
+    bad = {tid: [n for n, st in t.slots.items() if st not in CLOSED_SLOT_TYPES] for tid, t in _outcome_templates().items()}
+    return {tid: names for tid, names in bad.items() if names}
+
+
 def test_no_outcome_template_has_an_open_slot() -> None:
-    open_ones = {tid: [n for n, st in t.slots.items() if st.__name__ in OPEN_SLOT_NAMES or st in (ex.Recorded, ex.LegacyRecorded, str)]
-                 for tid, t in _outcome_templates().items()}
-    assert {tid: names for tid, names in open_ones.items() if names} == {}
+    assert _slots_outside_the_allow_list() == {}
 
 
-def test_a_template_switched_back_to_an_open_slot_is_found() -> None:
-    """Mutation check of the detection test itself: the same predicate flags a template given `Recorded`."""
-    t = ex.ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": ex.Recorded})
-    assert any(st.__name__ in OPEN_SLOT_NAMES for st in t.slots.values())
+@pytest.mark.parametrize("open_type", [ex.Quoted, ex.UserText, ex.Recorded, ex.LegacyRecorded, ex.Values, str])
+def test_a_real_template_switched_to_any_open_slot_type_turns_the_check_red(monkeypatch, open_type) -> None:
+    """M17: mutate a REAL catalogue entry (`outcome_why_other_underlying.underlying`) and run the real check."""
+    import dataclasses
+    real = EXPLANATIONS["outcome_why_other_underlying"]
+    mutated = dataclasses.replace(real, slots={**real.slots, "underlying": open_type})
+    monkeypatch.setattr(ex, "EXPLANATIONS", {**EXPLANATIONS, "outcome_why_other_underlying": mutated})
+    with pytest.raises(AssertionError):
+        test_no_outcome_template_has_an_open_slot()
+    assert _slots_outside_the_allow_list() == {"outcome_why_other_underlying": ["underlying"]}
+
+
+@pytest.mark.parametrize("value", [Decimal("-0"), Decimal(0) * -1, Decimal("-0.0"), Decimal("0E-10") * -1])
+def test_negative_zero_prints_without_a_minus_sign(value: Decimal) -> None:
+    assert str(render_explanation("cell_number", value=value)).lstrip("0.") == ""
+    assert not str(render_explanation("cell_number", value=value)).startswith("-")
+    assert not str(render_explanation("cell_percent", value=value)).startswith("-")
+    assert not str(render_explanation("cell_percent_signed", value=value)).startswith("-")
+
+
+def test_negative_zero_literals() -> None:
+    assert str(render_explanation("cell_number", value=Decimal("-0"))) == "0"
+    assert str(render_explanation("cell_number", value=Decimal(0) * -1)) == "0"
+    assert str(render_explanation("cell_number", value=Decimal("-0.0000"))) == "0.0000"
+    assert str(render_explanation("cell_percent", value=Decimal("-0.0"))) == "0.0%"
+    assert str(render_explanation("cell_percent_signed", value=Decimal("-0"))) == "+0%"
 
 
 @pytest.mark.parametrize("template, slots", [
