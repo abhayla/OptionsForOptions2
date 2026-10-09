@@ -15,6 +15,12 @@ Changes (owner-run, one transaction):
   clock), change_summary, definition JSONB (the definition the change replaced), definition_schema_version.
 - CHECKs on both tables: the definition is a JSON object whose schema_version equals the column; a leg strike or a risk
   limit is never a JSON number (decimals are strings); strategies: the definition's underlying equals the column.
+- The closed key shape (issue #165, REQ-038 AC-5 "live prices are never saved inside the strategy"; ADR-064, ADR-069),
+  one named CHECK each on both tables: top-level keys exactly schema_version, underlying, legs, rules_ref, risk_limits,
+  preferences; each leg exactly contract_id, action, instrument, strike, expiry, quantity (typed); risk_limits only
+  max_loss / max_capital / max_margin with plain-digit decimal strings; preferences only ADR-064's six names with
+  values matching the ADR-069 pattern; rules_ref null or that pattern. Structural: a live-price key is refused
+  whatever it is called. An unevaluable value counts as a violation (never a NULL pass).
 - Guard public.strategies_guard (BEFORE INSERT OR UPDATE OR DELETE): refuses any delete; on insert stamps created_at /
   updated_at and status 'draft'; refuses a change to id, user_ref, underlying, status, created_at or the schema
   version; refuses a definition change unless the newest history entry of the strategy holds the definition being
@@ -90,15 +96,73 @@ def _quoted(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{v}'" for v in values)
 
 
+#: The closed key shape of a stored definition (ofo.strategy.stored_form DOCUMENT_KEYS / LEG_KEYS, ADR-064's names,
+#: ADR-069's value pattern). Copied here on purpose - a migration never imports application code, which changes later;
+#: tests/strategy/test_settings_value.py pins that these equal the domain's.
+DOCUMENT_KEYS = ("schema_version", "underlying", "legs", "rules_ref", "risk_limits", "preferences")
+LEG_KEYS = ("contract_id", "action", "instrument", "strike", "expiry", "quantity")
+RISK_LIMIT_NAMES = ("max_loss", "max_capital", "max_margin")
+PREFERENCE_NAMES = ("objective", "market_view", "risk_preference", "capital", "expected_range_low",
+                    "expected_range_high")
+IDENTIFIER_REGEX = "^[A-Za-z0-9_.-]{1,64}$"  # ADR-069
+LIMIT_REGEX = "^-?[0-9]{1,30}([.][0-9]{1,30})?$"  # a finite decimal as plain digits (ADR-069: numbers, no exponent)
+
+
+def _bad(path: str) -> str:
+    """True when the jsonpath finds a match - and also when it cannot be evaluated (silent: NULL -> true), so a
+    malformed value is refused instead of slipping through a NULL CHECK result."""
+    return f"coalesce(jsonb_path_exists(definition, '{path}', '{{}}', true), true)"
+
+
+def _not_in(names: tuple[str, ...]) -> str:
+    return " && ".join(f'@.key != "{n}"' for n in names)
+
+
+def _shape_checks(prefix: str) -> str:
+    """The database's own refusal of any definition outside the closed key shape (REQ-038 AC-5: live prices are never
+    saved inside the strategy). Structural, not a list of forbidden words: a key or value that is not on the closed
+    lists is refused whatever it is called."""
+    leg_wrong_type = " || ".join((
+        '@.contract_id.type() != "number"', '@.action.type() != "string"', '@.instrument.type() != "string"',
+        '@.expiry.type() != "string"', '@.quantity.type() != "number"',
+        '(@.strike.type() != "string" && @.strike.type() != "null")'))
+    leg_missing = " && ".join(f"exists(@.{k})" for k in LEG_KEYS)
+    top_missing = ", ".join(f"'{k}'" for k in DOCUMENT_KEYS)
+    top_types = " AND ".join((
+        "jsonb_typeof(definition -> 'schema_version') = 'number'", "jsonb_typeof(definition -> 'underlying') = 'string'",
+        "jsonb_typeof(definition -> 'legs') = 'array'", "jsonb_typeof(definition -> 'risk_limits') = 'object'",
+        "jsonb_typeof(definition -> 'preferences') = 'object'"))
+    return f""",
+            CONSTRAINT {prefix}_shape_top_level CHECK (
+                coalesce(definition ?& ARRAY[{top_missing}], false)
+                AND coalesce({top_types}, false)
+                AND NOT {_bad(f'$.keyvalue() ? ({_not_in(DOCUMENT_KEYS)})')}),
+            CONSTRAINT {prefix}_shape_legs CHECK (
+                NOT {_bad('$.legs[*] ? (@.type() != "object")')}
+                AND NOT {_bad(f'$.legs[*].keyvalue() ? ({_not_in(LEG_KEYS)})')}
+                AND NOT {_bad(f'$.legs[*] ? (!({leg_missing}))')}
+                AND NOT {_bad(f'$.legs[*] ? ({leg_wrong_type})')}),
+            CONSTRAINT {prefix}_shape_rules_ref CHECK (
+                coalesce(jsonb_path_exists(definition, '$.rules_ref ? (@.type() == "null" || (@.type() == "string" '
+                         '&& @ like_regex "{IDENTIFIER_REGEX}"))', '{{}}', true), false)),
+            CONSTRAINT {prefix}_shape_risk_limits CHECK (
+                NOT {_bad(f'$.risk_limits.keyvalue() ? ({_not_in(RISK_LIMIT_NAMES)})')}
+                AND NOT {_bad(f'$.risk_limits.* ? (@.type() != "string" || !(@ like_regex "{LIMIT_REGEX}"))')}),
+            CONSTRAINT {prefix}_shape_preferences CHECK (
+                NOT {_bad(f'$.preferences.keyvalue() ? ({_not_in(PREFERENCE_NAMES)})')}
+                AND NOT {_bad(f'$.preferences.* ? (@.type() != "string" || !(@ like_regex "{IDENTIFIER_REGEX}"))')})"""
+
+
 def _definition_checks(prefix: str) -> str:
-    """CHECKs shared by both tables: the stored form's shape and version, and no JSON number where a decimal goes."""
+    """CHECKs shared by both tables: the stored form's shape and version, no JSON number where a decimal goes, and the
+    closed key shape."""
     return f"""
             CONSTRAINT {prefix}_definition_is_versioned CHECK (
                 jsonb_typeof(definition) = 'object'
                 AND (definition ->> 'schema_version') IS NOT DISTINCT FROM definition_schema_version::text),
             CONSTRAINT {prefix}_decimals_are_strings CHECK (
                 NOT jsonb_path_exists(definition, '$.legs[*].strike ? (@.type() == "number")')
-                AND NOT jsonb_path_exists(definition, '$.risk_limits.* ? (@.type() == "number")'))"""
+                AND NOT jsonb_path_exists(definition, '$.risk_limits.* ? (@.type() == "number")')){_shape_checks(prefix)}"""
 
 
 def _strategies_guard_sql() -> str:

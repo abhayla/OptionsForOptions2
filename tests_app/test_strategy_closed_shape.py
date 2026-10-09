@@ -9,7 +9,12 @@ never echoed back.").
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -20,7 +25,7 @@ from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update
 from test_strategy_store import (AS_OF, CHECK_VIOLATION, IRON_CONDOR, LOT, _app, _client, _expect_refused,
-                                 _fixture_rows, _ids, _saved_in, _user, _with_draft)
+                                 _fixture_rows, _ids, _user, _with_draft)
 
 SENTENCE = "LTP is 22950.35 buy now"
 INSERT_DEFINITION = ("INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
@@ -219,6 +224,63 @@ async def test_ac5_update_with_a_refused_value_stores_nothing_and_history_is_unc
             assert err.value.code == "value_not_allowed"
             assert (await store.history(conn, stored.user_ref, stored.id)) == []
             assert (await store.load(conn, stored.user_ref, stored.id)).saved == stored.saved
-            assert _saved_in  # the helper used by sibling tests stays importable
+        finally:
+            await trans.rollback()
+
+
+ROOT = Path(__file__).resolve().parents[1]
+INI = "backend/ofo_app/alembic.ini"
+
+
+def _alembic(*args: str) -> subprocess.CompletedProcess:
+    env = dict(os.environ, ALEMBIC_DATABASE_URL=os.environ["TEST_ADMIN_DATABASE_URL"])
+    return subprocess.run([sys.executable, "-m", "alembic", "-c", INI, *args], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=240)
+
+
+async def _table_exists(admin_engine, name: str) -> bool:
+    async with admin_engine.connect() as conn:
+        return (await conn.execute(text("SELECT to_regclass(:n) IS NOT NULL"), {"n": f"public.{name}"})).scalar_one()
+
+
+async def test_ac5_downgrade_refuses_while_a_row_exists_then_downgrade_and_upgrade_restore_the_checks(admin_engine):
+    """Issue #165 open item: the 0008 downgrade with a row present. A saved draft is the user's data, so the downgrade
+    refuses and the row survives; once the row is gone, downgrade then upgrade leaves a store that still refuses a
+    definition outside the closed key shape."""
+    doc = json.dumps({"schema_version": 1, "underlying": "NIFTY", "rules_ref": None, "risk_limits": {},
+                      "preferences": {}, "legs": [{"contract_id": 1, "action": "SELL", "instrument": "CE",
+                                                   "strike": "22800", "expiry": "2026-10-13", "quantity": 65}]})
+    user = _user()
+    async with admin_engine.connect() as conn:
+        async with conn.begin():
+            strategy_id = (await conn.execute(text(INSERT_DEFINITION + " RETURNING id"), {"u": user, "d": doc})
+                           ).scalar_one()
+    try:
+        refused = await asyncio.to_thread(_alembic, "downgrade", "0007_broker_sessions")
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        assert "refusing to downgrade" in refused.stdout + refused.stderr
+        async with admin_engine.connect() as conn:
+            assert (await conn.execute(text("SELECT count(*) FROM public.strategies WHERE id = :i"),
+                                       {"i": strategy_id})).scalar_one() == 1
+    finally:
+        async with admin_engine.connect() as conn:
+            async with conn.begin():
+                await conn.execute(text("SET LOCAL session_replication_role = replica"))
+                await conn.execute(text("DELETE FROM public.strategies WHERE user_ref = :u"), {"u": user})
+    try:
+        down = await asyncio.to_thread(_alembic, "downgrade", "0007_broker_sessions")
+        assert down.returncode == 0, down.stdout + down.stderr
+        assert not await _table_exists(admin_engine, "strategies")
+        assert not await _table_exists(admin_engine, "strategy_history")
+    finally:
+        up = await asyncio.to_thread(_alembic, "upgrade", "head")
+    assert up.returncode == 0, up.stdout + up.stderr
+    assert await _table_exists(admin_engine, "strategies") and await _table_exists(admin_engine, "strategy_history")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await conn.execute(text(INSERT_DEFINITION), {"u": user, "d": doc})  # the real shape inserts
+            bad = _mutated(doc, REFUSED_SHAPES["top-level-ltp"])
+            await _expect_refused(conn, INSERT_DEFINITION, CHECK_VIOLATION, {"u": user, "d": bad})
         finally:
             await trans.rollback()
