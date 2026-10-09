@@ -107,6 +107,15 @@ def test_signed_amount_prints_plain_notation(value: Decimal, text: str) -> None:
     assert str(render_explanation("cell_percent_signed", value=value)) == text + "%"
 
 
+def test_problem_leg_and_margin_wording() -> None:
+    line = str(render_explanation("outcome_problem_leg", leg="NSE_FO:44624", why=render_explanation("outcome_why_expired")))
+    assert line == "Instrument NSE_FO:44624 cannot be used: expired"
+    assert "::" not in line and ": :" not in line
+    margin = str(render_explanation("outcome_margin_pending"))
+    assert margin == "Margin from Zerodha is not shown yet; it needs your Kite login."
+    assert "item" not in margin and "W-0" not in margin
+
+
 def test_the_table_builds_its_money_and_text_cells_through_closed_slots() -> None:
     """M2a: a money cell rendered as `cell_text(format_rupees(v))` must be refused (the mutation turns this red)."""
     from ofo.engine.display import format_rupees

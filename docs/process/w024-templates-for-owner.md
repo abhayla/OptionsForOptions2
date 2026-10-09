@@ -1,5 +1,7 @@
 # W-024 templates for the owner to read once
 
+Behaviour changes (W-066, outcome texts): the sentence shown when a strategy's maximum loss is zero changed from the old "cannot lose" promise, which the wording rules forbid, to the at-most-zero sentence ("At most ₹0.00 at expiry."). The maximum-loss and maximum-profit wording is waiting on an owner question about charges; those templates are not changed in this round.
+
 Every platform message template, as written. `{name}` is a typed slot filled at run time. Each template's pin in `tests/errors/template_pins.json` says `pending owner read` until you have read it; a changed word changes the pin and fails CI until re-pinned. Rows marked `(owner read 2026-10-08)` were approved as written by the owner on 2026-10-08 (the Zerodha connection and login messages); their pins say so.
 
 ## Error templates (`backend/ofo/errors/templates.py`, REQ-065 AC-2 four parts)
@@ -230,7 +232,7 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `outcome_not_connected` | values_seen | Draft - Live data not connected |
 | `outcome_refused` | values_seen | Outcome refused |
 | `outcome_reason_no_provider` | values_seen | no live market data provider is connected |
-| `outcome_margin_pending` | values_seen | margin from Zerodha comes with the margin item (needs the Kite login) |
+| `outcome_margin_pending` | values_seen | Margin from Zerodha is not shown yet; it needs your Kite login. |
 | `outcome_feed_disconnected` | values_seen | Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused. |
 | `data_label_stale` | values_seen | stale since {time} IST |
 | `data_label_delayed` | values_seen | delayed, as of {time} IST |
@@ -240,7 +242,7 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `leg_label_quote_unusable` | values_seen | quote {health}; not used |
 | `leg_label_quote_no_price` | values_seen | quote has no last price |
 | `leg_label_no_iv` | values_seen | no implied volatility for this price |
-| `outcome_problem_leg` | values_seen | {leg}: {why} |
+| `outcome_problem_leg` | values_seen | Instrument {leg} cannot be used: {why} |
 | `outcome_why_not_in_snapshot` | values_seen | not in the snapshot |
 | `outcome_why_unknown_instrument` | values_seen | unknown instrument |
 | `outcome_why_expired` | values_seen | expired |

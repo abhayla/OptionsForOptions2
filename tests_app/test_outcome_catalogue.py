@@ -119,7 +119,7 @@ def test_status_and_margin_texts_are_exact(replayed) -> None:
     none = _response(replayed, "standard", with_provider=False).model_dump(mode="json")
     assert none["status_label"] == "Draft - Live data not connected"
     assert none["reason"] == "no live market data provider is connected"
-    assert none["margin"]["reason"] == "margin from Zerodha comes with the margin item (needs the Kite login)"
+    assert none["margin"]["reason"] == "Margin from Zerodha is not shown yet; it needs your Kite login."
     assert all(leg["label"] == "Draft - Live data not connected" for leg in none["legs"])
 
 
