@@ -118,26 +118,20 @@ async def test_ac5_the_database_accepts_the_real_iron_condor_with_every_allowed_
 
 
 async def test_ac5_the_history_table_refuses_the_same_shapes_even_to_the_owner(admin_engine):
-    """strategy_history carries the same CHECKs. The owner role with triggers off for the transaction shows that the
-    CHECK, not the guard, refuses."""
+    """strategy_history is guarded by the same positive validator: even the owner role cannot write a definition
+    outside the closed key shape (the entry that holds the current definition is accepted)."""
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await conn.execute(text("SET LOCAL session_replication_role = replica"))
             good, _, strategy_id = await _iron_condor_text(conn)
-            sql = ("INSERT INTO public.strategy_history (strategy_id, seq, change_summary, definition, "
-                   "definition_schema_version) VALUES (:id, :seq, '[]', CAST(:d AS JSONB), 1)")
-            assert (await conn.execute(text(sql + " RETURNING id"), {"id": strategy_id, "seq": 1, "d": good})
-                    ).scalar_one() > 0
-            for n, shape in enumerate(("top-level-ltp", "preferences-Spot", "leg-nested-last_price",
-                                       "risk-limit-unknown-name", "preferences-sentence-value",
-                                       "rules-ref-sentence"), start=2):
+            sql = ("INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
+                   "definition_schema_version) VALUES (:id, CAST('[{\"kind\": \"legs_reordered\"}]' AS JSONB), "
+                   "CAST(:d AS JSONB), 1)")
+            for shape in ("top-level-ltp", "preferences-Spot", "leg-nested-last_price",
+                          "risk-limit-unknown-name", "preferences-sentence-value", "rules-ref-sentence"):
                 bad = _mutated(good, REFUSED_SHAPES[shape])
-                savepoint = await conn.begin_nested()
-                with pytest.raises(DBAPIError) as err:
-                    await conn.execute(text(sql), {"id": strategy_id, "seq": n, "d": bad})
-                await savepoint.rollback()
-                assert getattr(err.value.orig, "sqlstate", None) == CHECK_VIOLATION, shape
+                await _expect_refused(conn, sql, CHECK_VIOLATION, {"id": strategy_id, "d": bad})
+            assert (await conn.execute(text(sql + " RETURNING id"), {"id": strategy_id, "d": good})).scalar_one() > 0
         finally:
             await trans.rollback()
 

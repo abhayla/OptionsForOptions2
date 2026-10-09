@@ -309,14 +309,53 @@ def _field_text(item: dict):
     return render_explanation("change_field", map=map_name, name=name, old=old, new=new)
 
 
+#: The database's own predicates for a leg slot (migration 0008's ofo_strategy_leg_valid): the domain refuses exactly
+#: what the database refuses, so a summary that renders here is one the database stores.
+_STRIKE_TEXT = re.compile(r"(0|[1-9][0-9]{0,17})([.][0-9]{1,2}0*)?")
+_DATE_TEXT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+MAX_CHANGE_ITEMS = 100  # migration 0008's ofo_strategy_change_items_valid
+MAX_SEQ = 2**31 - 1  # strategy_history.seq (INTEGER)
+
+
+def _closed_member(enum: type, value: object):
+    """The enum member for ``value`` when it is a string spelled exactly like a member; else DefinitionError."""
+    if type(value) is not str or value not in {m.value for m in enum}:
+        raise DefinitionError(detail="a change item slot is not one of its allowed values")
+    return enum(value)
+
+
+def _positive_units(value: object) -> int:
+    if not _is_int(value) or not 0 < value <= MAX_UNITS:
+        raise DefinitionError(detail="a change item's quantity is not a whole number of units")
+    return value  # type: ignore[return-value]
+
+
 def _leg_text(leg: object):
     if not isinstance(leg, dict) or set(leg) != _LEG_KEYS:
         raise DefinitionError(detail="a change item's leg is not in the closed shape")
+    action = _closed_member(Action, leg["action"])
+    instrument = _closed_member(Instrument, leg["instrument"])
     strike = leg["strike"]
+    if instrument is Instrument.FUT:
+        if strike is not None:
+            raise DefinitionError(detail="a change item's futures leg has a strike")
+        strike_value = None
+    else:
+        if type(strike) is not str or _STRIKE_TEXT.fullmatch(strike) is None or Decimal(strike) <= 0:
+            raise DefinitionError(detail="a change item's strike is not a plain positive decimal")
+        strike_value = Decimal(strike)
+    expiry = leg["expiry"]
+    if type(expiry) is not str or _DATE_TEXT.fullmatch(expiry) is None or datetime.date.fromisoformat(expiry).isoformat() != expiry:
+        raise DefinitionError(detail="a change item's expiry is not an ISO date")
     return render_explanation(
-        "leg_description", action=Action(leg["action"]).value,
-        strike=strike_text(None if strike is None else Decimal(strike)), instrument=Instrument(leg["instrument"]).value,
-        expiry=datetime.date.fromisoformat(leg["expiry"]).isoformat(), quantity=leg["quantity"])
+        "leg_description", action=action.value, strike=strike_text(strike_value), instrument=instrument.value,
+        expiry=expiry, quantity=_positive_units(leg["quantity"]))
+
+
+def _underlying_slot(value: object) -> str:
+    if type(value) is not str or value not in SUPPORTED_UNDERLYINGS:
+        raise DefinitionError(detail="a change item's underlying is not a supported underlying")
+    return value
 
 
 def render_change_items(items: object) -> tuple:
@@ -331,17 +370,22 @@ def render_change_items(items: object) -> tuple:
                 raise DefinitionError(detail="a change item is not in the closed shape")
             kind = item["kind"]
             if kind == "underlying":
-                out.append(render_explanation("change_underlying", old=item["old"], new=item["new"]))
+                out.append(render_explanation("change_underlying", old=_underlying_slot(item["old"]),
+                                              new=_underlying_slot(item["new"])))
             elif kind == "leg_removed":
                 out.append(render_explanation("change_leg_removed", leg=_leg_text(item["leg"])))
             elif kind == "leg_added":
                 out.append(render_explanation("change_leg_added", leg=_leg_text(item["leg"])))
             elif kind == "quantity":
-                out.append(render_explanation("change_quantity", leg=_leg_text(item["leg"]), before=item["before"]))
+                out.append(render_explanation("change_quantity", leg=_leg_text(item["leg"]),
+                                              before=_positive_units(item["before"])))
             elif kind == "field":
                 out.append(_field_text(item))
             elif kind == "restored":
-                out.append(render_explanation("change_restored", seq=item["seq"]))
+                seq = item["seq"]
+                if not _is_int(seq) or not 0 < seq <= MAX_SEQ:
+                    raise DefinitionError(detail="a change item's seq is not a history sequence number")
+                out.append(render_explanation("change_restored", seq=seq))
             elif kind == "legs_reordered":
                 out.append(render_explanation("change_legs_reordered"))
             else:

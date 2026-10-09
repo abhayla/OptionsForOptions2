@@ -275,7 +275,7 @@ async def _with_draft(conn, user: str):
     "UPDATE public.strategies SET underlying = 'SENSEX' WHERE id = :id",
     "UPDATE public.strategies SET status = 'draft' WHERE id = :id",
     "UPDATE public.strategies SET user_ref = 'someone' WHERE id = :id",
-    "UPDATE public.strategy_history SET change_summary = 'x' WHERE strategy_id = :id",
+    "UPDATE public.strategy_history SET change_summary = CAST('[]' AS JSONB) WHERE strategy_id = :id",
     "DELETE FROM public.strategy_history WHERE strategy_id = :id",
     "TRUNCATE public.strategy_history",
 ])
@@ -292,7 +292,7 @@ async def test_ac5_the_app_role_cannot_delete_or_rewrite(app_engine, sql):
 @pytest.mark.parametrize("sql", [
     "DELETE FROM public.strategies WHERE id = :id",
     "DELETE FROM public.strategy_history WHERE strategy_id = :id",
-    "UPDATE public.strategy_history SET change_summary = 'rewritten' WHERE strategy_id = :id",
+    "UPDATE public.strategy_history SET change_summary = CAST('[]' AS JSONB) WHERE strategy_id = :id",
     "UPDATE public.strategies SET underlying = 'SENSEX' WHERE id = :id",
 ])
 async def test_ac5_the_guard_refuses_even_the_owner(admin_engine, sql):
@@ -337,7 +337,8 @@ async def test_ac5_the_database_refuses_an_update_without_its_history_entry(app_
             # a history entry that is not the current definition is refused too
             await _expect_refused(
                 conn, "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
-                      "definition_schema_version) VALUES (:id, 'fabricated', CAST(:d AS JSONB), 1)",
+                      "definition_schema_version) VALUES (:id, CAST('[{\"kind\": \"legs_reordered\"}]' AS JSONB), "
+                      "CAST(:d AS JSONB), 1)",
                 GUARD_SQLSTATE, {"d": new, "id": stored.id})
         finally:
             await trans.rollback()
@@ -350,7 +351,7 @@ async def test_ac5_the_database_refuses_an_update_without_its_history_entry(app_
 
 async def _history_rows(conn, strategy_id: int) -> list[tuple]:
     return [tuple(r) for r in (await conn.execute(text(
-        "SELECT seq, change_summary, definition::text FROM public.strategy_history WHERE strategy_id = :id "
+        "SELECT seq, change_summary::text, definition::text FROM public.strategy_history WHERE strategy_id = :id "
         "ORDER BY seq"), {"id": strategy_id})).all()]
 
 

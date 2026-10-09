@@ -42,6 +42,7 @@ from ofo.errors.explanations import join_explanations, render_explanation
 from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import (
     DefinitionError,
+    MAX_CHANGE_ITEMS,
     render_change_items,
     DefinitionLeg,
     StrategyDefinition,
@@ -340,6 +341,9 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
         if contract_id <= 0:
             raise StoredFormError(MISSING_CONTRACT_ID, f"{where} contract_id must be positive, got {contract_id}")
         instrument = _enum_from(Instrument, raw["instrument"], f"{where}.instrument")
+        if isinstance(raw["strike"], str) and re.fullmatch(r"[0-9]+([.][0-9]+)?", raw["strike"]) is None:
+            # plain digits only (the database's rule): no sign, exponent, space or non-ASCII digit
+            raise StoredFormError(NOT_DECIMAL_STRING, f"{where}.strike is not a plain decimal text")
         strike = None if raw["strike"] is None else _decimal_from(raw["strike"], f"{where}.strike")
         try:
             legs.append(DefinitionLeg(_enum_from(Action, raw["action"], f"{where}.action"), instrument, strike,
@@ -445,6 +449,8 @@ def summary_text(items: Sequence[Mapping[str, Any]]) -> str:
     """The stored form of a history summary: canonical JSON of change items in the closed shape (see
     ``render_change_items``). Refuses (StoredFormError) anything that does not render from the catalogue."""
     try:
+        if not isinstance(items, (list, tuple)) or not 1 <= len(items) <= MAX_CHANGE_ITEMS:  # the stored summary holds 1..N items (the database's rule)
+            raise DefinitionError(detail=f"a summary holds 1..{MAX_CHANGE_ITEMS} change items")
         render_change_items(list(items))
     except DefinitionError as exc:
         raise StoredFormError(MALFORMED, f"history summary: {exc}") from None

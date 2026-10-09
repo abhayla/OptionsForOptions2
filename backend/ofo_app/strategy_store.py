@@ -79,10 +79,10 @@ _LIST = text("SELECT id, underlying, status, created_at, updated_at FROM public.
              "WHERE user_ref = :user_ref ORDER BY id")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
-    "VALUES (:id, :summary, CAST(:definition AS JSONB), :version) RETURNING seq")
+    "VALUES (:id, CAST(:summary AS JSONB), CAST(:definition AS JSONB), :version) RETURNING seq")
 _UPDATE = text(f"UPDATE public.strategies SET definition = CAST(:definition AS JSONB) WHERE id = :id "
                f"RETURNING {_COLUMNS}")
-_HISTORY = text("SELECT seq, at, change_summary, definition::text AS definition_text FROM public.strategy_history "
+_HISTORY = text("SELECT seq, at, change_summary::text AS change_summary, definition::text AS definition_text FROM public.strategy_history "
                 "WHERE strategy_id = :id ORDER BY seq")
 _HISTORY_ONE = text("SELECT definition::text AS definition_text FROM public.strategy_history "
                     "WHERE strategy_id = :id AND seq = :seq")

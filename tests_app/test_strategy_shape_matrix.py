@@ -20,7 +20,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from ofo.strategy import stored_form as sf
-from ofo.strategy.definition import DefinitionError, render_change_items
 from ofo_app import strategy_store as store
 from test_strategy_closed_shape import INSERT_DEFINITION, _iron_condor_text
 from test_strategy_store import CHECK_VIOLATION, _user
@@ -138,7 +137,7 @@ ITEM_LEG = {"action": "SELL", "instrument": "CE", "strike": "22800", "expiry": "
 ITEM_EXAMPLES = {
     "underlying": {"kind": "underlying", "old": "NIFTY", "new": "SENSEX"},
     "leg_removed": {"kind": "leg_removed", "leg": ITEM_LEG},
-    "leg_added": {"kind": "leg_added", "leg": dict(ITEM_LEG, instrument="FUT", strike=None)},
+    "leg_added": {"kind": "leg_added", "leg": dict(ITEM_LEG, instrument="PE")},
     "quantity": {"kind": "quantity", "leg": ITEM_LEG, "before": 65},
     "field-risk_limits": {"kind": "field", "map": "risk_limits", "name": "max_loss", "old": None, "new": "5000.5"},
     "field-preferences": {"kind": "field", "map": "preferences", "name": "objective", "old": "income", "new": None},
@@ -309,9 +308,9 @@ async def test_database_and_domain_agree_on_every_generated_case(app_engine):
 
             def domain_items(doc) -> bool:
                 try:
-                    render_change_items(doc)
+                    sf.summary_text(doc)  # the write path: render_change_items plus the 1..N size rule
                     return True
-                except DefinitionError:
+                except sf.StoredFormError:
                     return False
 
             for label, doc in [("real iron condor", json.loads(good)), ("every allowed name", full)] + \
@@ -334,7 +333,7 @@ async def test_futures_leg_takes_a_null_strike_only(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            good, _, _ = await _iron_condor_text(conn)
+            good, _, strategy_id = await _iron_condor_text(conn)
             doc = json.loads(good)
             fut = dict(doc["legs"][0], instrument="FUT", strike=None, contract_id=99999)
             ok = _with(doc, ("legs",), [fut])
@@ -342,6 +341,12 @@ async def test_futures_leg_takes_a_null_strike_only(app_engine):
             bad = _with(ok, ("legs", 0, "strike"), "22800")
             assert (await _db_verdict(conn, INSERT_DEFINITION, {"u": _user(), "d": json.dumps(bad)}))[0] == \
                 CHECK_VIOLATION
+            item = {"kind": "leg_added", "leg": dict(ITEM_LEG, instrument="FUT", strike=None)}
+            assert (await _db_verdict(conn, INSERT_HISTORY, {"id": strategy_id, "s": json.dumps([item]), "d": good})
+                    )[0] is None
+            item["leg"]["strike"] = "22800"
+            assert (await _db_verdict(conn, INSERT_HISTORY, {"id": strategy_id, "s": json.dumps([item]), "d": good})
+                    )[0] == CHECK_VIOLATION
         finally:
             await trans.rollback()
 
