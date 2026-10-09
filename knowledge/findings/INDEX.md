@@ -2,7 +2,7 @@
 
 # Findings index
 
-34 finding(s), generated from `knowledge/findings/*.json`.
+35 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -22,6 +22,7 @@
 | guard-without-killing-test | Any safety guard (an if-refuse/block/raise that protects money or state) with no test that fails when the guard is removed can be deleted or weakened in a later change with the suite still green; the guard's protection then depends on nobody touching that line. | unguarded | occurrences, scope, spec_ref |
 | instrument-identity-keyed-on-one-broker | Any instrument store whose identity is one broker's own token or trading symbol cannot hold the same contract's identifiers from another broker, and every table, cache and subscription that joins on that broker id has to be re-keyed when a second broker arrives; the identifier the exchange itself assigns is the one every broker shares. | unguarded | occurrences, scope, spec_ref |
 | jsonpath-check-lax-mode-unwraps-arrays | A database CHECK written as JSON-path filters over a free JSONB document refuses only the shapes its author listed: PostgreSQL's default lax mode unwraps an array wherever the path expects a scalar, so a value wrapped in an array (or an empty array) satisfies every per-value test, and a position whose value is only type-checked accepts any text of that type. A shape CHECK built this way is a list of refused forms, not a closed description of the allowed document. | unguarded | occurrences, scope, spec_ref |
+| local-ci-mirror-runs-a-subset | A local 'mirror' of CI that runs only some of CI's steps reports green while CI is red on a step it skips, so a push or merge attempt that relied on it costs a CI round; the mirror must be generated from, or checked against, the CI workflow's own step list rather than maintained by hand. | unguarded | occurrences, scope, spec_ref |
 | money-parsed-through-float | Any adapter that reads a JSON reply with the default number parser turns every price, margin and charge into a binary float before it becomes a Decimal, so values like 291444.67000000004 enter the money path and rupee totals pick up representation error. | unguarded | occurrences, scope, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | scope, spec_ref |
 | normalise-before-validate | Any input normaliser that changes the text (upper/lower/casefold, strip/trim, Unicode folding) before checking it against a strict pattern can turn a malformed value into a different, valid-looking value, so a bad row is silently repaired into someone else's identifier instead of being reported. | guarded | occurrences, scope, spec_ref |

@@ -1,0 +1,27 @@
+{
+ "id": "local-ci-mirror-runs-a-subset",
+ "scope": "generic",
+ "class": "A local 'mirror' of CI that runs only some of CI's steps reports green while CI is red on a step it skips, so a push or merge attempt that relied on it costs a CI round; the mirror must be generated from, or checked against, the CI workflow's own step list rather than maintained by hand.",
+ "mechanism": "scripts/orchestrator/atool.py ran 5 of the ci.yml lint-and-test steps (lint, trace, findings index, spec refs, settings) plus pytest; it skipped build_order --check, run_smoke, build_spec_index, build_spec_digest --check, spec_dupes, kit_selftest and kit_drift. W-061's status change made views/build-order.md stale; atool said rc 0 everywhere, CI failed build_order --check and kit_drift (STALE generated file), and merge_when_green refused PR #134.",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "PR #134 @ fd27867, CI run 37959075797",
+  "evidence": "CI: 'build_order: views/build-order.md is stale' and kit_drift 'STALE (generated ...): views/build-order.md'; local atool.py at the same head: all rc 0. After adding the step, atool.py reported 'build_order.py rc 1 | ... is stale' (red), regen.py fixed it, atool.py then rc 0 on all 12 steps (green)."
+ },
+ "fix": "atool.py now runs every ci.yml lint-and-test step in ci.yml's order (kit_settings, factory_lint, trace_check, build_order, run_smoke, build_spec_index, build_spec_digest, spec_dupes, findings index, spec refs, kit_selftest, kit_drift; pytest unless --no-tests); regen.py also regenerates the build order.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The mirror is still hand-maintained: a new ci.yml step would be missed again. A test that parses ci.yml's run: lines and asserts atool.py runs each tool is the candidate detection (L2 on a second occurrence)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-046.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "PR #134 (W-061)",
+   "evidence": "one wasted CI round; merge refused"
+  }
+ ]
+}

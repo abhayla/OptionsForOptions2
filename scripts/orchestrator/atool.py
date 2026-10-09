@@ -7,7 +7,11 @@ args = [a for a in sys.argv[1:] if a != "--no-tests"]
 wt = args[0] if os.path.isdir(args[0]) else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "." + "claude", "worktrees", f"agent-{args[0]}")
 word = args[1] if len(args) > 1 else "W-"
 steps = [["tools/factory_lint.py", "."], ["tools/trace_check.py", "."], ["tools/build_findings_index.py", ".", "--check"],
-         ["tools/check_spec_refs.py", "."], ["tools/kit_settings.py", ".", "--check"], ["-m", "pytest", "-q", "-p", "no:cacheprovider"]]
+         ["tools/check_spec_refs.py", "."], ["tools/kit_settings.py", ".", "--check"],
+         ["tools/build_order.py", ".", "--check"], ["tools/run_smoke.py", "."],
+         ["tools/build_spec_index.py", ".", "--check"], ["tools/build_spec_digest.py", ".", "--check"],
+         ["tools/spec_dupes.py", "."], ["tools/kit_selftest.py", "."], ["tools/kit_drift.py", ".", "--ci"],
+         ["-m", "pytest", "-q", "-p", "no:cacheprovider"]]  # the ci.yml lint-and-test steps, in its order
 if "--no-tests" in sys.argv:
     steps = steps[:-1]
 bad = 0
