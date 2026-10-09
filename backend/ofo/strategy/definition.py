@@ -14,7 +14,7 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import render_explanation, strike_text, user_words
+from ofo.errors.explanations import render_explanation, strike_text
 
 import datetime
 import re
@@ -255,10 +255,16 @@ class StrategyDefinition:
             before, after = old_legs[key].quantity, new_legs[key].quantity
             if before != after:
                 items.append({"kind": "quantity", "leg": _leg_data(new_legs[key]), "before": before})
-        for label in ("rules_ref", "risk_limits", "preferences"):
-            if getattr(old, label) != getattr(self, label):
-                items.append({"kind": "field", "label": label, "old": repr(getattr(old, label)),
-                              "new": repr(getattr(self, label))})
+        if old.rules_ref != self.rules_ref:
+            items.append({"kind": "field", "map": "rules_ref", "name": "rules_ref", "old": old.rules_ref,
+                          "new": self.rules_ref})
+        for label in ("risk_limits", "preferences"):
+            before, after = dict(getattr(old, label)), dict(getattr(self, label))
+            for name in sorted(before.keys() | after.keys()):
+                if before.get(name) != after.get(name):
+                    items.append({"kind": "field", "map": label, "name": name,
+                                  "old": None if name not in before else str(before[name]),
+                                  "new": None if name not in after else str(after[name])})
         return tuple(items)
 
     @staticmethod
@@ -275,9 +281,32 @@ def _leg_data(leg: DefinitionLeg) -> dict:
 _LEG_KEYS = frozenset({"action", "instrument", "strike", "expiry", "quantity"})
 #: kind -> its exact keys. A closed shape: anything else is refused, never rendered.
 _ITEM_KEYS = {"underlying": {"kind", "old", "new"}, "leg_removed": {"kind", "leg"}, "leg_added": {"kind", "leg"},
-              "quantity": {"kind", "leg", "before"}, "field": {"kind", "label", "old", "new"},
+              "quantity": {"kind", "leg", "before"}, "field": {"kind", "map", "name", "old", "new"},
               "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"}}
-_FIELD_LABELS = frozenset({"rules_ref", "risk_limits", "preferences"})
+#: A field change item: ``map`` -> the closed list of ``name`` (ADR-064); ``old``/``new`` are None (absent) or ADR-069's
+#: value type (a plain-digit number for a risk limit, an identifier otherwise). One item per changed name; never repr.
+_FIELD_NAMES = {"rules_ref": frozenset({"rules_ref"}), "risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}
+
+
+def _field_value(map_name: str, value: object):
+    if value is None:
+        return render_explanation("change_value_unset")
+    if map_name == "risk_limits":
+        if type(value) is not str or re.fullmatch(settings_value.LIMIT_PATTERN, value) is None:
+            raise DefinitionError(detail="a change item's risk limit is not a plain number")
+        return value
+    return settings_value.identifier(value, "change_item")
+
+
+def _field_text(item: dict):
+    map_name, name = item["map"], item["name"]
+    if (not isinstance(map_name, str) or map_name not in _FIELD_NAMES or not isinstance(name, str)
+            or name not in _FIELD_NAMES[map_name]):
+        raise DefinitionError(detail="a change item names an unknown field")
+    old, new = _field_value(map_name, item["old"]), _field_value(map_name, item["new"])
+    if map_name == "rules_ref":
+        return render_explanation("change_rules_ref", old=old, new=new)
+    return render_explanation("change_field", map=map_name, name=name, old=old, new=new)
 
 
 def _leg_text(leg: object):
@@ -310,10 +339,7 @@ def render_change_items(items: object) -> tuple:
             elif kind == "quantity":
                 out.append(render_explanation("change_quantity", leg=_leg_text(item["leg"]), before=item["before"]))
             elif kind == "field":
-                if item["label"] not in _FIELD_LABELS:
-                    raise DefinitionError(detail="a change item names an unknown field")
-                out.append(render_explanation("change_field", label=item["label"], old=user_words(item["old"]),
-                                              new=user_words(item["new"])))
+                out.append(_field_text(item))
             elif kind == "restored":
                 out.append(render_explanation("change_restored", seq=item["seq"]))
             elif kind == "legs_reordered":

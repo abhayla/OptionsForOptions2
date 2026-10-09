@@ -218,7 +218,9 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `change_leg_removed` | values_seen | removed leg {leg} |
 | `change_leg_added` | values_seen | added leg {leg} |
 | `change_quantity` | values_seen | quantity of {leg} was {before} |
-| `change_field` | values_seen | {label} {old} -> {new} |
+| `change_field` | values_seen | {map} {name}: {old} -> {new} |
+| `change_rules_ref` | values_seen | rules reference: {old} -> {new} |
+| `change_value_unset` | values_seen | not set |
 | `change_legs_reordered` | values_seen | legs reordered |
 | `change_replaced_unreadable` | values_seen | definition replaced, the previous one could not be compared |
 | `change_summary_unreadable` | values_seen | this change could not be shown |
