@@ -173,6 +173,19 @@ def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
     return render_explanation("outcome_feed_disconnected", time=max(times) if times else snapshot.valuation)
 
 
+_BE_NUDGE = Decimal("0.01")
+
+
+def _loses_outside(strategy, lo: Decimal, up: Decimal) -> bool:
+    """Where the loss is, from the engine's own expiry P&L (ADR-008) on both sides of each breakeven: the lowest P&L
+    just outside the band against the lowest just inside it. A zero plateau between the breakevens (net premium 0)
+    reads as no loss inside, so the loss is outside; one sample at the midpoint could not tell."""
+    d = min(_BE_NUDGE, (up - lo) / 4)
+    outside = min(strategy.expiry_pnl_at(lo - d), strategy.expiry_pnl_at(up + d))
+    inside = min(strategy.expiry_pnl_at(lo + d), strategy.expiry_pnl_at(up - d))
+    return outside < inside
+
+
 def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs) -> Summary:
     idx = inputs.underlying
     profit_unl, loss_unl = metrics.max_profit is UNLIMITED, metrics.max_loss is UNLIMITED
@@ -188,9 +201,11 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs)
         make = render_explanation("summary_make_at_most", amount=metrics.max_profit)
     lo, up = level_set.lower_be, level_set.upper_be
     if lo is not None and up is not None:
-        inside_profit = inputs.strategy.expiry_pnl_at((lo + up) / 2) > 0
-        start = render_explanation("summary_start_outside" if inside_profit else "summary_start_between",
-                                   index=idx, lower=lo, upper=up)
+        if metrics.max_loss == 0:
+            start = render_explanation("summary_start_never")
+        else:
+            start = render_explanation("summary_start_outside" if _loses_outside(inputs.strategy, lo, up)
+                                       else "summary_start_between", index=idx, lower=lo, upper=up)
     elif lo is not None:
         start = render_explanation("summary_start_below", index=idx, lower=lo)
     elif up is not None:
