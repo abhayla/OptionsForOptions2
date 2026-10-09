@@ -20,6 +20,7 @@ a test elsewhere that counts the WHOLE catalogue table or audit chain must run b
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -91,9 +92,17 @@ def _body(ids: dict[str, int], wing: str = "NIFTY26O1323000CE", **extra) -> dict
     return {"underlying": "NIFTY", "legs": legs, "rules_ref": None, "risk_limits": {}, "preferences": {}} | extra
 
 
-def _expected_document(ids: dict[str, int], strike_text: dict[str, str]) -> dict:
-    """The stored form, written from the fixture and the spec (never from running the code)."""
-    return {"schema_version": 1, "underlying": "NIFTY", "rules_ref": None, "risk_limits": {}, "preferences": {},
+#: ADR-064 / ADR-069: all 3 risk-limit names (decimal strings) and all 6 preference names (identifiers), literal.
+FILLED_LIMITS = {"max_loss": "9000.50", "max_capital": "250000", "max_margin": "180000.25"}
+FILLED_PREFS = {"objective": "income", "market_view": "neutral", "risk_preference": "low", "capital": "300000",
+                "expected_range_low": "22400", "expected_range_high": "23000"}
+FILLED = {"rules_ref": "rule_set_1", "risk_limits": FILLED_LIMITS, "preferences": FILLED_PREFS}
+
+
+def _expected_document(ids: dict[str, int], strike_text: dict[str, str], maps: dict | None = None) -> dict:
+    """The stored form, written from the fixture and the requirement (never from running the code)."""
+    maps = maps or {"rules_ref": None, "risk_limits": {}, "preferences": {}}
+    return {"schema_version": 1, "underlying": "NIFTY", **maps,
             "legs": [{"contract_id": ids[s], "action": side, "instrument": inst.value, "strike": strike_text[s],
                       "expiry": "2026-10-13", "quantity": 65} for s, side, inst, *_ in IRON_CONDOR]}
 
@@ -170,11 +179,11 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
                 "ON b.contract_id = c.id WHERE c.id = ANY(:ids)"), {"ids": list(ids.values())})).all())
         assert set(ids) == set(SYMBOLS)
         assert all(Decimal(strike_text[s]) == strike for s, _, _, strike, _ in IRON_CONDOR)
-        expected = _expected_document(ids, strike_text)
+        expected = _expected_document(ids, strike_text, FILLED)
         # Save Draft
         maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
         async with _client(_app(maker, user)) as ac:
-            saved = await ac.post("/strategies", json=_body(ids))
+            saved = await ac.post("/strategies", json=_body(ids, **FILLED))
         assert saved.status_code == 201, saved.text
         strategy_id = saved.json()["id"]
         assert saved.json()["status"] == "draft" and saved.json()["definition"] == expected
@@ -189,13 +198,17 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
             (side, inst, strike, EXPIRY, 65) for _, side, inst, strike, _ in IRON_CONDOR]
         assert loaded.saved.contract_ids == tuple(ids[s] for s, *_ in IRON_CONDOR)
         assert sf.to_document(loaded.saved) == expected
+        assert dict(loaded.saved.definition.risk_limits) == {
+            "max_loss": Decimal("9000.50"), "max_capital": Decimal("250000"), "max_margin": Decimal("180000.25")}
+        assert dict(loaded.saved.definition.preferences) == FILLED_PREFS
+        assert loaded.saved.definition.rules_ref == "rule_set_1"
         async with _client(_app(maker2, user)) as ac:
             got = await ac.get(f"/strategies/{strategy_id}")
             assert got.status_code == 200 and got.json()["definition"] == expected
             listed = await ac.get("/strategies")
             assert [s["id"] for s in listed.json()["strategies"]] == [strategy_id]
             # edit one strike (the bought call 23000 -> 23100) and save: one history entry, holding the original
-            edited = await ac.put(f"/strategies/{strategy_id}", json=_body(ids, wing=WING, expected_revision=1))
+            edited = await ac.put(f"/strategies/{strategy_id}", json=_body(ids, wing=WING, expected_revision=1, **FILLED))
             assert edited.status_code == 200, edited.text
             assert edited.json()["definition"]["legs"][1]["contract_id"] == ids[WING]
             assert edited.json()["revision"] == 2
@@ -606,5 +619,48 @@ async def test_ac5_a_change_based_on_an_old_revision_is_refused_and_writes_nothi
                 assert err.value.code == store.REVISION_CONFLICT
             assert await _history_rows(conn, stored.id) == history
             assert (await store.load(conn, stored.user_ref, stored.id)).saved == first.saved
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_filled_limits_and_preferences_round_trip_through_history_and_restore(app_engine):
+    """Class: every stored definition with non-empty risk_limits / preferences. An update changing one limit and one
+    preference writes exactly one entry holding the previous definition with all 9 values and rules_ref exactly; the
+    summary renders from the catalogue with the typed old/new values; restore brings the filled maps back as entry 2."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            ids = await _ids(conn)
+            user = _user()
+            legs = [sf.LegChoice(ids[s], Action(side), LOT) for s, side, *_ in IRON_CONDOR]
+            limits = {"max_loss": Decimal("9000.50"), "max_capital": Decimal("250000"),
+                      "max_margin": Decimal("180000.25")}
+            first = await store.build_definition(conn, "NIFTY", legs, rules_ref="rule_set_1", risk_limits=limits,
+                                                 preferences=dict(FILLED_PREFS))
+            stored = await store.save_draft(conn, user, first)
+            second = await store.build_definition(conn, "NIFTY", legs, rules_ref="rule_set_1",
+                                                  risk_limits=limits | {"max_loss": Decimal("12000.75")},
+                                                  preferences=FILLED_PREFS | {"market_view": "bullish"})
+            await store.update(conn, user, stored.id, second, expected_revision=1)
+            rows = await _history_rows(conn, stored.id)
+            assert [r[0] for r in rows] == [1]
+            (entry,) = await store.history(conn, user, stored.id)
+            old_doc = sf.to_document(entry.saved)
+            assert old_doc["rules_ref"] == "rule_set_1"
+            assert old_doc["risk_limits"] == FILLED_LIMITS and old_doc["preferences"] == FILLED_PREFS
+            assert dict(entry.saved.definition.risk_limits) == limits
+            assert entry.saved == stored.saved
+            assert sf.render_summary(rows[0][1]) == (
+                "risk_limits max_loss: 9000.50 -> 12000.75; preferences market_view: neutral -> bullish")
+            restored = await store.restore(conn, user, stored.id, 1, expected_revision=2)
+            assert sf.to_document(restored.saved)["risk_limits"] == FILLED_LIMITS
+            assert sf.to_document(restored.saved)["preferences"] == FILLED_PREFS
+            assert restored.saved == stored.saved
+            after = await _history_rows(conn, stored.id)
+            assert [r[0] for r in after] == [1, 2]
+            doc2 = json.loads(after[1][2])
+            assert doc2["risk_limits"] == FILLED_LIMITS | {"max_loss": "12000.75"}
+            assert doc2["preferences"] == FILLED_PREFS | {"market_view": "bullish"}
         finally:
             await trans.rollback()
