@@ -5,6 +5,8 @@ tests_app/test_api_models.py). An `ApiModel` cannot hold free text: at class def
 and a plain `str` (or anything not listed below) raises TypeError. Allowed leaves:
 - `CatalogueText`: a `render()` result (`UserFacingError`, shown as its four parts) or a `render_explanation()`
   result (`ExplanationText`); a plain string is refused at validation, so text built in route code cannot pass;
+- `InstrumentId`: a closed `SEGMENT:digits` pattern (`NSE_FO:44595`);
+- `dict[Identifier, <allowed>]`: a map whose keys are closed identifiers (a key can never carry a sentence);
 - `Identifier`: a closed token (letters, digits, `_ - .`; no `:` or `=`), at most 64 characters and no space, so it can never
   carry a sentence;
 - `Literal[...]` of strings, `bool`, `int`, `Decimal` (serialized as a string, project rule), `datetime`, `date`,
@@ -48,22 +50,32 @@ CatalogueText = Annotated[object, PlainValidator(_catalogue_only), PlainSerializ
 #: `key:value` or `key=value` pair (e.g. `access_token:...`) can never pass as an id; at most IDENTIFIER_MAX characters.
 IDENTIFIER_MAX = 64
 Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$" % IDENTIFIER_MAX)]
-Money = Annotated[Decimal, PlainSerializer(lambda v: str(v), return_type=str)]
+#: An instrument id as the exchange segment and token, `NSE_FO:44595` (W-066): capitals and `_` before one `:`, digits after;
+#: no space or other character, so it can never carry a sentence.
+InstrumentId = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$")]
+#: A number as the plain-notation string of its Decimal (never exponent form, never a float).
+Money = Annotated[Decimal, PlainSerializer(lambda v: format(v, "f"), return_type=str)]
 
 _LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date)
 
 
 def check_field_type(tp: Any, where: str) -> None:
     """Raise TypeError unless `tp` is one of the allowed shapes (module docstring)."""
-    if tp is CatalogueText or tp is Identifier or tp is Money:
+    if tp is CatalogueText or tp is Identifier or tp is Money or tp is InstrumentId:
         return
     origin = typing.get_origin(tp)
     if origin is Annotated:
-        raise TypeError(f"{where}: only CatalogueText, Identifier and Money may be Annotated types")
+        raise TypeError(f"{where}: only CatalogueText, Identifier, InstrumentId and Money may be Annotated types")
     if origin is Literal:
         if all(isinstance(a, (str, int, bool)) for a in typing.get_args(tp)):
             return
         raise TypeError(f"{where}: Literal values must be str/int/bool")
+    if origin is dict:
+        key, value = typing.get_args(tp)
+        if key is not Identifier:
+            raise TypeError(f"{where}: a dict key must be an Identifier, not {key!r}")
+        check_field_type(value, where)
+        return
     if origin in (list, tuple, typing.Union, types.UnionType):
         for arg in typing.get_args(tp):
             if arg is not type(None) and arg is not Ellipsis:
@@ -130,8 +142,8 @@ class ApiModel(BaseModel):
             annotation = info.annotation
             if info.metadata:  # Annotated[...] was unpacked: compare the original alias by identity
                 annotation = Annotated[(annotation, *info.metadata)]  # type: ignore[valid-type]
-                if annotation != CatalogueText and annotation != Identifier and annotation != Money:
-                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier and Money may be "
-                                    f"Annotated types")
+                if annotation not in (CatalogueText, Identifier, InstrumentId, Money):
+                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier, InstrumentId and "
+                                    f"Money may be Annotated types")
                 continue
             check_field_type(annotation, f"{cls.__name__}.{name}")
