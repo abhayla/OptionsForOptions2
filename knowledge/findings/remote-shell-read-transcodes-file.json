@@ -1,0 +1,27 @@
+{
+ "id": "remote-shell-read-transcodes-file",
+ "scope": "generic",
+ "class": "Reading a file through a remote shell command (ssh host 'type file', 'cat' in a PowerShell default shell, Get-Content) returns the shell's re-encoded text, not the file's bytes - the byte-order mark is dropped, line endings are converted and non-ASCII characters are replaced by the console code page; editing that text and writing it back silently rewrites every such line.",
+ "mechanism": "Syncing two keys of GLOBAL.env to the Windows VPS: the script read the file with `ssh ... type C:\\Abhay\\GLOBAL.env` (default shell PowerShell), replaced the two key lines and uploaded the result; the file lost its BOM, went LF -> CRLF and 30 comment lines changed (17,470 -> 16,733 bytes). The script's own check 'uploaded == read back: False' exposed it.",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "OptionsForOptions2 session, GLOBAL.env sync to 103.118.16.189",
+  "evidence": "scp byte compare: backup bom True, lone LF 214, 17470 bytes; after the edit bom False, CRLF 214, 16733 bytes, 30 comment lines + the 2 keys differing"
+ },
+ "fix": "Move files with scp (byte-exact) in both directions, edit the bytes, and verify by downloading again with scp and comparing to the intended bytes plus a line diff against a backup taken first. Repaired: the VPS file now equals the backup except the two key lines (BOM and LF kept), proven by scp read-back.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Every remote-file edit script ends with an scp read-back equality check and a line diff against a backup taken before the edit; a read-back mismatch stops the run before anything else touches the file."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "GLOBAL.env sync to the Windows VPS",
+   "evidence": "damage caught by the read-back check and repaired from the backup the same turn"
+  }
+ ]
+}
