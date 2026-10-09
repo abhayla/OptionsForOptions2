@@ -1,0 +1,33 @@
+{
+ "id": "loss-region-inferred-from-breakevens",
+ "scope": "generic",
+ "class": "A user-facing statement of WHERE a strategy loses money that is chosen from the breakevens (their count, and the sign of the P&L at one or a few sample points) instead of from the regions where the expiry P&L is actually negative is wrong whenever the P&L touches or sits at zero (a zero-premium spread, a ratio, a debit equal to the width, a plateau) or loses in more regions than the breakeven count implies; breakevens are where P&L crosses zero, loss regions are where P&L < 0, and the two stop matching exactly in those shapes.",
+ "mechanism": "W-063 chose 'outside'/'between' by expiry_pnl_at((lo+up)/2) > 0 (one sample); W-066 round 4 compared the lowest P&L 0.01 outside each breakeven with the lowest just inside; the one-breakeven path (_lower_upper, scenario/levels.py) picks 'above'/'below' from the breakeven alone. Each rule is a heuristic over breakevens, so each new shape breaks it.",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "build/W-066-on-main @ bfd35e1, backend/ofo/outcome/service.py _summary / _loses_outside; backend/ofo/scenario/levels.py _lower_upper (logic first written in W-063, c85b2ca, on main)",
+  "evidence": "Orchestrator, real outcome service on the 2026-10-08 replay: zero-cost bull put spread (sell NSE_FO:44604 22400PE @100, buy NSE_FO:44595 22200PE @100) -> 'If NIFTY ends above 22,400 at expiry.' while every loss is below 22,400. Tier A verifier (route POST 200 for 3): 1x2 put ratio -> 'below 22,000 or above 22,400' (P&L exactly 0 above 22,400); two call butterflies -> 'between 22,300 and 22,900' (also loses outside); zero-cost bull call spread (max loss 0.00) -> 'below 22,800'; butterfly costing its width -> 'above 22,300' (loses both sides). Round-1 (midpoint) and round-2 (_loses_outside) both red: second occurrence of the class within W-066."
+ },
+ "fix": "Open: independent review (Fable, 2026-10-09) dispatched under learning R1; round 3 is briefed around its findings.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Planned: a generated property test comparing the rendered loss regions with a brute-force scan of the engine's expiry P&L (fine grid plus tail slopes) over random legs from the fixture's strikes, plus the five counterexamples as literal cases."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-034.md",
+  "spec/decisions/ADR-008.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "W-063 midpoint sample (c85b2ca), found by the W-066 final Tier A review",
+   "evidence": "zero-premium condor -> 'between 22,400 and 22,800' (P&L 0 there, loss outside)"
+  },
+  {
+   "date": "2026-10-09",
+   "where": "W-066 round 4 _loses_outside (bfd35e1), found by the W-066 Tier A verifier",
+   "evidence": "5 shapes with wrong sentences, 1 reproduced by the orchestrator, 3 via the route"
+  }
+ ]
+}
