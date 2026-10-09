@@ -173,17 +173,15 @@ def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
     return render_explanation("outcome_feed_disconnected", time=max(times) if times else snapshot.valuation)
 
 
-_BE_NUDGE = Decimal("0.01")
-
-
-def _loses_outside(strategy, lo: Decimal, up: Decimal) -> bool:
-    """Where the loss is, from the engine's own expiry P&L (ADR-008) on both sides of each breakeven: the lowest P&L
-    just outside the band against the lowest just inside it. A zero plateau between the breakevens (net premium 0)
-    reads as no loss inside, so the loss is outside; one sample at the midpoint could not tell."""
-    d = min(_BE_NUDGE, (up - lo) / 4)
-    outside = min(strategy.expiry_pnl_at(lo - d), strategy.expiry_pnl_at(up + d))
-    inside = min(strategy.expiry_pnl_at(lo + d), strategy.expiry_pnl_at(up - d))
-    return outside < inside
+def _start_losing(regions, idx) -> ExplanationText:
+    """ADR-072: the sentence names every region where the engine's expiry P&L is below zero, nothing else."""
+    if not regions:
+        return render_explanation("summary_start_never")
+    if regions == ((None, None),):
+        return render_explanation("summary_start_everywhere")
+    if len(regions) == 2 and regions[0][0] is None and regions[1][1] is None and regions[0][1] == regions[1][0]:
+        return render_explanation("summary_start_touch", level=regions[0][1])  # two regions meeting at one zero point
+    return render_explanation("summary_start_regions", index=idx, regions=regions)
 
 
 def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs) -> Summary:
@@ -200,20 +198,7 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs)
     else:
         make = render_explanation("summary_make_at_most", amount=metrics.max_profit)
     lo, up = level_set.lower_be, level_set.upper_be
-    if lo is not None and up is not None:
-        if metrics.max_loss == 0:
-            start = render_explanation("summary_start_never")
-        else:
-            start = render_explanation("summary_start_outside" if _loses_outside(inputs.strategy, lo, up)
-                                       else "summary_start_between", index=idx, lower=lo, upper=up)
-    elif lo is not None:
-        start = render_explanation("summary_start_below", index=idx, lower=lo)
-    elif up is not None:
-        start = render_explanation("summary_start_above", index=idx, upper=up)
-    elif metrics.max_loss == 0:
-        start = render_explanation("summary_start_never")
-    else:
-        start = render_explanation("summary_start_everywhere")
+    start = _start_losing(metrics.loss_regions, idx)
     return Summary(lose, make, start, None if profit_unl else metrics.max_profit,
                    None if loss_unl else metrics.max_loss, profit_unl, loss_unl, level_set.breakevens,
                    lo, up, level_set.risk_boundaries)

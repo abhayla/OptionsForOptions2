@@ -37,10 +37,10 @@ def test_unlimited_none_and_breakeven_sentences_are_unchanged() -> None:
     assert (render_explanation("summary_make_unlimited", index="NIFTY")
             == "Your profit has no fixed limit if NIFTY rises far enough by expiry.")
     assert render_explanation("summary_make_none") == "This strategy cannot make money at expiry."
-    assert (render_explanation("summary_start_between", index="NIFTY", lower=Decimal("22400"), upper=Decimal("22800"))
-            .startswith("If NIFTY ends between "))
-    for tid in ("summary_lose_unlimited", "summary_make_unlimited", "summary_make_none", "summary_start_outside",
-                "summary_start_between", "summary_start_below"):
+    assert (render_explanation("summary_start_regions", index="NIFTY",
+                                regions=((Decimal("22400"), Decimal("22800")),)).startswith("If NIFTY ends between "))
+    for tid in ("summary_lose_unlimited", "summary_make_unlimited", "summary_make_none", "summary_start_regions",
+                "summary_start_touch"):
         assert PHRASE not in EXPLANATIONS[tid].text, tid
 
 

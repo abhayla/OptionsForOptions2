@@ -22,7 +22,7 @@ OUTCOME_PREFIXES = ("outcome_", "leg_label_", "data_label_", "label_", "summary_
 #: LegacyRecorded, Values, str, or a type added later) turns the detection test red until it is reviewed and listed here.
 CLOSED_SLOT_TYPES = frozenset({
     ex.Rupees, ex.Points, ex.SignedAmount, ex.Amount, ex.HourMinute, ex.ClockSeconds, ex.UnderlyingName,
-    ex.InstrumentRef, ex.LegRef, ex.LegRefs, ex.HealthWord, ex.ExpiryDate, ex.CellText,
+    ex.InstrumentRef, ex.LevelRegions, ex.LegRef, ex.LegRefs, ex.HealthWord, ex.ExpiryDate, ex.CellText,
     ex.Explained, ex.ScenarioViewLabel, ex.ColumnLabel, ex.HealthLabel,
 })
 
@@ -82,7 +82,13 @@ def test_negative_zero_literals() -> None:
     ("cell_text", {"value": "Open"}),
     ("summary_lose_unlimited", {"index": "you-should-exit"}),
     ("summary_make_unlimited", {"index": "best-trade"}),
-    ("summary_start_below", {"index": "guaranteed", "lower": Decimal(1)}),
+    ("summary_start_regions", {"index": "guaranteed", "regions": ((None, Decimal(1)),)}),
+    ("summary_start_regions", {"index": "NIFTY", "regions": ()}),
+    ("summary_start_regions", {"index": "NIFTY", "regions": ((None, None),)}),
+    ("summary_start_regions", {"index": "NIFTY", "regions": ((Decimal(2), Decimal(1)),)}),
+    ("summary_start_regions", {"index": "NIFTY", "regions": ((None, "22,400"),)}),
+    ("summary_start_regions", {"index": "NIFTY", "regions": "below 22,400"}),
+    ("summary_start_touch", {"level": "22300"}),
     ("scenario_caption_left", {"underlying": "best-trade"}),
     ("scenario_estimated_unavailable", {"legs": "Buy now, this is the best trade"}),
     ("scenario_estimated_unavailable", {"legs": "NSE_FO:44624, buy-now"}),
@@ -152,3 +158,16 @@ def test_the_table_builds_its_money_and_text_cells_through_closed_slots() -> Non
     from ofo.engine.display import format_rupees
     with pytest.raises((TypeError, ValueError)):
         render_explanation("cell_text", value=format_rupees(Decimal("8245.25")))
+
+
+def test_level_regions_read_as_a_list() -> None:
+    d = Decimal
+    one = lambda r: str(render_explanation("summary_start_regions", index="NIFTY", regions=r))  # noqa: E731
+    assert one(((None, d("22400")),)) == "If NIFTY ends below 22,400 at expiry."
+    assert one(((d("22400"), None),)) == "If NIFTY ends above 22,400 at expiry."
+    assert one(((None, d("22326.85")), (d("22873.15"), None))) == (
+        "If NIFTY ends below 22,326.85 or above 22,873.15 at expiry.")
+    assert one(((None, d("1")), (d("2"), d("3")), (d("4"), None))) == (
+        "If NIFTY ends below 1, between 2 and 3 or above 4 at expiry.")
+    assert str(render_explanation("summary_start_touch", level=d("22300"))) == (
+        "At every level except exactly 22,300 at expiry.")

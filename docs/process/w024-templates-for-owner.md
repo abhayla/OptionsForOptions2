@@ -258,12 +258,10 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `summary_make_unlimited` | values_seen | Your profit has no fixed limit if {index} rises far enough by expiry. |
 | `summary_make_none` | values_seen | This strategy cannot make money at expiry. |
 | `summary_make_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
-| `summary_start_outside` | values_seen | If {index} ends below {lower} or above {upper} at expiry. |
-| `summary_start_between` | values_seen | If {index} ends between {lower} and {upper} at expiry. |
-| `summary_start_below` | values_seen | If {index} ends below {lower} at expiry. |
-| `summary_start_above` | values_seen | If {index} ends above {upper} at expiry. |
+| `summary_start_regions` | values_seen | If {index} ends {regions} at expiry. (regions: "below X", "between X and Y", "above X", joined "a, b or c"; ADR-072) |
+| `summary_start_touch` | values_seen | At every level except exactly {level} at expiry. (ADR-072) |
 | `summary_start_never` | values_seen | At no level at expiry. |
-| `summary_start_everywhere` | values_seen | At every level at expiry: there is no breakeven. |
+| `summary_start_everywhere` | values_seen | At every level at expiry. (ADR-072: no claim about breakevens) |
 | `scenario_view_label` | values_seen | {view} |
 | `table_column_label` | values_seen | {column} |
 | `scenario_header_plain` | values_seen | {level} |

@@ -394,6 +394,36 @@ class Points(SlotType):
         return format_points(value)
 
 
+class LevelRegions(SlotType):
+    """A non-empty tuple of level intervals ``(lower, upper)``, each bound a `Points` value or None (an open end, never
+    both None): printed "below X", "between X and Y", "above X", joined "a, b or c" (ADR-072)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not tuple or not value:
+            raise TypeError(f"LevelRegions slot takes a non-empty tuple, got {type(value).__name__}")
+        for item in value:
+            if type(item) is not tuple or len(item) != 2 or item[0] is None and item[1] is None:
+                raise TypeError(f"a level region is (lower, upper) with at least one bound, got {item!r:.40}")
+            for bound in item:
+                if bound is not None:
+                    Points.validate(bound)
+            if item[0] is not None and item[1] is not None and not item[0] < item[1]:
+                raise ValueError(f"a level region needs lower < upper, got {item!r:.40}")
+
+    @staticmethod
+    def format(value: tuple) -> str:
+        parts = []
+        for lo, hi in value:
+            if lo is None:
+                parts.append(f"below {Points.format(hi)}")
+            elif hi is None:
+                parts.append(f"above {Points.format(lo)}")
+            else:
+                parts.append(f"between {Points.format(lo)} and {Points.format(hi)}")
+        return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " or " + parts[-1]
+
+
 class SignedAmount(SlotType):
     """A finite `Decimal` printed with an explicit sign (+16.7)."""
 
@@ -854,19 +884,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
-    ExplanationTemplate("summary_start_outside", "values_seen",
-                        "If {index} ends below {lower} or above {upper} at expiry.",
-                        {"index": UnderlyingName, "lower": Points, "upper": Points}),
-    ExplanationTemplate("summary_start_between", "values_seen",
-                        "If {index} ends between {lower} and {upper} at expiry.",
-                        {"index": UnderlyingName, "lower": Points, "upper": Points}),
-    ExplanationTemplate("summary_start_below", "values_seen", "If {index} ends below {lower} at expiry.",
-                        {"index": UnderlyingName, "lower": Points}),
-    ExplanationTemplate("summary_start_above", "values_seen", "If {index} ends above {upper} at expiry.",
-                        {"index": UnderlyingName, "upper": Points}),
+    ExplanationTemplate("summary_start_regions", "values_seen", "If {index} ends {regions} at expiry.",
+                        {"index": UnderlyingName, "regions": LevelRegions}),
+    ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {level} at expiry.",
+                        {"level": Points}),
     ExplanationTemplate("summary_start_never", "values_seen", "At no level at expiry."),
     ExplanationTemplate("summary_start_everywhere", "values_seen",
-                        "At every level at expiry: there is no breakeven."),
+                        "At every level at expiry."),
     ExplanationTemplate("scenario_view_label", "values_seen", "{view}", {"view": ScenarioViewLabel}),
     ExplanationTemplate("table_column_label", "values_seen", "{column}", {"column": ColumnLabel}),
     ExplanationTemplate("scenario_header_plain", "values_seen", "{level}", {"level": Points}),
