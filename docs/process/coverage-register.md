@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 46abc54
+Generated from commit a80758e
 
 ## Stage S0
 
@@ -101,7 +101,6 @@ Generated from commit 46abc54
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
 | 4a | issue | #163 | - |  |
-| 4a | issue | #165 | - |  |
 | 4a | issue | #167 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
@@ -137,7 +136,6 @@ Generated from commit 46abc54
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
-| 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
 
 ## Stage 4b
 
@@ -445,7 +443,7 @@ Generated from commit 46abc54
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 31 | 5 | 0 | 14 | 0 | 1 | 31 | 0 | 1 | 90 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 13 | 0 | 1 | 31 | 0 | 0 | 88 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
