@@ -12,6 +12,7 @@ reported) is printed exactly as stored, quoted, and never scanned as our wording
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -302,7 +303,7 @@ class Amount(SlotType):
 
     @staticmethod
     def format(value: object) -> str:
-        return str(value)
+        return f"{value:f}" if isinstance(value, Decimal) else str(value)  # plain notation, never 1E+3
 
 
 class Days(SlotType):
@@ -400,7 +401,7 @@ class SignedAmount(SlotType):
 
     @staticmethod
     def format(value: Decimal) -> str:
-        return f"{value:+}"
+        return f"{value:+f}"  # plain notation, never +1E+2
 
 
 class HourMinute(SlotType):
@@ -429,6 +430,122 @@ class ClockSeconds(SlotType):
     def format(value: datetime.datetime) -> str:
         from ofo.errors.gate_slots import Clock
         return Clock.format(value)
+
+
+class UnderlyingName(SlotType):
+    """An index name, closed to the catalogue's underlyings (NIFTY, SENSEX): never a free token (W-066 round 2)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+        _require_exact(value, str, "UnderlyingName")
+        if value not in SUPPORTED_UNDERLYINGS:
+            raise ValueError(f"UnderlyingName slot must be one of {sorted(SUPPORTED_UNDERLYINGS)}, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+_INSTRUMENT_REF = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")
+#: A Kite trading symbol (NIFTY2610822800CE, SENSEX26OCTFUT; the instrument dump also holds ARE&M, BAJAJ-AUTO).
+_TRADING_SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9&-]{0,39}")
+
+
+class InstrumentRef(SlotType):
+    """An instrument identity in the platform's form `SEGMENT:token` (NSE_FO:44624): a pattern, no free token."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "InstrumentRef")
+        if not _INSTRUMENT_REF.fullmatch(value):  # type: ignore[arg-type]
+            raise ValueError(f"InstrumentRef slot requires SEGMENT:token, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class LegRef(SlotType):
+    """A leg named by its trading symbol (upper case letters and digits) or by its `SEGMENT:token` identity."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "LegRef")
+        if not (_INSTRUMENT_REF.fullmatch(value) or _TRADING_SYMBOL.fullmatch(value)):  # type: ignore[arg-type]
+            raise ValueError(f"LegRef slot requires a trading symbol or SEGMENT:token, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class LegRefs(SlotType):
+    """A non-empty tuple of `LegRef`, joined with ", " by the formatter."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not tuple or not value:
+            raise TypeError(f"LegRefs slot takes a non-empty tuple, got {type(value).__name__}")
+        for item in value:
+            LegRef.validate(item)
+
+    @staticmethod
+    def format(value: tuple) -> str:
+        return ", ".join(LegRef.format(item) for item in value)
+
+
+class HealthWord(SlotType):
+    """A data-health state: exactly a `DataHealth` member (never a string)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.rules.inputs import DataHealth
+        if type(value) is not DataHealth:
+            raise TypeError(f"HealthWord slot requires a DataHealth, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: Enum) -> str:
+        return str(value.value)
+
+
+class ExpiryDate(SlotType):
+    """A contract expiry: exactly a `datetime.date`, printed ISO."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "ExpiryDate")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        return value.isoformat()
+
+
+def _cell_enums() -> tuple[type, ...]:
+    from ofo.engine.legs import Action, Instrument
+    from ofo.table.model import LegStatus
+    return (Action, Instrument, LegStatus)
+
+
+class CellText(SlotType):
+    """A text table cell: a leg number (`int`), an expiry (`date`) or a member of a closed enum (Action, Instrument,
+    LegStatus). Never a string: money, points and numbers have their own cell templates."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is int and value >= 0:
+            return
+        if type(value) is datetime.date:
+            return
+        if type(value) in _cell_enums():
+            return
+        raise TypeError(f"CellText slot takes a leg number, a date or a closed enum member, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: object) -> str:
+        if isinstance(value, Enum):
+            return str(value.value)
+        return value.isoformat() if isinstance(value, datetime.date) else str(value)
 
 
 #: The 20 fixed table column headings (REQ-035 AC-2), by `ofo.table.columns.ColumnId` name.
@@ -522,7 +639,7 @@ class LegacyRecorded(SlotType):
 
 
 LEGACY_SLOT_TEMPLATES: frozenset[str] = frozenset({"estimate_line", "estimate_assume_iv",
-                                                   "estimate_assume_valued", "scenario_estimated_unavailable"})
+                                                   "estimate_assume_valued"})
 JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | "})
 
 
@@ -663,9 +780,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "No adjustment rule is defined. This strategy is still monitored; the platform may point out "
                         "an adjustment opportunity, but no rule of yours will trigger."),
     ExplanationTemplate("scenario_estimated_unavailable", "values_seen",
-                        "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": LegacyRecorded}),
+                        "Estimated Now is unavailable: no implied volatility for {legs}", {"legs": LegRefs}),
     # The caption is the PAIR "<underlying> at expiry | You make/lose" (Q227): two reviewed halves, joined by " | ".
-    ExplanationTemplate("scenario_caption_left", "values_seen", "{underlying} at expiry", {"underlying": Recorded}),
+    ExplanationTemplate("scenario_caption_left", "values_seen", "{underlying} at expiry", {"underlying": UnderlyingName}),
     ExplanationTemplate("scenario_caption_right", "values_seen", "You make/lose"),
     ExplanationTemplate("strike_part", "values_seen", " {strike}", {"strike": Recorded}),
     ExplanationTemplate("strike_none", "values_seen", ""),
@@ -696,7 +813,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),
     ExplanationTemplate("outcome_reason_no_provider", "values_seen", "no live market data provider is connected"),
     ExplanationTemplate("outcome_margin_pending", "values_seen",
-                        "margin from Zerodha comes with the margin item (needs the Kite login)"),
+                        "Margin from Zerodha is not shown yet; it needs your Kite login."),
     ExplanationTemplate("outcome_feed_disconnected", "values_seen",
                         "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",
                         {"time": ClockSeconds}),
@@ -704,47 +821,47 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("data_label_delayed", "values_seen", "delayed, as of {time} IST", {"time": HourMinute}),
     ExplanationTemplate("label_estimated_from_spot", "values_seen", "estimated from spot"),
     ExplanationTemplate("leg_label_symbol", "values_seen", "{symbol}: {label}",
-                        {"symbol": Recorded, "label": Explained}),
+                        {"symbol": LegRef, "label": Explained}),
     ExplanationTemplate("leg_label_no_quote", "values_seen", "no live quote"),
-    ExplanationTemplate("leg_label_quote_unusable", "values_seen", "quote {health}; not used", {"health": Recorded}),
+    ExplanationTemplate("leg_label_quote_unusable", "values_seen", "quote {health}; not used", {"health": HealthWord}),
     ExplanationTemplate("leg_label_quote_no_price", "values_seen", "quote has no last price"),
     ExplanationTemplate("leg_label_no_iv", "values_seen", "no implied volatility for this price"),
-    ExplanationTemplate("outcome_problem_leg", "values_seen", "{leg}: {why}", {"leg": Recorded, "why": Explained}),
+    ExplanationTemplate("outcome_problem_leg", "values_seen", "Instrument {leg} cannot be used: {why}", {"leg": InstrumentRef, "why": Explained}),
     ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in the snapshot"),
     ExplanationTemplate("outcome_why_unknown_instrument", "values_seen", "unknown instrument"),
     ExplanationTemplate("outcome_why_expired", "values_seen", "expired"),
     ExplanationTemplate("outcome_why_other_underlying", "values_seen",
                         "the contract is on {contract_on}, the strategy is on {underlying}",
-                        {"contract_on": Recorded, "underlying": Recorded}),
+                        {"contract_on": UnderlyingName, "underlying": UnderlyingName}),
     ExplanationTemplate("outcome_why_leg_input", "values_seen", "this leg cannot be valued from the data received"),
     ExplanationTemplate("outcome_why_forward", "values_seen",
                         "the forward price could not be derived from the option chain"),
     ExplanationTemplate("outcome_forward_error", "values_seen", "forward for {expiry}: {why}",
-                        {"expiry": Recorded, "why": Explained}),
+                        {"expiry": ExpiryDate, "why": Explained}),
     ExplanationTemplate("outcome_spot_missing", "values_seen",
-                        "the {underlying} index value is missing; the outcome is refused", {"underlying": Recorded}),
+                        "the {underlying} index value is missing; the outcome is refused", {"underlying": UnderlyingName}),
     ExplanationTemplate("outcome_spot_unusable", "values_seen",
                         "the {underlying} spot is {health}; the calculation is refused",
-                        {"underlying": Recorded, "health": Recorded}),
+                        {"underlying": UnderlyingName, "health": HealthWord}),
     ExplanationTemplate("outcome_forward_refused", "values_seen",
                         "a forward price is missing or was read on other inputs; the outcome is refused"),
     ExplanationTemplate("summary_lose_unlimited", "values_seen",
-                        "Your loss has no fixed limit if {index} rises far enough by expiry.", {"index": Recorded}),
+                        "Your loss has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_lose_at_most", "values_seen", "At most {amount} at expiry.", {"amount": Rupees}),
     ExplanationTemplate("summary_make_unlimited", "values_seen",
-                        "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": Recorded}),
+                        "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry.", {"amount": Rupees}),
     ExplanationTemplate("summary_start_outside", "values_seen",
                         "If {index} ends below {lower} or above {upper} at expiry.",
-                        {"index": Recorded, "lower": Points, "upper": Points}),
+                        {"index": UnderlyingName, "lower": Points, "upper": Points}),
     ExplanationTemplate("summary_start_between", "values_seen",
                         "If {index} ends between {lower} and {upper} at expiry.",
-                        {"index": Recorded, "lower": Points, "upper": Points}),
+                        {"index": UnderlyingName, "lower": Points, "upper": Points}),
     ExplanationTemplate("summary_start_below", "values_seen", "If {index} ends below {lower} at expiry.",
-                        {"index": Recorded, "lower": Points}),
+                        {"index": UnderlyingName, "lower": Points}),
     ExplanationTemplate("summary_start_above", "values_seen", "If {index} ends above {upper} at expiry.",
-                        {"index": Recorded, "upper": Points}),
+                        {"index": UnderlyingName, "upper": Points}),
     ExplanationTemplate("summary_start_never", "values_seen", "At no level at expiry."),
     ExplanationTemplate("summary_start_everywhere", "values_seen",
                         "At every level at expiry: there is no breakeven."),
@@ -763,7 +880,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_percent", "values_seen", "{value}%", {"value": Amount}),
     ExplanationTemplate("cell_percent_signed", "values_seen", "{value}%", {"value": SignedAmount}),
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
-    ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": Recorded}),
+    ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )

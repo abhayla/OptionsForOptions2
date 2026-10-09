@@ -90,7 +90,7 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
                               output_label=inputs.data_label, **spot)
     missing = _missing_iv(inputs)
     if missing:
-        reason = render_explanation("scenario_estimated_unavailable", legs=", ".join(missing))
+        reason = render_explanation("scenario_estimated_unavailable", legs=tuple(missing))
         return ScenarioValues(view, LABELS[view], "estimate", levels, False, reason, None, None,
                               output_label=inputs.data_label, **spot)
     quoted = tuple(level.quantize(_QUOTE, rounding=ROUND_HALF_EVEN) for level in levels)

@@ -956,7 +956,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:outcome_margin_pending": {
-    "sha256": "5e324b5d559b2207cf6274e648d552f8ad2d0498fa097b61e496481d0f37e571",
+    "sha256": "1c208982a42505fbffde00656f1616a3c77146e057f653a636f865f78c0cf63d",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_feed_disconnected": {
@@ -996,7 +996,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:outcome_problem_leg": {
-    "sha256": "52ce0655ecdd7485336844f6f8cdbd666144b2a88506e3ed3766b997b7787d0e",
+    "sha256": "a4411628c2971973dc7e19f714915901ab268f678e4d566f022b732ddf0d984b",
     "reviewed": "pending owner read"
   },
   "explanation:outcome_why_not_in_snapshot": {

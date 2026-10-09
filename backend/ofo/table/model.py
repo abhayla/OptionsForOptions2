@@ -33,7 +33,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   rounding), which is the correct boundary behaviour, not a bug; the exact (pre-round) values always sum exactly.
 - **Status** (fix round: settled by the tables the owner reviewed in T1, not computed from moneyness — the prior
   ITM/ATM/OTM rule was a defect, moneyness is not in the AC-2 column list). A leg's Status is whatever state the
-  caller passes in for that leg (``leg_statuses``, e.g. "Open" — an enum defined elsewhere, not computed here); the
+  caller passes in for that leg (``leg_statuses``, a ``LegStatus``, not computed here); the
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
   29-30, the owner's exact labels: "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
@@ -90,6 +90,12 @@ class CellKind(Enum):
     IV = "iv"
     QUANTITY = "quantity"
     TEXT = "text"
+
+
+class LegStatus(Enum):
+    """The status of one leg, passed in by the caller (a closed set: the table prints it, never composes it)."""
+
+    OPEN = "Open"
 
 
 class StrategyHealth(Enum):
@@ -170,7 +176,7 @@ def _dash() -> ExplanationText:
     return render_explanation("cell_dash")
 
 
-def _text(value: str | None, reason: str | None = None) -> Cell:
+def _text(value: "int | datetime.date | Action | Instrument | LegStatus | None", reason: str | None = None) -> Cell:
     if value is None:
         return Cell(None, _dash(), CellKind.TEXT, reason=reason or _r("not_applicable"))
     text = render_explanation("cell_text", value=value)
@@ -272,7 +278,7 @@ def _iv_cell(leg: LegInput) -> Cell:
 
 
 def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
-             scenario: ScenarioValues | None, leg_position: int, status: str | None) -> Row:
+             scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None") -> Row:
     core = leg.leg
     entry_value = core.entry_price * core.quantity
     current_value = core.ltp * core.quantity if core.ltp is not None else None
@@ -294,10 +300,10 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
     vendor = leg.greeks
 
     cells: dict[object, Cell] = {
-        ColumnId.LEG: _text(str(index)),
-        ColumnId.ACTION: _text(core.action.value),
-        ColumnId.INSTRUMENT: _text(core.instrument.value),
-        ColumnId.EXPIRY: _text(core.expiry.isoformat()),
+        ColumnId.LEG: _text(index),
+        ColumnId.ACTION: _text(core.action),
+        ColumnId.INSTRUMENT: _text(core.instrument),
+        ColumnId.EXPIRY: _text(core.expiry),
         ColumnId.STRIKE: _points(core.strike) if core.strike is not None
         else _points(None, _r("fut_no_strike")),
         ColumnId.QUANTITY: _quantity_cell(core.quantity),
@@ -427,7 +433,7 @@ def build_table(
     *,
     level_set: LevelSet | None = None,
     scenario: ScenarioValues | None = None,
-    leg_statuses: Sequence[str | None] | None = None,
+    leg_statuses: Sequence["LegStatus | None"] | None = None,
     strategy_health: StrategyHealth | None = None,
 ) -> Table:
     """Build the one strategy table (AC-1): a row per leg, a TOTAL row, columns in the AC-2 locked order.
