@@ -682,8 +682,43 @@ _BROKER_LOGIN_TEMPLATES: tuple[MessageTemplate, ...] = (
           _LOGIN_AGAIN),
 )
 
+
+# --- W-061 (REQ-038 AC-5): Save Draft refusals (backend/ofo_app/routes/strategies.py). New: awaiting the owner's read.
+_STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("strategy_contract_not_in_catalogue", _SV, 401,
+          "A contract in this strategy is not in the contract catalogue.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Pick the contract again from the catalogue."),
+    _gate("strategy_contract_terms_changed", _SV, 402,
+          "The catalogue now describes one of this strategy's contracts differently from the strategy.",
+          "The draft was not saved or changed.", "Using this strategy until its contracts are chosen again.", "Pick the contracts again from the catalogue; nothing is replaced for you."),
+    _gate("strategy_contract_not_live", _SV, 403,
+          "A contract in this strategy is no longer live in the catalogue.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Replace that leg with a live contract."),
+    _gate("strategy_quantity_not_lot_multiple", _SV, 404,
+          "A leg's quantity is not a whole number of lots.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Enter a quantity that is a whole number of lots."),
+    _gate("strategy_underlying_mismatch", _SV, 405,
+          "A leg's contract belongs to a different underlying than the strategy.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Pick a contract of the strategy's own underlying."),
+    _gate("strategy_name_not_allowed", _SV, 406,
+          "A risk limit or preference uses a name that is not on the allowed list.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Use only the allowed risk-limit and preference names."),
+    _gate("strategy_underlying_fixed", _SV, 407,
+          "A saved strategy keeps the underlying it was created with.",
+          "The draft was not saved or changed.", "Changing the underlying of this strategy.", "Create a new strategy for the other underlying."),
+    _gate("strategy_definition_invalid", _SV, 408,
+          "This strategy definition cannot be saved as sent.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Check the legs, risk limits and preferences and try again."),
+    _gate("strategy_revision_conflict", _SV, 409,
+          "This strategy was changed by another action after you opened it.",
+          "The draft was not saved or changed.", "Applying your change to the newer version.", "Reload the strategy and make the change again."),
+    _gate("strategy_stored_unreadable", _SV, 410,
+          "The saved form of this strategy can no longer be read.",
+          "The draft was not saved or changed.", "Opening or restoring this strategy.", "Contact support; the saved strategy was left as it is."),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
-              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES)
+              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
