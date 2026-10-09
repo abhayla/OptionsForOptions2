@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit f6f894e
+Generated from commit b83baf4
 
 ## Stage S0
 
@@ -99,6 +99,7 @@ Generated from commit f6f894e
 | 4a | issue | #155 | - |  |
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
+| 4a | issue | #163 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -441,7 +442,7 @@ Generated from commit f6f894e
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 30 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 2 | 87 |
+| 4a | 7 | 0 | 30 | 5 | 0 | 12 | 0 | 1 | 31 | 0 | 2 | 88 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
