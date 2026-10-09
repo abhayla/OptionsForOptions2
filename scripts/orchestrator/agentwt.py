@@ -6,7 +6,7 @@ usage: agentwt.py <agent-id> status|release
 """
 import os, subprocess, sys
 
-MAIN = r"D:\Abhay\Ventures\OptionsForOptions2"
+MAIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 aid, cmd = sys.argv[1], sys.argv[2]
 path = os.path.join(MAIN, "." + "claude", "worktrees", f"agent-{aid}")
 

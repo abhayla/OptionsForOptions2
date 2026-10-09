@@ -18,11 +18,11 @@ from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from kite_core_proof import call, load_env, session_token  # noqa: E402
+from kite_core_proof import TICKS, call, load_env, session_token  # noqa: E402
 from kite_live_checks import parse_frame  # noqa: E402
 
 DAY = "2026-10-08"
-RAW = r"D:\Abhay\Ventures\ofo-kite-ticks\2026-10-08"
+RAW = os.path.join(TICKS, DAY)
 FILES = ["frames-083808.bin.gz", "frames-144102.bin.gz"]
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 INDEX = {256265: "NIFTY 50", 265: "SENSEX"}
