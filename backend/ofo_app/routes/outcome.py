@@ -37,8 +37,10 @@ class MarketContext:
 
 
 def get_market_context() -> Optional[MarketContext]:
-    """No live provider is wired yet (the live socket item, W-058): the route answers "not connected"."""
-    return None
+    """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
+    answers "not connected". Tests and the replay mode override this dependency."""
+    from ofo_app import live_market  # late: live_market imports MarketContext from this module
+    return live_market.current_context()
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
@@ -218,9 +220,8 @@ def _definition(req: OutcomeRequest) -> StrategyDefinition:
     return StrategyDefinition(req.underlying, tuple(legs))
 
 
-@router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
-def strategy_outcome(req: OutcomeRequest,
-                     ctx: Optional[MarketContext] = Depends(get_market_context)) -> OutcomeResponse:
+def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext]) -> OutcomeResponse:
+    """The one computation behind the REST route and the live push (W-065): both send exactly this."""
     definition = _definition(req)
     ux = UXLevel(req.ux_level)
     if ctx is None:
@@ -234,3 +235,9 @@ def strategy_outcome(req: OutcomeRequest,
     if ctx is not None and ux is UXLevel.ADVANCED:  # the UX gate: nothing else ever carries bid/ask
         body["advanced_details"] = _advanced_details(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     return OutcomeResponse.model_validate(body)
+
+
+@router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
+def strategy_outcome(req: OutcomeRequest,
+                     ctx: Optional[MarketContext] = Depends(get_market_context)) -> OutcomeResponse:
+    return outcome_response(req, ctx)

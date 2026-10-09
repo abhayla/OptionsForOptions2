@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo_app import errors, replay_mode
+from ofo_app import errors, live_market, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
 from ofo_app.routes import broker, health, outcome
@@ -23,8 +23,20 @@ log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    market = None
+    if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
+        market = live_market.LiveMarket()
+        live_market.set_current(market)
+        try:
+            await market.start(app.state.broker.config)
+        except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.
+            market.state = live_market.NOT_CONNECTED
+            log.error("live market data did not start: %s", type(exc).__name__)
     yield
+    if market is not None:
+        await market.stop()
+        live_market.set_current(None)
     await close_db()
 
 
@@ -34,6 +46,9 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     config = broker_config if broker_config is not None else load_broker_config()
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan)
     errors.install(app)
+    if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
+        live_market.require_safe(os.environ.get("APP_ENV", "development"),
+                                 os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
     if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
         replay_mode.require_test_env(os.environ.get("APP_ENV", "development"))
         ctx = replay_mode.build_replay_context()
