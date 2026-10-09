@@ -367,3 +367,36 @@ def test_create_app_refuses_live_market_in_test_env_with_the_real_kite(monkeypat
     monkeypatch.delenv("KITE_WS_URL", raising=False)
     with pytest.raises(live_market.LiveRefused):
         create_app()
+
+
+def _load_proof():
+    import importlib.util
+
+    path = ROOT / "docs" / "research" / "kite-proof-2026-10-07" / "w065_live_push_proof.py"
+    loader_spec = importlib.util.spec_from_file_location("w065_live_push_proof", path)
+    mod = importlib.util.module_from_spec(loader_spec)
+    loader_spec.loader.exec_module(mod)
+    return mod
+
+
+async def test_the_in_process_proof_code_path_passes_on_the_replay_provider(rig):
+    """The orchestrator's live proof script runs this same function (run_core) against the real Kite feed; here it
+    runs on the W-064 replay provider and a fake clock, with a tick injected every 0.25 s of fake time."""
+    proof = _load_proof()
+    provider, feed, _channel, mono, _push = rig
+    body = request(provider)
+    steps = {"n": 0}
+
+    async def sleep(seconds: float) -> None:
+        mono.now += seconds
+        steps["n"] += 1
+        tick(provider, SELL_CE, f"{100 + steps['n'] % 40}.05")
+        await asyncio.sleep(0.03)
+
+    summary = await proof.run_core(feed, lambda _spot: body, monotonic=mono, sleep=sleep, seconds=30,
+                                   min_pushes=20, poll=0.005)
+    assert summary["pushes"] >= 20, summary
+    assert summary["min_gap_s"] >= 1.0, summary  # the 1 s gate holds with a changed tick every 0.25 s
+    assert max(summary["distinct_ltp_per_leg"]) > 1 and summary["distinct_unrealized_pnl"] > 1, summary
+    assert summary["passed"] is True, summary
+    assert provider.subscribed_tokens() == []  # the proof releases everything it subscribed
