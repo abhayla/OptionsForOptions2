@@ -12,9 +12,9 @@ import datetime as dt, gzip, json, os, struct, sys, urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from kite_core_proof import call, load_env, session_token  # noqa: E402
+from kite_core_proof import TICKS, call, load_env, session_token  # noqa: E402
 
-RAW = r"D:\Abhay\Ventures\ofo-kite-ticks\2026-10-08"
+RAW = os.path.join(TICKS, "2026-10-08")
 OUT = os.path.join(HERE, "..", "..", "..", "tests", "fixtures", "kite_history")
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 TOKENS = [256265, 265, 11421186, 11421442, 227668741, 227622405, 227781893, 227673349]

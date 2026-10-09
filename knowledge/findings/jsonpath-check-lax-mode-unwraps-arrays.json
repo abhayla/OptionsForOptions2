@@ -1,0 +1,28 @@
+{
+ "id": "jsonpath-check-lax-mode-unwraps-arrays",
+ "scope": "generic",
+ "class": "A database CHECK written as JSON-path filters over a free JSONB document refuses only the shapes its author listed: PostgreSQL's default lax mode unwraps an array wherever the path expects a scalar, so a value wrapped in an array (or an empty array) satisfies every per-value test, and a position whose value is only type-checked accepts any text of that type. A shape CHECK built this way is a list of refused forms, not a closed description of the allowed document.",
+ "mechanism": "W-061 round 2 enforced the strategy definition's closed key shape with jsonpath CHECKs in default (lax) mode and per-leg type tests only; as ofo_app, inserts with preferences {\"objective\":[\"income\"]}, risk_limits {\"max_loss\":[\"9000\"]}, rules_ref [\"abc\"], legs [[leg]], legs [], and leg values strike \"LTP 22950.35\", action \"LTP is 22950.35 buy now\", quantity 22950.35 were all accepted, so a live price could be stored inside a strategy (REQ-038 AC-5).",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "build/W-061-save-draft @ 5b372b1, backend/ofo_app/alembic/versions/0008_strategy_store.py _shape_checks",
+  "evidence": "Tier A review attack script as ofo_app (each ACCEPTED, rolled back); reproduced by the orchestrator with a throwaway pytest reusing test_strategy_closed_shape.py fixtures on the real ofo_test database: 6 of 6 cases 'DID NOT RAISE' (pref-array, risk-array, rules-ref-array, leg-strike-sentence, leg-action-sentence, leg-quantity-fraction); the branch's own 27 closed-shape tests were green"
+ },
+ "fix": "Open for round 3 (issue #165): an independent review compares strict-mode jsonpath with a per-position value check, one positive whitelist validation function, and typed relational columns; the round-3 test list includes a positive enumeration (every JSON type other than the allowed one, at every position of the closed shape, is refused).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The round-3 positive enumeration test is the planned detection; until it merges, W-061 does not merge."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-038.md",
+  "spec/decisions/ADR-064.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "W-061 round 2 (second red of the class 'the database accepts a live price inside a stored strategy'; round 1 had no shape CHECK)",
+   "evidence": "6 of 6 reproduced on ofo_test as ofo_app"
+  }
+ ]
+}

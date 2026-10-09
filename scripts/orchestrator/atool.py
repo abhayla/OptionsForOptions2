@@ -1,9 +1,15 @@
-"""Run the CI mirror in an agent worktree: atool.py <agent-id> [grep-word]"""
+"""Run the CI mirror in a worktree: atool.py <agent-id | worktree-dir> [grep-word] [--no-tests]
+
+--no-tests skips the full domain suite (on the VPS, whose PostgreSQL serves IPODhan production, CI runs it).
+"""
 import os, subprocess, sys
-wt = os.path.join(r"D:\Abhay\Ventures\OptionsForOptions2", "." + "claude", "worktrees", f"agent-{sys.argv[1]}")
-word = sys.argv[2] if len(sys.argv) > 2 else "W-"
+args = [a for a in sys.argv[1:] if a != "--no-tests"]
+wt = args[0] if os.path.isdir(args[0]) else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "." + "claude", "worktrees", f"agent-{args[0]}")
+word = args[1] if len(args) > 1 else "W-"
 steps = [["tools/factory_lint.py", "."], ["tools/trace_check.py", "."], ["tools/build_findings_index.py", ".", "--check"],
          ["tools/check_spec_refs.py", "."], ["tools/kit_settings.py", ".", "--check"], ["-m", "pytest", "-q", "-p", "no:cacheprovider"]]
+if "--no-tests" in sys.argv:
+    steps = steps[:-1]
 bad = 0
 for s in steps:
     r = subprocess.run([sys.executable, *s], cwd=wt, capture_output=True, text=True)

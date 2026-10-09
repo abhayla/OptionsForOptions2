@@ -440,7 +440,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--minutes", type=int, default=30)
     ap.add_argument("--reconnect-at", type=int, default=15)
-    ap.add_argument("--ticks-dir", default=r"D:\Abhay\Ventures\ofo-kite-ticks")
+    ap.add_argument("--ticks-dir", default=os.environ.get("OFO_TICKS_DIR") or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), "ofo-kite-ticks"))
     ap.add_argument("--no-token-watch", action="store_true")
     ap.add_argument("--tag", default="", help="summary folder suffix, e.g. pm")
     ap.add_argument("--pause-s", type=float, default=0.0, help="wait this long after the forced disconnect")
