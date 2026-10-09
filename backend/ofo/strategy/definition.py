@@ -25,6 +25,7 @@ from typing import Mapping, Union
 from ofo.engine.legs import Action, Instrument, require_decimal, require_price
 from ofo.engine.strategy import Strategy
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.strategy import settings_value
 
 MAX_LEGS = 20
 MAX_UNITS = 1_000_000
@@ -50,6 +51,11 @@ class DefinitionError(ValueError):
     def __init__(self, *args: object, detail: str | None = None) -> None:
         """``detail`` marks developer-only input-validation text: it is never shown to a user."""
         super().__init__(*args) if detail is None else super().__init__(detail)
+
+
+class ValueRefusedError(DefinitionError):
+    """A risk limit, preference or rules reference outside ADR-069's type (an identifier or a number). The text holds
+    no part of the value, so no path can echo it."""
 
 
 class UnknownNameError(DefinitionError):
@@ -150,15 +156,25 @@ def _named(values: object, label: str, check) -> tuple:
 
 def _limit_value(name: str, value: object) -> Decimal:
     try:
-        return require_decimal(value, f"risk limit {name!r}")
-    except ValueError as exc:
-        raise DefinitionError(str(exc)) from exc
+        return settings_value.limit(value, f"risk_limit.{name}")
+    except settings_value.SettingsValueError as exc:
+        raise ValueRefusedError(detail=f"{exc.kind} is not an identifier or number (ADR-069), got a {exc.got}") from None
 
 
 def _preference_value(name: str, value: object) -> str:
-    if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT:
-        raise DefinitionError(f"preference {name!r} must be a non-empty string of at most {MAX_TEXT} chars")
-    return value
+    try:
+        return settings_value.identifier(value, f"preference.{name}")
+    except settings_value.SettingsValueError as exc:
+        raise ValueRefusedError(detail=f"{exc.kind} is not an identifier or number (ADR-069), got a {exc.got}") from None
+
+
+def _rules_ref(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        return settings_value.identifier(value, "rules_ref")
+    except settings_value.SettingsValueError as exc:
+        raise ValueRefusedError(detail=f"{exc.kind} is not an identifier or number (ADR-069), got a {exc.got}") from None
 
 
 @dataclass(frozen=True)
@@ -189,10 +205,7 @@ class StrategyDefinition:
                     f"two legs on the same contract {describe_contract(contract)}; use one leg with the total quantity"
                 )
             contracts.add(contract)
-        if self.rules_ref is not None and (
-            not isinstance(self.rules_ref, str) or not self.rules_ref.strip() or len(self.rules_ref) > MAX_TEXT
-        ):
-            raise DefinitionError(f"rules_ref must be None or a non-empty string, got {self.rules_ref!r}")
+        object.__setattr__(self, "rules_ref", _rules_ref(self.rules_ref))
         object.__setattr__(self, "legs", legs)
         object.__setattr__(self, "risk_limits", _named(self.risk_limits, "risk_limits", _limit_value))
         object.__setattr__(self, "preferences", _named(self.preferences, "preferences", _preference_value))

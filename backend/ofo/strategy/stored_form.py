@@ -32,6 +32,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import json
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Optional, Sequence
@@ -45,8 +46,10 @@ from ofo.strategy.definition import (
     DefinitionLeg,
     StrategyDefinition,
     UnknownNameError,
+    ValueRefusedError,
     check_names,
 )
+from ofo.strategy import settings_value
 
 SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
@@ -78,6 +81,7 @@ QUANTITY_NOT_LOT_MULTIPLE = "quantity_not_lot_multiple"
 UNDERLYING_MISMATCH = "underlying_mismatch"
 LIVE_STATE_FIELD = "live_state_field"
 UNKNOWN_NAME = "unknown_name"
+VALUE_NOT_ALLOWED = "value_not_allowed"  # ADR-069: a setting value that is not an identifier or a number
 
 
 class StoredFormError(ValueError):
@@ -148,7 +152,8 @@ def check_map_names(**named: Sequence[str]) -> None:
 
 
 def _definition_refused(exc: DefinitionError, where: str = "") -> StoredFormError:
-    code = UNKNOWN_NAME if isinstance(exc, UnknownNameError) else INVALID_DEFINITION
+    code = (UNKNOWN_NAME if isinstance(exc, UnknownNameError)
+            else VALUE_NOT_ALLOWED if isinstance(exc, ValueRefusedError) else INVALID_DEFINITION)
     return StoredFormError(code, f"{where}{exc}")
 
 
@@ -250,6 +255,27 @@ def _decimal_from(value: Any, where: str) -> Decimal:
     if not number.is_finite() or str(number) != value:
         raise StoredFormError(NOT_DECIMAL_STRING, f"{where} {value!r} is not an exact finite decimal text")
     return number
+
+
+def check_setting_values(*, rules_ref: Any = None, preferences: Mapping[str, Any] = {}) -> None:
+    """ADR-069 for a caller that must refuse before it reads anything (the API): the same domain type that
+    StrategyDefinition applies on every path. The refusal (VALUE_NOT_ALLOWED) never holds the value."""
+    try:
+        if rules_ref is not None:
+            settings_value.identifier(rules_ref, "rules_ref")
+        for name, value in preferences.items():
+            settings_value.identifier(value, f"preference.{name}")
+    except settings_value.SettingsValueError as exc:
+        raise StoredFormError(VALUE_NOT_ALLOWED, f"{exc.kind} is not an identifier or number (ADR-069), got a {exc.got}"
+                              ) from None
+
+
+def limit_from_text(value: Any, where: str) -> Decimal:
+    """A risk limit given as text (API bodies): ADR-069's plain-digit number form, else VALUE_NOT_ALLOWED (never
+    echoed); then the exact-text rule of ``decimal_from_text``."""
+    if type(value) is not str or re.fullmatch(settings_value.LIMIT_PATTERN, value) is None:
+        raise StoredFormError(VALUE_NOT_ALLOWED, f"{where} is not an identifier or number in ADR-069's form")
+    return _decimal_from(value, where)
 
 
 def decimal_from_text(value: Any, where: str) -> Decimal:

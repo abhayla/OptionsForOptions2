@@ -64,6 +64,7 @@ REFUSED_SHAPES = {
     "preferences-not-an-object": _set(["preferences"], ["objective"]),
     "risk-limit-unknown-name": _set(["risk_limits", "ltp"], "5000"),
     "risk-limit-sentence-value": _set(["risk_limits", "max_loss"], "5000 rupees"),
+    "risk-limit-negative-value": _set(["risk_limits", "max_loss"], "-5"),
     "risk-limit-exponent-value": _set(["risk_limits", "max_loss"], "1E+3"),
     "risk-limits-not-an-object": _set(["risk_limits"], ["max_loss"]),
     "leg-nested-last_price": _set(["legs", 0, "last_price"], "101.5"),
@@ -107,7 +108,7 @@ async def test_ac5_the_database_accepts_the_real_iron_condor_with_every_allowed_
             good, _, _ = await _iron_condor_text(conn)
             full = _mutated(good, lambda d: d.update(
                 rules_ref="rules-set_1.v2",
-                risk_limits={"max_loss": "9000.50", "max_capital": "250000", "max_margin": "-1"},
+                risk_limits={"max_loss": "9000.50", "max_capital": "250000", "max_margin": "0"},
                 preferences={"objective": "income", "market_view": "range-bound", "risk_preference": "low",
                              "capital": "250000", "expected_range_low": "22400", "expected_range_high": "23000.5"}))
             assert (await conn.execute(text(INSERT_DEFINITION + " RETURNING id"),

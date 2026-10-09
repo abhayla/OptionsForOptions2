@@ -105,7 +105,7 @@ RISK_LIMIT_NAMES = ("max_loss", "max_capital", "max_margin")
 PREFERENCE_NAMES = ("objective", "market_view", "risk_preference", "capital", "expected_range_low",
                     "expected_range_high")
 IDENTIFIER_REGEX = "^[A-Za-z0-9_.-]{1,64}$"  # ADR-069
-LIMIT_REGEX = "^-?[0-9]{1,30}([.][0-9]{1,30})?$"  # a finite decimal as plain digits (ADR-069: numbers, no exponent)
+LIMIT_REGEX = "^[0-9]{1,30}([.][0-9]{1,30})?$"  # a finite non-negative decimal as plain digits (ADR-069: no exponent)
 
 
 def _bad(path: str) -> str:

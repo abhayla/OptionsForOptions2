@@ -25,27 +25,21 @@ from __future__ import annotations
 import datetime
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo.engine.legs import Action
 from ofo.errors import UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
-from ofo_app.api_models import IDENTIFIER_MAX, ApiModel, CatalogueText, Identifier
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import Failure
 from ofo_app.routes.broker import current_user_ref
 
 router = APIRouter()
-
-#: Text the user types is held to the closed `Identifier` shape (letters, digits, ``_ - .``; at most 64), because the
-#: typed response models cannot carry free text (ofo_app/api_models.py): a decimal string, a rules reference and a
-#: preference value fit; a sentence does not and is refused (422) rather than saved and then unreadable.
-IdentifierIn = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$" % IDENTIFIER_MAX)]
-
 
 def _refuse_live_state(data: Any) -> Any:
     if isinstance(data, Mapping):
@@ -70,9 +64,9 @@ class StrategyIn(BaseModel):
 
     underlying: Literal["NIFTY", "SENSEX"]
     legs: list[LegIn] = Field(min_length=1)
-    rules_ref: Optional[IdentifierIn] = None
-    risk_limits: dict[str, IdentifierIn] = Field(default_factory=dict, description="name -> decimal as a string")
-    preferences: dict[str, IdentifierIn] = Field(default_factory=dict)
+    rules_ref: Optional[str] = None
+    risk_limits: dict[str, str] = Field(default_factory=dict, description="name -> decimal as a string")
+    preferences: dict[str, str] = Field(default_factory=dict)
 
     _no_live = model_validator(mode="before")(_refuse_live_state)
 
@@ -169,6 +163,7 @@ _FORM_TEMPLATE = MappingProxyType({
     sf.QUANTITY_NOT_LOT_MULTIPLE: "strategy_quantity_not_lot_multiple",
     sf.UNDERLYING_MISMATCH: "strategy_underlying_mismatch",
     sf.UNKNOWN_NAME: "strategy_name_not_allowed",
+    sf.VALUE_NOT_ALLOWED: "user_input_request_invalid",  # ADR-069: the fixed input error (422), value never echoed
 })
 #: On the 409 path (a stored definition read back) only these two keep their own message; the rest are "unreadable".
 _STORED_OWN_MESSAGE = frozenset({sf.CONTRACT_NOT_IN_CATALOGUE, sf.CONTRACT_TERMS_CHANGED})
@@ -198,7 +193,8 @@ def _strategy_out(stored: store.StoredStrategy) -> StrategyOut:
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
     sf.check_map_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # ADR-064, before any query
-    limits = {name: sf.decimal_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
+    sf.check_setting_values(rules_ref=body.rules_ref, preferences=body.preferences)  # ADR-069, before any query
+    limits = {name: sf.limit_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
     return await store.build_definition(
         db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity) for leg in body.legs],
         rules_ref=body.rules_ref, risk_limits=limits, preferences=dict(body.preferences))
