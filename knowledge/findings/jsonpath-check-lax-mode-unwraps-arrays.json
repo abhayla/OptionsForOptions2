@@ -8,11 +8,13 @@
   "where": "build/W-061-save-draft @ 5b372b1, backend/ofo_app/alembic/versions/0008_strategy_store.py _shape_checks",
   "evidence": "Tier A review attack script as ofo_app (each ACCEPTED, rolled back); reproduced by the orchestrator with a throwaway pytest reusing test_strategy_closed_shape.py fixtures on the real ofo_test database: 6 of 6 cases 'DID NOT RAISE' (pref-array, risk-array, rules-ref-array, leg-strike-sentence, leg-action-sentence, leg-quantity-fraction); the branch's own 27 closed-shape tests were green"
  },
- "fix": "Open for round 3 (issue #165): an independent review compares strict-mode jsonpath with a per-position value check, one positive whitelist validation function, and typed relational columns; the round-3 test list includes a positive enumeration (every JSON type other than the allowed one, at every position of the closed shape, is refused).",
+ "fix": "W-061 round 3 (independent review, Fable, 2026-10-09): one positive IMMUTABLE plpgsql walker per stored shape (exact key sets, a typed predicate per slot, arrays only where the shape has one) called from the md5-pinned SECURITY DEFINER guard triggers, mirroring the audit store's CONFORMS_FUNCTION (0002); the round-2 jsonpath CHECKs removed. Discrimination: the generated matrix refused 59 of 344 previously accepted definitions at 5b372b1 -> 0 accepted at ccb8161; the Tier A verifier's 58 attacks at d454da6: 0 accepted, the good control accepted.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "The round-3 positive enumeration test is the planned detection; until it merges, W-061 does not merge."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_strategy_shape_matrix.py (generated: every position x every wrong JSON type, incl. the right value wrapped in an array, on both tables; change items per kind; database/domain agreement)"
+  ],
+  "note": "Mutations M1-M6 of the round-3 review (array at one position, leg key-count, fractional quantity, sentence at strike, one change-item kind, INSERT-only validation) each turn the matrix or a named test red."
  },
  "spec_ref": [
   "spec/requirements/REQ-038.md",
