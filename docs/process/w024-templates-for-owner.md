@@ -1,6 +1,6 @@
 # W-024 templates for the owner to read once
 
-Behaviour changes (W-066, outcome texts): the sentence shown when a strategy's maximum loss is zero changed from the old "cannot lose" promise, which the wording rules forbid, to the at-most-zero sentence ("At most ₹0.00 at expiry."). The maximum-loss and maximum-profit wording is waiting on an owner question about charges; those templates are not changed in this round.
+Behaviour changes (W-066, outcome texts): the sentence shown when a strategy's maximum loss is zero changed from the old "cannot lose" promise, which the wording rules forbid, to the at-most-zero sentence ("At most ₹0.00 at expiry."). Round 3 (ADR-071, owner 2026-10-09): the maximum-loss and maximum-profit sentences now say they are before charges and taxes, until the charges model is decided. Changed lines: `summary_lose_at_most` and `summary_make_at_most`, both now "At most {amount} at expiry, before charges and taxes." (a zero amount reads "At most ₹0.00 at expiry, before charges and taxes."). The "no fixed limit", "cannot make money" and breakeven sentences are unchanged.
 
 Every platform message template, as written. `{name}` is a typed slot filled at run time. Each template's pin in `tests/errors/template_pins.json` says `pending owner read` until you have read it; a changed word changes the pin and fails CI until re-pinned. Rows marked `(owner read 2026-10-08)` were approved as written by the owner on 2026-10-08 (the Zerodha connection and login messages); their pins say so.
 
@@ -254,10 +254,10 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `outcome_spot_unusable` | values_seen | the {underlying} spot is {health}; the calculation is refused |
 | `outcome_forward_refused` | values_seen | a forward price is missing or was read on other inputs; the outcome is refused |
 | `summary_lose_unlimited` | values_seen | Your loss has no fixed limit if {index} rises far enough by expiry. |
-| `summary_lose_at_most` | values_seen | At most {amount} at expiry. |
+| `summary_lose_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
 | `summary_make_unlimited` | values_seen | Your profit has no fixed limit if {index} rises far enough by expiry. |
 | `summary_make_none` | values_seen | This strategy cannot make money at expiry. |
-| `summary_make_at_most` | values_seen | At most {amount} at expiry. |
+| `summary_make_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
 | `summary_start_outside` | values_seen | If {index} ends below {lower} or above {upper} at expiry. |
 | `summary_start_between` | values_seen | If {index} ends between {lower} and {upper} at expiry. |
 | `summary_start_below` | values_seen | If {index} ends below {lower} at expiry. |

@@ -32,8 +32,8 @@ NOT_TEXT = {"state", "underlying", "ux_level", "kind", "view", "action", "instru
             "iv", "spot_level", "level", "pnl", "max_profit", "max_loss", "lower_be", "upper_be", "step", "start",
             "end", "bid", "ask", "expiry", "captured_at", "valuation", "spot_at", "markers"}
 
-LOSE = "At most ₹8,245.25 at expiry."
-MAKE = "At most ₹4,754.75 at expiry."
+LOSE = "At most ₹8,245.25 at expiry, before charges and taxes."
+MAKE = "At most ₹4,754.75 at expiry, before charges and taxes."
 START = "If NIFTY ends below 22,326.85 or above 22,873.15 at expiry."
 
 
