@@ -2,7 +2,7 @@
 
 # Findings index
 
-31 finding(s), generated from `knowledge/findings/*.json`.
+32 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -27,6 +27,7 @@
 | pipe-masks-gate-exit-code | A failing step does not stop the step after it: a gate piped into a filter (`gate \| tail`) takes the filter's exit status, and a command on its own line (or after `;`) runs whatever the line before returned - so a following commit, push or merge goes ahead after a failed gate; chaining with && is not enough when the gate's output is piped. | unguarded | occurrences, scope, spec_ref |
 | pre-existing-failure-claim-not-checked-on-base | Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes. | unguarded | occurrences, scope, spec_ref |
 | privilege-guard-as-denylist | Any guard that protects data by refusing a list of forbidden privilege paths (superuser, a named role membership, table ownership) misses every path not on the list, because a database grants power through many routes (database ownership, schema ownership, role membership, default PUBLIC grants); the guard must instead assert that the role's effective privileges are exactly an allowed set. Wider shape of secret-filter-by-key-name: a denylist over an open-ended space is never complete. | guarded | scope, spec_ref |
+| remote-shell-read-transcodes-file | Reading a file through a remote shell command (ssh host 'type file', 'cat' in a PowerShell default shell, Get-Content) returns the shell's re-encoded text, not the file's bytes - the byte-order mark is dropped, line endings are converted and non-ASCII characters are replaced by the console code page; editing that text and writing it back silently rewrites every such line. | unguarded | occurrences, scope, spec_ref |
 | research-finding-held-in-chat | Any research finding proven during a session but reported only in chat (or held back until a decision) is lost to the next reader and lets work proceed on assumptions the finding contradicts; findings must be written to the spec findings list, the spec sections they bear on and (for failure classes) the registry in the same turn they are proven, before any decision or implementation. | unguarded | scope, spec_ref |
 | resolution-on-stale-broker-copy | Any manual resolution or state change whose premise (what the broker holds) is read from a stored copy rather than from the latest reconciliation, or any multi-strategy recording that mutates some records before validating all of them, lets the platform act on a broker picture that is no longer true or leave a half-recorded run. | guarded | occurrences, scope, spec_ref |
 | secret-filter-by-key-name | Any guard that decides whether stored data holds a secret by matching field NAMES against a list (substrings or whole words) both blocks legitimate required fields and lets real secrets through, because no name list is complete for an external API's field names. | unguarded | scope, spec_ref |

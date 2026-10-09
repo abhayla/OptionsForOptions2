@@ -8,12 +8,13 @@ its global handler (main.py:293-307), no handler here returns str(exc): every er
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo_app import errors
+from ofo_app import errors, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
 from ofo_app.routes import broker, health, outcome, strategies
@@ -33,6 +34,10 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     config = broker_config if broker_config is not None else load_broker_config()
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan)
     errors.install(app)
+    if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
+        replay_mode.require_test_env(os.environ.get("APP_ENV", "development"))
+        ctx = replay_mode.build_replay_context()
+        app.dependency_overrides[outcome.get_market_context] = lambda: ctx
     app.include_router(health.router)
     app.include_router(outcome.router)
     broker.mount(app, config)

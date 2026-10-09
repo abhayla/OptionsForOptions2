@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 5cbac1a
+Generated from commit 3f14653
 
 ## Stage S0
 
@@ -101,6 +101,7 @@ Generated from commit 5cbac1a
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
 | 4a | issue | #163 | - |  |
+| 4a | issue | #165 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -136,7 +137,6 @@ Generated from commit 5cbac1a
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
-| 4a | work item | W-064 | - | Strategy Builder screen, first slice - the single strategy table, payoff and summary from the outcome API |
 
 ## Stage 4b
 
@@ -443,7 +443,7 @@ Generated from commit 5cbac1a
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 31 | 5 | 0 | 12 | 0 | 1 | 31 | 0 | 2 | 89 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 13 | 0 | 1 | 31 | 0 | 1 | 89 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
