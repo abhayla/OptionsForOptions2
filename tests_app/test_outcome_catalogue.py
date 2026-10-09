@@ -171,7 +171,7 @@ def test_a_preformatted_amount_cannot_fill_a_money_slot() -> None:
     with pytest.raises(TypeError):
         render_explanation("summary_lose_at_most", amount="₹8,245.25")
     with pytest.raises(TypeError):
-        render_explanation("summary_start_below", index="NIFTY", lower="22,326.85")
+        render_explanation("summary_start_regions", index="NIFTY", regions=((None, "22,326.85"),))
     assert render_explanation("summary_lose_at_most", amount=Decimal("8245.25")) == LOSE
 
 

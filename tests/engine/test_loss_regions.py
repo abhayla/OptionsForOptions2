@@ -81,5 +81,10 @@ def test_a_strategy_that_loses_everywhere_is_one_open_region():
     assert _regions(_leg(B, PE, 22400, 300), _leg(S, PE, 22200, 50)) == ((None, None),)
 
 
+def test_a_sub_paisa_loss_is_still_a_loss_signs_are_decided_before_rounding():
+    """Long 22400 CE at 0.01 per unit: the P&L is -0.01 up to 22,400, so the loss is real though it rounds to 0 at one decimal of rupee."""
+    assert _regions(_leg(B, CE, 22400, "0.01", 1)) == ((None, D("22400.01")),)
+
+
 def test_a_put_ratio_has_one_loss_region_below_its_lower_zero():
     assert _regions(_leg(B, PE, 22400, 100), _leg(S, PE, 22200, 50, 2 * UNIT)) == ((None, D(22000)),)
