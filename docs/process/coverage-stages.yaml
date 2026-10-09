@@ -149,6 +149,7 @@ decisions:
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
   ADR-071: 4a           # max-loss/max-profit sentences say "before charges and taxes" (owner 2026-10-09, W-066)
+  ADR-072: 4a           # "where do I start losing" names every loss region from the payoff (W-066, independent review)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers

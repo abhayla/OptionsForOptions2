@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (71)
+## Decisions (72)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -77,6 +77,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-069 2026-10-09: The values of a strategy definition's rules reference, risk limits and preferences are short identifiers or numbers only - letters, digits, underscor… [refines ADR-064]
 - ADR-070 2026-10-09: The GitHub repository is public. [refines ADR-046]
 - ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-profit sentence of the outcome view states that the amount is at expiry, before charges and taxes (for… [refines ADR-003]
+- ADR-072 2026-10-09: The plain-language answer to "Where do I start losing?" (REQ-034 AC-7) names every region of the underlying at expiry where the strategy's expiry P&L… [applies REQ-034]
 
 ## Requirements (74)
 
