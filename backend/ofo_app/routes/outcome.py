@@ -163,6 +163,15 @@ class LegOut(BaseModel):
     label: Optional[str]
 
 
+class AdvancedLegOut(BaseModel):
+    """REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read)."""
+    instrument_id: str
+    symbol: Optional[str]
+    bid: Optional[str]
+    ask: Optional[str]
+    health: Optional[str]
+
+
 class OutcomeResponse(BaseModel):
     state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
     underlying: str
@@ -179,6 +188,21 @@ class OutcomeResponse(BaseModel):
     scenario: Optional[ScenarioOut]
     payoff: Optional[PayoffOut]
     summary: Optional[SummaryOut]
+    #: present ONLY at ux_level=advanced (absent, not empty, at guided/standard) and only when a snapshot was read
+    advanced_details: Optional[list[AdvancedLegOut]] = None
+
+
+def _advanced_details(snapshot, definition: StrategyDefinition, symbols: dict[str, Optional[str]]) -> list[dict]:
+    rows = []
+    for leg in definition.legs:
+        lm = snapshot.legs.get(leg.instrument_id)
+        q = None if lm is None else lm.quote
+        rows.append({"instrument_id": leg.instrument_id,
+                     "symbol": symbols.get(leg.instrument_id),
+                     "bid": None if q is None or q.bid is None else f"{q.bid:f}",
+                     "ask": None if q is None or q.ask is None else f"{q.ask:f}",
+                     "health": None if q is None else q.health.value})
+    return rows
 
 
 def _definition(req: OutcomeRequest) -> StrategyDefinition:
@@ -194,7 +218,7 @@ def _definition(req: OutcomeRequest) -> StrategyDefinition:
     return StrategyDefinition(req.underlying, tuple(legs))
 
 
-@router.post("/api/strategies/outcome", response_model=OutcomeResponse)
+@router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
 def strategy_outcome(req: OutcomeRequest,
                      ctx: Optional[MarketContext] = Depends(get_market_context)) -> OutcomeResponse:
     definition = _definition(req)
@@ -206,4 +230,7 @@ def strategy_outcome(req: OutcomeRequest,
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  valuation, ctx.rate)
         out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
-    return OutcomeResponse.model_validate(outcome_to_dict(out))
+    body = outcome_to_dict(out)
+    if ctx is not None and ux is UXLevel.ADVANCED:  # the UX gate: nothing else ever carries bid/ask
+        body["advanced_details"] = _advanced_details(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
+    return OutcomeResponse.model_validate(body)

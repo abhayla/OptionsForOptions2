@@ -229,9 +229,25 @@ jobs:
           done
           curl -sf http://127.0.0.1:8000/health
 
+      # W-064: TEST-ONLY replay mode (APP_ENV=test + OUTCOME_REPLAY=1) serves the recorded 2026-10-08 frames to the
+      # outcome route; the screen's core proof reads it through a third preview on port 4175. The API above stays plain.
+      - name: Start the API in test-only replay mode (port 8001)
+        env:
+          DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
+          APP_ENV: test
+          OUTCOME_REPLAY: '1'
+        run: |
+          nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --host 127.0.0.1 --port 8001 > "${RUNNER_TEMP}/uvicorn-replay.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8001/health && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8001/health
+
       - name: Start the built frontend (preview) with the proxy on the real API, and one on a closed port
         working-directory: frontend
         run: |
+          OFO_API_TARGET=http://127.0.0.1:8001 nohup npx vite preview --port 4175 --strictPort > "${RUNNER_TEMP}/preview-replay.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:8000 nohup npx vite preview --port 4173 --strictPort > "${RUNNER_TEMP}/preview.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:9 nohup npx vite preview --port 4174 --strictPort > "${RUNNER_TEMP}/preview-down.log" 2>&1 &
           for i in $(seq 1 30); do
@@ -246,6 +262,7 @@ jobs:
         env:
           PREVIEW_URL: http://127.0.0.1:4173
           PREVIEW_DOWN_URL: http://127.0.0.1:4174
+          REPLAY_URL: http://127.0.0.1:4175
         run: npx playwright test
 
       - name: Upload screenshots

@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,15 @@ class Settings(BaseSettings):
     #: ADR-058 admin setting: refuse a catalogue update that would drop MORE than this percentage of an index's live
     #: contracts at once (catalogue_store.DEFAULT_MAX_DELIST_PERCENT; a test asserts both are 10).
     CATALOGUE_MAX_DELIST_PERCENT: Decimal = Decimal("10")
+    #: W-064: TEST-ONLY. Serves the outcome route from the recorded 2026-10-08 frames (ofo_app.replay_mode). Refused at
+    #: start-up unless APP_ENV is exactly "test", so production settings cannot enable it.
+    OUTCOME_REPLAY: bool = False
+
+    @model_validator(mode="after")
+    def _replay_is_test_only(self) -> "Settings":
+        if self.OUTCOME_REPLAY and self.APP_ENV != "test":
+            raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")
+        return self
 
 
 @lru_cache

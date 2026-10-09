@@ -1,6 +1,68 @@
 {
   "components": {
     "schemas": {
+      "AdvancedLegOut": {
+        "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read).",
+        "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "symbol",
+          "bid",
+          "ask",
+          "health"
+        ],
+        "title": "AdvancedLegOut",
+        "type": "object"
+      },
       "CellOut": {
         "properties": {
           "display": {
@@ -428,6 +490,20 @@
       },
       "OutcomeResponse": {
         "properties": {
+          "advanced_details": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdvancedLegOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advanced Details"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/LegOut"

@@ -1,0 +1,117 @@
+/* Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/assets/styles/strategy-table.css (ADR-047).
+   Changed: the --kite-* variables are replaced by this project's tokens (src/style.css); the scroll indicators, action
+   bar, entry-price indicator and compact form controls are dropped (no editing in this slice); the sticky left columns
+   and the current-level highlight (REQ-035 AC-3) are added; the P&L colour classes are kept. */
+
+/* ===== Table Container ===== */
+.strategy-table-wrapper {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  margin-bottom: 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  scroll-behavior: smooth;
+}
+
+/* ===== Table Base ===== */
+.strategy-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.strategy-table thead {
+  background: var(--color-surface-muted);
+}
+
+.strategy-table th {
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface-muted);
+}
+
+.strategy-table td {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--color-ink);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.strategy-table tbody tr {
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* ===== Leg Rows ===== */
+.leg-row.leg-buy {
+  background: #f8fbff;
+  border-left: 3px solid var(--color-accent);
+}
+
+.leg-row.leg-sell {
+  background: #fffbf8;
+  border-left: 3px solid #ff9800;
+}
+
+/* ===== Sticky left columns (REQ-035 AC-3): leg, action, instrument ===== */
+.strategy-table .sticky-col {
+  position: sticky;
+  z-index: 1;
+  min-width: 4.5rem;
+  max-width: 4.5rem;
+  background: var(--color-surface);
+}
+.strategy-table th.sticky-col {
+  background: var(--color-surface-muted);
+}
+.strategy-table .sticky-col-0 { left: 0; }
+.strategy-table .sticky-col-1 { left: 4.5rem; }
+.strategy-table .sticky-col-2 { left: 9rem; }
+
+/* ===== Current market level column (REQ-035 AC-3) ===== */
+.strategy-table th.current-col {
+  background: #fff3cd;
+  color: #856404;
+}
+.strategy-table .current-col {
+  box-shadow: inset 2px 0 0 var(--color-accent), inset -2px 0 0 var(--color-accent);
+}
+
+/* ===== Special Rows ===== */
+.total-row {
+  background: var(--color-surface-muted);
+  font-weight: 600;
+  border-top: 2px solid var(--color-line);
+}
+
+/* ===== Tags ===== */
+.tag {
+  display: inline-block;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.tag-ce { background: #e3f2fd; color: #1976d2; }
+.tag-pe { background: #ffebee; color: #d32f2f; }
+.tag-buy { background: #e3f2fd; color: #1976d2; }
+.tag-sell { background: #fff3e0; color: #f57c00; }
+
+/* ===== P&L Color Classes ===== */
+.pnl-profit { color: #16a34a; }
+.pnl-loss { color: #dc2626; }
+.pnl-neutral { color: var(--color-ink-muted); }
