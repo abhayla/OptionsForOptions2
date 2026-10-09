@@ -139,7 +139,7 @@ def test_before_first_execution_edits_are_history_with_restore_and_no_versions()
     assert len(rec.edit(rolled, at=at(3)).changes) == 6  # expiry change: 3 removed + 3 added
     limits = dataclasses.replace(rolled, risk_limits={"max_loss": D("5000")})
     assert rec.edit(limits, at=at(4)).changes == (  # the user's own settings, quoted (ADR-003 Q226; W-024 fix round UserText)
-        """risk_limits "(('max_loss', Decimal('8175')),)" -> "(('max_loss', Decimal('5000')),)\"""",)
+        "risk_limits max_loss: 8175 -> 5000",)
     assert rec.versions == () and len(rec.history) == 5
     rec.restore(1, at=at(5))
     assert rec.definition == three_lots and rec.history[-1].before == limits and len(rec.history) == 6

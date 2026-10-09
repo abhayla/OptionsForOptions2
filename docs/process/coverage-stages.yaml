@@ -146,6 +146,7 @@ decisions:
   ADR-066: 4a           # Kite historical candles: internal use only in V1 (F-33)
   ADR-067: 4a           # one-minute history: live first, final from Kite candles (F-34, W-062)
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
+  ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha

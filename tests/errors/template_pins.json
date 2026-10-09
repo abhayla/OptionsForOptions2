@@ -780,7 +780,23 @@
     "reviewed": "pending owner read"
   },
   "explanation:change_field": {
-    "sha256": "6ced8a11843c94cfa520e3380358e4d65a100886dc46deb9acc37bf92a8003b2",
+    "sha256": "4353bc7790d8062392b7a8c1c9c276de4cfec126a3a09f3a16fda81d976d5dca",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_legs_reordered": {
+    "sha256": "b3dd87b7c5a4629854c939988cf5eef42db5d299bc93d07605903f54c8d53850",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_replaced_unreadable": {
+    "sha256": "c7692dc667877e2edcbbe91269b77bc9e3321b598765d1ca30ef2783b6a12c30",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_summary_unreadable": {
+    "sha256": "548a4176bbdf71eb4edccc2a8cb9f02048c35cedb67281fab9231b7b8f6abb40",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_restored": {
+    "sha256": "c53d645b0fb03a149778f19d05684d10a558200fd84e3ae2ad7ad8b4ba04a3a7",
     "reviewed": "pending owner read"
   },
   "labels:builder": {
@@ -878,5 +894,53 @@
   "kite_busy": {
     "sha256": "447b5f9c6e365b9afa41630d4fa6f604befa9cf7b8312895dc7ea920b2b59711",
     "reviewed": "owner read 2026-10-08"
+  },
+  "strategy_contract_not_in_catalogue": {
+    "sha256": "57a1372189cc2e12bba54da33dd5232a1d3110c98b03c37f1be8c71284469a42",
+    "reviewed": "pending owner read"
+  },
+  "strategy_contract_terms_changed": {
+    "sha256": "dbb595f439d19f61f8d436150fe104e6477bb5aca3decd911dd5de5f2f47b709",
+    "reviewed": "pending owner read"
+  },
+  "strategy_contract_not_live": {
+    "sha256": "4a06f0b5e4684094189e47bdbea6522e687bbb5890172cbb7b628f6e1204e2c8",
+    "reviewed": "pending owner read"
+  },
+  "strategy_quantity_not_lot_multiple": {
+    "sha256": "60e1ffed8cef49854643e9422da7222133d9bc5bfc2b6444bdb542c30b933757",
+    "reviewed": "pending owner read"
+  },
+  "strategy_underlying_mismatch": {
+    "sha256": "7ed6046e1f8970d85f087592118e28fe3620d9dc12fd1ed8742c3e6e7be052e6",
+    "reviewed": "pending owner read"
+  },
+  "strategy_name_not_allowed": {
+    "sha256": "7eb6e2fc1e607f3fa5d99e9a16540089691e26849368ff9776c50bd0afde0c01",
+    "reviewed": "pending owner read"
+  },
+  "strategy_underlying_fixed": {
+    "sha256": "7c4f66a9aba80bef2279ea69aa02ec578ca9ab433f38e353c4228045c144e1e4",
+    "reviewed": "pending owner read"
+  },
+  "strategy_definition_invalid": {
+    "sha256": "ea4c7b960010267a8e6f2ea8fe61f47f5f7027633e8ba050555d6e60d86858f3",
+    "reviewed": "pending owner read"
+  },
+  "strategy_revision_conflict": {
+    "sha256": "d705d707226376823784c1d6f4301dd71e753436a45d0c455c9b5986e7bf51de",
+    "reviewed": "pending owner read"
+  },
+  "strategy_stored_unreadable": {
+    "sha256": "37af4860523233b34cd12de2cb78686122ce98dbb7b2603e4bf98765b8ac634b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_rules_ref": {
+    "sha256": "1ec0c3516ba9433e3c31f360ff1842a01010ff80e2bf2c9cad5bf762444601a8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_value_unset": {
+    "sha256": "e9dfcbf9b0722df79967945aaea362b54c74a2d59f31a794933e4d1c68899c3b",
+    "reviewed": "pending owner read"
   }
 }
