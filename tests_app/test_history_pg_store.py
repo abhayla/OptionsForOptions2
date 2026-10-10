@@ -122,7 +122,7 @@ def replay_into(stores, windows) -> None:
 
         _, _, last = replay_window(window, wire)
         for r in recorders:
-            r.flush(last + datetime.timedelta(minutes=1))
+            r.flush(last + datetime.timedelta(minutes=1), wait_s=30)
         assert all(r.counters["errors"] == 0 and r.counters["bars_lost"] == 0 for r in recorders)
 
 
@@ -247,7 +247,7 @@ def test_a_store_that_cannot_reach_the_database_never_disturbs_the_feed():
         holder["rec"].attach(fan, ids)
 
     _, fan, last = replay_window("1506-1512", wire)
-    holder["rec"].flush(last + datetime.timedelta(minutes=1))
+    holder["rec"].flush(last + datetime.timedelta(minutes=1), wait_s=30)
     replay_window("1506-1512", lambda fan, ids: fan.subscribe(delivered_without.append, ids))
     dead.close()
     assert len(delivered_with) == len(delivered_without) > 1000
