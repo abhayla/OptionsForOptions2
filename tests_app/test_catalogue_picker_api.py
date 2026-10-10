@@ -102,6 +102,50 @@ async def test_only_live_listed_unexpired_contracts_of_the_asked_underlying(app_
             await trans.rollback()
 
 
+async def test_a_live_contract_not_currently_listed_is_not_offered(app_engine: AsyncEngine) -> None:
+    """Review MAJOR: the `c.currently_listed` clause had no test. The row is marked the way the store marks it (its own
+    _SET_LISTED statement, listed=False); it stays neither retired nor delisted, so only that clause can exclude it."""
+    from ofo_app.catalogue_store import _SET_LISTED
+
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
+            rows = _slice()
+            await apply_update(conn, rows, as_of=FIRST_LOAD)
+            target = min((r for r in rows if r.contract.name == "SENSEX" and r.contract.expiry == date(2026, 10, 8)
+                          and r.contract.instrument_type == "CE"), key=lambda r: r.contract.exchange_token)
+            tid = f"{target.contract.exchange_segment}:{target.contract.exchange_token}"
+            before = {c.instrument_id for c in await pickable_contracts(conn, "SENSEX", TODAY, date(2026, 10, 8))}
+            assert tid in before and len(before) == 2 * 148
+            await conn.execute(_SET_LISTED, {"listed": False, "segments": [target.contract.exchange_segment],
+                                             "tokens": [target.contract.exchange_token]})
+            flags = (await conn.execute(text(
+                f"SELECT retired, delisted, currently_listed FROM {TABLE} WHERE exchange_segment = :s AND exchange_token = :t"),
+                {"s": target.contract.exchange_segment, "t": target.contract.exchange_token})).one()
+            assert (flags.retired, flags.delisted, flags.currently_listed) == (False, False, False)
+            after = {c.instrument_id for c in await pickable_contracts(conn, "SENSEX", TODAY, date(2026, 10, 8))}
+            assert after == before - {tid}
+        finally:
+            await trans.rollback()
+
+
+async def test_a_contract_expiring_today_is_offered_and_one_expired_yesterday_is_not(app_engine: AsyncEngine) -> None:
+    """Boundary of `c.expiry >= :today`: SENSEX 2026-10-08 is offered on 2026-10-08, gone on 2026-10-09."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
+            await apply_update(conn, _slice(), as_of=FIRST_LOAD)
+            expiry = date(2026, 10, 8)
+            assert expiry in await pickable_expiries(conn, "SENSEX", expiry)
+            assert len(await pickable_contracts(conn, "SENSEX", expiry, expiry)) == 2 * 148
+            assert expiry not in await pickable_expiries(conn, "SENSEX", expiry + timedelta(days=1))
+            assert await pickable_contracts(conn, "SENSEX", expiry + timedelta(days=1), expiry) == []
+        finally:
+            await trans.rollback()
+
+
 @pytest.mark.network
 async def test_real_list_gives_nifty_expiries_with_ce_and_pe_strikes(app_engine: AsyncEngine) -> None:
     from ofo.instruments.downloader import download_instruments_csv
