@@ -229,28 +229,14 @@ async def test_domain_and_database_agree_on_every_bounded_slot(app_engine):
             await trans.rollback()
 
 
-def _recorded(phase: str) -> list[str]:
-    import importlib.util
-    from pathlib import Path
-    from types import SimpleNamespace
-
-    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / \
-        "0010_strategy_schema_version.py"
-    found = importlib.util.spec_from_file_location(f"ofo_migration_0010_{phase}", path)
-    migration = importlib.util.module_from_spec(found)
-    found.loader.exec_module(migration)  # type: ignore[union-attr]
-    out: list[str] = []
-    migration.op = SimpleNamespace(execute=lambda sql, *a, **k: out.append(str(sql)))
-    migration._BASE._app_role = lambda: "ofo_app"
-    getattr(migration, phase)()
-    return out
+from _migration_replay import round_trip_sql  # noqa: E402  (works wherever 0010 sits in the chain)
 
 
 async def test_0010_downgrade_then_upgrade_round_trips_on_the_real_database(admin_engine):
     """Downgrade (0008's validators): version 2 is storable again; upgrade: refused again, version 1 still stores; the
     allowlist function's 'post' check (md5 pins, no EXECUTE for ofo_app) passes both ways. Rolled back."""
-    down, up = _recorded("downgrade"), _recorded("upgrade")
-    assert "'pre'" in up[0] and "'post'" in up[-1] and "'post'" in down[-1]
+    own_down, own_up, down, up = round_trip_sql("0010_strategy_schema_version.py")
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

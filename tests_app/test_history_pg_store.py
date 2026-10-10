@@ -280,25 +280,13 @@ def test_a_store_that_cannot_reach_the_database_never_disturbs_the_feed():
 
 
 # ---- the migration ----------------------------------------------------------------------------------------------------
-def _recorded(phase: str, tag: str) -> list[str]:
-    import importlib.util
-    from types import SimpleNamespace
-
-    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0009_minute_history.py"
-    found = importlib.util.spec_from_file_location(f"ofo_migration_0009_{tag}", path)
-    migration = importlib.util.module_from_spec(found)
-    found.loader.exec_module(migration)  # type: ignore[union-attr]
-    out: list[str] = []
-    migration.op = SimpleNamespace(execute=lambda sql, *a, **k: out.append(str(sql)))
-    migration._BASE._app_role = lambda: "ofo_app"
-    getattr(migration, phase)()
-    return out
+from _migration_replay import round_trip_sql  # noqa: E402  (works wherever 0009 sits in the chain)
 
 
 def test_downgrade_then_upgrade_round_trips_and_downgrade_refuses_while_bars_exist():
     admin_url = _url("TEST_ADMIN_DATABASE_URL")
-    down, up = _recorded("downgrade", "down"), _recorded("upgrade", "up")
-    assert "'pre'" in up[0] and "'post'" in up[-1] and "'post'" in down[-1]
+    own_down, own_up, down, up = round_trip_sql("0009_minute_history.py")
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
 
     async def run():
         engine = create_async_engine(admin_url, poolclass=NullPool)
