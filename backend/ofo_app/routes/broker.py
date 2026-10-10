@@ -8,9 +8,9 @@ the user logs in on Zerodha's own page. REQ-015 AC-9: the token is stored only a
   server-side, bound to the user).
 - ``GET <path of KITE_REDIRECT_URL>`` (``/kite/callback``): consumes the state, checks Kite's answer, exchanges the
   request token, stores the access token encrypted, then 302 to a fixed frontend path with no token and no query.
-  Every refusal raises `BrokerLoginRefused` carrying a `render()` message from the reviewed catalogue
-  (ofo/errors/templates.py, `_BROKER_LOGIN_TEMPLATES`); the one error boundary (ofo_app/errors.py) answers it, with
-  the status of its error class and the no-leak headers. Nothing is stored on a refusal.
+  Every refusal answers a 302 to the frontend page /broker/refused?code=<closed code> (#163), which shows the
+  reviewed catalogue message for that code (GET /api/broker/refusals/{code}); no body, no JSON. Nothing is stored on
+  a refusal. The login route (not a landing from Kite) still raises `BrokerLoginRefused` for a full cap.
 - Both routes declare a typed `BrokerRedirectOut` and answer with `errors.typed_redirect` (a 302 with no body): no
   Response is built here (W-024 round 9 part 6).
 - The state is bound to the browser that started the login: a short-lived HttpOnly, SameSite=Lax cookie (Secure when
@@ -61,6 +61,8 @@ log = logging.getLogger(__name__)
 LOGIN_PATH = "/broker/zerodha/login"
 #: Where the browser lands after a successful login: fixed, no token, no query.
 CONNECTED_FRONTEND_PATH = "/broker/connected"
+#: Where the browser lands after a REFUSED login (#163): a frontend page; the query carries only the closed code.
+REFUSED_FRONTEND_PATH = "/broker/refused"
 STATE_TTL_SECONDS = 600
 #: Live login states held at once (the login route is anonymous); over it the login is refused.
 MAX_LIVE_STATES = 20
@@ -101,7 +103,7 @@ class BrokerLoginRefused(UserFacing, Exception):
 class BrokerRedirectOut(ApiModel):
     """Names the redirect a broker route answers with (the 302 itself has no body)."""
 
-    redirect: Literal["zerodha_login", "connected"]
+    redirect: Literal["zerodha_login", "connected", "refused"]
 
 
 class StateCapReached(Exception):
@@ -172,6 +174,16 @@ def _refused(rt: BrokerRuntime, code: str) -> BrokerLoginRefused:
     return BrokerLoginRefused(code, clear_cookie=_state_cookie(rt))
 
 
+def _refused_redirect(rt: BrokerRuntime, code: str) -> object:
+    """The callback is only reached by a browser coming back from Kite, so a refusal is a 302 to the frontend page
+    that shows the reviewed catalogue message for ``code`` (REQ-065 AC-2), never a JSON body. The location holds the
+    closed code only: no token, no Kite text. The state cookie is cleared, as on every refusal."""
+    if code not in REFUSAL_CODES:
+        raise ValueError("not a broker login refusal code")
+    return typed_redirect(BrokerRedirectOut(redirect="refused"), f"{REFUSED_FRONTEND_PATH}?code={code}",
+                          _state_cookie(rt))
+
+
 def current_user_ref() -> str:
     return V1_OWNER_REF
 
@@ -207,23 +219,23 @@ async def kite_callback(
     rt = runtime(request)
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))
     if user_ref is None:
-        raise _refused(rt, "broker_state_invalid")
+        return _refused_redirect(rt, "broker_state_invalid")
     if status != "success" or not request_token:
-        raise _refused(rt, "broker_login_not_completed")
+        return _refused_redirect(rt, "broker_login_not_completed")
     try:
         session = await kite.exchange(request_token)
     except KiteExchangeError as exc:
         code = exc.code if exc.code in REFUSAL_CODES else "kite_refused"
-        raise _refused(rt, code) from None
+        return _refused_redirect(rt, code)
     except Exception:  # noqa: BLE001 - fail closed, and never let an exception text near a log or the browser
-        raise _refused(rt, "kite_unavailable") from None
+        return _refused_redirect(rt, "kite_unavailable")
     if not secrets.compare_digest(session.user_id, rt.config.expected_user_id):
-        raise _refused(rt, "broker_user_mismatch")  # nothing stored; the active session is not replaced
+        return _refused_redirect(rt, "broker_user_mismatch")  # nothing stored; the active session is not replaced
     try:
         async with db.begin():
             await store_session(db, user_ref, session.access_token, rt.cipher)
     except Exception:  # noqa: BLE001 - any error between exchange and commit stores nothing
-        raise _refused(rt, "broker_store_failed") from None
+        return _refused_redirect(rt, "broker_store_failed")
     finally:
         del session
     return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))

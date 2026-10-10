@@ -119,6 +119,30 @@ def _refused(response, code: str) -> None:
         assert response.headers["retry-after"] == "60"
 
 
+def _redirected(response, code: str) -> None:
+    """A refusal on the callback (#163): a browser coming back from Kite gets a 302 to the frontend refusal page that
+    carries only the closed code (no body, no token, no Kite text), the no-leak headers and the cleared state cookie."""
+    assert code in broker_routes.REFUSAL_CODES
+    assert response.status_code == 302, (response.status_code, code)
+    assert response.headers["location"] == f"/broker/refused?code={code}"
+    assert response.content == b""
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    cookie = response.headers.get("set-cookie", "").lower()
+    assert cookie.startswith(broker_routes.STATE_COOKIE + "="), cookie
+    assert "max-age=0" in cookie and f"path={CALLBACK}" in cookie, cookie
+
+
+async def test_a_cancelled_login_redirects_to_the_refusal_page_with_its_code_and_no_body():
+    kite = FakeKite()
+    async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
+        state = await _state(ac)
+        response = await ac.get(CALLBACK, params={"status": "cancelled", "request_token": REQUEST_TOKEN,
+                                                  "state": state})
+    _redirected(response, "broker_login_not_completed")
+    assert kite.calls == []
+
+
 def test_every_refusal_code_is_a_catalogue_template_at_its_status():
     assert set(EXPECTED_STATUS) == broker_routes.REFUSAL_CODES
     by_class = {c: STATUS_BY_CLASS[CATALOGUE[c].error_class] for c in EXPECTED_STATUS
@@ -165,7 +189,7 @@ async def test_a_submitted_password_is_ignored_and_never_echoed():
     async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
         response = await ac.get(CALLBACK, params={"status": "success", "password": "hunter2", "pin": "123456",
                                                   "otp": "654321", "state": "unknown"})
-    _refused(response, "broker_state_invalid")
+    _redirected(response, "broker_state_invalid")
     assert "hunter2" not in response.text and "654321" not in response.text
     assert kite.calls == []
 
@@ -181,7 +205,7 @@ async def test_missing_or_unknown_state_is_refused_without_an_exchange(state):
         params["state"] = state
     async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
         response = await ac.get(CALLBACK, params=params)
-    _refused(response, "broker_state_invalid")
+    _redirected(response, "broker_state_invalid")
     assert kite.calls == []
 
 
@@ -191,8 +215,8 @@ async def test_a_reused_state_is_refused_without_a_second_exchange():
         state = await _state(ac)
         first = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN, "state": state})
         second = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN, "state": state})
-    _refused(first, "kite_token_exception")
-    _refused(second, "broker_state_invalid")
+    _redirected(first, "kite_token_exception")
+    _redirected(second, "broker_state_invalid")
     assert kite.calls == [REQUEST_TOKEN]
 
 
@@ -268,7 +292,7 @@ async def test_a_callback_without_the_login_browsers_cookie_is_refused(cookie):
             ac.cookies.set(broker_routes.STATE_COOKIE, cookie, path=CALLBACK)
         response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
                                                   "state": state})
-    _refused(response, "broker_state_invalid")
+    _redirected(response, "broker_state_invalid")
     assert kite.calls == []
 
 
@@ -278,7 +302,7 @@ async def test_another_zerodha_account_is_refused_and_nothing_is_written():
         state = await _state(ac)
         response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
                                                   "state": state})
-    _refused(response, "broker_user_mismatch")
+    _redirected(response, "broker_user_mismatch")
     assert ACCESS_TOKEN not in response.text and kite.calls == [REQUEST_TOKEN]
 
 
@@ -292,7 +316,7 @@ async def test_an_expired_state_is_refused_without_an_exchange():
         now[0] = 600.0
         response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
                                                   "state": state})
-    _refused(response, "broker_state_invalid")
+    _redirected(response, "broker_state_invalid")
     assert kite.calls == []
 
 
@@ -310,7 +334,7 @@ async def test_a_login_not_completed_stores_nothing(params):
     async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
         params = {**params, "state": await _state(ac)}
         response = await ac.get(CALLBACK, params=params)
-    _refused(response, "broker_login_not_completed")
+    _redirected(response, "broker_login_not_completed")
     assert kite.calls == []
 
 
@@ -324,7 +348,7 @@ async def test_a_refused_exchange_stores_nothing(code):
         state = await _state(ac)
         response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
                                                   "state": state})
-    _refused(response, code)
+    _redirected(response, code)
     assert REQUEST_TOKEN not in response.text
 
 
@@ -350,7 +374,7 @@ async def test_an_error_while_storing_stores_nothing_and_leaks_nothing(monkeypat
         state = await _state(ac)
         response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
                                                   "state": state})
-    _refused(response, "broker_store_failed")
+    _redirected(response, "broker_store_failed")
     assert ACCESS_TOKEN not in response.text
     assert all(ACCESS_TOKEN not in (r.getMessage() + (r.exc_text or "")) for r in caplog.records)
 
@@ -498,7 +522,7 @@ async def test_uvicorn_access_log_drops_the_callback_query():
         async with httpx.AsyncClient() as ac:
             response = await ac.get(f"http://127.0.0.1:{port}{CALLBACK}",
                                     params={"status": "success", "request_token": REQUEST_TOKEN, "state": "x"})
-        _refused(response, "broker_state_invalid")
+        _redirected(response, "broker_state_invalid")
     finally:
         server.should_exit = True
         await task
