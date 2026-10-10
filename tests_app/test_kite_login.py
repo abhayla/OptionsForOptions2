@@ -306,6 +306,27 @@ async def test_another_zerodha_account_is_refused_and_nothing_is_written():
     assert ACCESS_TOKEN not in response.text and kite.calls == [REQUEST_TOKEN]
 
 
+async def test_a_non_ascii_kite_user_id_is_refused_as_a_mismatch_not_a_500():
+    kite = FakeKite(KiteSession(ACCESS_TOKEN, "ÄB1234"))
+    async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
+        state = await _state(ac)
+        response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
+                                                  "state": state})
+    _redirected(response, "broker_user_mismatch")
+
+
+async def test_a_non_ascii_nonce_in_the_state_cookie_is_refused_not_a_500():
+    kite = FakeKite()
+    async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
+        state = await _state(ac)
+        ac.cookies.clear()
+        response = await ac.get(CALLBACK, params={"status": "success", "request_token": REQUEST_TOKEN,
+                                                  "state": state},
+                                headers={"Cookie": f"{broker_routes.STATE_COOKIE}=\xc4nonce".encode("latin-1")})
+    _redirected(response, "broker_state_invalid")
+    assert kite.calls == []
+
+
 async def test_an_expired_state_is_refused_without_an_exchange():
     kite = FakeKite()
     app = _app(kite, RecordingDB())

@@ -201,7 +201,6 @@ issues:
   "#171": 4a            # Lower/Upper breakeven labels vs loss-region edges (ADR-072 consequence; decision row first)
   "#172": 4a            # PARKED W-066: bounded loss split by one zero point crashes (owner: final round red)
   "#174": 4a            # Kite callback: non-ASCII user_id makes compare_digest raise (500 instead of refusal)
-  "#179": 4a            # tests_app wall-clock bound in test_history_nonblocking; wall-clock guard scope (W-067 follow-up)
   "#30": 4a
   "#43": 4b
   "#45": 4b

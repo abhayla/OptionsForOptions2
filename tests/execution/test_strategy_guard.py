@@ -366,3 +366,28 @@ def test_ac5_position_row_alone_flags_a_change():
     change = compare_risk(flat_with, flat_without)
     assert change.changes_risk_profile
     assert [c.metric for c in change.consequences if c.changed] == ["position"]
+
+
+_NON_ASCII_ACKS = ("Ä" * 43, "é" * 20, "ı" + "x" * 42, "\ud800")
+
+
+def test_174_non_ascii_acknowledgement_is_refused_on_the_execution_path_never_raises(catalogue, eligibility):
+    """#174: a non-ASCII acknowledgement is refused like any wrong one (GuardRefused, not TypeError); nothing sent."""
+    book, prep = _close_prep(catalogue, eligibility)
+    submitter = FakeSubmitter()
+    for ack in _NON_ASCII_ACKS:
+        with pytest.raises(GuardRefused):
+            submit_confirmed(prep, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-1",
+                             submitter=submitter, acknowledgement=ack)
+    assert submitter.sent == [] and len(book.views_for("S-1")) == 4
+
+
+def test_174_non_ascii_acknowledgement_is_refused_by_the_guard_redeem_never_raises():
+    """#174: StrategyGuard.redeem refuses a non-ASCII token with GuardRefused; the right token still works after."""
+    guard = StrategyGuard()
+    binding = GuardBinding(SID, "v1", "p-174")
+    decision = guard._issue(binding, GOLDEN, Strategy(GOLDEN.legs[:3]), D("1"), D("1"))
+    for ack in _NON_ASCII_ACKS:
+        with pytest.raises(GuardRefused):
+            guard.redeem(binding, ack)
+    guard.redeem(binding, decision.acknowledgement)
