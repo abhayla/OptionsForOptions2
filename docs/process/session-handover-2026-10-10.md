@@ -49,8 +49,13 @@ Previous: `session-handover-2026-10-09.md`. Plan: `docs/process/master-plan-2026
 1. W-065 live proof with the owner's login (market hours), then its phase 2 (frontend composable + Playwright replay).
 2. Resume W-066 (#172), then register W-065's route.
 3. Leg picker + Save Draft button - after the owner answers which requirement the picker delivers (owner question 2).
-4. Deferred fixes: #184, #171 (needs a decision row), #148, #155, #156. Owner question 5: stale production-gate
-   markers from review folders - keep review/verify checkouts inside the session scratchpad, not sibling folders.
+4. Done later still: #184 (#186: generated agreement test, one code for out-of-range contract ids) and #156 (#187).
+   **#155 PARKED** (branch `fix/155-gate-before-commit`, worktree `...-155` kept): the hook works on the everyday
+   shapes but 3 MAJOR bypasses remain after two review rounds - owner question 6 (merge partial vs one more round).
+   Remaining: #171 (needs a decision row), #148 (W-024 response serializer, Tier A design). Owner question 5: stale
+   production-gate markers - keep review/verify checkouts inside the session scratchpad, not sibling folders.
+   A spare builder worktree under the kit folder (agent-a91e43af…) holds an uncommitted regenerated settings file
+   from the #155 builder; harmless, excluded from git; remove when convenient.
 5. #154: the BEHIND-refusal proof is still unobserved (no PR has been merely behind main since protection was set).
 
 ## 4. Owner items

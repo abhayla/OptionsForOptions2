@@ -14,9 +14,9 @@ run; the work continues on other items meanwhile.
 - Spec basis: ADR-060 (build the core on the owner's own Kite app); work/W-065.md proof.
 
 ## 2. Which requirement does the leg picker deliver? (intake fork)
-- **Recommended:** add one acceptance criterion to REQ-035 (strategy table / Builder screen): "The Builder adds and
-  edits legs from a picker that offers only listed, not-expired contracts of the chosen underlying (underlying,
-  expiry, strike, CE/PE/FUT, buy/sell, lots)", citing ADR-068 (4). Reason: ADR-068 already decided the picker is in
+- **Recommended:** add one acceptance criterion to REQ-035 (strategy table / Builder screen). Proposed wording, NOT
+  yet in the spec: 'The Builder adds and edits legs from a picker that offers only listed, not-expired contracts of
+  the chosen underlying (underlying, expiry, strike, CE/PE/FUT, buy/sell, lots)', citing ADR-068 (4). Reason: ADR-068 already decided the picker is in
   stage 4a, but the requirement it cites (REQ-067 AC-1) is about proving data first, and REQ-027 (strike selection
   modes) is about suggestions that do not exist yet - so no AC today would carry the picker's evidence.
 - **Alternative:** deliver it under REQ-027 AC-4 ("The user can manually override every suggested strike") once
@@ -44,3 +44,31 @@ run; the work continues on other items meanwhile.
   as sibling worktrees (use the session scratchpad instead), which seems to be what gets them marked.
 - Spec basis: none - the spec says nothing about the production seatbelt's markers (searched: governed, seatbelt,
   production gate); it is owner-edited only (CLAUDE.md), so the orchestrator does not touch it.
+
+## 6. #155 hook (a failing step must stop commit/push) - merge the partial hook, or one more round?
+- **State:** parked under B1 after two review rounds (#155 comment). It blocks both historical shapes
+  (`gate | tail && git push`, `gate; git commit`), many wrappers and the PowerShell case; false positives are
+  acceptable. Still open: 3 MAJOR bypasses that need an unusual construct, e.g. `X=$(pytest | tail -1)` on one line
+  then `git push`, or `$r = python check.py; git commit`.
+- **Recommended:** merge the partial hook now and track the 5 open items as a follow-up issue - it already stops the
+  shapes that actually happened twice; parking it leaves NO mechanism for a class that is past its second occurrence.
+  Cost: one more Tier B review of the remaining items later. Alternative: one more fix round first (the fixes are
+  small - the reviewer sketched item 1's).
+- Spec basis: none - process tooling (finding pipe-masks-gate-exit-code; learning L2: a second occurrence needs a
+  mechanism; run-discipline B1: park after two failed rounds).
+
+## 7. #148 response door - should `/docs` and `/openapi.json` be served in production?
+- **Context:** `docs/process/design-148-response-door.md` puts every API response through one closed door. The
+  framework's `/docs` and `/openapi.json` send free text (docstrings, model descriptions) and cannot go through it.
+- **Recommended:** serve them only when `APP_ENV` is development or test, and exempt them from the door's seal check by
+  exact path there only. In production they answer 404. Cost: none for users; the API description is still generated
+  into `docs/api/*.openapi.json` in the repo.
+- **Alternative:** serve them everywhere as a named exemption.
+- Spec basis: ADR-003 Q226 ("every platform message comes from a fixed, reviewed template catalogue with typed
+  slots"); REQ-065 AC-2.
+
+## 8. #148 MAJOR 2 (user words built only at the request boundary) - same round as the door, or its own?
+- **Recommended:** its own round after the door - it is domain-only (no route carries user words yet), and the door
+  alone is already ~10 files with a Tier A review; mixing them makes one review too big to read end to end
+  (run-discipline C4).
+- Spec basis: ADR-003 Q226; REQ-065 AC-2; ADR-065 (pricing/wording guards stop accidental misuse).
