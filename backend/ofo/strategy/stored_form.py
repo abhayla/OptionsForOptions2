@@ -54,6 +54,9 @@ from ofo.strategy import settings_value
 
 SCHEMA_VERSION = 1
 SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
+#: A catalogue contract id is 1 .. 10^18 - 1: the database validator (migration 0008 ofo_strategy_leg_valid, regex
+#: ^[1-9][0-9]{0,17}$) stores no more. The domain refuses first, with MISSING_CONTRACT_ID, never a late check violation.
+MAX_CONTRACT_ID = 10**18 - 1
 
 DOCUMENT_KEYS = frozenset({"schema_version", "underlying", "legs", "rules_ref", "risk_limits", "preferences"})
 LEG_KEYS = frozenset({"contract_id", "action", "instrument", "strike", "expiry", "quantity"})
@@ -131,8 +134,9 @@ class SavedDefinition:
         if ids is None or len(ids) != len(self.definition.legs):
             raise StoredFormError(MISSING_CONTRACT_ID, "every leg needs exactly one catalogue contract id")
         for contract_id in ids:
-            if not _is_int(contract_id) or contract_id <= 0:
-                raise StoredFormError(MISSING_CONTRACT_ID, f"a contract id is a positive integer, got {contract_id!r}")
+            if not _is_int(contract_id) or not 0 < contract_id <= MAX_CONTRACT_ID:
+                raise StoredFormError(MISSING_CONTRACT_ID,
+                                      f"a contract id is an integer in 1..{MAX_CONTRACT_ID}, got {contract_id!r}")
         if len(set(ids)) != len(ids):
             raise StoredFormError(INVALID_DEFINITION, "two legs on the same catalogue contract")
         # Every path to or from the stored form builds a SavedDefinition, so this is the one place the named maps are
@@ -338,8 +342,9 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
         where = f"leg_{i + 1}"
         raw = _exact_keys(raw, LEG_KEYS, where)
         contract_id = _int_from(raw["contract_id"], f"{where}.contract_id", MISSING_CONTRACT_ID)
-        if contract_id <= 0:
-            raise StoredFormError(MISSING_CONTRACT_ID, f"{where} contract_id must be positive, got {contract_id}")
+        if not 0 < contract_id <= MAX_CONTRACT_ID:
+            raise StoredFormError(MISSING_CONTRACT_ID,
+                                  f"{where} contract_id must be in 1..{MAX_CONTRACT_ID}, got {contract_id}")
         instrument = _enum_from(Instrument, raw["instrument"], f"{where}.instrument")
         if isinstance(raw["strike"], str) and re.fullmatch(r"[0-9]+([.][0-9]+)?", raw["strike"]) is None:
             # plain digits only (the database's rule): no sign, exponent, space or non-ASCII digit
@@ -418,7 +423,7 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
     for i, choice in enumerate(choices):
         if not isinstance(choice, LegChoice):
             raise StoredFormError(INVALID_DEFINITION, f"leg {i + 1} must be a LegChoice, got {choice!r}")
-        if not _is_int(choice.contract_id) or choice.contract_id <= 0:
+        if not _is_int(choice.contract_id) or not 0 < choice.contract_id <= MAX_CONTRACT_ID:
             raise StoredFormError(MISSING_CONTRACT_ID, f"leg {i + 1}: contract id {choice.contract_id!r}")
         terms = resolve(choice.contract_id)
         if terms is None:
