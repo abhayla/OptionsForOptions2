@@ -26,8 +26,10 @@ async function seedCatalogue(page: Page) {
   await page.route('**/api/catalogue/NIFTY/contracts?expiry=2026-10-13', (r) => r.fulfill({ json: CONTRACTS }))
 }
 
+// The expiry is chosen once by the caller: saving a leg keeps it (and its contracts), so it is not re-selected here.
 async function addLeg(page: Page, type: string, strike: string, action: string) {
-  await page.getByTestId('pick-expiry').selectOption('2026-10-13')
+  const rows = page.getByTestId('leg-row')
+  const before = await rows.count()
   await page.getByTestId('pick-type').selectOption(type)
   // wait for the API's strikes: the select is disabled until they arrive
   await expect(page.getByTestId('pick-strike')).toBeEnabled()
@@ -35,6 +37,7 @@ async function addLeg(page: Page, type: string, strike: string, action: string) 
   await page.getByTestId('pick-strike').selectOption(strike)
   await page.getByTestId('pick-action').selectOption(action)
   await page.getByTestId('add-leg').click()
+  await expect(rows).toHaveCount(before + 1) // the capture has finished and the form is free for the next leg
 }
 
 test('four picked legs are priced by the real outcome route on the recorded frames', async ({ page }, info) => {
@@ -70,6 +73,7 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
   await page.getByTestId('add-leg').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
   await expect(page.getByTestId('leg-row')).toContainText('NIFTY26O1323000CE')
+  await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', /computed|stale/)
   await page.getByTestId('remove-leg').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(0)
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'no-draft')

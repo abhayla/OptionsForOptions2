@@ -62,13 +62,15 @@ const legs = ref(legsFromQuery())
 let loadSeq = 0 // only the newest outcome answer is shown
 
 async function load() {
+  const mine = ++loadSeq // every call invalidates the answers still in flight, also the ones that return early
+  clearTimeout(slowTimer)
+  slow.value = false
   const draft = buildDraft(legs.value)
   if (!draft) {
     state.value = legs.value.length ? 'unpriced' : 'no-draft'
     data.value = null
     return
   }
-  const mine = ++loadSeq
   state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {

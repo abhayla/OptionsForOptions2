@@ -109,10 +109,10 @@ async function startEdit(leg) {
   action.value = leg.action
   lots.value = leg.lots
   underlying.value = leg.underlying
-  if (!(await loadExpiries())) return
+  if (!(await loadExpiries()) || editingId.value !== leg.id) return // cancelled or switched meanwhile
   if (leg.expiry && expiries.value.includes(leg.expiry)) {
     expiry.value = leg.expiry
-    if (await loadContracts()) {
+    if ((await loadContracts()) && editingId.value === leg.id) {
       type.value = leg.instrument_type
       strike.value = leg.strike ?? ''
     }
@@ -120,9 +120,9 @@ async function startEdit(leg) {
 }
 
 /** The planned entry for a newly chosen contract: the API's strings, or nothing. Never a default, zero or last price. */
-async function capture(id) {
+async function capture(id, und) {
   try {
-    const res = await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: [id] })
+    const res = await api.post('/strategies/planned-entry', { underlying: und, instrument_ids: [id] })
     const found = res.data.entries.find((e) => instrumentId(e.exchange_segment, e.exchange_token) === id)
     if (found && found.planned_entry != null && found.captured_at != null) {
       return { planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source, reason_code: null }
@@ -136,29 +136,34 @@ async function capture(id) {
 async function save() {
   if (!canSave.value) return
   busy.value = true
+  // Snapshot every input, then reset the form BEFORE the await: picks made while the entry is captured belong to the
+  // next leg and must not be read into this one or wiped by it.
+  const old = editing.value
+  const c = contract.value
+  const und = underlying.value
+  const act = action.value
+  const lotCount = lots.value
+  const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
+  resetForm()
   try {
-    const old = editing.value
-    const c = contract.value
-    const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
     // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
     const pricing = old && old.instrument_id === id && old.planned_entry != null
       ? { planned_entry: old.planned_entry, captured_at: old.captured_at, source: old.source, reason_code: null }
-      : await capture(id)
+      : await capture(id, und)
     const leg = {
       id: old ? old.id : nextId++,
-      underlying: underlying.value,
+      underlying: und,
       instrument_id: id,
       symbol: c ? c.symbol : old.symbol,
       expiry: c ? c.expiry : old.expiry,
       instrument_type: c ? c.instrument_type : old.instrument_type,
       strike: c ? c.strike : old.strike,
       lot_size: c ? c.lot_size : old.lot_size,
-      action: action.value,
-      lots: lots.value,
+      action: act,
+      lots: lotCount,
       ...pricing,
     }
     emit('update:legs', old ? props.legs.map((l) => (l.id === old.id ? leg : l)) : [...props.legs, leg])
-    resetForm()
   } finally {
     busy.value = false
   }

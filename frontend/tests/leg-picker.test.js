@@ -271,6 +271,53 @@ describe('edit and remove', () => {
   })
 })
 
+describe('a late async reply never overwrites newer user state', () => {
+  it('a leg is saved from what was picked at the click; picks made while the entry is being captured survive', async () => {
+    let release
+    answers['POST /strategies/planned-entry'] = () => new Promise((res) => { release = () => res({ data: { entries: [entry(44624, '104.65')] } }) })
+    const w = mountPicker()
+    await flushPromises()
+    await pick(w, { type: 'CE', strike: '22800.00', action: 'SELL', lots: '1' })
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    // while the capture is pending the user picks the next leg
+    await t(w, 'pick-type').setValue('PE')
+    await t(w, 'pick-strike').setValue('22400.00')
+    await t(w, 'pick-action').setValue('BUY')
+    await t(w, 'pick-lots').setValue('3')
+    release()
+    await flushPromises()
+    const [leg] = w.props('legs')
+    expect(w.props('legs')).toHaveLength(1)
+    expect(leg).toMatchObject({ instrument_id: instrumentId('NSE_FO', 44624), action: 'SELL', lots: 1, instrument_type: 'CE', planned_entry: '104.65' })
+    expect(t(w, 'pick-type').element.value).toBe('PE')
+    expect(t(w, 'pick-strike').element.value).toBe('22400.00')
+    expect(t(w, 'pick-action').element.value).toBe('BUY')
+    expect(t(w, 'pick-lots').element.value).toBe('3')
+  })
+
+  it('the Builder ignores an outcome answer that arrives after every leg was removed', async () => {
+    let release
+    answers['POST /strategies/planned-entry'] = { entries: [entry(44624, '104.65')] }
+    answers['POST /strategies/outcome'] = () => new Promise((res) => { release = () => res({ data: OUTCOME_NOT_CONNECTED }) })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder' })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    await pick(w, { type: 'CE', strike: '22800.00' })
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'strategy-builder').attributes('data-state')).toBe('loading')
+    await t(w, 'remove-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'strategy-builder').attributes('data-state')).toBe('no-draft')
+    release()
+    await flushPromises()
+    expect(t(w, 'strategy-builder').attributes('data-state')).toBe('no-draft')
+  })
+})
+
 describe('buildDraft: the body the outcome API takes', () => {
   const priced = { underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 2, planned_entry: '104.65', captured_at: AT, symbol: 'x' }
   const unpriced = { ...priced, instrument_id: 'NSE_FO:44632', planned_entry: null, captured_at: null }
