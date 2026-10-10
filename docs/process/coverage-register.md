@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 007f530
+Generated from commit 1dd86dc
 
 ## Stage S0
 
@@ -138,6 +138,7 @@ Generated from commit 007f530
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
+| 4a | work item | W-067 | - | One-minute history kept in PostgreSQL, and the after-close job that makes each day final from Kite's candles |
 
 ## Stage 4b
 
@@ -445,7 +446,7 @@ Generated from commit 007f530
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 31 | 5 | 0 | 15 | 0 | 1 | 31 | 0 | 0 | 90 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 15 | 0 | 1 | 31 | 0 | 1 | 91 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
