@@ -64,6 +64,8 @@ run; the work continues on other items meanwhile.
   small - the reviewer sketched item 1's).
 - Spec basis: none - process tooling (finding pipe-masks-gate-exit-code; learning L2: a second occurrence needs a
   mechanism; run-discipline B1: park after two failed rounds).
+- **ANSWERED 2026-10-10 (owner, question tool): "Merge partial now".** The partial hook merges; the 3 MAJOR bypasses
+  and 2 minors move to a follow-up issue. No spec change: process tooling, no requirement or decision covers it.
 
 ## 7. #148 response door - should `/docs` and `/openapi.json` be served in production?
 - **Context:** `docs/process/design-148-response-door.md` puts every API response through one closed door. The
