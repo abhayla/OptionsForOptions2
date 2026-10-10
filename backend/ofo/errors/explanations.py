@@ -408,14 +408,27 @@ class LevelRegions(SlotType):
             for bound in item:
                 if bound is not None:
                     Points.validate(bound)
-            if item[0] is not None and item[1] is not None and not item[0] < item[1]:
-                raise ValueError(f"a level region needs lower < upper, got {item!r:.40}")
+            for bound in item:
+                if bound is not None and "E" in str(bound).upper():
+                    raise ValueError(f"a level bound is written in plain notation, got {bound!r:.40}")
+            if item[0] is not None and item[1] is not None and item[0] > item[1]:
+                raise ValueError(f"a level region needs lower <= upper, got {item!r:.40}")
+        last = len(value) - 1
+        for i, (lo, hi) in enumerate(value):
+            if lo is None and i != 0:
+                raise ValueError("only the first level region may have an open lower end")
+            if hi is None and i != last:
+                raise ValueError("only the last level region may have an open upper end")
+            if i and value[i - 1][1] is not None and lo is not None and not value[i - 1][1] < lo:
+                raise ValueError("level regions must be in order, without overlap, duplicates or touching ends")
 
     @staticmethod
     def format(value: tuple) -> str:
         parts = []
         for lo, hi in value:
-            if lo is None:
+            if lo is not None and lo == hi:
+                parts.append(f"at {Points.format(lo)}")
+            elif lo is None:
                 parts.append(f"below {Points.format(hi)}")
             elif hi is None:
                 parts.append(f"above {Points.format(lo)}")

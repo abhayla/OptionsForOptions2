@@ -171,3 +171,29 @@ def test_level_regions_read_as_a_list() -> None:
         "If NIFTY ends below 1, between 2 and 3 or above 4 at expiry.")
     assert str(render_explanation("summary_start_touch", level=d("22300"))) == (
         "At every level except exactly 22,300 at expiry.")
+
+
+def _regions_text(r) -> str:
+    return str(render_explanation("summary_start_regions", index="NIFTY", regions=r))
+
+
+def test_level_regions_accept_a_point_part() -> None:
+    d = Decimal
+    assert _regions_text(((d("22400"), d("22400")),)) == "If NIFTY ends at 22,400 at expiry."
+    assert _regions_text(((None, d("1")), (d("2"), d("2")), (d("3"), None))) == (
+        "If NIFTY ends below 1, at 2 or above 3 at expiry.")
+
+
+@pytest.mark.parametrize("regions", [
+    ((Decimal(5), Decimal(10)), (Decimal(1), Decimal(3))),
+    ((Decimal(1), Decimal(10)), (Decimal(5), Decimal(20))),
+    ((Decimal(1), Decimal(3)), (Decimal(1), Decimal(3))),
+    ((Decimal(1), Decimal(3)), (Decimal(3), Decimal(5))),
+    ((Decimal(1), Decimal(3)), (None, Decimal(5))),
+    ((Decimal(1), None), (Decimal(5), Decimal(9))),
+    ((None, Decimal("2.24E+4")),),
+    ((Decimal("1E+2"), Decimal("3E+2")),),
+], ids=["unordered", "overlap", "duplicate", "touching", "open-lower-not-first", "open-upper-not-last", "exponent", "exponent-lower"])
+def test_level_regions_refuse_a_malformed_list(regions) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        _regions_text(regions)

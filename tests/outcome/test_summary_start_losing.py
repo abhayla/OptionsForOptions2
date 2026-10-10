@@ -98,3 +98,11 @@ def test_a_2_lot_ratio_loss_merges_across_an_inside_strike(provider):
     """Sell 2x22400CE @100, buy 22800CE @50: net credit 150, zero at 22,475, loss above it across the 22,800 strike."""
     legs = [("NSE_FO:44602", SELL, D("100"), 2), ("NSE_FO:44624", BUY, D("50"))]
     assert _start(provider, legs) == "If NIFTY ends above 22,475 at expiry."
+
+
+def test_a_loss_region_narrower_than_a_paisa_is_named_as_one_level_not_a_crash(provider):
+    """Round 6: BUY 3 x 22400CE @0, BUY 3 x 22400PE @0, BUY 1 x 22200PE @0.01 loses only in a sliver that rounds to
+    one 0.01 level; it used to raise "a level region needs lower < upper"."""
+    legs = [("NSE_FO:44602", Action.BUY, Decimal("0"), 3), ("NSE_FO:44604", Action.BUY, Decimal("0"), 3),
+            ("NSE_FO:44595", Action.BUY, Decimal("0.01"), 1)]
+    assert _start(provider, legs) == "If NIFTY ends at 22,400 at expiry."

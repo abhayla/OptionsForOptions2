@@ -135,8 +135,21 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
             regions[-1][1] = hi
         else:
             regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi])
-    return tuple((None if lo is None else _to_decimal(lo), None if hi is None else _to_decimal(hi))
-                 for lo, hi in regions)
+    # Edges are shown rounded to 0.01, so two edges can round to one level: a region narrower than a paisa becomes a
+    # single-level region (lower == upper, kept: ADR-072 names every loss region), and rounded regions that touch or
+    # overlap across a real (exact) gap are merged. Regions meeting at an exact zero point stay separate.
+    out: list[list] = []
+    prev_exact_hi: Fraction | None = None
+    for lo, hi in regions:
+        d_lo = None if lo is None else _to_decimal(lo)
+        d_hi = None if hi is None else _to_decimal(hi)
+        if (out and prev_exact_hi is not None and lo is not None and lo != prev_exact_hi
+                and out[-1][1] is not None and d_lo <= out[-1][1]):
+            out[-1][1] = d_hi
+        else:
+            out.append([d_lo, d_hi])
+        prev_exact_hi = hi
+    return tuple((lo, hi) for lo, hi in out)
 
 
 def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
