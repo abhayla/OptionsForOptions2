@@ -44,3 +44,15 @@ run; the work continues on other items meanwhile.
   as sibling worktrees (use the session scratchpad instead), which seems to be what gets them marked.
 - Spec basis: none - the spec says nothing about the production seatbelt's markers (searched: governed, seatbelt,
   production gate); it is owner-edited only (CLAUDE.md), so the orchestrator does not touch it.
+
+## 6. #155 hook (a failing step must stop commit/push) - merge the partial hook, or one more round?
+- **State:** parked under B1 after two review rounds (#155 comment). It blocks both historical shapes
+  (`gate | tail && git push`, `gate; git commit`), many wrappers and the PowerShell case; false positives are
+  acceptable. Still open: 3 MAJOR bypasses that need an unusual construct, e.g. `X=$(pytest | tail -1)` on one line
+  then `git push`, or `$r = python check.py; git commit`.
+- **Recommended:** merge the partial hook now and track the 5 open items as a follow-up issue - it already stops the
+  shapes that actually happened twice; parking it leaves NO mechanism for a class that is past its second occurrence.
+  Cost: one more Tier B review of the remaining items later. Alternative: one more fix round first (the fixes are
+  small - the reviewer sketched item 1's).
+- Spec basis: none - process tooling (finding pipe-masks-gate-exit-code; learning L2: a second occurrence needs a
+  mechanism; run-discipline B1: park after two failed rounds).

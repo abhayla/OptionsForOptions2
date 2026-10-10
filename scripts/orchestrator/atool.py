@@ -29,6 +29,13 @@ for s in steps:
         print("\n".join(out))
     bad |= r.returncode
 
+# The coverage register is a separate CI job on every PR (closed issues must leave it, new open issues need a row).
+r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "coverage.py"), wt,
+                    "--check"], cwd=wt, capture_output=True, text=True)
+out = (r.stdout + r.stderr).strip().splitlines()
+print("coverage", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
+bad |= r.returncode
+
 # A changed migration can break any test that walks the migration chain, whatever its name (finding
 # targeted-tests-miss-dependent-files, 2nd occurrence: 0010 broke 0009's round-trip test, found only in CI). With
 # --no-tests, run every tests_app file that touches migrations against the real test database (light: targeted files).

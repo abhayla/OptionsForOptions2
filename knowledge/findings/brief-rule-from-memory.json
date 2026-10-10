@@ -68,15 +68,20 @@
    "date": "2026-10-10",
    "where": "W-067 round-2 brief (orchestrator), docs/process/brief-W-067-r2.md item 3",
    "evidence": "the brief ordered 'finalize refuses unless Kite candles cover the last minute for every instrument' without quoting ADR-067, which says 'a minute Kite has no candle for keeps the live bar'; check_brief passed it (no quote = nothing to check); the final Tier A review reproduced 3 ways a day stays provisional forever; corrected in round 3 (brief-W-067-r3.md quotes ADR-067)"
+  },
+  {
+   "date": "2026-10-10",
+   "where": "#155 round-1 brief (orchestrator), docs/process/brief-155.md rule (c)",
+   "evidence": "the brief let PowerShell's `$ErrorActionPreference = 'Stop'` stand in for `set -e`, from memory; the Tier A reviewer measured on this PC's pwsh 7.5.2 that a failing native program does not stop the script (PSNativeCommandUseErrorActionPreference=False), so the hook allowed exactly the masked commit it exists to block (CRITICAL); corrected in round 2."
   }
  ],
  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
  "detection": {
-  "status": "guarded",
+  "status": "unguarded",
   "checks": [
    "tests/orchestrator/test_check_brief.py"
   ],
-  "note": "scripts/orchestrator/check_brief.py (W-040) checks every quoted spec citation in a brief verbatim against the cited REQ AC / ADR / Q text, before dispatch. It cannot see a paraphrase without quotes, a rule with no citation (reported UNCITED, fails only with --strict), or a correct quote used to support a wrong conclusion. Measured earlier: all 5 first occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004). 2026-10-10 (W-067 r2): a paraphrased rule with no quote again cost a round - 'guarded' holds only for quoted rules; the orchestrator now quotes the decision text for every product rule it writes into a fix brief."
+  "note": "scripts/orchestrator/check_brief.py (W-040) checks every quoted spec citation in a brief verbatim against the cited REQ AC / ADR / Q text, before dispatch. It cannot see a paraphrase without quotes, a rule with no citation (reported UNCITED, fails only with --strict), or a correct quote used to support a wrong conclusion. Measured earlier: all 5 first occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004). 2026-10-10 (W-067 r2): a paraphrased rule with no quote again cost a round - 'guarded' holds only for quoted rules; the orchestrator now quotes the decision text for every product rule it writes into a fix brief. 2026-10-10 (#155 r1): a second unquoted claim in one night - this time about TOOL behaviour (PowerShell), which check_brief cannot see at all. Status set back to unguarded: check_brief guards quoted decision and requirement text only. Practice until a mechanism exists: a claim in a brief about how a tool, shell or library behaves is either measured in the session first (the command and its output cited in the brief) or marked 'unverified - the builder must measure it'."
  },
  "spec_ref": [
   "spec/decisions/ADR-045.md"
