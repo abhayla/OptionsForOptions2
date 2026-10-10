@@ -8,7 +8,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import {
   NOT_CONNECTED_LABEL,
   UNDERLYINGS,
@@ -37,12 +36,13 @@ let nextId = 1
 let seq = 0 // the newest catalogue request wins; an older answer arriving late is dropped
 
 const editing = computed(() => props.legs.find((l) => l.id === editingId.value) ?? null)
-const underlyingLocked = computed(() => props.legs.length > (editing.value ? 1 : 0))
+// Locked while any leg exists, also while editing the only one: a leg's contract belongs to its underlying.
+const underlyingLocked = computed(() => props.legs.length > 0)
 const types = computed(() => offeredTypes(contracts.value))
 const strikes = computed(() => offeredStrikes(contracts.value, type.value))
 const contract = computed(() => selectedContract(contracts.value, type.value, strike.value))
 const lotsOk = computed(() => typeof lots.value === 'number' && lotsValid(String(lots.value)))
-const canSave = computed(() => !busy.value && lotsOk.value && (contract.value !== null || (editing.value !== null && !type.value)))
+const canSave = computed(() => !busy.value && lotsOk.value && (contract.value !== null || (editing.value !== null && !type.value && underlying.value === editing.value.underlying)))
 
 async function loadExpiries() {
   const mine = ++seq
@@ -175,7 +175,10 @@ const legName = (l) => l.symbol ?? l.instrument_id
 <template>
   <section class="mt-4 rounded border border-line bg-surface p-4" data-testid="leg-picker">
     <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg' }}</h2>
-    <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" />
+    <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
+    <p v-if="errorParts" class="mt-2 text-sm" role="alert" data-testid="picker-error">
+      {{ errorParts.what_happened }} {{ errorParts.what_is_blocked }} {{ errorParts.next_action }}
+    </p>
     <form class="mt-2 flex flex-wrap items-end gap-3 text-sm" @submit.prevent>
       <label class="flex flex-col">Underlying
         <select data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">

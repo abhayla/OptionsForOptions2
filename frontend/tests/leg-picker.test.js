@@ -119,7 +119,8 @@ describe('only offered contracts are selectable', () => {
     answers['GET /catalogue/NIFTY/expiries'] = Object.assign(new Error('x'), { parts, status: 422 })
     const w = mountPicker()
     await flushPromises()
-    expect(t(w, 'error-what').text()).toBe('a')
+    expect(t(w, 'picker-error').text()).toContain('a')
+    expect(t(w, 'error-what').exists()).toBe(false) // the page's own error block keeps those ids
     expect(options(w, 'pick-expiry')).toEqual([])
   })
 })
@@ -257,6 +258,17 @@ describe('edit and remove', () => {
     const w = await withOneLeg()
     expect(t(w, 'pick-underlying').attributes('disabled')).toBeDefined()
   })
+
+  it('the underlying stays locked while editing the only leg, so its NIFTY contract cannot be saved as SENSEX', async () => {
+    const w = await withOneLeg()
+    await t(w, 'edit-leg').trigger('click')
+    await flushPromises()
+    expect(t(w, 'pick-underlying').attributes('disabled')).toBeDefined()
+    expect(t(w, 'pick-underlying').element.value).toBe('NIFTY')
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    expect(w.props('legs')[0]).toMatchObject({ underlying: 'NIFTY', instrument_id: 'NSE_FO:44624' })
+  })
 })
 
 describe('buildDraft: the body the outcome API takes', () => {
@@ -347,6 +359,17 @@ describe('the Builder page', () => {
     expect(out[0].body).toEqual({ ...draft, ux_level: 'standard' })
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
+  })
+
+  it('when the outcome call and the catalogue call both fail the page shows exactly one error-what', async () => {
+    const parts = { what_happened: 'outcome down', impact: 'b', what_is_blocked: 'c', next_action: 'd' }
+    answers['GET /catalogue/NIFTY/expiries'] = Object.assign(new Error('x'), { parts: { ...parts, what_happened: 'catalogue down' } })
+    answers['POST /strategies/outcome'] = Object.assign(new Error('x'), { parts })
+    const draft = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44624', action: 'SELL', lots: 1, planned_entry: '100.00', captured_at: AT }] }
+    const w = await open({ draft: JSON.stringify(draft) })
+    expect(w.findAll('[data-testid="error-what"]')).toHaveLength(1)
+    expect(t(w, 'error-what').text()).toBe('outcome down')
+    expect(t(w, 'picker-error').text()).toContain('catalogue down') // the picker failure is still visible
   })
 
   it('a malformed ?draft= is ignored like before (no-draft)', async () => {

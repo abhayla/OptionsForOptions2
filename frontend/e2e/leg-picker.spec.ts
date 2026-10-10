@@ -29,6 +29,9 @@ async function seedCatalogue(page: Page) {
 async function addLeg(page: Page, type: string, strike: string, action: string) {
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await page.getByTestId('pick-type').selectOption(type)
+  // wait for the API's strikes: the select is disabled until they arrive
+  await expect(page.getByTestId('pick-strike')).toBeEnabled()
+  await expect(page.getByTestId('pick-strike').locator(`option[value="${strike}"]`)).toBeAttached()
   await page.getByTestId('pick-strike').selectOption(strike)
   await page.getByTestId('pick-action').selectOption(action)
   await page.getByTestId('add-leg').click()
