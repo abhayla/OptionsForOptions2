@@ -10,9 +10,11 @@
  },
  "fix": "W-067 round 3: app-dependent tests move to tests_app/; a repo-wide ast guard test fails on any `import ofo_app` / `from ofo_app` statement under tests/ (string mentions allowed), with a self-test.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Becomes guarded when the W-067 round-3 guard test (tests/test_no_app_imports.py) merges."
+  "status": "guarded",
+  "checks": [
+   "tests/test_no_app_imports.py"
+  ],
+  "note": "Merged with W-067 (#178, 8b46b35): an ast scan of every tests/ module fails on an ofo_app import (string mentions allowed), with a self-test; the W-067 verifier's mutation M3 (import ofo_app in a tests/ file) turned it red."
  },
  "spec_ref": [
   "spec/decisions/ADR-046.md"
