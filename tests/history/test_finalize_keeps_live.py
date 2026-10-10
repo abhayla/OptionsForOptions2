@@ -44,7 +44,7 @@ def run(store, kite, ids):
 def test_a_thin_strike_whose_live_bar_is_one_minute_after_kites_last_candle_ends_final_with_the_live_bar_kept():
     ids = ["NSE_FO:1"]
     store = seeded(ids)  # live to 15:29; Kite's last candle is 15:28
-    result = run(store, [bar("NSE_FO:1", m, BarSource.KITE, "20") for m in minutes(OPEN, at(15, 28))], ids)
+    result = run(store, [bar("NSE_FO:1", m, BarSource.KITE, "12") for m in minutes(OPEN, at(15, 28))], ids)
     assert result.status is DayStatus.FINAL and store.day_status(DAY) is DayStatus.FINAL and result.errors == {}
     last = store.bars("NSE_FO:1", DAY)[-1]
     assert last.minute == at(15, 29) and last.source is BarSource.LIVE and last.close == Decimal("11")
@@ -77,3 +77,15 @@ def test_a_fetch_error_still_keeps_the_day_provisional_and_named():
     store = seeded(ids)
     result = finalize_into(store, DAY, ids, Raising(), start=START, end=END)
     assert result.status is DayStatus.PROVISIONAL and result.errors == {"fetch_failed": 1}
+
+
+def test_chunk_size_changes_nothing_about_the_result_only_the_number_of_batches():
+    ids = ["NSE_FO:1", "NSE_FO:2", "NSE_FO:3"]
+    results = {}
+    for chunk in (1, 2, 50):
+        store = seeded(ids)
+        kite = [bar(i, m, BarSource.KITE) for i in ids for m in minutes(OPEN, LAST)]
+        r = finalize_into(store, DAY, ids, InMemoryCandleSource(kite), start=START, end=END, chunk=chunk)
+        results[chunk] = (r.status, r.counts, store.bars_for_day(DAY))
+        assert len(r.batch_seconds) == -(-len(ids) // chunk)
+    assert results[1] == results[2] == results[50] and results[1][1].replaced == 3 * 375

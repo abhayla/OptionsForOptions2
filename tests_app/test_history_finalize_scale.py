@@ -80,10 +80,11 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
         started = time.perf_counter()
         result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
         elapsed = time.perf_counter() - started
-        print(f"\nSCALE instruments={N} total={elapsed:.1f}s", file=sys.stderr)
         batches = result.batch_seconds
-        print(f"\nSCALE instruments={N} bars={N * MINUTES} total={elapsed:.1f}s batches={len(batches)} "
-              f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s", file=sys.stderr)
+        line = (f"SCALE instruments={N} bars={N * MINUTES} total={elapsed:.1f}s batches={len(batches)} "
+                f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s")
+        with capsys.disabled():  # real stdout: the CI log shows it on a pass too, with or without -s
+            print(f"\n{line}", flush=True)
         assert result.status.value == "final" and result.errors == {}
         assert result.counts.replaced == N * MINUTES and result.counts.kept_live == 0
         assert max(batches) < BATCH_BOUND_S, f"{line} - one batch exceeded {BATCH_BOUND_S} s"
