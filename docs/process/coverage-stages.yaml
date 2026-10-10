@@ -201,6 +201,7 @@ issues:
   "#167": 4a            # W-061 round-3 review minors (domain/database bounds, schema_version, wording)
   "#171": 4a            # Lower/Upper breakeven labels vs loss-region edges (ADR-072 consequence; decision row first)
   "#172": 4a            # PARKED W-066: bounded loss split by one zero point crashes (owner: final round red)
+  "#174": 4a            # Kite callback: non-ASCII user_id makes compare_digest raise (500 instead of refusal)
   "#30": 4a
   "#43": 4b
   "#45": 4b
