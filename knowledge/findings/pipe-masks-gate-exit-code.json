@@ -15,7 +15,7 @@
    "scripts/hooks/gate_before_commit.py (project PreToolUse hook on Bash|PowerShell, wired in .claude/project/hooks.json): refuses git commit / git push / merge_when_green after an earlier step that is piped, or joined by ;, a newline or ||, unless set -e / ErrorActionPreference Stop and no earlier step is piped",
    "tests/hooks/test_gate_before_commit.py (the brief's allow/refuse table, fail-open, stdin round trip)"
   ],
-  "note": "Issue #155. Fails open on any parse error. Covers commands run through the Bash and PowerShell tools only; a script file that does the same inside itself is not seen."
+  "note": "Issue #155. Fails open on any parse error. Covers commands run through the Bash and PowerShell tools only; a script file that does the same inside itself is not seen. PARTIAL: merged by owner choice 2026-10-10 (owner question 6) with known bypasses open in #191 - `$(...)`/backticks on a setup line, a PowerShell assignment that runs a command, `set -e` with `&&`/`!`, and wrappers such as xargs, timeout, eval, cmd /c."
  },
  "spec_ref": [
   "spec/decisions/ADR-046.md"
