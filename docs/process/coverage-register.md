@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit c191a40
+Generated from commit 007f530
 
 ## Stage S0
 
@@ -100,10 +100,10 @@ Generated from commit c191a40
 | 4a | issue | #155 | - |  |
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
-| 4a | issue | #163 | - |  |
 | 4a | issue | #167 | - |  |
 | 4a | issue | #171 | - |  |
 | 4a | issue | #172 | - |  |
+| 4a | issue | #174 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
