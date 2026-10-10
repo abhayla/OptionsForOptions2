@@ -1,0 +1,29 @@
+{
+ "id": "domain-test-imports-app-package",
+ "scope": "generic",
+ "class": "A test in the domain suite (`tests/`, standard library + domain package only) that imports the application package runs the application's import-time side effects - here the W-024 root log redaction - inside the shared test process, so later, unrelated tests in the same run see altered global state (log records without exc_info) and fail only in the combined order CI uses, never when run alone.",
+ "mechanism": "W-067 round 2 added tests/history/test_finalize_completeness.py with `from ofo_app.history_finalize import ...`; importing ofo_app installed the root redaction; tests/execution/test_safety_checks.py:640 (`assert any(r.exc_info for r in caplog.records)`) then failed in CI's lint-and-test job.",
+ "first_seen": {
+  "date": "2026-10-10",
+  "where": "build/W-067-history-pg @ 90b39cb, CI run 38021452764 (lint-and-test)",
+  "evidence": "local: tests/execution/test_safety_checks.py alone 168 passed; tests/history + test_safety_checks.py in one process on the branch 1 failed / 238 passed, on main 227 passed; per-file bisection: only test_finalize_completeness.py + test_safety_checks.py fails; that file's only app import is ofo_app.history_finalize."
+ },
+ "fix": "W-067 round 3: app-dependent tests move to tests_app/; a repo-wide ast guard test fails on any `import ofo_app` / `from ofo_app` statement under tests/ (string mentions allowed), with a self-test.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/test_no_app_imports.py"
+  ],
+  "note": "Merged with W-067 (#178, 8b46b35): an ast scan of every tests/ module fails on an ofo_app import (string mentions allowed), with a self-test; the W-067 verifier's mutation M3 (import ofo_app in a tests/ file) turned it red."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-046.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-10",
+   "where": "W-067 round 2",
+   "evidence": "CI lint-and-test red on an unrelated execution-safety test"
+  }
+ ]
+}

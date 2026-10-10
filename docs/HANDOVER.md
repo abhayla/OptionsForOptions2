@@ -1,5 +1,9 @@
 # Handover
 
+**2026-10-10 ~04:45 IST — START HERE: `docs/process/session-handover-2026-10-10.md`** (work now runs on the Windows
+VPS, whose PostgreSQL also serves IPODhan production: light local runs, heavy in CI). W-061, #163 and W-067 merged and
+verified; W-066 parked (#172); W-065 waits for the owner's Kite login. Owner items: `docs/process/owner-questions-2026-10-10.md`.
+
 **2026-10-07 ~22:00 IST — end of session; START HERE: `docs/process/session-handover-2026-10-07.md`** (what is done,
 what is next, how to set up another PC, and the working rules the owner set). Stages 0-3 done; Stage 4a step 1 (core
 data proof on the owner's account, F-29) done; W-057 (contract identity over time, ADR-057..059) merged as #125 and

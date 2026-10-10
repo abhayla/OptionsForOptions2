@@ -14,8 +14,10 @@ steps = [["tools/factory_lint.py", "."], ["tools/trace_check.py", "."], ["tools/
          ["tools/build_spec_index.py", ".", "--check"], ["tools/build_spec_digest.py", ".", "--check"],
          ["tools/spec_dupes.py", "."], ["tools/kit_selftest.py", "."], ["tools/kit_drift.py", ".", "--ci"],
          ["-m", "pytest", "-q", "-p", "no:cacheprovider"]]  # the ci.yml lint-and-test steps, in its order
-if "--no-tests" in sys.argv:
-    steps = steps[:-1]
+if "--no-tests" in sys.argv:  # the full suite runs in CI; the repo-wide guard tests (~25 s) still run here
+    import glob
+    guards = sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "tests", "test_*.py")))
+    steps = steps[:-1] + [["-m", "pytest", "-q", "-p", "no:cacheprovider", *guards]]
 bad = 0
 for s in steps:
     r = subprocess.run([sys.executable, *s], cwd=wt, capture_output=True, text=True)
