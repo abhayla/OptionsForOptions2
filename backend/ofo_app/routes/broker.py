@@ -48,6 +48,7 @@ from urllib.parse import parse_qsl
 
 from ofo.broker.kite_auth import KiteAuthPort, login_url
 from ofo.errors import UserFacing, UserFacingError, render
+from ofo.safe_compare import equal_secret
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
@@ -156,7 +157,7 @@ class StateStore:
         if found is None:
             return None
         user_ref, at, expected = found
-        if not nonce or not secrets.compare_digest(nonce, expected):
+        if not nonce or not equal_secret(nonce, expected):
             return None
         return user_ref if self.clock() - at < self.ttl else None
 
@@ -246,7 +247,7 @@ async def kite_callback(
         return _refused_redirect(request, rt, code)
     except Exception:  # noqa: BLE001 - fail closed, and never let an exception text near a log or the browser
         return _refused_redirect(request, rt, "kite_unavailable")
-    if not secrets.compare_digest(session.user_id, rt.config.expected_user_id):
+    if not equal_secret(session.user_id, rt.config.expected_user_id):
         # nothing stored; the active session is not replaced
         return _refused_redirect(request, rt, "broker_user_mismatch")
     try:
