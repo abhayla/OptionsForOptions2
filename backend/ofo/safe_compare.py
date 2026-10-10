@@ -14,4 +14,6 @@ import hmac
 
 def equal_secret(a: str, b: str) -> bool:
     """True when ``a`` and ``b`` are the same text; constant time over the UTF-8 bytes; never raises on a str."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        raise TypeError("equal_secret compares two str values")
     return hmac.compare_digest(a.encode("utf-8", "surrogatepass"), b.encode("utf-8", "surrogatepass"))
