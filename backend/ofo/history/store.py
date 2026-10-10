@@ -1,7 +1,7 @@
 """The history store port (W-062, REQ-051 AC-2): it accepts only ``MinuteBar``s, so a quote or a raw tick has no way in.
 
-The PostgreSQL implementation is a later work item (needs the ADR-048 test database); ``InMemoryHistoryStore`` is the
-reference and the test double. Standard library only.
+``InMemoryHistoryStore`` is the reference and the test double; the PostgreSQL store (W-067,
+``ofo_app.history_store``) runs these same rules through it. Standard library only.
 """
 from __future__ import annotations
 
@@ -171,6 +171,23 @@ class InMemoryHistoryStore:
             self._admit(replace(c, source=source))
         kept = sum(1 for b in self._bars.values() if b.minute.date() == day and b.source is BarSource.LIVE)
         return FinalizeCounts(replaced, kept, kite_only)
+
+    # ---- a persistent store's working set ---------------------------------------------------------------------------
+    def seed(self, *, bars: Iterable[MinuteBar] = (), gaps: Iterable[Gap] = (),
+             statuses: Iterable[tuple[datetime.date, DayStatus]] = ()) -> None:
+        """Load state that was ALREADY accepted by the rules (rows a database holds) without applying any rule. A
+        database-backed store seeds the slice a write can touch, runs the real write method, and persists the
+        difference (``state()`` before and after): the three rules stay in ``_write``, never re-implemented."""
+        for b in bars:
+            self._bars[(b.instrument_id, b.minute)] = b
+        self._gaps.update(gaps)
+        for day, status in statuses:
+            self._status[day] = status
+
+    def state(self) -> tuple[dict[tuple[str, datetime.datetime], MinuteBar], set[Gap], dict[datetime.date, DayStatus],
+                             set[tuple[str, datetime.datetime]]]:
+        """Copies of (bars, gaps, day statuses, LIVE bars the gap rule kept out) for diffing."""
+        return dict(self._bars), set(self._gaps), dict(self._status), set(self._gap_dropped)
 
     # ---- reads ------------------------------------------------------------------------------------------------------
     def _final(self, day: datetime.date) -> bool:

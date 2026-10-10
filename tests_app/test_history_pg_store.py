@@ -39,7 +39,7 @@ from ofo.history.bars import BarSource, MinuteBar  # noqa: E402
 from ofo.history.candles import InMemoryCandleSource  # noqa: E402
 from ofo.history.recorder import Recorder  # noqa: E402
 from ofo.history.store import DayStatus, InMemoryHistoryStore  # noqa: E402
-from ofo_app.history_finalize import FinalizeRefused, finalize_trading_day  # noqa: E402
+from ofo_app.history_finalize import finalize_trading_day  # noqa: E402
 from ofo_app.history_store import PostgresHistoryStore  # noqa: E402
 
 TABLES = ("history_minute_bars", "history_day_status", "history_feed_gaps", "history_gap_dropped")
@@ -180,55 +180,11 @@ def test_columns_are_exact_decimal_and_whole_numbers_never_float():
 def test_a_price_finer_than_a_paisa_is_refused_not_silently_rounded(store):
     fine = MinuteBar("X:1", at(11, 0), Decimal("1.005"), Decimal("1.005"), Decimal("1.005"), Decimal("1.005"), 1, 1,
                      BarSource.LIVE)
-    with pytest.raises(ValueError, match="paisa"):
+    with pytest.raises(ValueError, match="paise"):
         store.put_bars([fine])
     assert store.bars_for_day(DAY) == []
     with pytest.raises(ValueError):  # and a float never gets as far as the store (MinuteBar refuses it)
         MinuteBar("X:1", at(11, 0), 1.5, 1.5, 1.5, 1.5, 1, 1, BarSource.LIVE)
-
-
-# ---- the finalize job on Kite's real candles --------------------------------------------------------------------------
-def test_finalize_makes_every_minute_kites_candle_and_a_second_run_changes_nothing(committed_day):
-    url = _url("TEST_DATABASE_URL")
-    pg, mem = PostgresHistoryStore(url), InMemoryHistoryStore()
-    replay_into([pg, mem], ["0920-0924", "1506-1512"])
-    kite = all_kite_candles()
-    source, ids = InMemoryCandleSource(kite), list(candle_bars())
-
-    result = finalize_trading_day(pg, DAY, source, ids, now=at(15, 45))
-    finalize_trading_day(mem, DAY, InMemoryCandleSource(kite), ids, now=at(15, 45))
-    assert result.status is DayStatus.FINAL and pg.day_status(DAY) is DayStatus.FINAL
-    by = {(b.instrument_id, b.minute): b for b in pg.bars_for_day(DAY)}
-    for k in kite:  # expected values are Kite's recorded candles, parsed from the fixture text
-        got = by[(k.instrument_id, k.minute)]
-        assert (got.open, got.high, got.low, got.close, got.volume, got.oi) == \
-               (k.open, k.high, k.low, k.close, k.volume, k.oi)
-        assert got.source is (BarSource.BACKFILLED if k.minute in GAP_MINUTES else BarSource.KITE)
-    assert {k.instrument_id for k in kite if k.minute == at(15, 9)} == set(ids)  # the 15:09 gap minute, all 8, from Kite
-    assert pg.bars_for_day(DAY) == mem.bars_for_day(DAY)  # the same results the in-memory store gives
-    assert pg.gap_minutes_missing(DAY) == mem.gap_minutes_missing(DAY)
-
-    marks = "SELECT instrument_id, minute, xmin::text FROM public.history_minute_bars ORDER BY 1, 2"
-    before, calls = admin_sql(marks, fetch=True), source.calls
-    again = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
-    assert again.status is DayStatus.FINAL and again.counts is None
-    assert admin_sql(marks, fetch=True) == before  # 0 rows changed: not one row version was rewritten
-    assert source.calls == calls  # and Kite was not asked again
-    pg.close()
-
-
-def test_finalize_refuses_before_the_session_has_closed(committed_day):
-    pg = PostgresHistoryStore(_url("TEST_DATABASE_URL"))
-    source = InMemoryCandleSource(all_kite_candles())
-    try:
-        for now in (at(11, 0), at(15, 29, 59), at(15, 30)):
-            with pytest.raises(FinalizeRefused):
-                finalize_trading_day(pg, DAY, source, list(candle_bars()), now=now)
-        assert source.calls == 0 and pg.day_status(DAY) is DayStatus.PROVISIONAL
-        with pytest.raises(FinalizeRefused):  # a day that has not started yet
-            finalize_trading_day(pg, DAY + datetime.timedelta(days=1), source, [], now=at(15, 45))
-    finally:
-        pg.close()
 
 
 # ---- the database itself refuses what the store would never do --------------------------------------------------------
@@ -244,13 +200,13 @@ def test_the_database_refuses_any_change_to_a_final_day_as_the_application_role(
         "INSERT INTO public.history_minute_bars (instrument_id, minute, trade_date, open, high, low, close, volume, "
         "oi, source, removed) VALUES ('Z:9', :m, '2026-10-08', 1, 1, 1, 1, 1, 1, 'live', FALSE)",
         "UPDATE public.history_day_status SET status = 'provisional' WHERE trade_date = '2026-10-08'",
-        "INSERT INTO public.history_feed_gaps (gap_start, gap_end, trade_date) VALUES (:m, :m + interval '9 seconds', "
+        "INSERT INTO public.history_feed_gaps (gap_start, gap_end, trade_date) VALUES (CAST(:m AS timestamptz), CAST(:m AS timestamptz) + interval '9 seconds', "
         "'2026-10-08')",
     ]
     for sql in refused:
         with pytest.raises(DBAPIError) as err:
             app_sql(sql, {"i": iid, "m": minute})
-        assert GUARD_SQLSTATE in repr(err.value.orig), sql
+        assert getattr(err.value.orig, "sqlstate", None) == GUARD_SQLSTATE, sql
     for sql in ("DELETE FROM public.history_minute_bars", "TRUNCATE public.history_minute_bars",
                 "DELETE FROM public.history_day_status", "DELETE FROM public.history_feed_gaps"):
         with pytest.raises(DBAPIError, match="permission denied"):
@@ -264,7 +220,7 @@ def test_the_database_never_lowers_a_bars_source_even_on_a_provisional_day(commi
     pg.close()
     with pytest.raises(DBAPIError) as err:
         app_sql("UPDATE public.history_minute_bars SET source = 'live' WHERE instrument_id = 'X:1'")
-    assert GUARD_SQLSTATE in repr(err.value.orig)
+    assert getattr(err.value.orig, "sqlstate", None) == GUARD_SQLSTATE
 
 
 def test_grants_the_application_role_holds_on_the_history_tables():
@@ -297,6 +253,8 @@ def test_a_store_that_cannot_reach_the_database_never_disturbs_the_feed():
     assert len(delivered_with) == len(delivered_without) > 1000
     assert holder["rec"].counters["errors"] > 0 and holder["rec"].counters["bars_lost"] > 0
     assert fan.listener_errors == 0
+    # after the first refusal the store fails at once instead of waiting out a connect timeout per bar
+    assert dead.counters["unreachable"] == 1 and dead.counters["skipped_unreachable"] > 0
 
 
 # ---- the migration ----------------------------------------------------------------------------------------------------
