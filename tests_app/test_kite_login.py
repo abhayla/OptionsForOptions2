@@ -645,3 +645,41 @@ def test_mutant_without_the_code_set_redacts_the_codes(monkeypatch):
     monkeypatch.setattr(redaction, "CATALOGUE_CODES", frozenset())
     code = CATALOGUE["broker_state_invalid"].code
     assert redaction.redact(code) == redaction.REDACTED
+
+
+# ---- #163: the refusal page reads the reviewed message by code ----
+
+
+@pytest.mark.parametrize("code", sorted(broker_routes.REFUSAL_CODES))
+async def test_the_refusal_route_returns_the_catalogue_parts_for_every_code(code):
+    async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
+        response = await ac.get(f"/api/broker/refusals/{code}")
+    assert response.status_code == 200
+    assert response.json() == {"code": code, "message": render(code).as_dict()}
+    assert {"what_happened", "impact", "what_is_blocked", "next_action"} <= set(response.json()["message"])
+
+
+@pytest.mark.parametrize("code", ["nope", "Kite_refused", "kite_refused%20x", "request_token=abc", "x" * 200])
+async def test_an_unknown_refusal_code_gets_the_fixed_input_error_and_no_echo(code):
+    async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
+        response = await ac.get(f"/api/broker/refusals/{code}")
+    assert response.status_code == 422
+    assert response.json() == render("user_input_request_invalid").as_dict()
+    assert code not in response.text
+
+
+async def test_the_refusal_route_never_carries_kites_own_text():
+    kite_text = "TokenException: Invalid checksum RAW_KITE_TEXT"
+    async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
+        bodies = [(await ac.get(f"/api/broker/refusals/{c}")).text for c in sorted(broker_routes.REFUSAL_CODES)]
+    assert all("RAW_KITE_TEXT" not in b and "TokenException" not in b and "checksum" not in b.lower() for b in bodies)
+    assert kite_text not in "".join(bodies)
+
+
+def test_the_callback_has_no_json_refusal_path_left():
+    """Class guard: inside kite_callback every refusal is a redirect; a `raise _refused(` would answer JSON again."""
+    import inspect
+
+    source = inspect.getsource(broker_routes.kite_callback)
+    assert "raise _refused" not in source and "BrokerLoginRefused" not in source
+    assert source.count("_refused_redirect(") >= 6

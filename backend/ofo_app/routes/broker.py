@@ -48,7 +48,7 @@ from urllib.parse import parse_qsl
 
 from ofo.broker.kite_auth import KiteAuthPort, login_url
 from ofo.errors import UserFacing, UserFacingError, render
-from ofo_app.api_models import ApiModel
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
 from ofo_app.broker_token_store import store_session
@@ -78,6 +78,8 @@ REFUSAL_CODES = frozenset({
     "kite_no_user_id", "kite_token_exception", "kite_input_exception", "kite_no_access_token", "kite_refused",
     "kite_unavailable", "kite_busy", "broker_store_failed",
 })
+#: A path parameter that only accepts a refusal code; anything else fails validation (the boundary's fixed input error).
+RefusalCode = Literal[tuple(sorted(REFUSAL_CODES))]  # type: ignore[valid-type]
 #: Refusals whose cause is our own capacity or Zerodha, not our code: answered 429 / 503 / 502, never 500.
 FAILURE_BY_CODE = MappingProxyType({
     "broker_login_busy": Failure.CAPACITY,
@@ -104,6 +106,13 @@ class BrokerRedirectOut(ApiModel):
     """Names the redirect a broker route answers with (the 302 itself has no body)."""
 
     redirect: Literal["zerodha_login", "connected", "refused"]
+
+
+class RefusalOut(ApiModel):
+    """The reviewed catalogue message (four parts) for one refusal code: what /broker/refused shows (#163)."""
+
+    code: Identifier
+    message: CatalogueText
 
 
 class StateCapReached(Exception):
@@ -195,6 +204,12 @@ async def get_kite_auth(request: Request) -> AsyncIterator[KiteAuthPort]:
 
 
 router = APIRouter()
+
+
+@router.get("/api/broker/refusals/{code}", response_model=RefusalOut)
+async def refusal_message(code: RefusalCode) -> RefusalOut:
+    """Read-only: the catalogue message for a refusal code, for the page the callback redirected to (#163)."""
+    return RefusalOut(code=code, message=render(code))
 
 
 @router.get(LOGIN_PATH, response_model=BrokerRedirectOut, status_code=302)
