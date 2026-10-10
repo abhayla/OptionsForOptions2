@@ -28,4 +28,23 @@ for s in steps:
     if show and show in s[0]:
         print("\n".join(out))
     bad |= r.returncode
+
+# A changed migration can break any test that walks the migration chain, whatever its name (finding
+# targeted-tests-miss-dependent-files, 2nd occurrence: 0010 broke 0009's round-trip test, found only in CI). With
+# --no-tests, run every tests_app file that touches migrations against the real test database (light: targeted files).
+if "--no-tests" in sys.argv:
+    changed = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], cwd=wt, capture_output=True,
+                             text=True).stdout.splitlines()
+    if any("/alembic/versions/" in f for f in changed):
+        import glob
+        files = sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "tests_app", "test_*.py"))
+                       if any(k in open(p, encoding="utf-8").read() for k in ("alembic", "_migration_replay")))
+        runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_run.py")
+        main_checkout = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        r = subprocess.run([sys.executable, runner, wt, sys.executable, "-m", "pytest", "-q", "-rs", "-p",
+                            "no:cacheprovider", "-c", "pytest-app.ini", *files], cwd=main_checkout,
+                           capture_output=True, text=True)
+        out = (r.stdout + r.stderr).strip().splitlines()
+        print("migration tests", f"({len(files)} files)", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
+        bad |= r.returncode
 sys.exit(bad)

@@ -8,11 +8,14 @@
   "where": "PR #176 (fix/163-refusal-redirect @ de62820), CI run 38018869688 job api",
   "evidence": "CI: '1 failed, 1072 passed, 3 skipped' - JSONDecodeError on refused.json() at test_broker_token_store.py:458; locally after updating the assertion: test_broker_token_store.py + test_kite_login.py 150 passed; a grep of tests/ and tests_app/ for the callback path and every refusal code found no other dependent test."
  },
- "fix": "Instance: the assertion now expects the 302 to /broker/refused?code=broker_user_mismatch with no body (session-row checks unchanged). Class mechanism: a quality-bar line in docs/process/builder-brief.md - before the targeted run, grep tests/ and tests_app/ for every route, status, code and message the change touches and add every file that names one to the run.",
+ "fix": "Instance: the assertion now expects the 302 to /broker/refused?code=broker_user_mismatch with no body (session-row checks unchanged). Class mechanism: a quality-bar line in docs/process/builder-brief.md - before the targeted run, grep tests/ and tests_app/ for every route, status, code and message the change touches and add every file that names one to the run. Second occurrence (L2 mechanism): atool.py --no-tests runs every tests_app file that touches migrations through db_run whenever the branch changes alembic/versions (on PR #183: 11 files, 755 passed); round-trip tests share tests_app/_migration_replay.py, which undoes every later migration first, so a new migration no longer breaks older round-trip tests.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "CI's full app suite is the backstop by design (owner decision 2026-10-09: heavy runs in CI on the VPS); the brief line reduces CI rounds, it does not replace the full run."
+  "status": "guarded",
+  "checks": [
+   "scripts/orchestrator/atool.py (migration step)",
+   "tests_app/_migration_replay.py"
+  ],
+  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally."
  },
  "spec_ref": [
   "spec/requirements/REQ-065.md"
@@ -22,6 +25,11 @@
    "date": "2026-10-10",
    "where": "PR #176",
    "evidence": "one CI round (api job ~1.5 min) lost"
+  },
+  {
+   "date": "2026-10-10",
+   "where": "PR #183 (W-061 follow-ups, migration 0010)",
+   "evidence": "CI api job: 1 failed, 1186 passed - tests_app/test_history_pg_store.py's 0009 round-trip test replayed 0009's downgrade assuming 0009 was head; with 0010 on top the allowlist 'post' check refused ('ofo_strategy_definition_valid body differs from its pinned body'). The builder had grepped by function/table name; a migration's dependents are every test that walks the chain."
   }
  ]
 }
