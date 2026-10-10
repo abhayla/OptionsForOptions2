@@ -73,7 +73,9 @@ Run from your worktree root, each as its own command:
 `python -m pytest -q -p no:cacheprovider` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
 test files your brief names plus `python scripts/orchestrator/atool.py <worktree> <W-id> --no-tests` (every ci.yml
-lint step); CI runs the full suites.
+lint step); CI runs the full suites. Before the targeted run, grep `tests/` and `tests_app/` for every route, status,
+code and message your change touches and add every file that names one (finding `targeted-tests-miss-dependent-files`:
+#163 broke a test in a file nobody ran).
 Commit (WIP commits are fine as you go) and `git push -u origin <your-branch>`. Do NOT open a PR — the orchestrator
 does that after independent verification.
 
