@@ -7,7 +7,6 @@ blocks, fails, or recovers on demand; the PostgreSQL proof is tests_app/test_his
 """
 import datetime
 import threading
-import time
 from decimal import Decimal
 
 import pytest
@@ -18,7 +17,7 @@ from ofo.history.bars import BarSource
 from ofo.history.recorder import Recorder, RecorderClosed
 from ofo.history.store import InMemoryHistoryStore
 
-BOUND_S = 0.1
+LIVENESS_S = 60  # a generous liveness bound for a feed that must not wait at all
 
 
 class BlockableStore(InMemoryHistoryStore):
@@ -49,24 +48,28 @@ class BlockableStore(InMemoryHistoryStore):
 
 
 def feed_minutes(rec, first=(10, 0), minutes=8, ltp=100):
-    """Twenty quotes a minute (no quiet spell, so no feed gap); each minute's first quote closes the previous bar.
-    Returns the longest time one feed call took."""
-    worst = 0.0
+    """Twenty quotes a minute (no quiet spell, so no feed gap); each minute's first quote closes the previous bar."""
     for i in range(minutes):
         for sec in range(1, 60, 3):
             ts = at(first[0], first[1]) + datetime.timedelta(minutes=i, seconds=sec)
-            t0 = time.perf_counter()
             rec.on_quote(index_quote(ts, str(ltp + i)))
-            worst = max(worst, time.perf_counter() - t0)
-    return worst
+
+
+def feed_finishes_while_the_store_is_blocked(rec, **kw) -> bool:
+    """Runs the feed on its own thread; True when every feed call returned while the store stays blocked. A feed that
+    waited on the store would never finish (the store is opened only after this returns) - a liveness check, not a
+    timing threshold (finding wall-clock-assertion-flakes-under-load)."""
+    feeder = threading.Thread(target=feed_minutes, args=(rec,), kwargs=kw, daemon=True)
+    feeder.start()
+    feeder.join(LIVENESS_S)
+    return not feeder.is_alive()
 
 
 def test_a_store_that_blocks_never_blocks_the_feed_thread_and_nothing_is_lost_when_it_frees():
     store = BlockableStore()
     store.open.clear()
     rec = Recorder(store)
-    worst = feed_minutes(rec)
-    assert worst < BOUND_S, f"the feed thread waited {worst:.3f} s on a blocked store"
+    assert feed_finishes_while_the_store_is_blocked(rec), "the feed thread waited on a blocked store"
     assert store.entered.wait(5) and rec.counters["bars_written"] == 0  # the writer is stuck, the feed is not
     store.open.set()
     assert rec.drain(10)
@@ -80,8 +83,7 @@ def test_the_queue_is_bounded_and_a_dropped_bar_becomes_a_gap_for_the_kite_backf
     store = BlockableStore()
     store.open.clear()
     rec = Recorder(store, max_queued_bars=2)
-    worst = feed_minutes(rec, minutes=8)
-    assert worst < BOUND_S
+    assert feed_finishes_while_the_store_is_blocked(rec, minutes=8)
     assert store.entered.wait(5)
     assert rec._queued_bars <= 2  # never more than the bound in memory
     assert rec.counters["bars_dropped_full"] >= 4 and rec.counters["bars_lost"] == rec.counters["bars_dropped_full"]
