@@ -31,6 +31,12 @@ MAX_LEGS = 20
 MAX_UNITS = 1_000_000
 MAX_NAMED_VALUES = 20
 MAX_TEXT = 200
+MAX_CHANGE_ITEMS = 100  # migration 0008's ofo_strategy_change_items_valid: a stored summary holds 1..100 items
+#: A strike as the stored text writes it (str(Decimal)): plain digits, at most 18 integer digits, no leading zero, a
+#: whole number of paise. The database validator (migration 0008 STRIKE_REGEX) is the same text rule; the domain
+#: refuses first, with its own refusal, so a save never fails late with a bare check violation.
+STRIKE_PATTERN = r"(0|[1-9][0-9]{0,17})([.][0-9]{1,2}0*)?"
+_STRIKE_TEXT = re.compile(STRIKE_PATTERN)
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 
 #: A contract a position is held in: (underlying, instrument, strike, expiry). Strike is None for futures.
@@ -115,6 +121,8 @@ class DefinitionLeg:
                 require_price(self.strike, "strike", allow_zero=False)
             except ValueError as exc:
                 raise DefinitionError(str(exc)) from exc
+            if _STRIKE_TEXT.fullmatch(str(self.strike)) is None:  # the stored text rule: size and plain digits
+                raise DefinitionError("strike is outside the stored form: at most 18 integer digits, no exponent")
         if not isinstance(self.expiry, datetime.date) or isinstance(self.expiry, datetime.datetime):
             raise DefinitionError(f"expiry must be a datetime.date, got {self.expiry!r}")
         if not _is_int(self.quantity) or not 0 < self.quantity <= MAX_UNITS:
@@ -235,7 +243,7 @@ class StrategyDefinition:
         """Every meaningful difference from ``old``, described; empty when nothing meaningful changed."""
         if not isinstance(old, StrategyDefinition):
             raise DefinitionError(f"changes_from needs a StrategyDefinition, got {old!r}")
-        return render_change_items(self.change_items(old))
+        return _render_items(self.change_items(old))
 
     def change_items(self, old: "StrategyDefinition") -> tuple[dict, ...]:
         """The same differences as DATA (a closed shape, see ``render_change_items``): what an activity-history entry
@@ -311,9 +319,7 @@ def _field_text(item: dict):
 
 #: The database's own predicates for a leg slot (migration 0008's ofo_strategy_leg_valid): the domain refuses exactly
 #: what the database refuses, so a summary that renders here is one the database stores.
-_STRIKE_TEXT = re.compile(r"(0|[1-9][0-9]{0,17})([.][0-9]{1,2}0*)?")
 _DATE_TEXT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-MAX_CHANGE_ITEMS = 100  # migration 0008's ofo_strategy_change_items_valid
 MAX_SEQ = 2**31 - 1  # strategy_history.seq (INTEGER)
 
 
@@ -359,8 +365,18 @@ def _underlying_slot(value: object) -> str:
 
 
 def render_change_items(items: object) -> tuple:
-    """Catalogue text (``render_explanation`` results) for change items; DefinitionError on any shape or value that
-    does not validate (an unknown kind, an extra key, a slot of the wrong type). Used on write and on read."""
+    """Catalogue text (``render_explanation`` results) for STORED change items; DefinitionError on any shape or value
+    that does not validate (an unknown kind, an extra key, a slot of the wrong type) and on a count outside the stored
+    1..MAX_CHANGE_ITEMS (the database's rule). Used on write and on read."""
+    if not isinstance(items, (list, tuple)):
+        raise DefinitionError(detail="change items must be a list")
+    if not 1 <= len(items) <= MAX_CHANGE_ITEMS:
+        raise DefinitionError(detail=f"a summary holds 1..{MAX_CHANGE_ITEMS} change items")
+    return _render_items(items)
+
+
+def _render_items(items: object) -> tuple:
+    """The rendering without the stored count bound: ``changes_from`` has no items when nothing meaningful changed."""
     if not isinstance(items, (list, tuple)):
         raise DefinitionError(detail="change items must be a list")
     out = []
