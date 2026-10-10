@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit a2d42df
+Generated from commit 1cf7e56
 
 ## Stage S0
 
@@ -93,16 +93,15 @@ Generated from commit a2d42df
 | 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
-| 4a | issue | #138 | - |  |
 | 4a | issue | #148 | - |  |
 | 4a | issue | #151 | - |  |
 | 4a | issue | #154 | - |  |
 | 4a | issue | #155 | - |  |
 | 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
-| 4a | issue | #167 | - |  |
 | 4a | issue | #171 | - |  |
 | 4a | issue | #172 | - |  |
+| 4a | issue | #184 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -444,7 +443,7 @@ Generated from commit a2d42df
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 31 | 5 | 0 | 14 | 0 | 1 | 31 | 0 | 0 | 89 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 13 | 0 | 1 | 31 | 0 | 0 | 88 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |

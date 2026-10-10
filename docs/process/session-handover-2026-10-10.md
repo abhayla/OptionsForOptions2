@@ -27,6 +27,14 @@ Previous: `session-handover-2026-10-09.md`. Plan: `docs/process/master-plan-2026
 - #178 **W-067** done: one-minute history in PostgreSQL (`0009_minute_history`), non-blocking writer queue, set-based
   finalize per ADR-067 (earliest 16:00 IST; full day 1,603 instruments = 46.8 s in CI); verifier PASS REQ-051 AC-3/4/5.
 
+- Later the same night: #181 (**#179** wall-clock guard scans tests_app and collected durations; the non-blocking
+  app test asserts the feed thread never calls the database), #182 (**#174** one constant-time, non-raising
+  `equal_secret` for all 4 compare_digest sites, AST guard), #183 (**#138 + #167** W-061 follow-ups: domain and
+  database share the store's bounds, migration `0010_strategy_schema_version` - only version 1 storable, API 409 and
+  other-user tests, round-trip tests replay every later migration via `tests_app/_migration_replay.py`).
+  `ofo_test` is now at `0010_strategy_schema_version`. `atool.py --no-tests` also runs every migration test through
+  db_run when a branch changes `alembic/versions`. Deferred: #184 (#183 review minors).
+
 ## 2. PARKED / BLOCKED
 - **W-066** (#151 outcome text from the catalogue) PARKED as **#172** after the owner's final round: a bounded loss
   split by one zero point crashes. The #151 goal itself is met on `build/W-066-on-main` (draft PR #170); ADR-071 (owner:
@@ -41,7 +49,8 @@ Previous: `session-handover-2026-10-09.md`. Plan: `docs/process/master-plan-2026
 1. W-065 live proof with the owner's login (market hours), then its phase 2 (frontend composable + Playwright replay).
 2. Resume W-066 (#172), then register W-065's route.
 3. Leg picker + Save Draft button - after the owner answers which requirement the picker delivers (owner question 2).
-4. Deferred fixes: #179 (wall-clock in tests_app), #174, #171 (needs a decision row), #167, #148, #155, #156.
+4. Deferred fixes: #184, #171 (needs a decision row), #148, #155, #156. Owner question 5: stale production-gate
+   markers from review folders - keep review/verify checkouts inside the session scratchpad, not sibling folders.
 5. #154: the BEHIND-refusal proof is still unobserved (no PR has been merely behind main since protection was set).
 
 ## 4. Owner items

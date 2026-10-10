@@ -33,3 +33,14 @@ run; the work continues on other items meanwhile.
 - **Recommended:** resume right after the W-065 live proof, with the four steps in #172 "What is left" (an explicit
   "except exactly X" marker for a zero point inside a bounded loss). W-065's websocket route waits on W-066.
 - Spec basis: REQ-034 AC-7; ADR-071; ADR-072 (on the W-066 branch); run-discipline B1.
+
+## 5. Stale "governed" markers in the production gate (owner-only seatbelt)
+- **Ask:** clear the production gate's governed-folder markers that point at deleted review/verify folders. Two
+  reviewers' cleanups on 2026-10-10 removed folders the gate had marked as governed (the W-067 review folder named
+  `...-review`, the W-061 follow-ups review folder `...-w061f-rv`); the gate then blocked every shell call in THAT
+  reviewer's session until the marker is cleared. This session was not blocked. The 2026-10-09 handover recorded the
+  same leftover-marker problem for two W-064 scratch folders.
+- **Recommended:** clear the stale markers; and, if you agree, tell the orchestrator to stop creating review folders
+  as sibling worktrees (use the session scratchpad instead), which seems to be what gets them marked.
+- Spec basis: none - the spec says nothing about the production seatbelt's markers (searched: governed, seatbelt,
+  production gate); it is owner-edited only (CLAUDE.md), so the orchestrator does not touch it.
