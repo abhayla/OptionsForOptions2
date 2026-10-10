@@ -84,6 +84,27 @@ def replay(store) -> Recorder:
     return holder["rec"]
 
 
+FEED_THREAD = "test-feed"
+
+
+class ThreadRecordingStore:
+    """Delegates to the real store and records which thread made each call: the structural proof that the feed thread
+    never touches the database (the same check the domain test makes with `store.threads`)."""
+
+    def __init__(self, store) -> None:
+        self._store, self.threads = store, set()
+
+    def __getattr__(self, name):
+        attr = getattr(self._store, name)
+        if not callable(attr):
+            return attr
+
+        def call(*args, **kwargs):
+            self.threads.add(threading.current_thread().name)
+            return attr(*args, **kwargs)
+        return call
+
+
 def replay_finishes_while_the_database_is_locked(store) -> tuple[bool, Recorder | None]:
     """Runs the feed on its own thread and joins with a generous liveness limit. The lock is released only after this
     returns, so a feed that waited on the database would never finish: a liveness check, not a timing threshold
@@ -96,7 +117,7 @@ def replay_finishes_while_the_database_is_locked(store) -> tuple[bool, Recorder 
         except BaseException as exc:  # noqa: BLE001
             out["error"] = exc
 
-    feeder = threading.Thread(target=run, daemon=True)
+    feeder = threading.Thread(target=run, daemon=True, name=FEED_THREAD)
     feeder.start()
     feeder.join(LIVENESS_S)
     assert "error" not in out, out.get("error")
@@ -117,11 +138,13 @@ def test_a_locked_database_never_blocks_the_feed_thread_and_nothing_is_lost_when
     want_bars, want_gaps = expected_bars()
     assert len(want_bars) > 25 and want_gaps
     pg = PostgresHistoryStore(_url("TEST_DATABASE_URL"))
+    watched = ThreadRecordingStore(pg)
     rec = None
     try:
         with owner_holds(hold_sql):
-            finished, rec = replay_finishes_while_the_database_is_locked(pg)
+            finished, rec = replay_finishes_while_the_database_is_locked(watched)
             assert finished, "the feed thread waited on a locked database"
+            assert FEED_THREAD not in watched.threads, "the feed thread called the database"
             assert rec.counters["errors"] == 0  # the lock is held only for the replay: the writer simply waits
         assert rec.drain(60), "the writer did not finish once the lock was released"
         assert pg.bars_for_day(DAY) == want_bars  # the same bars the in-memory store holds: nothing was lost
