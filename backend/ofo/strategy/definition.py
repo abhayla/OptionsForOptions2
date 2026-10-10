@@ -121,6 +121,8 @@ class DefinitionLeg:
                 require_price(self.strike, "strike", allow_zero=False)
             except ValueError as exc:
                 raise DefinitionError(str(exc)) from exc
+            # Refuses Decimal("2.28E+4") (= 22800) on purpose: str() gives an exponent, the stored text refuses it too,
+            # and no source produces one (the catalogue and the API hand over plain-digit text) - issue #184 item 4.
             if _STRIKE_TEXT.fullmatch(str(self.strike)) is None:  # the stored text rule: size and plain digits
                 raise DefinitionError("strike is outside the stored form: at most 18 integer digits, no exponent")
         if not isinstance(self.expiry, datetime.date) or isinstance(self.expiry, datetime.datetime):

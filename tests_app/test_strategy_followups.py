@@ -26,7 +26,7 @@ from ofo.strategy.definition import DefinitionError, render_change_items
 from ofo_app import strategy_store as store
 from test_strategy_closed_shape import _iron_condor_text
 from test_strategy_store import (CHECK_VIOLATION, EXPIRY, IRON_CONDOR, LOT, WING, _app, _body, _client, _expect_refused,
-                                 _history_rows, _saved_in, _user, _with_draft)
+                                 _history_rows, _offline_app, _saved_in, _user, _with_draft)
 
 INSERT = ("INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
           "VALUES (:u, 'NIFTY', CAST(:d AS JSONB), :v)")
@@ -117,6 +117,23 @@ async def test_the_api_answers_not_found_to_a_put_on_another_users_strategy_and_
             assert await _history_rows(conn, stored.id) == history
         finally:
             await trans.rollback()
+
+
+# ---- an out-of-range contract id: ONE answer whichever side of the range it is on (issue #184 items 2-3) ----
+# The catalogue holds ids 1..10^18-1 (stored_form.MAX_CONTRACT_ID); an id outside that cannot be a catalogue contract,
+# so every such id gets the catalogue's own "contract not in the catalogue" answer (STRATEGY_VALIDATION_401), never a
+# generic input error for one side and a different code for the other, and never a 500 for a value past bigint.
+
+@pytest.mark.parametrize("contract_id", [0, -1, 10**18, 10**19, 2**63, 2**64],
+                         ids=["zero", "minus-one", "1e18", "1e19", "2^63", "2^64"])
+@pytest.mark.parametrize("method, path, extra", [("POST", "/strategies", {}),
+                                                 ("PUT", "/strategies/1", {"expected_revision": 1})])
+async def test_an_out_of_range_contract_id_gets_one_error_through_the_api(contract_id, method, path, extra):
+    body = {"underlying": "NIFTY", "legs": [{"contract_id": contract_id, "action": "SELL", "quantity": 65}],
+            "rules_ref": None, "risk_limits": {}, "preferences": {}} | extra
+    async with _client(_offline_app()) as ac:
+        response = await ac.request(method, path, json=body)
+    assert (response.status_code, response.json()["code"]) == (422, "STRATEGY_VALIDATION_401"), response.text
 
 
 # ---- (6) the agreement test, GENERATED from one table of bounded slots. A slot is a place in the closed stored shape

@@ -52,7 +52,9 @@ def _refuse_live_state(data: Any) -> Any:
 class LegIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    contract_id: int = Field(gt=0, description="The catalogue's internal contract id (never a broker token)")
+    # No range here: an id outside 1..MAX_CONTRACT_ID (0, -1, 10^18 and up, past bigint) is refused by the domain as
+    # MISSING_CONTRACT_ID and answered like any id the catalogue does not hold, one code for both sides (issue #184).
+    contract_id: int = Field(description="The catalogue's internal contract id (never a broker token)")
     action: Literal["BUY", "SELL"]
     quantity: int = Field(gt=0, description="Units (lots x lot size)")
 
@@ -158,6 +160,7 @@ class StrategyRefused(UserFacing, Exception):
 
 _FORM_TEMPLATE = MappingProxyType({
     sf.CONTRACT_NOT_IN_CATALOGUE: "strategy_contract_not_in_catalogue",
+    sf.MISSING_CONTRACT_ID: "strategy_contract_not_in_catalogue",  # an id outside 1..MAX_CONTRACT_ID is in no catalogue
     sf.CONTRACT_TERMS_CHANGED: "strategy_contract_terms_changed",
     sf.CONTRACT_NOT_LIVE: "strategy_contract_not_live",
     sf.QUANTITY_NOT_LOT_MULTIPLE: "strategy_quantity_not_lot_multiple",
