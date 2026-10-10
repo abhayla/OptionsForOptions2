@@ -10,7 +10,7 @@ No order endpoint is called anywhere in this file.
 """
 import csv, hashlib, http.server, io, json, os, re, sys, threading, time, urllib.parse, urllib.request, datetime as dt
 
-ENV = r"D:\Abhay\Ventures\OptionsForOptions2\.env"
+ENV = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), ".env")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proof")
 API = "https://api.kite.trade"
 
@@ -68,7 +68,10 @@ def wait_for_request_token(timeout_s=600):
     return got
 
 
-CACHE = r"D:\Abhay\Ventures\ofo-kite-ticks\token.cache"  # outside the repo; owner decision 2026-10-08
+# Outside the repo (owner decision 2026-10-08): the ofo-kite-ticks folder next to the checkout, or OFO_TICKS_DIR.
+TICKS = os.environ.get("OFO_TICKS_DIR") or os.path.join(os.path.dirname(os.path.dirname(ENV)),
+                                                        "ofo-kite-ticks")
+CACHE = os.path.join(TICKS, "token.cache")
 
 
 def _next_six_am_ist(now):

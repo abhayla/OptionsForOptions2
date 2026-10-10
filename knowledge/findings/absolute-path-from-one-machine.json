@@ -1,0 +1,27 @@
+{
+ "id": "absolute-path-from-one-machine",
+ "scope": "generic",
+ "class": "A script that names one machine's absolute path (a drive letter, a user folder, a checkout location) as its only location for the repo, a secrets file or a data folder works only on that machine; on a second machine it fails, or worse, silently reads or writes somewhere else. Locations must be derived from the script's own path or an environment variable, with any default searched, not assumed.",
+ "mechanism": "The orchestrator helpers and Kite research scripts were written on a PC whose checkout was D:\\Abhay\\Ventures\\OptionsForOptions2; on 2026-10-09 the project moved to the Windows VPS (checkout on C:, no D: drive) and every helper that reaches builder worktrees, the test-database runner's GLOBAL.env default and the Kite token cache pointed at paths that do not exist.",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "main @ a2d8513: scripts/orchestrator/{agit,atool,aregen,ev_agent,agentwt}.py, db_run.py:18; docs/research/kite-proof-2026-10-07/{kite_core_proof.py:13,71, kite_live_checks.py:443, history_bars_proof.py:25, cut_history_fixture.py:17}",
+  "evidence": "Grep for D: literals: 6 helpers + 5 research lines; `ls /d/Abhay/...` on the VPS: No such file or directory; after the fix db_run resolves GLOBAL_ENV to C:\\Abhay\\GLOBAL.env and kite_core_proof CACHE to C:\\Abhay\\Ventures\\ofo-kite-ticks\\token.cache (printed by runpy)"
+ },
+ "fix": "Every location derived from __file__ (repo root, sibling data folder) or an environment variable (OFO_GLOBAL_ENV, OFO_TICKS_DIR); GLOBAL.env searched on D: then C:. Sweep done 2026-10-09: scripts/ and docs/research/ have no remaining drive-letter path except the secret-scan hint text.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test refuses a drive-letter literal in scripts/ or docs/research/ yet; a repo-wide guard test (like test_no_wall_clock_asserts.py) is the candidate if this class recurs."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "move to the Windows VPS",
+   "evidence": "11 hardcoded D: locations across scripts/ and docs/research/"
+  }
+ ]
+}

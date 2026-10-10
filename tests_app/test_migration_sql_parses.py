@@ -1,4 +1,4 @@
-"""Every statement migrations 0001-0007 execute parses with PostgreSQL's own parser, before CI's database runs it.
+"""Every statement migrations 0001-0010 execute parses with PostgreSQL's own parser, before CI's database runs it.
 
 Class (W-056 fix round 1, review C1): SQL written as Python strings is only checked when PostgreSQL first runs it; a
 quoted list interpolated inside a single-quoted literal (RAISE EXCEPTION '... 'NFO', 'BFO'') broke the CI upgrade.
@@ -21,7 +21,8 @@ pglast = pytest.importorskip("pglast", reason="pglast (libpg_query) is not insta
 
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
 MIGRATIONS = ("0001_baseline_ledger_clock", "0002_audit_store", "0003_catalogue_store", "0004_broker_instruments",
-              "0005_contract_lifecycle", "0006_index_segments", "0007_broker_sessions")
+              "0005_contract_lifecycle", "0006_index_segments", "0007_broker_sessions", "0008_strategy_store",
+              "0009_minute_history", "0010_strategy_schema_version")
 _DO = re.compile(r"^\s*DO\s+(\$\w*\$)(.*)\1\s*;?\s*$", re.DOTALL)
 
 

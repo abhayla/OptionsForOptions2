@@ -15,7 +15,8 @@ import sys
 import urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-GLOBAL_ENV = os.environ.get("OFO_GLOBAL_ENV", r"D:\Abhay\GLOBAL.env")
+GLOBAL_ENV = os.environ.get("OFO_GLOBAL_ENV") or next(
+    (p for p in (r"D:\Abhay\GLOBAL.env", r"C:\Abhay\GLOBAL.env") if os.path.exists(p)), r"D:\Abhay\GLOBAL.env")
 
 
 def read_env(path):

@@ -9,12 +9,11 @@ strategies, see the outcome at every market level, then execute through their ow
 strategy monitored against their rules (`spec/vision/vision.md`). Built on the Startup-Factory kit (version in
 `KIT_VERSION`); the kit's rules in `.claude/rules/kit/` always apply.
 
-**Current state (2026-09-29):** spec of 46 ADRs and 71 requirements; a standard-library domain layer under
-`backend/ofo/` (engine, scenario, range, rules, strategy versions, adjustment, orders, execution gate/plan/partial,
-reconciliation, timeline, instruments, market-data health, strategy table, admin, audit) with ~1,400 tests, all against fakes — no API, DB, UI or real Zerodha yet. **Start with
-`docs/HANDOVER.md`**: it lists what is done, parked, blocked and deferred. Nothing pending there is closed until it
-is implemented and independently verified. Open items: `spec/open-questions.md`. Do not write requirements or code
-before the ADRs they rest on exist, and prove the Zerodha core first (`docs/HANDOVER.md` NEXT).
+**Where the work stands:** read the newest `docs/process/session-handover-<date>.md` first (it names what merged,
+what is PARKED, NEXT, and the per-PC setup that is not in git), then `docs/HANDOVER.md` (done/parked/blocked/deferred
+lists) and the active plan `docs/process/master-plan-2026-10-07.md`. Nothing pending is closed until it is implemented
+and independently verified. Open items: `spec/open-questions.md`. Do not write requirements or code before the ADRs
+they rest on exist.
 Orchestration: briefs in `docs/process/`, helpers in `scripts/orchestrator/`. Builder worktrees live under the
 `.claude` folder, a path the kit guard blocks in Bash, so reach them through the helpers: `agit.py <agent-id> <git
 args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|release`, `ev_agent.py` /
@@ -44,6 +43,16 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
 - Delivery of a work item runs through the `deliver` skill: `builder` agent (own worktree) → `verifier`
   agent (fresh context, read-only; Tier B/A) → evidence → trace check → PR → `merge_when_green.py`.
   The Tier C/B/A table is in `.claude/skills/deliver/SKILL.md`.
+- Two code layers, two test suites. `backend/ofo/` is the domain (engine, scenario, strategy, orders, execution,
+  reconciliation, …): standard library only, tested in `tests/` against fakes by the kit CI. `backend/ofo_app/` is
+  the FastAPI app on top of it (routes, PostgreSQL stores, Alembic migrations in `backend/ofo_app/alembic/`, Kite
+  login/token store/websocket/history clients), tested in `tests_app/` with `pytest-app.ini`. `frontend/` is Vue 3 +
+  Vite + Pinia + Tailwind, unit tests in Vitest, Playwright e2e against `vite preview` proxying `/api` to the real
+  API. The app job is `.github/workflows/app-tests.yml` (project-owned, separate from the kit's `ci.yml`).
+- Database tests run as the limited `ofo_app` role (ADR-048); migrations run as the owner role. Money stays
+  `Decimal`, `NUMERIC` in the DB and a string in API output (`.claude/rules/project/decimal-money-boundaries.md`).
+- Real Kite data reaches tests only as recorded fixtures (`tests/fixtures/kite_ws/`, `tests/fixtures/kite_history/`);
+  `APP_ENV=test` + `OUTCOME_REPLAY=1` serves recorded frames to the outcome route for e2e.
 - Repo-wide guard tests sit at the top of `tests/` (`test_spec_integrity.py`, `test_no_wall_clock_asserts.py`,
   `test_fixture_symbols.py`); a change can fail them without touching any package. `views/` is generated output, never
   hand-edited.
@@ -103,5 +112,21 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_drift.py . --ci` (add `--base <sha>` when checking a pull request against its base)
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)
 - Merge a PR: `python tools/merge_when_green.py <pr>`
+- Before merging a branch: merge `main` into it, re-run both suites, then `python scripts/orchestrator/merge_audit.py`
+  (checks nothing was lost; three PRs went green alone and red together).
+
+App layer (only when `backend/ofo_app`, `tests_app`, `frontend` or the domain changes; install `requirements-app.txt`):
+- The test database is `ofo_test` on the Windows VPS PostgreSQL at 127.0.0.1:5432 (an SSH tunnel from another PC;
+  local when working on the VPS itself - that PostgreSQL also serves IPODhan production, so run targeted test files
+  only there and leave full suites to CI). Secrets come from the project `.env` and `GLOBAL.env` (`OFO_GLOBAL_ENV`
+  overrides its default `D:\Abhay\GLOBAL.env`). Run DB commands through `scripts/orchestrator/db_run.py`, which sets the
+  variables without printing them:
+  `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
+  `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
+  The full app suite takes ~15 min over the tunnel; run one file. Tests marked `network` hit Zerodha's public
+  instrument list.
+- `python scripts/alembic_migration_guard.py` (no empty migrations); `python scripts/generate_openapi.py --out <file>`.
+- Frontend, in `frontend/`: `npm run lint`, `npm run test:run`, `npm run build`, `npx playwright test` (needs the
+  API and preview servers that `app-tests.yml` starts). Stop every server you start.
 
 - Before pushing or touching process files, read `.claude/kit/GUIDE.md` (kit commands and kit-owned files).

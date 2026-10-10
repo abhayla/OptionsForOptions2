@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 5ae97a1
+Generated from commit 8fd1fe4
 
 ## Stage S0
 
@@ -85,6 +85,7 @@ Generated from commit 5ae97a1
 | 4a | decision | ADR-066 | - | Kite Connect's historical candles are used internally only in V1; users see no history screens |
 | 4a | decision | ADR-067 | - | The one-minute history tier is built live from the feed and made final after the close from Kite's own candles |
 | 4a | decision | ADR-068 | - | First screen - a draft's planned entry price, live push cadence, UX level per request, and leg entry in 4a |
+| 4a | decision | ADR-069 | - | A strategy's settings values are short identifiers or numbers; sentences are refused |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
@@ -92,15 +93,13 @@ Generated from commit 5ae97a1
 | 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
 | 4a | issue | #110 | - |  |
 | 4a | issue | #126 | - |  |
-| 4a | issue | #138 | - |  |
 | 4a | issue | #148 | - |  |
 | 4a | issue | #151 | - |  |
 | 4a | issue | #154 | - |  |
 | 4a | issue | #155 | - |  |
-| 4a | issue | #156 | - |  |
 | 4a | issue | #159 | - |  |
-| 4a | issue | #163 | - |  |
-| 4a | issue | #165 | - |  |
+| 4a | issue | #171 | - |  |
+| 4a | issue | #172 | - |  |
 | 4a | issue | #30 | - |  |
 | 4a | issue | #89 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
@@ -135,7 +134,6 @@ Generated from commit 5ae97a1
 | 4a | requirement | REQ-064 | - | Audit log |
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
-| 4a | work item | W-061 | - | Save Draft - strategy definitions and their activity history stored in PostgreSQL, live prices never stored with them |
 
 ## Stage 4b
 
@@ -364,6 +362,7 @@ Generated from commit 5ae97a1
 | all | decision | ADR-045 | - | Overnight delegation - build what is clear, decide open questions by recommendation, review complex ones |
 | all | decision | ADR-046 | - | CI for the API and web layers - a path-filtered project workflow |
 | all | decision | ADR-047 | - | Copy first from algochanakya - one full map, copied per work item |
+| all | decision | ADR-070 | - | The repository is public so that main can require every pull request to be up to date before it merges |
 | all | requirement | REQ-054 | AC-2 | Only the Zerodha implementation exists in V1; no unused broker implementations are built. |
 | all | requirement | REQ-067 | AC-1 | Data is proven first (owner T1 #175: an earlier attempt failed on live data): the Phase-0 tests — reliable live ticks, full chain rebuilt, own Greeks, stale/missing detection, reconnect survival, one normalised feed serving many users, licence permits the use — run on real input before product screens. The core (Zerodha login → live NIFTY/SENSEX quotes → margin) is proven on real input before other work; then the core domain and one vertical slice (Create Strategy → Configure Legs → Calculate → Save Draft → Connect Zerodha → Validate → Prepare Execution Plan → Review → Execute → Confirm Broker Execution → Reconcile → Active Monitoring) before broad UI work. |
 | all | requirement | REQ-067 | AC-2 | Every domain invariant in spec/testing/core-invariants.md has an automated test. |
@@ -442,7 +441,7 @@ Generated from commit 5ae97a1
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 30 | 5 | 0 | 13 | 0 | 1 | 31 | 0 | 1 | 88 |
+| 4a | 7 | 0 | 31 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 0 | 86 |
 | 4b | 1 | 0 | 7 | 3 | 0 | 4 | 9 | 2 | 13 | 0 | 1 | 40 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 5 | 0 | 0 | 11 |
 | S5 | 2 | 0 | 4 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 18 |
@@ -456,5 +455,5 @@ Generated from commit 5ae97a1
 | S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 3 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
 | S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
-| all | 0 | 0 | 10 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 19 |
+| all | 0 | 0 | 11 | 0 | 0 | 0 | 0 | 0 | 9 | 0 | 0 | 20 |
 | done | 5 | 4 | 0 | 23 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 56 |

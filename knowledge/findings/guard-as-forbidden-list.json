@@ -1,0 +1,33 @@
+{
+ "id": "guard-as-forbidden-list",
+ "scope": "generic",
+ "class": "Any guard - a database CHECK, a type check, a wording check, a privilege check, or a test that is meant to detect a reopened hole - written as a list of FORBIDDEN things (named bad shapes, named bad types, bad words, bad privilege paths) lets through everything its author did not imagine; the guard must state what IS allowed (exact key sets, a closed type per slot, a closed name list) and refuse the rest, and its test must enumerate the allowed shape against every other type, generated rather than hand-listed. This is the wider shape of privilege-guard-as-denylist, advice-wording-denylist-per-module, secret-filter-by-key-name and jsonpath-check-lax-mode-unwraps-arrays.",
+ "mechanism": "On 2026-10-09 the same shape appeared twice in one session after the 2026-10-08 handover had already named the lesson ('every guard built as a list of bad things failed review; every fix that held was structural'): W-061 round 2's jsonpath CHECK refused 13 named bad shapes (an Opus review then stored arrays and prices in leg slots, 6 of 6 reproduced), and W-066's slot-detection test forbade 4 named open slot types (the final Tier A review switched a slot to Quoted - mutation M17 - and every test stayed green).",
+ "first_seen": {
+  "date": "2026-10-09",
+  "where": "W-061 round 2 (5b372b1, 0008 _shape_checks); W-066 round 2 (5e353d0, tests/errors/test_outcome_slots_closed.py:20)",
+  "evidence": "W-061: orchestrator throwaway pytest on ofo_test as ofo_app, 6 of 6 'DID NOT RAISE'; W-066: final review mutation M17 survived (domain 618 + 16, app 43 green); after the allow-list rewrite (bfd35e1) the verifier's Quoted mutant gave 7 failed."
+ },
+ "fix": "Instance fixes: W-061 round 3 positive plpgsql walker (generated matrix); W-066 round 4 slot allow-list. Class mechanism (learning L2, second occurrence): a standing quality-bar line in docs/process/builder-brief.md - 'A guard is an allow-list, never a list of forbidden things ... A guard written as refuse X, Y, Z fails review' - which every builder brief and reviewer checklist carries.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The brief line is a review gate, not an automated check; no test can recognise a deny-list guard in general. Measure: count of review findings of this shape per week in the registry occurrences; a third occurrence after the brief line names a stronger mechanism (e.g. a reviewer-checklist item that check_brief.py requires in every Tier A brief)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-003.md",
+  "spec/requirements/REQ-038.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-09",
+   "where": "W-061 round 2 database CHECK",
+   "evidence": "6 of 6 live-price shapes accepted"
+  },
+  {
+   "date": "2026-10-09",
+   "where": "W-066 slot detection test",
+   "evidence": "mutation M17 (slot switched to Quoted) survived"
+  }
+ ]
+}

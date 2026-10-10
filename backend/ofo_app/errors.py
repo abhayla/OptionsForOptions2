@@ -75,6 +75,8 @@ class Failure(Enum):
     CAPACITY = (429, "60")  # our own cap (e.g. live Zerodha login states) is full
     UPSTREAM_BUSY = (503, "60")  # the upstream answered "too many requests"
     UPSTREAM_BAD_GATEWAY = (502, None)  # the upstream could not be reached, or answered junk
+    NOT_FOUND = (404, None)  # W-061: a strategy or history entry that is not there (or is another user's)
+    CONFLICT = (409, None)  # W-061: the change is based on a stale revision, or the saved form no longer reads
 
     def __init__(self, status: int, retry_after: str | None) -> None:
         self.status = status
