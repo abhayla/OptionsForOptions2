@@ -199,7 +199,6 @@ issues:
   "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#171": 4a            # Lower/Upper breakeven labels vs loss-region edges (ADR-072 consequence; decision row first)
   "#172": 4a            # PARKED W-066: bounded loss split by one zero point crashes (owner: final round red)
-  "#184": 4a            # W-061 follow-ups review minors (generated agreement test, huge contract_id API test, codes)
   "#30": 4a
   "#43": 4b
   "#45": 4b
