@@ -219,6 +219,7 @@ work_items:
   W-009: S8
   W-011: S8
   W-017: 4b
+  W-065: 4a           # live push to the screen; live proof needs the owner's Kite login (Monday 2026-10-12)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
