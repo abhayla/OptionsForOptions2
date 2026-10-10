@@ -44,7 +44,8 @@ answers 200 with the sentence (red); after the door: 500 with no sentence in the
   through `emit`/`ClosedResponse`; the flat four-part dict is unchanged.
 - Route-enumeration test over `create_app().routes`: every route is exactly `ClosedRoute`, carries the door marker, the
   wrapper's async/sync kind equals the original's, and `response_model` is in the closed ApiModel registry. Exemptions
-  stay exactly as today: the outcome route (until #172) and the framework docs routes (owner question 7).
+  stay exactly as today: the outcome route (until #172) and the framework docs routes, by exact path and only when APP_ENV is development or test; in production `/docs`
+  and `/openapi.json` are not served (404) (ADR-073, owner question 7 answered 2026-10-10).
 
 ## 3. Migration order (one commit each; the suite green at every step)
 1. The door, the seal and the class tightening; the broker router moves onto it (proof route). A temporary parity
@@ -85,7 +86,7 @@ change (the parity test enforces it).
   string; `ofo.strategy.definition` is a stale `REQUEST_LAYER` entry. Proposed: one mint capability claimed at import
   by an ofo_app request-field type (`UserWordsIn`); `Rule.description: UserWords | ExplanationText` (exact type);
   `normalise_client_id` takes `UserWords`; remove the stale entry. Domain-only (no route carries user words yet).
-  Owner question 8: its own round after the door (recommended).
+  Owner question 8 answered 2026-10-10: its own round after the door.
 - MINORs: `.env` secrets not in the redaction set - a real accidental gap, a separate small item (register the
   Settings `SecretStr` values); formatting failure / UUIDs / double `[REDACTED]` - log quality, low priority;
   `setLogRecordFactory(LogRecord)` and `str.__new__(UserWords)` - deliberate bypasses, out of scope (ADR-065).

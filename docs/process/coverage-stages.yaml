@@ -148,6 +148,7 @@ decisions:
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
+  ADR-073: 4a           # framework docs routes only in development/test (#148 response door; owner Q7)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
@@ -194,7 +195,6 @@ vendor_enquiries:
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
   "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
-  "#155": 4a            # mechanism: a failing step stops commit/push - merged partial (owner Q6); row leaves in the next PR
   "#191": 4a            # gate_before_commit follow-up: 3 MAJOR bypasses + 2 minors (#155 merged partial, owner Q6)
   "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#171": 4a            # Lower/Upper breakeven labels vs loss-region edges (ADR-072 consequence; decision row first)

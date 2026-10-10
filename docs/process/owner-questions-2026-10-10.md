@@ -28,11 +28,16 @@ run; the work continues on other items meanwhile.
   parked as #172) adds 69 more plus the ADR-071 / ADR-072 wording changes. Recommended: read W-061's 16 now (merged
   code uses them); read W-066's when it resumes.
 - Spec basis: ADR-003 Q226 (fixed, reviewed template catalogue).
+- **ANSWERED 2026-10-10 (owner, question tool): "Yes, reading page for W-061's 16".** The orchestrator publishes a
+  private page with Approve / Flag and a comment per template, reads the marks back and re-pins the approved ones;
+  W-066's templates are added when it resumes. No spec change: the review process is ADR-003 Q226 as written.
 
 ## 4. W-066 parked (#172) - resume when?
 - **Recommended:** resume right after the W-065 live proof, with the four steps in #172 "What is left" (an explicit
   "except exactly X" marker for a zero point inside a bounded loss). W-065's websocket route waits on W-066.
 - Spec basis: REQ-034 AC-7; ADR-071; ADR-072 (on the W-066 branch); run-discipline B1.
+- **ANSWERED 2026-10-10 (owner, question tool): "After W-065 proof".** No spec change: scheduling only. Worktree
+  `...-W-066` stays until then.
 
 ## 5. Stale "governed" markers in the production gate (owner-only seatbelt)
 - **Ask:** clear the production gate's governed-folder markers that point at deleted review/verify folders. Two
@@ -44,6 +49,9 @@ run; the work continues on other items meanwhile.
   as sibling worktrees (use the session scratchpad instead), which seems to be what gets them marked.
 - Spec basis: none - the spec says nothing about the production seatbelt's markers (searched: governed, seatbelt,
   production gate); it is owner-edited only (CLAUDE.md), so the orchestrator does not touch it.
+- **ANSWERED 2026-10-10 (owner, question tool): "Both: I clear, you use scratchpad".** The owner clears the stale
+  markers; from now on every review/verify checkout the orchestrator creates lives inside the session scratchpad,
+  never as a sibling folder of the repo. No spec change: process only.
 
 ## 6. #155 hook (a failing step must stop commit/push) - merge the partial hook, or one more round?
 - **State:** parked under B1 after two review rounds (#155 comment). It blocks both historical shapes
@@ -68,9 +76,12 @@ run; the work continues on other items meanwhile.
 - **Alternative:** serve them everywhere as a named exemption.
 - Spec basis: ADR-003 Q226 ("every platform message comes from a fixed, reviewed template catalogue with typed
   slots"); REQ-065 AC-2.
+- **ANSWERED 2026-10-10 (owner, question tool): "Dev/test only".** Written as ADR-073.
 
 ## 8. #148 MAJOR 2 (user words built only at the request boundary) - same round as the door, or its own?
 - **Recommended:** its own round after the door - it is domain-only (no route carries user words yet), and the door
   alone is already ~10 files with a Tier A review; mixing them makes one review too big to read end to end
   (run-discipline C4).
 - Spec basis: ADR-003 Q226; REQ-065 AC-2; ADR-065 (pricing/wording guards stop accidental misuse).
+- **ANSWERED 2026-10-10 (owner, question tool): "Own round after door".** No spec change: build order only, what the
+  system does is unchanged (recorded in the #148 design, section 5).
