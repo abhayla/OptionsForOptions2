@@ -9,7 +9,8 @@ database adds its own last line (migration 0009's guards: no delete, no change t
 The port is synchronous (the recorder is a plain callback), the driver is asyncpg: the store owns a private event loop
 on a daemon thread and each call waits for its transaction. Connect and command timeouts are short, and the recorder
 catches whatever a call raises, so a slow or dead database costs the recorder a bounded wait and a counted error, never
-a fault in the feed (REQ-051 AC-5). Money is NUMERIC(14,2): a price finer than a paisa is refused, never rounded.
+a fault in the feed (REQ-051 AC-5). Money is NUMERIC with whole-paisa CHECKs: a price finer than a paisa is
+refused, never rounded (the store checks first; the database CHECKs the same).
 """
 from __future__ import annotations
 
@@ -81,7 +82,7 @@ def _check_paisa(bars: Iterable[MinuteBar]) -> None:
             except InvalidOperation:
                 exact = False
             if not exact:
-                raise ValueError(f"{name} {value} is not a whole number of paise: the history keeps NUMERIC(14,2) "
+                raise ValueError(f"{name} {value} is not a whole number of paise: the history keeps whole paise "
                                  "and never rounds a price (ADR-008)")
 
 

@@ -9,15 +9,21 @@ Copy from: none - legacy-reuse row 70 (the daily snapshot's Decimal shape) was r
 
 Changes (owner-run, one transaction):
 - public.history_minute_bars: (instrument_id as the catalogue holds it, minute = the start of the minute, tz-aware)
-  is the key; trade_date (the IST date of the minute, CHECKed); open/high/low/close NUMERIC(14,2); volume and oi BIGINT
-  (NULL for an index); source CHECK in live / backfilled / kite; removed (a LIVE bar the gap rule or a day replacement
-  took out: the application role cannot DELETE, so a removal is a flag the reads honour).
+  is the key; trade_date (the IST date of the minute, CHECKed); open/high/low/close NUMERIC with CHECKs: a whole
+  number of paise (round(x, 2) = x) and 0 <= x < 10^12, so a finer price is REFUSED, never rounded (ADR-008; a
+  NUMERIC(14,2) column would round it silently; NaN fails the range check); volume and oi BIGINT (NULL for an index);
+  source CHECK in live / backfilled / kite; removed (a LIVE bar the gap rule or a day replacement took out: the
+  application role cannot DELETE, so a removal is a flag the reads honour). Only a LIVE bar can be removed
+  (CHECK removed => source = 'live': the gap rule and a day replacement remove nothing else), and a row is never
+  INSERTED already removed (the guard).
 - public.history_day_status: trade_date -> provisional | final; finalized_at stamped by the guard.
 - public.history_feed_gaps (session-clipped gaps) and public.history_gap_dropped (LIVE bars a gap kept out; what makes
   gap_minutes_missing answerable after a restart): insert-only.
 - Guards (BEFORE INSERT OR UPDATE OR DELETE, SQLSTATE OF009, search_path pinned, md5-pinned in the allowlist): no
   delete anywhere; no insert/update of a bar, gap or dropped key on a FINAL day; a bar's identity never changes and
   its source never goes down (KITE > BACKFILLED > LIVE); a FINAL day never goes back; insert-only tables never update.
+- Owner TRUNCATE is left exactly as 0001-0008 leave it: the owner role may TRUNCATE (tests empty the tables with it);
+  the application role cannot (no DELETE, no TRUNCATE grant).
 - Grants: the application role gets SELECT everywhere; INSERT on the key and value columns; UPDATE only on the bar
   value columns (open, high, low, close, volume, oi, source, removed) and the day status. No DELETE, no TRUNCATE.
 - public.ofo_assert_app_role_allowlist: 0008's text plus block 12 for these tables.
@@ -116,6 +122,10 @@ def _bars_guard_sql() -> str:
                     USING ERRCODE = '{HISTORY_SQLSTATE}';
             END IF;
             {_final_day_check("NEW.trade_date", "a write to a bar")}
+            IF TG_OP = 'INSERT' AND NEW.removed THEN
+                RAISE EXCEPTION 'history: a minute bar is never inserted already removed'
+                    USING ERRCODE = '{HISTORY_SQLSTATE}';
+            END IF;
             IF TG_OP = 'UPDATE' THEN
                 IF NEW.instrument_id IS DISTINCT FROM OLD.instrument_id OR NEW.minute IS DISTINCT FROM OLD.minute
                    OR NEW.trade_date IS DISTINCT FROM OLD.trade_date THEN
@@ -249,17 +259,23 @@ def upgrade() -> None:
             instrument_id TEXT        NOT NULL CHECK (instrument_id <> ''),
             minute        TIMESTAMPTZ NOT NULL CHECK (minute = date_trunc('minute', minute)),
             trade_date    DATE        NOT NULL,
-            open          NUMERIC(14,2) NOT NULL,
-            high          NUMERIC(14,2) NOT NULL,
-            low           NUMERIC(14,2) NOT NULL,
-            close         NUMERIC(14,2) NOT NULL,
+            open          NUMERIC     NOT NULL,
+            high          NUMERIC     NOT NULL,
+            low           NUMERIC     NOT NULL,
+            close         NUMERIC     NOT NULL,
             volume        BIGINT      NULL CHECK (volume >= 0),
             oi            BIGINT      NULL CHECK (oi >= 0),
             source        TEXT        NOT NULL CHECK (source IN ({_quoted(SOURCES)})),
             removed       BOOLEAN     NOT NULL DEFAULT FALSE,
             PRIMARY KEY (instrument_id, minute),
             CONSTRAINT history_bars_trade_date CHECK (trade_date = (minute AT TIME ZONE '{TIMEZONE}')::date),
-            CONSTRAINT history_bars_ohlc CHECK (low <= open AND low <= close AND open <= high AND close <= high)
+            CONSTRAINT history_bars_ohlc CHECK (low <= open AND low <= close AND open <= high AND close <= high),
+            CONSTRAINT history_bars_whole_paise CHECK (
+                open = round(open, 2) AND high = round(high, 2) AND low = round(low, 2) AND close = round(close, 2)),
+            CONSTRAINT history_bars_price_range CHECK (
+                open BETWEEN 0 AND 999999999999 AND high BETWEEN 0 AND 999999999999
+                AND low BETWEEN 0 AND 999999999999 AND close BETWEEN 0 AND 999999999999),
+            CONSTRAINT history_bars_removed_live CHECK (NOT removed OR source = 'live')
         )
         """
     )

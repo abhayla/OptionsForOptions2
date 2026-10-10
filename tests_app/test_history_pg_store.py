@@ -173,7 +173,7 @@ def test_columns_are_exact_decimal_and_whole_numbers_never_float():
                      {"t": list(TABLES)}, fetch=True)
     by = {(t, c): (d, p, s) for t, c, d, p, s in rows}
     for c in ("open", "high", "low", "close"):
-        assert by[("history_minute_bars", c)] == ("numeric", 14, 2)
+        assert by[("history_minute_bars", c)] == ("numeric", None, None)  # exact; whole paise are CHECKed, not rounded
     assert by[("history_minute_bars", "volume")][0] == "bigint" and by[("history_minute_bars", "oi")][0] == "bigint"
     assert not [k for k, v in by.items() if v[0] in ("double precision", "real")]
 
@@ -223,6 +223,26 @@ def test_the_database_never_lowers_a_bars_source_even_on_a_provisional_day(commi
     with pytest.raises(DBAPIError) as err:
         app_sql("UPDATE public.history_minute_bars SET source = 'live' WHERE instrument_id = 'X:1'")
     assert getattr(err.value.orig, "sqlstate", None) == GUARD_SQLSTATE
+
+
+def test_the_database_refuses_a_finer_price_a_removed_insert_and_a_removed_non_live_bar(committed_day):
+    """W-067 r2 MINORs: the database enforces what the store enforces (a price is never rounded; only a LIVE bar can
+    be removed; a row is never inserted already removed)."""
+    insert = ("INSERT INTO public.history_minute_bars (instrument_id, minute, trade_date, open, high, low, close, "
+              "volume, oi, source, removed) VALUES ('Z:9', '2026-10-08 10:00+05:30', '2026-10-08', {o}, {o}, {o}, {o}, "
+              "1, 1, '{src}', {removed})")
+    for sql, state in ((insert.format(o="1.005", src="live", removed="FALSE"), "23514"),
+                       (insert.format(o="'NaN'", src="live", removed="FALSE"), "23514"),
+                       (insert.format(o="-1", src="live", removed="FALSE"), "23514"),
+                       (insert.format(o="1.5", src="live", removed="TRUE"), GUARD_SQLSTATE)):
+        with pytest.raises(DBAPIError) as err:
+            app_sql(sql)
+        assert getattr(err.value.orig, "sqlstate", None) == state, sql
+    assert app_sql(insert.format(o="1.50", src="live", removed="FALSE")) == 1  # a whole-paisa price is accepted
+    admin_sql(insert.format(o="1.5", src="kite", removed="FALSE"))
+    with pytest.raises(DBAPIError) as err:  # only a LIVE bar can be flagged removed
+        app_sql("UPDATE public.history_minute_bars SET removed = TRUE WHERE instrument_id = 'Z:9'")
+    assert getattr(err.value.orig, "sqlstate", None) == "23514"
 
 
 def test_grants_the_application_role_holds_on_the_history_tables():
