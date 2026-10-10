@@ -1,5 +1,7 @@
 # W-024 templates for the owner to read once
 
+Behaviour changes (W-066, outcome texts): the sentence shown when a strategy's maximum loss is zero changed from the old "cannot lose" promise, which the wording rules forbid, to the at-most-zero sentence ("At most ₹0.00 at expiry."). Round 3 (ADR-071, owner 2026-10-09): the maximum-loss and maximum-profit sentences now say they are before charges and taxes, until the charges model is decided. Changed lines: `summary_lose_at_most` and `summary_make_at_most`, both now "At most {amount} at expiry, before charges and taxes." (a zero amount reads "At most ₹0.00 at expiry, before charges and taxes."). The "no fixed limit", "cannot make money" and breakeven sentences are unchanged.
+
 Every platform message template, as written. `{name}` is a typed slot filled at run time. Each template's pin in `tests/errors/template_pins.json` says `pending owner read` until you have read it; a changed word changes the pin and fails CI until re-pinned. Rows marked `(owner read 2026-10-08)` were approved as written by the owner on 2026-10-08 (the Zerodha connection and login messages); their pins say so.
 
 ## Error templates (`backend/ofo/errors/templates.py`, REQ-065 AC-2 four parts)
@@ -227,6 +229,73 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `change_restored` | values_seen | restored entry {seq} |
 | `scenario_caption_left` | values_seen | {underlying} at expiry |
 | `scenario_caption_right` | values_seen | You make/lose |
+| `outcome_not_connected` | values_seen | Draft - Live data not connected |
+| `outcome_refused` | values_seen | Outcome refused |
+| `outcome_reason_no_provider` | values_seen | no live market data provider is connected |
+| `outcome_margin_pending` | values_seen | Margin from Zerodha is not shown yet; it needs your Kite login. |
+| `outcome_feed_disconnected` | values_seen | Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused. |
+| `data_label_stale` | values_seen | stale since {time} IST |
+| `data_label_delayed` | values_seen | delayed, as of {time} IST |
+| `label_estimated_from_spot` | values_seen | estimated from spot |
+| `leg_label_symbol` | values_seen | {symbol}: {label} |
+| `leg_label_no_quote` | values_seen | no live quote |
+| `leg_label_quote_unusable` | values_seen | quote {health}; not used |
+| `leg_label_quote_no_price` | values_seen | quote has no last price |
+| `leg_label_no_iv` | values_seen | no implied volatility for this price |
+| `outcome_problem_leg` | values_seen | Instrument {leg} cannot be used: {why} |
+| `outcome_why_not_in_snapshot` | values_seen | not in the snapshot |
+| `outcome_why_unknown_instrument` | values_seen | unknown instrument |
+| `outcome_why_expired` | values_seen | expired |
+| `outcome_why_other_underlying` | values_seen | the contract is on {contract_on}, the strategy is on {underlying} |
+| `outcome_why_leg_input` | values_seen | this leg cannot be valued from the data received |
+| `outcome_why_forward` | values_seen | the forward price could not be derived from the option chain |
+| `outcome_forward_error` | values_seen | forward for {expiry}: {why} |
+| `outcome_spot_missing` | values_seen | the {underlying} index value is missing; the outcome is refused |
+| `outcome_spot_unusable` | values_seen | the {underlying} spot is {health}; the calculation is refused |
+| `outcome_forward_refused` | values_seen | a forward price is missing or was read on other inputs; the outcome is refused |
+| `summary_lose_unlimited` | values_seen | Your loss has no fixed limit if {index} rises far enough by expiry. |
+| `summary_lose_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
+| `summary_make_unlimited` | values_seen | Your profit has no fixed limit if {index} rises far enough by expiry. |
+| `summary_make_none` | values_seen | This strategy cannot make money at expiry. |
+| `summary_make_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
+| `summary_start_regions` | values_seen | If {index} ends {regions} at expiry. (regions: "below X", "between X and Y", "above X", joined "a, b or c"; ADR-072) |
+| `summary_start_touch` | values_seen | At every level except exactly {level} at expiry. (ADR-072) |
+| `summary_start_never` | values_seen | At no level at expiry. |
+| `summary_start_everywhere` | values_seen | At every level at expiry. (ADR-072: no claim about breakevens) |
+| `scenario_view_label` | values_seen | {view} |
+| `table_column_label` | values_seen | {column} |
+| `scenario_header_plain` | values_seen | {level} |
+| `scenario_header_current` | values_seen | CURRENT {level} |
+| `scenario_header_zero_pnl` | values_seen | 0-P&L {level} |
+| `scenario_header_current_zero_pnl` | values_seen | CURRENT 0-P&L {level} |
+| `cell_dash` | values_seen | — |
+| `cell_rupees` | values_seen | {amount} |
+| `cell_rupees_cr` | values_seen | {amount} Cr |
+| `cell_rupees_dr` | values_seen | {amount} Dr |
+| `cell_points` | values_seen | {value} |
+| `cell_percent` | values_seen | {value}% |
+| `cell_percent_signed` | values_seen | {value}% |
+| `cell_number` | values_seen | {value} |
+| `cell_text` | values_seen | {value} |
+| `cell_health` | values_seen | {health} |
+| `table_reason_not_applicable` | values_seen | not applicable |
+| `table_reason_not_available` | values_seen | not available |
+| `table_reason_no_ltp` | values_seen | no LTP for this leg |
+| `table_reason_entry_zero` | values_seen | entry value is zero |
+| `table_reason_no_iv` | values_seen | no implied volatility for this leg |
+| `table_reason_fut_no_strike` | values_seen | a futures leg has no strike |
+| `table_reason_fut_no_iv` | values_seen | a futures leg has no implied volatility |
+| `table_reason_no_scenario` | values_seen | no scenario view is available |
+| `table_reason_no_status` | values_seen | no status was given for this leg |
+| `table_reason_not_all_ltp` | values_seen | not every leg has an LTP |
+| `table_reason_max_loss_multi_expiry` | values_seen | max loss is exact only for a single-expiry strategy |
+| `table_reason_max_loss_unlimited` | values_seen | max loss is unlimited |
+| `table_reason_max_loss_zero` | values_seen | max loss is zero |
+| `table_reason_not_all_iv` | values_seen | not every leg has an implied volatility |
+| `table_reason_futures_notional` | values_seen | a premium and a futures notional cannot be added |
+| `table_reason_no_lower_be` | values_seen | no lower breakeven |
+| `table_reason_no_upper_be` | values_seen | no upper breakeven |
+| `table_reason_no_health` | values_seen | no strategy health was given |
 
 ## Explanation labels
 
@@ -243,3 +312,5 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | builder | Original suggested setup; User modified strike; User changed quantity; User added leg; User removed leg; User changed expiry; Setup changed to alternative; User restored an earlier configuration; User undid the last change |
 | scenario_view | At Expiry; Estimated Now (estimate) |
 | health | Healthy; Watch; Adjustment opportunity; Exit condition reached |
+| column | Leg; Action; Instrument; Expiry; Strike; Quantity; Entry Price; LTP; Entry Value; Current Value; Unrealized P&L; P&L %; IV; Delta; Gamma; Theta; Vega; Lower Breakeven; Upper Breakeven; Status |
+| table_reason | not applicable; not available; no LTP for this leg; entry value is zero; no implied volatility for this leg; a futures leg has no strike; a futures leg has no implied volatility; no scenario view is available; no status was given for this leg; not every leg has an LTP; max loss is exact only for a single-expiry strategy; max loss is unlimited; max loss is zero; not every leg has an implied volatility; a premium and a futures notional cannot be added; no lower breakeven; no upper breakeven; no strategy health was given |

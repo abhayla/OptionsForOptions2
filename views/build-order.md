@@ -20,7 +20,7 @@ Done (11): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
 | REQ-012 | Registration and identity layers | foundation | normal | next |
-| REQ-034 | Outcome view and scenario levels | foundation | normal | next |
+| REQ-034 | Outcome view and scenario levels | foundation | normal | blocked: its own work item W-066 blocked: PARKED 2026-10-10 (owner: final round, any red parks): issue #172 - a bounded loss split by one zero point crashes the outcome; resume from #172 'What is left' |
 | REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |

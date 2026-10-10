@@ -33,7 +33,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   rounding), which is the correct boundary behaviour, not a bug; the exact (pre-round) values always sum exactly.
 - **Status** (fix round: settled by the tables the owner reviewed in T1, not computed from moneyness — the prior
   ITM/ATM/OTM rule was a defect, moneyness is not in the AC-2 column list). A leg's Status is whatever state the
-  caller passes in for that leg (``leg_statuses``, e.g. "Open" — an enum defined elsewhere, not computed here); the
+  caller passes in for that leg (``leg_statuses``, a ``LegStatus``, not computed here); the
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
   29-30, the owner's exact labels: "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
@@ -47,7 +47,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   is the section caption (:func:`scenario_caption`), not a per-column label.
 """
 from __future__ import annotations
-from ofo.errors.explanations import HEALTH_LABEL_TEXT, render_explanation
+from ofo.errors.explanations import HEALTH_LABEL_TEXT, ExplanationText, render_explanation
 
 from dataclasses import dataclass, replace as _replace
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
@@ -90,6 +90,12 @@ class CellKind(Enum):
     IV = "iv"
     QUANTITY = "quantity"
     TEXT = "text"
+
+
+class LegStatus(Enum):
+    """The status of one leg, passed in by the caller (a closed set: the table prints it, never composes it)."""
+
+    OPEN = "Open"
 
 
 class StrategyHealth(Enum):
@@ -161,50 +167,62 @@ class Table:
         return tuple(c.id for c in self.columns)
 
 
-def _text(value: str | None, reason: str | None = None) -> Cell:
+def _r(key: str) -> ExplanationText:
+    """A cell's reason: the reviewed template `table_reason_<key>` (W-066)."""
+    return render_explanation(f"table_reason_{key}")
+
+
+def _dash() -> ExplanationText:
+    return render_explanation("cell_dash")
+
+
+def _text(value: "int | datetime.date | Action | Instrument | LegStatus | None", reason: str | None = None) -> Cell:
     if value is None:
-        return Cell(None, "—", CellKind.TEXT, reason=reason or "not applicable")
-    return Cell(value, value, CellKind.TEXT)
+        return Cell(None, _dash(), CellKind.TEXT, reason=reason or _r("not_applicable"))
+    text = render_explanation("cell_text", value=value)
+    return Cell(text, text, CellKind.TEXT)
 
 
 def _money(value: Decimal | None, reason: str | None = None) -> Cell:
     if value is None:
-        return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
-    return Cell(value, format_rupees(value), CellKind.MONEY)
+        return Cell(None, _dash(), CellKind.MONEY, reason=reason or _r("not_available"))
+    return Cell(value, render_explanation("cell_rupees", amount=value), CellKind.MONEY)
 
 
 def _net_premium_cell(net: Decimal | None, reason: str | None = None) -> Cell:
     """TOTAL Entry Value: the net premium as a magnitude plus an explicit Cr/Dr side (Q236)."""
     if net is None:
-        return Cell(None, "—", CellKind.MONEY, reason=reason or "not available")
+        return Cell(None, _dash(), CellKind.MONEY, reason=reason or _r("not_available"))
     if net == 0:
-        return Cell(net, format_rupees(net), CellKind.MONEY)
+        return Cell(net, render_explanation("cell_rupees", amount=net), CellKind.MONEY)
     side = "Cr" if net > 0 else "Dr"
-    return Cell(abs(net), f"{format_rupees(abs(net))} {side}", CellKind.MONEY, side=side)
+    display = render_explanation("cell_rupees_cr" if net > 0 else "cell_rupees_dr", amount=abs(net))
+    return Cell(abs(net), display, CellKind.MONEY, side=side)
 
 
 def _points(value: Decimal | None, reason: str | None = None) -> Cell:
     if value is None:
-        return Cell(None, "—", CellKind.POINTS, reason=reason or "not available")
-    return Cell(value, format_points(value), CellKind.POINTS)
+        return Cell(None, _dash(), CellKind.POINTS, reason=reason or _r("not_available"))
+    return Cell(value, render_explanation("cell_points", value=value), CellKind.POINTS)
 
 
 def _percent_cell(value: Decimal | None, reason: str | None = None) -> Cell:
     if value is None:
-        return Cell(None, "—", CellKind.PERCENT, reason=reason or "not available")
-    return Cell(value, f"{value}%", CellKind.PERCENT)
+        return Cell(None, _dash(), CellKind.PERCENT, reason=reason or _r("not_available"))
+    return Cell(value, render_explanation("cell_percent", value=value), CellKind.PERCENT)
 
 
 def _greek_cell(position_value: Decimal | None, vendor: Decimal | None, per_unit_value: Decimal | None,
                 reason: str | None) -> Cell:
     if position_value is None:
-        return Cell(None, "—", CellKind.GREEK, reason=reason or "not available", vendor=vendor,
+        return Cell(None, _dash(), CellKind.GREEK, reason=reason or _r("not_available"), vendor=vendor,
                     per_unit=per_unit_value)
-    return Cell(position_value, str(position_value), CellKind.GREEK, vendor=vendor, per_unit=per_unit_value)
+    return Cell(position_value, render_explanation("cell_number", value=position_value), CellKind.GREEK,
+                vendor=vendor, per_unit=per_unit_value)
 
 
 def _quantity_cell(value: int) -> Cell:
-    return Cell(value, str(value), CellKind.QUANTITY)
+    return Cell(value, render_explanation("cell_number", value=value), CellKind.QUANTITY)
 
 
 def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
@@ -215,7 +233,7 @@ def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
     return ratio.quantize(_PERCENT_STEP, rounding=ROUND_HALF_EVEN)
 
 
-def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | None, str | None]:
+def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | None, ExplanationText | None]:
     """The platform's UNROUNDED per-unit Black-Scholes Greeks for one leg (AC-6), or ``None`` with a reason.
 
     A futures leg always has a value (:data:`_FUTURES_PER_UNIT_GREEKS`, never excluded from a total). An option
@@ -225,7 +243,7 @@ def _leg_per_unit_greeks(leg: LegInput, inputs: ModelInputs) -> tuple[Greeks | N
     if leg.instrument is Instrument.FUT:
         return _FUTURES_PER_UNIT_GREEKS, None
     if leg.iv is None:
-        return None, "no implied volatility for this leg"
+        return None, _r("no_iv")
     # W-060 round 3: the engine at the gated live spot with the leg's expiry yield q (ADR-061, ADR-063)
     return leg_greeks_unrounded(inputs, leg), None
 
@@ -253,24 +271,24 @@ def _round_greek(value: Decimal) -> Decimal:
 
 def _iv_cell(leg: LegInput) -> Cell:
     if leg.instrument is Instrument.FUT:
-        return Cell(None, "—", CellKind.IV, reason="a futures leg has no implied volatility")
+        return Cell(None, _dash(), CellKind.IV, reason=_r("fut_no_iv"))
     if leg.iv is None:
-        return Cell(None, "—", CellKind.IV, reason="no implied volatility for this leg")
-    return Cell(leg.iv, f"{leg.iv}", CellKind.IV)
+        return Cell(None, _dash(), CellKind.IV, reason=_r("no_iv"))
+    return Cell(leg.iv, render_explanation("cell_number", value=leg.iv), CellKind.IV)
 
 
 def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequence[Decimal],
-             scenario: ScenarioValues | None, leg_position: int, status: str | None) -> Row:
+             scenario: ScenarioValues | None, leg_position: int, status: "LegStatus | None") -> Row:
     core = leg.leg
     entry_value = core.entry_price * core.quantity
     current_value = core.ltp * core.quantity if core.ltp is not None else None
     unrealized = live_pnl(core) if core.ltp is not None else None
     if unrealized is None:
         pnl_percent = None
-        pct_reason = "no LTP for this leg"
+        pct_reason = _r("no_ltp")
     elif entry_value == 0:
         pnl_percent = None
-        pct_reason = "entry value is zero"
+        pct_reason = _r("entry_zero")
     else:
         pnl_percent = _percent(unrealized, abs(entry_value))
         pct_reason = None
@@ -282,18 +300,18 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
     vendor = leg.greeks
 
     cells: dict[object, Cell] = {
-        ColumnId.LEG: _text(str(index)),
-        ColumnId.ACTION: _text(core.action.value),
-        ColumnId.INSTRUMENT: _text(core.instrument.value),
-        ColumnId.EXPIRY: _text(core.expiry.isoformat()),
+        ColumnId.LEG: _text(index),
+        ColumnId.ACTION: _text(core.action),
+        ColumnId.INSTRUMENT: _text(core.instrument),
+        ColumnId.EXPIRY: _text(core.expiry),
         ColumnId.STRIKE: _points(core.strike) if core.strike is not None
-        else _points(None, "a futures leg has no strike"),
+        else _points(None, _r("fut_no_strike")),
         ColumnId.QUANTITY: _quantity_cell(core.quantity),
         ColumnId.ENTRY_PRICE: _money(core.entry_price),
-        ColumnId.LTP: _money(core.ltp, "no LTP for this leg"),
+        ColumnId.LTP: _money(core.ltp, _r("no_ltp")),
         ColumnId.ENTRY_VALUE: _money(entry_value),
-        ColumnId.CURRENT_VALUE: _money(current_value, "no LTP for this leg"),
-        ColumnId.UNREALIZED_PNL: _money(unrealized, "no LTP for this leg"),
+        ColumnId.CURRENT_VALUE: _money(current_value, _r("no_ltp")),
+        ColumnId.UNREALIZED_PNL: _money(unrealized, _r("no_ltp")),
         ColumnId.PNL_PERCENT: _percent_cell(pnl_percent, pct_reason),
         ColumnId.IV: _iv_cell(leg),
         ColumnId.DELTA: _greek_cell(None if position is None else position.delta,
@@ -311,32 +329,32 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
     }
     for level in level_columns:
         if scenario is None or not scenario.available or scenario.leg_rows is None:
-            cells[level] = _money(None, "no scenario view is available")
+            cells[level] = _money(None, _r("no_scenario"))
         else:
             cells[level] = _money(scenario.leg_rows[leg_position][level_columns.index(level)])
     cells[ColumnId.LOWER_BE] = _text(None)
     cells[ColumnId.UPPER_BE] = _text(None)
-    cells[ColumnId.STATUS] = _text(status, "no status was given for this leg")
+    cells[ColumnId.STATUS] = _text(status, _r("no_status"))
     return Row(str(index), cells)
 
 
 def _total_pnl_percent_cell(inputs: ModelInputs, unrealized: Decimal | None) -> Cell:
     """TOTAL P&L % = unrealized P&L / max loss x 100, half-up to 0.1 % (Q233); "—" with a reason otherwise."""
     if unrealized is None:
-        return _percent_cell(None, "not every leg has an LTP")
+        return _percent_cell(None, _r("not_all_ltp"))
     try:
         max_loss = strategy_metrics(inputs.strategy).max_loss
     except MultiExpiryError:
-        return _percent_cell(None, "max loss is exact only for a single-expiry strategy")
+        return _percent_cell(None, _r("max_loss_multi_expiry"))
     if max_loss is UNLIMITED:
-        return _percent_cell(None, "max loss is unlimited")
+        return _percent_cell(None, _r("max_loss_unlimited"))
     if max_loss == 0:
-        return _percent_cell(None, "max loss is zero")
+        return _percent_cell(None, _r("max_loss_zero"))
     with localcontext() as ctx:
         ctx.prec = 50
         ratio = (unrealized / max_loss) * 100
     value = ratio.quantize(_TOTAL_PERCENT_STEP, rounding=ROUND_HALF_UP)
-    return Cell(value, f"{value:+}%", CellKind.PERCENT)
+    return Cell(value, render_explanation("cell_percent_signed", value=value), CellKind.PERCENT)
 
 
 def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: Sequence[Decimal],
@@ -367,7 +385,7 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
             raw_totals[name] += getattr(raw_position, name)
     if not every_leg_has_greeks:
         greek_values: dict[str, Decimal | None] = {name: None for name in raw_totals}
-        greek_reason = "not every leg has an implied volatility"
+        greek_reason = _r("not_all_iv")
     else:
         greek_values = {name: _round_greek(value) for name, value in raw_totals.items()}
         greek_reason = None
@@ -381,9 +399,9 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
         ColumnId.QUANTITY: _text(None),
         ColumnId.ENTRY_PRICE: _text(None),
         ColumnId.LTP: _text(None),
-        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, "a premium and a futures notional cannot be added"),
-        ColumnId.CURRENT_VALUE: _money(current_value, "not every leg has an LTP"),
-        ColumnId.UNREALIZED_PNL: _money(unrealized, "not every leg has an LTP"),
+        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, _r("futures_notional")),
+        ColumnId.CURRENT_VALUE: _money(current_value, _r("not_all_ltp")),
+        ColumnId.UNREALIZED_PNL: _money(unrealized, _r("not_all_ltp")),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
         ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason),
@@ -393,16 +411,20 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
     }
     for i, level in enumerate(level_columns):
         if scenario is None or not scenario.available or scenario.totals is None:
-            cells[level] = _money(None, "no scenario view is available")
+            cells[level] = _money(None, _r("no_scenario"))
         else:
             cells[level] = _money(scenario.totals[i])
     if level_set is not None:
-        cells[ColumnId.LOWER_BE] = _points(level_set.lower_be, "no lower breakeven")
-        cells[ColumnId.UPPER_BE] = _points(level_set.upper_be, "no upper breakeven")
+        cells[ColumnId.LOWER_BE] = _points(level_set.lower_be, _r("no_lower_be"))
+        cells[ColumnId.UPPER_BE] = _points(level_set.upper_be, _r("no_upper_be"))
     else:
-        cells[ColumnId.LOWER_BE] = _points(None, "no scenario view is available")
-        cells[ColumnId.UPPER_BE] = _points(None, "no scenario view is available")
-    cells[ColumnId.STATUS] = _text(health.value if health is not None else None, "no strategy health was given")
+        cells[ColumnId.LOWER_BE] = _points(None, _r("no_scenario"))
+        cells[ColumnId.UPPER_BE] = _points(None, _r("no_scenario"))
+    if health is None:
+        cells[ColumnId.STATUS] = _text(None, _r("no_health"))
+    else:
+        status = render_explanation("cell_health", health=health)
+        cells[ColumnId.STATUS] = Cell(status, status, CellKind.TEXT)
     return Row(TOTAL_ROW_ID, cells)
 
 
@@ -411,7 +433,7 @@ def build_table(
     *,
     level_set: LevelSet | None = None,
     scenario: ScenarioValues | None = None,
-    leg_statuses: Sequence[str | None] | None = None,
+    leg_statuses: Sequence["LegStatus | None"] | None = None,
     strategy_health: StrategyHealth | None = None,
 ) -> Table:
     """Build the one strategy table (AC-1): a row per leg, a TOTAL row, columns in the AC-2 locked order.
@@ -517,7 +539,9 @@ def scenario_header(level: UXLevel, underlying: str, value: Decimal, markers: Se
         raise ValueError(f"level must be a UXLevel, got {level!r}")
     if not isinstance(underlying, str) or not underlying.strip():
         raise ValueError(f"underlying must be a non-empty string, got {underlying!r}")
-    return " ".join((*markers, format_points(value)))
+    key = {(): "plain", ("CURRENT",): "current", ("0-P&L",): "zero_pnl",
+           ("CURRENT", "0-P&L"): "current_zero_pnl"}[tuple(markers)]
+    return render_explanation(f"scenario_header_{key}", level=value)
 
 
 def scenario_caption(table: Table) -> str:

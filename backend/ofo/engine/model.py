@@ -27,6 +27,7 @@ from decimal import Decimal
 from typing import Final, Mapping
 
 from ofo.engine import black_scholes as _bs
+from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.engine import estimate as _estimate
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
@@ -45,19 +46,25 @@ class SpotRefused(ValueError):
     """The index value is missing or unusable; the calculation is refused, never computed silently."""
 
 
-def data_label(reading: SpotReading) -> str | None:
-    """"stale since HH:MM IST" / "delayed, as of HH:MM IST" for a non-live reading; None for an AVAILABLE one."""
-    hhmm = reading.at.astimezone(IST).strftime("%H:%M")
+def data_label(reading: SpotReading) -> ExplanationText | None:
+    """"stale since HH:MM IST" / "delayed, as of HH:MM IST" for a non-live reading; None for an AVAILABLE one. A
+    catalogue render (W-066): the time is a typed slot."""
     if reading.health is DataHealth.STALE:
-        return f"stale since {hhmm} IST"
+        return render_explanation("data_label_stale", time=reading.at)
     if reading.health is DataHealth.DELAYED:
-        return f"delayed, as of {hhmm} IST"
+        return render_explanation("data_label_delayed", time=reading.at)
     return None
 
 
 def join_labels(*labels: str | None) -> str | None:
+    """The non-empty labels joined with "; ". Catalogue renders stay catalogue text (W-066): joined by
+    `join_explanations`; a plain string in the mix gives a plain string (refused by a typed API field)."""
     parts = [x for x in labels if x]
-    return "; ".join(parts) if parts else None
+    if not parts:
+        return None
+    if all(type(x) is ExplanationText for x in parts):
+        return join_explanations(parts, "; ")
+    return "; ".join(parts)
 
 
 class _Gated:

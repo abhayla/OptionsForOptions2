@@ -148,6 +148,8 @@ decisions:
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
+  ADR-071: 4a           # max-loss/max-profit sentences say "before charges and taxes" (owner 2026-10-09, W-066)
+  ADR-072: 4a           # "where do I start losing" names every loss region from the payoff (W-066, independent review)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
   ADR-055: [S6, S8]     # strict compliance default until written answers
@@ -199,6 +201,8 @@ issues:
   "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#163": 4a            # login refusals redirect to /broker/refused (W-064 follow-up)
   "#167": 4a            # W-061 round-3 review minors (domain/database bounds, schema_version, wording)
+  "#171": 4a            # Lower/Upper breakeven labels vs loss-region edges (ADR-072 consequence; decision row first)
+  "#172": 4a            # PARKED W-066: bounded loss split by one zero point crashes (owner: final round red)
   "#30": 4a
   "#43": 4b
   "#45": 4b
@@ -220,6 +224,7 @@ work_items:
   W-009: S8
   W-011: S8
   W-017: 4b
+  W-066: 4a
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

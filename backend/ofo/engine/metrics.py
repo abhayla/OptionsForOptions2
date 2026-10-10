@@ -18,6 +18,11 @@ Conventions (orchestrator decision under ADR-045, spec basis REQ-033 AC-6 "compu
   exactly), a zero exactly at a strike, and a zero on the upper tail. A flat zero segment between strikes reports
   its two end points; a flat zero upper tail reports only its strike end point. A crossing whose exact value does
   not terminate in decimal (e.g. a third of a point) is rounded half-even to 0.01 points; all others are exact.
+- **Loss regions** (ADR-072) are the open intervals of the underlying where the payoff is below zero (exactly zero is
+  not a loss), read from the same payoff: between consecutive knots (0, every strike, every exact zero) the payoff is
+  linear, so its sign at the midpoint is its sign on the whole interval; the upper tail's sign is taken one point past
+  the last knot. Signs are decided in exact fractions before any 0.01 rounding of a bound. Never inferred from the
+  breakevens: a zero can be a touch or the end of a flat stretch.
 - **Multi-expiry** strategies have no exact at-expiry payoff and raise ``MultiExpiryError``.
 """
 from __future__ import annotations
@@ -59,6 +64,8 @@ class StrategyMetrics:
     min_pnl: Decimal | _Unlimited
     max_loss: Decimal | _Unlimited
     breakevens: tuple[Decimal, ...]
+    #: Expiry loss regions (P&L below zero), ordered; (lower, upper) with None = open end. ADR-072.
+    loss_regions: tuple[tuple[Decimal | None, Decimal | None], ...] = ()
 
 
 def _upper_tail_slope(leg: Leg) -> int:
@@ -102,6 +109,49 @@ def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) 
     return sorted(x for x in found if x > 0)
 
 
+def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int,
+                  zeros: list[Fraction]) -> tuple[tuple[Decimal | None, Decimal | None], ...]:
+    """The open intervals of [0, inf) where the payoff is below zero, merged across a knot whose own P&L is below zero."""
+    pts = [Fraction(p) for p in points]
+    vals = [Fraction(v) for v in values]
+
+    def pnl(x: Fraction) -> Fraction:
+        if x >= pts[-1]:
+            return vals[-1] + upper_slope * (x - pts[-1])
+        for i in range(len(pts) - 1):
+            if pts[i] <= x <= pts[i + 1]:
+                return vals[i] + (vals[i + 1] - vals[i]) * (x - pts[i]) / (pts[i + 1] - pts[i])
+        raise AssertionError("unreachable: x lies inside [0, last strike]")
+
+    knots = sorted(set(pts) | set(zeros))
+    # one entry per interval: (lower, upper-or-None, is_loss); the last interval is the open upper tail
+    intervals = [(knots[i], knots[i + 1], pnl((knots[i] + knots[i + 1]) / 2) < 0) for i in range(len(knots) - 1)]
+    intervals.append((knots[-1], None, pnl(knots[-1] + 1) < 0))
+    regions: list[list[Fraction | None]] = []
+    for lo, hi, is_loss in intervals:
+        if not is_loss:
+            continue
+        if regions and regions[-1][1] == lo and pnl(lo) < 0:
+            regions[-1][1] = hi
+        else:
+            regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi])
+    # Edges are shown rounded to 0.01, so two edges can round to one level: a region narrower than a paisa becomes a
+    # single-level region (lower == upper, kept: ADR-072 names every loss region), and rounded regions that touch or
+    # overlap across a real (exact) gap are merged. Regions meeting at an exact zero point stay separate.
+    out: list[list] = []
+    prev_exact_hi: Fraction | None = None
+    for lo, hi in regions:
+        d_lo = None if lo is None else _to_decimal(lo)
+        d_hi = None if hi is None else _to_decimal(hi)
+        if (out and prev_exact_hi is not None and lo is not None and lo != prev_exact_hi
+                and out[-1][1] is not None and d_lo <= out[-1][1]):
+            out[-1][1] = d_hi
+        else:
+            out.append([d_lo, d_hi])
+        prev_exact_hi = hi
+    return tuple((lo, hi) for lo, hi in out)
+
+
 def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     """Exact max profit, min P&L, max loss and breakevens of a single-expiry strategy's at-expiry payoff."""
     if not strategy.is_single_expiry:
@@ -121,5 +171,7 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
         max_loss: Decimal | _Unlimited = UNLIMITED
     else:
         max_loss = -min_pnl if min_pnl < 0 else Decimal(0)
-    breakevens = tuple(_to_decimal(x) for x in _breakevens(points, values, upper_slope))
-    return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens)
+    zeros = _breakevens(points, values, upper_slope)
+    breakevens = tuple(_to_decimal(x) for x in zeros)
+    return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
+                           loss_regions=_loss_regions(points, values, upper_slope, zeros))

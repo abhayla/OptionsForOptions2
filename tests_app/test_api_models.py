@@ -11,19 +11,6 @@ from fastapi.routing import APIRoute
 #: FastAPI's own documentation routes (no domain text).
 FRAMEWORK_ROUTES = frozenset({"openapi", "swagger_ui_html", "swagger_ui_redirect", "redoc_html"})
 
-#: The ONE route exempt from the ApiModel rule: it predates W-024 (its 12 text fields are plain `str` built in the
-#: domain and its instrument ids contain ':'); the real fix is a later Tier A round, issue #151.
-EXEMPT_ROUTES = frozenset({("/api/strategies/outcome", "POST")})
-
-
-def test_the_exemption_set_is_exactly_the_outcome_route_and_that_route_exists() -> None:
-    from ofo_app.main import create_app
-
-    assert EXEMPT_ROUTES == {("/api/strategies/outcome", "POST")}
-    live = {(r.path, m) for r in create_app().routes if isinstance(r, APIRoute) for m in r.methods}
-    assert EXEMPT_ROUTES <= live  # a stale exemption (route renamed or removed) fails here
-
-
 def test_every_route_of_the_real_app_declares_an_api_model() -> None:
     from ofo_app.api_models import ApiModel
     from ofo_app.main import create_app
@@ -32,8 +19,6 @@ def test_every_route_of_the_real_app_declares_an_api_model() -> None:
     for route in create_app().routes:
         if getattr(route, "name", "") in FRAMEWORK_ROUTES:
             continue
-        if isinstance(route, APIRoute) and all((route.path, m) in EXEMPT_ROUTES for m in route.methods):
-            continue  # issue #151, only this path + method
         if not isinstance(route, APIRoute):  # a websocket or mounted app has no typed body: fail closed
             problems.append(f"{route!r}: not an APIRoute")
         elif not (isinstance(route.response_model, type) and issubclass(route.response_model, ApiModel)):
