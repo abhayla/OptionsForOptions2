@@ -300,25 +300,4 @@ async def test_a_disconnected_provider_gives_no_price(replay_ctx) -> None:
 async def test_planned_entry_refuses_a_bad_body(body: dict) -> None:
     status, answer = await _capture(body)
     assert status == 422 and answer["code"] == FIXED_INPUT_CODE
-
-
-def test_price_rule_ltp_first_then_mid_and_nothing_else() -> None:
-    from types import SimpleNamespace
-
-    from ofo.rules.inputs import DataHealth
-    from ofo_app.routes.planned_entry import _price
-
-    def q(ltp=None, bid=None, ask=None, health=DataHealth.AVAILABLE):
-        return SimpleNamespace(ltp=ltp, bid=bid, ask=ask, health=health)
-
-    D = Decimal
-    assert _price(q(ltp=D("104.65"), bid=D("1"), ask=D("2"))) == (D("104.65"), "ltp")  # LTP wins over the mid
-    assert _price(q(bid=D("100.00"), ask=D("100.05"))) == (D("100.03"), "mid")  # 100.025 rounds half up
-    assert _price(q(bid=D("100.00"), ask=D("101.00"))) == (D("100.50"), "mid")
-    assert _price(q(bid=D("100.00"))) is None  # one side only: no mid
-    assert _price(q()) is None
-    assert _price(q(ltp=D("0"))) is None  # a zero LTP is not a price
-    assert _price(q(ltp=D("0"), bid=D("100"), ask=D("101"))) is None  # an LTP field is present: no mid fallback
-    assert _price(q(ltp=D("104.65"), health=DataHealth.STALE)) is None
-    assert _price(q(ltp=D("104.65"), health=DataHealth.UNAVAILABLE)) is None
-    assert _price(None) is None
+    # the price rule itself is a domain function, tested in tests/outcome/test_planned_entry.py

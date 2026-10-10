@@ -13,20 +13,18 @@ The browser computes nothing: the price is a string from a Decimal, rounded half
 from __future__ import annotations
 
 import datetime
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from ofo.outcome import read_snapshot
-from ofo.rules.inputs import DataHealth
+from ofo.outcome.planned_entry import planned_entry_of
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.routes.outcome import MarketContext, get_market_context
 
 router = APIRouter()
 
-_CENT = Decimal("0.01")
 InstrumentIdIn = Annotated[str, StringConstraints(pattern=r"^[A-Z_]{1,20}:[0-9]{1,12}$")]
 
 Reason = Literal["not_connected", "no_live_price", "unknown_instrument", "wrong_underlying", "expired"]
@@ -51,17 +49,6 @@ class PlannedEntriesOut(ApiModel):
     entries: list[PlannedEntryOut]
 
 
-def _price(quote: Any) -> tuple[Decimal, Literal["ltp", "mid"]] | None:
-    """The planned entry of one live quote, or None. Never a default."""
-    if quote is None or quote.health is not DataHealth.AVAILABLE:
-        return None
-    if quote.ltp is not None and quote.ltp > 0:
-        return quote.ltp.quantize(_CENT, rounding=ROUND_HALF_UP), "ltp"
-    if quote.ltp is None and quote.bid is not None and quote.ask is not None and quote.bid > 0 and quote.ask > 0:
-        return ((quote.bid + quote.ask) / 2).quantize(_CENT, rounding=ROUND_HALF_UP), "mid"
-    return None
-
-
 def _entry(instrument_id: str, **fields: Any) -> dict[str, Any]:
     segment, _, token = instrument_id.partition(":")
     return {"exchange_segment": segment, "exchange_token": int(token), "planned_entry": None, "captured_at": None,
@@ -84,9 +71,9 @@ def planned_entry(body: PlannedEntryIn,
                       else "expired" if leg.problem == "expired" else "wrong_underlying")
             entries.append(_entry(iid, reason_code=reason))
             continue
-        priced = _price(leg.quote)
+        priced = planned_entry_of(leg.quote)  # the domain rule (ofo.outcome.planned_entry); the route only calls it
         if priced is None:
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
-            entries.append(_entry(iid, planned_entry=priced[0], captured_at=valuation, source=priced[1]))
+            entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source))
     return PlannedEntriesOut.model_validate({"entries": entries})
