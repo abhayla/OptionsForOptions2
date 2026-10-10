@@ -57,7 +57,9 @@ class Recorder:
         self._open = 0  # items handed over and not yet finished by the writer
         self._pending_gaps: dict[Gap, None] = {}  # gaps the store has not taken yet, in order
         self._closed = False
-        self._writer: threading.Thread | None = None
+        # started now, not on the first bar: starting a thread waits for it to run, which must not happen on the feed
+        self._writer: threading.Thread = threading.Thread(target=self._run, name="ofo-history-writer", daemon=True)
+        self._writer.start()
 
     # ---- feed side: never waits on the store --------------------------------------------------------------------------
     def attach(self, fanout: FanOut, instrument_ids: Sequence[str]) -> list[str]:
@@ -121,9 +123,6 @@ class Recorder:
                 raise RecorderClosed("the recorder is closed")
             self._queued_bars += bars
             self._open += 1
-            if self._writer is None:
-                self._writer = threading.Thread(target=self._run, name="ofo-history-writer", daemon=True)
-                self._writer.start()
         self._queue.put(item)
 
     # ---- writer side: the only code that calls the store ---------------------------------------------------------------
@@ -224,7 +223,7 @@ class Recorder:
 
     def close(self, timeout: float = 5.0) -> bool:
         """Stop accepting, let the writer finish what it holds (up to ``timeout``), stop it."""
-        if self._writer is not None and self._open:
+        if self._open:
             self.drain(timeout)
         try:
             self._hand_over(("gaps", []), 0)  # one last try at the gaps the store could not take
@@ -234,11 +233,9 @@ class Recorder:
         with self._cv:
             self._closed = True
             writer = self._writer
-        if writer is not None:
-            self._queue.put(_STOP)
-            writer.join(timeout)
-            return not writer.is_alive()
-        return True
+        self._queue.put(_STOP)
+        writer.join(timeout)
+        return not writer.is_alive()
 
     @property
     def pending_gaps(self) -> list[Gap]:
