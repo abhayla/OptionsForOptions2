@@ -183,12 +183,14 @@ def _refused(rt: BrokerRuntime, code: str) -> BrokerLoginRefused:
     return BrokerLoginRefused(code, clear_cookie=_state_cookie(rt))
 
 
-def _refused_redirect(rt: BrokerRuntime, code: str) -> object:
+def _refused_redirect(request: Request, rt: BrokerRuntime, code: str) -> object:
     """The callback is only reached by a browser coming back from Kite, so a refusal is a 302 to the frontend page
     that shows the reviewed catalogue message for ``code`` (REQ-065 AC-2), never a JSON body. The location holds the
     closed code only: no token, no Kite text. The state cookie is cleared, as on every refusal."""
     if code not in REFUSAL_CODES:
         raise ValueError("not a broker login refusal code")
+    # The record, shape and level the error boundary wrote for a refusal before #163: the closed code only.
+    log.info("user-facing error %s on %s %s", code, request.method, request.url.path)
     return typed_redirect(BrokerRedirectOut(redirect="refused"), f"{REFUSED_FRONTEND_PATH}?code={code}",
                           _state_cookie(rt))
 
@@ -234,23 +236,24 @@ async def kite_callback(
     rt = runtime(request)
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))
     if user_ref is None:
-        return _refused_redirect(rt, "broker_state_invalid")
+        return _refused_redirect(request, rt, "broker_state_invalid")
     if status != "success" or not request_token:
-        return _refused_redirect(rt, "broker_login_not_completed")
+        return _refused_redirect(request, rt, "broker_login_not_completed")
     try:
         session = await kite.exchange(request_token)
     except KiteExchangeError as exc:
         code = exc.code if exc.code in REFUSAL_CODES else "kite_refused"
-        return _refused_redirect(rt, code)
+        return _refused_redirect(request, rt, code)
     except Exception:  # noqa: BLE001 - fail closed, and never let an exception text near a log or the browser
-        return _refused_redirect(rt, "kite_unavailable")
+        return _refused_redirect(request, rt, "kite_unavailable")
     if not secrets.compare_digest(session.user_id, rt.config.expected_user_id):
-        return _refused_redirect(rt, "broker_user_mismatch")  # nothing stored; the active session is not replaced
+        # nothing stored; the active session is not replaced
+        return _refused_redirect(request, rt, "broker_user_mismatch")
     try:
         async with db.begin():
             await store_session(db, user_ref, session.access_token, rt.cipher)
     except Exception:  # noqa: BLE001 - any error between exchange and commit stores nothing
-        return _refused_redirect(rt, "broker_store_failed")
+        return _refused_redirect(request, rt, "broker_store_failed")
     finally:
         del session
     return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
