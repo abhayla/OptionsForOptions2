@@ -130,10 +130,16 @@ def test_candles_returned_makes_the_day_final():
     assert result.errors == {}
 
 
-def test_empty_list_keeps_live_and_the_day_is_final():
+def test_empty_list_for_an_instrument_with_no_live_bars_is_final_but_not_for_one_the_feed_traded():
+    """W-067 r2: an empty answer means "no trades" only where the feed saw none; an instrument whose live bars exist
+    must have candles reaching them, or the answer is incomplete and the day stays provisional (retryable)."""
+    store = InMemoryHistoryStore()
+    result = finalize_into(store, DAY, list(candle_bars()), InMemoryCandleSource([]), start=START, end=END)
+    assert result.status is DayStatus.FINAL and result.counts.replaced == 0 and result.errors == {}
     store = _seeded_store()
     result = finalize_into(store, DAY, list(candle_bars()), InMemoryCandleSource([]), start=START, end=END)
-    assert result.status is DayStatus.FINAL and result.counts.replaced == 0 and result.counts.kept_live > 0
+    assert result.status is DayStatus.PROVISIONAL and result.errors == {"incomplete": 8}
+    assert result.counts.replaced == 0 and result.counts.kept_live > 0
     assert all(b.source is BarSource.LIVE for b in store.bars(NIFTY_CE, DAY))
 
 
@@ -155,7 +161,7 @@ def test_a_candle_outside_the_requested_range_is_ignored_and_counted():
         def minute_candles(self, instrument_id, start, end):
             return [late]
     result = finalize_into(store, DAY, [NIFTY_CE], Loose(), start=START, end=END)
-    assert result.errors == {"out_of_range": 1}
+    assert result.errors["out_of_range"] == 1  # (the 7 instruments not asked for also leave the day incomplete)
     assert not any(b.minute == at(15, 40) for b in store.bars(NIFTY_CE, DAY))
 
 

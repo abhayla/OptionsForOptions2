@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests" / "history"))
 
 from _history_fixture import DAY, at, candle_bars
-from test_history_pg_store import (GAP_MINUTES, _url, admin_sql, all_kite_candles, committed_day,  # noqa: F401
+from test_history_pg_store import (GAP_MINUTES, WINDOW_END, _url, admin_sql, all_kite_candles, committed_day,  # noqa: F401
                                    replay_into)
 
 from ofo.history.bars import BarSource
@@ -39,8 +39,8 @@ def test_finalize_makes_every_minute_kites_candle_and_a_second_run_changes_nothi
     kite = all_kite_candles()
     source, ids = InMemoryCandleSource(kite), list(candle_bars())
 
-    result = finalize_trading_day(pg, DAY, source, ids, now=at(15, 45))
-    finalize_trading_day(mem, DAY, InMemoryCandleSource(kite), ids, now=at(15, 45))
+    result = finalize_trading_day(pg, DAY, source, ids, now=at(15, 45), until=WINDOW_END)
+    finalize_trading_day(mem, DAY, InMemoryCandleSource(kite), ids, now=at(15, 45), until=WINDOW_END)
     assert result.status is DayStatus.FINAL and pg.day_status(DAY) is DayStatus.FINAL
     by = {(b.instrument_id, b.minute): b for b in pg.bars_for_day(DAY)}
     for k in kite:  # expected values are Kite's recorded candles, parsed from the fixture text
@@ -54,7 +54,7 @@ def test_finalize_makes_every_minute_kites_candle_and_a_second_run_changes_nothi
 
     marks = "SELECT instrument_id, minute, xmin::text FROM public.history_minute_bars ORDER BY 1, 2"
     before, calls = admin_sql(marks, fetch=True), source.calls
-    again = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
+    again = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5), until=WINDOW_END)
     assert again.status is DayStatus.FINAL and again.counts is None
     assert admin_sql(marks, fetch=True) == before  # 0 rows changed: not one row version was rewritten
     assert source.calls == calls  # and Kite was not asked again

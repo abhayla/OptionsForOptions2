@@ -63,6 +63,10 @@ class HistoryStore(Protocol):
 
     def gap_minutes_missing(self, day: datetime.date) -> int: ...
 
+    def last_bar_minutes(self, day: datetime.date) -> dict[str, datetime.datetime]:
+        """Per instrument, the minute of its latest stored (not removed) bar of ``day``: what finalize must reach."""
+        ...
+
 
 class InMemoryHistoryStore:
     def __init__(self) -> None:
@@ -202,6 +206,13 @@ class InMemoryHistoryStore:
     def gap_minutes_missing(self, day: datetime.date) -> int:
         """LIVE bars the gap rule kept out for which no Kite candle exists (a gap minute with nothing to fill it)."""
         return sum(1 for key in self._gap_dropped if key[1].date() == day and key not in self._bars)
+
+    def last_bar_minutes(self, day: datetime.date) -> dict[str, datetime.datetime]:
+        out: dict[str, datetime.datetime] = {}
+        for iid, minute in self._bars:
+            if minute.date() == day and (iid not in out or minute > out[iid]):
+                out[iid] = minute
+        return out
 
     def bars(self, instrument_id: str, day: datetime.date) -> list[MinuteBar]:
         return sorted((b for (iid, _), b in self._bars.items() if iid == instrument_id and b.minute.date() == day),

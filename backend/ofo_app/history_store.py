@@ -44,11 +44,22 @@ _COLUMNS = "instrument_id, minute, open, high, low, close, volume, oi, source"
 _UPSERT = """
     INSERT INTO public.history_minute_bars
         (instrument_id, minute, trade_date, open, high, low, close, volume, oi, source, removed)
-    VALUES (:instrument_id, :minute, :trade_date, :open, :high, :low, :close, :volume, :oi, :source, FALSE)
+    SELECT t.instrument_id, t.minute, t.trade_date, t.open, t.high, t.low, t.close, t.volume, t.oi, t.source, FALSE
+    FROM unnest(CAST(:instrument_id AS text[]), CAST(:minute AS timestamptz[]), CAST(:trade_date AS date[]),
+                CAST(:open AS numeric[]), CAST(:high AS numeric[]), CAST(:low AS numeric[]), CAST(:close AS numeric[]),
+                CAST(:volume AS bigint[]), CAST(:oi AS bigint[]), CAST(:source AS text[]))
+        AS t(instrument_id, minute, trade_date, open, high, low, close, volume, oi, source)
     ON CONFLICT (instrument_id, minute) DO UPDATE SET
         open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close,
         volume = EXCLUDED.volume, oi = EXCLUDED.oi, source = EXCLUDED.source, removed = FALSE
 """
+_COLUMN_NAMES = ("instrument_id", "minute", "trade_date", "open", "high", "low", "close", "volume", "oi", "source")
+
+
+def _columns(rows: list[dict]) -> dict[str, list]:
+    """Row dicts -> one list per column: a whole batch is ONE statement (arrays unnested server-side), not a round
+    trip per row."""
+    return {name: [r[name] for r in rows] for name in _COLUMN_NAMES}
 
 
 def _row(b: MinuteBar) -> dict:
@@ -206,19 +217,29 @@ class PostgresHistoryStore:
 
             changed = [_row(b) for k, b in bars.items() if before_bars.get(k) != b]
             if changed:
-                await conn.execute(text(_UPSERT), changed)
-            removed = [{"i": k[0], "m": k[1]} for k in before_bars if k not in bars]
+                await conn.execute(text(_UPSERT), _columns(changed))
+            removed = [k for k in before_bars if k not in bars]
             if removed:  # the application role cannot DELETE: a removed LIVE bar is flagged, and reads honour it
-                await conn.execute(text("UPDATE public.history_minute_bars SET removed = TRUE "
-                                        "WHERE instrument_id = :i AND minute = :m"), removed)
-            new_gaps = [{"s": g[0], "e": g[1], "d": g[0].astimezone(IST).date()} for g in gaps - before_gaps]
+                await conn.execute(text(
+                    "UPDATE public.history_minute_bars AS b SET removed = TRUE FROM unnest(CAST(:i AS text[]), "
+                    "CAST(:m AS timestamptz[])) AS k(i, m) WHERE b.instrument_id = k.i AND b.minute = k.m"),
+                    {"i": [k[0] for k in removed], "m": [k[1] for k in removed]})
+            new_gaps = sorted(gaps - before_gaps)
             if new_gaps:
-                await conn.execute(text("INSERT INTO public.history_feed_gaps (gap_start, gap_end, trade_date) "
-                                        "VALUES (:s, :e, :d) ON CONFLICT DO NOTHING"), new_gaps)
-            new_dropped = [{"i": k[0], "m": k[1], "d": k[1].astimezone(IST).date()} for k in dropped - before_dropped]
+                await conn.execute(text(
+                    "INSERT INTO public.history_feed_gaps (gap_start, gap_end, trade_date) SELECT s, e, d FROM "
+                    "unnest(CAST(:s AS timestamptz[]), CAST(:e AS timestamptz[]), CAST(:d AS date[])) AS k(s, e, d) "
+                    "ON CONFLICT DO NOTHING"),
+                    {"s": [g[0] for g in new_gaps], "e": [g[1] for g in new_gaps],
+                     "d": [g[0].astimezone(IST).date() for g in new_gaps]})
+            new_dropped = sorted(dropped - before_dropped)
             if new_dropped:
-                await conn.execute(text("INSERT INTO public.history_gap_dropped (instrument_id, minute, trade_date) "
-                                        "VALUES (:i, :m, :d) ON CONFLICT DO NOTHING"), new_dropped)
+                await conn.execute(text(
+                    "INSERT INTO public.history_gap_dropped (instrument_id, minute, trade_date) SELECT i, m, d FROM "
+                    "unnest(CAST(:i AS text[]), CAST(:m AS timestamptz[]), CAST(:d AS date[])) AS k(i, m, d) "
+                    "ON CONFLICT DO NOTHING"),
+                    {"i": [k[0] for k in new_dropped], "m": [k[1] for k in new_dropped],
+                     "d": [k[1].astimezone(IST).date() for k in new_dropped]})
             for day, new in statuses.items():
                 if before_status.get(day) is not new:
                     await conn.execute(text(
@@ -253,15 +274,19 @@ class PostgresHistoryStore:
         found: dict[tuple[str, datetime.datetime], MinuteBar] = {}
         named = [(b.instrument_id, b.minute) for b in (*kw["bars"], *kw["candles"])]
         if named:
+            # a JOIN on the primary key: one index probe per named key (the round-1 IN (SELECT ...) planned as a full
+            # scan with a nested loop: 6.8 s for 240 keys, no completion at 240 instruments x 375 minutes)
             rows = await conn.execute(text(
-                f"SELECT {_COLUMNS} FROM public.history_minute_bars WHERE NOT removed AND (instrument_id, minute) IN "
-                "(SELECT * FROM unnest(CAST(:i AS text[]), CAST(:m AS timestamptz[])))"),
+                "SELECT b.instrument_id, b.minute, b.open, b.high, b.low, b.close, b.volume, b.oi, b.source "
+                "FROM unnest(CAST(:i AS text[]), CAST(:m AS timestamptz[])) AS k(i, m) "
+                "JOIN public.history_minute_bars AS b ON b.instrument_id = k.i AND b.minute = k.m WHERE NOT b.removed"),
                 {"i": [n[0] for n in named], "m": [n[1] for n in named]})
             found.update({(b.instrument_id, b.minute): b for b in map(_bar, rows)})
         for start, end in pieces:  # a minute [m, m+60s) overlaps the gap [s, e)
             rows = await conn.execute(text(
-                f"SELECT {_COLUMNS} FROM public.history_minute_bars WHERE NOT removed AND source = 'live' "
-                "AND minute < :e AND minute + interval '1 minute' > :s"), {"s": start, "e": end})
+                f"SELECT {_COLUMNS} FROM public.history_minute_bars WHERE trade_date = :d AND NOT removed "
+                "AND source = 'live' AND minute < :e AND minute + interval '1 minute' > :s"),
+                {"s": start, "e": end, "d": start.astimezone(IST).date()})
             found.update({(b.instrument_id, b.minute): b for b in map(_bar, rows)})
         if kw["replace_day"] is not None:
             rows = await conn.execute(text(
@@ -302,6 +327,16 @@ class PostgresHistoryStore:
         async def read():
             async with self._tx() as conn:
                 return dict(await self._statuses(conn, {day})).get(day, DayStatus.PROVISIONAL)
+
+        return self._run(read())
+
+    def last_bar_minutes(self, day: datetime.date) -> dict[str, datetime.datetime]:
+        async def read():
+            async with self._tx() as conn:
+                rows = await conn.execute(text(
+                    "SELECT instrument_id, max(minute) FROM public.history_minute_bars "
+                    "WHERE trade_date = :d AND NOT removed GROUP BY instrument_id"), {"d": day})
+                return {r[0]: r[1].astimezone(IST) for r in rows}
 
         return self._run(read())
 

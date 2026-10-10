@@ -7,7 +7,9 @@ full scan with a nested loop: 240 instruments did not finish in 480 s.
 
 Size and bound come from the environment so the SAME test runs small on a developer PC and at full size in CI:
   OFO_HISTORY_SCALE_INSTRUMENTS  instruments to finalize (default 40; CI sets 1603)
-  OFO_HISTORY_SCALE_BOUND_S      seconds the whole finalize may take (default 90; CI sets its own, see app-tests.yml)
+  OFO_HISTORY_SCALE_BOUND_S      seconds the whole finalize may take (default 90; CI: 600, see app-tests.yml)
+  OFO_HISTORY_SCALE_BATCH_BOUND_S  seconds ONE batch (50 instruments, one transaction) may take (default 20; CI: 45);
+                                 a batch whose cost grows with the table (a scan per lookup) fails this first
 This PC's PostgreSQL also serves a production system (owner decision 2026-10-09): never run the full size here.
 
 Real input: none exists at this size (the recordings hold 8 instruments), so the bars are synthetic but valid: every
@@ -37,6 +39,7 @@ from ofo_app.history_store import PostgresHistoryStore  # noqa: E402
 
 N = int(os.environ.get("OFO_HISTORY_SCALE_INSTRUMENTS", "40"))
 BOUND_S = float(os.environ.get("OFO_HISTORY_SCALE_BOUND_S", "90"))
+BATCH_BOUND_S = float(os.environ.get("OFO_HISTORY_SCALE_BATCH_BOUND_S", "20"))
 MINUTES = 375
 FIRST = at(9, 15)
 
@@ -83,6 +86,7 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
               f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s", file=sys.stderr)
         assert result.status.value == "final" and result.errors == {}
         assert result.counts.replaced == N * MINUTES and result.counts.kept_live == 0
+        assert max(batches) < BATCH_BOUND_S, f"one batch took {max(batches):.1f} s (bound {BATCH_BOUND_S} s)"
         assert elapsed < BOUND_S, f"finalize of {N} x {MINUTES} bars took {elapsed:.1f} s (bound {BOUND_S} s)"
         rows = admin_sql("SELECT source, count(*) FROM public.history_minute_bars GROUP BY 1", fetch=True)
         assert rows == [("kite", N * MINUTES)]

@@ -21,7 +21,7 @@ from typing import Sequence
 
 from ofo.history.bars import IST, SESSION_CLOSE, SESSION_OPEN
 from ofo.history.candles import MinuteCandleSource
-from ofo.history.finalize import DayResult, finalize_into
+from ofo.history.finalize import CHUNK_INSTRUMENTS, DayResult, finalize_into
 from ofo.history.store import DayStatus, HistoryStore
 
 log = logging.getLogger("ofo_app.history_finalize")
@@ -38,7 +38,8 @@ class FinalizeRefused(RuntimeError):
 
 
 def finalize_trading_day(store: HistoryStore, day: datetime.date, source: MinuteCandleSource,
-                         instrument_ids: Sequence[str], *, now: datetime.datetime) -> DayResult:
+                         instrument_ids: Sequence[str], *, now: datetime.datetime,
+                         chunk: int = CHUNK_INSTRUMENTS, until: datetime.time = FETCH_UNTIL) -> DayResult:
     earliest = datetime.datetime.combine(day, FINALIZE_NOT_BEFORE, IST)
     if now.astimezone(IST) < earliest:
         raise FinalizeRefused(f"{day} cannot be finalized before {earliest:%H:%M} IST (the session closes "
@@ -46,8 +47,8 @@ def finalize_trading_day(store: HistoryStore, day: datetime.date, source: Minute
     if store.day_status(day) is DayStatus.FINAL:  # a final day never changes: no fetch, no write
         return DayResult(DayStatus.FINAL, None, {})
     start = datetime.datetime.combine(day, SESSION_OPEN, IST)
-    end = datetime.datetime.combine(day, FETCH_UNTIL, IST)
-    return finalize_into(store, day, list(instrument_ids), source, start=start, end=end)
+    end = datetime.datetime.combine(day, until, IST)  # tests with a windowed recording pass an earlier end
+    return finalize_into(store, day, list(instrument_ids), source, start=start, end=end, chunk=chunk)
 
 
 def main(argv: Sequence[str] | None = None, *, now: datetime.datetime | None = None) -> int:
