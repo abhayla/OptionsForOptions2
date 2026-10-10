@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Iterable, Sequence
 
-from ofo.history.bars import ONE_MINUTE, BarSource, MinuteBar, minute_in_gap, minute_of
+from ofo.history.bars import BarSource, MinuteBar, minute_in_gap, minute_of
 from ofo.history.candles import CandleError, MinuteCandleSource
 from ofo.history.store import DayStatus, FinalizeCounts, HistoryStore
 
@@ -80,13 +80,12 @@ CHUNK_INSTRUMENTS = 50
 
 def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Sequence[str], source: MinuteCandleSource,
                   *, start: datetime.datetime, end: datetime.datetime, chunk: int = CHUNK_INSTRUMENTS) -> DayResult:
-    """Fetch Kite's candles per chunk of instruments, write each chunk set-based, and make the day final only if EVERY
-    fetch gave a usable answer AND Kite's candles reach the last minute the stored bars reach (capped at the range's last
-    whole minute), for every instrument that has stored bars that day.
+    """Fetch Kite's candles per chunk of instruments, write each chunk set-based, and make the day final when EVERY
+    fetch gave a usable answer (ADR-067). There is no completeness test: a minute Kite has no candle for keeps its live
+    bar, however many instruments that touches.
 
-    Answer states: candles returned (replace); empty list (no trades - keep live); error or timeout (counted, day stays
-    PROVISIONAL); malformed body (refused, stays PROVISIONAL); a candle outside the requested range (ignored, counted);
-    candles that stop before the instrument's last stored minute (``incomplete``, stays PROVISIONAL, retryable).
+    Answer states: candles returned (replace); empty list (keep live); error or timeout (counted, day stays
+    PROVISIONAL); malformed body (refused, stays PROVISIONAL); a candle outside the requested range (ignored, counted).
     Resumable: a batch is idempotent (a bar already equal to Kite's candle is not rewritten), so a re-run after a stop
     redoes the fetches and writes only what is still different; a FINAL day is never rewritten.
     Nothing is raised to the caller."""
@@ -95,11 +94,9 @@ def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Seque
     step = max(chunk, 1)
     replaced = kite_only = kept = 0
     seconds: list[float] = []
-    kite_last: dict[str, datetime.datetime] = {}
     try:
         if store.day_status(day) is DayStatus.FINAL:  # a FINAL day never changes; finalizing again is a no-op
             return DayResult(DayStatus.FINAL, None, {})
-        reach = store.last_bar_minutes(day)  # BEFORE any write: the minute each instrument's stored bars reach
     except Exception as exc:
         log.warning("history store failed: %s", type(exc).__name__)
         return DayResult(DayStatus.PROVISIONAL, None, {"store_failed": 1})
@@ -120,8 +117,6 @@ def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Seque
                     errors["out_of_range"] += 1
                     continue
                 kite.append(candle)
-                if iid not in kite_last or candle.minute > kite_last[iid]:
-                    kite_last[iid] = candle.minute
         try:
             began = time.perf_counter()
             # the store applies the gap rule and decides each bar's source (KITE, or BACKFILLED inside a gap)
@@ -134,16 +129,9 @@ def finalize_into(store: HistoryStore, day: datetime.date, instrument_ids: Seque
         replaced += counts.replaced
         kite_only += counts.kite_only
         kept = counts.kept_live  # the LIVE bars left on the whole day after this batch: the last batch is the answer
-    # Completeness, not a time margin: Kite must reach the last minute the stored bars reach (capped at the last whole
-    # minute of the requested range), or the fetch was cut short and the day stays provisional and retryable.
-    last_whole = end - ONE_MINUTE
-    behind = [i for i, last in reach.items() if kite_last.get(i) is None or kite_last[i] < min(last, last_whole)]
-    if behind:
-        errors["incomplete"] += len(behind)
-        log.warning("history finalize incomplete: %d instruments have stored bars after Kite's last candle", len(behind))
     try:
         missing = store.gap_minutes_missing(day)
-        complete = not (errors["malformed"] or errors["fetch_failed"] or errors["incomplete"])
+        complete = not (errors["malformed"] or errors["fetch_failed"])
         status = DayStatus.FINAL if complete else DayStatus.PROVISIONAL
         store.set_day_status(day, status)
     except Exception as exc:

@@ -27,9 +27,9 @@ from ofo.history.store import DayStatus, HistoryStore
 log = logging.getLogger("ofo_app.history_finalize")
 
 #: The session closes 15:30 IST, but expiring SENSEX options traded until 15:39 on 2026-10-08 (F-33): finalizing at
-#: 15:30 would make the day final before those minutes exist. Ten minutes after the close covers it (an earlier run
-#: is refused), and the Kite range runs to 15:59 so those late minutes replace the live ones.
-FINALIZE_NOT_BEFORE = datetime.time(15, 40)
+#: 15:30 would make the day final before those minutes exist. 16:00 leaves a 20-minute margin after the latest observed
+#: trading (an earlier run is refused), and the Kite range runs to 15:59 so those late minutes replace the live ones.
+FINALIZE_NOT_BEFORE = datetime.time(16, 0)
 FETCH_UNTIL = datetime.time(15, 59)
 
 

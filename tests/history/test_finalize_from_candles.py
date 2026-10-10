@@ -115,7 +115,7 @@ START, END = at(15, 5), at(15, 12)
 
 
 def assert_kite_up_to_1511(store):
-    # Kite's fixture ends at 15:11; the live 15:12 bar has no candle to replace it and stays provisional
+    # Kite's fixture ends at 15:11; the live 15:12 bar has no candle to replace it and keeps its live source
     bars = store.bars(NIFTY_CE, DAY)
     assert all(b.source is BarSource.KITE for b in bars if b.minute <= at(15, 11))
     assert [b.source for b in bars if b.minute > at(15, 11)] == [BarSource.LIVE]
@@ -130,15 +130,14 @@ def test_candles_returned_makes_the_day_final():
     assert result.errors == {}
 
 
-def test_empty_list_for_an_instrument_with_no_live_bars_is_final_but_not_for_one_the_feed_traded():
-    """W-067 r2: an empty answer means "no trades" only where the feed saw none; an instrument whose live bars exist
-    must have candles reaching them, or the answer is incomplete and the day stays provisional (retryable)."""
+def test_empty_list_is_final_and_the_live_bars_of_an_instrument_the_feed_traded_stay():
+    """ADR-067: a minute Kite has no candle for keeps the live bar; an empty answer is not a reason to refuse the day."""
     store = InMemoryHistoryStore()
     result = finalize_into(store, DAY, list(candle_bars()), InMemoryCandleSource([]), start=START, end=END)
     assert result.status is DayStatus.FINAL and result.counts.replaced == 0 and result.errors == {}
     store = _seeded_store()
     result = finalize_into(store, DAY, list(candle_bars()), InMemoryCandleSource([]), start=START, end=END)
-    assert result.status is DayStatus.PROVISIONAL and result.errors == {"incomplete": 8}
+    assert result.status is DayStatus.FINAL and result.errors == {}
     assert result.counts.replaced == 0 and result.counts.kept_live > 0
     assert all(b.source is BarSource.LIVE for b in store.bars(NIFTY_CE, DAY))
 
@@ -161,7 +160,7 @@ def test_a_candle_outside_the_requested_range_is_ignored_and_counted():
         def minute_candles(self, instrument_id, start, end):
             return [late]
     result = finalize_into(store, DAY, [NIFTY_CE], Loose(), start=START, end=END)
-    assert result.errors["out_of_range"] == 1  # (the 7 instruments not asked for also leave the day incomplete)
+    assert result.errors["out_of_range"] == 1
     assert not any(b.minute == at(15, 40) for b in store.bars(NIFTY_CE, DAY))
 
 

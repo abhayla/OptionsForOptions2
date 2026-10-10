@@ -72,13 +72,13 @@ def seed_live(n: int) -> None:
     # no ANALYZE here on purpose: a day's rows arrive all day and the job runs before statistics catch up
 
 
-def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(committed_day):
+def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(committed_day, capsys):
     seed_live(N)
     ids = [iid(i) for i in range(1, N + 1)]
     pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
     try:
         started = time.perf_counter()
-        result = finalize_trading_day(pg, DAY, source, ids, now=at(15, 45))
+        result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
         elapsed = time.perf_counter() - started
         print(f"\nSCALE instruments={N} total={elapsed:.1f}s", file=sys.stderr)
         batches = result.batch_seconds
@@ -86,8 +86,8 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
               f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s", file=sys.stderr)
         assert result.status.value == "final" and result.errors == {}
         assert result.counts.replaced == N * MINUTES and result.counts.kept_live == 0
-        assert max(batches) < BATCH_BOUND_S, f"one batch took {max(batches):.1f} s (bound {BATCH_BOUND_S} s)"
-        assert elapsed < BOUND_S, f"finalize of {N} x {MINUTES} bars took {elapsed:.1f} s (bound {BOUND_S} s)"
+        assert max(batches) < BATCH_BOUND_S, f"{line} - one batch exceeded {BATCH_BOUND_S} s"
+        assert elapsed < BOUND_S, f"{line} - total exceeded {BOUND_S} s"
         rows = admin_sql("SELECT source, count(*) FROM public.history_minute_bars GROUP BY 1", fetch=True)
         assert rows == [("kite", N * MINUTES)]
         assert source.calls == N
@@ -95,22 +95,35 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
         pg.close()
 
 
+class FailsAfter(GeneratedCandles):
+    """Kite answers the first ``ok`` instruments and then a timeout (a fetch error: the day stays provisional)."""
+
+    def __init__(self, ok: int) -> None:
+        super().__init__()
+        self.ok = ok
+
+    def minute_candles(self, instrument_id: str, start, end) -> list[MinuteBar]:
+        if self.calls >= self.ok:
+            self.calls += 1
+            raise TimeoutError("t")
+        return super().minute_candles(instrument_id, start, end)
+
+
 def test_finalize_is_resumable_and_a_rerun_rewrites_nothing_already_made_final(committed_day):
-    """A run that stops after some instruments leaves the day provisional; the next run finishes it and touches only
-    the rows still LIVE (not one KITE row version is rewritten)."""
+    """A run whose fetch fails part-way leaves the day provisional; the next run finishes it and touches only the rows
+    still LIVE (not one KITE row version is rewritten)."""
     n = min(N, 12)
     seed_live(n)
     ids = [iid(i) for i in range(1, n + 1)]
     pg = PostgresHistoryStore(_url("TEST_DATABASE_URL"))
     try:
-        half = GeneratedCandles()
-        first = finalize_trading_day(pg, DAY, half, ids[: n // 2], now=at(15, 45), chunk=3)
-        assert first.status.value == "provisional"  # live bars of the other instruments were never covered
+        first = finalize_trading_day(pg, DAY, FailsAfter(n // 2), ids, now=at(16, 5), chunk=3)
+        assert first.status.value == "provisional" and first.errors == {"fetch_failed": n - n // 2}
         marks = ("SELECT instrument_id, minute, xmin::text FROM public.history_minute_bars WHERE source = 'kite' "
                  "ORDER BY 1, 2")
         done = admin_sql(marks, fetch=True)
         assert len(done) == (n // 2) * MINUTES
-        second = finalize_trading_day(pg, DAY, GeneratedCandles(), ids, now=at(15, 50), chunk=3)
+        second = finalize_trading_day(pg, DAY, GeneratedCandles(), ids, now=at(16, 10), chunk=3)
         assert second.status.value == "final"
         after = {(i, m): x for i, m, x in admin_sql(marks, fetch=True)}
         assert len(after) == n * MINUTES

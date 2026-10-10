@@ -192,7 +192,7 @@ def test_a_price_finer_than_a_paisa_is_refused_not_silently_rounded(store):
 def test_the_database_refuses_any_change_to_a_final_day_as_the_application_role(committed_day):
     pg = PostgresHistoryStore(_url("TEST_DATABASE_URL"))
     replay_into([pg], ["1506-1512"])
-    finalize_trading_day(pg, DAY, InMemoryCandleSource(all_kite_candles()), list(candle_bars()), now=at(15, 45),
+    finalize_trading_day(pg, DAY, InMemoryCandleSource(all_kite_candles()), list(candle_bars()), now=at(16, 5),
                          until=WINDOW_END)
     pg.close()
     iid, minute = admin_sql("SELECT instrument_id, minute FROM public.history_minute_bars LIMIT 1", fetch=True)[0]

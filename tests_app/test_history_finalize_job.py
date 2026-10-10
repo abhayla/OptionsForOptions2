@@ -39,8 +39,8 @@ def test_finalize_makes_every_minute_kites_candle_and_a_second_run_changes_nothi
     kite = all_kite_candles()
     source, ids = InMemoryCandleSource(kite), list(candle_bars())
 
-    result = finalize_trading_day(pg, DAY, source, ids, now=at(15, 45), until=WINDOW_END)
-    finalize_trading_day(mem, DAY, InMemoryCandleSource(kite), ids, now=at(15, 45), until=WINDOW_END)
+    result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5), until=WINDOW_END)
+    finalize_trading_day(mem, DAY, InMemoryCandleSource(kite), ids, now=at(16, 5), until=WINDOW_END)
     assert result.status is DayStatus.FINAL and pg.day_status(DAY) is DayStatus.FINAL
     by = {(b.instrument_id, b.minute): b for b in pg.bars_for_day(DAY)}
     for k in kite:  # expected values are Kite's recorded candles, parsed from the fixture text
@@ -65,12 +65,12 @@ def test_finalize_refuses_before_the_session_has_closed(committed_day):
     pg = PostgresHistoryStore(_url("TEST_DATABASE_URL"))
     source = InMemoryCandleSource(all_kite_candles())
     try:
-        for now in (at(11, 0), at(15, 29, 59), at(15, 30)):
+        for now in (at(11, 0), at(15, 30), at(15, 45), at(15, 59, 59)):
             with pytest.raises(FinalizeRefused):
                 finalize_trading_day(pg, DAY, source, list(candle_bars()), now=now)
         assert source.calls == 0 and pg.day_status(DAY) is DayStatus.PROVISIONAL
         with pytest.raises(FinalizeRefused):  # a day that has not started yet
-            finalize_trading_day(pg, DAY + datetime.timedelta(days=1), source, [], now=at(15, 45))
+            finalize_trading_day(pg, DAY + datetime.timedelta(days=1), source, [], now=at(16, 5))
     finally:
         pg.close()
 
