@@ -371,11 +371,11 @@ async def test_validators_are_pinned_and_the_app_role_has_no_execute(app_engine,
     executable by ofo_app (the SECURITY DEFINER guards call them)."""
     import importlib.util
     from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / "0008_strategy_store.py"
-    spec = importlib.util.spec_from_file_location("m0008_for_validator_pins", path)
+    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / "0010_strategy_schema_version.py"
+    spec = importlib.util.spec_from_file_location("m0010_for_validator_pins", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    pins = module.VALIDATOR_PINS
+    pins = module.NEW_PINS  # 0010 re-created the validators (0008's pins are the downgrade's)
     assert len(pins) == 3, pins
     async with admin_engine.connect() as conn:
         for signature, pinned in pins.items():
