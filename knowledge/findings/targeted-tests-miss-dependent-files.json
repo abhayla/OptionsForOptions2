@@ -1,0 +1,27 @@
+{
+ "id": "targeted-tests-miss-dependent-files",
+ "scope": "generic",
+ "class": "When local runs are limited to the test files a change is 'about' (to save a shared host's CPU), a test in another file that pins the changed behaviour - a status code, a redirect, a message code, a route shape - is skipped, so the change looks green locally and the first full run in CI fails; the selection must be driven by a search for every changed route, code and message across both test trees, not by file names.",
+ "mechanism": "Issue #163 changed the Kite login callback's refusals from a 403 JSON body to a 302 redirect. The builder, both reviewers and the orchestrator ran tests_app/test_kite_login.py, test_error_logging.py, test_error_boundary_scan.py and test_api_models.py (137 passed); tests_app/test_broker_token_store.py:458 still asserted (403, render('broker_user_mismatch').as_dict()) and only CI's full app suite ran it.",
+ "first_seen": {
+  "date": "2026-10-10",
+  "where": "PR #176 (fix/163-refusal-redirect @ de62820), CI run 38018869688 job api",
+  "evidence": "CI: '1 failed, 1072 passed, 3 skipped' - JSONDecodeError on refused.json() at test_broker_token_store.py:458; locally after updating the assertion: test_broker_token_store.py + test_kite_login.py 150 passed; a grep of tests/ and tests_app/ for the callback path and every refusal code found no other dependent test."
+ },
+ "fix": "Instance: the assertion now expects the 302 to /broker/refused?code=broker_user_mismatch with no body (session-row checks unchanged). Class mechanism: a quality-bar line in docs/process/builder-brief.md - before the targeted run, grep tests/ and tests_app/ for every route, status, code and message the change touches and add every file that names one to the run.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "CI's full app suite is the backstop by design (owner decision 2026-10-09: heavy runs in CI on the VPS); the brief line reduces CI rounds, it does not replace the full run."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-065.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-10",
+   "where": "PR #176",
+   "evidence": "one CI round (api job ~1.5 min) lost"
+  }
+ ]
+}
