@@ -229,6 +229,51 @@ async def test_domain_and_database_agree_on_every_bounded_slot(app_engine):
             await trans.rollback()
 
 
+def _recorded(phase: str) -> list[str]:
+    import importlib.util
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / \
+        "0010_strategy_schema_version.py"
+    found = importlib.util.spec_from_file_location(f"ofo_migration_0010_{phase}", path)
+    migration = importlib.util.module_from_spec(found)
+    found.loader.exec_module(migration)  # type: ignore[union-attr]
+    out: list[str] = []
+    migration.op = SimpleNamespace(execute=lambda sql, *a, **k: out.append(str(sql)))
+    migration._BASE._app_role = lambda: "ofo_app"
+    getattr(migration, phase)()
+    return out
+
+
+async def test_0010_downgrade_then_upgrade_round_trips_on_the_real_database(admin_engine):
+    """Downgrade (0008's validators): version 2 is storable again; upgrade: refused again, version 1 still stores; the
+    allowlist function's 'post' check (md5 pins, no EXECUTE for ofo_app) passes both ways. Rolled back."""
+    down, up = _recorded("downgrade"), _recorded("upgrade")
+    assert "'pre'" in up[0] and "'post'" in up[-1] and "'post'" in down[-1]
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            good, _, _ = await _iron_condor_text(conn)
+            v2 = json.loads(good)
+            v2["schema_version"] = 2
+            for sql in down:
+                await conn.execute(text(sql))
+            assert (await conn.execute(text(INSERT + " RETURNING id"),
+                                       {"u": _user(), "d": json.dumps(v2), "v": 2})).scalar_one() > 0
+            for sql in up:
+                await conn.execute(text(sql))
+            await _expect_refused(conn, INSERT, CHECK_VIOLATION, {"u": _user(), "d": json.dumps(v2), "v": 2})
+            assert (await conn.execute(text(INSERT + " RETURNING id"),
+                                       {"u": _user(), "d": good, "v": 1})).scalar_one() > 0
+            volatility = (await conn.execute(text(
+                "SELECT string_agg(provolatile::text, ',') FROM pg_proc WHERE proname LIKE 'ofo_strategy_%_valid'"))
+            ).scalar_one()
+            assert volatility == "s,s,s"
+        finally:
+            await trans.rollback()
+
+
 async def test_domain_and_database_agree_on_the_change_item_bounds(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
