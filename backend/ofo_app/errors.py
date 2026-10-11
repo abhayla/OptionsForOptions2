@@ -154,7 +154,7 @@ def _verify(response: object) -> None:
     kind = type(response)
     if kind not in _DOOR_TYPES:
         raise DoorRefused("not a door response")
-    frozen = response.__dict__.get("_frozen")  # type: ignore[attr-defined]
+    frozen = getattr(response, "_frozen", None)
     if type(frozen) is not tuple or len(frozen) != 3:
         raise DoorRefused("a door response was never frozen")
     status, headers, body = frozen
@@ -188,7 +188,7 @@ async def _send_frozen(response: Response, scope: Scope, send: Send) -> None:
     _verify(response)
     if scope["type"] != "http":
         raise DoorRefused("a door response is sent over http only")
-    status, headers, body = response.__dict__["_frozen"]
+    status, headers, body = response._frozen  # type: ignore[attr-defined]
     scope[DOOR_KEY] = _SEAL
     await send({"type": "http.response.start", "status": status, "headers": list(headers)})
     await send({"type": "http.response.body", "body": bytes(body)})
