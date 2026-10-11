@@ -21,9 +21,11 @@ itself and never re-raises.
 
 from __future__ import annotations
 
+import functools
+import inspect
 import logging
 import secrets
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -31,12 +33,14 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
+from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_message_of
-from ofo_app.api_models import ApiModel
+from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.redaction import install_redaction, keep_public_codes
 
 keep_public_codes(frozenset(t.code for t in CATALOGUE.values()))  # codes are public: never redacted as a token shape
@@ -92,18 +96,129 @@ KEPT_HEADERS: frozenset[str] = frozenset({"allow", "www-authenticate"})
 NO_LEAK_HEADERS: Mapping[str, str] = MappingProxyType({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
-def _body(message: UserFacingError, status: int, headers: Mapping[str, str] | None = None) -> JSONResponse:
+#: The seal: `ClosedResponse` (and the sealed redirect) stamp it into the request scope when they are sent; `_Boundary`
+#: lets a response start only when it is there. Nothing else in the app has it, so a raw Response, a mounted app or a
+#: framework default fails closed (W-069, issue #148).
+DOOR_KEY = "ofo.door"
+_SEAL = object()
+
+
+#: Headers a door response may carry: the body's own two, the no-leak pair, and the protocol ones an error keeps.
+_DOOR_HEADERS = frozenset({"content-length", "content-type", "cache-control", "referrer-policy", "www-authenticate",
+                           "retry-after", "allow", "set-cookie", "location"})
+_REDIRECT_MINT = object()
+
+
+def _verify_headers(response: Response) -> None:
+    names = {k.decode("latin-1").lower() for k, _ in response.raw_headers}
+    if not names <= _DOOR_HEADERS:
+        raise DoorRefused("a door response carries a header the door does not write")
+
+
+class ClosedResponse(Response):
+    """A JSON response whose body is `Emitted` bytes (made only by `ofo_app.api_models.emit`) and which seals the request
+    when it is sent. The one response type the API writes a body with. Not subclassable; `verify` runs at the route
+    wrapper and again at the seal, so a body or header changed after construction is refused."""
+
+    media_type = "application/json"
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("ClosedResponse is not subclassed")
+
+    def __init__(self, body: Emitted, status_code: int = 200, headers: Mapping[str, str] | None = None) -> None:
+        if type(body) is not Emitted:
+            raise TypeError(f"a ClosedResponse body is made by emit(), not {type(body).__name__}")
+        super().__init__(content=body, status_code=status_code, headers=dict(headers) if headers else None)
+        self._emitted = body
+
+    def verify(self) -> None:
+        if type(self.body) is not Emitted or self.body is not self._emitted:
+            raise DoorRefused("a door response body was changed after it was written")
+        _verify_headers(self)
+        if self.headers.get("content-length") != str(len(self.body)):
+            raise DoorRefused("a door response content-length is not its body's")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.verify()
+        scope[DOOR_KEY] = _SEAL
+        await super().__call__(scope, receive, send)
+
+
+class SealedRedirect(RedirectResponse):
+    """A body-less 302 that seals the request when it is sent. Made only by `typed_redirect` (a mint token, so no
+    route can point one at an outside host); its Location is checked again when it is verified and sent."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("SealedRedirect is not subclassed")
+
+    def __init__(self, location: str, headers: Mapping[str, str] | None = None, *, _mint: object = None) -> None:
+        if _mint is not _REDIRECT_MINT:
+            raise TypeError("a SealedRedirect is made only by typed_redirect")
+        super().__init__(location, status_code=302, headers=dict(headers) if headers else None)
+        self._location = self.headers["location"]
+
+    def verify(self) -> None:
+        if self.status_code != 302 or self.body != b"" or self.headers.get("location") != self._location:
+            raise DoorRefused("a sealed redirect was changed after it was made")
+        _verify_headers(self)
+        try:
+            _check_location(self._location)
+        except ValueError:
+            raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.verify()
+        scope[DOOR_KEY] = _SEAL
+        await super().__call__(scope, receive, send)
+
+
+_DOOR_TYPES = (ClosedResponse, SealedRedirect)
+
+
+def _body(message: UserFacingError, status: int, headers: Mapping[str, str] | None = None) -> ClosedResponse:
     extra = {"WWW-Authenticate": WWW_AUTHENTICATE} if status == 401 else {}
-    return JSONResponse(status_code=status, content=message.as_dict(),
-                        headers={**NO_LEAK_HEADERS, **extra, **(headers or {})})
+    return ClosedResponse(emit_message(message), status, {**NO_LEAK_HEADERS, **extra, **(headers or {})})
 
 
-def typed_response(model: ApiModel, status_code: int) -> JSONResponse:
-    """A success body at a non-default status (e.g. /health's 503), built only from a typed `ApiModel`, whose fields
-    cannot hold free text (ofo_app/api_models.py). One of the two other places a Response is constructed."""
-    if not isinstance(model, ApiModel):
-        raise TypeError(f"typed_response needs an ApiModel, got {type(model).__name__}")
-    return JSONResponse(status_code=status_code, content=model.model_dump(mode="json"))
+def respond(model: ApiModel, status_code: int) -> ClosedResponse:
+    """A success body at a non-default status (e.g. /health's 503), written by the door from a typed `ApiModel`."""
+    return ClosedResponse(emit(model), status_code)
+
+
+def _through_the_door(endpoint: Callable[..., object], holder: list[ClosedRoute]) -> Callable[..., object]:
+    """The endpoint, wrapped so its result is a sealed door response: an instance of EXACTLY the route's response model
+    is written by `emit`; a sealed door response passes; anything else (a dict, a raw Response, a subclass) is refused.
+    Async exactly when the endpoint is: FastAPI decides how to call it from the unwrapped function."""
+
+    def convert(result: object) -> object:
+        route = holder[0]
+        if type(result) in _DOOR_TYPES:
+            result.verify()
+            return result
+        if route.response_model is not None and type(result) is route.response_model:
+            return ClosedResponse(emit(result, exclude_unset=route.response_model_exclude_unset),  # type: ignore[arg-type]
+                                  route.status_code or 200)
+        raise DoorRefused(f"{route.path}: the route returned {type(result).__name__}, not exactly its response model")
+
+    if inspect.iscoroutinefunction(endpoint):
+        @functools.wraps(endpoint)
+        async def wrapper(*args: object, **kwargs: object) -> object:
+            return convert(await endpoint(*args, **kwargs))
+    else:
+        @functools.wraps(endpoint)
+        def wrapper(*args: object, **kwargs: object) -> object:  # type: ignore[misc]
+            return convert(endpoint(*args, **kwargs))
+    wrapper.ofo_door = True  # type: ignore[attr-defined]
+    return wrapper
+
+
+class ClosedRoute(APIRoute):
+    """The only route class of the API: its endpoint's result goes through `emit` (see `_through_the_door`)."""
+
+    def __init__(self, path: str, endpoint: Callable[..., object], **kwargs: object) -> None:
+        holder: list[ClosedRoute] = []
+        super().__init__(path, _through_the_door(endpoint, holder), **kwargs)  # type: ignore[arg-type]
+        holder.append(self)
 
 
 #: Characters that would end a Set-Cookie attribute or a header line, or turn a path into a different URL.
@@ -127,7 +242,7 @@ class RedirectCookie:
                 raise ValueError("a cookie name, path or value may not hold ';', CR or LF")
 
 
-def _clear(response: JSONResponse | RedirectResponse, cookie: RedirectCookie) -> None:
+def _clear(response: Response, cookie: RedirectCookie) -> None:
     response.delete_cookie(cookie.name, path=cookie.path, secure=cookie.secure, httponly=True, samesite="lax")
 
 
@@ -159,14 +274,14 @@ def _check_location(location: str) -> None:
         raise ValueError("a redirect leaves this site only for the Zerodha login URL")
 
 
-def typed_redirect(model: ApiModel, location: str, cookie: RedirectCookie | None = None) -> RedirectResponse:
+def typed_redirect(model: ApiModel, location: str, cookie: RedirectCookie | None = None) -> SealedRedirect:
     """A 302 with NO body (W-058: the Zerodha login link and the callback's landing): the route's declared typed
     `ApiModel` names which redirect it is, and the answer carries only the `Location`, the no-leak headers and at most
     one cookie. The other place a Response is constructed outside the error handlers; it holds no text a user reads."""
     if not isinstance(model, ApiModel):
         raise TypeError(f"typed_redirect needs an ApiModel, got {type(model).__name__}")
     _check_location(location)
-    response = RedirectResponse(location, status_code=302, headers=dict(NO_LEAK_HEADERS))
+    response = SealedRedirect(location, dict(NO_LEAK_HEADERS), _mint=_REDIRECT_MINT)
     if cookie is not None and cookie.value is None:
         _clear(response, cookie)
     elif cookie is not None:
@@ -179,7 +294,7 @@ def _reference() -> str:
     return "ERR-" + secrets.token_hex(4).upper()
 
 
-def _internal_response(exc: BaseException, request: Request) -> JSONResponse:
+def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
     reference = _reference()
     log.error("unhandled error %s on %s %s", reference, request.method, request.url.path, exc_info=exc)
     return _body(render("internal_system_request_failed", reference=reference), 500)
@@ -190,7 +305,7 @@ def _validation_problems(exc: RequestValidationError) -> list[tuple[tuple[object
     return [(tuple(e.get("loc", ())), str(e.get("type", ""))) for e in exc.errors()]
 
 
-def _http_response(exc: StarletteHTTPException, request: Request) -> JSONResponse:
+def _http_response(exc: StarletteHTTPException, request: Request) -> ClosedResponse:
     status = exc.status_code
     log.info("http %s on %s %s", status, request.method, request.url.path)  # never `detail`
     headers = {k: v for k, v in (exc.headers or {}).items() if k.lower() in KEPT_HEADERS}
@@ -205,7 +320,7 @@ def _http_response(exc: StarletteHTTPException, request: Request) -> JSONRespons
     return _body(render("internal_system_request_failed", reference=reference), status if status >= 500 else 500)
 
 
-async def handle_error(request: Request, exc: Exception) -> JSONResponse:
+async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
     """The single exception handler: registered for every exception type the framework routes to a handler."""
     message = user_message_of(exc)
     if message is not None:
@@ -228,22 +343,41 @@ async def handle_error(request: Request, exc: Exception) -> JSONResponse:
     return _internal_response(exc, request)
 
 
+#: The outcome route predates the door (plain `str` fields built in the domain, instrument ids with ':'): exempt by exact
+#: method and path until W-066 (issue #172) moves it onto the door and deletes this entry. Nothing else is exempt but
+#: the framework docs pages, and those only where `main.create_app` mounts them (ADR-073).
+OUTCOME_EXEMPTION = ("POST", "/api/strategies/outcome")
+
+
 class _Boundary:
     """Inner ASGI middleware: an exception the framework's own middleware did not answer is answered here, through
-    `handle_error`, and NOT re-raised, so no server logger ever receives the raw exception."""
+    `handle_error`, and NOT re-raised, so no server logger ever receives the raw exception.
 
-    def __init__(self, app: ASGIApp) -> None:
+    It is also the door's last guard (W-069): a response may start only if the request was sealed by a `ClosedResponse`
+    or a sealed redirect; anything else (a raw Response, a mounted app, a framework default) is dropped, whole, and
+    answered with the internal-system message. `exempt` is a set of exact (method, path) pairs."""
+
+    def __init__(self, app: ASGIApp, exempt: frozenset[tuple[str, str]] = frozenset()) -> None:
         self.app = app
+        self.exempt = exempt
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        exempt = (scope["method"], scope["path"]) in self.exempt
         started = False
+        refused = False
 
         async def tracking_send(message: Message) -> None:
-            nonlocal started
+            nonlocal started, refused
+            if refused:
+                return
             if message["type"] == "http.response.start":
+                if not exempt and scope.get(DOOR_KEY) is not _SEAL:
+                    refused = True
+                    log.error("response door: an unsealed response was dropped on %s %s", scope["method"], scope["path"])
+                    return
                 started = True
             await send(message)
 
@@ -253,6 +387,10 @@ class _Boundary:
             response = await handle_error(Request(scope), exc)
             if not started:
                 await response(scope, receive, send)
+            return
+        if refused:
+            response = _internal_response(DoorRefused("an unsealed response left the app"), Request(scope))
+            await response(scope, receive, send)
 
 
 def install(app: FastAPI) -> None:
@@ -261,4 +399,6 @@ def install(app: FastAPI) -> None:
     install_redaction()
     for exc_type in (Exception, StarletteHTTPException, RequestValidationError):
         app.add_exception_handler(exc_type, handle_error)
-    app.add_middleware(_Boundary)
+    docs = {("GET", url) for url in (app.docs_url, app.redoc_url, app.openapi_url,
+                                      app.swagger_ui_oauth2_redirect_url if app.docs_url else None) if url}
+    app.add_middleware(_Boundary, exempt=frozenset(docs | {OUTCOME_EXEMPTION}))

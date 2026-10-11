@@ -7,15 +7,23 @@ and a plain `str` (or anything not listed below) raises TypeError. Allowed leave
   result (`ExplanationText`); a plain string is refused at validation, so text built in route code cannot pass;
 - `Identifier`: a closed token (letters, digits, `_ - .`; no `:` or `=`), at most 64 characters and no space, so it can never
   carry a sentence;
-- `Literal[...]` of strings, `bool`, `int`, `Decimal` (serialized as a string, project rule), `datetime`, `date`,
-  `Enum` subclasses, nested `ApiModel`s, and `list`/`tuple`/`Optional` of those.
+- `Literal[...]` of Identifier-pattern strings, `bool` and `int` (no Enum: its values are free text), `Decimal`
+  (written as a plain string, project rule), timezone-aware `datetime`, `date`, nested `ApiModel`s, `dict[Identifier, X]`
+  and `list`/`tuple`/`Optional` of those.
 So string building in route code is harmless: it cannot reach a response body.
+
+The class check above is an early warning, not the guarantee (W-069, issue #148). The guarantee is `emit`: the ONE
+function that writes a response body. It never calls `model_dump` or pydantic's encoder; it walks the instance by each
+field's declared annotation and writes only the leaf types above, each matched on its exact `type()`; keys are the
+declared field names only; extra fields, aliases or a changed model config refuse the whole response (`DoorRefused`).
 """
 
 from __future__ import annotations
 
 import datetime
-import enum
+import json
+import logging
+import re
 import types
 import typing
 from decimal import Decimal
@@ -26,6 +34,8 @@ from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, Str
 from ofo.errors import UserFacingError
 from ofo.errors.explanations import ExplanationText
 from ofo_app.closed_namespace import own_names
+
+log = logging.getLogger("ofo_app.main")
 
 
 def _catalogue_only(value: object) -> UserFacingError | ExplanationText:
@@ -49,28 +59,42 @@ CatalogueText = Annotated[object, PlainValidator(_catalogue_only), PlainSerializ
 IDENTIFIER_MAX = 64
 Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$" % IDENTIFIER_MAX)]
 Money = Annotated[Decimal, PlainSerializer(lambda v: str(v), return_type=str)]
+_IDENTIFIER = re.compile(r"[A-Za-z0-9_\-.]{1,%d}" % IDENTIFIER_MAX)  # the same pattern, re-checked at the door
+_FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
 
 _LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date)
 
 
+def _closed_literal(tp: Any) -> bool:
+    """Literal arguments are exact ints, bools or Identifier-pattern strs (a sentence can never be one)."""
+    return all(type(a) in (int, bool) or (type(a) is str and _IDENTIFIER.fullmatch(a) is not None)
+               for a in typing.get_args(tp))
+
+
 def check_field_type(tp: Any, where: str) -> None:
     """Raise TypeError unless `tp` is one of the allowed shapes (module docstring)."""
-    if tp is CatalogueText or tp is Identifier or tp is Money:
+    if tp == CatalogueText or tp == Identifier or tp == Money:
         return
     origin = typing.get_origin(tp)
     if origin is Annotated:
         raise TypeError(f"{where}: only CatalogueText, Identifier and Money may be Annotated types")
     if origin is Literal:
-        if all(isinstance(a, (str, int, bool)) for a in typing.get_args(tp)):
+        if _closed_literal(tp):
             return
-        raise TypeError(f"{where}: Literal values must be str/int/bool")
+        raise TypeError(f"{where}: Literal values must be ints, bools or Identifier-pattern strs")
+    if origin is dict:
+        key, value = typing.get_args(tp)
+        if key != Identifier:
+            raise TypeError(f"{where}: a dict key must be an Identifier")
+        check_field_type(value, where)
+        return
     if origin in (list, tuple, typing.Union, types.UnionType):
         for arg in typing.get_args(tp):
             if arg is not type(None) and arg is not Ellipsis:
                 check_field_type(arg, where)
         return
     if isinstance(tp, type):
-        if issubclass(tp, ApiModel) or issubclass(tp, enum.Enum) or tp in _LEAVES:
+        if issubclass(tp, ApiModel) or tp in _LEAVES:
             return
     raise TypeError(f"{where}: {tp!r} is not allowed in an API response (free text must be CatalogueText)")
 
@@ -90,6 +114,10 @@ _PYDANTIC_NAMESPACE = frozenset({
 })
 
 
+def _has_alias(info: Any) -> bool:
+    return info.alias is not None or info.serialization_alias is not None or info.validation_alias is not None
+
+
 def _refuse_open_doors(cls: type) -> None:
     """Raise TypeError unless `cls` is a closed ApiModel: data fields only, no hook that can write a response body."""
     for base in cls.__mro__[1:]:
@@ -101,6 +129,12 @@ def _refuse_open_doors(cls: type) -> None:
     if extra:
         raise TypeError(f"{cls.__name__}: an ApiModel body holds fields only; refused {extra} (no method, property, "
                         f"computed_field, serializer or override may shape a response)")
+    if cls.model_config != ApiModel.model_config:  # type: ignore[attr-defined]
+        raise TypeError(f"{cls.__name__}: an ApiModel's model_config is the base one exactly (no extra=allow, alias "
+                        f"generator, json_encoders or other setting may shape a response)")
+    aliased = [name for name, info in cls.model_fields.items() if _has_alias(info)]  # type: ignore[attr-defined]
+    if aliased:
+        raise TypeError(f"{cls.__name__}: a field carries an annotation and a default only, never an alias {aliased}")
     d = cls.__pydantic_decorators__  # type: ignore[attr-defined]
     hooks = {"computed_fields": d.computed_fields, "field_serializers": d.field_serializers,
              "model_serializers": d.model_serializers, "field_validators": d.field_validators,
@@ -135,3 +169,168 @@ class ApiModel(BaseModel):
                                     f"Annotated types")
                 continue
             check_field_type(annotation, f"{cls.__name__}.{name}")
+
+
+# ---- the door: the one serializer ---------------------------------------------------------------------------------------
+
+class DoorRefused(Exception):
+    """The response could not be written from closed value types. The message names the field path and the type name,
+    never the value."""
+
+
+_TOKEN = object()
+
+
+class Emitted(bytes):
+    """A response body made by `emit` (or `emit_message`) and by nothing else: `ClosedResponse` takes only this type."""
+
+    __slots__ = ()
+
+    def __new__(cls, data: bytes, *, _token: object = None) -> Emitted:
+        if _token is not _TOKEN:
+            raise TypeError("Emitted bytes are made only by ofo_app.api_models.emit")
+        return super().__new__(cls, data)
+
+
+def _refuse(path: str, value: object, slot: str) -> DoorRefused:
+    return DoorRefused(f"{path}: {type(value).__name__} is not a closed {slot} value")
+
+
+def _catalogue_leaf(value: object, path: str) -> object:
+    if type(value) is UserFacingError:
+        parts = value.as_dict()
+        if all(type(k) is str and (v is None or type(v) is str) for k, v in parts.items()):
+            return parts
+        raise _refuse(path, value, "catalogue text")
+    if type(value) is ExplanationText:
+        return str.__str__(value)
+    raise _refuse(path, value, "catalogue text")
+
+
+def _datetime_text(value: object, path: str) -> str:
+    if type(value) is datetime.datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise _refuse(path, value, "timezone-aware datetime")
+        text = value.isoformat()
+        return text[:-6] + "Z" if text.endswith("+00:00") else text
+    if type(value) is datetime.date:
+        return value.isoformat()
+    raise _refuse(path, value, "datetime")
+
+
+def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
+    """The value as JSON-ready data, only when its exact type fits the declared slot `tp`."""
+    if tp == CatalogueText:
+        return _catalogue_leaf(value, path)
+    if tp == Identifier:
+        if type(value) is str and _IDENTIFIER.fullmatch(value):
+            return value
+        raise _refuse(path, value, "Identifier")
+    if tp == Money:
+        if type(value) is Decimal and value.is_finite():
+            return format(value, "f")
+        raise _refuse(path, value, "Money")
+    origin = typing.get_origin(tp)
+    if origin is Literal:
+        if any(type(a) is type(value) and a == value for a in typing.get_args(tp)) and (
+                type(value) is not str or _IDENTIFIER.fullmatch(value)):
+            return value
+        raise _refuse(path, value, "Literal")
+    if origin in (list, tuple):
+        if type(value) is not origin:
+            raise _refuse(path, value, origin.__name__)
+        args = typing.get_args(tp)
+        if origin is tuple and not (len(args) == 2 and args[1] is Ellipsis):
+            if len(args) != len(value):
+                raise _refuse(path, value, "tuple")
+            return [_walk(v, a, f"{path}[{i}]", exclude_unset) for i, (v, a) in enumerate(zip(value, args))]
+        return [_walk(v, args[0], f"{path}[{i}]", exclude_unset) for i, v in enumerate(value)]
+    if origin in (typing.Union, types.UnionType):
+        members = typing.get_args(tp)
+        if value is None and type(None) in members:
+            return None
+        for member in members:
+            if member is type(None):
+                continue
+            try:
+                return _walk(value, member, path, exclude_unset)
+            except DoorRefused:
+                continue
+        raise _refuse(path, value, "union")
+    if origin is dict:
+        key_type, value_type = typing.get_args(tp)
+        if key_type != Identifier or type(value) is not dict:
+            raise _refuse(path, value, "dict")
+        if not all(type(k) is str and _IDENTIFIER.fullmatch(k) for k in value):
+            raise DoorRefused(f"{path}: a dict key is not an Identifier")
+        return {k: _walk(v, value_type, f"{path}{{}}", exclude_unset) for k, v in value.items()}
+    if tp is bool or tp is int:
+        if type(value) is tp:
+            return value
+        raise _refuse(path, value, tp.__name__)
+    if tp is datetime.datetime or tp is datetime.date:
+        if type(value) is tp:
+            return _datetime_text(value, path)
+        raise _refuse(path, value, tp.__name__)
+    if isinstance(tp, type) and issubclass(tp, ApiModel):
+        if type(value) is not tp:
+            raise _refuse(path, value, tp.__name__)
+        return _model_tree(value, exclude_unset, path)
+    raise _refuse(path, value, "annotation")
+
+
+def _field_type(info: Any) -> Any:
+    return Annotated[(info.annotation, *info.metadata)] if info.metadata else info.annotation  # type: ignore[valid-type]
+
+
+_NO_VALUE = object()
+
+
+def _model_tree(model: ApiModel, exclude_unset: bool, path: str) -> dict[str, object]:
+    cls = type(model)
+    if cls.model_config != ApiModel.model_config:
+        raise DoorRefused(f"{path}: the model config is not the base ApiModel config")
+    if model.__pydantic_extra__:
+        raise DoorRefused(f"{path}: the model carries extra fields")
+    out: dict[str, object] = {}
+    for name, info in cls.model_fields.items():
+        if _has_alias(info):
+            raise DoorRefused(f"{path}.{name}: the field carries an alias")
+        if exclude_unset and name not in model.model_fields_set:
+            continue
+        if not _FIELD_NAME.fullmatch(name):
+            raise DoorRefused(f"{path}: a field name is not a closed key")
+        value = getattr(model, name, _NO_VALUE)
+        if value is _NO_VALUE:
+            raise DoorRefused(f"{path}.{name}: the field holds no value")
+        out[name] = _walk(value, _field_type(info), f"{path}.{name}", exclude_unset)
+    return out
+
+
+def _encode(tree: object) -> Emitted:
+    return Emitted(json.dumps(tree, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8"),
+                   _token=_TOKEN)
+
+
+def emit(model: ApiModel, exclude_unset: bool = False) -> Emitted:
+    """THE serializer of every response body: walks `model` by its declared annotations and writes closed value types
+    only. Never `model_dump`, `jsonable_encoder` or pydantic's JSON encoder. Raises `DoorRefused` (logging the field
+    path and type name, never the value) for anything else."""
+    try:
+        if not isinstance(model, ApiModel):
+            raise _refuse(type(model).__name__, model, "ApiModel")
+        return _encode(_model_tree(model, exclude_unset, type(model).__name__))
+    except DoorRefused as exc:
+        log.error("response door refused: %s", exc)
+        raise
+
+
+def emit_message(message: UserFacingError) -> Emitted:
+    """An error body: the flat four-part catalogue message (`as_dict()`), the one other shape the door writes."""
+    try:
+        if type(message) is not UserFacingError:
+            raise _refuse("message", message, "catalogue text")
+        return _encode(_catalogue_leaf(message, "message"))
+    except DoorRefused as exc:
+        log.error("response door refused: %s", exc)
+        raise
