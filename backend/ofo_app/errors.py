@@ -7,8 +7,9 @@ Every error response body the API sends is built here, and only from a `render()
 - a request the API cannot read (`RequestValidationError`) -> `user_input_request_invalid` (422);
 - an HTTP error raised by the framework or a route: 401 -> `entitlement_access_sign_in_required`; 503 ->
   `internal_system_service_unavailable`; any other 4xx -> `user_input_request_not_available`; any other 5xx -> the
-  internal message. The status is kept, and so are only the `Allow` (405) and `WWW-Authenticate` (401) headers; its
-  `detail` is never shown or logged;
+  internal message. The status is kept (a 4xx/5xx), and the exception's headers are NEVER copied: `Allow` (405) is
+  re-minted from the method tokens it names, `WWW-Authenticate` (401) is the constant; its `detail` is never shown or
+  logged;
 - ANY other exception -> `internal_system_request_failed` (500) with a fresh reference id; the exception goes only to
   the log, beside that reference; every log record of the process is redacted (ofo_app/redaction.py, round 10).
 
@@ -24,9 +25,10 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import re
 import secrets
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from types import MappingProxyType
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -87,10 +89,6 @@ class Failure(Enum):
         self.retry_after = retry_after
 
 
-#: The only headers of an HTTP error that are passed on: the protocol needs them, and they hold no free text.
-KEPT_HEADERS: frozenset[str] = frozenset({"allow", "www-authenticate"})
-
-
 #: Sent on every error body (W-058 merge): an error answer is never cached, and the page it is shown on never sends
 #: its address on (the Zerodha callback's address carries the single-use request token in its query).
 NO_LEAK_HEADERS: Mapping[str, str] = MappingProxyType({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
@@ -108,76 +106,147 @@ _DOOR_HEADERS = frozenset({"content-length", "content-type", "cache-control", "r
                            "retry-after", "allow", "set-cookie", "location"})
 _REDIRECT_MINT = object()
 
+#: The HTTP methods an `Allow` header may name (RFC 9110): the only words an exception's `Allow` can contribute.
+_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+_DIGITS = re.compile(r"[0-9]{1,6}")
 
-def _verify_headers(response: Response) -> None:
-    names = {k.decode("latin-1").lower() for k, _ in response.raw_headers}
+
+def _mint_headers(*, body_length: int, content_type: bool, status: int, retry_after: str | None = None,
+                  allow: tuple[str, ...] | None = None, cookie: RedirectCookie | None = None,
+                  location: str | None = None) -> list[tuple[bytes, bytes]]:
+    """THE closed header table (W-070). Every header a door response carries is written here from a constant, a number
+    the door computed, a closed token set or a `RedirectCookie`; no caller value is copied. Raises `DoorRefused`."""
+    headers = [(b"content-length", str(body_length).encode("ascii"))]
+    if content_type:
+        headers.append((b"content-type", b"application/json"))
+    headers += [(name.lower().encode("ascii"), value.encode("ascii")) for name, value in NO_LEAK_HEADERS.items()]
+    if status == 401:
+        headers.append((b"www-authenticate", WWW_AUTHENTICATE.encode("latin-1")))
+    if retry_after is not None:
+        if type(retry_after) is not str or _DIGITS.fullmatch(retry_after) is None:
+            raise DoorRefused("a door Retry-After is digits only")
+        headers.append((b"retry-after", retry_after.encode("ascii")))
+    if allow:
+        if not all(type(m) is str and m in _METHODS for m in allow):
+            raise DoorRefused("a door Allow names only HTTP methods")
+        headers.append((b"allow", ", ".join(sorted(set(allow))).encode("ascii")))
+    if cookie is not None:
+        if type(cookie) is not RedirectCookie:
+            raise DoorRefused("a door cookie is a RedirectCookie")
+        headers.append((b"set-cookie", _cookie_header(cookie)))
+    if location is not None:
+        headers.append((b"location", location.encode("latin-1")))
+    return headers
+
+
+def _door_status_ok(status: object) -> bool:
+    """An answer with a body: 2xx-5xx, never a redirect, 204 or 304 (those carry no body, or point elsewhere)."""
+    return type(status) is int and 200 <= status <= 599 and not (300 <= status < 400) and status != 204
+
+
+def _freeze(response: Response) -> None:
+    response._frozen = (response.status_code, tuple(response.raw_headers), response.body)  # type: ignore[attr-defined]
+
+
+def _verify(response: object) -> None:
+    """THE check, a module function (an instance cannot shadow it): the response is exactly the frozen
+    (status, headers, body) the door minted at construction, with no background task, and meets its type's rules."""
+    kind = type(response)
+    if kind not in _DOOR_TYPES:
+        raise DoorRefused("not a door response")
+    frozen = response.__dict__.get("_frozen")  # type: ignore[attr-defined]
+    if type(frozen) is not tuple or len(frozen) != 3:
+        raise DoorRefused("a door response was never frozen")
+    status, headers, body = frozen
+    raw = response.raw_headers  # type: ignore[attr-defined]
+    if type(raw) is not list or not all(type(p) is tuple and len(p) == 2 and type(p[0]) is bytes and type(p[1]) is bytes
+                                        for p in raw):
+        raise DoorRefused("a door response header list was replaced")
+    if (response.status_code != status or type(response.status_code) is not int  # type: ignore[attr-defined]
+            or tuple(raw) != headers or response.body is not body  # type: ignore[attr-defined]
+            or response.background is not None):  # type: ignore[attr-defined]
+        raise DoorRefused("a door response was changed after it was made")
+    names = {k.decode("latin-1") for k, _ in headers}
     if not names <= _DOOR_HEADERS:
         raise DoorRefused("a door response carries a header the door does not write")
+    if kind is ClosedResponse:
+        if type(body) is not Emitted or not _door_status_ok(status) or "location" in names:
+            raise DoorRefused("a door response is not a body-carrying answer written by emit")
+        return
+    values = dict(headers)
+    if status != 302 or type(body) is not bytes or body != b"" or b"location" not in values:
+        raise DoorRefused("a sealed redirect was changed after it was made")
+    try:
+        _check_location(values[b"location"].decode("latin-1"))
+    except ValueError:
+        raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
+
+
+async def _send_frozen(response: Response, scope: Scope, send: Send) -> None:
+    """Verify, seal, and send the FROZEN copy from here: not Starlette's `__call__`, which reads the live attributes at
+    send time and runs `background`."""
+    _verify(response)
+    if scope["type"] != "http":
+        raise DoorRefused("a door response is sent over http only")
+    status, headers, body = response.__dict__["_frozen"]
+    scope[DOOR_KEY] = _SEAL
+    await send({"type": "http.response.start", "status": status, "headers": list(headers)})
+    await send({"type": "http.response.body", "body": bytes(body)})
 
 
 class ClosedResponse(Response):
     """A JSON response whose body is `Emitted` bytes (made only by `ofo_app.api_models.emit`) and which seals the request
-    when it is sent. The one response type the API writes a body with. Not subclassable; `verify` runs at the route
-    wrapper and again at the seal, so a body or header changed after construction is refused."""
+    when it is sent. The one response type the API writes a body with. Not subclassable. Its status, every header (name
+    AND value, from `_mint_headers`) and body are minted here and frozen; `_verify` runs at the route wrapper and at
+    the seal and the frozen copy is what is sent, so nothing set afterwards (or at construction, by a caller) reaches
+    the wire. No caller headers: a `Retry-After`, an `Allow` or a cookie is a typed argument."""
 
     media_type = "application/json"
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         raise TypeError("ClosedResponse is not subclassed")
 
-    def __init__(self, body: Emitted, status_code: int = 200, headers: Mapping[str, str] | None = None) -> None:
+    def __init__(self, body: Emitted, status_code: int = 200, *, retry_after: str | None = None,
+                 allow: tuple[str, ...] | None = None, cookie: RedirectCookie | None = None) -> None:
         if type(body) is not Emitted:
             raise TypeError(f"a ClosedResponse body is made by emit(), not {type(body).__name__}")
-        super().__init__(content=body, status_code=status_code, headers=dict(headers) if headers else None)
-        self._emitted = body
-
-    def verify(self) -> None:
-        if type(self.body) is not Emitted or self.body is not self._emitted:
-            raise DoorRefused("a door response body was changed after it was written")
-        _verify_headers(self)
-        if self.headers.get("content-length") != str(len(self.body)):
-            raise DoorRefused("a door response content-length is not its body's")
+        if not _door_status_ok(status_code):
+            raise DoorRefused("a ClosedResponse carries a body: 2xx-5xx, not a redirect, 204 or 304")
+        super().__init__(content=body, status_code=status_code)
+        self.raw_headers[:] = _mint_headers(body_length=len(body), content_type=True, status=status_code,
+                                            retry_after=retry_after, allow=allow, cookie=cookie)
+        _freeze(self)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        self.verify()
-        scope[DOOR_KEY] = _SEAL
-        await super().__call__(scope, receive, send)
+        await _send_frozen(self, scope, send)
 
 
 class SealedRedirect(RedirectResponse):
     """A body-less 302 that seals the request when it is sent. Made only by `typed_redirect` (a mint token, so no
-    route can point one at an outside host); its Location is checked again when it is verified and sent."""
+    route can point one at an outside host); its Location is checked again when it is verified and sent. Its headers,
+    cookie included, are minted in the constructor and frozen like `ClosedResponse`'s."""
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         raise TypeError("SealedRedirect is not subclassed")
 
-    def __init__(self, location: str, headers: Mapping[str, str] | None = None, *, _mint: object = None) -> None:
+    def __init__(self, location: str, cookie: RedirectCookie | None = None, *, _mint: object = None) -> None:
         if _mint is not _REDIRECT_MINT:
             raise TypeError("a SealedRedirect is made only by typed_redirect")
-        super().__init__(location, status_code=302, headers=dict(headers) if headers else None)
-        self._location = self.headers["location"]
-
-    def verify(self) -> None:
-        if self.status_code != 302 or self.body != b"" or self.headers.get("location") != self._location:
-            raise DoorRefused("a sealed redirect was changed after it was made")
-        _verify_headers(self)
-        try:
-            _check_location(self._location)
-        except ValueError:
-            raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
+        super().__init__(location, status_code=302)
+        self.raw_headers[:] = _mint_headers(body_length=0, content_type=False, status=302, cookie=cookie,
+                                            location=self.headers["location"])
+        _freeze(self)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        self.verify()
-        scope[DOOR_KEY] = _SEAL
-        await super().__call__(scope, receive, send)
+        await _send_frozen(self, scope, send)
 
 
 _DOOR_TYPES = (ClosedResponse, SealedRedirect)
 
 
-def _body(message: UserFacingError, status: int, headers: Mapping[str, str] | None = None) -> ClosedResponse:
-    extra = {"WWW-Authenticate": WWW_AUTHENTICATE} if status == 401 else {}
-    return ClosedResponse(emit_message(message), status, {**NO_LEAK_HEADERS, **extra, **(headers or {})})
+def _body(message: UserFacingError, status: int, *, retry_after: str | None = None,
+          allow: tuple[str, ...] | None = None, cookie: RedirectCookie | None = None) -> ClosedResponse:
+    return ClosedResponse(emit_message(message), status, retry_after=retry_after, allow=allow, cookie=cookie)
 
 
 def respond(model: ApiModel, status_code: int) -> ClosedResponse:
@@ -193,7 +262,7 @@ def _through_the_door(endpoint: Callable[..., object], holder: list[ClosedRoute]
     def convert(result: object) -> object:
         route = holder[0]
         if type(result) in _DOOR_TYPES:
-            result.verify()
+            _verify(result)
             return result
         if route.response_model is not None and type(result) is route.response_model:
             return ClosedResponse(emit(result, exclude_unset=route.response_model_exclude_unset),  # type: ignore[arg-type]
@@ -221,14 +290,18 @@ class ClosedRoute(APIRoute):
         holder.append(self)
 
 
-#: Characters that would end a Set-Cookie attribute or a header line, or turn a path into a different URL.
-_COOKIE_BREAKERS = (";", chr(13), chr(10))
 _LOCATION_BREAKERS = (chr(13), chr(10), chr(92))
+
+#: A cookie is built only from token-shaped parts (RFC 6265): the nonce is urlsafe base64, the path a URL path.
+_COOKIE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+_COOKIE_VALUE = re.compile(r"[A-Za-z0-9_.~-]{0,128}")
+_COOKIE_PATH = re.compile(r"/[A-Za-z0-9/_.~-]{0,128}")
 
 
 @dataclass(frozen=True)
 class RedirectCookie:
-    """A cookie a redirect sets (``value`` given) or clears (``value`` None). Always HttpOnly and SameSite=Lax."""
+    """A cookie a door response sets (``value`` given) or clears (``value`` None). Always HttpOnly and SameSite=Lax. Name,
+    value and path match a token pattern, so none can hold ';', CR, LF, a space or a sentence."""
 
     name: str
     path: str
@@ -237,13 +310,26 @@ class RedirectCookie:
     secure: bool = False
 
     def __post_init__(self) -> None:
-        for part in (self.name, self.path, self.value or ""):
-            if any(c in part for c in _COOKIE_BREAKERS):
-                raise ValueError("a cookie name, path or value may not hold ';', CR or LF")
+        if not (type(self.name) is str and _COOKIE_NAME.fullmatch(self.name)
+                and type(self.path) is str and _COOKIE_PATH.fullmatch(self.path)
+                and (self.value is None or (type(self.value) is str and _COOKIE_VALUE.fullmatch(self.value)))):
+            raise ValueError("a cookie name, path and value must match the token patterns")
+        if self.max_age is not None and (type(self.max_age) is not int or self.max_age < 0):
+            raise ValueError("a cookie max_age is a non-negative integer")
+        if type(self.secure) is not bool:
+            raise ValueError("a cookie secure flag is a bool")
 
 
-def _clear(response: Response, cookie: RedirectCookie) -> None:
-    response.delete_cookie(cookie.name, path=cookie.path, secure=cookie.secure, httponly=True, samesite="lax")
+def _cookie_header(cookie: RedirectCookie) -> bytes:
+    """The Set-Cookie value, written by Starlette's own formatter on a scratch response (so it is byte-for-byte what
+    `set_cookie`/`delete_cookie` wrote before W-070) and read back; the scratch response is never sent."""
+    scratch = Response()
+    if cookie.value is None:
+        scratch.delete_cookie(cookie.name, path=cookie.path, secure=cookie.secure, httponly=True, samesite="lax")
+    else:
+        scratch.set_cookie(cookie.name, cookie.value, max_age=cookie.max_age, path=cookie.path, httponly=True,
+                           secure=cookie.secure, samesite="lax")
+    return next(value for name, value in scratch.raw_headers if name == b"set-cookie")
 
 
 def _is_kite_login_url(location: str) -> bool:
@@ -281,13 +367,7 @@ def typed_redirect(model: ApiModel, location: str, cookie: RedirectCookie | None
     if not isinstance(model, ApiModel):
         raise TypeError(f"typed_redirect needs an ApiModel, got {type(model).__name__}")
     _check_location(location)
-    response = SealedRedirect(location, dict(NO_LEAK_HEADERS), _mint=_REDIRECT_MINT)
-    if cookie is not None and cookie.value is None:
-        _clear(response, cookie)
-    elif cookie is not None:
-        response.set_cookie(cookie.name, cookie.value, max_age=cookie.max_age, path=cookie.path, httponly=True,
-                            secure=cookie.secure, samesite="lax")
-    return response
+    return SealedRedirect(location, cookie, _mint=_REDIRECT_MINT)  # the cookie goes into the constructor, not after
 
 
 def _reference() -> str:
@@ -308,16 +388,24 @@ def _validation_problems(exc: RequestValidationError) -> list[tuple[tuple[object
 def _http_response(exc: StarletteHTTPException, request: Request) -> ClosedResponse:
     status = exc.status_code
     log.info("http %s on %s %s", status, request.method, request.url.path)  # never `detail`
-    headers = {k: v for k, v in (exc.headers or {}).items() if k.lower() in KEPT_HEADERS}
-    if status == 401:
-        return _body(render("entitlement_access_sign_in_required"), 401, headers)
+    if status == 401:  # the WWW-Authenticate value is the constant, minted by the door; the exception's is discarded
+        return _body(render("entitlement_access_sign_in_required"), 401)
     if status == 503:
-        return _body(render("internal_system_service_unavailable"), 503, headers)
+        return _body(render("internal_system_service_unavailable"), 503)
     if 400 <= status < 500:
-        return _body(render("user_input_request_not_available"), status, headers)
+        allow = _allowed_methods(exc) if status == 405 else None
+        return _body(render("user_input_request_not_available"), status, allow=allow)
     reference = _reference()
     log.error("http %s %s on %s %s", status, reference, request.method, request.url.path)
-    return _body(render("internal_system_request_failed", reference=reference), status if status >= 500 else 500)
+    return _body(render("internal_system_request_failed", reference=reference), status if 500 <= status <= 599 else 500)
+
+
+def _allowed_methods(exc: StarletteHTTPException) -> tuple[str, ...] | None:
+    """The method tokens (from the closed method set) the exception's `Allow` names; any other word is dropped, so a
+    sentence there contributes nothing and the header is left out."""
+    given = next((v for k, v in (exc.headers or {}).items() if k.lower() == "allow"), "")
+    tokens = tuple(t for t in (p.strip() for p in given.split(",")) if t in _METHODS) if type(given) is str else ()
+    return tokens or None
 
 
 async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
@@ -326,15 +414,11 @@ async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
     if message is not None:
         log.info("user-facing error %s on %s %s", message.code, request.method, request.url.path)
         failure = getattr(exc, "failure", None)
+        clear = getattr(exc, "clear_cookie", None)  # e.g. a refused Zerodha login drops its login-state cookie
+        cookie = replace(clear, value=None, max_age=None) if isinstance(clear, RedirectCookie) else None
         if isinstance(failure, Failure):
-            retry = {"Retry-After": failure.retry_after} if failure.retry_after else {}
-            response = _body(message, failure.status, retry)
-        else:
-            response = _body(message, STATUS_BY_CLASS[message.error_class])
-        clear = getattr(exc, "clear_cookie", None)
-        if isinstance(clear, RedirectCookie):  # e.g. a refused Zerodha login drops its login-state cookie
-            _clear(response, clear)
-        return response
+            return _body(message, failure.status, retry_after=failure.retry_after, cookie=cookie)
+        return _body(message, STATUS_BY_CLASS[message.error_class], cookie=cookie)
     if isinstance(exc, RequestValidationError):
         log.info("request not valid on %s %s: %s", request.method, request.url.path, _validation_problems(exc))
         return _body(render("user_input_request_invalid"), 422)

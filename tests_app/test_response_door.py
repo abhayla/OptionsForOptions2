@@ -620,7 +620,7 @@ def test_a_sealed_redirect_is_made_only_by_typed_redirect_and_checked_again_when
 
     outside = SealedRedirect("https://evil.example/", _mint=errors._REDIRECT_MINT)  # even a minted one is re-checked
     with pytest.raises(api_models.DoorRefused):
-        outside.verify()
+        errors._verify(outside)
     for base in (ClosedResponse, SealedRedirect):
         with pytest.raises(TypeError):
             type("Sub", (base,), {})
@@ -802,9 +802,9 @@ def test_the_exemptions_are_exactly_the_outcome_route_and_the_docs_paths() -> No
 
 
 # --- W-070 (issue #197): a door response sends only what the door minted - body, header names AND values, status -------
-# Third round of finding sealed-object-mutable-after-seal. Written red first (xfail strict) on main dbe0786.
+# Third round of finding sealed-object-mutable-after-seal. Written red first (xfail strict, commit "W-070 step 1") on
+# main dbe0786; the xfail marks came off with the fix.
 
-W070 = pytest.mark.xfail(strict=True, reason="W-070 red first: fixed in the next commit")
 EVIL = "https://evil.example/steal"
 _MODEL = broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
 
@@ -836,7 +836,6 @@ def _wire(response):
     return sent
 
 
-@W070
 def test_core_an_outside_redirect_set_through_location_on_respond_is_refused_through_the_real_app() -> None:
     """AC-2 (#197 core a): `respond(model, 302)` plus `location` answered a 302 to evil.example on main."""
     from ofo_app.errors import respond
@@ -851,7 +850,6 @@ def test_core_an_outside_redirect_set_through_location_on_respond_is_refused_thr
     assert "location" not in response.headers and "evil.example" not in str(response.headers)
 
 
-@W070
 def test_core_an_exceptions_www_authenticate_value_never_reaches_the_wire_through_the_real_app() -> None:
     """AC-2 (#197 core b): HTTPException(401, headers={WWW-Authenticate: sentence}) echoed the sentence on main."""
     from fastapi import HTTPException
@@ -867,17 +865,10 @@ def test_core_an_exceptions_www_authenticate_value_never_reaches_the_wire_throug
     assert SENTENCE not in str(response.headers.items())
 
 
-#: Already refused on main by a round-1/2 guard (content-length against the body; the redirect's own location check):
-#: these are regression tests, not red ones.
-_GREEN_ON_MAIN = {("content-length", "closed"), ("location", "redirect")}
-
-
 @pytest.mark.parametrize("kind", ["closed", "redirect"])
 @pytest.mark.parametrize("name", sorted(__import__("ofo_app.errors", fromlist=["x"])._DOOR_HEADERS))
-def test_every_door_header_set_to_a_sentence_after_construction_is_refused(name: str, kind: str, request) -> None:
+def test_every_door_header_set_to_a_sentence_after_construction_is_refused(name: str, kind: str) -> None:
     """AC-2: header NAMES in the door's set are not enough - a changed VALUE is refused too."""
-    if (name, kind) not in _GREEN_ON_MAIN:
-        request.applymarker(W070)
     r = _door(kind)
     r.headers[name] = SENTENCE
     with pytest.raises(api_models.DoorRefused):
@@ -885,17 +876,14 @@ def test_every_door_header_set_to_a_sentence_after_construction_is_refused(name:
 
 
 @pytest.mark.parametrize("kind,status", [("closed", 201), ("closed", 302), ("redirect", 301), ("redirect", 200)])
-def test_a_status_changed_after_construction_is_refused(kind: str, status: int, request) -> None:
-    """AC-2: the status is part of the frozen state (a redirect's status was already checked on main; closed was not)."""
-    if kind == "closed":
-        request.applymarker(W070)
+def test_a_status_changed_after_construction_is_refused(kind: str, status: int) -> None:
+    """AC-2: the status is part of the frozen state."""
     r = _door(kind)
     r.status_code = status
     with pytest.raises(api_models.DoorRefused):
         _run_wrapper(r)
 
 
-@W070
 def test_a_background_task_is_refused_and_never_runs() -> None:
     """AC-2: Starlette runs `background` after the send; the door pins it to None and never runs one."""
     from starlette.background import BackgroundTask
@@ -916,7 +904,6 @@ def test_a_background_task_is_refused_and_never_runs() -> None:
     assert ran == []
 
 
-@W070
 def test_a_verify_shadowed_on_the_instance_does_not_disable_the_check() -> None:
     """AC-2: verification is a module function; `r.verify = lambda: None` plus a mutated body is still refused."""
     r = _door("closed")
@@ -926,7 +913,6 @@ def test_a_verify_shadowed_on_the_instance_does_not_disable_the_check() -> None:
         _run_wrapper(r)
 
 
-@W070
 def test_init_headers_called_again_is_refused() -> None:
     """AC-2: `init_headers` rewrites raw_headers after construction: refused for a new name (green on main) and for a
     door-set name with a new value (red on main)."""
@@ -937,7 +923,6 @@ def test_init_headers_called_again_is_refused() -> None:
             _run_wrapper(r)
 
 
-@W070
 def test_an_allow_header_value_from_an_exception_is_never_copied() -> None:
     """AC-2: HTTPException(405, headers={Allow: sentence}) answers 405 and the sentence is in no header."""
     from fastapi import HTTPException
@@ -950,10 +935,166 @@ def test_an_allow_header_value_from_an_exception_is_never_copied() -> None:
     assert SENTENCE not in str(response.headers.items())
 
 
-@W070
 def test_a_cookie_set_on_a_sealed_redirect_after_typed_redirect_is_refused() -> None:
     """AC-2: a cookie is passed into the constructor; `set_cookie` afterwards changes the frozen headers: refused."""
     r = _door("redirect")
     r.set_cookie("sid", "stolen")
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+# --- the closed header table and the frozen send (guards of W-070, each with its own killing test) -------------------
+
+def test_the_frozen_copy_is_what_goes_on_the_wire_even_if_verification_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2: with `_verify` patched to nothing, a changed status, a replaced header list and a background task still
+    do not reach the wire - the send is from the frozen copy and never runs `background`."""
+    from starlette.background import BackgroundTask
+
+    from ofo_app import errors
+
+    ran = []
+    clean = _wire(_door("closed"))
+    r = _door("closed")
+    monkeypatch.setattr(errors, "_verify", lambda response: None)
+    r.status_code = 201
+    r.raw_headers.append((b"location", EVIL.encode()))
+    r.body = b"Z" * len(r.body)
+    r.background = BackgroundTask(lambda: ran.append(1))
+    assert _wire(r) == clean
+    assert ran == []
+
+
+def test_the_wire_headers_of_a_closed_response_are_exactly_the_minted_table() -> None:
+    """AC-2: content-length, content-type, the no-leak pair - nothing else - for a plain answer; 401 adds the constant."""
+    from ofo_app.errors import WWW_AUTHENTICATE
+
+    start = _wire(_door("closed"))[0]
+    assert start["status"] == 200
+    assert start["headers"] == [(b"content-length", str(len(GOLDEN_REFUSAL)).encode()),
+                                (b"content-type", b"application/json"), (b"cache-control", b"no-store"),
+                                (b"referrer-policy", b"no-referrer")]
+    unauthorised = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", _raise(401)))).get(PATH)
+    assert unauthorised.headers["www-authenticate"] == WWW_AUTHENTICATE
+
+
+def _raise(status, headers=None):
+    from fastapi import HTTPException
+
+    async def endpoint():
+        raise HTTPException(status, headers=headers)
+
+    return endpoint
+
+
+def test_a_real_framework_405_still_carries_allow_with_method_tokens() -> None:
+    """AC-2 parity: a POST to a GET route is a 405 whose Allow names the method (re-minted, not copied)."""
+    response = _client(create_app()).post(PATH)
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
+
+
+@pytest.mark.parametrize("given,expected", [("GET, POST", "GET, POST"), ("POST,GET,GET", "GET, POST"),
+                                            ("get", None), (SENTENCE, None), ("GET, " + SENTENCE, "GET")])
+def test_allow_is_rebuilt_from_method_tokens_only(given: str, expected: str | None) -> None:
+    """AC-2: tokens outside the fixed method set are dropped; the survivors are sorted, de-duplicated and re-joined."""
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", _raise(405, {"Allow": given})))).get(PATH)
+    assert response.status_code == 405 and response.headers.get("allow") == expected
+
+
+def test_allow_is_not_minted_for_a_status_that_is_not_405() -> None:
+    """AC-2: an exception's Allow on a 404 contributes nothing."""
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", _raise(404, {"Allow": "GET"})))).get(PATH)
+    assert response.status_code == 404 and "allow" not in response.headers
+
+
+def test_the_door_refuses_to_mint_an_allow_or_retry_after_that_is_not_closed() -> None:
+    """AC-2: the minting table itself rejects a non-method Allow and a non-digit Retry-After."""
+    from ofo_app.errors import ClosedResponse
+
+    body = api_models.emit(_MODEL)
+    for kwargs in ({"allow": (SENTENCE,)}, {"allow": ("get",)}, {"retry_after": SENTENCE}, {"retry_after": "6 0"},
+                   {"retry_after": "-1"}, {"retry_after": 60}):
+        with pytest.raises(api_models.DoorRefused):
+            ClosedResponse(body, 503, **kwargs)
+    assert dict(_wire(ClosedResponse(body, 503, retry_after="60"))[0]["headers"])[b"retry-after"] == b"60"
+
+
+@pytest.mark.parametrize("status", [100, 199, 204, 301, 302, 304, 399, 600, 99999, True, "200"])
+def test_a_closed_response_is_refused_for_a_status_that_cannot_carry_its_body(status) -> None:
+    """AC-2: no 1xx, 204, 3xx (the `respond(model, 302)` + location attack), 304 or out-of-range status."""
+    from ofo_app.errors import ClosedResponse
+
+    with pytest.raises(api_models.DoorRefused):
+        ClosedResponse(api_models.emit(_MODEL), status)
+
+
+def test_location_is_never_written_on_a_closed_response() -> None:
+    """AC-2: a `location` smuggled into the frozen state of a ClosedResponse is refused by the check itself."""
+    from ofo_app import errors
+
+    r = _door("closed")
+    r.raw_headers.append((b"location", b"/x"))
+    errors._freeze(r)  # even a re-freeze (what a forger would try) is not enough: the type's own rule refuses it
+    with pytest.raises(api_models.DoorRefused):
+        errors._verify(r)
+
+
+@pytest.mark.parametrize("field,bad", [("name", "a b"), ("name", ""), ("value", "a b"), ("value", "Max-Age=0"),
+                                       ("value", SENTENCE), ("path", "/p q"), ("path", "no-slash"),
+                                       ("path", "/p,Domain=x")])
+def test_a_cookie_outside_the_token_patterns_is_refused(field: str, bad: str) -> None:
+    """AC-2: RedirectCookie name, value and path are token-shaped (a sentence or a space is refused)."""
+    from ofo_app.errors import RedirectCookie
+
+    kwargs = {"name": "ofo_kite_login", "path": "/kite/callback", "value": "abc-DEF_123", field: bad}
+    with pytest.raises(ValueError):
+        RedirectCookie(**kwargs)
+
+
+def test_a_cookie_is_written_into_the_constructor_and_a_refusal_clears_it() -> None:
+    """AC-2: the cookie header is in the frozen state from the start; a cleared cookie carries Max-Age=0."""
+    from ofo_app.errors import RedirectCookie, typed_redirect
+
+    model = broker.BrokerRedirectOut(redirect="connected")
+    cookie = RedirectCookie("ofo_kite_login", "/kite/callback", value="abc-DEF_123", max_age=600, secure=True)
+    headers = dict(_wire(typed_redirect(model, "/connected", cookie))[0]["headers"])
+    assert headers[b"set-cookie"] == (b"ofo_kite_login=abc-DEF_123; HttpOnly; Max-Age=600; Path=/kite/callback; "
+                                      b"SameSite=lax; Secure")
+    cleared = dict(_wire(typed_redirect(model, "/connected", RedirectCookie("ofo_kite_login", "/kite/callback")))[0]
+                   ["headers"])
+    assert b"Max-Age=0" in cleared[b"set-cookie"] and b"Path=/kite/callback" in cleared[b"set-cookie"]
+
+
+def test_the_login_refusal_still_clears_the_state_cookie_through_handle_error() -> None:
+    """AC-2 parity: a UserFacing exception carrying `clear_cookie` answers with the cookie cleared (Max-Age=0)."""
+    from ofo_app.errors import RedirectCookie
+    from ofo_app.routes.broker import BrokerLoginRefused
+
+    async def endpoint():
+        raise BrokerLoginRefused("broker_login_busy", clear_cookie=RedirectCookie("ofo_kite_login", "/kite/callback"))
+
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", endpoint))).get(PATH)
+    assert "Max-Age=0" in response.headers["set-cookie"] and "Path=/kite/callback" in response.headers["set-cookie"]
+
+
+def test_no_instance_method_can_stand_in_for_the_check() -> None:
+    """AC-2: neither door class has a `verify` method any more (it was resolved on the instance and could be shadowed)."""
+    from ofo_app.errors import ClosedResponse, SealedRedirect
+
+    assert not hasattr(ClosedResponse, "verify") and not hasattr(SealedRedirect, "verify")
+
+
+def test_a_frozen_state_that_was_never_set_or_was_replaced_by_a_wrong_shape_is_refused() -> None:
+    """AC-2: a response with no frozen copy, a list for the header pairs, or a header pair that is not bytes is refused."""
+    r = _door("closed")
+    r.raw_headers[0] = [b"content-length", b"1"]
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+    r = _door("closed")
+    r.raw_headers[0] = ("content-length", "1")
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+    r = _door("closed")
+    del r._frozen
     with pytest.raises(api_models.DoorRefused):
         _run_wrapper(r)
