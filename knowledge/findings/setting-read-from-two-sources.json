@@ -1,0 +1,27 @@
+{
+ "id": "setting-read-from-two-sources",
+ "scope": "generic",
+ "class": "A setting that the settings loader reads from several sources (process environment, a .env file, defaults) but that some code reads directly from one source (os.environ) with its own default gives two answers for the same deployment. A safety switch read that way fails OPEN whenever the value lives only in the other source or is unset and the local default is the permissive one.",
+ "mechanism": "W-069 ADR-073 docs gate: main.py read `os.environ.get('APP_ENV', 'development')` while Settings (pydantic, env_file='.env') reads APP_ENV from the process env then .env; production configured through .env, or with APP_ENV unset, served /docs and /openapi.json with 200.",
+ "first_seen": {
+  "date": "2026-10-11",
+  "where": "PR #196 (W-069), backend/ofo_app/main.py:40 (and replay_mode's os.environ read of the same setting)",
+  "evidence": "Tier A review round 1 probe: `Settings().APP_ENV='production'; /docs -> 200; /openapi.json -> 200`. Orchestrator confirmed: main.py:40 `os.environ.get(\"APP_ENV\", \"development\")`, config.py:15 `env_file=\".env\"`. Fixed in 28a8f0d by one reader config.app_env() returning None when unset; docs only when exactly development/test."
+ },
+ "fix": "One reader per setting, with the loader's own precedence; a safety switch is ON only for an explicit allowed value and fails closed when unset. Grep every read of the setting's name, not just the line that was attacked.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "test_docs_follow_the_one_settings_source_so_a_dotenv_production_has_none covers APP_ENV for the docs gate and replay mode; nothing scans for other settings read straight from os.environ. Sweep 2026-10-11 (grep os.environ in backend/ofo_app at 28a8f0d): replay_mode.py:32 OUTCOME_REPLAY (fails safe: a .env-only value leaves replay off); redaction.py:193 registers only process-env secrets, so a secret set only in .env is not redacted (same class, open - the design-148 MINOR); history_finalize.py:67-68 and alembic env.py:33 are CLI/migration entry points that require the process env (KeyError when absent: fail closed); 0001 migration OFO_APP_DB_ROLE default is a role name, not a switch."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-073.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-11",
+   "where": "W-069 docs gate and replay mode",
+   "evidence": "Tier A review round 1 MAJOR 2"
+  }
+ ]
+}
