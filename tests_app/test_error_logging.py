@@ -14,6 +14,8 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
+from ofo_app import errors as errors_module
+
 SECRET_INPUT = "SECRETVAL"
 SECRET_TOKEN = "SECRETTOKEN123"
 KITE_TOKEN = "a1B2c3D4e5F6g7H8i9J0k1L2"  # 24-char token shape, no key name in front of it
@@ -89,7 +91,8 @@ async def test_405_keeps_allow_and_401_keeps_www_authenticate_only() -> None:
     r405 = await _call("PUT", "/boom")
     assert r405.status_code == 405 and r405.headers.get("allow") == "GET"
     r401 = await _call("GET", "/h401")
-    assert r401.status_code == 401 and r401.headers.get("www-authenticate") == "Bearer"
+    # W-070: the exception's own value ("Bearer") is discarded; the door writes its constant.
+    assert r401.status_code == 401 and r401.headers.get("www-authenticate") == errors_module.WWW_AUTHENTICATE
     assert "x-leak" not in r401.headers
     assert r401.json()["error_class"] == "ENTITLEMENT_ACCESS"
 
