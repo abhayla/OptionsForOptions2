@@ -1,5 +1,11 @@
 # Handover
 
+**2026-10-11 — START HERE: `docs/process/session-handover-2026-10-11.md`** (then the prompt
+`docs/process/next-session-prompt-2026-10-12.md`). Merged: #196 (W-069 / #148 response door, Tier A, verified).
+In progress: W-070 (#197, door header values; brief on `build/W-070-door-headers`, builder waits for RAM > 2 GB).
+RDP restricted to the owner's IPs after a brute-force flood. NEXT: Monday 2026-10-12 W-065 live proof with the
+owner's Kite login.
+
 **2026-10-10 late — START HERE: `docs/process/session-handover-2026-10-10b.md`** (then the prompt
 `docs/process/next-session-prompt-2026-10-11.md`). Merged: #192 (#155 hook, partial), #193 (owner answers, ADR-073),
 #194 (W-068 leg picker, verified). Stopped for low memory on the VPS (owner). NEXT: #148 door once memory allows;
