@@ -15,7 +15,7 @@
    "scripts/orchestrator/atool.py (migration step)",
    "tests_app/_migration_replay.py"
   ],
-  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally."
+  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally. 2026-10-10 (3rd occurrence, frontend test ids): caught by CI's Playwright job before merge, as designed; cost one extra CI round. Locally, a new component should grep frontend/e2e and frontend/tests for every data-testid it renders."
  },
  "spec_ref": [
   "spec/requirements/REQ-065.md"
@@ -30,6 +30,11 @@
    "date": "2026-10-10",
    "where": "PR #183 (W-061 follow-ups, migration 0010)",
    "evidence": "CI api job: 1 failed, 1186 passed - tests_app/test_history_pg_store.py's 0009 round-trip test replayed 0009's downgrade assuming 0009 was head; with 0010 on top the allowlist 'post' check refused ('ofo_strategy_definition_valid body differs from its pinned body'). The builder had grepped by function/table name; a migration's dependents are every test that walks the chain."
+  },
+  {
+   "date": "2026-10-10",
+   "where": "W-068 leg picker (PR #194)",
+   "evidence": "the new LegPicker reused the page's four-part error test ids (error-what); e2e/strategy-states.spec.ts:79 and :87 failed in CI (strict mode: 2 elements) though the builder's targeted Vitest and the reviewer's grep (state-no-draft only) were green; fixed with a distinct picker-error test id"
   }
  ]
 }
