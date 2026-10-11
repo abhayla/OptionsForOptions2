@@ -283,6 +283,9 @@ def _field_type(info: Any) -> Any:
     return Annotated[(info.annotation, *info.metadata)] if info.metadata else info.annotation  # type: ignore[valid-type]
 
 
+_NO_VALUE = object()
+
+
 def _model_tree(model: ApiModel, exclude_unset: bool, path: str) -> dict[str, object]:
     cls = type(model)
     if cls.model_config != ApiModel.model_config:
@@ -297,9 +300,10 @@ def _model_tree(model: ApiModel, exclude_unset: bool, path: str) -> dict[str, ob
             continue
         if not _FIELD_NAME.fullmatch(name):
             raise DoorRefused(f"{path}: a field name is not a closed key")
-        if name not in model.__dict__:
+        value = getattr(model, name, _NO_VALUE)
+        if value is _NO_VALUE:
             raise DoorRefused(f"{path}.{name}: the field holds no value")
-        out[name] = _walk(model.__dict__[name], _field_type(info), f"{path}.{name}", exclude_unset)
+        out[name] = _walk(value, _field_type(info), f"{path}.{name}", exclude_unset)
     return out
 
 
