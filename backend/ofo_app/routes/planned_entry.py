@@ -21,9 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from ofo.outcome import read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
 from ofo_app.api_models import ApiModel, Identifier, Money
+from ofo_app.errors import ClosedRoute
 from ofo_app.routes.outcome import MarketContext, get_market_context
 
-router = APIRouter()
+router = APIRouter(route_class=ClosedRoute)
 
 InstrumentIdIn = Annotated[str, StringConstraints(pattern=r"^[A-Z_]{1,20}:[0-9]{1,12}$")]
 

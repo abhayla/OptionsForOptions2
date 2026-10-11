@@ -21,6 +21,9 @@ from ofo_app.routes import broker, catalogue, health, outcome, planned_entry, st
 
 log = logging.getLogger(__name__)
 
+#: The only APP_ENV values that serve /docs, /redoc and /openapi.json (ADR-073).
+DOCS_ENVS = frozenset({"development", "test"})
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -32,7 +35,12 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     """Builds the app. The broker routes refuse to start without a valid broker configuration (W-058):
     ``load_broker_config`` raises BrokerConfigError, so the app is never built without its token key."""
     config = broker_config if broker_config is not None else load_broker_config()
-    app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan)
+    # ADR-073: the framework docs page and API description exist only in development and test; in production
+    # (and any other APP_ENV) they are not mounted, so they answer 404.
+    docs: dict[str, None] = {} if os.environ.get("APP_ENV", "development") in DOCS_ENVS else {
+        "docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan, **docs)
+    app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
     if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
         replay_mode.require_test_env(os.environ.get("APP_ENV", "development"))

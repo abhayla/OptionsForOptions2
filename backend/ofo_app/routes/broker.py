@@ -54,7 +54,7 @@ from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
 from ofo_app.broker_token_store import store_session
 from ofo_app.db import get_db
-from ofo_app.errors import Failure, RedirectCookie, typed_redirect
+from ofo_app.errors import ClosedRoute, Failure, RedirectCookie, typed_redirect
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
 
 log = logging.getLogger(__name__)
@@ -206,7 +206,7 @@ async def get_kite_auth(request: Request) -> AsyncIterator[KiteAuthPort]:
         yield HttpKiteAuth(rt.config.api_key, rt.config.api_secret.get_secret_value(), client)
 
 
-router = APIRouter()
+router = APIRouter(route_class=ClosedRoute)
 
 
 @router.get("/api/broker/refusals/{code}", response_model=RefusalOut)

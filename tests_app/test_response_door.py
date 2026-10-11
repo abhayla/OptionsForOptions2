@@ -34,10 +34,6 @@ GOLDEN_REFUSAL = (
     b'connected, and nothing was saved.","what_is_blocked":"Connecting your Zerodha account.","next_action":"Start the '
     b'Zerodha login again from the account page.","external_text":null}}')
 
-#: Until the door is written these expectations fail on main (the red proof); the marker is removed in the door commit.
-RED_UNTIL_DOOR = lambda: pytest.mark.xfail(strict=True, reason="W-069 step 1: red on main, green once the door exists")  # noqa: E731
-
-
 def _client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
@@ -126,16 +122,16 @@ def _assert_internal_failure_without_the_sentence(response) -> None:
     assert re.search(r"reference ERR-[0-9A-F]{8}\)", body["what_happened"])
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 @pytest.mark.parametrize("name", sorted(VARIANTS))
-@RED_UNTIL_DOOR()
 def test_a_hostile_model_with_the_class_check_off_is_refused_by_the_door_alone(name: str, class_check_off: None) -> None:
-    """AC-2: on main these answer 200 WITH the sentence (red); behind the door they answer 500 without it."""
+    """AC-2: on main these answered 200 WITH the sentence (commit 5ddda05, red); behind the door they answer 500 without it."""
     model, make = VARIANTS[name]()
     _assert_internal_failure_without_the_sentence(_client(_hostile_app(model, make)).get(PATH))
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 @pytest.mark.parametrize("name", sorted(VARIANTS))
-@RED_UNTIL_DOOR()
 def test_a_hostile_model_is_refused_at_class_creation_with_the_class_check_on(name: str) -> None:
     """AC-2: the class-time layer (the early warning) refuses each hostile shape when the class is created."""
     with pytest.raises(TypeError):

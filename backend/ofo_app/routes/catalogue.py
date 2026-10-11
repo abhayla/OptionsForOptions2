@@ -22,8 +22,9 @@ from ofo.errors import UserFacing, UserFacingError, render
 from ofo_app import catalogue_picker as picker
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.db import get_db
+from ofo_app.errors import ClosedRoute
 
-router = APIRouter()
+router = APIRouter(route_class=ClosedRoute)
 
 SUPPORTED = ("NIFTY", "SENSEX")
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9]{0,19}")

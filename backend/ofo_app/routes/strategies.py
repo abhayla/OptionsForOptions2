@@ -36,10 +36,10 @@ from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
-from ofo_app.errors import Failure
+from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
 
-router = APIRouter()
+router = APIRouter(route_class=ClosedRoute)
 
 def _refuse_live_state(data: Any) -> Any:
     if isinstance(data, Mapping):
