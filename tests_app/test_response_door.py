@@ -1195,3 +1195,28 @@ def test_a_record_the_door_itself_minted_still_passes_with_every_header_kind() -
     headers = dict(sent[0]["headers"])
     assert headers[b"allow"] == b"GET, POST" and headers[b"retry-after"] == b"60"
     assert headers[b"www-authenticate"] == b'Session realm="OptionsForOptions2"'
+
+
+def test_a_user_facing_refusal_with_no_failure_value_still_clears_its_cookie() -> None:
+    """AC-2 (review MINOR-1): the error path with NO `failure` (status from the error class) carries the cookie too;
+    a cookie set after construction there, or dropped, is caught (mutation M2c)."""
+    from ofo_app.errors import RedirectCookie
+    from ofo_app.routes.broker import BrokerLoginRefused
+
+    async def endpoint():
+        raise BrokerLoginRefused("broker_state_invalid", clear_cookie=RedirectCookie("ofo_kite_login", "/kite/callback"))
+
+    exc = BrokerLoginRefused("broker_state_invalid")
+    assert exc.failure is None  # the path under test: the class status, not a Failure's
+    response = _through_app(endpoint)
+    assert response.status_code == 401
+    assert "Max-Age=0" in response.headers["set-cookie"] and "Path=/kite/callback" in response.headers["set-cookie"]
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_the_app_middleware_list_is_exactly_the_boundary() -> None:
+    """AC-2 (review MINOR-2): middleware added outside `_Boundary` would sit around the door and could rewrite what it
+    sent. Adding one is a deliberate change to this list, reviewed with the door."""
+    from ofo_app.errors import _Boundary
+
+    assert [m.cls for m in create_app().user_middleware] == [_Boundary]

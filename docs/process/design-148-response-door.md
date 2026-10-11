@@ -102,3 +102,25 @@ change (the parity test enforces it).
 - Versions: fastapi 0.123.5, pydantic 2.12.5, starlette 0.50.0.
 - Redaction registers only `os.environ` secrets: `redaction.py:190-195`. The scan's `DOOR` is `errors.py`:
   `test_error_boundary_scan.py:23`.
+
+## Round 4 (owner decision 2026-10-11)
+Finding `sealed-object-mutable-after-seal`, round 4 (Tier A review of W-070). `_verify` compared the live response only
+with its own `_frozen` record and never checked the VALUES in that record, so whoever could rewrite the record
+(`r._frozen = ...`, or re-running `errors._freeze(r)` after editing headers) decided what passed: a 200 with
+`cache-control: public, max-age=31536000`, or an attacker `Set-Cookie` with a `Domain` attribute, reached the wire.
+
+1. **Value re-check.** `_verify` now calls `_check_record_values`, which reads from the record only what a caller may
+   legitimately vary (length, status, optional Retry-After, Allow tokens, a cookie candidate, a Location), mints the
+   closed table again with the SAME `_mint_headers` the constructors use, and demands the identical header list (a
+   cleared cookie's `expires` date is the one time-dependent byte string and is ignored). One table, used to mint and
+   to verify, so the two cannot drift. A cookie must equal what `_cookie_header` writes for a `RedirectCookie` that
+   passes the token patterns (no `Domain`, no extra attribute); Location only on a `SealedRedirect`, passing
+   `_check_location`.
+2. **A scan of our own code.** `tests/test_door_names_private.py` fails when any file under `backend/` other than
+   `backend/ofo_app/errors.py` names `_freeze`, `_frozen`, `_SEAL`, `_REDIRECT_MINT` or `_verify` (as a name,
+   attribute, import, keyword or string).
+
+Why this and not a hidden store: Python has no truly private state. Moving the record into a closure, a weak map or a
+slot only moves the write door; anything running in the process can still reach it. The guard that holds is that what
+the record may say is re-derived from the closed table at send time (so rewriting it gains nothing), plus a CI scan
+that keeps our own code from touching the door's names.
