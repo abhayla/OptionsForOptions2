@@ -220,6 +220,7 @@ work_items:
   W-009: S8
   W-011: S8
   W-017: 4b
+  W-070: 4a           # #197 door header values (REQ-065 AC-2 follow-up, Tier A)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
