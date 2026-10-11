@@ -103,26 +103,71 @@ DOOR_KEY = "ofo.door"
 _SEAL = object()
 
 
+#: Headers a door response may carry: the body's own two, the no-leak pair, and the protocol ones an error keeps.
+_DOOR_HEADERS = frozenset({"content-length", "content-type", "cache-control", "referrer-policy", "www-authenticate",
+                           "retry-after", "allow", "set-cookie", "location"})
+_REDIRECT_MINT = object()
+
+
+def _verify_headers(response: Response) -> None:
+    names = {k.decode("latin-1").lower() for k, _ in response.raw_headers}
+    if not names <= _DOOR_HEADERS:
+        raise DoorRefused("a door response carries a header the door does not write")
+
+
 class ClosedResponse(Response):
     """A JSON response whose body is `Emitted` bytes (made only by `ofo_app.api_models.emit`) and which seals the request
-    when it is sent. The one response type the API writes a body with."""
+    when it is sent. The one response type the API writes a body with. Not subclassable; `verify` runs at the route
+    wrapper and again at the seal, so a body or header changed after construction is refused."""
 
     media_type = "application/json"
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("ClosedResponse is not subclassed")
 
     def __init__(self, body: Emitted, status_code: int = 200, headers: Mapping[str, str] | None = None) -> None:
         if type(body) is not Emitted:
             raise TypeError(f"a ClosedResponse body is made by emit(), not {type(body).__name__}")
         super().__init__(content=body, status_code=status_code, headers=dict(headers) if headers else None)
+        self._emitted = body
+
+    def verify(self) -> None:
+        if type(self.body) is not Emitted or self.body is not self._emitted:
+            raise DoorRefused("a door response body was changed after it was written")
+        _verify_headers(self)
+        if self.headers.get("content-length") != str(len(self.body)):
+            raise DoorRefused("a door response content-length is not its body's")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.verify()
         scope[DOOR_KEY] = _SEAL
         await super().__call__(scope, receive, send)
 
 
 class SealedRedirect(RedirectResponse):
-    """A body-less 302 that seals the request when it is sent (`typed_redirect` makes it)."""
+    """A body-less 302 that seals the request when it is sent. Made only by `typed_redirect` (a mint token, so no
+    route can point one at an outside host); its Location is checked again when it is verified and sent."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("SealedRedirect is not subclassed")
+
+    def __init__(self, location: str, headers: Mapping[str, str] | None = None, *, _mint: object = None) -> None:
+        if _mint is not _REDIRECT_MINT:
+            raise TypeError("a SealedRedirect is made only by typed_redirect")
+        super().__init__(location, status_code=302, headers=dict(headers) if headers else None)
+        self._location = self.headers["location"]
+
+    def verify(self) -> None:
+        if self.status_code != 302 or self.body != b"" or self.headers.get("location") != self._location:
+            raise DoorRefused("a sealed redirect was changed after it was made")
+        _verify_headers(self)
+        try:
+            _check_location(self._location)
+        except ValueError:
+            raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        self.verify()
         scope[DOOR_KEY] = _SEAL
         await super().__call__(scope, receive, send)
 
@@ -148,6 +193,7 @@ def _through_the_door(endpoint: Callable[..., object], holder: list[ClosedRoute]
     def convert(result: object) -> object:
         route = holder[0]
         if type(result) in _DOOR_TYPES:
+            result.verify()
             return result
         if route.response_model is not None and type(result) is route.response_model:
             return ClosedResponse(emit(result, exclude_unset=route.response_model_exclude_unset),  # type: ignore[arg-type]
@@ -235,7 +281,7 @@ def typed_redirect(model: ApiModel, location: str, cookie: RedirectCookie | None
     if not isinstance(model, ApiModel):
         raise TypeError(f"typed_redirect needs an ApiModel, got {type(model).__name__}")
     _check_location(location)
-    response = SealedRedirect(location, status_code=302, headers=dict(NO_LEAK_HEADERS))
+    response = SealedRedirect(location, dict(NO_LEAK_HEADERS), _mint=_REDIRECT_MINT)
     if cookie is not None and cookie.value is None:
         _clear(response, cookie)
     elif cookie is not None:

@@ -25,6 +25,7 @@ from ofo_app.main import create_app
 from ofo_app.routes import broker
 
 SENTENCE = "Your funds were moved and the order was cancelled."
+ALIAS = "you_should_buy_now"  # a snake_case alias is a valid-looking key: it must still never reach the bytes
 PATH = "/api/broker/refusals/broker_state_invalid"
 
 #: Captured from main before the door existed (GET of the real route through create_app()): today's exact bytes.
@@ -56,14 +57,14 @@ def _extra_allow():
 
 def _serialization_alias():
     class Hostile(broker.RefusalOut):
-        code: Identifier = Field(serialization_alias=SENTENCE)
+        code: Identifier = Field(serialization_alias=ALIAS)
     return Hostile, lambda code: Hostile(code=code, message=render(code))
 
 
 def _alias_generator():
     class Hostile(broker.RefusalOut):
         model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True, populate_by_name=True,
-                                  alias_generator=AliasGenerator(serialization_alias=lambda name: SENTENCE + name))
+                                  alias_generator=AliasGenerator(serialization_alias=lambda name: ALIAS + name))
     return Hostile, lambda code: Hostile(code=code, message=render(code))
 
 
@@ -115,7 +116,7 @@ def _hostile_app(model, make):
 
 
 def _assert_internal_failure_without_the_sentence(response) -> None:
-    assert SENTENCE.encode() not in response.content
+    assert SENTENCE.encode() not in response.content and ALIAS.encode() not in response.content
     assert response.status_code == 500
     body = json.loads(response.content)
     assert body["code"] == "INTERNAL_SYSTEM_002"  # catalogue template internal_system_request_failed
@@ -550,6 +551,178 @@ def test_the_boundary_drops_every_message_of_an_unsealed_response_and_sends_only
     starts = [m for m in sent if m["type"] == "http.response.start"]
     assert [m["status"] for m in starts] == [500]
     assert SENTENCE.encode() not in b"".join(m.get("body", b"") for m in sent)
+
+
+def _run_wrapper(returned):
+    import asyncio
+
+    async def endpoint():
+        return returned
+
+    return asyncio.run(_closed("/x", endpoint).endpoint())
+
+
+def test_a_sealed_response_whose_body_was_changed_after_construction_is_refused() -> None:
+    """AC-2 (review MAJOR 1): `r = respond(model, 200); r.body = sentence` is refused by the wrapper, and by the seal
+    itself when the response reaches the boundary by another path."""
+    from ofo_app.errors import respond
+
+    def mutated():
+        r = respond(broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid")), 200)
+        r.body = b"Z" * len(r.body)  # same length, so only the body check (not content-length) can catch it
+        return r
+
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(mutated())
+
+    async def raw_route(request):  # a plain Starlette route returning the mutated sealed response
+        return mutated()
+
+    from starlette.routing import Route
+
+    _assert_internal_failure_without_the_sentence(_client(_app_with_routes(Route("/m", raw_route))).get("/m"))
+
+
+def test_a_sealed_response_whose_headers_were_changed_after_construction_is_refused() -> None:
+    """AC-2 (review MAJOR 1): a header outside the door's set, or a content-length that is not the body's, is refused."""
+    from ofo_app.errors import respond
+
+    model = broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
+    for change in (lambda r: r.headers.__setitem__("x-note", SENTENCE),
+                   lambda r: r.headers.__setitem__("content-length", "1")):
+        r = respond(model, 200)
+        change(r)
+        with pytest.raises(api_models.DoorRefused):
+            _run_wrapper(r)
+
+
+def test_a_sealed_redirect_is_made_only_by_typed_redirect_and_checked_again_when_sent() -> None:
+    """AC-2 (review MAJOR 1): SealedRedirect cannot be built directly (open redirect); a Location changed after
+    typed_redirect is refused; neither door class can be subclassed."""
+    from ofo_app.errors import ClosedResponse, SealedRedirect, typed_redirect
+
+    with pytest.raises(TypeError):
+        SealedRedirect("https://evil.example/")
+    with pytest.raises(TypeError):
+        SealedRedirect("/connected", {})
+    model = broker.BrokerRedirectOut(redirect="connected")
+    ok = typed_redirect(model, "/connected")
+    assert _run_wrapper(ok) is ok
+    bad = typed_redirect(model, "/connected")
+    bad.headers["location"] = "https://evil.example/"
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(bad)
+    other = typed_redirect(model, "/connected")
+    other.headers["location"] = "/somewhere-else"  # still a path on this site, but not the one that was made
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(other)
+    from ofo_app import errors
+
+    outside = SealedRedirect("https://evil.example/", _mint=errors._REDIRECT_MINT)  # even a minted one is re-checked
+    with pytest.raises(api_models.DoorRefused):
+        outside.verify()
+    for base in (ClosedResponse, SealedRedirect):
+        with pytest.raises(TypeError):
+            type("Sub", (base,), {})
+
+
+def _app_with_env_file(tmp_path, monkeypatch, text, set_env=None):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(text, encoding="utf-8")
+    monkeypatch.delenv("APP_ENV", raising=False)
+    if set_env is not None:
+        monkeypatch.setenv("APP_ENV", set_env)
+    return _client(create_app())
+
+
+def test_docs_follow_the_one_settings_source_so_a_dotenv_production_has_none(tmp_path, monkeypatch) -> None:
+    """AC-2 (ADR-073, review MAJOR 2): APP_ENV=production only in a .env file, APP_ENV unset, or an unknown value:
+    /docs and /openapi.json answer 404. Only an explicit development or test serves them (from the file too)."""
+    for text, env, expected in (("APP_ENV=production\n", None, 404), ("", None, 404), ("APP_ENV=staging\n", None, 404),
+                                ("APP_ENV=production\n", "production", 404), ("APP_ENV=production\n", "development", 200),
+                                ("APP_ENV=development\n", None, 200), ("APP_ENV=test\n", None, 200)):
+        client = _app_with_env_file(tmp_path, monkeypatch, text, env)
+        assert [client.get(p).status_code for p in DOCS_PATHS] == [expected] * 3, (text, env)
+
+
+def test_replay_mode_is_refused_outside_test_from_either_source(tmp_path, monkeypatch) -> None:
+    """AC-2 (review MAJOR 2): OUTCOME_REPLAY with APP_ENV production (.env only), unset, or development refuses to start."""
+    from ofo_app.replay_mode import ReplayRefused
+
+    monkeypatch.setenv("OUTCOME_REPLAY", "1")
+    for text, env in (("APP_ENV=production\n", None), ("", None), ("", "development")):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(text, encoding="utf-8")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        if env:
+            monkeypatch.setenv("APP_ENV", env)
+        with pytest.raises(ReplayRefused):
+            create_app()
+
+
+@pytest.mark.parametrize("value,text", [(__import__("decimal").Decimal("1365.00"), "1365.00"),
+                                        (__import__("decimal").Decimal("1E+3"), "1000"),
+                                        (__import__("decimal").Decimal("0E-8"), "0.00000000"),
+                                        (__import__("decimal").Decimal("-0.00"), "-0.00")])
+def test_money_is_written_as_a_plain_decimal_string(value, text) -> None:
+    """AC-2: the Money format is pinned (no exponent form, scale and sign kept)."""
+    class Out(api_models.ApiModel):
+        v: api_models.Money
+
+    assert api_models.emit(Out(v=value)) == b'{"v":"' + text.encode() + b'"}'
+
+
+def test_nested_subclass_tuple_length_and_list_subclass_are_refused() -> None:
+    """AC-2: a subclass in a nested model slot, a tuple of the wrong length and a list subclass are all refused."""
+    class Inner(api_models.ApiModel):
+        ok: bool
+
+    class Outer(api_models.ApiModel):
+        inner: Inner
+        pair: tuple[int, int]
+        items: list[int]
+
+    class InnerSub(Inner):
+        pass
+
+    class Items(list):
+        pass
+
+    good = Outer(inner=Inner(ok=True), pair=(1, 2), items=[1])
+    assert api_models.emit(good) == b'{"inner":{"ok":true},"pair":[1,2],"items":[1]}'
+    for name, value in (("inner", InnerSub(ok=True)), ("pair", (1, 2, 3)), ("items", Items([1]))):
+        model = Outer(inner=Inner(ok=True), pair=(1, 2), items=[1])
+        object.__setattr__(model, name, value)
+        with pytest.raises(api_models.DoorRefused):
+            api_models.emit(model)
+
+
+def test_a_trailing_slash_is_a_catalogue_404_not_a_logged_500() -> None:
+    """AC-2: the router's own slash redirect is off (it was an unsealed response)."""
+    response = _client(create_app()).get("/health/")
+    assert response.status_code == 404 and json.loads(response.content)["code"] == "USER_INPUT_003"
+
+
+def test_request_validation_errors_answer_422_with_the_catalogue_body() -> None:
+    """AC-2: a bad body on POST /strategies and a missing query on the catalogue route are 422 with the catalogue body
+    (same as main: probed on both checkouts)."""
+    import datetime
+
+    from ofo_app.db import get_db
+    from ofo_app.routes import catalogue
+
+    app = create_app()
+
+    async def fake_db():
+        yield _FakeDb()
+
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[catalogue.get_today] = lambda: datetime.date(2026, 10, 12)
+    client = _client(app)
+    for response in (client.post("/strategies", json={"underlying": "NIFTY", "legs": "x"}),
+                     client.get("/api/catalogue/NIFTY/contracts")):
+        assert response.status_code == 422
+        assert json.loads(response.content)["code"] == "USER_INPUT_002"  # user_input_request_invalid
 
 
 def test_a_sealed_response_is_not_mistaken_for_unsealed() -> None:
