@@ -799,3 +799,161 @@ def test_the_exemptions_are_exactly_the_outcome_route_and_the_docs_paths() -> No
     from ofo_app import errors
 
     assert errors.OUTCOME_EXEMPTION == ("POST", "/api/strategies/outcome")
+
+
+# --- W-070 (issue #197): a door response sends only what the door minted - body, header names AND values, status -------
+# Third round of finding sealed-object-mutable-after-seal. Written red first (xfail strict) on main dbe0786.
+
+W070 = pytest.mark.xfail(strict=True, reason="W-070 red first: fixed in the next commit")
+EVIL = "https://evil.example/steal"
+_MODEL = broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
+
+
+def _door(kind: str):
+    """A fresh sealed door response: a closed JSON 200, or a sealed redirect to a path on this site."""
+    from ofo_app.errors import respond, typed_redirect
+
+    if kind == "closed":
+        return respond(_MODEL, 200)
+    return typed_redirect(broker.BrokerRedirectOut(redirect="connected"), "/connected")
+
+
+def _wire(response):
+    """Send `response` as bare ASGI; return the messages that reached `send`."""
+    import asyncio
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    scope = {"type": "http", "method": "GET", "path": "/x", "headers": [], "query_string": b"", "raw_path": b"/x",
+             "scheme": "http", "server": ("t", 80), "client": ("c", 1), "http_version": "1.1", "root_path": ""}
+    asyncio.run(response(scope, receive, send))
+    return sent
+
+
+@W070
+def test_core_an_outside_redirect_set_through_location_on_respond_is_refused_through_the_real_app() -> None:
+    """AC-2 (#197 core a): `respond(model, 302)` plus `location` answered a 302 to evil.example on main."""
+    from ofo_app.errors import respond
+
+    async def endpoint():
+        r = respond(_MODEL, 302)
+        r.headers["location"] = EVIL
+        return r
+
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", endpoint))).get(PATH, follow_redirects=False)
+    _assert_internal_failure_without_the_sentence(response)
+    assert "location" not in response.headers and "evil.example" not in str(response.headers)
+
+
+@W070
+def test_core_an_exceptions_www_authenticate_value_never_reaches_the_wire_through_the_real_app() -> None:
+    """AC-2 (#197 core b): HTTPException(401, headers={WWW-Authenticate: sentence}) echoed the sentence on main."""
+    from fastapi import HTTPException
+
+    from ofo_app.errors import WWW_AUTHENTICATE
+
+    async def endpoint():
+        raise HTTPException(401, headers={"WWW-Authenticate": SENTENCE})
+
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", endpoint))).get(PATH)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == WWW_AUTHENTICATE
+    assert SENTENCE not in str(response.headers.items())
+
+
+#: Already refused on main by a round-1/2 guard (content-length against the body; the redirect's own location check):
+#: these are regression tests, not red ones.
+_GREEN_ON_MAIN = {("content-length", "closed"), ("location", "redirect")}
+
+
+@pytest.mark.parametrize("kind", ["closed", "redirect"])
+@pytest.mark.parametrize("name", sorted(__import__("ofo_app.errors", fromlist=["x"])._DOOR_HEADERS))
+def test_every_door_header_set_to_a_sentence_after_construction_is_refused(name: str, kind: str, request) -> None:
+    """AC-2: header NAMES in the door's set are not enough - a changed VALUE is refused too."""
+    if (name, kind) not in _GREEN_ON_MAIN:
+        request.applymarker(W070)
+    r = _door(kind)
+    r.headers[name] = SENTENCE
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+@pytest.mark.parametrize("kind,status", [("closed", 201), ("closed", 302), ("redirect", 301), ("redirect", 200)])
+def test_a_status_changed_after_construction_is_refused(kind: str, status: int, request) -> None:
+    """AC-2: the status is part of the frozen state (a redirect's status was already checked on main; closed was not)."""
+    if kind == "closed":
+        request.applymarker(W070)
+    r = _door(kind)
+    r.status_code = status
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+@W070
+def test_a_background_task_is_refused_and_never_runs() -> None:
+    """AC-2: Starlette runs `background` after the send; the door pins it to None and never runs one."""
+    from starlette.background import BackgroundTask
+    from starlette.routing import Route
+
+    ran = []
+    r = _door("closed")
+    r.background = BackgroundTask(lambda: ran.append(1))
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+    async def raw_route(request):
+        mutated = _door("closed")
+        mutated.background = BackgroundTask(lambda: ran.append(1))
+        return mutated
+
+    _assert_internal_failure_without_the_sentence(_client(_app_with_routes(Route("/m", raw_route))).get("/m"))
+    assert ran == []
+
+
+@W070
+def test_a_verify_shadowed_on_the_instance_does_not_disable_the_check() -> None:
+    """AC-2: verification is a module function; `r.verify = lambda: None` plus a mutated body is still refused."""
+    r = _door("closed")
+    r.verify = lambda: None
+    r.body = b"Z" * len(r.body)
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+@W070
+def test_init_headers_called_again_is_refused() -> None:
+    """AC-2: `init_headers` rewrites raw_headers after construction: refused for a new name (green on main) and for a
+    door-set name with a new value (red on main)."""
+    for headers in ({"x": SENTENCE}, {"cache-control": SENTENCE}):
+        r = _door("closed")
+        r.init_headers(headers)
+        with pytest.raises(api_models.DoorRefused):
+            _run_wrapper(r)
+
+
+@W070
+def test_an_allow_header_value_from_an_exception_is_never_copied() -> None:
+    """AC-2: HTTPException(405, headers={Allow: sentence}) answers 405 and the sentence is in no header."""
+    from fastapi import HTTPException
+
+    async def endpoint():
+        raise HTTPException(405, headers={"Allow": SENTENCE})
+
+    response = _client(_app_with_routes(_closed("/api/broker/refusals/{code}", endpoint))).get(PATH)
+    assert response.status_code == 405
+    assert SENTENCE not in str(response.headers.items())
+
+
+@W070
+def test_a_cookie_set_on_a_sealed_redirect_after_typed_redirect_is_refused() -> None:
+    """AC-2: a cookie is passed into the constructor; `set_cookie` afterwards changes the frozen headers: refused."""
+    r = _door("redirect")
+    r.set_cookie("sid", "stolen")
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
