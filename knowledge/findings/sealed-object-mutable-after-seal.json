@@ -1,0 +1,27 @@
+{
+ "id": "sealed-object-mutable-after-seal",
+ "scope": "generic",
+ "class": "A guard that checks an object when it is BUILT (a seal, a mint token, a type check at construction) but not when it is USED lets any holder change the object in between; every check on the build path passes while the used object carries something the guard never saw. Checking 'is it the sealed type' at the use site has the same hole. Fixing one mutable part (the body) and not its siblings (header names but not values, status) leaves the same class open.",
+ "mechanism": "W-069 response door: ClosedRoute passed any ClosedResponse/SealedRedirect instance without re-checking it, so `r = respond(model, 200); r.body = b'<sentence>'` sent free text with 200 (round 1); after the body was pinned, verify() checked header NAMES but not VALUES, so `r.headers['location'] = 'https://evil.example/steal'` gave an open redirect and cache-control carried a sentence (round 2).",
+ "first_seen": {
+  "date": "2026-10-11",
+  "where": "PR #196 (W-069), backend/ofo_app/errors.py _through_the_door.convert and ClosedResponse.verify",
+  "evidence": "Tier A review round 1 at d2a068f: probe test `[mutated_body] 200 ... body=b'Your funds were moved...'`; round 2 at 28a8f0d: `location_on_closed -> 302 loc=https://evil.example/steal`, `cache_control_text -> cc=Your funds were moved...`. Orchestrator confirmed round 1 in errors.py (convert returns any _DOOR_TYPES result unchecked)."
+ },
+ "fix": "Verify at the point of use what was minted at construction: keep a snapshot of every part that reaches the wire (body, every header name AND value, status) and require equality when sending; or make the object immutable. Mutation tests list every mutable attribute, not just the one that was attacked.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Body tampering is covered by test_a_sealed_response_whose_body_was_changed_after_construction_is_refused (W-069); header values are open in #197."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-065.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-11",
+   "where": "W-069 round 1 (body) and round 2 (header values)",
+   "evidence": "two Tier A review rounds on PR #196"
+  }
+ ]
+}
