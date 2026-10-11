@@ -172,14 +172,9 @@ def _verify(response: object) -> None:
     if kind is ClosedResponse:
         if type(body) is not Emitted or not _door_status_ok(status) or "location" in names:
             raise DoorRefused("a door response is not a body-carrying answer written by emit")
-        return
-    values = dict(headers)
-    if status != 302 or type(body) is not bytes or body != b"" or b"location" not in values:
+    elif status != 302 or type(body) is not bytes or body != b"" or b"location" not in dict(headers):
         raise DoorRefused("a sealed redirect was changed after it was made")
-    try:
-        _check_location(values[b"location"].decode("latin-1"))
-    except ValueError:
-        raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
+    _check_record_values(kind, status, headers, body)
 
 
 async def _send_frozen(response: Response, scope: Scope, send: Send) -> None:
@@ -330,6 +325,59 @@ def _cookie_header(cookie: RedirectCookie) -> bytes:
         scratch.set_cookie(cookie.name, cookie.value, max_age=cookie.max_age, path=cookie.path, httponly=True,
                            secure=cookie.secure, samesite="lax")
     return next(value for name, value in scratch.raw_headers if name == b"set-cookie")
+
+
+_EXPIRES = re.compile(rb"; expires=[A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT")
+_COOKIE_PARTS = re.compile(rb'(?P<name>[A-Za-z0-9_.-]{1,64})=(?P<value>""|[A-Za-z0-9_.~-]{0,128})')
+
+
+def _cookie_from_header(raw: bytes) -> RedirectCookie:
+    """A candidate `RedirectCookie` read back from a Set-Cookie value. It is only a candidate: the caller re-mints the
+    header from it and demands the same bytes, so anything the cookie builder would not write is refused there."""
+    first, _, rest = raw.partition(b";")
+    match = _COOKIE_PARTS.fullmatch(first)
+    path = re.search(rb"; Path=([^;]*)", raw)
+    age = re.search(rb"; Max-Age=([0-9]{1,9})(?=;|$)", raw)
+    if match is None or path is None:
+        raise DoorRefused("a door cookie is not one the cookie builder writes")
+    value = match["value"]
+    try:
+        return RedirectCookie(match["name"].decode("ascii"), path[1].decode("ascii"),
+                              value=None if value == b'""' else value.decode("ascii"),
+                              max_age=int(age[1]) if age else None, secure=raw.endswith(b"; Secure"))
+    except (ValueError, UnicodeDecodeError):
+        raise DoorRefused("a door cookie is not one the cookie builder writes") from None
+
+
+def _check_record_values(kind: type, status: int, headers: tuple[tuple[bytes, bytes], ...], body: object) -> None:
+    """Re-check every header VALUE of a minted record against the closed table, by minting the table again from what the
+    record claims (its length, status, optional Retry-After / Allow / cookie / Location) with the SAME `_mint_headers`
+    the constructors use, and demanding the very same list. The two can never drift: there is one table. A rewritten
+    record (whoever rewrote it, whatever it re-froze) cannot name a value the table would not mint."""
+    first: dict[bytes, bytes] = {}
+    for name, value in headers:
+        first.setdefault(name, value)
+    try:
+        cookie = _cookie_from_header(first[b"set-cookie"]) if b"set-cookie" in first else None
+        allow = tuple(first[b"allow"].decode("ascii").split(", ")) if b"allow" in first else None
+        expected = _mint_headers(
+            body_length=len(body), content_type=kind is ClosedResponse, status=status,  # type: ignore[arg-type]
+            retry_after=first[b"retry-after"].decode("ascii") if b"retry-after" in first else None,
+            allow=allow, cookie=cookie,
+            location=first[b"location"].decode("latin-1") if b"location" in first else None)
+    except (UnicodeDecodeError, ValueError):
+        raise DoorRefused("a door response header value is not one the door writes") from None
+
+    def comparable(pairs: object) -> list[tuple[bytes, bytes]]:
+        return [(k, _EXPIRES.sub(b"", v) if k == b"set-cookie" else v) for k, v in pairs]  # type: ignore[attr-defined]
+
+    if comparable(headers) != comparable(expected):
+        raise DoorRefused("a door response header value is not one the door writes")
+    if kind is SealedRedirect:
+        try:
+            _check_location(first[b"location"].decode("latin-1"))
+        except ValueError:
+            raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
 
 
 def _is_kite_login_url(location: str) -> bool:

@@ -1113,7 +1113,6 @@ def _assert_minted_500(response) -> None:
     assert "set-cookie" not in response.headers and "public" not in str(response.headers.items())
 
 
-@pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
 def test_core_a_record_rewritten_with_a_sentence_header_and_an_attacker_cookie_is_refused_through_the_app() -> None:
     """AC-2 (#197 round 4 core a): headers rewritten, then the record re-frozen with the module's own `_freeze`."""
     from ofo_app import errors
@@ -1130,7 +1129,6 @@ def test_core_a_record_rewritten_with_a_sentence_header_and_an_attacker_cookie_i
     assert "attacker" not in str(response.headers.items()) and SENTENCE not in str(response.headers.items())
 
 
-@pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
 def test_core_b_a_rewritten_record_tuple_with_a_public_cache_control_is_refused_through_the_app() -> None:
     """AC-2 (#197 round 4 core b): `_frozen` assigned a tuple whose cache-control is `public, max-age=31536000`."""
     from ofo_app import errors
@@ -1145,8 +1143,6 @@ def test_core_b_a_rewritten_record_tuple_with_a_public_cache_control_is_refused_
     _assert_minted_500(_through_app(endpoint))
 
 
-X_RED = pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
-_ALREADY_REFUSED = {"location-on-closed"}  # refused before round 4 too: kept as a parity guard
 _BAD_RECORDS = {
     "content-type": lambda h: [(k, b"text/html" if k == b"content-type" else v) for k, v in h],
     "content-length": lambda h: [(k, b"1" if k == b"content-length" else v) for k, v in h],
@@ -1161,7 +1157,7 @@ _BAD_RECORDS = {
 }
 
 
-@pytest.mark.parametrize("name", [pytest.param(n, marks=[] if n in _ALREADY_REFUSED else X_RED) for n in sorted(_BAD_RECORDS)])
+@pytest.mark.parametrize("name", sorted(_BAD_RECORDS))
 def test_every_value_in_a_rewritten_record_is_rechecked_against_the_closed_table(name: str) -> None:
     """AC-2: the record is re-frozen after each header VALUE rule is broken in turn; the door refuses every one."""
     from ofo_app import errors
@@ -1173,7 +1169,7 @@ def test_every_value_in_a_rewritten_record_is_rechecked_against_the_closed_table
         _run_wrapper(r)
 
 
-@pytest.mark.parametrize("what", [pytest.param("cookie-domain", marks=X_RED), "location-outside"])
+@pytest.mark.parametrize("what", ["cookie-domain", "location-outside"])
 def test_a_redirect_record_with_an_outside_location_or_a_foreign_cookie_is_refused(what: str) -> None:
     """AC-2: same re-check on a sealed redirect: a cookie with a Domain attribute, a Location off this site."""
     from ofo_app import errors
