@@ -1098,3 +1098,104 @@ def test_a_frozen_state_that_was_never_set_or_was_replaced_by_a_wrong_shape_is_r
     del r._frozen
     with pytest.raises(api_models.DoorRefused):
         _run_wrapper(r)
+
+
+# --- W-070 round 4 (issue #197): the minted record itself is re-checked against the closed table ----------------------
+# Finding sealed-object-mutable-after-seal, round 4. Written red first (xfail strict), the marks come off with the fix.
+
+def _through_app(endpoint):
+    return _client(_app_with_routes(_closed("/api/broker/refusals/{code}", endpoint))).get(PATH, follow_redirects=False)
+
+
+def _assert_minted_500(response) -> None:
+    _assert_internal_failure_without_the_sentence(response)
+    assert response.headers["cache-control"] == "no-store"
+    assert "set-cookie" not in response.headers and "public" not in str(response.headers.items())
+
+
+@pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
+def test_core_a_record_rewritten_with_a_sentence_header_and_an_attacker_cookie_is_refused_through_the_app() -> None:
+    """AC-2 (#197 round 4 core a): headers rewritten, then the record re-frozen with the module's own `_freeze`."""
+    from ofo_app import errors
+
+    async def endpoint():
+        r = errors.respond(_MODEL, 200)
+        r.headers["cache-control"] = SENTENCE
+        r.headers["set-cookie"] = "sid=attacker; Domain=example.com; Path=/"
+        errors._freeze(r)
+        return r
+
+    response = _through_app(endpoint)
+    _assert_minted_500(response)
+    assert "attacker" not in str(response.headers.items()) and SENTENCE not in str(response.headers.items())
+
+
+@pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
+def test_core_b_a_rewritten_record_tuple_with_a_public_cache_control_is_refused_through_the_app() -> None:
+    """AC-2 (#197 round 4 core b): `_frozen` assigned a tuple whose cache-control is `public, max-age=31536000`."""
+    from ofo_app import errors
+
+    async def endpoint():
+        r = errors.respond(_MODEL, 200)
+        headers = tuple((k, b"public, max-age=31536000" if k == b"cache-control" else v) for k, v in r.raw_headers)
+        r.raw_headers[:] = list(headers)
+        r._frozen = (200, headers, r.body)
+        return r
+
+    _assert_minted_500(_through_app(endpoint))
+
+
+X_RED = pytest.mark.xfail(strict=True, reason="W-070 round 4 red first")
+_ALREADY_REFUSED = {"location-on-closed"}  # refused before round 4 too: kept as a parity guard
+_BAD_RECORDS = {
+    "content-type": lambda h: [(k, b"text/html" if k == b"content-type" else v) for k, v in h],
+    "content-length": lambda h: [(k, b"1" if k == b"content-length" else v) for k, v in h],
+    "referrer-policy": lambda h: [(k, b"unsafe-url" if k == b"referrer-policy" else v) for k, v in h],
+    "www-authenticate": lambda h: h + [(b"www-authenticate", SENTENCE.encode())],
+    "retry-after": lambda h: h + [(b"retry-after", b"soon, see https://evil.example")],
+    "allow": lambda h: h + [(b"allow", b"GET, SHOUT")],
+    "cookie-extra-attribute": lambda h: h + [(b"set-cookie", b"ofo=abc; Domain=example.com; HttpOnly; Path=/")],
+    "cookie-sentence": lambda h: h + [(b"set-cookie", b"ofo=" + SENTENCE.encode())],
+    "location-on-closed": lambda h: h + [(b"location", b"/x")],
+    "duplicate-cache-control": lambda h: h + [(b"cache-control", b"no-store")],
+}
+
+
+@pytest.mark.parametrize("name", [pytest.param(n, marks=[] if n in _ALREADY_REFUSED else X_RED) for n in sorted(_BAD_RECORDS)])
+def test_every_value_in_a_rewritten_record_is_rechecked_against_the_closed_table(name: str) -> None:
+    """AC-2: the record is re-frozen after each header VALUE rule is broken in turn; the door refuses every one."""
+    from ofo_app import errors
+
+    r = _door("closed")
+    r.raw_headers[:] = _BAD_RECORDS[name](list(r.raw_headers))
+    errors._freeze(r)
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+@pytest.mark.parametrize("what", [pytest.param("cookie-domain", marks=X_RED), "location-outside"])
+def test_a_redirect_record_with_an_outside_location_or_a_foreign_cookie_is_refused(what: str) -> None:
+    """AC-2: same re-check on a sealed redirect: a cookie with a Domain attribute, a Location off this site."""
+    from ofo_app import errors
+
+    r = _door("redirect")
+    if what == "cookie-domain":
+        r.raw_headers[:] = list(r.raw_headers) + [(b"set-cookie", b"ofo=abc; Domain=example.com; HttpOnly; Path=/")]
+    else:
+        r.raw_headers[:] = [(k, EVIL.encode() if k == b"location" else v) for k, v in r.raw_headers]
+    errors._freeze(r)
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
+
+
+def test_a_record_the_door_itself_minted_still_passes_with_every_header_kind() -> None:
+    """AC-2 (parity, green before and after): 401 www-authenticate, retry-after, allow and a cookie verify and are sent."""
+    from ofo_app.errors import ClosedResponse, RedirectCookie
+
+    r = ClosedResponse(api_models.emit_message(render("broker_state_invalid")), 401, retry_after="60",
+                       allow=("POST", "GET"), cookie=RedirectCookie("ofo_kite_login", "/kite/callback", value="abc"))
+    sent = _wire(r)
+    assert sent[0]["status"] == 401
+    headers = dict(sent[0]["headers"])
+    assert headers[b"allow"] == b"GET, POST" and headers[b"retry-after"] == b"60"
+    assert headers[b"www-authenticate"] == b'Session realm="OptionsForOptions2"'
