@@ -252,14 +252,15 @@ def test_the_app_models_are_all_swept() -> None:
 
 
 @pytest.mark.parametrize("required_only", [False, True])
-def test_every_app_model_emits_the_bytes_the_old_serializer_wrote(required_only: bool) -> None:
-    """AC-2 (parity with pydantic's JSON form; temporary, deleted at the end of W-069): every field set, and only the
-    required fields set under exclude_unset."""
+def test_every_app_model_emits_with_exactly_its_declared_keys(required_only: bool) -> None:
+    """AC-2: every app model, built from samples of each of its leaf kinds (the sampler raises on a kind the door does
+    not know), emits JSON whose keys are its declared field names (only the set ones under exclude_unset).
+    The step-5 parity run against model_dump (bytes equal for all 17 models, both modes) passed before this replaced it."""
     for cls in _app_models():
         model = _build(cls, required_only)
-        old = json.dumps(model.model_dump(mode="json", exclude_unset=required_only), ensure_ascii=False,
-                         allow_nan=False, separators=(",", ":")).encode()
-        assert api_models.emit(model, exclude_unset=required_only) == old, cls.__name__
+        written = json.loads(api_models.emit(model, exclude_unset=required_only))
+        expected = [n for n in cls.model_fields if not required_only or cls.model_fields[n].is_required()]
+        assert list(written) == expected, cls.__name__
 
 
 # --- the leaf table, generated: every slot kind against a pool of every other kind -------------------------------------
@@ -391,12 +392,53 @@ def test_extras_refuse_the_whole_response_and_are_never_dropped(class_check_off:
         api_models.emit(Loose(ok=True, note=SENTENCE))
 
 
+def test_extras_set_underneath_a_base_config_model_are_refused_by_the_extras_check_itself() -> None:
+    """AC-2: independent of the config check - a model with the exact base config but a populated extras slot."""
+    model = broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
+    object.__setattr__(model, "__pydantic_extra__", {"note": SENTENCE})
+    with pytest.raises(api_models.DoorRefused):
+        api_models.emit(model)
+
+
+def test_the_wrapper_itself_refuses_a_raw_response_without_the_boundary() -> None:
+    """AC-2: the wrapper (not only the seal check behind it) refuses a raw Response and a dict."""
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+
+    for returned in (JSONResponse({"note": SENTENCE}), {"note": SENTENCE}):
+        async def endpoint(returned=returned):
+            return returned
+
+        with pytest.raises(api_models.DoorRefused):
+            asyncio.run(_closed("/x", endpoint).endpoint())
+
+
 def test_a_value_swapped_underneath_a_validated_model_is_refused() -> None:
     """AC-2: object.__setattr__ cannot smuggle a sentence in: the door re-checks every value against its slot."""
     model = broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
     object.__setattr__(model, "code", SENTENCE)
     with pytest.raises(api_models.DoorRefused):
         api_models.emit(model)
+
+
+def test_a_field_name_outside_the_key_pattern_is_refused() -> None:
+    """AC-2: the only keys a body may carry are declared names matching ^[a-z][a-z0-9_]{0,63}$ (a name is text too)."""
+    class Odd(api_models.ApiModel):
+        Note_Of_Words: bool
+
+    with pytest.raises(api_models.DoorRefused):
+        api_models.emit(Odd(Note_Of_Words=True))
+
+
+def test_a_route_keeps_its_declared_success_status_code() -> None:
+    """AC-2: the wrapper answers the route's own status_code (201 for Save Draft), not a default 200."""
+    async def endpoint():
+        return broker.RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
+
+    route = create_app().router.route_class("/x", endpoint, response_model=broker.RefusalOut, methods=["GET"],
+                                            status_code=201)
+    assert _client(_app_with_routes(route)).get("/x").status_code == 201
 
 
 def test_emitted_bytes_and_closed_responses_cannot_be_forged() -> None:
@@ -481,6 +523,33 @@ def test_an_unsealed_response_from_anywhere_else_is_dropped_whole_and_answered_5
                         (Mount("/mounted", sub), "/mounted/inner"),
                         (APIRoute("/api/strategies/outcome", plain, methods=["GET"]), "/api/strategies/outcome")):
         _assert_internal_failure_without_the_sentence(_client(_app_with_routes(route)).get(path))
+
+
+def test_the_boundary_drops_every_message_of_an_unsealed_response_and_sends_only_the_500() -> None:
+    """AC-2: driven as bare ASGI - the unsealed start AND its body chunks never reach the wire; exactly one 500 does."""
+    import asyncio
+
+    from ofo_app.errors import _Boundary
+
+    async def unsealed_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain")]})
+        await send({"type": "http.response.body", "body": SENTENCE.encode(), "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    scope = {"type": "http", "method": "GET", "path": "/x", "headers": [], "query_string": b"", "raw_path": b"/x",
+             "scheme": "http", "server": ("t", 80), "client": ("c", 1), "http_version": "1.1", "root_path": ""}
+    asyncio.run(_Boundary(unsealed_app)(scope, receive, send))
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [500]
+    assert SENTENCE.encode() not in b"".join(m.get("body", b"") for m in sent)
 
 
 def test_a_sealed_response_is_not_mistaken_for_unsealed() -> None:
