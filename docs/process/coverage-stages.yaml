@@ -213,6 +213,7 @@ issues:
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
   "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
   "#197": 4a            # response door follow-up: header values of a sealed response (W-069 review round 2)
+  "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 
 # Work items whose status is not done.
 work_items:
