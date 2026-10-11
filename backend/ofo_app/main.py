@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from ofo_app import errors, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
-from ofo_app.routes import broker, health, outcome, strategies
+from ofo_app.routes import broker, catalogue, health, outcome, planned_entry, strategies
 
 log = logging.getLogger(__name__)
 
@@ -42,4 +42,6 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(outcome.router)
     broker.mount(app, config)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
+    app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
+    app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     return app
