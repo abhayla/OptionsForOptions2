@@ -1,5 +1,9 @@
 # Handover
 
+**2026-10-12 — START HERE: `docs/process/session-handover-2026-10-12.md`.** Merged: #201 (W-070 response door
+part 2, PARTIAL after 9 rounds; remainder parked #200). REQ-065 back to Testing: W-069's AC-2 pass was withdrawn
+(Sonnet verifier; the door was forgeable). NEXT: W-065 live proof with the owner's Kite login, then W-066 (#172).
+
 **2026-10-11 — START HERE: `docs/process/session-handover-2026-10-11.md`** (then the prompt
 `docs/process/next-session-prompt-2026-10-12.md`). Merged: #196 (W-069 / #148 response door, Tier A, verified).
 In progress: W-070 (#197, door header values; brief on `build/W-070-door-headers`, builder waits for RAM > 2 GB).
