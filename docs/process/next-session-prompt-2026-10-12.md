@@ -15,4 +15,5 @@ done-claim. Tier A verifiers run on Opus.
 1. Read free memory. Under ~2 GB: do not dispatch; show the owner the grouped list (orphans and old sessions first)
    and ask.
 2. After 09:15 IST: W-065 live proof with the owner's Kite login (`build/W-065-live-push`), then W-066 (#172).
-3. W-070 (#197) builder from `docs/process/brief-W-070.md` on `build/W-070-door-headers` if not yet built.
+3. ~~W-070 (#197)~~ merged PARTIAL as #201 on 2026-10-12; the remainder is #200 (see
+   `docs/process/session-handover-2026-10-12.md`).
