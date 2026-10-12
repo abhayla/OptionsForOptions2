@@ -765,3 +765,57 @@ def test_a_planted_route_file_is_caught_by_the_real_scan(tmp_path: Path) -> None
     plant.write_text(FORGER9, encoding="utf-8")
     assert reflection_violations(plant.read_text(encoding="utf-8"), "ofo_app/routes/forger9.py")
     assert reflection_violations("x = getattr(a, n)", "ofo_app/routes/anything.py")
+
+
+# --- round 9 (issue #197, ADR-003 Q235): only the app-assembly files name the framework's app-assembly surface ------------
+# Round 8 closed the reflection entry points, but plain attribute writes on the framework's app object reach the door's own
+# internals (`request.app.user_middleware.clear()`, `request.app.middleware_stack.app.exempt = ...`). The surface for that is
+# a small CLOSED set of framework names, so the rule is an allow-list by file. Written red first (xfail strict, step 1).
+
+ROUND9_ATTACKS = {
+    "A1_strip_boundary": '''
+def x(request):
+    request.app.user_middleware.clear()
+    request.app.middleware_stack = None
+''',
+    "A2_reroute_stack_app": '''
+def x(request):
+    request.app.middleware_stack.app = request.app.middleware_stack.app.app
+''',
+    "A3_widen_exempt": '''
+def x(request):
+    request.app.middleware_stack.app.exempt = frozenset({("GET", "/raw")})
+''',
+    "A4_outer_rewriter": '''
+from starlette.middleware import Middleware
+class Rewriter:
+    def __init__(self, app): self.app = app
+    async def __call__(self, scope, receive, send):
+        await self.app(scope, receive, send)
+def x(request):
+    request.app.user_middleware.insert(0, Middleware(Rewriter))
+    request.app.middleware_stack = None
+''',
+    "A5_raw_route": '''
+from starlette.routing import Route
+def x(request):
+    request.app.router.routes.append(Route("/raw", None))
+''',
+    "A6_dependency_overrides": '''
+def x(request):
+    request.app.dependency_overrides[get_ctx] = lambda: None
+''',
+}
+ROUND9_PLACES = ("ofo_app/routes/evil.py", "ofo_app/evil.py")
+
+
+def every_scan(source: str, where: str) -> list[str]:
+    """What the whole backend scan reports for one file (each scan the real tests run, with the real allow-lists)."""
+    return (door_name_uses(source, where) + forbidden_module_uses(source, where) + reflection_violations(source, where))
+
+
+@pytest.mark.xfail(strict=True, reason="round 9 step 1: the app-assembly scan does not exist yet")
+@pytest.mark.parametrize("where", ROUND9_PLACES)
+@pytest.mark.parametrize("name", sorted(ROUND9_ATTACKS))
+def test_round9_every_app_assembly_attack_is_flagged_in_routes_and_elsewhere(name: str, where: str) -> None:
+    assert every_scan(ROUND9_ATTACKS[name], where), (name, where)

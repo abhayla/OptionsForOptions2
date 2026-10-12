@@ -764,16 +764,24 @@ def test_every_route_of_the_real_app_goes_through_the_door(env: str, monkeypatch
     """AC-2: each route is exactly a ClosedRoute carrying the door marker, its wrapper is async exactly when the
     original endpoint is, and its response_model is a closed ApiModel from the swept set. Exempt: the outcome route
     (until W-066 / #172) and the framework docs routes, only in development."""
+    monkeypatch.setenv("APP_ENV", env)
+    problems, docs_seen = _route_problems(create_app().routes)
+    assert problems == []
+    assert docs_seen == (set(DOCS_PATHS) | {"/docs/oauth2-redirect"} if env == "development" else set())
+
+
+def _route_problems(routes) -> tuple[list[str], set[str]]:
+    """The enumeration over any route list: (problems, docs paths seen). The outcome exemption is the REAL outcome
+    endpoint function (identity), not a method and path that any stand-in route can copy."""
     import inspect
 
     from fastapi.routing import APIRoute
 
     from ofo_app.errors import ClosedRoute
 
-    monkeypatch.setenv("APP_ENV", env)
     models = set(_app_models())
     problems, docs_seen = [], set()
-    for route in create_app().routes:
+    for route in routes:
         if getattr(route, "path", "") in DOCS_PATHS + ("/docs/oauth2-redirect",) and not isinstance(route, APIRoute):
             docs_seen.add(route.path)
             continue
@@ -789,8 +797,20 @@ def test_every_route_of_the_real_app_goes_through_the_door(env: str, monkeypatch
             problems.append(f"{route.path}: wrapper kind differs from the endpoint's")
         if route.response_model not in models:
             problems.append(f"{route.path}: response_model {route.response_model!r}")
-    assert problems == []
-    assert docs_seen == (set(DOCS_PATHS) | {"/docs/oauth2-redirect"} if env == "development" else set())
+    return problems, docs_seen
+
+
+@pytest.mark.xfail(strict=True, reason="round 9 step 1: the exemption matches method and path only")
+def test_a_stand_in_route_at_the_outcome_path_is_not_exempt() -> None:
+    """Round 9: a plain APIRoute at POST /api/strategies/outcome whose endpoint is not the real one is a problem."""
+    from fastapi.routing import APIRoute
+
+    def stand_in() -> dict:
+        return {"raw": "UNMINTED"}
+
+    routes = [*create_app().routes, APIRoute("/api/strategies/outcome", stand_in, methods=["POST"])]
+    problems, _ = _route_problems(routes)
+    assert any("/api/strategies/outcome" in p for p in problems), problems
 
 
 def test_the_exemptions_are_exactly_the_outcome_route_and_the_docs_paths() -> None:
