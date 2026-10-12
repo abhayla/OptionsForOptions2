@@ -344,37 +344,73 @@ def test_a_planted_backend_file_is_caught_by_the_real_scan(tmp_path: Path) -> No
     assert door_name_uses(plant.read_text(encoding="utf-8"), "ofo_app/forger.py")
 
 
-# --- round 6 (issue #197): modules that can rewrite or forge a sealed object are not importable by product code ----------
-# The door now mints its body from a model and re-emits it to check (tests_app/test_response_door.py), so a forged body
-# cannot be passed in. What is left is code that reaches into memory or rebuilds objects without their constructors; no
-# product code needs that, so the allow-list is short and every entry carries its reason.
+# --- round 6/7 (issue #197): the mechanisms that reach memory, deserialise, or lead to either -----------------------------
+# The door mints its body from a model and re-emits it to check (tests_app/test_response_door.py), so a forged body cannot
+# be passed in. No product code needs raw memory, object rebuilding without constructors, or the import machinery, so the
+# rule is an allow-list over a small CLOSED set of mechanisms (a list of forbidden spellings is never complete):
+#   (a) a module whose top-level name, leading underscores stripped, is in MECHANISM_MODULES (so `_ctypes`, `_pickle`);
+#       also `import_module(...)` calls;
+#   (b) the names `__builtins__`, `__import__`, `__loader__`, `__spec__` (as a name, an attribute or a string);
+#   (c) `sys.modules`, `sys._getframe`, `sys.meta_path`, `sys.path_hooks`.
+# Runtime resistance to code that rewrites the checker in-process is out of scope (ADR-003 Q235); this scan flags it.
 
-FORBIDDEN_MODULES = frozenset({"ctypes", "pickle", "copyreg", "marshal", "shelve", "dill", "importlib"})
+MECHANISM_MODULES = frozenset({"ctypes", "pickle", "copyreg", "marshal", "shelve", "dill", "importlib", "pkgutil",
+                               "builtins", "cffi", "gc"})
+MECHANISM_NAMES = frozenset({"__builtins__", "__import__", "__loader__", "__spec__"})
+SYS_MECHANISMS = frozenset({"modules", "_getframe", "meta_path", "path_hooks"})
 
-#: Backend paths (prefix) allowed to import a forbidden module, each with its reason and the modules it may use.
+#: Backend paths (prefix) allowed to use a mechanism, each with its reason and the tokens it may use. A token is a module
+#: name (`importlib`) or `sys.<attr>`.
 FORBIDDEN_MODULE_ALLOWED = {
     "ofo_app/alembic/versions/": ("migration scripts load the shared baseline helper by file path "
                                   "(importlib.util.spec_from_file_location); they never run in the API process",
                                   frozenset({"importlib"})),
+    "ofo/errors/explanations.py": ("user_words() reads its caller's module name with sys._getframe(1) to refuse any "
+                                   "caller outside REQUEST_LAYER; it is the door's own read-only guard, not a route",
+                                   frozenset({"sys._getframe"})),
 }
 
 
 def forbidden_module_uses(source: str, where: str = "<source>") -> list[str]:
-    """Every import of a forbidden module (`import x`, `import x.y`, `from x import y`, `from x.y import z`) and every
-    `__import__(...)` call in `source`, unless `where` is an allowed path for that module."""
+    """Every use in `source` of a mechanism in (a), (b) or (c) above, unless `where` is an allowed path for that token."""
     allowed = next((mods for prefix, (_, mods) in FORBIDDEN_MODULE_ALLOWED.items() if where.startswith(prefix)), frozenset())
-    found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        names: list[str] = []
+    tree = ast.parse(source)
+    sys_names = {"sys"}
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            names = [a.name.split(".")[0] for a in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names = [node.module.split(".")[0]]
-        elif isinstance(node, ast.Call) and _dotted(node.func).split(".")[-1] == "__import__":
-            names = ["__import__"]
-        for name in names:
-            if (name in FORBIDDEN_MODULES or name == "__import__") and name not in allowed:
-                found.append(f"{where}:{getattr(node, 'lineno', 0)} imports {name}")
+            sys_names |= {a.asname for a in node.names if a.name == "sys" and a.asname}
+    found: list[str] = []
+
+    def hit(node: ast.AST, token: str) -> None:
+        if token not in allowed:
+            found.append(f"{where}:{getattr(node, 'lineno', 0)} uses {token}")
+
+    def module_hit(node: ast.AST, dotted: str) -> None:
+        top = dotted.split(".")[0].lstrip("_")
+        if top in MECHANISM_MODULES:
+            hit(node, top)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                module_hit(node, a.name)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            module_hit(node, node.module)
+            if node.module == "sys":
+                for a in node.names:
+                    if a.name in SYS_MECHANISMS:
+                        hit(node, f"sys.{a.name}")
+        elif isinstance(node, ast.Name) and node.id in MECHANISM_NAMES:
+            hit(node, node.id)
+        elif isinstance(node, ast.Attribute):
+            if node.attr in MECHANISM_NAMES:
+                hit(node, node.attr)
+            if node.attr in SYS_MECHANISMS and isinstance(node.value, ast.Name) and node.value.id in sys_names:
+                hit(node, f"sys.{node.attr}")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in MECHANISM_NAMES:
+            hit(node, node.value)
+        elif isinstance(node, ast.Call) and _dotted(node.func).split(".")[-1] == "import_module":
+            hit(node, "importlib")
     return found
 
 
@@ -390,11 +426,11 @@ def test_the_forbidden_module_allowances_are_real() -> None:
     for prefix, (_, mods) in FORBIDDEN_MODULE_ALLOWED.items():
         files = [p for p in _product_files() if p.relative_to(BACKEND).as_posix().startswith(prefix)]
         assert files
-        used = {m for p in files for m in mods if f"import {m}" in p.read_text(encoding="utf-8")}
+        used = {m for p in files for m in mods if m in p.read_text(encoding="utf-8")}
         assert used == set(mods)
 
 
-@pytest.mark.parametrize("module", sorted(FORBIDDEN_MODULES))
+@pytest.mark.parametrize("module", sorted(MECHANISM_MODULES))
 @pytest.mark.parametrize("template", ["import {m}", "import {m}.sub as s", "from {m} import thing", "from {m}.sub import thing"])
 def test_the_scan_refuses_every_import_shape_of_every_forbidden_module(module: str, template: str) -> None:
     assert forbidden_module_uses(template.format(m=module), "ofo_app/routes/x.py"), (module, template)
@@ -434,7 +470,6 @@ ROUND7_SHAPES = [
 ]
 
 
-@pytest.mark.xfail(strict=True, reason="round 7 red first: closed by the mechanism scan")
 @pytest.mark.parametrize("source", ROUND7_SHAPES)
 def test_round7_scan_refuses_every_mechanism(source: str) -> None:
     assert forbidden_module_uses(source, "ofo_app/routes/x.py"), source

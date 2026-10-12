@@ -197,3 +197,25 @@ through typed slots, which is what Q226 asks for.
 
 Cost: `_verify` emits once more per response (respond + _verify, 1000 runs: about 0.86 ms before, 1.67 ms after on this
 box; see the round 6 report).
+
+## Round 7 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+Basis (ADR-003 Q235): the checks "are not required to resist code in the same process that deliberately replaces the
+checker at runtime (e.g. reassigning a module's check function); that is out of scope, and the CI source scan flags it."
+ADR-065 drew the same line for the pricing guards, whose scan was made to fail closed on the shapes its verifier found.
+
+- The verifier's N8 rewrote the memory of a rendered message with `ctypes` before the model was constructed. Runtime
+  resistance to memory rewriting is out of scope under Q235, so there is NO runtime change in this round.
+- The CI source scan now flags the mechanisms, not module spellings. A list of forbidden ways is never complete; an allow-list
+  over a small closed set is. Over every `.py` under `backend/` (`ofo/` and `ofo_app/`) it refuses: (a) any import, or
+  `import_module(...)`, of a module whose top-level name, leading underscores stripped, is in {ctypes, pickle, copyreg,
+  marshal, shelve, dill, importlib, pkgutil, builtins, cffi, gc} (so `_ctypes`, `_pickle`); (b) the names `__builtins__`,
+  `__import__`, `__loader__`, `__spec__` as a name, an attribute or a string; (c) `sys.modules`, `sys._getframe`,
+  `sys.meta_path`, `sys.path_hooks`.
+- One scan: `forbidden_module_uses` in tests/test_door_names_private.py was extended in place; there is no second copy of the
+  rule. tests/errors/test_write_allowlist.py is a different rule (vars/`__dict__` writes in `backend/ofo`) and is unchanged.
+- Listed exceptions, each with its reason: alembic migrations may use `importlib` (load the baseline helper by file path);
+  `ofo/errors/explanations.py` may use `sys._getframe` (`user_words()` reads its caller's module name to refuse callers
+  outside `REQUEST_LAYER`; the door's own read-only guard).
+- N4 (swapping in another real model and its bytes through `vars(r)`) is a note only: every byte that could be sent is still
+  mintable by `emit`, so no byte outside the typed slots can reach the user.
