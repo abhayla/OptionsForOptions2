@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "Body tampering is covered by test_a_sealed_response_whose_body_was_changed_after_construction_is_refused (W-069); header values are open in #197."
+  "note": "W-070 (2026-10-12) covers the door's instances: status, every header name and value, background and body are frozen at construction, sent from the frozen copy, and re-minted at send (header table and Location re-minted; body re-emitted from the stored model), with mutation-killed tests in tests_app/test_response_door.py. Deliberate rebinding of the door module's names and seal reuse are not yet CI-flagged (#200), so the class stays unguarded."
  },
  "spec_ref": [
   "spec/requirements/REQ-065.md"
@@ -22,6 +22,16 @@
    "date": "2026-10-11",
    "where": "W-069 round 1 (body) and round 2 (header values)",
    "evidence": "two Tier A review rounds on PR #196"
+  },
+  {
+   "date": "2026-10-11",
+   "where": "W-070 round 3: _verify compared the live response only with its own _frozen record, so re-calling _freeze after editing headers passed",
+   "evidence": "Tier A review at 228a886: 200 with a sentence in cache-control and cookie sid=attacker; Domain=example.com (issue #197)"
+  },
+  {
+   "date": "2026-10-12",
+   "where": "W-070 round 5: a forged Emitted body accepted by ClosedResponse (bytes.__new__, then copyreg/pickle/__class__/super) and a ctypes in-place rewrite",
+   "evidence": "Opus verifier at cce0e6a and 610ef4d; fixed in round 6 by minting the body from the model and re-emitting at send (issue #197)"
   }
  ]
 }
