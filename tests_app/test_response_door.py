@@ -1220,3 +1220,55 @@ def test_the_app_middleware_list_is_exactly_the_boundary() -> None:
     from ofo_app.errors import _Boundary
 
     assert [m.cls for m in create_app().user_middleware] == [_Boundary]
+
+
+# --- W-070 round 5 (issue #197): Location is re-minted, not tested against a list of banned characters ----------------
+# Finding sealed-object-mutable-after-seal, round 5. Written red first (xfail strict), the marks come off with the fix.
+
+_BAD_LOCATIONS = (["/\t/evil.example/steal", "/ /evil.example/steal", "/%2F/evil.example", "/%2f/evil.example",
+                   "/%5Cevil.example", "/a b", "/\x7f/x", "/é"]
+                  + [f"/{chr(c)}/evil.example/steal" for c in range(0x20) if c not in (0x0A, 0x0D)])  # CR and LF were refused already
+
+
+def _redirect_with_location(location: str):
+    from ofo_app import errors
+
+    r = _door("redirect")
+    r.raw_headers[:] = [(k, location.encode("latin-1") if k == b"location" else v) for k, v in r.raw_headers]
+    errors._freeze(r)
+    return r
+
+
+@pytest.mark.xfail(strict=True, reason="round 5 step 1: Location is only tested against CR, LF and backslash")
+@pytest.mark.parametrize("location", _BAD_LOCATIONS, ids=lambda s: ascii(s))
+def test_a_rewritten_and_refrozen_location_that_the_door_would_not_mint_is_refused(location: str) -> None:
+    """AC-2 (#197 round 5 core a): a tab, any C0 control, DEL, a space or an encoded slash in the path, re-frozen."""
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(_redirect_with_location(location))
+
+
+@pytest.mark.xfail(strict=True, reason="round 5 step 1: the raw-tab Location goes out as a 302")
+def test_core_a_tab_location_rewritten_and_refrozen_is_the_minted_500_through_the_app() -> None:
+    """AC-2 (#197 round 5 core a): through the real app a raw tab in Location answered a 302 on cce0e6a."""
+    async def endpoint():
+        return _redirect_with_location("/\t/evil.example/steal")
+
+    response = _through_app(endpoint)
+    _assert_minted_500(response)
+    assert "location" not in response.headers
+
+
+@pytest.mark.parametrize("location", ["/\r/evil.example/steal", "/\n/evil.example/steal", "/\\evil.example"])
+def test_a_rewritten_location_with_cr_lf_or_a_backslash_stays_refused(location: str) -> None:
+    """AC-2 (parity, green before and after): the three characters the old predicate named."""
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(_redirect_with_location(location))
+
+
+@pytest.mark.parametrize("location", ["/connected", "/connected?code=broker_state_invalid", "/a/b%20c/d~e_f-g.h", "/%E2%82%AC"])
+def test_a_location_the_door_mints_itself_still_verifies(location: str) -> None:
+    """AC-2 (parity, green before and after): ordinary paths, a query and percent escapes stay accepted."""
+    from ofo_app.errors import typed_redirect
+
+    sent = _wire(typed_redirect(broker.BrokerRedirectOut(redirect="connected"), location))
+    assert sent[0]["status"] == 302 and dict(sent[0]["headers"])[b"location"] == location.encode()

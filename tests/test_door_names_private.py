@@ -88,3 +88,48 @@ def test_scan_catches_every_shape(source: str) -> None:
 ])
 def test_scan_passes_the_allowed_shapes(source: str) -> None:
     assert door_name_uses(source) == [], source
+
+
+# --- round 5 (issue #197): the forgery shapes of the second review. Written red first (xfail strict); the mark comes off
+# --- with the scan that closes them.
+
+_ROUND5 = pytest.mark.xfail(strict=True, reason="round 5 step 1: the scan does not see this shape yet")
+
+FORGERY_SHAPES = [
+    "from ofo_app.api_models import Emitted\nx = bytes.__new__(Emitted, b'{}')",
+    "import ofo_app.api_models as m\nx = bytes.__new__(m.Emitted, b'{}')",
+    "from ofo_app.api_models import Emitted\nx = Emitted(b'{}', _token=1)",
+    "from ofo_app.api_models import Emitted\nx = Emitted.__new__(Emitted, b'{}')",
+    "x = bytes.__new__(type(emit(m)), b'{}')",
+    "x = object.__new__(Thing)",
+    "f = getattr(bytes, '__new__')",
+]
+
+GAP_SHAPES = [
+    "from ofo_app import errors\ngetattr(errors, name)",
+    "import ofo_app.errors as e\nsetattr(e, name, 1)",
+    "import ofo_app.api_models as m\nvars(m)",
+    "from ofo_app import errors\nerrors.__dict__['x']",
+    "from ofo_app import errors as e\nalias = e\ngetattr(alias, name)",
+    "import sys\ngetattr(sys.modules['ofo_app.errors'], name)",
+    "from ofo_app.errors import *",
+    "from ofo_app.api_models import *",
+    "from .errors import *",
+    "x = '_fro' + 'zen'",
+    "x = f'_{\"fro\"}zen'",
+    "x = ''.join(['_fro', 'zen'])",
+    "x = '_%s' % 'frozen'",
+    "def f():\n    '_frozen'",
+]
+
+
+@_ROUND5
+@pytest.mark.parametrize("source", FORGERY_SHAPES)
+def test_scan_catches_every_way_to_forge_an_emitted_body(source: str) -> None:
+    assert door_name_uses(source), source
+
+
+@_ROUND5
+@pytest.mark.parametrize("source", GAP_SHAPES)
+def test_scan_catches_every_indirect_way_to_a_door_name(source: str) -> None:
+    assert door_name_uses(source), source
