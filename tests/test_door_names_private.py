@@ -342,3 +342,72 @@ def test_a_planted_backend_file_is_caught_by_the_real_scan(tmp_path: Path) -> No
     plant.write_text("from ofo_app.api_models import Emitted\nBODY = bytes.__new__(Emitted, b'{\"x\":\"SENTENCE\"}')\n",
                      encoding="utf-8")
     assert door_name_uses(plant.read_text(encoding="utf-8"), "ofo_app/forger.py")
+
+
+# --- round 6 (issue #197): modules that can rewrite or forge a sealed object are not importable by product code ----------
+# The door now mints its body from a model and re-emits it to check (tests_app/test_response_door.py), so a forged body
+# cannot be passed in. What is left is code that reaches into memory or rebuilds objects without their constructors; no
+# product code needs that, so the allow-list is short and every entry carries its reason.
+
+FORBIDDEN_MODULES = frozenset({"ctypes", "pickle", "copyreg", "marshal", "shelve", "dill", "importlib"})
+
+#: Backend paths (prefix) allowed to import a forbidden module, each with its reason and the modules it may use.
+FORBIDDEN_MODULE_ALLOWED = {
+    "ofo_app/alembic/versions/": ("migration scripts load the shared baseline helper by file path "
+                                  "(importlib.util.spec_from_file_location); they never run in the API process",
+                                  frozenset({"importlib"})),
+}
+
+
+def forbidden_module_uses(source: str, where: str = "<source>") -> list[str]:
+    """Every import of a forbidden module (`import x`, `import x.y`, `from x import y`, `from x.y import z`) and every
+    `__import__(...)` call in `source`, unless `where` is an allowed path for that module."""
+    allowed = next((mods for prefix, (_, mods) in FORBIDDEN_MODULE_ALLOWED.items() if where.startswith(prefix)), frozenset())
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names = [a.name.split(".")[0] for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names = [node.module.split(".")[0]]
+        elif isinstance(node, ast.Call) and _dotted(node.func).split(".")[-1] == "__import__":
+            names = ["__import__"]
+        for name in names:
+            if (name in FORBIDDEN_MODULES or name == "__import__") and name not in allowed:
+                found.append(f"{where}:{getattr(node, 'lineno', 0)} imports {name}")
+    return found
+
+
+def test_no_backend_file_imports_a_module_that_can_rewrite_or_forge_a_sealed_object() -> None:
+    files = _product_files()
+    assert len(files) > 50
+    bad = [v for p in files for v in forbidden_module_uses(p.read_text(encoding="utf-8"), p.relative_to(BACKEND).as_posix())]
+    assert bad == []
+
+
+def test_the_forbidden_module_allowances_are_real() -> None:
+    """Each allowance names files that exist and really import what it allows (a stale allowance is a hole)."""
+    for prefix, (_, mods) in FORBIDDEN_MODULE_ALLOWED.items():
+        files = [p for p in _product_files() if p.relative_to(BACKEND).as_posix().startswith(prefix)]
+        assert files
+        used = {m for p in files for m in mods if f"import {m}" in p.read_text(encoding="utf-8")}
+        assert used == set(mods)
+
+
+@pytest.mark.parametrize("module", sorted(FORBIDDEN_MODULES))
+@pytest.mark.parametrize("template", ["import {m}", "import {m}.sub as s", "from {m} import thing", "from {m}.sub import thing"])
+def test_the_scan_refuses_every_import_shape_of_every_forbidden_module(module: str, template: str) -> None:
+    assert forbidden_module_uses(template.format(m=module), "ofo_app/routes/x.py"), (module, template)
+
+
+def test_the_scan_refuses_a_dunder_import_and_passes_ordinary_imports() -> None:
+    assert forbidden_module_uses("m = __import__('ctypes')", "ofo/x.py")
+    assert forbidden_module_uses("import json\nfrom pathlib import Path\nfrom . import pickle_like\n", "ofo/x.py") == []
+
+
+def test_a_planted_ctypes_file_is_caught_by_the_real_scan(tmp_path: Path) -> None:
+    """End to end on a file: the same function the real scan calls refuses a planted ctypes import, also in a migration."""
+    plant = tmp_path / "rewriter.py"
+    plant.write_text("import ctypes\nctypes.memmove(0, b'x', 1)\n", encoding="utf-8")
+    assert forbidden_module_uses(plant.read_text(encoding="utf-8"), "ofo_app/rewriter.py")
+    assert forbidden_module_uses(plant.read_text(encoding="utf-8"), "ofo_app/alembic/versions/0011_x.py")
