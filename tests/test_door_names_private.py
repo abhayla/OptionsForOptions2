@@ -932,6 +932,24 @@ def test_only_the_assembly_files_name_the_app_and_routes_get_no_middleware_token
     assert any(p.relative_to(BACKEND).as_posix().startswith("ofo_app/routes/") for p in _product_files())
 
 
+REQUIRED_ASSEMBLY_ATTRS = ("user_middleware", "middleware_stack", "add_middleware", "middleware", "build_middleware_stack",
+                           "exempt", "router", "routes", "add_route", "add_api_route", "add_websocket_route", "api_route",
+                           "mount", "host", "include_router", "dependency_overrides", "exception_handlers",
+                           "add_exception_handler", "exception_handler", "add_event_handler", "on_event", "lifespan_context",
+                           "openapi_schema")
+
+
+def test_the_assembly_set_holds_every_required_name() -> None:
+    """The set is pinned by name, so dropping one cannot hide behind another name in the same attack."""
+    assert set(REQUIRED_ASSEMBLY_ATTRS) <= APP_ASSEMBLY_ATTRS and {"_Boundary", "FastAPI", "Starlette"} <= APP_ASSEMBLY_NAMES
+
+
+@pytest.mark.parametrize("token", sorted(APP_ASSEMBLY_ATTRS))
+def test_each_assembly_attribute_is_flagged_on_its_own(token: str) -> None:
+    assert [t for _, t in app_assembly_uses(f"x.{token}")] == [token]
+    assert app_assembly_violations(f"x.{token} = 1", "ofo_app/evil.py")
+
+
 def test_a_routes_file_cannot_be_allow_listed_for_the_middleware_slot() -> None:
     """Mutation guard: the ceiling is what keeps `routes/` from being granted app assembly."""
     assert not ROUTES_TOKEN_CEILING & {"user_middleware", "middleware_stack", "exempt", "router", "routes",
