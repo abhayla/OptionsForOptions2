@@ -479,7 +479,7 @@ def test_round7_scan_refuses_every_mechanism(source: str) -> None:
 # Round 4-7 banned shapes: which object a name refers to, how a name is spelled. Neither can be complete in Python (the
 # verifier's forger9 built `_verify` with chr() codes, reached the door through `[errors][0]` and used setattr). The ways to
 # read, write or call an attribute or name CHOSEN AT RUNTIME are a small closed set, so every use of one in backend/ is
-# either on a per-file allow-list below (with a reason) or fails. REFLECTION_PRIMITIVES is a stub in this first commit.
+# either on a per-file allow-list below (with a reason) or fails.
 
 FORGER9 = '''
 from ofo_app import errors
@@ -507,11 +507,261 @@ def forged_redirect():
 '''
 
 
+#: Names whose every reference (a call, `functools.partial(setattr, ...)`, `map(getattr, ...)`) is a primitive.
+REFLECTION_NAMES = frozenset({"setattr", "delattr", "eval", "exec", "compile", "globals", "locals", "vars"})
+#: Attribute / string names that lead from an object to its class, code, frames or namespace (read or write).
+REFLECTION_DUNDERS = frozenset({"__subclasses__", "__mro__", "__bases__", "__globals__", "__code__", "__closure__",
+                                "__func__", "__self__", "__class__", "__dict__"})
+#: `x.__setattr__(name, v)` / `object.__setattr__(x, name, v)`: a primitive unless the name argument is a string literal.
+#: Value = how many trailing arguments follow the name (set: 1 value; del / getattribute: none).
+DUNDER_ACCESSORS = {"__setattr__": 1, "__delattr__": 0, "__getattribute__": 0}
+OPERATOR_PRIMITIVES = frozenset({"attrgetter", "methodcaller"})
+PRIMITIVES = (REFLECTION_NAMES | REFLECTION_DUNDERS | OPERATOR_PRIMITIVES | frozenset(DUNDER_ACCESSORS)
+              | {"getattr", "hasattr"})
+
+
+def _is_str_literal(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+
 def reflection_uses(source: str, where: str = "<src>") -> list[tuple[int, str]]:
-    return []
+    """Every (line, primitive) in `source` that reads, writes or calls an attribute or name chosen at runtime. Complete over
+    the closed set of Python reflection entry points, whatever the spelling or aliasing of the target (a primitive is flagged
+    where it appears, not where its target is traced)."""
+    tree = ast.parse(source)
+    docs = {id(n.body[0].value) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    found: list[tuple[int, str]] = []
+    called: set[int] = set()  # id() of a Name/Attribute that is the func of a Call already judged by its arguments
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in ("getattr", "hasattr"):
+            called.add(id(func))
+            if len(node.args) < 2 or not _is_str_literal(node.args[1]) or node.keywords or any(
+                    isinstance(a, ast.Starred) for a in node.args):
+                found.append((node.lineno, func.id))
+        elif isinstance(func, ast.Attribute) and func.attr in DUNDER_ACCESSORS:
+            called.add(id(func))
+            values = DUNDER_ACCESSORS[func.attr]
+            index = len(node.args) - 1 - values  # bound: (name[, value]); unbound (`object.__setattr__(x, ...)`): one more
+            ok = (not node.keywords and not any(isinstance(a, ast.Starred) for a in node.args)
+                  and len(node.args) - values in (1, 2) and _is_str_literal(node.args[index]))
+            if not ok:
+                found.append((node.lineno, func.attr))
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Name):
+            if node.id in REFLECTION_NAMES | OPERATOR_PRIMITIVES:
+                found.append((line, node.id))
+            elif node.id in ("getattr", "hasattr") and id(node) not in called:
+                found.append((line, node.id))  # `map(getattr, ...)`, `partial(getattr, ...)`: the name argument is hidden
+        elif isinstance(node, ast.Attribute):
+            if node.attr in REFLECTION_DUNDERS | OPERATOR_PRIMITIVES:
+                found.append((line, node.attr))
+            elif node.attr in DUNDER_ACCESSORS and id(node) not in called:
+                found.append((line, node.attr))
+        elif isinstance(node, ast.alias) and node.name.split(".")[-1] in REFLECTION_NAMES | OPERATOR_PRIMITIVES:
+            found.append((getattr(node, "lineno", 0), node.name.split(".")[-1]))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs                 and node.value in REFLECTION_DUNDERS:
+            found.append((line, node.value))  # `getattr(x, "__globals__")`: a literal name reaching the same place
+    return sorted(set(found))
 
 
-@pytest.mark.xfail(strict=True, reason="round 8 red first")
+#: Backend file -> (reflection primitives it may use, reason). Frozen from the real uses on 2026-10-12. Adding a use means
+#: editing this dict in plain view; an entry whose primitive is no longer used fails (test below). `ofo_app/routes/` gets
+#: no entry: route code never needs reflection.
+REFLECTION_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
+    "ofo/engine/black_scholes.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/engine/model.py": (frozenset({'__setattr__', 'getattr'}),
+        "token-checked frozen value: `object.__setattr__(obj, name, fields[name])` over `__slots__`; repr reads the same slots"),
+    "ofo/entitlements/ledger.py": (frozenset({'__setattr__'}),
+        "rebuilds/initialises its own frozen value with `object.__setattr__(self, name, ...)`, name from its own field list"),
+    "ofo/errors/model.py": (frozenset({'__code__', 'getattr'}),
+        "captures the wording checker's functions, `__code__` objects and data at import, then re-compares them (the checker-changed guard)"),
+    "ofo/errors/templates.py": (frozenset({'getattr'}),
+        "hashes each template part by a fixed tuple of part names"),
+    "ofo/execution/context.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/execution/partial.py": (frozenset({'__setattr__'}),
+        "Preparation sets its own fields once, `object.__setattr__(self, name, value)`"),
+    "ofo/execution/planned.py": (frozenset({'getattr'}),
+        "compares one fixed attribute across the legs of a plan"),
+    "ofo/history/bars.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/instruments/models.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/marketdata/health.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/marketdata/quote.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/orders/model.py": (frozenset({'__setattr__', 'getattr'}),
+        "Order.replace clones a frozen dataclass field by field"),
+    "ofo/rules/conditions.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/rules/plan.py": (frozenset({'__setattr__', 'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value; stores the checked tuple back"),
+    "ofo/strategy/definition.py": (frozenset({'getattr'}),
+        "diffs two versions of a definition over a fixed tuple of field labels"),
+    "ofo/strategy/guard.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/strategy/live_state.py": (frozenset({'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/strategy/model.py": (frozenset({'__setattr__', 'getattr'}),
+        "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value; stores the checked tuples back"),
+    "ofo/strategy/versions.py": (frozenset({'__setattr__'}),
+        "StrategyVersion.__setattr__ forwards an allowed write to object.__setattr__"),
+    "ofo/table/model.py": (frozenset({'getattr'}),
+        "sums a fixed tuple of position field names"),
+    "ofo/wording.py": (frozenset({'__class__', '__code__', '__getattribute__'}),
+        "the wording checker guards itself: captures `__code__` at import, reads through ModuleType.__getattribute__, swaps its module class to a frozen one"),
+    "ofo_app/alembic/versions/0006_index_segments.py": (frozenset({'getattr', 'globals'}),
+        "migration copies the public names of the shared baseline helper into its namespace; never runs in the API process"),
+    "ofo_app/api_models.py": (frozenset({'__mro__', 'getattr'}),
+        "the door itself: walks ApiModel's own MRO and reads declared fields off a model by name"),
+    "ofo_app/catalogue_store.py": (frozenset({'getattr'}),
+        "compares a stored and a new contract over the fixed REVISABLE_FIELDS tuples"),
+    "ofo_app/closed_namespace.py": (frozenset({'__dict__'}),
+        "the closed-namespace helper reads the class namespace it closes"),
+    "ofo_app/history_store.py": (frozenset({'getattr'}),
+        "maps a fixed tuple of bar field names to DB columns"),
+    "ofo_app/redaction.py": (frozenset({'__dict__'}),
+        "log-record redaction replaces a record's __dict__ with a redacting dict"),
+}
+
+NO_REFLECTION_PREFIXES = ("ofo_app/routes/",)
+
+
+def reflection_violations(source: str, where: str, allowed: dict[str, tuple[frozenset[str], str]] | None = None) -> list[str]:
+    """`file:line primitive` for each use of a reflection primitive that `where` is not allowed (empty = clean)."""
+    table = REFLECTION_ALLOWED if allowed is None else allowed
+    permitted = table.get(where, (frozenset(), ""))[0]
+    return [f"{where}:{line} uses {prim}" for line, prim in reflection_uses(source, where) if prim not in permitted]
+
+
+def _uses_by_file() -> dict[str, set[str]]:
+    return {p.relative_to(BACKEND).as_posix(): {prim for _, prim in reflection_uses(p.read_text(encoding="utf-8"))}
+            for p in _product_files()}
+
+
+def test_every_reflection_use_in_backend_is_on_the_allow_list() -> None:
+    files = _product_files()
+    assert len(files) > 50
+    bad = [v for p in files for v in reflection_violations(p.read_text(encoding="utf-8"), p.relative_to(BACKEND).as_posix())]
+    assert bad == []
+
+
+def test_every_allow_list_entry_is_still_used() -> None:
+    """A stale entry is a hole (a later use would pass unseen), so the list must equal what the code really uses."""
+    used = _uses_by_file()
+    stale = [f"{f}: {sorted(prims - used.get(f, set()))}" for f, (prims, _) in REFLECTION_ALLOWED.items()
+             if prims - used.get(f, set())]
+    assert stale == []
+    assert all(reason.strip() for _, reason in REFLECTION_ALLOWED.values())
+    assert all(prims <= PRIMITIVES for prims, _ in REFLECTION_ALLOWED.values())
+
+
+def test_route_code_gets_no_reflection_allowance() -> None:
+    assert [f for f in REFLECTION_ALLOWED if f.startswith(NO_REFLECTION_PREFIXES)] == []
+    routes = [p for p in _product_files() if p.relative_to(BACKEND).as_posix().startswith(NO_REFLECTION_PREFIXES)]
+    assert routes  # the directory exists and was scanned
+
+
+def test_the_domain_never_imports_the_application_package() -> None:
+    """Layering: backend/ofo is standard library only, so domain reflection can never reach the door module."""
+    bad = []
+    for p in _product_files():
+        rel = p.relative_to(BACKEND).as_posix()
+        if not rel.startswith("ofo/"):
+            continue
+        for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "ofo_app" for a in node.names):
+                bad.append(f"{rel}:{node.lineno}")
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and (node.module or "").split(".")[0] == "ofo_app":
+                bad.append(f"{rel}:{node.lineno}")
+    assert bad == []
+
+
 def test_forger9_is_flagged_by_the_reflection_scan() -> None:
     assert door_name_uses(FORGER9, "ofo_app/routes/forger9.py") == []  # the round 4-7 scans are CLEAN on it (the gap)
-    assert reflection_uses(FORGER9, "ofo_app/routes/forger9.py")
+    assert reflection_violations(FORGER9, "ofo_app/routes/forger9.py")
+
+
+@pytest.mark.parametrize("source, primitive", [
+    ("setattr(a, n, 1)", "setattr"),
+    ("setattr(a, 'x', 1)", "setattr"),
+    ("delattr(a, n)", "delattr"),
+    ("x = getattr(a, n)", "getattr"),
+    ("x = getattr(a, 'x' + n)", "getattr"),
+    ("x = getattr(a)", "getattr"),
+    ("x = hasattr(a, n)", "hasattr"),
+    ("object.__setattr__(a, n, 1)", "__setattr__"),
+    ("a.__setattr__(n, 1)", "__setattr__"),
+    ("object.__delattr__(a, n)", "__delattr__"),
+    ("a.__getattribute__(n)", "__getattribute__"),
+    ("f = a.__setattr__", "__setattr__"),
+    ("eval('1')", "eval"),
+    ("exec('x = 1')", "exec"),
+    ("compile('1', 'f', 'eval')", "compile"),
+    ("globals()", "globals"),
+    ("locals()", "locals"),
+    ("vars(a)", "vars"),
+    ("a.__subclasses__()", "__subclasses__"),
+    ("a.__mro__", "__mro__"),
+    ("a.__bases__", "__bases__"),
+    ("f.__globals__", "__globals__"),
+    ("f.__code__", "__code__"),
+    ("f.__closure__", "__closure__"),
+    ("m.__func__", "__func__"),
+    ("m.__self__", "__self__"),
+    ("a.__class__ = B", "__class__"),
+    ("x = a.__class__", "__class__"),
+    ("a.__dict__['k'] = 1", "__dict__"),
+    ("import operator\nf = operator.attrgetter(n)", "attrgetter"),
+    ("import operator\nf = operator.methodcaller(n)", "methodcaller"),
+    ("from operator import attrgetter", "attrgetter"),
+    ("import functools\nf = functools.partial(setattr, a)", "setattr"),
+    ("f = functools.partial(getattr, a)", "getattr"),
+    ("list(map(getattr, xs, names))", "getattr"),
+    ("x = getattr(a, '__globals__')", "__globals__"),
+])
+def test_every_reflection_primitive_is_flagged_on_its_own(source: str, primitive: str) -> None:
+    assert primitive in {p for _, p in reflection_uses(source)}, source
+    assert reflection_violations(source, "ofo_app/routes/plant.py")
+
+
+@pytest.mark.parametrize("source", [
+    "x = getattr(self, 'name')",
+    "x = getattr(self, 'name', None)",
+    "x = hasattr(self, 'name')",
+    "object.__setattr__(self, 'name', 1)",
+    "self.__setattr__('name', 1)",
+    "object.__delattr__(self, 'name')",
+    "import re\nP = re.compile('x')",
+    "class A:\n    def __setattr__(self, name, value):\n        raise TypeError(name)",
+    "def f():\n    '''setattr, eval and __globals__ in a docstring are not code'''",
+    "# setattr(a, n, 1) in a comment\nx = 1",
+    "x = a.mro_like",
+])
+def test_the_reflection_scan_passes_literal_and_ordinary_code(source: str) -> None:
+    assert reflection_uses(source) == [], source
+
+
+def test_a_use_not_on_the_list_names_the_file_line_and_primitive() -> None:
+    bad = reflection_violations("x = 1\nsetattr(a, n, 1)\n", "ofo/engine/model.py")
+    assert bad == ["ofo/engine/model.py:2 uses setattr"]
+    # an allowed primitive in an allowed file is quiet; the same primitive in another file is not
+    assert reflection_violations("object.__setattr__(o, n, 1)", "ofo/engine/model.py") == []
+    assert reflection_violations("object.__setattr__(o, n, 1)", "ofo/engine/inputs.py")
+
+
+def test_a_planted_route_file_is_caught_by_the_real_scan(tmp_path: Path) -> None:
+    """End to end on a file: the same function the real scan calls refuses forger9 planted as a route; routes have no
+    allowance, so even a lone computed getattr there is refused."""
+    plant = tmp_path / "forger9.py"
+    plant.write_text(FORGER9, encoding="utf-8")
+    assert reflection_violations(plant.read_text(encoding="utf-8"), "ofo_app/routes/forger9.py")
+    assert reflection_violations("x = getattr(a, n)", "ofo_app/routes/anything.py")
