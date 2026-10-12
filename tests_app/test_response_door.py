@@ -778,6 +778,7 @@ def _route_problems(routes) -> tuple[list[str], set[str]]:
     from fastapi.routing import APIRoute
 
     from ofo_app.errors import ClosedRoute
+    from ofo_app.routes import outcome
 
     models = set(_app_models())
     problems, docs_seen = [], set()
@@ -785,7 +786,8 @@ def _route_problems(routes) -> tuple[list[str], set[str]]:
         if getattr(route, "path", "") in DOCS_PATHS + ("/docs/oauth2-redirect",) and not isinstance(route, APIRoute):
             docs_seen.add(route.path)
             continue
-        if type(route) is APIRoute and route.path == "/api/strategies/outcome" and route.methods == {"POST"}:
+        if (type(route) is APIRoute and route.path == "/api/strategies/outcome" and route.methods == {"POST"}
+                and route.endpoint is outcome.strategy_outcome):
             continue
         if type(route) is not ClosedRoute:
             problems.append(f"{getattr(route, 'path', route)}: {type(route).__name__}")
@@ -800,7 +802,6 @@ def _route_problems(routes) -> tuple[list[str], set[str]]:
     return problems, docs_seen
 
 
-@pytest.mark.xfail(strict=True, reason="round 9 step 1: the exemption matches method and path only")
 def test_a_stand_in_route_at_the_outcome_path_is_not_exempt() -> None:
     """Round 9: a plain APIRoute at POST /api/strategies/outcome whose endpoint is not the real one is a problem."""
     from fastapi.routing import APIRoute

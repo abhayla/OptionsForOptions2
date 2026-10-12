@@ -809,13 +809,176 @@ def x(request):
 ROUND9_PLACES = ("ofo_app/routes/evil.py", "ofo_app/evil.py")
 
 
+#: Attribute names of the framework's app-assembly surface: the middleware slot and stack, routes and routers, handlers,
+#: lifecycle, schema and dependency overrides. Any access (read, write, call, `getattr` string) outside an allowed file fails.
+APP_ASSEMBLY_ATTRS = frozenset({
+    "user_middleware", "middleware_stack", "add_middleware", "middleware", "build_middleware_stack", "exempt", "router",
+    "routes", "route_class", "add_route", "add_api_route", "add_websocket_route", "api_route", "mount", "host",
+    "include_router", "dependency_overrides", "exception_handlers", "add_exception_handler", "exception_handler",
+    "add_event_handler", "on_event", "lifespan_context", "openapi_schema",
+    "app",  # `request.app`, `scope["app"]`, `self.app`: the way to OBTAIN the app object, so aliasing cannot hide the rest
+})
+#: Names (a name, an attribute or an imported name) that build or reach the app or its boundary.
+APP_ASSEMBLY_NAMES = frozenset({"FastAPI", "Starlette", "_Boundary", "create_app"})
+#: `state` is also an ordinary word (`work.state()`), so it counts only on a chain rooted in `app`.
+APP_STATE_ATTR = "state"
+APP_TOKENS = APP_ASSEMBLY_ATTRS | APP_ASSEMBLY_NAMES | {APP_STATE_ATTR, "ClosedRoute"}
+
+
+def _rooted_in_app(node: ast.AST) -> bool:
+    while isinstance(node, (ast.Attribute, ast.Subscript, ast.Call)):
+        if isinstance(node, ast.Attribute) and node.attr == "app":
+            return True
+        node = node.value if not isinstance(node, ast.Call) else node.func
+    return isinstance(node, ast.Name) and node.id == "app"
+
+
+def app_assembly_uses(source: str) -> list[tuple[int, str]]:
+    """Every (line, token) in `source` that names the framework's app-assembly surface (see APP_ASSEMBLY_ATTRS). Complete
+    over the closed set of names, whatever the object they are read off (a name is flagged where it is written). A string
+    that spells one (also folded from literal parts) counts; docstrings and comments do not. `ClosedRoute` is only legal as
+    the `route_class=` of an `APIRouter(...)` call (and in an import line)."""
+    tree = ast.parse(source)
+    docs = {id(n.body[0].value) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    legal_route_class = {id(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call)
+                         and _dotted(n.func).split(".")[-1] == "APIRouter" for k in n.keywords if k.arg == "route_class"}
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Attribute):
+            if node.attr in APP_ASSEMBLY_ATTRS | APP_ASSEMBLY_NAMES | {"ClosedRoute"}:
+                found.append((line, node.attr))
+            elif node.attr == APP_STATE_ATTR and _rooted_in_app(node.value):
+                found.append((line, APP_STATE_ATTR))
+        elif isinstance(node, ast.Name):
+            if node.id in APP_ASSEMBLY_NAMES or (node.id == "ClosedRoute" and id(node) not in legal_route_class):
+                found.append((line, node.id))
+        elif isinstance(node, ast.alias):
+            if node.name.split(".")[-1] in APP_ASSEMBLY_NAMES:
+                found.append((line, node.name.split(".")[-1]))
+        elif isinstance(node, (ast.Constant, ast.JoinedStr, ast.BinOp, ast.Call)) and id(node) not in docs:
+            text = _fold(node)
+            if text in APP_ASSEMBLY_ATTRS | APP_ASSEMBLY_NAMES:
+                found.append((line, text))
+    return sorted(set(found))
+
+
+#: Backend file -> (tokens it may use, reason). Frozen from the real uses on 2026-10-12. Only the app-assembly files are
+#: listed. `ofo_app/routes/` gets nothing except `broker.py`'s mount helper and its `request.app.state.broker` read, and never
+#: a middleware, routing-table or handler token (test below).
+APP_ASSEMBLY_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
+    "ofo_app/main.py": (frozenset({"FastAPI", "router", "include_router", "dependency_overrides", "route_class",
+                                   "ClosedRoute", "mount"}),
+        "create_app: the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
+        "the test override of the market context"),
+    "ofo_app/errors.py": (frozenset({"FastAPI", "app", "exempt", "add_middleware", "add_exception_handler", "_Boundary",
+                                     "ClosedRoute"}),
+        "the door itself: ClosedRoute and _Boundary are defined here; install(app) adds the boundary and the one handler"),
+    "ofo_app/routes/broker.py": (frozenset({"FastAPI", "app", "state", "include_router", "add_api_route"}),
+        "broker.mount(app, config) stores the runtime on app.state and adds the callback route; get-runtime reads "
+        "request.app.state.broker"),
+}
+#: The most a route module may ever be allowed: the broker mount helper's tokens. Never a middleware or handler token.
+ROUTES_TOKEN_CEILING = frozenset({"FastAPI", "app", "state", "include_router", "add_api_route"})
+
+
+def app_assembly_violations(source: str, where: str, allowed: dict[str, tuple[frozenset[str], str]] | None = None) -> list[str]:
+    table = APP_ASSEMBLY_ALLOWED if allowed is None else allowed
+    permitted = table.get(where, (frozenset(), ""))[0]
+    return [f"{where}:{line} uses {tok}" for line, tok in app_assembly_uses(source) if tok not in permitted]
+
+
 def every_scan(source: str, where: str) -> list[str]:
     """What the whole backend scan reports for one file (each scan the real tests run, with the real allow-lists)."""
-    return (door_name_uses(source, where) + forbidden_module_uses(source, where) + reflection_violations(source, where))
+    return (door_name_uses(source, where) + forbidden_module_uses(source, where) + reflection_violations(source, where)
+            + app_assembly_violations(source, where))
 
 
-@pytest.mark.xfail(strict=True, reason="round 9 step 1: the app-assembly scan does not exist yet")
 @pytest.mark.parametrize("where", ROUND9_PLACES)
 @pytest.mark.parametrize("name", sorted(ROUND9_ATTACKS))
 def test_round9_every_app_assembly_attack_is_flagged_in_routes_and_elsewhere(name: str, where: str) -> None:
     assert every_scan(ROUND9_ATTACKS[name], where), (name, where)
+
+
+def test_every_app_assembly_use_in_backend_is_in_an_allowed_file() -> None:
+    files = _product_files()
+    assert len(files) > 50
+    bad = [v for p in files for v in app_assembly_violations(p.read_text(encoding="utf-8"), p.relative_to(BACKEND).as_posix())]
+    assert bad == []
+
+
+def _assembly_uses_by_file() -> dict[str, set[str]]:
+    return {p.relative_to(BACKEND).as_posix(): {t for _, t in app_assembly_uses(p.read_text(encoding="utf-8"))}
+            for p in _product_files()}
+
+
+def test_every_app_assembly_allowance_is_still_used() -> None:
+    """A stale token is a hole (a later use would pass unseen), so each entry equals what its file really uses."""
+    used = _assembly_uses_by_file()
+    stale = [f"{f}: {sorted(toks ^ used.get(f, set()))}" for f, (toks, _) in APP_ASSEMBLY_ALLOWED.items()
+             if toks != used.get(f, set())]
+    assert stale == []
+    assert all(reason.strip() for _, reason in APP_ASSEMBLY_ALLOWED.values())
+    assert all(toks <= APP_TOKENS for toks, _ in APP_ASSEMBLY_ALLOWED.values())
+
+
+def test_only_the_assembly_files_name_the_app_and_routes_get_no_middleware_token() -> None:
+    assert set(APP_ASSEMBLY_ALLOWED) == {"ofo_app/main.py", "ofo_app/errors.py", "ofo_app/routes/broker.py"}
+    routes = {f: toks for f, (toks, _) in APP_ASSEMBLY_ALLOWED.items() if f.startswith("ofo_app/routes/")}
+    assert all(toks <= ROUTES_TOKEN_CEILING for toks in routes.values())
+    assert not any(f.startswith("ofo/") for f in APP_ASSEMBLY_ALLOWED)  # the domain never names the app
+    assert any(p.relative_to(BACKEND).as_posix().startswith("ofo_app/routes/") for p in _product_files())
+
+
+def test_a_routes_file_cannot_be_allow_listed_for_the_middleware_slot() -> None:
+    """Mutation guard: the ceiling is what keeps `routes/` from being granted app assembly."""
+    assert not ROUTES_TOKEN_CEILING & {"user_middleware", "middleware_stack", "exempt", "router", "routes",
+                                       "add_middleware", "dependency_overrides", "_Boundary"}
+    for name, source in ROUND9_ATTACKS.items():
+        assert app_assembly_violations(source, "ofo_app/routes/broker.py"), name  # even broker.py is refused for these
+
+
+@pytest.mark.parametrize("source", [
+    "request.app.router.routes.append(r)",
+    "app.dependency_overrides[k] = v",
+    "scope['app'].user_middleware.clear()",
+    "x = getattr(a, 'middle' + 'ware_stack')",
+    "a = request.app\na.middleware_stack = None",
+    "app.state.x = 1",
+    "from fastapi import FastAPI\nFastAPI()",
+    "import starlette.applications as s\ns.Starlette()",
+    "from ofo_app.main import create_app",
+    "@app.middleware('http')\nasync def f(r, n): ...",
+    "app.add_exception_handler(E, h)",
+    "app.mount('/x', y)",
+    "router.add_api_route('/x', f)",
+    "router.routes.append(r)",
+    "router.include_router(other)",
+    "from ofo_app.errors import ClosedRoute\nclass R(ClosedRoute): ...",
+    "from ofo_app.errors import _Boundary",
+])
+def test_app_assembly_scan_refuses_every_shape(source: str) -> None:
+    assert app_assembly_violations(source, "ofo_app/routes/plant.py"), source
+
+
+@pytest.mark.parametrize("source", [
+    "from fastapi import APIRouter\nrouter = APIRouter()\n@router.get('/x')\ndef f(): ...",
+    "from ofo_app.errors import ClosedRoute\nrouter = APIRouter(route_class=ClosedRoute)\n@router.post('/x', status_code=201)\ndef f(): ...",
+    "@router.put('/x')\n@router.delete('/y')\n@router.patch('/z')\ndef f(): ...",
+    "x = work.state()\nrequest.state.user = 1",
+    "def f():\n    '''request.app.middleware_stack in a docstring is not code'''",
+    "# app.router in a comment\nx = 1",
+    "label = 'application'",
+])
+def test_app_assembly_scan_passes_route_declaration_and_ordinary_code(source: str) -> None:
+    assert app_assembly_violations(source, "ofo_app/routes/ok.py") == [], source
+
+
+def test_a_planted_route_file_and_a_planted_module_are_caught_by_the_real_scan(tmp_path: Path) -> None:
+    """End to end on files: the function the real scan calls refuses A1 planted as a route and as a plain module."""
+    plant = tmp_path / "evil.py"
+    plant.write_text(ROUND9_ATTACKS["A1_strip_boundary"], encoding="utf-8")
+    for where in ROUND9_PLACES:
+        assert app_assembly_violations(plant.read_text(encoding="utf-8"), where)
