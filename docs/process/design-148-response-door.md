@@ -249,3 +249,38 @@ used `setattr` to disarm `_verify` and rewrite `_frozen`. Every round 4-7 scan w
 - Out of scope under Q235: C extensions, and the interpreter itself (a native module, a debugger, or the process's memory
   can still rewrite the checker). Runtime resistance to same-process code that deliberately replaces the checker is not
   required; the CI source scan flags it. No runtime change in this round.
+
+## Round 9 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+Round 8 closed the reflection entry points, but plain attribute writes on the framework's app object reach the door's own
+internals. The verifier's attacks, each planted in `ofo_app/routes/evil.py` and `ofo_app/evil.py`, every scan clean before
+this round:
+
+- A1: `request.app.user_middleware.clear(); request.app.middleware_stack = None` (strips the boundary on the rebuild).
+- A2: `request.app.middleware_stack.app = request.app.middleware_stack.app.app` (skips the boundary in the live stack).
+- A3: `request.app.middleware_stack.app.exempt = frozenset({...})` (widens the boundary's exemption set).
+- A4: `request.app.user_middleware.insert(0, Middleware(Rewriter))` (an outer middleware that rewrites bodies).
+- Also planted now: `request.app.router.routes.append(...)` and `request.app.dependency_overrides[...] = ...`.
+
+- Why a banned-shape list fails again (finding `guard-by-banned-shapes`). The attack is the same whatever the object is
+  called or how it is reached. What is small and closed is the framework's app-assembly SURFACE: the names of its middleware
+  slot and stack, routing table, handlers, lifecycle, schema and dependency overrides.
+- The rule. `app_assembly_uses` in tests/test_door_names_private.py flags every attribute (read, write or call), name,
+  imported name or string (also folded from literal parts) in that set: `user_middleware`, `middleware_stack`,
+  `add_middleware`, `middleware`, `build_middleware_stack`, `exempt`, `router`, `routes`, `route_class`, `add_route`,
+  `add_api_route`, `add_websocket_route`, `api_route`, `mount`, `host`, `include_router`, `dependency_overrides`,
+  `exception_handlers`, `add_exception_handler`, `exception_handler`, `add_event_handler`, `on_event`, `lifespan_context`,
+  `openapi_schema`, `app` (the way to obtain the app: `request.app`, `scope["app"]`), `state` on a chain rooted in `app`, and
+  the names `FastAPI`, `Starlette`, `_Boundary`, `create_app`, `ClosedRoute` (legal only as `APIRouter(route_class=...)`).
+  It never traces which object a name refers to, so aliasing does not matter. A route module's own `@router.get/post/put/
+  delete/patch` is not in the set, so route declaration stays legal.
+- The allow-list, by file with a reason (`APP_ASSEMBLY_ALLOWED`, each entry equal to what the file really uses, a stale or
+  missing token fails): `ofo_app/main.py` (builds the app), `ofo_app/errors.py` (defines the door and installs the
+  boundary and handler), `ofo_app/routes/broker.py` (its `mount(app, config)` helper and the `request.app.state.broker`
+  read; capped by `ROUTES_TOKEN_CEILING`, never a middleware, routing-table or handler token). Anything else under `backend/`
+  fails, `ofo_app/routes/` included.
+- The route check. `test_every_route_of_the_real_app_goes_through_the_door` now exempts the outcome route by the identity of
+  its endpoint function (`route.endpoint is outcome.strategy_outcome`), not by method and path, which a stand-in
+  `APIRoute` could copy.
+- Still out of scope under Q235: the runtime checks do not resist code that deliberately rewrites them in the same process;
+  the CI source scan flags it. No runtime change in this round.
