@@ -473,3 +473,45 @@ ROUND7_SHAPES = [
 @pytest.mark.parametrize("source", ROUND7_SHAPES)
 def test_round7_scan_refuses_every_mechanism(source: str) -> None:
     assert forbidden_module_uses(source, "ofo_app/routes/x.py"), source
+
+
+# --- round 8 (issue #197, ADR-003 Q235): an allow-list over Python's reflection ENTRY POINTS ------------------------------
+# Round 4-7 banned shapes: which object a name refers to, how a name is spelled. Neither can be complete in Python (the
+# verifier's forger9 built `_verify` with chr() codes, reached the door through `[errors][0]` and used setattr). The ways to
+# read, write or call an attribute or name CHOSEN AT RUNTIME are a small closed set, so every use of one in backend/ is
+# either on a per-file allow-list below (with a reason) or fails. REFLECTION_PRIMITIVES is a stub in this first commit.
+
+FORGER9 = '''
+from ofo_app import errors
+from ofo_app.api_models import ApiModel, Identifier
+
+
+class Ok(ApiModel):
+    a: Identifier
+
+
+def _word(codes):
+    return "".join(chr(c) for c in codes)
+
+
+def disarm():
+    door = [errors][0]
+    setattr(door, _word([95, 118, 101, 114, 105, 102, 121]), lambda response: None)
+
+
+def forged_redirect():
+    r = errors.respond(Ok(a="ok"), 200)
+    record = (302, ((b"location", b"https://evil.example/steal"),), b"", None, False)
+    setattr(r, _word([95, 102, 114, 111, 122, 101, 110]), record)
+    return r
+'''
+
+
+def reflection_uses(source: str, where: str = "<src>") -> list[tuple[int, str]]:
+    return []
+
+
+@pytest.mark.xfail(strict=True, reason="round 8 red first")
+def test_forger9_is_flagged_by_the_reflection_scan() -> None:
+    assert door_name_uses(FORGER9, "ofo_app/routes/forger9.py") == []  # the round 4-7 scans are CLEAN on it (the gap)
+    assert reflection_uses(FORGER9, "ofo_app/routes/forger9.py")
