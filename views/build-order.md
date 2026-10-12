@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (11): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-065, REQ-070, REQ-072
+Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -27,6 +27,7 @@ Done (11): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
+| REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: PARKED (run-discipline B1, 9 rounds): merged PARTIAL as strictly stronger than main; remainder and the designed next fix in #200 |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-013 | Email change and account deletion | feature | normal | next |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |

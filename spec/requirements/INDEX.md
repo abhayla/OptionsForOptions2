@@ -136,7 +136,7 @@ Requirements: 74; sections: 18
 |---|---|---|---|
 | REQ-063 | Security boundaries | foundation | Approved |
 | REQ-064 | Audit log | foundation | Approved |
-| REQ-065 | Error classification and messages | foundation | Verified |
+| REQ-065 | Error classification and messages | foundation | Testing |
 | REQ-066 | Compliance gates | feature | Specified |
 | REQ-074 | Security incident reporting and log retention | foundation | Specified |
 
