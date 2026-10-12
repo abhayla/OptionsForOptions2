@@ -148,8 +148,27 @@ def _door_status_ok(status: object) -> bool:
     return type(status) is int and 200 <= status <= 599 and not (300 <= status < 400) and status != 204
 
 
-def _freeze(response: Response) -> None:
-    response._frozen = (response.status_code, tuple(response.raw_headers), response.body)  # type: ignore[attr-defined]
+_NO_SOURCE = object()
+
+
+def _freeze(response: Response, source: object = _NO_SOURCE, exclude_unset: bool = False) -> None:
+    """Record (status, headers, body, source, exclude_unset). The source is the model (or message) the body was minted
+    from; a re-freeze without one keeps the source already recorded, so a body can be re-frozen but never re-sourced."""
+    if source is _NO_SOURCE:
+        old = getattr(response, "_frozen", None)
+        source, exclude_unset = (old[3], old[4]) if type(old) is tuple and len(old) == 5 else (None, False)
+    response._frozen = (response.status_code, tuple(response.raw_headers), response.body,  # type: ignore[attr-defined]
+                        source, exclude_unset)
+
+
+def _mint_body(source: object, exclude_unset: bool) -> Emitted:
+    """THE only way a door body is made: from a model (`emit`) or a catalogue message (`emit_message`). Used by the
+    constructor and again by `_verify`, so the body is a pure function of the stored source."""
+    if isinstance(source, ApiModel):
+        return emit(source, exclude_unset)
+    if type(source) is UserFacingError:
+        return emit_message(source)
+    raise DoorRefused(f"a door body is made from an ApiModel or a catalogue message, not {type(source).__name__}")
 
 
 def _verify(response: object) -> None:
@@ -159,9 +178,9 @@ def _verify(response: object) -> None:
     if kind not in _DOOR_TYPES:
         raise DoorRefused("not a door response")
     frozen = getattr(response, "_frozen", None)
-    if type(frozen) is not tuple or len(frozen) != 3:
+    if type(frozen) is not tuple or len(frozen) != 5:
         raise DoorRefused("a door response was never frozen")
-    status, headers, body = frozen
+    status, headers, body, source, exclude_unset = frozen
     raw = response.raw_headers  # type: ignore[attr-defined]
     if type(raw) is not list or not all(type(p) is tuple and len(p) == 2 and type(p[0]) is bytes and type(p[1]) is bytes
                                         for p in raw):
@@ -176,7 +195,15 @@ def _verify(response: object) -> None:
     if kind is ClosedResponse:
         if type(body) is not Emitted or not _door_status_ok(status) or "location" in names:
             raise DoorRefused("a door response is not a body-carrying answer written by emit")
-    elif status != 302 or type(body) is not bytes or body != b"" or b"location" not in dict(headers):
+        if type(exclude_unset) is not bool or not (isinstance(source, ApiModel) or type(source) is UserFacingError):
+            raise DoorRefused("a door response was not minted from a model or a catalogue message")
+        # Mint the body again from the stored source and demand the same bytes, in the frozen copy AND the live body: a
+        # body that is not the pure output of `emit` for its source (however it was made or rewritten) cannot pass.
+        expected = _mint_body(source, exclude_unset)
+        if bytes.__eq__(expected, body) is not True or bytes.__eq__(expected, response.body) is not True:  # type: ignore[attr-defined]
+            raise DoorRefused("a door response body is not the one its model emits")
+    elif (status != 302 or type(body) is not bytes or body != b"" or b"location" not in dict(headers)
+          or source is not None):
         raise DoorRefused("a sealed redirect was changed after it was made")
     _check_record_values(kind, status, headers, body)
 
@@ -187,34 +214,39 @@ async def _send_frozen(response: Response, scope: Scope, send: Send) -> None:
     _verify(response)
     if scope["type"] != "http":
         raise DoorRefused("a door response is sent over http only")
-    status, headers, body = response._frozen  # type: ignore[attr-defined]
+    status, headers, body = response._frozen[:3]  # type: ignore[attr-defined]
     scope[DOOR_KEY] = _SEAL
     await send({"type": "http.response.start", "status": status, "headers": list(headers)})
     await send({"type": "http.response.body", "body": bytes(body)})
 
 
 class ClosedResponse(Response):
-    """A JSON response whose body is `Emitted` bytes (made only by `ofo_app.api_models.emit`) and which seals the request
-    when it is sent. The one response type the API writes a body with. Not subclassable. Its status, every header (name
-    AND value, from `_mint_headers`) and body are minted here and frozen; `_verify` runs at the route wrapper and at
-    the seal and the frozen copy is what is sent, so nothing set afterwards (or at construction, by a caller) reaches
-    the wire. No caller headers: a `Retry-After`, an `Allow` or a cookie is a typed argument."""
+    """A JSON response whose body the door MINTS from its SOURCE (round 6): an `ApiModel` (written by `emit`) or a
+    catalogue `UserFacingError` (written by `emit_message`). The constructor takes no bytes at all, so there is no
+    ready-made body to forge; it keeps the source, and `_verify` re-emits from it and demands the same bytes. It seals
+    the request when it is sent. Not subclassable. Its status, every header (name AND value, from `_mint_headers`),
+    body and source are frozen; `_verify` runs at the route wrapper and at the seal and the frozen copy is what is
+    sent. No caller headers: a `Retry-After`, an `Allow` or a cookie is a typed argument."""
 
     media_type = "application/json"
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         raise TypeError("ClosedResponse is not subclassed")
 
-    def __init__(self, body: Emitted, status_code: int = 200, *, retry_after: str | None = None,
-                 allow: tuple[str, ...] | None = None, cookie: RedirectCookie | None = None) -> None:
-        if type(body) is not Emitted:
-            raise TypeError(f"a ClosedResponse body is made by emit(), not {type(body).__name__}")
+    def __init__(self, source: ApiModel | UserFacingError, status_code: int = 200, *, exclude_unset: bool = False,
+                 retry_after: str | None = None, allow: tuple[str, ...] | None = None,
+                 cookie: RedirectCookie | None = None) -> None:
+        if isinstance(source, (bytes, bytearray, memoryview)):
+            raise TypeError("a ClosedResponse is made from a model or a message, never from a ready-made body")
         if not _door_status_ok(status_code):
             raise DoorRefused("a ClosedResponse carries a body: 2xx-5xx, not a redirect, 204 or 304")
+        if type(exclude_unset) is not bool:
+            raise TypeError("exclude_unset is a bool")
+        body = _mint_body(source, exclude_unset)
         super().__init__(content=body, status_code=status_code)
         self.raw_headers[:] = _mint_headers(body_length=len(body), content_type=True, status=status_code,
                                             retry_after=retry_after, allow=allow, cookie=cookie)
-        _freeze(self)
+        _freeze(self, source, exclude_unset)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         await _send_frozen(self, scope, send)
@@ -245,12 +277,12 @@ _DOOR_TYPES = (ClosedResponse, SealedRedirect)
 
 def _body(message: UserFacingError, status: int, *, retry_after: str | None = None,
           allow: tuple[str, ...] | None = None, cookie: RedirectCookie | None = None) -> ClosedResponse:
-    return ClosedResponse(emit_message(message), status, retry_after=retry_after, allow=allow, cookie=cookie)
+    return ClosedResponse(message, status, retry_after=retry_after, allow=allow, cookie=cookie)
 
 
 def respond(model: ApiModel, status_code: int) -> ClosedResponse:
     """A success body at a non-default status (e.g. /health's 503), written by the door from a typed `ApiModel`."""
-    return ClosedResponse(emit(model), status_code)
+    return ClosedResponse(model, status_code)
 
 
 def _through_the_door(endpoint: Callable[..., object], holder: list[ClosedRoute]) -> Callable[..., object]:
@@ -264,8 +296,8 @@ def _through_the_door(endpoint: Callable[..., object], holder: list[ClosedRoute]
             _verify(result)
             return result
         if route.response_model is not None and type(result) is route.response_model:
-            return ClosedResponse(emit(result, exclude_unset=route.response_model_exclude_unset),  # type: ignore[arg-type]
-                                  route.status_code or 200)
+            return ClosedResponse(result, route.status_code or 200,  # type: ignore[arg-type]
+                                  exclude_unset=route.response_model_exclude_unset)
         raise DoorRefused(f"{route.path}: the route returned {type(result).__name__}, not exactly its response model")
 
     if inspect.iscoroutinefunction(endpoint):

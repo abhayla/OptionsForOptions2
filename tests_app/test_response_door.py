@@ -1010,7 +1010,7 @@ def test_the_door_refuses_to_mint_an_allow_or_retry_after_that_is_not_closed() -
     """AC-2: the minting table itself rejects a non-method Allow and a non-digit Retry-After."""
     from ofo_app.errors import ClosedResponse
 
-    body = api_models.emit(_MODEL)
+    body = _MODEL
     for kwargs in ({"allow": (SENTENCE,)}, {"allow": ("get",)}, {"retry_after": SENTENCE}, {"retry_after": "6 0"},
                    {"retry_after": "-1"}, {"retry_after": 60}):
         with pytest.raises(api_models.DoorRefused):
@@ -1024,7 +1024,7 @@ def test_a_closed_response_is_refused_for_a_status_that_cannot_carry_its_body(st
     from ofo_app.errors import ClosedResponse
 
     with pytest.raises(api_models.DoorRefused):
-        ClosedResponse(api_models.emit(_MODEL), status)
+        ClosedResponse(_MODEL, status)
 
 
 def test_location_is_never_written_on_a_closed_response() -> None:
@@ -1136,7 +1136,7 @@ def test_core_b_a_rewritten_record_tuple_with_a_public_cache_control_is_refused_
         r = errors.respond(_MODEL, 200)
         headers = tuple((k, b"public, max-age=31536000" if k == b"cache-control" else v) for k, v in r.raw_headers)
         r.raw_headers[:] = list(headers)
-        r._frozen = (200, headers, r.body)
+        r._frozen = (200, headers, r.body, _MODEL, False)
         return r
 
     _assert_minted_500(_through_app(endpoint))
@@ -1187,7 +1187,7 @@ def test_a_record_the_door_itself_minted_still_passes_with_every_header_kind() -
     """AC-2 (parity, green before and after): 401 www-authenticate, retry-after, allow and a cookie verify and are sent."""
     from ofo_app.errors import ClosedResponse, RedirectCookie
 
-    r = ClosedResponse(api_models.emit_message(render("broker_state_invalid")), 401, retry_after="60",
+    r = ClosedResponse(render("broker_state_invalid"), 401, retry_after="60",
                        allow=("POST", "GET"), cookie=RedirectCookie("ofo_kite_login", "/kite/callback", value="abc"))
     sent = _wire(r)
     assert sent[0]["status"] == 401
@@ -1278,7 +1278,6 @@ def test_a_location_the_door_mints_itself_still_verifies(location: str) -> None:
 # SOURCE (an ApiModel or a UserFacingError), calls emit itself, and `_verify` re-emits and demands the same bytes.
 
 _FORGED = ('{"code":"x","message":"' + SENTENCE + '"}').encode()
-_RED6 = pytest.mark.xfail(strict=True, reason="W-070 round 6: red until ClosedResponse mints its own body")
 
 
 def _emitted_type():
@@ -1321,7 +1320,6 @@ def _forge_d():
     return pickle.loads(pickle.dumps(copyreg._reconstructor(_emitted_type(), bytes, _FORGED), protocol=0))
 
 
-@_RED6
 @pytest.mark.parametrize("forge", [_forge_a, _forge_b, _forge_c, _forge_d], ids=["A-copyreg", "B-super-new", "C-class-assign", "D-pickle"])
 def test_round6_a_forged_body_cannot_even_be_passed_in_through_the_app(forge) -> None:
     """AC-2 (#197 round 6, shapes A-D): a forged `Emitted` handed to the constructor is the minted 500 (the constructor
@@ -1330,7 +1328,6 @@ def test_round6_a_forged_body_cannot_even_be_passed_in_through_the_app(forge) ->
     _assert_minted_500(response)
 
 
-@_RED6
 def test_round6_e_a_sealed_body_rewritten_in_place_by_ctypes_fails_the_reemit_through_the_app() -> None:
     """AC-2 (#197 round 6, shape E): `ctypes.memmove` rewrites the bytes of a sealed body; `_verify` re-emits from the
     stored model and the bytes differ, so the answer is the minted 500."""
@@ -1348,7 +1345,7 @@ def test_round6_e_a_sealed_body_rewritten_in_place_by_ctypes_fails_the_reemit_th
     _assert_minted_500(_through_app(endpoint))
 
 
-@pytest.mark.parametrize("ready_made", [b'{"note":"free text"}', pytest.param("emitted", marks=_RED6)], ids=["bytes", "Emitted"])
+@pytest.mark.parametrize("ready_made", [b'{"note":"free text"}', "emitted"], ids=["bytes", "Emitted"])
 def test_round6_the_constructor_refuses_any_ready_made_body(ready_made) -> None:
     """AC-2 (#197 round 6): `ClosedResponse(bytes_or_Emitted, ...)` is a TypeError, even for a genuine `Emitted`."""
     from ofo_app.errors import ClosedResponse
@@ -1358,7 +1355,6 @@ def test_round6_the_constructor_refuses_any_ready_made_body(ready_made) -> None:
         ClosedResponse(body, 200)  # type: ignore[arg-type]
 
 
-@_RED6
 def test_round6_a_body_swapped_for_another_models_and_refrozen_is_refused() -> None:
     """AC-2 (#197 round 6): the stored source is part of the frozen record, so another model's genuine body, with its
     headers, re-frozen with the module's `_freeze`, no longer equals the re-emit of the stored model."""
