@@ -1,5 +1,20 @@
 # Handover
 
+**2026-10-12 — START HERE: `docs/process/session-handover-2026-10-12.md`.** Merged: #201 (W-070 response door
+part 2, PARTIAL after 9 rounds; remainder parked #200). REQ-065 back to Testing: W-069's AC-2 pass was withdrawn
+(Sonnet verifier; the door was forgeable). NEXT: W-065 live proof with the owner's Kite login, then W-066 (#172).
+
+**2026-10-11 — START HERE: `docs/process/session-handover-2026-10-11.md`** (then the prompt
+`docs/process/next-session-prompt-2026-10-12.md`). Merged: #196 (W-069 / #148 response door, Tier A, verified).
+In progress: W-070 (#197, door header values; brief on `build/W-070-door-headers`, builder waits for RAM > 2 GB).
+RDP restricted to the owner's IPs after a brute-force flood. NEXT: Monday 2026-10-12 W-065 live proof with the
+owner's Kite login.
+
+**2026-10-10 late — START HERE: `docs/process/session-handover-2026-10-10b.md`** (then the prompt
+`docs/process/next-session-prompt-2026-10-11.md`). Merged: #192 (#155 hook, partial), #193 (owner answers, ADR-073),
+#194 (W-068 leg picker, verified). Stopped for low memory on the VPS (owner). NEXT: #148 door once memory allows;
+Monday 2026-10-12 W-065 live proof with the owner's Kite login.
+
 **2026-10-10 ~04:45 IST — START HERE: `docs/process/session-handover-2026-10-10.md`** (work now runs on the Windows
 VPS, whose PostgreSQL also serves IPODhan production: light local runs, heavy in CI). W-061, #163 and W-067 merged and
 verified; W-066 parked (#172); W-065 waits for the owner's Kite login. Owner items: `docs/process/owner-questions-2026-10-10.md`.

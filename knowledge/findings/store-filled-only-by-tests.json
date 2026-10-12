@@ -1,0 +1,28 @@
+{
+ "id": "store-filled-only-by-tests",
+ "scope": "generic",
+ "class": "A store whose only writers are test fixtures: the write path (guards, revisions, history) is built and verified, and readers are built and verified against fixture rows, but no runnable job or command ever fills the store in a real environment, so every feature reading it is empty outside tests while each piece reports done. Wider shape: a consumer verified before its producer exists looks finished until the first real run.",
+ "mechanism": "W-006/W-056/W-057 built and verified the catalogue store and apply_update (with the ADR-058/059 guards); the outcome route and the leg picker read the catalogue; but apply_update is called only from tests and a migration, so the real test database held 0 live contracts on 2026-10-10.",
+ "first_seen": {
+  "date": "2026-10-10",
+  "where": "ofo_test public.catalogue_contracts; callers of apply_update",
+  "evidence": "core-proof query on ofo_test 2026-10-10 14:58 UTC: NIFTY not-expired option expiries = [] (0 live rows); grep of backend/, scripts/, tests_app/ for apply_update: only backend/ofo_app/catalogue_store.py (definition), alembic 0003, and 6 tests_app files. The same real list applied in a rolled-back transaction added 4,948 contracts in 2.5 s."
+ },
+ "fix": "Every store gets its production writer (a runnable command, then a scheduled job) in the same stage as its first reader; a work item that reads a store names the writer that fills it in a real environment and proves the read on data that writer loaded. W-068 adds the one-shot load command; the scheduled daily + intraday load is issue #126 and finding daily-load-misses-intraday-additions.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check yet compares stores read by app code with stores written by non-test code. Found by the prove-the-core-first step of W-068, not by a check."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-053.md",
+  "spec/requirements/REQ-035.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-10",
+   "where": "instrument catalogue (W-068 core proof)",
+   "evidence": "0 live contracts in ofo_test; apply_update called only from tests"
+  }
+ ]
+}

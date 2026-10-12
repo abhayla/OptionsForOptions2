@@ -39,3 +39,17 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]  # DATABASE_URL comes from the environment
+
+
+class _AppEnv(BaseSettings):
+    """Only APP_ENV, with no default: whether it was set at all is part of the answer (ADR-073)."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    APP_ENV: str | None = None
+
+
+def app_env() -> str | None:
+    """The one source of APP_ENV (process environment first, then the .env file), or None when it is set nowhere.
+    Not cached: read at app build time. Docs and replay mode both decide from this value."""
+    return _AppEnv().APP_ENV

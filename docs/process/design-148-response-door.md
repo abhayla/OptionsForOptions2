@@ -102,3 +102,185 @@ change (the parity test enforces it).
 - Versions: fastapi 0.123.5, pydantic 2.12.5, starlette 0.50.0.
 - Redaction registers only `os.environ` secrets: `redaction.py:190-195`. The scan's `DOOR` is `errors.py`:
   `test_error_boundary_scan.py:23`.
+
+## Round 4 (owner decision 2026-10-11)
+Finding `sealed-object-mutable-after-seal`, round 4 (Tier A review of W-070). `_verify` compared the live response only
+with its own `_frozen` record and never checked the VALUES in that record, so whoever could rewrite the record
+(`r._frozen = ...`, or re-running `errors._freeze(r)` after editing headers) decided what passed: a 200 with
+`cache-control: public, max-age=31536000`, or an attacker `Set-Cookie` with a `Domain` attribute, reached the wire.
+
+1. **Value re-check.** `_verify` now calls `_check_record_values`, which reads from the record only what a caller may
+   legitimately vary (length, status, optional Retry-After, Allow tokens, a cookie candidate, a Location), mints the
+   closed table again with the SAME `_mint_headers` the constructors use, and demands the identical header list (a
+   cleared cookie's `expires` date is the one time-dependent byte string and is ignored). One table, used to mint and
+   to verify, so the two cannot drift. A cookie must equal what `_cookie_header` writes for a `RedirectCookie` that
+   passes the token patterns (no `Domain`, no extra attribute); Location only on a `SealedRedirect`, passing
+   `_check_location`.
+2. **A scan of our own code.** `tests/test_door_names_private.py` fails when any file under `backend/` other than
+   `backend/ofo_app/errors.py` names `_freeze`, `_frozen`, `_SEAL`, `_REDIRECT_MINT` or `_verify` (as a name,
+   attribute, import, keyword or string).
+
+Why this and not a hidden store: Python has no truly private state. Moving the record into a closure, a weak map or a
+slot only moves the write door; anything running in the process can still reach it. The guard that holds is that what
+the record may say is re-derived from the closed table at send time (so rewriting it gains nothing), plus a CI scan
+that keeps our own code from touching the door's names.
+
+## Round 5 (owner decision 2026-10-12)
+Finding `sealed-object-mutable-after-seal`, round 5 (second Tier A review of W-070). Two attacks got past round 4:
+
+1. **A Location the door would not mint.** `_check_location` was a predicate (it banned CR, LF and a backslash). Rewrite a
+   sealed redirect's Location to `/\t/evil.example/steal`, re-freeze with `_freeze`, and the raw tab went out in a 302
+   (browsers drop tabs inside a URL, so the path becomes `//evil.example/steal`). That is the round-2 mistake again: the
+   value was tested against a list of bad things instead of re-minted.
+2. **An `Emitted` made without the token.** The guard sits in `Emitted.__new__`, and `bytes.__new__(Emitted, b'{"x":"SENTENCE"}')`
+   skips it, so a `ClosedResponse` accepted a body with a sentence in it.
+
+Fixes, both inside the round-4 rule (no hidden store; a value re-check plus a CI scan of our own code):
+
+1. **One allow-list for Location, shared by mint and check.** `_check_location` now accepts only a path matching
+   `_PATH_LOCATION` (a single leading `/`, never `//`; RFC 3986 unreserved and reserved characters; `%XX` escapes that do
+   not decode to `/`, `\`, a C0 control or DEL) or exactly the Zerodha login URL (rebuilt and compared, as before).
+   `_mint_headers` calls it for every Location it writes (and encodes as ASCII), and `_check_record_values` re-mints
+   through `_mint_headers`, so the header the door writes and the header it accepts are one function. A tab, any
+   control, DEL, a space, a non-ASCII byte, `/%2F/...` and `/%5C...` are refused at mint and at the re-check.
+2. **Only api_models.py can make an `Emitted`.** `tests/test_door_names_private.py` refuses, in every backend file but
+   api_models.py: a call of `Emitted(`; any `__new__` in a file that names `Emitted`; `bytes.__new__` (or `__new__` on
+   anything but `super()`); the string `"__new__"`; and `object.__new__` outside four listed domain files (each with its
+   reason in the test). The scan also gained the gaps listed in #199: `getattr`/`setattr`/`vars`/`.__dict__`/`getmembers`
+   on a door module with a non-literal name (module aliases followed through `import ... as`, `from ofo_app import`,
+   `a = b` copies, `sys.modules[...]`, `import_module`), `from <door module> import *`, a door name built from literal
+   parts (f-string, `+`, `%`, `join`, `format`), a docstring that is only a door name, and `_encode` (api_models' private
+   tree-to-bytes function).
+
+Why not a runtime check for `Emitted`: recording the `id()` of each Emitted that `emit` made and checking it in
+`ClosedResponse` has an id-reuse bug (an Emitted freed, a forged one allocated at the same address passes), and a
+`WeakSet` is not available (a `bytes` subclass is variable-size and cannot carry a weakref slot), and a strong registry
+would keep every response body alive. So the guard is the CI scan, as in round 4.
+
+What the scan cannot see (named, not fixed): code that builds a name at run time from non-literal parts and reaches the
+module through an object the scan cannot trace (`getattr(some_object_that_holds_the_module, name)`), or code loaded from
+outside `backend/`. Both need a hostile author inside the repo, which review catches, not the runtime.
+
+## Round 6 (orchestrator decision 2026-10-12, from ADR-003 Q226)
+
+Spec basis: ADR-003 Q226, "every platform message comes from a fixed, reviewed template catalogue with typed slots";
+REQ-065 AC-2.
+
+What the verifier found: five more ways to hand `ClosedResponse` a body that `emit` never wrote, each answering 200 with a
+sentence: (A) `copyreg._reconstructor(Emitted, bytes, data)`, (B) `super(T, T).__new__(T, data)`, (C) `__class__`
+assignment onto a local bytes subclass, (D) `pickle.loads` of a crafted pickle, (E) `ctypes.memmove` rewriting a sealed
+body in place.
+
+Why a banned-shapes scan was the wrong aim: rounds 4-5 accepted a ready-made `Emitted` from the caller and then tried to
+list the Python shapes that can build one. Python can make an instance without running its constructor in an open-ended
+number of ways (reduce protocols, `__class__` assignment, pickle, raw memory), so a deny-list is never complete: each
+round closed the shapes found and the next review found others. The aim was the wrong object. The question is not "did
+the caller forge this body" but "does the door need a caller's body at all". It does not: a body is a pure function of a
+model.
+
+The fix mints instead of checks (the round-4 principle, applied to the body):
+
+- `ClosedResponse.__init__` takes the SOURCE (an `ApiModel` plus `exclude_unset`, or a `UserFacingError`), calls `emit` /
+  `emit_message` itself, and keeps the source in the frozen record. It refuses `bytes` / `Emitted`. A forged body cannot be
+  passed in because no parameter takes one (A-D).
+- `_verify` re-emits from the stored source and demands the same bytes as the frozen body AND the live body (compared with
+  `bytes.__eq__`, so a subclass cannot override `==`). The source sits in the frozen tuple, so swapping it is caught like any
+  other change, and its type is re-checked. A sealed body rewritten in place (E) no longer equals the re-emit.
+- Product code may not import `ctypes`, `pickle`, `copyreg`, `marshal`, `shelve`, `dill` or `importlib`
+  (ast allow-list test in tests/test_door_names_private.py). The only users today are the alembic migrations
+  (`importlib.util`, to load the baseline helper by file path; they never run in the API process), listed with that reason.
+- The round-5 banned-shape rules stay as cheap belts; `ClosedResponse` no longer depends on them.
+
+With the body minted and re-emitted, forging is pointless: the only bytes that can pass are the bytes `emit` writes for the
+stored model, which are the bytes the door would have sent anyway. A caller who controls the model controls content only
+through typed slots, which is what Q226 asks for.
+
+Cost: `_verify` emits once more per response (respond + _verify, 1000 runs: about 0.86 ms before, 1.67 ms after on this
+box; see the round 6 report).
+
+## Round 7 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+Basis (ADR-003 Q235): the checks "are not required to resist code in the same process that deliberately replaces the
+checker at runtime (e.g. reassigning a module's check function); that is out of scope, and the CI source scan flags it."
+ADR-065 drew the same line for the pricing guards, whose scan was made to fail closed on the shapes its verifier found.
+
+- The verifier's N8 rewrote the memory of a rendered message with `ctypes` before the model was constructed. Runtime
+  resistance to memory rewriting is out of scope under Q235, so there is NO runtime change in this round.
+- The CI source scan now flags the mechanisms, not module spellings. A list of forbidden ways is never complete; an allow-list
+  over a small closed set is. Over every `.py` under `backend/` (`ofo/` and `ofo_app/`) it refuses: (a) any import, or
+  `import_module(...)`, of a module whose top-level name, leading underscores stripped, is in {ctypes, pickle, copyreg,
+  marshal, shelve, dill, importlib, pkgutil, builtins, cffi, gc} (so `_ctypes`, `_pickle`); (b) the names `__builtins__`,
+  `__import__`, `__loader__`, `__spec__` as a name, an attribute or a string; (c) `sys.modules`, `sys._getframe`,
+  `sys.meta_path`, `sys.path_hooks`.
+- One scan: `forbidden_module_uses` in tests/test_door_names_private.py was extended in place; there is no second copy of the
+  rule. tests/errors/test_write_allowlist.py is a different rule (vars/`__dict__` writes in `backend/ofo`) and is unchanged.
+- Listed exceptions, each with its reason: alembic migrations may use `importlib` (load the baseline helper by file path);
+  `ofo/errors/explanations.py` may use `sys._getframe` (`user_words()` reads its caller's module name to refuse callers
+  outside `REQUEST_LAYER`; the door's own read-only guard).
+- N4 (swapping in another real model and its bytes through `vars(r)`) is a note only: every byte that could be sent is still
+  mintable by `emit`, so no byte outside the typed slots can reach the user.
+
+## Round 8 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+The verifier's forger9 built `_verify` and `_frozen` with `"".join(chr(c) ...)`, reached the door module as `[errors][0]`, and
+used `setattr` to disarm `_verify` and rewrite `_frozen`. Every round 4-7 scan was clean on it.
+
+- Why name-spelling and alias tracking can never be complete. Each earlier round banned a shape: a door name as a name, a
+  string, a folded literal; a door module as an import alias, a `sys.modules` read. A name can be built from `chr()` codes,
+  a dict lookup, a file read, arithmetic: the set of spellings is open. A module can be reached through a list, a tuple,
+  a closure, a default argument, a return value: the set of aliasing routes is open. A guard that tracks WHICH object a name
+  refers to or HOW it is spelled is a race the reviewer wins every round (finding `guard-by-banned-shapes`).
+- What is closed. Python's reflection ENTRY POINTS, the ways to read, write or call an attribute or name chosen at runtime,
+  are a small closed set: `setattr`, `delattr`, `getattr`/`hasattr` with a non-literal name, `.__setattr__` /
+  `.__delattr__` / `.__getattribute__` with a non-literal name, `eval`, `exec`, `compile`, `globals`, `locals`, `vars`,
+  `operator.attrgetter` / `methodcaller`, and the attributes `__subclasses__`, `__mro__`, `__bases__`, `__globals__`,
+  `__code__`, `__closure__`, `__func__`, `__self__`, `__class__`, `__dict__` (read or write, or the same names as a string).
+  The scan flags the primitive where it APPEARS and never traces its target, so spelling and aliasing do not matter. A bare
+  reference counts, not only a call (`functools.partial(setattr, ...)`, `map(getattr, ...)`).
+- The rule. Every use of a primitive in `backend/` is either on the per-file allow-list `REFLECTION_ALLOWED` in
+  tests/test_door_names_private.py (file -> primitives, reason; 28 files, 37 entries, frozen from the real uses) or the
+  test fails naming `file:line` and the primitive. An entry whose primitive is no longer used also fails, so the list stays
+  honest. `backend/ofo_app/routes/` gets no entry (route code never needs reflection; a test pins that). A new product file
+  that tampers with the door must edit that list, in plain view of the reviewer.
+- Layering. `backend/ofo` (the domain, standard library only) imports nothing from `ofo_app`, now a test, so domain
+  reflection cannot reach the door module.
+- Kept, not removed. The round 4-7 rules stay (names, forgery, indirect reads, mechanism modules); the new scan covers the
+  `getattr`/`setattr`/`vars` parts of `_indirect` completely, but those older rules also name the door and `Emitted`.
+- Out of scope under Q235: C extensions, and the interpreter itself (a native module, a debugger, or the process's memory
+  can still rewrite the checker). Runtime resistance to same-process code that deliberately replaces the checker is not
+  required; the CI source scan flags it. No runtime change in this round.
+
+## Round 9 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+Round 8 closed the reflection entry points, but plain attribute writes on the framework's app object reach the door's own
+internals. The verifier's attacks, each planted in `ofo_app/routes/evil.py` and `ofo_app/evil.py`, every scan clean before
+this round:
+
+- A1: `request.app.user_middleware.clear(); request.app.middleware_stack = None` (strips the boundary on the rebuild).
+- A2: `request.app.middleware_stack.app = request.app.middleware_stack.app.app` (skips the boundary in the live stack).
+- A3: `request.app.middleware_stack.app.exempt = frozenset({...})` (widens the boundary's exemption set).
+- A4: `request.app.user_middleware.insert(0, Middleware(Rewriter))` (an outer middleware that rewrites bodies).
+- Also planted now: `request.app.router.routes.append(...)` and `request.app.dependency_overrides[...] = ...`.
+
+- Why a banned-shape list fails again (finding `guard-by-banned-shapes`). The attack is the same whatever the object is
+  called or how it is reached. What is small and closed is the framework's app-assembly SURFACE: the names of its middleware
+  slot and stack, routing table, handlers, lifecycle, schema and dependency overrides.
+- The rule. `app_assembly_uses` in tests/test_door_names_private.py flags every attribute (read, write or call), name,
+  imported name or string (also folded from literal parts) in that set: `user_middleware`, `middleware_stack`,
+  `add_middleware`, `middleware`, `build_middleware_stack`, `exempt`, `router`, `routes`, `route_class`, `add_route`,
+  `add_api_route`, `add_websocket_route`, `api_route`, `mount`, `host`, `include_router`, `dependency_overrides`,
+  `exception_handlers`, `add_exception_handler`, `exception_handler`, `add_event_handler`, `on_event`, `lifespan_context`,
+  `openapi_schema`, `app` (the way to obtain the app: `request.app`, `scope["app"]`), `state` on a chain rooted in `app`, and
+  the names `FastAPI`, `Starlette`, `_Boundary`, `create_app`, `ClosedRoute` (legal only as `APIRouter(route_class=...)`).
+  It never traces which object a name refers to, so aliasing does not matter. A route module's own `@router.get/post/put/
+  delete/patch` is not in the set, so route declaration stays legal.
+- The allow-list, by file with a reason (`APP_ASSEMBLY_ALLOWED`, each entry equal to what the file really uses, a stale or
+  missing token fails): `ofo_app/main.py` (builds the app), `ofo_app/errors.py` (defines the door and installs the
+  boundary and handler), `ofo_app/routes/broker.py` (its `mount(app, config)` helper and the `request.app.state.broker`
+  read; capped by `ROUTES_TOKEN_CEILING`, never a middleware, routing-table or handler token). Anything else under `backend/`
+  fails, `ofo_app/routes/` included.
+- The route check. `test_every_route_of_the_real_app_goes_through_the_door` now exempts the outcome route by the identity of
+  its endpoint function (`route.endpoint is outcome.strategy_outcome`), not by method and path, which a stand-in
+  `APIRoute` could copy.
+- Still out of scope under Q235: the runtime checks do not resist code that deliberately rewrites them in the same process;
+  the CI source scan flags it. No runtime change in this round.

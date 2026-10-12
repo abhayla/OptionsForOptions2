@@ -3,6 +3,7 @@ take only `render()`/`render_explanation()` results (REQ-065 AC-2, ADR-003 Q226)
 
 from __future__ import annotations
 
+import json
 from typing import Literal
 
 import pytest
@@ -28,6 +29,8 @@ def test_every_route_of_the_real_app_declares_an_api_model() -> None:
     from ofo_app.api_models import ApiModel
     from ofo_app.main import create_app
 
+    from ofo_app.errors import ClosedRoute
+
     problems = []
     for route in create_app().routes:
         if getattr(route, "name", "") in FRAMEWORK_ROUTES:
@@ -36,6 +39,8 @@ def test_every_route_of_the_real_app_declares_an_api_model() -> None:
             continue  # issue #151, only this path + method
         if not isinstance(route, APIRoute):  # a websocket or mounted app has no typed body: fail closed
             problems.append(f"{route!r}: not an APIRoute")
+        elif type(route) is not ClosedRoute:  # W-069: the door is the route class (the outcome route is skipped above)
+            problems.append(f"{route.path}: route class {type(route).__name__}")
         elif not (isinstance(route.response_model, type) and issubclass(route.response_model, ApiModel)):
             problems.append(f"{route.path}: response_model {route.response_model!r}")
     assert problems == []
@@ -66,8 +71,10 @@ def test_catalogue_text_takes_only_render_results() -> None:
 
     message = render("user_input_lot_size", entered=0)
     out = Out(message=message, line=render_explanation("rule_no_condition_detail"), strategy_id="s-1", state="open")
-    dumped = out.model_dump(mode="json")
-    assert dumped["message"] == message.as_dict() and dumped["line"] == "no condition"
+    from ofo_app.api_models import emit
+
+    written = json.loads(emit(out))  # the door, not model_dump (W-069)
+    assert written["message"] == message.as_dict() and written["line"] == "no condition"
     for bad in ({"message": "Leg 1 has already expired."}, {"line": "leg expired before execution"},
                 {"strategy_id": "leg expired before execution"}):
         with pytest.raises(ValueError):

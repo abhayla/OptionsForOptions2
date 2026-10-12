@@ -165,3 +165,32 @@ async def test_mutant_handler_returning_str_exc_is_caught(monkeypatch: pytest.Mo
     monkeypatch.setattr(boundary, "_internal_response", lambda exc, request: leaky(exc))
     response = await _get(_app_raising(ValueError(LEAK)))
     assert LEAK in response.text  # the mutant leaks: the step-1 test's `LEAK not in response.text` would be red
+
+
+async def test_every_error_body_is_written_by_the_door_as_a_sealed_closed_response(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-2 (W-069): handle_error answers every kind of error with a ClosedResponse built from emit_message bytes, and
+    the wire body is exactly those bytes - the flat four-part dict, unchanged."""
+    import json
+
+    import ofo_app.errors as boundary
+    from ofo.errors import render
+
+    seen: list[type] = []
+    original = boundary.handle_error
+
+    async def spy(request, exc):
+        response = await original(request, exc)
+        seen.append(type(response))
+        return response
+
+    monkeypatch.setattr(boundary, "handle_error", spy)
+    app = _app_raising(ValueError(LEAK))
+    for path, status in (("/boom", 500), ("/no/such/path", 404)):
+        response = await _get(app, path)
+        assert response.status_code == status and LEAK not in response.text
+        body = json.loads(response.content)
+        assert set(body) == {"error_class", "code", *PARTS, "external_text"}
+        assert response.headers["cache-control"] == "no-store"
+    assert seen == [boundary.ClosedResponse, boundary.ClosedResponse]
+    assert render("internal_system_request_failed", reference="ERR-00000000").as_dict().keys() == body.keys()
