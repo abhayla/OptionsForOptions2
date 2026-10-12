@@ -219,3 +219,33 @@ ADR-065 drew the same line for the pricing guards, whose scan was made to fail c
   outside `REQUEST_LAYER`; the door's own read-only guard).
 - N4 (swapping in another real model and its bytes through `vars(r)`) is a note only: every byte that could be sent is still
   mintable by `emit`, so no byte outside the typed slots can reach the user.
+
+## Round 8 (orchestrator decision 2026-10-12, from ADR-003 Q235)
+
+The verifier's forger9 built `_verify` and `_frozen` with `"".join(chr(c) ...)`, reached the door module as `[errors][0]`, and
+used `setattr` to disarm `_verify` and rewrite `_frozen`. Every round 4-7 scan was clean on it.
+
+- Why name-spelling and alias tracking can never be complete. Each earlier round banned a shape: a door name as a name, a
+  string, a folded literal; a door module as an import alias, a `sys.modules` read. A name can be built from `chr()` codes,
+  a dict lookup, a file read, arithmetic: the set of spellings is open. A module can be reached through a list, a tuple,
+  a closure, a default argument, a return value: the set of aliasing routes is open. A guard that tracks WHICH object a name
+  refers to or HOW it is spelled is a race the reviewer wins every round (finding `guard-by-banned-shapes`).
+- What is closed. Python's reflection ENTRY POINTS, the ways to read, write or call an attribute or name chosen at runtime,
+  are a small closed set: `setattr`, `delattr`, `getattr`/`hasattr` with a non-literal name, `.__setattr__` /
+  `.__delattr__` / `.__getattribute__` with a non-literal name, `eval`, `exec`, `compile`, `globals`, `locals`, `vars`,
+  `operator.attrgetter` / `methodcaller`, and the attributes `__subclasses__`, `__mro__`, `__bases__`, `__globals__`,
+  `__code__`, `__closure__`, `__func__`, `__self__`, `__class__`, `__dict__` (read or write, or the same names as a string).
+  The scan flags the primitive where it APPEARS and never traces its target, so spelling and aliasing do not matter. A bare
+  reference counts, not only a call (`functools.partial(setattr, ...)`, `map(getattr, ...)`).
+- The rule. Every use of a primitive in `backend/` is either on the per-file allow-list `REFLECTION_ALLOWED` in
+  tests/test_door_names_private.py (file -> primitives, reason; 28 files, 37 entries, frozen from the real uses) or the
+  test fails naming `file:line` and the primitive. An entry whose primitive is no longer used also fails, so the list stays
+  honest. `backend/ofo_app/routes/` gets no entry (route code never needs reflection; a test pins that). A new product file
+  that tampers with the door must edit that list, in plain view of the reviewer.
+- Layering. `backend/ofo` (the domain, standard library only) imports nothing from `ofo_app`, now a test, so domain
+  reflection cannot reach the door module.
+- Kept, not removed. The round 4-7 rules stay (names, forgery, indirect reads, mechanism modules); the new scan covers the
+  `getattr`/`setattr`/`vars` parts of `_indirect` completely, but those older rules also name the door and `Emitted`.
+- Out of scope under Q235: C extensions, and the interpreter itself (a native module, a debugger, or the process's memory
+  can still rewrite the checker). Runtime resistance to same-process code that deliberately replaces the checker is not
+  required; the CI source scan flags it. No runtime change in this round.
