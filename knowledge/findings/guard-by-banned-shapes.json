@@ -1,0 +1,28 @@
+{
+ "id": "guard-by-banned-shapes",
+ "scope": "generic",
+ "class": "A guard that lists the forbidden WAYS of doing something (banned characters in a value, banned code shapes or spellings in a source scan, banned constructors) is never complete when the language or format offers open-ended ways to reach the same result; each review round finds the next unlisted way. A guard is complete only when it mints the value itself from a typed source and re-mints and compares at the point of use, or when it is an allow-list over a small CLOSED set (the characters a path may hold; the files allowed to use each reflection entry point).",
+ "mechanism": "W-070 response door (#197), rounds 4-9: a redirect Location checked by banned characters let a tab through (round 4); a ready-made body guarded by a scan of banned construction shapes was forged four more ways (copyreg, super(T,T).__new__, __class__ assignment, pickle) plus ctypes (round 5); a scan of banned door-name spellings missed chr()-built names reached through setattr (round 7); each fix that moved to minting or to a closed allow-list (body minted from the model; Location minted by one allow-list; per-file allow-list over reflection entry points; app-assembly names only in main.py) closed its class, and the next verifier found a different class (module rebinding, seal reuse; #200).",
+ "first_seen": {
+  "date": "2026-10-12",
+  "where": "W-070 (#197), backend/ofo_app/errors.py _check_location and tests/test_door_names_private.py",
+  "evidence": "Opus verifier at 610ef4d: probe2.log shapes A-D each `200 body={\"code\":\"x\",\"message\":\"Your funds were moved...\"}` with `SCAN -> CLEAN`; at cce0e6a: `P1 wire: 302 [(b'location', b'/\\t/evil.example/steal')]`; at e4ed291: forger9 (chr()-built names + setattr) `AFTER disarm -> 302 location= https://evil.example/steal`, all scans clean. Orchestrator confirmed errors.py:288 `_LOCATION_BREAKERS = (chr(13), chr(10), chr(92))` and api_models.py:189 (guard inside __new__)."
+ },
+ "fix": "Mint, don't filter: build the value from its typed source inside the guard and, at use, rebuild and compare. When a scan is the guard (ADR-003 Q235: deliberate in-process replacement is out of runtime scope and must be flagged in CI), scan for a closed set of ENTRY POINTS with a per-file allow-list, never for spellings of the target; and give each verifier round an explicit end condition so the search for hand-written sabotage is bounded.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The door's instances are covered by tests/test_door_names_private.py (reflection and app-assembly allow-lists) and tests_app/test_response_door.py; module rebinding and seal reuse are still unflagged (#200). No generic detection exists for the pattern in other guards."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-065.md",
+  "spec/decisions/ADR-003.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-12",
+   "where": "W-070 rounds 4, 5 and 7 (Location characters, body construction shapes, door-name spellings)",
+   "evidence": "Opus verifier runs recorded in issue #197 comments"
+  }
+ ]
+}

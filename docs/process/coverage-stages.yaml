@@ -212,7 +212,8 @@ issues:
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
   "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
-  "#197": 4a            # response door follow-up: header values of a sealed response (W-069 review round 2)
+  "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
+  "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 
 # Work items whose status is not done.
 work_items:
@@ -220,6 +221,7 @@ work_items:
   W-009: S8
   W-011: S8
   W-017: 4b
+  W-070: 4a           # #197 door header values (REQ-065 AC-2 follow-up, Tier A)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

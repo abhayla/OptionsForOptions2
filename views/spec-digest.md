@@ -144,7 +144,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-062 [Specified]: Notifications
 - REQ-063 [Approved]: Security boundaries
 - REQ-064 [Approved]: Audit log
-- REQ-065 [Verified]: Error classification and messages
+- REQ-065 [Testing]: Error classification and messages
 - REQ-066 [Specified]: Compliance gates
 - REQ-067 [Specified]: Delivery controls
 - REQ-068 [Approved]: Strategy preferences
