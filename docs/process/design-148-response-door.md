@@ -124,3 +124,39 @@ Why this and not a hidden store: Python has no truly private state. Moving the r
 slot only moves the write door; anything running in the process can still reach it. The guard that holds is that what
 the record may say is re-derived from the closed table at send time (so rewriting it gains nothing), plus a CI scan
 that keeps our own code from touching the door's names.
+
+## Round 5 (owner decision 2026-10-12)
+Finding `sealed-object-mutable-after-seal`, round 5 (second Tier A review of W-070). Two attacks got past round 4:
+
+1. **A Location the door would not mint.** `_check_location` was a predicate (it banned CR, LF and a backslash). Rewrite a
+   sealed redirect's Location to `/\t/evil.example/steal`, re-freeze with `_freeze`, and the raw tab went out in a 302
+   (browsers drop tabs inside a URL, so the path becomes `//evil.example/steal`). That is the round-2 mistake again: the
+   value was tested against a list of bad things instead of re-minted.
+2. **An `Emitted` made without the token.** The guard sits in `Emitted.__new__`, and `bytes.__new__(Emitted, b'{"x":"SENTENCE"}')`
+   skips it, so a `ClosedResponse` accepted a body with a sentence in it.
+
+Fixes, both inside the round-4 rule (no hidden store; a value re-check plus a CI scan of our own code):
+
+1. **One allow-list for Location, shared by mint and check.** `_check_location` now accepts only a path matching
+   `_PATH_LOCATION` (a single leading `/`, never `//`; RFC 3986 unreserved and reserved characters; `%XX` escapes that do
+   not decode to `/`, `\`, a C0 control or DEL) or exactly the Zerodha login URL (rebuilt and compared, as before).
+   `_mint_headers` calls it for every Location it writes (and encodes as ASCII), and `_check_record_values` re-mints
+   through `_mint_headers`, so the header the door writes and the header it accepts are one function. A tab, any
+   control, DEL, a space, a non-ASCII byte, `/%2F/...` and `/%5C...` are refused at mint and at the re-check.
+2. **Only api_models.py can make an `Emitted`.** `tests/test_door_names_private.py` refuses, in every backend file but
+   api_models.py: a call of `Emitted(`; any `__new__` in a file that names `Emitted`; `bytes.__new__` (or `__new__` on
+   anything but `super()`); the string `"__new__"`; and `object.__new__` outside four listed domain files (each with its
+   reason in the test). The scan also gained the gaps listed in #199: `getattr`/`setattr`/`vars`/`.__dict__`/`getmembers`
+   on a door module with a non-literal name (module aliases followed through `import ... as`, `from ofo_app import`,
+   `a = b` copies, `sys.modules[...]`, `import_module`), `from <door module> import *`, a door name built from literal
+   parts (f-string, `+`, `%`, `join`, `format`), a docstring that is only a door name, and `_encode` (api_models' private
+   tree-to-bytes function).
+
+Why not a runtime check for `Emitted`: recording the `id()` of each Emitted that `emit` made and checking it in
+`ClosedResponse` has an id-reuse bug (an Emitted freed, a forged one allocated at the same address passes), and a
+`WeakSet` is not available (a `bytes` subclass is variable-size and cannot carry a weakref slot), and a strong registry
+would keep every response body alive. So the guard is the CI scan, as in round 4.
+
+What the scan cannot see (named, not fixed): code that builds a name at run time from non-literal parts and reaches the
+module through an object the scan cannot trace (`getattr(some_object_that_holds_the_module, name)`), or code loaded from
+outside `backend/`. Both need a hostile author inside the repo, which review catches, not the runtime.
