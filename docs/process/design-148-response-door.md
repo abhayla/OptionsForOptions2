@@ -160,3 +160,40 @@ would keep every response body alive. So the guard is the CI scan, as in round 4
 What the scan cannot see (named, not fixed): code that builds a name at run time from non-literal parts and reaches the
 module through an object the scan cannot trace (`getattr(some_object_that_holds_the_module, name)`), or code loaded from
 outside `backend/`. Both need a hostile author inside the repo, which review catches, not the runtime.
+
+## Round 6 (orchestrator decision 2026-10-12, from ADR-003 Q226)
+
+Spec basis: ADR-003 Q226, "every platform message comes from a fixed, reviewed template catalogue with typed slots";
+REQ-065 AC-2.
+
+What the verifier found: five more ways to hand `ClosedResponse` a body that `emit` never wrote, each answering 200 with a
+sentence: (A) `copyreg._reconstructor(Emitted, bytes, data)`, (B) `super(T, T).__new__(T, data)`, (C) `__class__`
+assignment onto a local bytes subclass, (D) `pickle.loads` of a crafted pickle, (E) `ctypes.memmove` rewriting a sealed
+body in place.
+
+Why a banned-shapes scan was the wrong aim: rounds 4-5 accepted a ready-made `Emitted` from the caller and then tried to
+list the Python shapes that can build one. Python can make an instance without running its constructor in an open-ended
+number of ways (reduce protocols, `__class__` assignment, pickle, raw memory), so a deny-list is never complete: each
+round closed the shapes found and the next review found others. The aim was the wrong object. The question is not "did
+the caller forge this body" but "does the door need a caller's body at all". It does not: a body is a pure function of a
+model.
+
+The fix mints instead of checks (the round-4 principle, applied to the body):
+
+- `ClosedResponse.__init__` takes the SOURCE (an `ApiModel` plus `exclude_unset`, or a `UserFacingError`), calls `emit` /
+  `emit_message` itself, and keeps the source in the frozen record. It refuses `bytes` / `Emitted`. A forged body cannot be
+  passed in because no parameter takes one (A-D).
+- `_verify` re-emits from the stored source and demands the same bytes as the frozen body AND the live body (compared with
+  `bytes.__eq__`, so a subclass cannot override `==`). The source sits in the frozen tuple, so swapping it is caught like any
+  other change, and its type is re-checked. A sealed body rewritten in place (E) no longer equals the re-emit.
+- Product code may not import `ctypes`, `pickle`, `copyreg`, `marshal`, `shelve`, `dill` or `importlib`
+  (ast allow-list test in tests/test_door_names_private.py). The only users today are the alembic migrations
+  (`importlib.util`, to load the baseline helper by file path; they never run in the API process), listed with that reason.
+- The round-5 banned-shape rules stay as cheap belts; `ClosedResponse` no longer depends on them.
+
+With the body minted and re-emitted, forging is pointless: the only bytes that can pass are the bytes `emit` writes for the
+stored model, which are the bytes the door would have sent anyway. A caller who controls the model controls content only
+through typed slots, which is what Q226 asks for.
+
+Cost: `_verify` emits once more per response (respond + _verify, 1000 runs: about 0.86 ms before, 1.67 ms after on this
+box; see the round 6 report).
