@@ -411,3 +411,30 @@ def test_a_planted_ctypes_file_is_caught_by_the_real_scan(tmp_path: Path) -> Non
     plant.write_text("import ctypes\nctypes.memmove(0, b'x', 1)\n", encoding="utf-8")
     assert forbidden_module_uses(plant.read_text(encoding="utf-8"), "ofo_app/rewriter.py")
     assert forbidden_module_uses(plant.read_text(encoding="utf-8"), "ofo_app/alembic/versions/0011_x.py")
+
+
+# --- round 7 (issue #197, ADR-003 Q235): the scan flags MECHANISMS, not module spellings ---------------------------------
+# Runtime resistance to a same-process rewrite is out of scope (Q235); the CI source scan must flag every way product code
+# reaches a raw-memory or deserialising module, or the import machinery that leads to one.
+
+ROUND7_SHAPES = [
+    "__builtins__['__import__']('ctypes')",
+    "getattr(__builtins__, '__import__')",
+    "import builtins\nbuiltins.__dict__['__imp' + 'ort__']('ctypes')",
+    "import _ctypes",
+    "import pkgutil\npkgutil.resolve_name('ctypes')",
+    "import _pickle",
+    "import gc\ngc.get_objects()",
+    "import sys\nsys.modules['ctypes']",
+    "import sys\nsys._getframe(0)",
+    "import sys\nsys.meta_path.append(x)",
+    "import sys\nsys.path_hooks.append(x)",
+    "x = __loader__",
+    "x = __spec__",
+]
+
+
+@pytest.mark.xfail(strict=True, reason="round 7 red first: closed by the mechanism scan")
+@pytest.mark.parametrize("source", ROUND7_SHAPES)
+def test_round7_scan_refuses_every_mechanism(source: str) -> None:
+    assert forbidden_module_uses(source, "ofo_app/routes/x.py"), source
