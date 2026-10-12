@@ -1269,3 +1269,105 @@ def test_a_location_the_door_mints_itself_still_verifies(location: str) -> None:
 
     sent = _wire(typed_redirect(broker.BrokerRedirectOut(redirect="connected"), location))
     assert sent[0]["status"] == 302 and dict(sent[0]["headers"])[b"location"] == location.encode()
+
+
+# --- W-070 round 6 (issue #197): the door MINTS the body from a model; a ready-made body is never accepted ---------------
+# Finding sealed-object-mutable-after-seal, round 6. Written red first (xfail strict, commit "W-070 round 6 step 1"); the
+# marks come off with the fix. Rounds 4-5 took an `Emitted` from the caller and scanned for the shapes that forge one; a
+# deny-list of object-construction shapes can never be complete (the verifier found five more). Now ClosedResponse takes the
+# SOURCE (an ApiModel or a UserFacingError), calls emit itself, and `_verify` re-emits and demands the same bytes.
+
+_FORGED = ('{"code":"x","message":"' + SENTENCE + '"}').encode()
+_RED6 = pytest.mark.xfail(strict=True, reason="W-070 round 6: red until ClosedResponse mints its own body")
+
+
+def _emitted_type():
+    return type(api_models.emit(broker.BrokerRedirectOut(redirect="connected")))
+
+
+def _forged_through_the_app(make):
+    from ofo_app.errors import ClosedResponse
+
+    async def endpoint():
+        return ClosedResponse(make(), 200)
+
+    return _through_app(endpoint)
+
+
+def _forge_a():
+    import copyreg
+
+    return copyreg._reconstructor(_emitted_type(), bytes, _FORGED)
+
+
+def _forge_b():
+    T = _emitted_type()
+    return super(T, T).__new__(T, _FORGED)
+
+
+def _forge_c():
+    class F(bytes):
+        __slots__ = ()
+
+    f = F(_FORGED)
+    f.__class__ = _emitted_type()
+    return f
+
+
+def _forge_d():
+    import copyreg
+    import pickle
+
+    return pickle.loads(pickle.dumps(copyreg._reconstructor(_emitted_type(), bytes, _FORGED), protocol=0))
+
+
+@_RED6
+@pytest.mark.parametrize("forge", [_forge_a, _forge_b, _forge_c, _forge_d], ids=["A-copyreg", "B-super-new", "C-class-assign", "D-pickle"])
+def test_round6_a_forged_body_cannot_even_be_passed_in_through_the_app(forge) -> None:
+    """AC-2 (#197 round 6, shapes A-D): a forged `Emitted` handed to the constructor is the minted 500 (the constructor
+    takes a model, not bytes)."""
+    response = _forged_through_the_app(forge)
+    _assert_minted_500(response)
+
+
+@_RED6
+def test_round6_e_a_sealed_body_rewritten_in_place_by_ctypes_fails_the_reemit_through_the_app() -> None:
+    """AC-2 (#197 round 6, shape E): `ctypes.memmove` rewrites the bytes of a sealed body; `_verify` re-emits from the
+    stored model and the bytes differ, so the answer is the minted 500."""
+    import ctypes
+
+    from ofo_app import errors
+
+    async def endpoint():
+        r = errors.respond(_MODEL, 200)
+        body = r.body
+        new = (b'"' + SENTENCE.encode() * 10)[:len(body)]
+        ctypes.memmove(id(body) + bytes.__basicsize__ - 1, new, len(new))
+        return r
+
+    _assert_minted_500(_through_app(endpoint))
+
+
+@pytest.mark.parametrize("ready_made", [b'{"note":"free text"}', pytest.param("emitted", marks=_RED6)], ids=["bytes", "Emitted"])
+def test_round6_the_constructor_refuses_any_ready_made_body(ready_made) -> None:
+    """AC-2 (#197 round 6): `ClosedResponse(bytes_or_Emitted, ...)` is a TypeError, even for a genuine `Emitted`."""
+    from ofo_app.errors import ClosedResponse
+
+    body = api_models.emit(_MODEL) if ready_made == "emitted" else ready_made
+    with pytest.raises(TypeError):
+        ClosedResponse(body, 200)  # type: ignore[arg-type]
+
+
+@_RED6
+def test_round6_a_body_swapped_for_another_models_and_refrozen_is_refused() -> None:
+    """AC-2 (#197 round 6): the stored source is part of the frozen record, so another model's genuine body, with its
+    headers, re-frozen with the module's `_freeze`, no longer equals the re-emit of the stored model."""
+    from ofo_app import errors
+
+    other = errors.respond(broker.RefusalOut(code="broker_login_busy", message=render("broker_login_busy")), 200)
+    r = _door("closed")
+    r.body = other.body
+    r.raw_headers[:] = list(other.raw_headers)
+    errors._freeze(r)
+    with pytest.raises(api_models.DoorRefused):
+        _run_wrapper(r)
