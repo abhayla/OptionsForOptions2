@@ -135,7 +135,11 @@ def _mint_headers(*, body_length: int, content_type: bool, status: int, retry_af
             raise DoorRefused("a door cookie is a RedirectCookie")
         headers.append((b"set-cookie", _cookie_header(cookie)))
     if location is not None:
-        headers.append((b"location", location.encode("latin-1")))
+        try:
+            _check_location(location)
+            headers.append((b"location", location.encode("ascii")))
+        except ValueError:
+            raise DoorRefused("a door Location is a site path from the allow-list or the Zerodha login URL") from None
     return headers
 
 
@@ -285,7 +289,11 @@ class ClosedRoute(APIRoute):
         holder.append(self)
 
 
-_LOCATION_BREAKERS = (chr(13), chr(10), chr(92))
+#: The one allow-list for a path Location (W-070 round 5): a single leading `/` (never `//`), then RFC 3986 unreserved
+#: and reserved characters, or `%XX` escapes that do not decode to a slash, a backslash, a C0 control or DEL. No space,
+#: tab, control character, backslash or non-ASCII byte can match, so the text is the same on every parser.
+_PATH_LOCATION = re.compile(
+    r"/(?!/)(?:[A-Za-z0-9._~!$&'()*+,;=:@/?#\[\]-]|%(?!2[Ff]|5[Cc]|[01][0-9A-Fa-f]|7[Ff])[0-9A-Fa-f]{2})*")
 
 #: A cookie is built only from token-shaped parts (RFC 6265): the nonce is urlsafe base64, the path a URL path.
 _COOKIE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
@@ -373,12 +381,6 @@ def _check_record_values(kind: type, status: int, headers: tuple[tuple[bytes, by
 
     if comparable(headers) != comparable(expected):
         raise DoorRefused("a door response header value is not one the door writes")
-    if kind is SealedRedirect:
-        try:
-            _check_location(first[b"location"].decode("latin-1"))
-        except ValueError:
-            raise DoorRefused("a sealed redirect points outside this site and the Zerodha login page") from None
-
 
 def _is_kite_login_url(location: str) -> bool:
     """True only for the exact shape `login_url` builds: Zerodha's login page, query `v=3`, one `api_key`, and
@@ -400,9 +402,11 @@ def _kite_login_parts(location: str) -> tuple[str, str]:
 
 
 def _check_location(location: str) -> None:
-    if any(c in location for c in _LOCATION_BREAKERS):
-        raise ValueError("a redirect location may not hold CR, LF or a backslash")
-    if location.startswith("/") and not location.startswith("//"):
+    """THE rule for a Location, shared by the mint (`typed_redirect`, `_mint_headers`) and the re-check, so they cannot
+    drift: a path from the allow-list above, or exactly the Zerodha login URL. Raises ValueError."""
+    if type(location) is not str:
+        raise ValueError("a redirect location is text")
+    if _PATH_LOCATION.fullmatch(location):
         return  # a path on this site
     if not _is_kite_login_url(location):
         raise ValueError("a redirect leaves this site only for the Zerodha login URL")

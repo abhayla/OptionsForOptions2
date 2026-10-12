@@ -618,9 +618,8 @@ def test_a_sealed_redirect_is_made_only_by_typed_redirect_and_checked_again_when
         _run_wrapper(other)
     from ofo_app import errors
 
-    outside = SealedRedirect("https://evil.example/", _mint=errors._REDIRECT_MINT)  # even a minted one is re-checked
-    with pytest.raises(api_models.DoorRefused):
-        errors._verify(outside)
+    with pytest.raises(api_models.DoorRefused):  # even with the mint token the header table refuses an outside Location
+        SealedRedirect("https://evil.example/", _mint=errors._REDIRECT_MINT)
     for base in (ClosedResponse, SealedRedirect):
         with pytest.raises(TypeError):
             type("Sub", (base,), {})
@@ -1239,7 +1238,6 @@ def _redirect_with_location(location: str):
     return r
 
 
-@pytest.mark.xfail(strict=True, reason="round 5 step 1: Location is only tested against CR, LF and backslash")
 @pytest.mark.parametrize("location", _BAD_LOCATIONS, ids=lambda s: ascii(s))
 def test_a_rewritten_and_refrozen_location_that_the_door_would_not_mint_is_refused(location: str) -> None:
     """AC-2 (#197 round 5 core a): a tab, any C0 control, DEL, a space or an encoded slash in the path, re-frozen."""
@@ -1247,7 +1245,6 @@ def test_a_rewritten_and_refrozen_location_that_the_door_would_not_mint_is_refus
         _run_wrapper(_redirect_with_location(location))
 
 
-@pytest.mark.xfail(strict=True, reason="round 5 step 1: the raw-tab Location goes out as a 302")
 def test_core_a_tab_location_rewritten_and_refrozen_is_the_minted_500_through_the_app() -> None:
     """AC-2 (#197 round 5 core a): through the real app a raw tab in Location answered a 302 on cce0e6a."""
     async def endpoint():
