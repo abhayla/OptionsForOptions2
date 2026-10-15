@@ -101,7 +101,7 @@ def straddle() -> StrategyRecord:
 
 
 def settle(record, prices=SETTLEMENT, *, now=AFTER_CLOSE, entry_prices=ENTRY_PRICES, timeline=None):
-    return settle_expired_legs(record, now, source_of(prices), entry_prices, timeline=timeline, clock=clock)
+    return settle_expired_legs(record, now, source_of(prices), entry_prices, timeline=timeline)
 
 
 def recon(broker, **strategies):
@@ -167,9 +167,11 @@ def test_unsettled_expired_leg_absent_at_zerodha_is_awaiting_settlement_not_bloc
 def test_awaiting_flag_does_not_hide_a_missing_far_leg_or_a_wrong_quantity():
     record = calendar()
     settle(record, prices={})
-    (m,) = recon({}, CAL=record).mismatches  # broker shows neither leg: the far leg is still a real mismatch
-    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("CAL",)
-    assert m.difference == ((FAR_FUT, -20),)
+    # Broker shows neither leg: the expired one is only noted, the far leg is still a real, blocking mismatch.
+    by_kind = {x.kind: x for x in recon({}, CAL=record).mismatches}
+    assert set(by_kind) == {MismatchKind.AWAITING_SETTLEMENT, MismatchKind.MISSING_PLATFORM_POSITION}
+    m = by_kind[MismatchKind.MISSING_PLATFORM_POSITION]
+    assert m.strategy_ids == ("CAL",) and m.difference == ((FAR_FUT, -20),)
     # The expired leg is still at Zerodha but at a different size: an ordinary quantity mismatch, blocking.
     kinds = {x.kind: x for x in recon({SHORT_CE: -10, FAR_FUT: 20}, CAL=record).mismatches}
     assert kinds[MismatchKind.QUANTITY_MISMATCH].strategy_ids == ("CAL",)

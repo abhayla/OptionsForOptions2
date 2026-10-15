@@ -36,10 +36,11 @@ Rules implemented:
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable
+from typing import Callable, Collection
 
 from ofo.strategy.definition import (
     MAX_TEXT,
@@ -193,6 +194,7 @@ class OutcomeKind(Enum):
     RECONCILED = "reconciled"  # an explicit, audited manual reconciliation (ADR-018 Q198)
     OBSERVED = "observed"  # a broker position recorded by a reconciliation run, outside any execution result
     EXITED = "exited"  # the broker position is flat and the strategy was closed (ADR-019 Q200)
+    SETTLED = "settled"  # expired legs closed at the exchange settlement price; the strategy continues (ADR-083)
 
 
 @dataclass(frozen=True)
@@ -257,7 +259,7 @@ class StrategyRecord:
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
         "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
-        "_observed_at", "_guard",
+        "_observed_at", "_guard", "_awaiting", "_settled",
     )
 
     def __init__(
@@ -285,6 +287,8 @@ class StrategyRecord:
         self._set("_reconcile", False)
         self._set("_exited", False)
         self._set("_observed_at", None)
+        self._set("_awaiting", frozenset())
+        self._set("_settled", frozenset())
         self._set("_guard", StrategyGuard())  # REQ-036 AC-5: this strategy's own guard; never supplied by a caller
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -332,6 +336,16 @@ class StrategyRecord:
     def exited(self) -> bool:
         """The strategy was closed because the broker position went flat; it accepts no further change."""
         return self._exited
+
+    @property
+    def awaiting_settlement(self) -> frozenset[Contract]:
+        """Expired legs still open because no settlement price was available (ADR-083: never a guessed price)."""
+        return self._awaiting
+
+    @property
+    def settled_contracts(self) -> frozenset[Contract]:
+        """Every contract this strategy closed as an expiry settlement (reconciliation expects it gone at Zerodha)."""
+        return self._settled
 
     @property
     def history(self) -> tuple[HistoryEntry, ...]:
@@ -592,6 +606,70 @@ class StrategyRecord:
             0 if active is None else active.number, OutcomeKind.EXITED, self._active_intended(), self._actual, at,
             reference,
         )
+        self._outcomes.append(outcome)
+        return outcome
+
+    def settle_legs(
+        self,
+        settled: Collection[Contract],
+        awaiting: Collection[Contract],
+        *,
+        at: datetime.datetime,
+        reference: str,
+    ) -> ExecutionOutcome | None:
+        """Close expired legs in the platform's books (ADR-083), or record that they await a settlement price.
+
+        ``settled``: contracts of the ACTIVE version closed at the exchange settlement price; the active version is
+        replaced by a new one without them (a SETTLED outcome). When none is left the strategy becomes Exited through
+        an EXITED outcome (REQ-039 AC-2), never inferred from an empty position. ``awaiting``: expired contracts
+        still open for want of a price; replaces the awaiting set (a later call with the price settles them).
+        Refused while the strategy is exited, blocked by reconciliation or has a proposal in flight (fail closed).
+        """
+        self._refuse_while_blocked("settle")
+        active = self.active_version
+        if active is None:
+            raise VersionError("nothing is active; there is no leg to settle")
+        settled, awaiting = frozenset(settled), frozenset(awaiting)
+        held = active.intended_position.as_dict()
+        for contract in settled | awaiting:
+            check_contract(contract)
+            if contract not in held:
+                raise VersionError(f"{describe_contract(contract)} is not a leg of the active version")
+        if settled & awaiting:
+            raise VersionError("a contract cannot be both settled and awaiting settlement")
+        _require_text(reference, "reference")
+        if not settled:
+            self._set("_awaiting", awaiting)
+            return None
+        if reference in self._references:
+            raise VersionError(f"settlement {reference!r} was already recorded")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._stamp(at)
+        before = self._active_intended()
+        remaining = tuple(
+            leg for leg in active.definition.legs
+            if (active.definition.underlying, leg.instrument, leg.strike, leg.expiry) not in settled
+        )
+        self._references.add(reference)
+        actual = {c: u for c, u in self._actual.as_dict().items() if c not in settled}
+        self._set("_actual", Position.of(actual))
+        self._set("_observed_at", None)
+        self._set("_settled", self._settled | settled)
+        self._set("_awaiting", awaiting)
+        if not remaining:
+            self._set("_exited", True)
+            self._set("_reconcile", False)
+            outcome = ExecutionOutcome(active.number, OutcomeKind.EXITED, before, self._actual, at, reference)
+        else:
+            version = self._add_version(
+                dataclasses.replace(active.definition, legs=remaining), self._active, at, "system",
+                "settlement", ("settlement",), pending=False,
+            )
+            self._set("_active", version.number)
+            outcome = ExecutionOutcome(
+                version.number, OutcomeKind.SETTLED, version.intended_position, self._actual, at, reference)
+            self._recheck_invariant()
         self._outcomes.append(outcome)
         return outcome
 

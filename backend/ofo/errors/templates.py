@@ -554,6 +554,17 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A recorded standalone position changed on {contracts} contract(s).",
           "The recorded standalone quantity no longer matches Zerodha.", _REC_NONE_BLOCKED,
           "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
+    _gate("recon_awaiting_settlement", _RM, 210,
+          "{contracts} expired contract(s) of this strategy are not at Zerodha and have no settlement price yet.",
+          "The strategy's P&L for the expired leg is not final until its settlement price arrives.",
+          _REC_NONE_BLOCKED,
+          "Wait for the exchange settlement price; the leg is then closed in the platform. No strategy is blocked.",
+          _REC_SLOT),
+    _gate("recon_expired_still_at_broker", _RM, 211,
+          "Zerodha still lists {contracts} expired contract(s) that the platform has already settled.",
+          "None: the platform closed the expired leg at its settlement price.", _REC_NONE_BLOCKED,
+          "Zerodha may remove the expired position the next morning; check again then. No strategy is blocked.",
+          _REC_SLOT),
 )
 
 

@@ -19,7 +19,7 @@ import pytest
 
 from compare_reference import compare_reference
 from ofo.engine import Action, Instrument
-from ofo.reconciliation.compare import MismatchKind, ReconciliationError, compare
+from ofo.reconciliation.compare import SETTLEMENT_KINDS, MismatchKind, ReconciliationError, compare
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import ExecutionResult, Position, ResultStatus, StrategyRecord
 from recon_fixtures import EXPIRY, NEXT_EXPIRY, T0, at, clock
@@ -115,7 +115,8 @@ def test_ac2_linear_compare_equals_the_pre_w037_compare_on_600_seeded_accounts()
         agreeing += not new.mismatches
     # The generator must reach the cases that matter, or the equality above proves little. Measured with this seed
     # (2026-09-29): all 9 kinds, 243 blocked strategies, 55 multi-holder (Q224) mismatches, 340 agreeing runs.
-    assert kinds == set(MismatchKind), set(MismatchKind) - kinds
+    # The two ADR-083 settlement kinds need a strategy with settlement state; test_expiry_settlement.py covers them.
+    assert kinds == set(MismatchKind) - SETTLEMENT_KINDS, set(MismatchKind) - SETTLEMENT_KINDS - kinds
     assert blocked_total >= 200 and shared_blocks >= 40 and agreeing >= 100, (blocked_total, shared_blocks, agreeing)
 
 
