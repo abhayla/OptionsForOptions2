@@ -170,6 +170,10 @@ async def test_real_list_gives_nifty_expiries_with_ce_and_pe_strikes(app_engine:
                 assert all(c.strike is None for c in contracts if c.instrument_type == "FUT")
             assert both, "no NIFTY expiry offers both CE and PE strikes"
             assert await pickable_contracts(conn, "BANKNIFTY", today) == []
+            # #204: the stored SENSEX index row (BSE_INDEX, no expiry) is never offered as an expiry or a contract
+            sensex_expiries = await pickable_expiries(conn, "SENSEX", today)
+            assert sensex_expiries and None not in sensex_expiries
+            assert {c.exchange_segment for c in await pickable_contracts(conn, "SENSEX", today)} == {"BSE_FO"}
         finally:
             await trans.rollback()
 
