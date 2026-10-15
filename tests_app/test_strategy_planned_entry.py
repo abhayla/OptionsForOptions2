@@ -303,6 +303,7 @@ def _leg_variants(good_leg: dict) -> dict[str, tuple[dict, bool]]:
         out[f"price {label}"] = (good_leg | {"planned_entry": value}, ok)
     for label, value, ok in (("IST", CAPTURED, True), ("UTC +00:00", "2026-10-15T03:50:05+00:00", True),
                              ("microseconds", "2026-10-15T11:02:17.123456+05:30", True),
+                             ("zero microseconds", "2026-10-15T11:02:17.000000+05:30", False),
                              ("no offset", "2026-10-15T11:02:17", False), ("Z", "2026-10-15T03:50:05Z", False),
                              ("date only", "2026-10-15", False), ("bad month", "2026-13-15T11:02:17+05:30", False)):
         out[f"time {label}"] = (good_leg | {"captured_at": value}, ok)

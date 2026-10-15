@@ -70,6 +70,8 @@ def test_ac5_a_leg_without_an_entry_has_neither_key_and_the_default_is_none():
     {"planned_entry": "44.90", "captured_at": "2026-10-15T11:02:17"},
     {"planned_entry": "44.90", "captured_at": "2026-10-15T05:32:17Z"},  # stored text is canonical isoformat only
     {"planned_entry": "44.90", "captured_at": "2026-10-15 11:02:17+05:30"},
+    {"planned_entry": "44.90", "captured_at": "2026-10-15T11:02:17.000000+05:30"},  # isoformat drops zero micros
+    {"planned_entry": "44.90", "captured_at": "2026-10-15T05:32:17-00:00"},  # isoformat writes +00:00
 ])
 def test_ac5_a_stored_leg_outside_the_two_shapes_is_refused(leg_change):
     saved = _iron_condor()

@@ -60,7 +60,7 @@ _BASE = _M8._BASE  # 0001
 #: application code; tests/strategy/test_stored_form_entries.py pins these equal to the domain's).
 ENTRY_LEG_KEYS = ("planned_entry", "captured_at")
 ENTRY_PRICE_REGEX = "^(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?$"
-CAPTURED_AT_REGEX = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?[+-][0-9]{2}:[0-9]{2}$"
+CAPTURED_AT_REGEX = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.](?!000000)[0-9]{6})?[+-][0-9]{2}:[0-9]{2}$"
 ENTRIES_REPRICED = "entries_repriced"
 
 _PAIR = "ARRAY['planned_entry', 'captured_at']"

@@ -70,7 +70,7 @@ ENTRY_LEG_KEYS = frozenset({"planned_entry", "captured_at"})
 #: The database's patterns (migration 0011): a price as plain digits, at most 12 before and 2 after the point
 #: (NUMERIC(14,2)); a capture time as Python's isoformat of an aware datetime with a whole-minute offset.
 ENTRY_PRICE_PATTERN = r"(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?"
-CAPTURED_AT_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?[+-][0-9]{2}:[0-9]{2}"
+CAPTURED_AT_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.](?!000000)[0-9]{6})?[+-][0-9]{2}:[0-9]{2}"
 ENTRY_KEYS = frozenset({"schema_version", "seq", "at", "change_summary", "definition"})
 
 #: Every live-market field name (REQ-038 AC-1's live state, read from the LiveState, LegQuote and Greeks classes) plus
