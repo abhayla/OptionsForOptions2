@@ -231,3 +231,44 @@ def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     assert out.summary.charges is None and out.summary.charges_unavailable
     assert "about ₹" not in out.summary.what_can_i_lose + out.summary.what_can_i_make
     assert out.scenario.charges is None
+
+
+# --- round 3: the table shows the charges as a row, so legs + charges == TOTAL in every column -----------------------------
+
+CHARGES_ROW = "CHARGES"
+CHARGES_LABEL = "Charges and taxes (estimate)"
+
+
+def _rows(out):
+    return {r.row_id: r for r in out.table.rows}
+
+
+def test_table_has_a_charges_row_and_legs_plus_charges_equal_total_in_every_column(replayed):
+    d, out = outcome_of(replayed, RATES)
+    rows = _rows(out)
+    assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", CHARGES_ROW, "TOTAL"]  # between legs and TOTAL
+    row = rows[CHARGES_ROW]
+    from ofo.table import ColumnId
+    assert row.cells[ColumnId.LEG].display == CHARGES_LABEL
+    levels = out.level_set.levels
+    assert len(levels) >= 10
+    for level in levels:
+        legs_sum = sum((rows[str(i)].cell(level).value for i in range(1, 5)), D("0"))
+        assert rows[CHARGES_ROW].cell(level).value is not None
+        assert legs_sum + rows[CHARGES_ROW].cell(level).value == rows["TOTAL"].cell(level).value, level  # exact
+        assert rows[CHARGES_ROW].cell(level).value <= 0  # charges only ever cost money
+    # at a level with no bought option in the money the cell is exactly minus the round trip
+    assert out.summary.charges == -rows[CHARGES_ROW].cell(D("22533.25")).value
+    # the money display string is the same one every other money cell uses
+    assert rows[CHARGES_ROW].cell(D("22533.25")).display.startswith("-₹") or "₹" in rows[CHARGES_ROW].cell(D("22533.25")).display
+
+
+def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estimated_now(replayed):
+    _, none_out = outcome_of(replayed, None)
+    assert CHARGES_ROW not in _rows(none_out)
+    d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
+                                          for i, a in REPLAY_CONDOR))
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    from ofo.scenario.views import View
+    est = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
+    assert CHARGES_ROW not in _rows(est)

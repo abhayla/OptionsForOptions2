@@ -310,8 +310,9 @@ async def test_the_database_refuses_a_stamp_or_sebi_rate_at_or_above_its_cap(adm
                     "SELECT count(*) FROM pg_constraint WHERE conname = 'charge_rates_unit_caps'"))).scalar_one()
                 if not present:
                     assert os.environ.get("GITHUB_ACTIONS") != "true", "0014 is not applied in the CI database"
-                    for sql in statements:
-                        await conn.execute(text(sql))
+                    # never ALTER TABLE on a shared database (W-075 round 3, D4): CI applies the real migration
+                    pytest.skip("charge_rates_unit_caps is not in this database: 0014 is applied by CI's upgrade "
+                                "head, never by a test on the shared ofo_test")
                 if refused:
                     with pytest.raises(DBAPIError, match="charge_rates_unit_caps"):
                         await conn.execute(insert, {"c": component, "v": value})

@@ -967,6 +967,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
+    ExplanationTemplate("cell_charges_row_label", "values_seen", "Charges and taxes (estimate)"),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 
