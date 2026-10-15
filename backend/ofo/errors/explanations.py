@@ -394,6 +394,14 @@ class Points(SlotType):
         return format_points(value)
 
 
+#: The wording parts of a `LevelRegions` / `ExceptLevels` slot (ADR-072; issue #172), pinned as `labels:level_region`
+#: so a changed word needs a new pin ("pending owner read").
+LEVEL_REGION_TEXT: Mapping[str, str] = MappingProxyType({
+    "at": "at {lo}", "below": "below {hi}", "above": "above {lo}", "between": "between {lo} and {hi}",
+    "except": "{region} (except exactly {levels})", "and": "{rest} and {last}", "or": "{rest} or {last}",
+})
+
+
 class ExceptLevels(SlotType):
     """A non-empty, strictly ascending tuple of `Points` levels in plain notation: printed "X", "X and Y", "X, Y and Z"
     (the exact zero points inside a loss; issue #172)."""
@@ -412,7 +420,8 @@ class ExceptLevels(SlotType):
     @staticmethod
     def format(value: tuple) -> str:
         parts = [Points.format(level) for level in value]
-        return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+        return parts[0] if len(parts) == 1 else LEVEL_REGION_TEXT["and"].format(rest=", ".join(parts[:-1]),
+                                                                                  last=parts[-1])
 
 
 class LevelRegions(SlotType):
@@ -452,20 +461,17 @@ class LevelRegions(SlotType):
 
     @staticmethod
     def format(value: tuple) -> str:
+        text = LEVEL_REGION_TEXT
         parts = []
         for lo, hi, *excepts in value:
-            if lo is not None and lo == hi:
-                part = f"at {Points.format(lo)}"
-            elif lo is None:
-                part = f"below {Points.format(hi)}"
-            elif hi is None:
-                part = f"above {Points.format(lo)}"
-            else:
-                part = f"between {Points.format(lo)} and {Points.format(hi)}"
+            lo_t = None if lo is None else Points.format(lo)
+            hi_t = None if hi is None else Points.format(hi)
+            key = "at" if lo is not None and lo == hi else "below" if lo is None else "above" if hi is None else "between"
+            part = text[key].format(lo=lo_t, hi=hi_t)
             if excepts:
-                part += f" (except exactly {ExceptLevels.format(excepts[0])})"
+                part = text["except"].format(region=part, levels=ExceptLevels.format(excepts[0]))
             parts.append(part)
-        return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " or " + parts[-1]
+        return parts[0] if len(parts) == 1 else text["or"].format(rest=", ".join(parts[:-1]), last=parts[-1])
 
 
 class SignedAmount(SlotType):
@@ -962,7 +968,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "input": INPUT_LABEL_TEXT, "op": OP_TEXT, "action": ACTION_TEXT, "follow_up": FOLLOW_UP_TEXT,
     "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT, "choice": CHOICE_LABEL_TEXT, "step": STEP_LABEL_TEXT,
     "builder": BUILDER_LABEL_TEXT, "scenario_view": SCENARIO_VIEW_LABEL_TEXT, "health": HEALTH_LABEL_TEXT,
-    "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT,
+    "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
 })
 
 

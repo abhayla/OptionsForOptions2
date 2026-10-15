@@ -258,8 +258,9 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `summary_make_unlimited` | values_seen | Your profit has no fixed limit if {index} rises far enough by expiry. |
 | `summary_make_none` | values_seen | This strategy cannot make money at expiry. |
 | `summary_make_at_most` | values_seen | At most {amount} at expiry, before charges and taxes. |
-| `summary_start_regions` | values_seen | If {index} ends {regions} at expiry. (regions: "below X", "between X and Y", "above X", joined "a, b or c"; ADR-072) |
-| `summary_start_touch` | values_seen | At every level except exactly {level} at expiry. (ADR-072) |
+| `summary_start_regions` | values_seen | If {index} ends {regions} at expiry. (regions: "at X", "below X", "between X and Y", "above X", each followed by " (except exactly Z)" when single zero points split that region's loss, joined "a, b or c"; ADR-072, issue #172. Example: "If NIFTY ends between 22,000 and 22,800 (except exactly 22,400) at expiry.") |
+| `summary_start_touch` | values_seen | At every level except exactly {levels} at expiry. ({levels}: "X", "X and Y", "X, Y and Z"; ADR-072, issue #172) |
+| `labels:level_region` | label table | the region and list parts above: `at {lo}`, `below {hi}`, `above {lo}`, `between {lo} and {hi}`, `{region} (except exactly {levels})`, `{rest} and {last}`, `{rest} or {last}` - pending owner read (W-066 round 7) |
 | `summary_start_never` | values_seen | At no level at expiry. |
 | `summary_start_everywhere` | values_seen | At every level at expiry. (ADR-072: no claim about breakevens) |
 | `scenario_view_label` | values_seen | {view} |
