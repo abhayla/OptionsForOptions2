@@ -416,10 +416,8 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
 ## Q265 — DECIDED → ADR-080 (expert role) — Tick rounding: which way is a derived LIMIT price rounded?
 - Answer: BUY down, SELL up, never worse than the user's terms; outside the circuit band the leg is blocked.
 
-## Q266 — OPEN (owner) — Quantity edge cases: how is a leg above the exchange freeze limit handled, and where does the freeze limit come from?
-- Gap: Zerodha's list has no freeze limit (REQ-054); ADR-050's 10-slice cap is the API autoslice, unused by baskets.
-- Recommended: one basket order per leg; a leg above the stored freeze limit is blocked at review; the limit is loaded
-  from the exchange's freeze-quantity file with its date - a new external source, so the owner's call.
+## Q266 — DECIDED → ADR-081 (owner, 2026-10-15) — Quantity edge cases: how is a leg above the exchange freeze limit handled, and where does the freeze limit come from?
+- Answer: blocked at review, never split; the limit is loaded daily from the exchange's freeze-quantity file.
 
 ## Q267 — OPEN (owner) — Charges model: where do the charges on the review, in P&L and in the money sentences come from?
 - Gap: ADR-071's phrase "before charges and taxes" holds "until the charges model is decided"; its consequence expects
