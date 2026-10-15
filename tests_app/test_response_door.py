@@ -1545,6 +1545,41 @@ def test_n5_a_door_body_swapped_on_its_way_to_the_wire_is_dropped() -> None:
     assert SENTENCE.encode() not in b"".join(m.get("body", b"") for m in sent)
 
 
+def test_n5_the_door_messages_sent_twice_by_a_wrapper_reach_the_wire_once() -> None:
+    """AC-2 (#200 N5): a send wrapper that passes each door message on twice gets exactly one start and one body
+    through: the seal admits one start, then one body, then nothing."""
+    from ofo_app.errors import respond
+
+    async def app(scope, receive, send):
+        async def twice(message):
+            await send(message)
+            await send(message)
+        await respond(_MODEL, 200)(scope, receive, twice)
+
+    assert _through_boundary(app) == _wire(_door("closed"))
+
+
+def test_n5_hand_made_copies_of_the_door_messages_after_a_nowhere_send_are_dropped() -> None:
+    """AC-2 (#200 N5): the seal vouches for the message objects the door handed to send, not for look-alikes: after a
+    door response was called with a send that goes nowhere, byte-identical copies of its start and body sent by hand
+    are refused (only the internal-system 500 reaches the wire)."""
+    from ofo_app.errors import respond
+
+    copies = [dict(m) for m in _wire(_door("closed"))]
+
+    async def nowhere(message):
+        return None
+
+    async def app(scope, receive, send):
+        await respond(_MODEL, 200)(scope, receive, nowhere)
+        for message in copies:
+            await send(dict(message))
+
+    sent = _through_boundary(app)
+    assert [m["status"] for m in sent if m["type"] == "http.response.start"] == [500]
+    assert json.loads(b"".join(m.get("body", b"") for m in sent))["code"] == "INTERNAL_SYSTEM_002"
+
+
 def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for_byte() -> None:
     """AC-2 (#200 N5, the other branch): a door response sent through the boundary reaches the wire unchanged, and the
     real route still answers its golden bytes."""

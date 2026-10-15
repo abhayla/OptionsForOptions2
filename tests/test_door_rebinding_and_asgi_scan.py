@@ -336,6 +336,7 @@ def test_a_rebinding_allowance_covers_only_its_own_file_and_target() -> None:
     "def f(request):\n    return getattr(request, f'_{\"send\"}')",
     "from starlette.requests import _send",
     "def f(_send):\n    pass",
+    "def f():\n    return _receive",
     "def f(scope):\n    scope['ofo.door'] = 1",
     "def f(request):\n    request.scope['ofo.door'] = 1",
     "def f(scope):\n    del scope['k']",
