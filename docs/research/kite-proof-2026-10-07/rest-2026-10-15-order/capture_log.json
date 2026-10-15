@@ -1,0 +1,35 @@
+{
+ "spot": "22945.95",
+ "expiry": "2026-10-19",
+ "picks": {
+  "CE": {
+   "symbol": "NIFTY26O1923550CE",
+   "strike": "23550",
+   "lot": 65,
+   "tick_size": "0.05",
+   "ltp": "3.95",
+   "premium_for_1_lot": "256.75",
+   "http": {
+    "quote": 200,
+    "order_margin": 200,
+    "basket_margin": 200,
+    "charges": 200
+   }
+  },
+  "PE": {
+   "symbol": "NIFTY26O1921900PE",
+   "strike": "21900",
+   "lot": 65,
+   "tick_size": "0.05",
+   "ltp": "4.6",
+   "premium_for_1_lot": "299.0",
+   "http": {
+    "quote": 200,
+    "order_margin": 200,
+    "basket_margin": 200,
+    "charges": 200
+   }
+  }
+ },
+ "captured_at": "2026-10-15T15:10:06+05:30"
+}
