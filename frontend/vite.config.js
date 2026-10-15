@@ -5,12 +5,13 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { loadOpenApiPaths, makeRewrite } from './proxy-rewrite.js'
 
 const apiTarget = process.env.OFO_API_TARGET || 'http://127.0.0.1:8000'
 
 const proxy = {
-  // /api/health -> <apiTarget>/health; /api/strategies/* keeps its prefix (the outcome route is served at /api/strategies/outcome)
-  '/api': { target: apiTarget, changeOrigin: true, rewrite: (p) => (p.startsWith('/api/strategies/') ? p : p.replace(/^\/api/, '')) },
+  // /api/health -> <apiTarget>/health; a route the API serves under /api (per docs/api/openapi.json) keeps its prefix
+  '/api': { target: apiTarget, changeOrigin: true, rewrite: makeRewrite(loadOpenApiPaths()) },
   '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
 }
 
