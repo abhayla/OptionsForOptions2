@@ -801,6 +801,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("flag_charges_unavailable", "values_seen",
                         "A charges estimate is not available for this strategy."),
     ExplanationTemplate("flag_stale_on_exit", "values_seen", "Prices shown may be stale — confirm to continue."),
+    ExplanationTemplate("flag_price_band_unknown_on_exit", "values_seen",
+                        "We could not check this exit's price against today's price band — confirm to continue."),
     # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
     ExplanationTemplate("client_id_not_valid", "values_seen",

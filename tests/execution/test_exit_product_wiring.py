@@ -20,6 +20,7 @@ from test_close_slices import BUY_PE, QTY, SELL_CE, SELL_PE, _state, big_plan
 from ofo.engine import Action, Strategy
 from ofo.engine.product import Product
 from ofo.execution import CheckCode, ExecutionAction
+from ofo.execution.safety import FlagCode
 from ofo.execution.context import product_key
 from ofo.execution.partial import close_partial_strategy
 from ofo.execution.partial import position_line_from_kite_row
@@ -124,11 +125,47 @@ def test_a_missing_band_blocks_never_passes(bands, condor, catalogue, eligibilit
     assert "price band" in result.failures[0].reason and "could not read" in result.failures[0].reason
 
 
-def test_an_exit_with_a_missing_band_is_blocked_too(catalogue, eligibility):
+def _exit_inputs(price=None, bands="missing"):
     legs = condor_legs()
-    exit_legs = tuple(dataclasses.replace(l, action=Action.SELL if l.action is Action.BUY else Action.BUY)
+    flip = {Action.BUY: Action.SELL, Action.SELL: Action.BUY}
+    exit_legs = tuple(dataclasses.replace(l, action=flip[l.action], **({} if price is None else {"entry_price": price}))
                       for l in legs)
     products = {product_key(l): Product.NRML for l in legs}
+    kw = {} if bands == "missing" else {"price_bands": bands}
+    if bands == "missing":
+        kw["price_bands"] = None
     ctx = all_true_context(action=ExecutionAction.EXIT, active_legs=legs, active_products=products,
-                           exit_products=products, price_bands=None)
-    assert check(Strategy(exit_legs), ctx, catalogue, eligibility).failed_codes == {CheckCode.PRICE_OUTSIDE_BAND}
+                           exit_products=products, **kw)
+    return Strategy(exit_legs), ctx
+
+
+def test_exit_with_a_missing_band_is_a_warning_the_user_confirms_not_a_block(catalogue, eligibility):
+    """REQ-059 exit carve-out + Q239: an exit is never stopped by a band that could not be read."""
+    strategy, ctx = _exit_inputs()
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert result.failures == () and result.blocked is False
+    warned = [f for f in result.flags if f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT]
+    assert len(warned) == 1 and "price band" in warned[0].message
+    assert result.requires_confirmation is True
+
+
+def test_exit_leg_with_a_zero_price_is_never_compared_to_a_band(catalogue, eligibility):
+    """A stored leg carries entry price 0 = unknown: not 'outside 0.05..', but a missing price -> warning."""
+    strategy, ctx = _exit_inputs(price=D("0"), bands=_bands(D("0.05"), D("1000")))
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert result.failures == ()
+    assert any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in result.flags)
+
+
+def test_exit_priced_outside_a_known_band_still_blocks(catalogue, eligibility):
+    strategy, ctx = _exit_inputs(bands=_bands(D("0.05"), D("1")))
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.PRICE_OUTSIDE_BAND}
+    assert "outside today's price band" in result.failures[0].reason
+
+
+def test_exit_inside_a_known_band_has_no_warning(catalogue, eligibility):
+    strategy, ctx = _exit_inputs(bands=_bands(D("0.05"), D("1000")))
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert result.failures == () and not any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in result.flags)
+    assert result.requires_confirmation is False

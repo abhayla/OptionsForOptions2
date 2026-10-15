@@ -1242,5 +1242,9 @@
   "gate_price_band_unknown": {
     "sha256": "049a7f8b7ceabd2227a6fdecc73dc2a96bb42a59a39bb3d33a59ce9e422311d4",
     "reviewed": "pending owner read"
+  },
+  "explanation:flag_price_band_unknown_on_exit": {
+    "sha256": "4ece3beeaa4f38bc864175271ed3df673c26442e15feb883a87a1b737d5639e4",
+    "reviewed": "pending owner read"
   }
 }
