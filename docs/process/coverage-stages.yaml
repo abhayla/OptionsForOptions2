@@ -156,6 +156,7 @@ decisions:
   ADR-080: 4b           # NRML, tick rounding, executable limit from depth (expert role 2026-10-15, Q264/Q265/Q268)
   ADR-081: 4b           # freeze limit: block at review, exchange file source (owner 2026-10-15, Q266)
   ADR-082: 4b           # charges from Zerodha's published rates; money sentences include charges (owner 2026-10-15, Q267)
+  ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
   ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
@@ -224,6 +225,7 @@ issues:
   "#221": 4a            # deferred: draft label hyphen vs ADR-020 long dash (W-065 round 2)
   "#222": 4a            # deferred/owner question: REST fallback label after the browser socket closes (W-065 r2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
+  "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
@@ -234,7 +236,6 @@ issues:
 
 # Work items whose status is not done.
 work_items:
-  W-071: 4a           # Save Draft and reopen in the Builder screen (gap found 2026-10-15)
   W-008: S8
   W-009: S8
   W-011: S8
