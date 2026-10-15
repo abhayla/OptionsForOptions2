@@ -5,6 +5,9 @@
 // replay mode, never available in production settings). PREVIEW_URL is a preview on a plain API (no provider),
 // PREVIEW_DOWN_URL one on a closed port.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { useQuietLiveSocket } from './support/quiet-live'
+
+useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
 const CAPTURED_AT = '2026-10-08T09:20:09+05:30'
