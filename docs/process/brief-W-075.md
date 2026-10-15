@@ -1,4 +1,4 @@
-﻿# Builder brief: W-075 charges in max-loss / max-profit sentences and expiry values (Tier A)
+# Builder brief: W-075 charges in max-loss / max-profit sentences and expiry values (Tier A)
 
 Core: the real 1-lot NIFTY iron condor of 2026-10-15 (SELL 23150 CE 53.30, BUY 23350 CE 17.30, SELL 22750 PE 65.15,
 BUY 22550 PE 34.00; 65 units each) gets round-trip charges of about Rs 221 and the sentence

@@ -6,6 +6,7 @@ broker is a fake that counts every call; the orders and fills go through the rea
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from decimal import Decimal as D
 from typing import Sequence
@@ -13,6 +14,7 @@ from typing import Sequence
 from execution_inputs import AS_OF, LOT, all_true_context, condor_legs
 
 from ofo.engine import Action, Strategy
+from ofo.engine.product import Product
 from ofo.execution import ExecutionContext
 from ofo.execution.partial import OrderRefused, BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg
 from ofo.orders import FillEvent, Order, OrderBook, OrderState
@@ -108,7 +110,9 @@ class FakeBroker:
 
     def __init__(self, positions: list[BrokerPositionLine], order_statuses: list[BrokerOrderStatus],
                  margin: D = D("150000.00"), fail: str | None = None,
-                 read_at: datetime.datetime = READ_AT) -> None:
+                 read_at: datetime.datetime = READ_AT, default_product: Product | None = Product.NRML) -> None:
+        # real broker rows always carry a product; ``default_product`` fills a line built without one (None = unread)
+        positions = [dataclasses.replace(p, product=default_product) if p.product is None else p for p in positions]
         self.positions, self.order_statuses, self.margin, self.fail = positions, order_statuses, margin, fail
         self.read_at = read_at
         self.calls: list[str] = []

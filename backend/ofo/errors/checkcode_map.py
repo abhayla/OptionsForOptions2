@@ -22,6 +22,7 @@ CHECKCODE_TO_ERROR_CLASS: dict[CheckCode, ErrorClass] = {
     CheckCode.RULES_INVALID: ErrorClass.STRATEGY_VALIDATION,
     CheckCode.DUPLICATE_LEG: ErrorClass.STRATEGY_VALIDATION,
     CheckCode.EXIT_NOT_REDUCE_ONLY: ErrorClass.STRATEGY_VALIDATION,
+    CheckCode.PRICE_OUTSIDE_BAND: ErrorClass.MARKET_DATA,
     CheckCode.DEPENDENCIES_UNSATISFIED: ErrorClass.STRATEGY_VALIDATION,
     # Market/contract data problems.
     CheckCode.MARKET_CLOSED: ErrorClass.MARKET_DATA,

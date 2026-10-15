@@ -1239,6 +1239,26 @@
     "sha256": "20de76b36deaaf2ca6f19bde3b6a4866af72bfe9f2284576daa993133b3013bd",
     "reviewed": "pending owner read"
   },
+  "gate_exit_product_mismatch": {
+    "sha256": "14108c32107ed38f6263f9e0888c1bc25f37c317b855dbc01544e29cdba33405",
+    "reviewed": "pending owner read"
+  },
+  "gate_price_outside_circuit": {
+    "sha256": "90f65da533ced3c8cd3891f84ec74b63443158f806d702bfb5f710b5684d2160",
+    "reviewed": "pending owner read"
+  },
+  "gate_price_band_unknown": {
+    "sha256": "049a7f8b7ceabd2227a6fdecc73dc2a96bb42a59a39bb3d33a59ce9e422311d4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_price_band_unknown_on_exit": {
+    "sha256": "4ece3beeaa4f38bc864175271ed3df673c26442e15feb883a87a1b737d5639e4",
+    "reviewed": "pending owner read"
+  },
+  "gate_price_not_known": {
+    "sha256": "17a1306d1ac0ebe2b80c8b90a9a59478a66303ba510dcb674eefdad73f3baaf5",
+    "reviewed": "pending owner read"
+  },
   "margin_basket_insufficient": {
     "sha256": "322daa3cb313eae76eb7e9b41a1c6dbeebd925455b044380f98d1788d36a9773",
     "reviewed": "pending owner read"
