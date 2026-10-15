@@ -39,10 +39,10 @@ from ofo.audit.log import AuditLog
 from ofo.engine.legs import Action, Instrument, Leg, require_price
 from ofo.engine.product import Product
 from ofo.errors import render
-from ofo.execution.partial import position_line_from_kite_row
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.reconciliation.compare import ReconciliationError
+from ofo.reconciliation.positions import position_line_from_kite_row
 from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.matching import MatchResult, match
 from ofo.strategy.model import Template, TemplateError
