@@ -1,7 +1,8 @@
 """Pick the tests_app files a backend route / response-model change can break (issue #242, finding
 targeted-tests-miss-dependent-files).
 
-select(changed_files, diff_text, tests_dir) -> ["tests_app/test_x.py", ...]
+select(changed_files, diff_text, tests_dir, read_source=None) -> ["tests_app/test_x.py", ...]
+(read_source(rel_path) -> text of a changed file; default reads the working tree under the repo root)
 
 Precision first: keys come from what the diff CHANGED, not from every name in a touched file.
   - a class (response model, dataclass) with a real +/- line in a hunk  -> its name
@@ -77,7 +78,7 @@ def parse_diff(diff_text: str) -> dict:
                 continue
             out[path].append(n)
 
-    for line in diff_text.splitlines():
+    for line in (l.rstrip("\r") for l in diff_text.split("\n")):
         if line.startswith("diff --git "):
             flush()
             hunk = []
@@ -157,7 +158,12 @@ def _file_keys(source: str, lines: list) -> list:
     return keys
 
 
-def keys_for(changed_files, diff_text: str, root) -> list:
+def _read_tree(root):
+    return lambda rel: open(os.path.join(str(root), rel), encoding="utf-8").read()
+
+
+def keys_for(changed_files, diff_text: str, root, read_source=None) -> list:
+    read_source = read_source or _read_tree(root)
     parsed = parse_diff(diff_text)
     keys: list = []
     for f in changed_files:
@@ -169,16 +175,15 @@ def keys_for(changed_files, diff_text: str, root) -> list:
             raise DiffNotParsed(f"{f} has no hunk in the diff (rename or mode change only)")
         if not parsed[f]:
             continue
-        path = os.path.join(str(root), f)
         try:
-            source = open(path, encoding="utf-8").read()
+            source = read_source(f)
             keys += _file_keys(source, parsed[f])
         except (OSError, SyntaxError) as e:
             raise DiffNotParsed(f"{f}: {e}") from e
     return list(dict.fromkeys(keys))
 
 
-def select_by_key(changed_files, diff_text: str, tests_dir) -> dict:
+def select_by_key(changed_files, diff_text: str, tests_dir, read_source=None) -> dict:
     tests_dir = os.fspath(tests_dir)
     root = os.path.dirname(os.path.abspath(tests_dir))
     base = os.path.basename(os.path.abspath(tests_dir))
@@ -187,12 +192,12 @@ def select_by_key(changed_files, diff_text: str, tests_dir) -> dict:
         if n.startswith("test_") and n.endswith(".py"):
             texts[f"{base}/{n}"] = open(os.path.join(tests_dir, n), encoding="utf-8").read()
     return {k.name: [p for p, t in texts.items() if k.regex().search(t)]
-            for k in keys_for(changed_files, diff_text, root)}
+            for k in keys_for(changed_files, diff_text, root, read_source)}
 
 
-def select(changed_files, diff_text: str, tests_dir) -> list:
+def select(changed_files, diff_text: str, tests_dir, read_source=None) -> list:
     chosen: set = set()
-    for files in select_by_key(changed_files, diff_text, tests_dir).values():
+    for files in select_by_key(changed_files, diff_text, tests_dir, read_source).values():
         chosen.update(files)
     return sorted(chosen)
 
