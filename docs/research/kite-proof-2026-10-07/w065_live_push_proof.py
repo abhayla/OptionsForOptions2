@@ -60,8 +60,12 @@ class CollectingChannel:
             raise ChannelClosed()
         return item
 
-    async def send(self, body: dict) -> None:
-        self.sent.append((self._mono(), body))
+    async def send(self, source) -> None:
+        """Minted as the app's door socket mints it (ofo_app.errors.socket_body), then read back as JSON."""
+        from ofo_app.errors import socket_body
+        from ofo_app.routes.outcome import OutcomeResponse
+
+        self.sent.append((self._mono(), json.loads(bytes(socket_body(source, (OutcomeResponse,))))))
 
     def close(self) -> None:
         self._queue.put_nowait(None)

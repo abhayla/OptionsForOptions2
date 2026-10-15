@@ -67,7 +67,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         live.set_replay_feed(live_push.LiveFeed(ctx, FanOut(ctx.provider)))  # the socket replays the same frames
     app.include_router(health.router)
     app.include_router(outcome.router)
-    app.include_router(live.router)  # W-065: the strategy live push, a door socket
+    live.mount(app)  # W-065: the strategy live push, a door socket
     broker.mount(app, config)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)

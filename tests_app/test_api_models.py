@@ -16,13 +16,18 @@ def test_every_route_of_the_real_app_declares_an_api_model() -> None:
     from ofo_app.api_models import ApiModel
     from ofo_app.main import create_app
 
-    from ofo_app.errors import ClosedRoute
+    from ofo_app.errors import ClosedRoute, ClosedWebSocketRoute
 
     problems = []
     for route in create_app().routes:
         if getattr(route, "name", "") in FRAMEWORK_ROUTES:
             continue
-        if not isinstance(route, APIRoute):  # a websocket or mounted app has no typed body: fail closed
+        if type(route) is ClosedWebSocketRoute:  # W-065: the door's socket class; every message model is an ApiModel
+            if not (route.message_models and all(isinstance(m, type) and issubclass(m, ApiModel)
+                                                 for m in route.message_models)):
+                problems.append(f"{route.path}: message_models {route.message_models!r}")
+            continue
+        if not isinstance(route, APIRoute):  # any other websocket or a mounted app has no typed body: fail closed
             problems.append(f"{route!r}: not an APIRoute")
         elif type(route) is not ClosedRoute:  # W-069: the door is the route class (the outcome route is skipped above)
             problems.append(f"{route.path}: route class {type(route).__name__}")

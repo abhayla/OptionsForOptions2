@@ -1,12 +1,13 @@
 """W-065 (REQ-035 AC-4; ADR-068; REQ-048 AC-4): the live strategy push and the live market context, on the W-064 replay
-provider and a fake clock. No Kite connection, no database. The platform WebSocket route itself is NOT registered by
-this item (the W-024 guard tests refuse a websocket route outside the error boundary; see the work item's next_action),
-so these tests drive :class:`StrategyPush` through its two-method channel.
+provider and a fake clock. No Kite connection, no database. Most tests drive :class:`StrategyPush` through its
+two-method channel (minted by the door's ``socket_body``); the phase-2 tests at the end drive the real app's door socket
+route /api/strategies/live on the replay, and the REST route's not-live answer (issue #206).
 """
 from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import pathlib
 import sys
@@ -46,8 +47,12 @@ class FakeChannel:
             raise ChannelClosed()
         return item
 
-    async def send(self, body: dict) -> None:
-        self.sent.append(body)
+    async def send(self, source) -> None:
+        """Minted exactly as the app's door socket mints it (ofo_app.errors.socket_body), then read back as JSON."""
+        from ofo_app.errors import socket_body
+        from ofo_app.routes.outcome import OutcomeResponse
+
+        self.sent.append(json.loads(bytes(socket_body(source, (OutcomeResponse,)))))
 
 
 class Mono:
@@ -400,3 +405,151 @@ async def test_the_in_process_proof_code_path_passes_on_the_replay_provider(rig)
     assert max(summary["distinct_ltp_per_leg"]) > 1 and summary["distinct_unrealized_pnl"] > 1, summary
     assert summary["passed"] is True, summary
     assert provider.subscribed_tokens() == []  # the proof releases everything it subscribed
+
+
+# ---- phase 2: the door socket route and issue #206 (REST not live when the live inputs are not streaming) ---------------
+
+def _replay_app(monkeypatch):
+    from ofo_app.main import create_app
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("OUTCOME_REPLAY", "1")
+    monkeypatch.delenv("LIVE_MARKET", raising=False)
+    return create_app()
+
+
+def _replay_request() -> dict:
+    return {"underlying": "NIFTY", "legs": [
+        {"instrument_id": i, "action": a, "lots": 1, "planned_entry": "100.00", "captured_at": VALUATION.isoformat()}
+        for i, a in ((SELL_CE, "SELL"), (BUY_CE, "BUY"), (SELL_PE, "SELL"), (BUY_PE, "BUY"))]}
+
+
+def test_ac4_the_socket_route_pushes_exactly_the_rest_outcome_on_the_replay(monkeypatch):
+    """AC-4: a client of the REAL app's /api/strategies/live (APP_ENV=test, OUTCOME_REPLAY) receives, as its first
+    push, byte-for-byte the JSON the REST outcome route returns for the same body and the same replay snapshot (one
+    engine: both are outcome_response). Bad input on the socket gets the one catalogue message, and the socket goes on."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    body = _replay_request()
+    rest = client.post("/api/strategies/outcome", json=body)
+    assert rest.status_code == 200 and rest.json()["state"] == "COMPUTED"
+    with client.websocket_connect(live.PATH) as ws:
+        ws.send_text("not json")
+        assert ws.receive_json() == ERROR
+        ws.send_json(body)
+        pushed = ws.receive_text()
+    assert pushed == rest.text  # the same door-minted bytes, not only the same values
+    assert len(rest.json()["legs"]) == 4 and all(leg["ltp"] is not None for leg in rest.json()["legs"])
+
+
+def test_ac4_the_socket_takes_no_credential_in_its_url(monkeypatch):
+    """AC-4 / REQ-048 AC-5: the route's path has no parameter and the endpoint never sees the query string; a token
+    appended to the URL changes nothing (the same first push) and is never echoed."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    route = next(r for r in client.app.routes if getattr(r, "path", "") == live.PATH)
+    assert route.param_convertors == {}
+    with client.websocket_connect(live.PATH) as ws:
+        ws.send_json(_replay_request())
+        plain = ws.receive_text()
+    client = TestClient(_replay_app(monkeypatch))  # a fresh replay: the frames do not refill after the first release
+    with client.websocket_connect(live.PATH + "?token=SECRETVALUE123") as ws:
+        ws.send_json(_replay_request())
+        with_token = ws.receive_text()
+    assert with_token == plain and "SECRETVALUE123" not in with_token
+
+
+def test_ac4_the_door_socket_mints_only_its_models_or_a_catalogue_message():
+    """AC-4 (door, W-066/W-069): a socket message is EXACTLY a declared ApiModel (emit) or a catalogue message; a dict
+    (even a catalogue message's dict), an ApiModel the route did not declare, a free string and bytes are refused."""
+    from ofo_app.api_models import DoorRefused
+    from ofo_app.errors import ClosedWebSocketRoute, socket_body
+    from ofo_app.routes.broker import RefusalOut
+    from ofo_app.routes.outcome import OutcomeResponse
+
+    models = (OutcomeResponse,)
+    undeclared = RefusalOut(code="broker_state_invalid", message=render("broker_state_invalid"))
+    assert json.loads(bytes(socket_body(render("user_input_request_invalid"), models))) == ERROR
+    for bad in ({"state": "COMPUTED"}, "free text", b"{}", undeclared, render("user_input_request_invalid").as_dict()):
+        with pytest.raises(DoorRefused):
+            socket_body(bad, models)
+    with pytest.raises(TypeError):  # a socket route must declare closed message models
+        ClosedWebSocketRoute("/x", lambda s: None, message_models=())
+    with pytest.raises(TypeError):
+        ClosedWebSocketRoute("/x", lambda s: None, message_models=(dict,))
+
+
+@pytest.fixture
+def live_rig():
+    """A running-app live market whose feed is the replay provider (no Kite, no database)."""
+    provider, clock, _items = new_provider()
+    replay(provider, clock)
+    market = live_market.LiveMarket()
+    market.feed = LiveFeed(MarketContext(provider, lambda: VALUATION, RATE), FanOut(provider))
+    live_market.set_current(market)
+    yield provider, market.feed
+    live_market.set_current(None)
+
+
+async def _post(body: dict) -> dict:
+    from ofo_app.main import create_app
+
+    async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://t") as ac:
+        resp = await ac.post("/api/strategies/outcome", json=body)
+    assert resp.status_code == 200
+    return resp.json()
+
+
+async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live_rig):
+    """AC-4 / issue #206: with live market data on, the REST outcome for a strategy nobody streams (the socket is down)
+    is the not-live state: NOT_CONNECTED with REQ-049 AC-5's message (ADR-068 (2) "labelled as not live"), no LTP, no
+    table, no frozen bid/ask - never the old missing-index-spot refusal. While a subscriber streams the legs and the
+    index the same call is COMPUTED and equals outcome_response; dropping one leg, or the index, makes it not live."""
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    provider, feed = live_rig
+    body = request(provider)
+    ids = [leg["instrument_id"] for leg in body["legs"]]
+    index_id = provider.index_id("NIFTY")
+    for ux in ("standard", "advanced"):
+        out = await _post({**body, "ux_level": ux})
+        label = out["status_label"]
+        assert out["state"] == "NOT_CONNECTED", out
+        assert label.startswith("Live market data disconnected. Last updated: ") and label.endswith(
+            ". Live strategy monitoring is paused."), label
+        assert [leg["ltp"] for leg in out["legs"]] == [None] * 4 and [leg["label"] for leg in out["legs"]] == [label] * 4
+        assert out["table"] is None and out["summary"] is None and "advanced_details" not in out
+    handle = feed.fanout.subscribe(lambda _q: None, ids + [index_id])
+    try:
+        streamed = await _post(body)
+        assert streamed["state"] == "COMPUTED"
+        assert streamed == outcome_response(OutcomeRequest.model_validate(body), feed.ctx).model_dump(
+            mode="json", exclude_unset=True)
+    finally:
+        feed.fanout.unsubscribe(handle)
+    for subset in (ids[:3] + [index_id], ids):  # one leg not streaming; the index not streaming
+        partial = feed.fanout.subscribe(lambda _q: None, subset)
+        try:
+            assert (await _post(body))["state"] == "NOT_CONNECTED"
+        finally:
+            feed.fanout.unsubscribe(partial)
+
+
+async def test_206_without_a_live_market_the_rest_route_is_unchanged(rig):
+    """AC-4 / #206 negative: no live market running (the replay or a test's own context) -> the provider's quotes are
+    used as they are and the answer is COMPUTED; the streaming check applies only to the live market's own context."""
+    from ofo_app.main import create_app
+
+    provider, feed, *_ = rig
+    assert live_market.current_feed() is None
+    app = create_app()
+    app.dependency_overrides[get_market_context] = lambda: feed.ctx
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        out = (await ac.post("/api/strategies/outcome", json=request(provider))).json()
+    assert out["state"] == "COMPUTED"
