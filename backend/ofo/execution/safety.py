@@ -130,6 +130,7 @@ def _fail(code: CheckCode, template_id: str, *, leg_number: int | None = None,
 class Flag:
     code: FlagCode
     message: str
+    contracts: tuple[str, ...] = ()  # the trading symbols the flag is about (a confirmation names them all once)
 
     def __post_init__(self) -> None:
         if type(self.message) is ExplanationText:  # a render_explanation() line: keep and check its plain text
@@ -551,8 +552,11 @@ def _expiry_day_flags(
         if len(matches) != 1 or not matches[0].has_ref(ZERODHA):
             continue
         symbol = matches[0].ref(ZERODHA).broker_symbol
-        if leg.action is Action.SELL:
-            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol)))
+        if leg.instrument is Instrument.FUT:  # F-20: the extra 2% is for short OPTIONS; a future has no acknowledgement
+            out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_future", symbol=symbol)))
+        elif leg.action is Action.SELL:
+            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol),
+                            (symbol,)))
         else:
             out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_entry", symbol=symbol)))
     return out
@@ -631,7 +635,9 @@ def _confirmation_text(flags: list[Flag]) -> str:
     stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
     band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
     texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
-    texts += [f.message for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT]
+    symbols = tuple(c for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT for c in f.contracts)
+    if symbols:  # one sentence naming every expiring short leg, one "Confirm to continue."
+        texts.append(str.__str__(render_explanation("confirm_expiry_day_short", symbols=symbols)))
     return " ".join(texts)
 
 

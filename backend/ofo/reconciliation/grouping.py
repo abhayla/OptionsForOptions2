@@ -139,7 +139,8 @@ class Group:
 @dataclass(frozen=True)
 class Unresolved:
     """A row that is shown but cannot be adopted. ``reason``: not_in_catalogue | not_lot_multiple | unreadable_row |
-    unknown_product | differs_from_strategy (``detail`` then holds both net quantities)."""
+    unknown_product | duplicate_row (a second row of one contract and product) | differs_from_strategy (``detail``
+    then holds both net quantities)."""
 
     tradingsymbol: str
     reason: str
@@ -148,9 +149,12 @@ class Unresolved:
 
 @dataclass(frozen=True)
 class GroupSuggestion:
+    """``hidden`` = (tradingsymbol, strategy id) of each position left out because a strategy already holds it."""
+
     groups: tuple[Group, ...]
     unresolved: tuple[Unresolved, ...]
     labeller: Callable[[Sequence[SuggestedPosition]], str | None]
+    hidden: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -180,6 +184,7 @@ _UNRESOLVED_TEMPLATE = {
     "not_lot_multiple": "grouping_not_lot_multiple",
     "unknown_product": "grouping_unknown_product",
     "differs_from_strategy": "grouping_differs_from_strategy",
+    "duplicate_row": "grouping_duplicate_row",
 }
 
 
@@ -191,13 +196,16 @@ def _contract_key(name: str, instrument: Instrument, strike: Decimal | None, exp
     return (name, instrument, strike, expiry)
 
 
-def _held_by_strategies(strategies: Mapping[str, StrategyDefinition]) -> dict[tuple, int]:
+def _held_by_strategies(strategies: Mapping[str, StrategyDefinition]) -> tuple[dict[tuple, int], dict[tuple, list[str]]]:
     held: dict[tuple, int] = {}
-    for d in strategies.values():
+    owners: dict[tuple, list[str]] = {}
+    for strategy_id, d in strategies.items():
         for leg in d.legs:
             key = _contract_key(d.underlying, leg.instrument, leg.strike, leg.expiry)
             held[key] = held.get(key, 0) + leg.signed_quantity()
-    return held
+            if strategy_id not in owners.setdefault(key, []):
+                owners[key].append(strategy_id)
+    return held, owners
 
 
 def _make_labeller(catalogue: Catalogue, templates: Iterable[Template] | None, spots: Mapping[str, Decimal] | None):
@@ -244,7 +252,8 @@ def suggest_groups(
         ref = entry.broker_refs.get(ZERODHA)
         if ref is not None:
             by_token.setdefault(ref.broker_token, []).append(entry)
-    held = _held_by_strategies(strategies)
+    held, owners = _held_by_strategies(strategies)
+    hidden: list[tuple[str, str]] = []
 
     unresolved: list[Unresolved] = []
     candidates: list[tuple[tuple, SuggestedPosition]] = []
@@ -282,7 +291,8 @@ def suggest_groups(
         strike = None if kind is Instrument.FUT else contract.strike
         position = SuggestedPosition(entries[0].id, line.contract, contract.name, kind, strike, contract.expiry,
                                      line.net_quantity, average, line.product, ref.lot_size, ref.tick_size)
-        if position.key in seen:
+        if position.key in seen:  # one row per contract and product: a second is shown, never silently dropped
+            unresolved.append(Unresolved(position.tradingsymbol, "duplicate_row"))
             continue
         seen.add(position.key)
         candidates.append((_contract_key(contract.name, kind, strike, contract.expiry), position))
@@ -295,6 +305,7 @@ def suggest_groups(
     for ckey, position in candidates:
         if ckey in held:
             if broker_net[ckey] == held[ckey]:
+                hidden.append((position.tradingsymbol, ",".join(owners[ckey])))
                 continue  # exactly what a strategy holds: matched by contract identity, never by symbol text
             unresolved.append(Unresolved(position.tradingsymbol, "differs_from_strategy",
                                          f"zerodha={broker_net[ckey]};strategy={held[ckey]}"))
@@ -307,7 +318,7 @@ def suggest_groups(
     label = _make_labeller(catalogue, templates, spots)
     groups = tuple(Group(gid, members[0].underlying, members[0].expiry, tuple(members), label(members))
                    for gid, members in sorted(grouped.items()))
-    return GroupSuggestion(groups, tuple(unresolved), label)
+    return GroupSuggestion(groups, tuple(unresolved), label, tuple(hidden))
 
 
 def _describe(target: Target | None) -> str:
@@ -342,13 +353,15 @@ class GroupingSession:
     def start(cls, suggestion: GroupSuggestion, *, audit: AuditLog, clock: Callable[[], datetime.datetime],
               actor: str, session_id: str,
               strategies: Mapping[str, StrategyDefinition] | None = None) -> "GroupingSession":
-        """Open the session; appends one ``suggest`` entry listing the suggested groups and the unresolved rows."""
+        """Open the session; appends one ``suggest`` entry listing the suggested groups, the unresolved rows and the
+        positions hidden because a strategy holds them (``symbol:strategy id``)."""
         session = cls(suggestion, audit=audit, clock=clock, actor=actor, session_id=session_id, strategies=strategies)
         session._record(EventType.RECONCILIATION_RECORDED, {
             "action": "suggest",
             "groups": [{"id": g.id, "legs": [f"{p.tradingsymbol}:{p.product.value}" for p in g.positions],
                         "resembles": g.resembles or "none"} for g in suggestion.groups],
             "unresolved": [f"{u.tradingsymbol}:{u.reason}" for u in suggestion.unresolved],
+            "hidden": [f"{symbol}:{strategy_id}" for symbol, strategy_id in suggestion.hidden],
         })
         return session
 

@@ -1,6 +1,6 @@
 """REQ-061 AC-4 (W-083, ADR-084): "The grouping logic is explicit and auditable (every grouping decision recorded)."
 
-Every action (suggest, move, standalone, set_entry, confirm, confirm_existing) appends exactly ONE entry through the
+Every action (suggest, move, standalone, set_entry, confirm) appends exactly ONE entry through the
 audit log's public ``append``; a refused action appends nothing; the chain still verifies.
 """
 from __future__ import annotations
@@ -35,7 +35,8 @@ def test_start_records_one_suggest_entry_listing_groups_and_resemblance():
     payload = event.payload
     assert payload["action"] == "suggest"
     assert {g["id"]: g["resembles"] for g in payload["groups"]}[CONDOR_GROUP] == "Iron Condor"
-    assert IN_STRATEGY not in str(payload)
+    assert IN_STRATEGY not in str(payload["groups"]) and IN_STRATEGY not in str(payload["unresolved"])
+    assert payload["hidden"] == [f"{IN_STRATEGY}:S-1"]  # the system's own exclusion is recorded, with the strategy
 
 
 def test_move_and_standalone_each_write_one_entry_naming_position_from_and_to():

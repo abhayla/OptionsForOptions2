@@ -808,8 +808,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "short leg that expires later.", {"symbol": LegRef}),
     ExplanationTemplate("flag_expiry_day_short", "values_seen",
                         "{symbol} is a short leg that expires today. Selling it on its expiry day carries extra "
-                        "expiry-day margin (an extra 2% on short options) and no margin offset against a later-expiry leg. "
-                        "Confirm to continue.", {"symbol": LegRef}),
+                        "expiry-day margin (an extra 2% on short options) and no margin offset against a later-expiry "
+                        "leg.", {"symbol": LegRef}),
+    ExplanationTemplate("flag_expiry_day_future", "values_seen",
+                        "{symbol} is a future that expires today. A position taken on its expiry day gets no margin "
+                        "offset against a leg that expires later. Futures expiry is cash-settled.", {"symbol": LegRef}),
+    ExplanationTemplate("confirm_expiry_day_short", "values_seen",
+                        "{symbols}: short leg(s) that expire today. Selling on the expiry day carries extra "
+                        "expiry-day margin (an extra 2% on short options) and no margin offset against a later-expiry "
+                        "leg. Confirm to continue.", {"symbols": LegRefs}),
     # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
     ExplanationTemplate("client_id_not_valid", "values_seen",
