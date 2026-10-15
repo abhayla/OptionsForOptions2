@@ -248,7 +248,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-075: 4b           # charges in max-loss/max-profit sentences and expiry values (ADR-082 part 2)
-  W-078: 4b           # executable price: tick rounding, depth limit + slippage, circuit block, NRML/product reduce-only (ADR-080)
   W-082: 4a           # one-breakeven Lower/Upper BE label from loss regions (ADR-089, #171)
   W-080: 4b           # read-only Kite basket, tags, InstrumentId, no-placement guard (REQ-073, #115)
   W-081: 4b           # margin gate before the basket, final.total vs available (REQ-055)

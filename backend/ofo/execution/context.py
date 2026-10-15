@@ -74,6 +74,7 @@ from typing import Mapping, Protocol
 
 from ofo.engine import Leg, Strategy
 from ofo.engine.legs import require_decimal
+from ofo.engine.product import Product
 
 
 class ExecutionAction(Enum):
@@ -164,6 +165,18 @@ class ExecutionContext:
     # False/None: at least one futures leg of the active version has no known entry price (a stored definition
     # carries none); a Limited user's adjustment then needs Pro. Exits are unaffected.
     active_futures_entry_known: bool | None = None
+    # ADR-080 product rule. ``active_products``: the product of each held position as Zerodha reports it, keyed by
+    # ``product_key(leg)``. ``exit_products``: the product an exit's order will carry (default NRML for a leg not
+    # named). An exit is refused when a leg's product differs from its position's. None = not supplied (not checked).
+    active_products: Mapping[tuple, Product] | None = None
+    exit_products: Mapping[tuple, Product] | None = None
+    # ADR-080 circuit band per leg, keyed by ``product_key(leg)``: (lower, upper) from the quote. Required: None or a
+    # leg without a band BLOCKS (the gate never assumes a price is inside a band it could not read).
+    price_bands: Mapping[tuple, tuple[Decimal | int, Decimal | int]] | None = None
+    # The limit price each ADJUSTMENT order will carry, keyed by ``product_key(leg)`` (the adjustment gate's legs hold
+    # a 0.00 placeholder, never a real price). An adjustment leg without one blocks ("price not known yet"). Entry and
+    # exit orders carry their own leg price, so this is not read for them.
+    order_prices: Mapping[tuple, Decimal | int] | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -200,10 +213,40 @@ class ExecutionContext:
                 raise ValueError("reconciliation_blocked_strategy_ids must be a collection of strategy id strings")
             object.__setattr__(self, "reconciliation_blocked_strategy_ids", frozenset(blocked))
         _tristate(self.active_futures_entry_known, "active_futures_entry_known")
+        for name in ("active_products", "exit_products"):
+            mapping = getattr(self, name)
+            if mapping is not None and (
+                not isinstance(mapping, Mapping) or not all(isinstance(v, Product) for v in mapping.values())
+            ):
+                raise ValueError(f"{name} must be a mapping of position key to Product or None")
+        if self.price_bands is not None:
+            if not isinstance(self.price_bands, Mapping) or not all(
+                isinstance(b, tuple) and len(b) == 2 and all(
+                    isinstance(x, (Decimal, int)) and not isinstance(x, bool) for x in b)
+                for b in self.price_bands.values()
+            ):
+                raise ValueError("price_bands must be a mapping of position key to (lower, upper) or None")
+            object.__setattr__(self, "price_bands", MappingProxyType(self.price_bands))  # a read-only view
+        if self.order_prices is not None:
+            if not isinstance(self.order_prices, Mapping) or not all(
+                isinstance(v, (Decimal, int)) and not isinstance(v, bool) for v in self.order_prices.values()
+            ):
+                raise ValueError("order_prices must be a mapping of position key to a Decimal price or None")
+            object.__setattr__(self, "order_prices", MappingProxyType(self.order_prices))  # a read-only view
+        # frozen copies (read-only views), so a caller's later edit cannot change what the gate decided on
+        if self.active_products is not None:
+            object.__setattr__(self, "active_products", MappingProxyType(dict(self.active_products)))
+        if self.exit_products is not None:
+            object.__setattr__(self, "exit_products", MappingProxyType(dict(self.exit_products)))
         for name in ("active_version_id", "active_legs_hash"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} must be a non-empty string or None, got {value!r}")
+
+
+def product_key(leg: Leg) -> tuple:
+    """The key ``active_products`` / ``exit_products`` use for a leg: (expiry, instrument, strike; None for FUT)."""
+    return (leg.expiry, leg.instrument.value, None if leg.strike is None else leg.strike)
 
 
 def _canonical_decimal(value: Decimal) -> str:

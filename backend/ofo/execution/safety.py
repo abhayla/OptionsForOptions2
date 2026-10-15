@@ -19,7 +19,9 @@ from enum import Enum
 from fractions import Fraction
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
+from ofo.execution.price_check import circuit_block
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
@@ -27,6 +29,7 @@ from ofo.execution.context import (
     ExecutionAction,
     ExecutionContext,
     active_legs_hash,
+    product_key,
 )
 from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
@@ -58,6 +61,7 @@ class CheckCode(str, Enum):
     DUPLICATE_LEG = "DUPLICATE_LEG"
     MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
     EXIT_NOT_REDUCE_ONLY = "EXIT_NOT_REDUCE_ONLY"
+    PRICE_OUTSIDE_BAND = "PRICE_OUTSIDE_BAND"
     ACTIVE_LEGS_UNVERIFIED = "ACTIVE_LEGS_UNVERIFIED"
     STRATEGY_MISMATCH = "STRATEGY_MISMATCH"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -73,6 +77,7 @@ _CONTRACT_CHECKS: tuple[CheckCode, ...] = (
     CheckCode.CONTRACT_NOT_LISTED,
     CheckCode.CONTRACT_NOT_ELIGIBLE,
     CheckCode.QUANTITY_INVALID,
+    CheckCode.PRICE_OUTSIDE_BAND,
 )
 
 
@@ -83,6 +88,7 @@ class FlagCode(str, Enum):
     UNLIMITED_LOSS = "UNLIMITED_LOSS"
     CHARGES_UNAVAILABLE = "CHARGES_UNAVAILABLE"
     DATA_STALE_ON_EXIT = "DATA_STALE_ON_EXIT"
+    PRICE_BAND_UNKNOWN_ON_EXIT = "PRICE_BAND_UNKNOWN_ON_EXIT"
 
 
 @dataclass(frozen=True)
@@ -457,6 +463,7 @@ EXIT_NOT_REQUIRED: frozenset[CheckCode] = frozenset({
     CheckCode.ENTITLEMENT_REQUIRED,
 })
 STALE_ON_EXIT = render_explanation("flag_stale_on_exit")
+BAND_UNKNOWN_ON_EXIT = render_explanation("flag_price_band_unknown_on_exit")
 
 
 def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
@@ -468,7 +475,52 @@ def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | N
     for (key, side), units in _positions(strategy.legs).items():
         if held.get((key, opposite[side]), 0) < units:
             return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_adds_position")
+    return _exit_product_failure(strategy, ctx)
+
+
+def _exit_product_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
+    """ADR-080: an exit takes the product of the position it reduces. A leg whose exit product (default NRML) differs
+    from the held position's product, or whose position product is unknown, blocks. Not supplied = not checked."""
+    if ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        return None  # (an unsupported underlying is already blocked)
+    if ctx.active_products is None or ctx.exit_products is None:  # like missing active legs: never skip
+        return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_unverified")
+    for number, leg in enumerate(strategy.legs, start=1):
+        key = product_key(leg)
+        held = ctx.active_products.get(key)
+        if held is None or held is not ctx.exit_products.get(key):  # an unread product on either side blocks
+            return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_product_mismatch", leg_number=number,
+                         leg=LegValue(number, leg, ctx.underlying))
     return None
+
+
+def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[CheckFailure], bool]:
+    """ADR-080: a leg priced outside the day's circuit band is blocked with the reason, never clamped; a leg whose
+    band could not be read is blocked too, for an entry or adjustment. An EXIT is only blocked by a price outside a
+    KNOWN band (Zerodha would reject it, Q239); a missing band, or a leg priced 0/unknown (a stored leg), is not
+    compared and is reported as the second value so the caller warns instead (REQ-059 exit carve-out)."""
+    out: list[CheckFailure] = []
+    unchecked = False
+    is_exit = ctx.action is ExecutionAction.EXIT
+    for number, leg in enumerate(strategy.legs, start=1):
+        value = LegValue(number, leg, ctx.underlying)
+        band = None if ctx.price_bands is None else ctx.price_bands.get(product_key(leg))
+        if is_exit and (band is None or leg.entry_price is None or leg.entry_price <= 0):
+            unchecked = True
+        elif ctx.action is ExecutionAction.ADJUSTMENT and (
+            ctx.order_prices is None or ctx.order_prices.get(product_key(leg)) is None
+        ):  # the leg holds a placeholder: compare the ORDER's price or nothing, never the placeholder
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_not_known", leg_number=number, leg=value))
+        elif band is None:
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_band_unknown", leg_number=number, leg=value))
+        else:
+            price = ctx.order_prices[product_key(leg)] if ctx.action is ExecutionAction.ADJUSTMENT else leg.entry_price
+            if price is None:
+                continue
+            blocked = circuit_block(price, band[0], band[1], value)
+            if blocked is not None:
+                out.append(CheckFailure(CheckCode.PRICE_OUTSIDE_BAND, blocked, leg_number=number))
+    return out, unchecked
 
 
 def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailure | None:
@@ -500,13 +552,18 @@ def _run_checks(
     if strategy_id != ctx.strategy_id:
         failures.insert(0, _fail(CheckCode.STRATEGY_MISMATCH, "gate_strategy_mismatch"))
     not_checked: tuple[CheckCode, ...] = ()
+    band_unchecked = False
     if ctx.underlying not in SUPPORTED_UNDERLYINGS:
         failures.insert(0, _fail(CheckCode.UNDERLYING_UNSUPPORTED, "gate_underlying_unsupported",
                                  symbol=ctx.underlying))
         not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
     else:
         failures.extend(_leg_failures(strategy, ctx, catalogue, eligibility))
+        price_failures, band_unchecked = _price_failures(strategy, ctx)
+        failures.extend(price_failures)
     flags, max_loss = _risk_flags(strategy, ctx)
+    if band_unchecked:  # an EXIT whose price could not be checked: a warning the user confirms, never a block
+        flags.append(Flag(FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, BAND_UNKNOWN_ON_EXIT))
 
     not_applicable: frozenset[CheckCode] = frozenset()
     if ctx.action is ExecutionAction.EXIT:
@@ -514,6 +571,8 @@ def _run_checks(
         if any(f.code is CheckCode.DATA_UNHEALTHY for f in failures):
             flags.append(Flag(FlagCode.DATA_STALE_ON_EXIT, STALE_ON_EXIT))
         failures = [f for f in failures if f.code not in not_applicable]
+        if band_unchecked and not any(f.code is CheckCode.PRICE_OUTSIDE_BAND for f in failures):
+            not_checked = not_checked + (CheckCode.PRICE_OUTSIDE_BAND,)  # warned, not verified: never "passed"
         if unverified is None:
             exit_failure = _exit_failure(strategy, ctx)
             if exit_failure is not None:
@@ -530,6 +589,13 @@ def _run_checks(
     failed = {f.code for f in failures}
     passed = tuple(c for c in CheckCode if c not in failed and c not in not_checked and c not in not_applicable)
     return failures, passed, not_checked, not_applicable - {CheckCode.INTERNAL_ERROR}, flags, max_loss
+
+
+def _confirmation_text(flags: list[Flag]) -> str:
+    stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
+    band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
+    texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
+    return " ".join(texts)
 
 
 def check_pre_execution(
@@ -559,7 +625,8 @@ def check_pre_execution(
         failures = [_fail(CheckCode.INTERNAL_ERROR, "gate_internal_error")]
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
-    needs_confirmation = not failures and any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
+    needs_confirmation = not failures and any(
+        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT) for f in flags)
     record = None
     if failures:
         record = BlockedExecution(
@@ -571,7 +638,7 @@ def check_pre_execution(
         failures=tuple(failures), passed=passed, not_checked=not_checked,
         not_applicable=tuple(c for c in CheckCode if c in not_applicable), flags=tuple(flags), max_loss=max_loss,
         margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
-        requires_confirmation=needs_confirmation, confirmation_text=STALE_ON_EXIT if needs_confirmation else None,
+        requires_confirmation=needs_confirmation, confirmation_text=_confirmation_text(flags) if needs_confirmation else None,
     )
     if result.blocked:
         logger.warning(
