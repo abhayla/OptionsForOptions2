@@ -225,6 +225,7 @@ issues:
   "#221": 4a            # deferred: draft label hyphen vs ADR-020 long dash (W-065 round 2)
   "#222": 4a            # deferred/owner question: REST fallback label after the browser socket closes (W-065 r2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
+  "#242": 4a            # mechanism: atool runs tests_app files that reference a changed route/response model (4th occurrence)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
