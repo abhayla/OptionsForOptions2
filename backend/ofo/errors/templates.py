@@ -717,8 +717,27 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The draft was not saved or changed.", "Opening or restoring this strategy.", "Contact support; the saved strategy was left as it is."),
 )
 
+# --- W-076 (ADR-081, REQ-054 AC-4): the freeze limit on the order review (ofo.execution.freeze). New: awaiting the
+# owner's read. The review block never splits a leg; the warning is shown while no limit is stored.
+_FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("freeze_limit_exceeded", _SV, 501,
+          "{contract}: {units} units ({lots} lots) is not below the exchange freeze limit of {limit} units; the "
+          "largest single order allowed is {max_units} units ({max_lots} lots).",
+          "The exchange rejects an order at or above its freeze limit, so this leg cannot be sent as one order.",
+          "Execution of this strategy, until this leg is within the limit.",
+          "Reduce this leg to {max_lots} lots or fewer, then review the strategy again.",
+          {"contract": ContractSymbol, "units": Count, "lots": Count, "limit": Count, "max_units": Count,
+           "max_lots": Count}),
+    _gate("freeze_limit_unknown", _SV, 502,
+          "No exchange freeze limit is stored for {contract}, so Zerodha may reject a large order.",
+          "The review cannot tell whether this leg's quantity is within the exchange limit.",
+          "Nothing: this is a warning and the leg is not blocked.",
+          "Check this leg's quantity against the exchange's freeze limit before sending a large order.",
+          {"contract": ContractSymbol}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
-              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES)
+              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
