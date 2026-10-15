@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo_app import errors, live_market, replay_mode
+from ofo_app import errors, live_market, pinned_clock, replay_mode
 from ofo_app.config import Settings, app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
@@ -60,6 +60,9 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
         Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
     live.set_replay_feed(None)
+    if pinned_clock.pin_requested():  # #237 test-only; refused outside APP_ENV=test, before anything is served
+        pinned_clock.require_test_env(app_env() or "")
+        pinned_clock.pinned_today()  # also refuses a value that is not a plain date
     if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
         replay_mode.require_test_env(app_env() or "")
         ctx = replay_mode.build_replay_context()
