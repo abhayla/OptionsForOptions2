@@ -90,7 +90,9 @@ what reconciliation assumes, verified code changes.
    full by 3 parallel read-only agents. Each returns, per file, its ACs, its open gaps and its conflicts with other
    files. I re-check every conflict they report against the source before recording it. Results go into the
    coverage register's "gaps" column, and a conflict becomes a finding or a Q.
-3. **Gates per stage.** No stage starts before the previous stage's gate has passed, with evidence.
+3. **Gates per stage.** No stage starts before the previous stage's gate has passed, with evidence. (Changed
+   2026-10-16, ADR-087: building may run ahead of a gate; a stage is not done, and the real 4b order is not placed,
+   before the previous gate has passed.)
 
 ## A3. Stages
 
