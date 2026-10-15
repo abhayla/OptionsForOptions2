@@ -346,6 +346,7 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
                scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
     legs = inputs.legs
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
+    futures_reason = "a premium and a futures notional cannot be added"
     net_entry = None if has_futures else sum(
         ((leg.premium if leg.action is Action.SELL else -leg.premium) * leg.quantity for leg in legs), Decimal(0))
     have_all_ltp = all(leg.ltp is not None for leg in legs)
@@ -385,10 +386,9 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
         ColumnId.QUANTITY: _text(None),
         ColumnId.ENTRY_PRICE: _text(None),
         ColumnId.LTP: _text(None),
-        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, "a premium and a futures notional cannot be added"),
+        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, futures_reason),
         ColumnId.CURRENT_VALUE: _net_premium_cell(
-            net_current, "a premium and a futures notional cannot be added" if has_futures
-            else "not every leg has an LTP"),
+            net_current, futures_reason if has_futures else "not every leg has an LTP"),
         ColumnId.UNREALIZED_PNL: _money(unrealized, "not every leg has an LTP"),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
