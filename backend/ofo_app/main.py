@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 from ofo.marketdata.fanout import FanOut
 from ofo_app import errors, live_market, live_push, replay_mode
-from ofo_app.config import app_env
+from ofo_app.config import Settings, app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
 from ofo_app.routes import broker, catalogue, health, live, outcome, planned_entry, strategies
@@ -59,6 +59,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
+        Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
     live.set_replay_feed(None)
     if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
         replay_mode.require_test_env(app_env() or "")

@@ -2,11 +2,22 @@
 # Pattern only: pydantic-settings BaseSettings with a required database URL. Broker, TOTP, JWT and AI fields dropped.
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: ADR-078: the database only the test suites write to. A live run (LIVE_MARKET) must never use it.
+TEST_DATABASE_NAME = "ofo_test"
+
+
+def database_name(url: str) -> str | None:
+    """The database name in a connection URL (path without its slash, query dropped), or None when there is none."""
+    name = urlsplit(url).path.lstrip("/").split("/")[0]
+    return name or None
 
 
 class Settings(BaseSettings):
@@ -33,6 +44,15 @@ class Settings(BaseSettings):
             raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")
         if self.LIVE_MARKET and self.APP_ENV == "test" and self.KITE_WS_URL.startswith("wss://ws.kite.trade"):
             raise ValueError("LIVE_MARKET under APP_ENV=test needs a KITE_WS_URL that is not the real Kite")
+        if self.LIVE_MARKET:
+            db = database_name(self.DATABASE_URL)
+            test_db = database_name(os.environ.get("TEST_DATABASE_URL", ""))
+            if db is None or db == TEST_DATABASE_NAME or (test_db is not None and db == test_db):
+                raise ValueError(
+                    f"LIVE_MARKET must not use the test database or an unnamed one ('{db or ''}') (ADR-078): "
+                    "live runs use ofo_dev; point "
+                    "DATABASE_URL at DEV_DATABASE_URL, because the test suites use only the test database"
+                )
         return self
 
 
