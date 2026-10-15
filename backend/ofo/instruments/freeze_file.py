@@ -1,0 +1,167 @@
+"""NSE's daily F&O contract file as the source of the freeze limit (ADR-081, REQ-054 AC-4, findings F-36).
+
+Zerodha publishes no freeze limit, so it is stored per exchange from the exchange's own file with the file's date.
+For NSE that file is ``NSE_FO_contract_ddmmyyyy.csv(.gz)``. Meanings measured on the real 15 Oct 2026 file (F-36):
+``FinInstrmId`` is the exchange token, ``MaxTradQty`` is the freeze limit (the largest allowed order is one less),
+``XpryDt`` is seconds from 1980-01-01, ``StrkPric`` is in paise, ``MinLot`` is the lot size.
+
+The header is an allow-list: the required columns must exist by name (never by position); the other ~120 columns of
+the real file are not used and are ignored for that reason only. Standard library only; money stays ``Decimal``.
+"""
+from __future__ import annotations
+
+import csv
+import gzip
+import io
+import pathlib
+import re
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from typing import Iterable
+
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
+from ofo.instruments.models import NSE_FO, InstrumentId
+
+REQUIRED_COLUMNS: tuple[str, ...] = (
+    "FinInstrmId", "FinInstrmNm", "TckrSymb", "XpryDt", "StrkPric", "OptnTp", "MinLot", "MaxTradQty",
+)
+_EPOCH = datetime(1980, 1, 1)
+_NAME = re.compile(r"NSE_FO_contract_(\d{2})(\d{2})(\d{4})\.csv(\.gz)?")
+#: the file's instrument kinds we keep -> our instrument type for futures (options use the file's CE/PE)
+_KINDS = {"OPTIDX", "FUTIDX"}
+_V1_NSE_UNDERLYINGS = frozenset(n for n, seg in SUPPORTED_UNDERLYINGS.items() if seg == NSE_FO)
+
+
+@dataclass(frozen=True)
+class FreezeRow:
+    exchange_token: int
+    underlying: str
+    instrument_type: str  # CE, PE or FUT
+    expiry: date
+    strike: Decimal  # rupees; 0 for a future
+    lot_size: int
+    freeze_limit: int  # MaxTradQty: an order must be BELOW this (F-36)
+
+
+@dataclass(frozen=True)
+class FreezeFile:
+    file_date: date
+    rows: tuple[FreezeRow, ...]
+    skipped: int  # rows outside V1 (other underlyings, stock derivatives)
+
+
+@dataclass(frozen=True)
+class FreezeMatch:
+    instrument_id: InstrumentId
+    freeze_limit: int
+
+
+@dataclass(frozen=True)
+class FreezeJoin:
+    matched: tuple[FreezeMatch, ...]
+    disagreements: tuple[str, ...]  # reported, never stored
+    not_in_catalogue: int
+
+
+def file_date_from_name(name: str) -> date:
+    """The ddmmyyyy of ``NSE_FO_contract_ddmmyyyy.csv[.gz]``; any other name, or an impossible date, is refused."""
+    m = _NAME.fullmatch(pathlib.PurePath(str(name)).name)
+    if m is None:
+        raise ValueError(f"not an NSE F&O contract file name (NSE_FO_contract_ddmmyyyy.csv[.gz]): {name!r}")
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError as exc:
+        raise ValueError(f"the date in the file name {name!r} is not a real date") from exc
+
+
+def _int(text: str, column: str, token: str, *, positive: bool = True) -> int:
+    try:
+        d = Decimal(text.strip())
+    except (InvalidOperation, AttributeError) as exc:
+        raise ValueError(f"{column} of token {token} is not a number: {text!r}") from exc
+    if not d.is_finite() or d != d.to_integral_value() or (positive and d <= 0):
+        raise ValueError(f"{column} of token {token} must be a positive whole number, got {text!r}")
+    return int(d)
+
+
+def _row(raw: dict[str, str]) -> FreezeRow | None:
+    kind = raw["FinInstrmNm"].strip()
+    underlying = raw["TckrSymb"].strip()
+    if kind not in _KINDS or underlying not in _V1_NSE_UNDERLYINGS:
+        return None
+    token_text = raw["FinInstrmId"].strip()
+    token = _int(token_text, "FinInstrmId", token_text)
+    seconds = _int(raw["XpryDt"], "XpryDt", token_text)
+    expiry = (_EPOCH + timedelta(seconds=seconds)).date()
+    if kind == "FUTIDX":
+        instrument_type, strike = "FUT", Decimal(0)
+    else:
+        instrument_type = raw["OptnTp"].strip()
+        if instrument_type not in ("CE", "PE"):
+            raise ValueError(f"OptnTp of token {token_text} must be CE or PE, got {instrument_type!r}")
+        strike = Decimal(_int(raw["StrkPric"], "StrkPric", token_text)) / 100
+    return FreezeRow(exchange_token=token, underlying=underlying, instrument_type=instrument_type, expiry=expiry,
+                     strike=strike, lot_size=_int(raw["MinLot"], "MinLot", token_text),
+                     freeze_limit=_int(raw["MaxTradQty"], "MaxTradQty", token_text))
+
+
+def parse_freeze_rows(rows: Iterable[dict[str, str]], file_date: date) -> FreezeFile:
+    """Parse dict rows of the contract file. Raises ``ValueError`` on a missing required column or a bad value."""
+    kept: list[FreezeRow] = []
+    skipped = 0
+    seen: set[int] = set()
+    for raw in rows:
+        missing = [c for c in REQUIRED_COLUMNS if c not in raw]
+        if missing:
+            raise ValueError(f"contract file is missing required column(s): {missing}")
+        row = _row(raw)
+        if row is None:
+            skipped += 1
+            continue
+        if row.exchange_token in seen:
+            raise ValueError(f"exchange token {row.exchange_token} appears twice in the file")
+        seen.add(row.exchange_token)
+        kept.append(row)
+    return FreezeFile(file_date=file_date, rows=tuple(kept), skipped=skipped)
+
+
+def parse_freeze_file(path: str | pathlib.Path, *, nse_name: str | None = None) -> FreezeFile:
+    """Read ``NSE_FO_contract_ddmmyyyy.csv`` or ``.csv.gz``; the file date comes from the name.
+
+    ``nse_name`` is for a copy kept under another name (a cut test fixture): the NSE name the rows came from."""
+    p = pathlib.Path(path)
+    file_date = file_date_from_name(nse_name or p.name)
+    data = p.read_bytes()
+    if p.name.endswith(".gz"):
+        data = gzip.decompress(data)
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8"), newline=""))
+    return parse_freeze_rows(reader, file_date)
+
+
+def match_to_catalogue(parsed: FreezeFile, catalogue: Catalogue) -> FreezeJoin:
+    """Join on (NSE_FO, exchange token) ONLY, then require lot, expiry, strike and type to agree with the catalogue.
+
+    A disagreement is reported and the limit is not stored (identity data is never overwritten)."""
+    matched: list[FreezeMatch] = []
+    disagreements: list[str] = []
+    absent = 0
+    for row in parsed.rows:
+        iid = InstrumentId(NSE_FO, row.exchange_token)
+        entry = catalogue.get(iid)
+        if entry is None:
+            absent += 1
+            continue
+        c = entry.contract
+        diffs = [f"{name} file {theirs} vs catalogue {ours}" for name, theirs, ours in (
+            ("lot", row.lot_size, c.lot_size), ("expiry", row.expiry, c.expiry), ("strike", row.strike, c.strike),
+            ("type", row.instrument_type, c.instrument_type)) if theirs != ours]
+        if diffs:
+            disagreements.append(f"token {row.exchange_token}: " + "; ".join(diffs))
+            continue
+        matched.append(FreezeMatch(iid, row.freeze_limit))
+    return FreezeJoin(tuple(matched), tuple(disagreements), absent)
+
+
+__all__ = ["REQUIRED_COLUMNS", "FreezeFile", "FreezeJoin", "FreezeMatch", "FreezeRow", "file_date_from_name",
+           "match_to_catalogue", "parse_freeze_file", "parse_freeze_rows"]
