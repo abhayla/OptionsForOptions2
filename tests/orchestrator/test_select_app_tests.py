@@ -19,7 +19,7 @@ SRC = pathlib.Path(__file__).parent / "fixtures" / "pr241-src"  # the files as a
 
 
 def snap(rel: str) -> str:
-    return (SRC / pathlib.PurePosixPath(rel).name).read_text(encoding="utf-8")
+    return (SRC / (pathlib.PurePosixPath(rel).name + ".txt")).read_text(encoding="utf-8")  # .txt: not importable
 
 
 EXACT = ["tests_app/test_catalogue_picker_api.py", "tests_app/test_response_door.py",
