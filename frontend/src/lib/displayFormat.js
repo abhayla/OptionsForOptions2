@@ -54,12 +54,31 @@ const IST = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
 })
 
-/** An ISO instant (with an offset or Z) as '15 Oct 2026, 11:59:59 IST', always in India time. Unparseable, or without an
- *  offset (its zone would be a guess), -> TIME_UNAVAILABLE, never the raw string. */
+// date, time, optional fraction of any length, then Z or +hh:mm (#244: one pattern, no Date.parse on the input text)
+const ISO_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/
+
+/** The instant of a strict ISO string in milliseconds, or null: an impossible calendar date (2026-02-30), time or offset
+ *  is refused, never rolled over to the next month. */
+function isoMillis(text) {
+  const m = ISO_INSTANT.exec(text.trim())
+  if (!m) return null
+  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number)
+  const day = new Date(Date.UTC(y, mo - 1, d, h, mi, s))
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return null
+  if (h > 23 || mi > 59 || s > 59) return null
+  let offset = 0
+  if (m[7]) {
+    if (Number(m[8]) > 23 || Number(m[9]) > 59) return null
+    offset = (m[7] === '-' ? -1 : 1) * (Number(m[8]) * 60 + Number(m[9])) * 60000
+  }
+  return day.getTime() - offset
+}
+
+/** An ISO instant (with an offset or Z) as '15 Oct 2026, 11:59:59 IST', always in India time. Unparseable, impossible, or
+ *  without an offset (its zone would be a guess), -> TIME_UNAVAILABLE, never the raw string. */
 export function istTime(iso) {
-  if (typeof iso !== 'string' || !/(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim())) return TIME_UNAVAILABLE
-  const ms = Date.parse(iso)
-  if (Number.isNaN(ms)) return TIME_UNAVAILABLE
+  const ms = typeof iso === 'string' ? isoMillis(iso) : null
+  if (ms === null) return TIME_UNAVAILABLE
   const p = Object.fromEntries(IST.formatToParts(new Date(ms)).map((x) => [x.type, x.value]))
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
