@@ -14,6 +14,8 @@ Changes (owner-run, one transaction):
   newest read_on that is not after the day asked about wins (a future-dated set is not in force; history is kept).
   Append-only: the guard (BEFORE INSERT OR UPDATE OR DELETE, SQLSTATE OF012, search_path pinned, md5-pinned in the
   allowlist) refuses every update and delete, so a correction is a new row on a later date.
+- Unit CHECK (charge_rates_unit): every percentage-type rate is a fraction (0.15% is 0.0015): below 0.01 for STT,
+  transaction, SEBI and stamp, below 1 for GST; brokerage is rupees. An admin typing 0.15 for 0.15% is refused.
 - Seed: the 2026-10-15 rates of F-35 (brokerage 20; STT 0.15% sell and 0.15% of intrinsic on exercise; NSE
   transaction 0.03553% as one rate (Zerodha's 0.03503% + 0.0005% IPFT split is in the note); BSE 0.0325%; SEBI Rs 10
   per crore; stamp 0.003% buy side; GST 18%).
@@ -174,6 +176,9 @@ def upgrade() -> None:
             value       NUMERIC     NOT NULL CHECK (value <> 'NaN'::numeric AND value >= 0),
             source_url  TEXT        NOT NULL CHECK (btrim(source_url) <> ''),
             note        TEXT        NOT NULL DEFAULT '',
+            CONSTRAINT charge_rates_unit CHECK (
+                CASE component WHEN 'brokerage_per_order' THEN TRUE WHEN 'gst_rate' THEN value < 1
+                               ELSE value < 0.01 END),
             recorded_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
             PRIMARY KEY (component, read_on)
         )

@@ -78,7 +78,7 @@ def test_bad_quantity_is_refused(quantity):
         ChargeOrder("NSE_FO", "BUY", quantity, D("1"))
 
 
-@pytest.mark.parametrize("price", [D("-0.05"), D("NaN"), D("Infinity"), D("100000001")])
+@pytest.mark.parametrize("price", [D("-0.05"), D("0"), D("NaN"), D("Infinity"), D("100000001")])
 def test_bad_price_is_refused(price):
     with pytest.raises(ValueError, match="price"):
         ChargeOrder("NSE_FO", "BUY", 65, price)
@@ -150,3 +150,24 @@ def test_exercise_stt_refuses_bad_input():
         exercise_stt(100.0, 65, rates())  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="quantity"):
         exercise_stt(D("1"), 0, rates())
+
+
+@pytest.mark.parametrize("name", ["stt_sell_rate", "stt_exercise_rate", "sebi_rate", "stamp_buy_rate"])
+def test_a_percentage_typed_as_a_fraction_is_refused(name):
+    """AC-6: Zerodha prints 0.15%; Decimal("0.15") would make STT 100x (519.675 instead of 5.19675 on the 3464.50
+    premium). A percentage-type rate must be a fraction below 1%."""
+    with pytest.raises(ValueError, match="fraction"):
+        rates(**{name: D("0.15")})
+    assert rates(**{name: D("0.0099")})  # just under the cap is accepted
+
+
+def test_a_percentage_exchange_rate_is_refused_and_gst_keeps_its_own_cap():
+    with pytest.raises(ValueError, match="fraction"):
+        rates(transaction_rates={"NSE_FO": D("0.03553"), "BSE_FO": D("0.000325")})
+    with pytest.raises(ValueError, match="fraction"):
+        rates(gst_rate=D("18"))
+    assert rates(gst_rate=D("0.18")).gst_rate == D("0.18")
+
+
+def test_brokerage_is_rupees_not_a_fraction():
+    assert rates(brokerage_per_order=D("20")).brokerage_per_order == D("20")

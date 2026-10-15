@@ -66,7 +66,7 @@ async def test_no_rate_set_before_the_first_is_an_error(app_engine):
     """AC-6: a day before the first set (2026-10-14) has no rate: error, no default."""
     conn, trans = await _tx(app_engine)
     try:
-        with pytest.raises(ChargeRatesError, match="no charge rate in force"):
+        with pytest.raises(ChargeRatesError, match="no complete charge rate set in force"):
             await rates_in_force(conn, date(2026, 10, 14))
     finally:
         await trans.rollback()
@@ -147,6 +147,9 @@ async def test_the_table_refuses_a_bad_value_component_and_blank_source(admin_en
         ("gst_rate", "NaN", "https://x"),
         ("nse_special", "1", "https://x"),
         ("gst_rate", "1", "  "),
+        ("stt_sell_rate", "0.15", "https://x"),  # a percentage typed as a fraction (0.15% is 0.0015)
+        ("transaction_rate_nse_fo", "0.03553", "https://x"),
+        ("gst_rate", "18", "https://x"),
     )
     for component, value, source in bad:
         conn, trans = await _tx(admin_engine)
@@ -161,19 +164,67 @@ async def test_the_table_refuses_a_bad_value_component_and_blank_source(admin_en
             await conn.close()
 
 
-async def test_per_component_newest_wins(admin_engine, app_engine):
-    """AC-6: a later single-component row wins for that component only (per-component newest in force)."""
+async def test_an_incomplete_later_date_is_ignored_the_complete_seed_answers(admin_engine):
+    """AC-6: a lone gst_rate row dated 2030-01-01 is not a set: the answer is the complete seed (never a mix)."""
     conn, trans = await _tx(admin_engine)
     try:
         await conn.execute(
             text("INSERT INTO public.charge_rates (component, read_on, value, source_url) "
                  "VALUES ('gst_rate', DATE '2030-01-01', 0.19, 'https://x')"))
         got = await rates_in_force(conn, date(2030, 1, 1))
-        assert got.gst_rate == D("0.19") and got.brokerage_per_order == D("20")  # per-component newest wins
-        assert got.read_on == date(2030, 1, 1)
+        assert got.gst_rate == D("0.18") and got.read_on == SEED_DAY
     finally:
         await trans.rollback()
         await conn.close()
+
+
+async def test_a_back_dated_set_is_refused(app_engine):
+    """AC-6: a set dated 2026-10-01 is older than the stored 2026-10-15 set: refused."""
+    conn, trans = await _tx(app_engine)
+    try:
+        seed = await rates_in_force(conn, SEED_DAY)
+        with pytest.raises(ChargeRatesError, match="back-dating"):
+            await add_rate_set(conn, replace(seed, read_on=date(2026, 10, 1)))
+    finally:
+        await trans.rollback()
+        await conn.close()
+
+
+async def test_a_same_date_race_is_a_store_error():
+    """AC-6: an IntegrityError on insert (a concurrent writer of the same date) becomes ChargeRatesError."""
+    from sqlalchemy.exc import IntegrityError
+
+    class Racing:
+        async def execute(self, stmt, params=None):
+            sql = str(stmt)
+            if "INSERT" in sql:
+                raise IntegrityError("insert", {}, Exception("duplicate key"))
+            if "max(read_on)" in sql:
+                return _Scalar(None)
+            return _Scalar(None)
+
+    class _Scalar:
+        def __init__(self, v):
+            self.v = v
+
+        def first(self):
+            return self.v
+
+        def scalar_one(self):
+            return self.v
+
+    rates = ChargeRates_for_unit()
+    with pytest.raises(ChargeRatesError, match="already exists"):
+        await add_rate_set(Racing(), rates)  # type: ignore[arg-type]
+
+
+def ChargeRates_for_unit():
+    from ofo.charges import ChargeRates
+
+    return ChargeRates(brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+                       transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+                       stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=date(2026, 11, 1),
+                       source_url="https://x")
 
 
 def test_a_non_date_day_is_refused():
@@ -219,4 +270,12 @@ async def test_a_value_that_is_not_a_decimal_is_refused():
     rows = [_row(c) for c in charge_rates_store.COMPONENTS]
     rows[0].value = 20.0
     with pytest.raises(ChargeRatesError, match="Decimal"):
+        await rates_in_force(_FakeSession(rows), SEED_DAY)
+
+
+async def test_a_set_that_mixes_dates_is_refused():
+    """AC-6: rows of one answer carrying two dates (cannot come from the query; the reader still refuses)."""
+    rows = [_row(c) for c in charge_rates_store.COMPONENTS]
+    rows[3].read_on = date(2026, 10, 16)
+    with pytest.raises(ChargeRatesError, match="mixes"):
         await rates_in_force(_FakeSession(rows), SEED_DAY)

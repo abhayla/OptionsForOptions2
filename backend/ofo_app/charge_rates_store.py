@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from ofo.charges import ChargeRates
@@ -26,11 +27,15 @@ IST = "Asia/Kolkata"
 _TODAY = text(f"SELECT (clock_timestamp() AT TIME ZONE '{IST}')::date")
 _IN_FORCE = text(
     """
-    SELECT DISTINCT ON (component) component, read_on, value, source_url
-    FROM public.charge_rates WHERE read_on <= :on
-    ORDER BY component, read_on DESC
+    WITH day AS (
+        SELECT read_on FROM public.charge_rates WHERE read_on <= :on
+        GROUP BY read_on HAVING count(*) = :n ORDER BY read_on DESC LIMIT 1
+    )
+    SELECT c.component, c.read_on, c.value, c.source_url
+    FROM public.charge_rates c JOIN day USING (read_on)
     """
 )
+_NEWEST = text("SELECT max(read_on) FROM public.charge_rates")
 _EXISTS = text("SELECT 1 FROM public.charge_rates WHERE read_on = :on LIMIT 1")
 _INSERT = text(
     """
@@ -58,18 +63,20 @@ def _values(rates: ChargeRates) -> dict[str, Decimal]:
 
 
 async def rates_in_force(session: AsyncSession | AsyncConnection, on: date | None = None) -> ChargeRates:
-    """The newest stored rate of every component dated on or before ``on`` (default: today by the database's IST
-    calendar). A set dated after ``on`` is not in force."""
+    """The newest COMPLETE set (every component, all from one date) dated on or before ``on`` (default: today by the
+    database's IST calendar). A set dated after ``on`` is not in force; a mixed-date answer is impossible."""
     if on is None:
         on = (await session.execute(_TODAY)).scalar_one()
     if not isinstance(on, date) or hasattr(on, "hour"):
         raise ChargeRatesError("the day must be a date")
-    rows = (await session.execute(_IN_FORCE, {"on": on})).all()
+    rows = (await session.execute(_IN_FORCE, {"on": on, "n": len(COMPONENTS)})).all()
     found = {r.component: r for r in rows}
     missing = [c for c in COMPONENTS if c not in found]
     if missing:
-        raise ChargeRatesError(f"no charge rate in force on {on} for: {', '.join(missing)}")
-    newest = max(found.values(), key=lambda r: (r.read_on, r.component))
+        raise ChargeRatesError(f"no complete charge rate set in force on {on}; missing: {', '.join(missing)}")
+    if len({r.read_on for r in rows}) != 1 or len({r.source_url for r in rows}) != 1:
+        raise ChargeRatesError(f"the charge rate set in force on {on} mixes dates or source URLs")
+    newest = rows[0]
     values = {c: found[c].value for c in COMPONENTS}
     if not all(isinstance(v, Decimal) for v in values.values()):
         raise ChargeRatesError("a stored rate did not come back as an exact Decimal")
@@ -95,6 +102,13 @@ async def add_rate_set(session: AsyncSession | AsyncConnection, rates: ChargeRat
         raise ChargeRatesError(f"note must be text of at most {MAX_NOTE} characters")
     if (await session.execute(_EXISTS, {"on": rates.read_on})).first() is not None:
         raise ChargeRatesError(f"a charge rate set dated {rates.read_on} already exists (append-only)")
-    for component, value in _values(rates).items():
-        await session.execute(_INSERT, {"component": component, "read_on": rates.read_on, "value": value,
-                                        "source_url": rates.source_url, "note": note})
+    newest = (await session.execute(_NEWEST)).scalar_one()
+    if newest is not None and rates.read_on < newest:
+        raise ChargeRatesError(f"a charge rate set dated {rates.read_on} is older than the newest stored ({newest}): "
+                               "back-dating is refused")
+    try:
+        for component, value in _values(rates).items():
+            await session.execute(_INSERT, {"component": component, "read_on": rates.read_on, "value": value,
+                                            "source_url": rates.source_url, "note": note})
+    except IntegrityError as exc:  # a concurrent write of the same date won the race
+        raise ChargeRatesError(f"a charge rate set dated {rates.read_on} already exists (append-only)") from exc

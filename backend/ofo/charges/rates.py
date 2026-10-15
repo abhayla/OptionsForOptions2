@@ -19,11 +19,20 @@ from types import MappingProxyType
 SEGMENTS = ("NSE_FO", "BSE_FO")
 
 
-def _rate(name: str, value: object) -> Decimal:
+#: Unit guard: Zerodha prints "0.15%" and an admin may type 0.15 where the fraction 0.0015 is meant (STT 100x). Every
+#: percentage-type rate is a fraction below this cap (1%: the real ones are 0.0015, 0.0003553, 0.000001, 0.00003);
+#: GST (18%) is a fraction below 1. Brokerage is rupees and has no fraction cap. The DB CHECK carries the same caps.
+FRACTION_CAP = Decimal("0.01")
+GST_CAP = Decimal("1")
+
+
+def _rate(name: str, value: object, cap: Decimal | None = None) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, Decimal):
         raise ValueError(f"{name} must be a Decimal built from a string, got {type(value).__name__}")
     if not value.is_finite() or value < 0:
         raise ValueError(f"{name} must be a finite Decimal >= 0, got {value}")
+    if cap is not None and value >= cap:
+        raise ValueError(f"{name} is a fraction (0.15% is 0.0015) and must be below {cap}, got {value}")
     return value
 
 
@@ -40,12 +49,13 @@ class ChargeRates:
     source_url: str
 
     def __post_init__(self) -> None:
-        for name in ("brokerage_per_order", "stt_sell_rate", "stt_exercise_rate", "sebi_rate", "stamp_buy_rate",
-                     "gst_rate"):
-            _rate(name, getattr(self, name))
+        _rate("brokerage_per_order", self.brokerage_per_order)
+        for name in ("stt_sell_rate", "stt_exercise_rate", "sebi_rate", "stamp_buy_rate"):
+            _rate(name, getattr(self, name), FRACTION_CAP)
+        _rate("gst_rate", self.gst_rate, GST_CAP)
         if not isinstance(self.transaction_rates, Mapping) or set(self.transaction_rates) != set(SEGMENTS):
             raise ValueError(f"transaction_rates must have exactly the segments {SEGMENTS}")
-        frozen = {s: _rate(f"transaction_rates[{s}]", self.transaction_rates[s]) for s in SEGMENTS}
+        frozen = {s: _rate(f"transaction_rates[{s}]", self.transaction_rates[s], FRACTION_CAP) for s in SEGMENTS}
         object.__setattr__(self, "transaction_rates", MappingProxyType(frozen))
         if not isinstance(self.read_on, date) or hasattr(self.read_on, "hour"):
             raise ValueError("read_on must be a date (not a datetime)")

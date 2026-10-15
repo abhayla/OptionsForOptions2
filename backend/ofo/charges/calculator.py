@@ -18,11 +18,12 @@ MAX_QUANTITY = 10_000_000  # absurd-size cap (a lot is 65 units; this is ~150,00
 MAX_PRICE = Decimal("100000000")
 
 
-def _money(name: str, value: object) -> Decimal:
+def _money(name: str, value: object, positive: bool = False) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, Decimal):
         raise ValueError(f"{name} must be a Decimal built from a string, got {type(value).__name__}")
-    if not value.is_finite() or value < 0 or value > MAX_PRICE:
-        raise ValueError(f"{name} must be a finite Decimal between 0 and {MAX_PRICE}, got {value}")
+    if not value.is_finite() or value < 0 or value > MAX_PRICE or (positive and value == 0):
+        raise ValueError(f"{name} must be a finite Decimal {'above' if positive else 'from'} 0 up to {MAX_PRICE}, "
+                         f"got {value}")
     return value
 
 
@@ -47,7 +48,7 @@ class ChargeOrder:
         if not isinstance(self.segment, str):
             raise ValueError("segment must be a string")
         _quantity(self.quantity)
-        _money("price", self.price)
+        _money("price", self.price, positive=True)
 
 
 @dataclass(frozen=True)
