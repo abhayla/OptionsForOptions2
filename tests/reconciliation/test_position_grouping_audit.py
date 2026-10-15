@@ -36,7 +36,7 @@ def test_start_records_one_suggest_entry_listing_groups_and_resemblance():
     assert payload["action"] == "suggest"
     assert {g["id"]: g["resembles"] for g in payload["groups"]}[CONDOR_GROUP] == "Iron Condor"
     assert IN_STRATEGY not in str(payload["groups"]) and IN_STRATEGY not in str(payload["unresolved"])
-    assert payload["hidden"] == [f"{IN_STRATEGY}:S-1"]  # the system's own exclusion is recorded, with the strategy
+    assert payload["hidden"] == (f"{IN_STRATEGY}:S-1",)  # the system's own exclusion is recorded, with the strategy
 
 
 def test_move_and_standalone_each_write_one_entry_naming_position_from_and_to():

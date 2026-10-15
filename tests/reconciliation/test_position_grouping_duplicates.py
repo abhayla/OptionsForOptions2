@@ -38,7 +38,7 @@ def test_the_duplicate_row_is_refused_with_its_own_four_part_message_and_audited
     assert f"{SHORT_PUT}:duplicate_row" in log.events[0].payload["unresolved"]
     with pytest.raises(GroupingError) as exc:
         session.move_unresolved(SHORT_PUT, STANDALONE)
-    assert exc.value.message == render("grouping_duplicate_row", contracts=1)
+    assert exc.value.message.code == render("grouping_duplicate_row", contracts=1).code == "RECONCILIATION_MISMATCH_221"
     assert len(log.events) == 1
 
 
@@ -46,11 +46,11 @@ def test_the_suggest_entry_lists_the_positions_hidden_by_a_strategy_with_its_id(
     log = audit_log()
     GroupingSession.start(_suggest(seven_rows()), audit=log, clock=clock, actor="u", session_id="s",
                           strategies=strategies())
-    assert log.events[0].payload["hidden"] == [f"{IN_STRATEGY}:S-1"]
+    assert log.events[0].payload["hidden"] == (f"{IN_STRATEGY}:S-1",)
 
 
 def test_nothing_hidden_means_an_empty_hidden_list():
     log = audit_log()
     GroupingSession.start(_suggest(seven_rows()[:6]), audit=log, clock=clock, actor="u", session_id="s",
                           strategies=strategies())
-    assert log.events[0].payload["hidden"] == []
+    assert log.events[0].payload["hidden"] == ()

@@ -596,7 +596,7 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Create a new strategy from the position, or leave it standalone."),
     _gate("grouping_duplicate_row", _RM, 221,
           "Zerodha sent a second row for {contracts} contract(s) and product that it already showed.",
-          "The second row is shown but not grouped, because one contract and product should have one row.",
+          "The second row is shown but not grouped, because Zerodha lists each contract and product once.",
           "Adding this position to a strategy.",
           "It stays visible here. Check the position in Zerodha, then connect again.", _REC_SLOT),
     # W-085 (ADR-083 part 1): expiry settlement notes (renumbered after W-083's 210-218).
