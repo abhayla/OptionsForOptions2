@@ -1262,5 +1262,13 @@
   "margin_basket_insufficient": {
     "sha256": "322daa3cb313eae76eb7e9b41a1c6dbeebd925455b044380f98d1788d36a9773",
     "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_entry": {
+    "sha256": "f5b9f82fe3efbe78476ea0e59b5b5d4ed9e10e9c98a6959e63901a64a54686de",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_short": {
+    "sha256": "975a26d419b2fabfb40e3ccd864f1e86a6248fd5eb72171d2aac836f2722292c",
+    "reviewed": "pending owner read"
   }
 }
