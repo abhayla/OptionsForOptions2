@@ -1,0 +1,29 @@
+{
+ "id": "merge-leaves-conflict-markers",
+ "scope": "generic",
+ "class": "A merge that auto-resolves most files can still leave conflict markers in one of them; an audit that only LISTS the files changed on both sides for a human to read lets the markers be committed and pushed, because nobody reads a list while other checks are green.",
+ "mechanism": "2026-10-15: the W-066 merge of main (commit 15f3182) resolved backend/ofo/table/model.py by hand and committed `<<<<<<< HEAD / ======= / >>>>>>> origin/main` in docs/process/coverage-stages.yaml; scripts/orchestrator/merge_audit.py printed the file under 'changed on both sides (read these)' and exited 0; the markers were found by eye in a later diff.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "build/W-066-on-main commit 15f3182, docs/process/coverage-stages.yaml",
+  "evidence": "git diff origin/main origin/build/W-066-on-main showed the three marker lines at yaml lines 151/154/158; the new merge_audit run on `. f184333 64b10e7 15f3182` exits 1 naming exactly those lines."
+ },
+ "fix": "The audit scans every file the merge changed at the merged head and fails on a marker line (a bare ======= only with a <<<<<<< in the same file).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/orchestrator/test_merge_audit.py"
+  ],
+  "note": "Merged in PR #219."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-067.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "W-066 merge 15f3182",
+   "evidence": "PR #219 body"
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "id": "fallback-time-claims-missing-data",
+ "scope": "generic",
+ "class": "A 'last updated <time>' label that falls back to the current time when no data was ever received tells the user data arrived when none did; the honest label for never-received data is a different message, not a time.",
+ "mechanism": "W-065 phase 2 round 1: the not-live answer stamped REQ-049 AC-5's 'Last updated' with the request time when no quote had ever been held (the normal first-load REST fallback); a test locked it in.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "backend/ofo/outcome/service.py _last_update on build/W-065-live-push at 061bd32",
+  "evidence": "Tier A verifier: test_ac4_not_live_with_no_quote_held_stamps_the_valuation_time asserted the request time."
+ },
+ "fix": "AC-5's message only after a quote was held, with the newest held time; never-held uses ADR-020 Q185's draft label (REQ-049 clarification 2026-10-15).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Round-2 tests exist on build/W-065-live-push (b18e087); guarded when W-065 merges."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "W-065 phase 2 round 1",
+   "evidence": "verifier report"
+  }
+ ]
+}

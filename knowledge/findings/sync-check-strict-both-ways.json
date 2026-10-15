@@ -1,0 +1,29 @@
+{
+ "id": "sync-check-strict-both-ways",
+ "scope": "generic",
+ "class": "A check that keeps a hand-written list in sync with an external system and fails in BOTH directions (item missing from the list, list naming an item the system no longer has) breaks every open change the moment any change closes an item, until someone edits the list; the break lands on unrelated work.",
+ "mechanism": "The coverage check failed on main and every open PR each time a merge closed an issue (#207 after #212, #209 after #211, both 2026-10-15) because a stage row for a closed issue was an error.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "scripts/orchestrator/coverage.py issues check",
+  "evidence": "coverage job on PR #211: 'issues: #207 is in coverage-stages.yaml but is not open on GitHub' right after #212 merged."
+ },
+ "fix": "Keep the direction that catches untracked work strict (open issue without a stage = error); make the stale direction a note to clean up in the next batched docs PR.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/orchestrator/test_coverage.py::test_yaml_issue_closed_is_a_note_not_an_error"
+  ],
+  "note": "Merged in PR #215."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-067.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "PRs #211, #212",
+   "evidence": "coverage job failures"
+  }
+ ]
+}
