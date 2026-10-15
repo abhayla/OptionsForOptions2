@@ -2378,6 +2378,36 @@
             "exclusiveMinimum": 0.0,
             "title": "Quantity",
             "description": "Units (lots x lot size)"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry",
+            "description": "ADR-075: the leg's planned entry price, decimal text in rupees",
+            "examples": [
+              "44.90"
+            ]
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At",
+            "description": "ADR-075: when the planned entry was captured, ISO 8601 with offset",
+            "examples": [
+              "2026-10-15T11:02:17+05:30"
+            ]
           }
         },
         "additionalProperties": false,
@@ -2428,6 +2458,29 @@
           "quantity": {
             "type": "integer",
             "title": "Quantity"
+          },
+          "planned_entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Entry"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
           }
         },
         "additionalProperties": false,

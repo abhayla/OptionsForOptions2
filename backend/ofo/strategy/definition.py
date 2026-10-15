@@ -292,7 +292,8 @@ _LEG_KEYS = frozenset({"action", "instrument", "strike", "expiry", "quantity"})
 #: kind -> its exact keys. A closed shape: anything else is refused, never rendered.
 _ITEM_KEYS = {"underlying": {"kind", "old", "new"}, "leg_removed": {"kind", "leg"}, "leg_added": {"kind", "leg"},
               "quantity": {"kind", "leg", "before"}, "field": {"kind", "map", "name", "old", "new"},
-              "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"}}
+              "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"},
+              "entries_repriced": {"kind"}}
 #: A field change item: ``map`` -> the closed list of ``name`` (ADR-064); ``old``/``new`` are None (absent) or ADR-069's
 #: value type (a plain-digit number for a risk limit, an identifier otherwise). One item per changed name; never repr.
 _FIELD_NAMES = {"rules_ref": frozenset({"rules_ref"}), "risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}
@@ -406,6 +407,8 @@ def _render_items(items: object) -> tuple:
                 out.append(render_explanation("change_restored", seq=seq))
             elif kind == "legs_reordered":
                 out.append(render_explanation("change_legs_reordered"))
+            elif kind == "entries_repriced":  # ADR-075: the planned entries changed (a reprice)
+                out.append(render_explanation("change_entries_repriced"))
             else:
                 out.append(render_explanation("change_replaced_unreadable"))
     except DefinitionError:
