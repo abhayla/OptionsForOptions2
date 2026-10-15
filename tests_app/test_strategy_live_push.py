@@ -553,3 +553,18 @@ async def test_206_without_a_live_market_the_rest_route_is_unchanged(rig):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         out = (await ac.post("/api/strategies/outcome", json=request(provider))).json()
     assert out["state"] == "COMPUTED"
+
+
+async def test_206_the_streaming_check_applies_only_to_the_live_markets_own_context(rig, live_rig):
+    """AC-4 / #206 negative: a live market IS running with nothing streaming, but the route's context is another one
+    (a test's or the replay's own provider) -> that context's quotes are used as they are: COMPUTED, not the not-live
+    state. Only the live market's own context is judged by its fan-out's subscriptions."""
+    from ofo_app.main import create_app
+
+    provider, feed, *_ = rig
+    assert live_market.current_feed() is not None and live_market.current_context() is not feed.ctx
+    app = create_app()
+    app.dependency_overrides[get_market_context] = lambda: feed.ctx
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        out = (await ac.post("/api/strategies/outcome", json=request(provider))).json()
+    assert out["state"] == "COMPUTED"
