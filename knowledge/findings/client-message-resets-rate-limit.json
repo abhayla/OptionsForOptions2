@@ -1,0 +1,27 @@
+{
+ "id": "client-message-resets-rate-limit",
+ "scope": "generic",
+ "class": "A per-stream rate limit that is reset whenever the client sends a message lets any client bypass it by re-sending, turning a server-paced push into client-driven work.",
+ "mechanism": "W-065 phase 2 round 1: StrategyPush._replace set `_dirty, _last_push = True, None` on every client message; re-sending the same strategy 10 times with a frozen clock and no tick produced 10 pushes in 0 s against ADR-068 item 2 ('at most once a second per strategy, and only when an input changed').",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "backend/ofo_app/live_push.py on build/W-065-live-push at 061bd32",
+  "evidence": "Tier A verifier: 'identical re-sends=10, monotonic advanced=0s, ticks=0 -> pushes sent: 10'."
+ },
+ "fix": "An identical message changes nothing; a changed one recomputes but keeps the >= 1 s gate; tests with a frozen clock for both.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Round-2 tests exist on build/W-065-live-push (b18e087); guarded when W-065's PR merges."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-068.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "W-065 phase 2 round 1",
+   "evidence": "verifier report"
+  }
+ ]
+}

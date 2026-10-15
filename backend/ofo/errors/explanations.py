@@ -885,6 +885,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"old": Recorded, "new": Recorded}),
     ExplanationTemplate("change_value_unset", "values_seen", "not set"),
     ExplanationTemplate("change_legs_reordered", "values_seen", "legs reordered"),
+    ExplanationTemplate("change_entries_repriced", "values_seen", "planned entry prices repriced"),
     ExplanationTemplate("change_replaced_unreadable", "values_seen", "definition replaced, the previous one could not be compared"),
     ExplanationTemplate("change_summary_unreadable", "values_seen", "this change could not be shown"),
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),

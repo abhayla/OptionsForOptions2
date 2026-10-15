@@ -13,6 +13,11 @@ and instrument come from the catalogue contract, never from the body. A body fie
 bid, iv, spot, margin, ...) is refused with 422; any other unknown field is refused with 422 too - nothing is dropped
 silently. Decimals (risk limits) are strings; a JSON number there is refused.
 
+ADR-075 (issue #208): a leg may carry its planned entry price and capture time (``planned_entry`` as decimal text,
+``captured_at`` as ISO 8601 with an offset, both or neither). They are part of the definition: stored, returned on every
+load and in every history entry, and changed only by a save that sends new ones (a reprice). A leg without them (a
+draft saved before ADR-075) is returned without the two keys; nothing re-captures them on load.
+
 W-024 (REQ-065 AC-2, ADR-003 Q226): every response is a closed ``ApiModel`` and every refusal goes through the one
 error boundary (ofo_app/errors.py), so a body holds catalogue text only: 404 for a missing strategy or another user's
 (the same answer); 422 for a definition the catalogue refuses (contract not in the catalogue, not live, quantity not
@@ -34,7 +39,7 @@ from ofo.engine.legs import Action
 from ofo.errors import UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
@@ -57,6 +62,10 @@ class LegIn(BaseModel):
     contract_id: int = Field(description="The catalogue's internal contract id (never a broker token)")
     action: Literal["BUY", "SELL"]
     quantity: int = Field(gt=0, description="Units (lots x lot size)")
+    planned_entry: Optional[str] = Field(default=None, examples=["44.90"],
+                                         description="ADR-075: the leg's planned entry price, decimal text in rupees")
+    captured_at: Optional[str] = Field(default=None, examples=["2026-10-15T11:02:17+05:30"],
+                                       description="ADR-075: when the planned entry was captured, ISO 8601 with offset")
 
     _no_live = model_validator(mode="before")(_refuse_live_state)
 
@@ -87,6 +96,8 @@ class LegOut(ApiModel):
     strike: Optional[Identifier]
     expiry: Identifier
     quantity: int
+    planned_entry: Optional[Money] = None  # ADR-075; absent (unset) for a leg saved without one
+    captured_at: Optional[datetime.datetime] = None
 
 
 class RiskLimitsOut(ApiModel):
@@ -167,6 +178,7 @@ _FORM_TEMPLATE = MappingProxyType({
     sf.UNDERLYING_MISMATCH: "strategy_underlying_mismatch",
     sf.UNKNOWN_NAME: "strategy_name_not_allowed",
     sf.VALUE_NOT_ALLOWED: "user_input_request_invalid",  # ADR-069: the fixed input error (422), value never echoed
+    sf.INVALID_PLANNED_ENTRY: "user_input_request_invalid",  # ADR-075: a malformed / one-sided / future entry (422)
 })
 #: On the 409 path (a stored definition read back) only these two keep their own message; the rest are "unreadable".
 _STORED_OWN_MESSAGE = frozenset({sf.CONTRACT_NOT_IN_CATALOGUE, sf.CONTRACT_TERMS_CHANGED})
@@ -187,19 +199,35 @@ def _refused(exc: Exception, form_status: int) -> Exception:
     return StrategyRefused(_FORM_TEMPLATE.get(exc.code, "strategy_definition_invalid"))
 
 
+def _definition_out(saved: sf.SavedDefinition) -> dict:
+    """The stored form for a response; a leg's planned entry goes out as its Decimal and aware datetime (the door
+    writes them as a plain-digit string and ISO text), so no text from the row reaches the body unparsed."""
+    doc = sf.to_document(saved)
+    entries = saved.entries if isinstance(saved, sf.SavedDefinition) else ()  # to_document already refused others
+    for leg, entry in zip(doc["legs"], entries):
+        if entry is not None:
+            leg["planned_entry"], leg["captured_at"] = entry.price, entry.captured_at
+    return doc
+
+
 def _strategy_out(stored: store.StoredStrategy) -> StrategyOut:
     return StrategyOut.model_validate({
         "id": stored.id, "status": stored.status, "revision": stored.revision,
         "created_at": stored.created_at, "updated_at": stored.updated_at,
-        "definition": sf.to_document(stored.saved)})
+        "definition": _definition_out(stored.saved)})
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
     sf.check_map_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # ADR-064, before any query
     sf.check_setting_values(rules_ref=body.rules_ref, preferences=body.preferences)  # ADR-069, before any query
     limits = {name: sf.limit_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
+    now = datetime.datetime.now(datetime.timezone.utc)
+    entries = [None if leg.planned_entry is None and leg.captured_at is None
+               else sf.entry_from_input(leg.planned_entry, leg.captured_at, now, f"leg_{i + 1}")
+               for i, leg in enumerate(body.legs)]  # ADR-075, before any query
     return await store.build_definition(
-        db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity) for leg in body.legs],
+        db, body.underlying, [sf.LegChoice(leg.contract_id, Action(leg.action), leg.quantity, entry)
+                              for leg, entry in zip(body.legs, entries)],
         rules_ref=body.rules_ref, risk_limits=limits, preferences=dict(body.preferences))
 
 
@@ -257,7 +285,8 @@ async def update_strategy(strategy_id: int, body: StrategyUpdateIn, db: Any = De
 async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
                            user_ref: str = Depends(current_user_ref)) -> HistoryOut:
     async def work():
-        docs = [sf.entry_to_document(e) for e in await store.history(db, user_ref, strategy_id)]
+        entries = await store.history(db, user_ref, strategy_id)
+        docs = [sf.entry_to_document(e) | {"definition": _definition_out(e.saved)} for e in entries]
         return HistoryOut.model_validate({"entries": [
             doc | {"change_summary": sf.render_summary(doc["change_summary"])} for doc in docs]})
     return await _run(db, work, form_status=409)
