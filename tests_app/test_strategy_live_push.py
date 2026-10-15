@@ -711,3 +711,42 @@ def test_ac4_replay_streaming_counts_holders_and_never_drops_the_index():
     assert s("NSE_INDEX:1001") is True
     s.hold(["NSE_FO:1"])
     assert s("NSE_FO:1") is True
+
+
+def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monkeypatch):
+    """REQ-049 AC-5 / ADR-077 (W-065 p3 r2): a second socket (another tab, another user) holds the same legs while THIS
+    page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer: AC-5's
+    exact text with the newest price time kept (09:20:09), no table, no summary, no leg numbers. The same request without
+    the flag (or false) is unchanged (COMPUTED)."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    body = _spread_request()
+    with client.websocket_connect(live.PATH) as other:
+        other.send_json(body)
+        other.receive_text()
+        with client.websocket_connect(live.PATH) as mine:
+            mine.send_json(body)
+            mine.receive_text()
+        fallback = client.post("/api/strategies/outcome", json={**body, "fallback": True}).json()
+        assert fallback["state"] == "NOT_CONNECTED"
+        assert fallback["status_label"] == AC5_AFTER_DROP
+        assert fallback.get("table") is None and fallback.get("summary") is None
+        assert all(leg["ltp"] is None and leg["label"] == AC5_AFTER_DROP for leg in fallback["legs"])
+        plain = client.post("/api/strategies/outcome", json=body).json()
+        assert plain["state"] == "COMPUTED" and plain["table"] is not None
+        assert client.post("/api/strategies/outcome", json={**body, "fallback": False}).json()["state"] == "COMPUTED"
+    refused = client.post("/api/strategies/outcome", json={**body, "fallback": "maybe"}).json()
+    assert refused.get("state") != "COMPUTED"  # a non-boolean flag never yields numbers (fail closed)
+
+
+def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers():
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None).model_dump(
+        mode="json", exclude_unset=True)
+    flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None).model_dump(
+        mode="json", exclude_unset=True)
+    assert flagged == plain and flagged["state"] != "COMPUTED"
