@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (71)
+## Decisions (74)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -77,6 +77,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-069 2026-10-09: The values of a strategy definition's rules reference, risk limits and preferences are short identifiers or numbers only - letters, digits, underscor… [refines ADR-064]
 - ADR-070 2026-10-09: The GitHub repository is public. [refines ADR-046]
 - ADR-073 2026-10-10: The framework-generated API docs page (/docs) and API description (/openapi.json) are served only when APP_ENV is development or test; there they are… [applies ADR-003]
+- ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass with REQ-065 (the closed response door) named as… [none — it amends only the master-plan Stage 4 cor…]
+- ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition, and a reopened draft shows exactly those; they ch… [refines ADR-062]
+- ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells minus buys at each leg's LTP, times quantity, labell… [none — adds the TOTAL Current Value rule next to…]
 
 ## Requirements (74)
 
@@ -121,8 +124,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-039 [Approved]: Strategy state machine and exception states
 - REQ-040 [Verified]: Activity timeline and rule-trigger audit
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults
-- REQ-042 [Specified]: Automation: Alert + Prepare Orders
-- REQ-043 [Specified]: Live monitoring and status colours
+- REQ-042 [Approved]: Automation: Alert + Prepare Orders
+- REQ-043 [Approved]: Live monitoring and status colours
 - REQ-044 [Specified]: Strategy control center and Positions screen
 - REQ-045 [Approved]: Adjustment detection and triggers
 - REQ-046 [Approved]: Adjustment Opportunity panel and Before/After
@@ -134,14 +137,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-052 [Approved]: Market-data sourcing and licensing
 - REQ-053 [Approved]: Broker authority and contract eligibility
 - REQ-054 [Approved]: Broker adapter
-- REQ-055 [Specified]: Margin checks
+- REQ-055 [Approved]: Margin checks
 - REQ-056 [Approved]: Multi-leg execution plan and review
 - REQ-057 [Verified]: Order lifecycle
 - REQ-058 [Verified]: Partial execution and no automatic retry
 - REQ-059 [Verified]: Pre-execution safety checks and validation
 - REQ-060 [Verified]: Reconciliation with Zerodha
-- REQ-061 [Specified]: Existing positions on connect
-- REQ-062 [Specified]: Notifications
+- REQ-061 [Approved]: Existing positions on connect
+- REQ-062 [Approved]: Notifications
 - REQ-063 [Approved]: Security boundaries
 - REQ-064 [Approved]: Audit log
 - REQ-065 [Testing]: Error classification and messages
