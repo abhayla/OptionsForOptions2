@@ -97,11 +97,10 @@ class Failure(Enum):
 NO_LEAK_HEADERS: Mapping[str, str] = MappingProxyType({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
-#: The seal: `ClosedResponse` (and the sealed redirect) stamp it into the request scope when they are sent; `_Boundary`
-#: lets a response start only when it is there. Nothing else in the app has it, so a raw Response, a mounted app or a
-#: framework default fails closed (W-069, issue #148).
+#: The seal: `ClosedResponse` (and the sealed redirect) stamp a `_SEAL` record of the exact messages they send into the
+#: request scope, in their own send path (#200 N5); `_Boundary` lets a response start only when its messages are those.
+#: Nothing else in the app has it, so a raw Response, a mounted app or a framework default fails closed (W-069, #148).
 DOOR_KEY = "ofo.door"
-_SEAL = object()
 
 
 #: Headers a door response may carry: the body's own two, the no-leak pair, and the protocol ones an error keeps.
@@ -211,16 +210,43 @@ def _verify(response: object) -> None:
     _check_record_values(kind, status, headers, body)
 
 
+class _SEAL:  # noqa: N801 - the door's private seal record; the name is on the CI scan's door-name list
+    """The seal (#200 N5): the very start and body MESSAGES the door is sending, with immutable copies of their parts.
+    `_Boundary` lets a start through only when it IS the recorded start message and still equals the copy, and then only
+    the recorded body message, unchanged. A response called with a send that goes nowhere records messages that never
+    reach the boundary, so raw bytes written afterwards carry no seal; a send wrapper that edits or swaps the door's
+    message in transit fails the comparison. Not subclassable."""
+
+    __slots__ = ("start", "body", "status", "headers", "payload")
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("the seal is not subclassed")
+
+    def __init__(self, status: int, headers: tuple[tuple[bytes, bytes], ...], payload: bytes) -> None:
+        self.status, self.headers, self.payload = status, headers, payload
+        self.start = {"type": "http.response.start", "status": status, "headers": list(headers)}
+        self.body = {"type": "http.response.body", "body": payload}
+
+    def is_start(self, message: object) -> bool:
+        return message is self.start and message == {"type": "http.response.start", "status": self.status,
+                                                     "headers": list(self.headers)}
+
+    def is_body(self, message: object) -> bool:
+        return message is self.body and message == {"type": "http.response.body", "body": self.payload}
+
+
 async def _send_frozen(response: Response, scope: Scope, send: Send) -> None:
     """Verify, seal, and send the FROZEN copy from here: not Starlette's `__call__`, which reads the live attributes at
-    send time and runs `background`."""
+    send time and runs `background`. The seal records the exact messages handed to `send` (#200 N5), set here in the
+    send path, so it vouches only for the response that is really sent."""
     _verify(response)
     if scope["type"] != "http":
         raise DoorRefused("a door response is sent over http only")
     status, headers, body = response._frozen[:3]  # type: ignore[attr-defined]
-    scope[DOOR_KEY] = _SEAL
-    await send({"type": "http.response.start", "status": status, "headers": list(headers)})
-    await send({"type": "http.response.body", "body": bytes(body)})
+    seal = _SEAL(status, tuple(headers), bytes(body))
+    scope[DOOR_KEY] = seal
+    await send(seal.start)
+    await send(seal.body)
 
 
 class ClosedResponse(Response):
@@ -633,17 +659,31 @@ class _Boundary:
         exempt = (scope["method"], scope["path"]) in self.exempt
         started = False
         refused = False
+        finished = False
 
         async def tracking_send(message: Message) -> None:
-            nonlocal started, refused
-            if refused:
+            nonlocal started, refused, finished
+            if refused or finished:
                 return
+            if exempt:
+                started = started or message["type"] == "http.response.start"
+                await send(message)
+                return
+            seal = scope.get(DOOR_KEY)
+            sealed = type(seal) is _SEAL
             if message["type"] == "http.response.start":
-                if not exempt and scope.get(DOOR_KEY) is not _SEAL:
-                    refused = True
+                if started or not sealed or not seal.is_start(message):
+                    refused = not started
                     log.error("response door: an unsealed response was dropped on %s %s", scope["method"], scope["path"])
                     return
                 started = True
+            elif not (started and sealed and seal.is_body(message)):  # after a sealed start, only its own body
+                refused, finished = not started, started
+                log.error("response door: a body the door did not send was dropped on %s %s", scope["method"],
+                          scope["path"])
+                return
+            else:
+                finished = True  # the door sends exactly one body message
             await send(message)
 
         try:

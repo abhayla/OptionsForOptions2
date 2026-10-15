@@ -1461,3 +1461,98 @@ def test_round6_a_body_swapped_for_another_models_and_refrozen_is_refused() -> N
     errors._freeze(r)
     with pytest.raises(api_models.DoorRefused):
         _run_wrapper(r)
+
+
+# --- issue #200 N5: the seal marks only the response actually sent ------------------------------------------------------
+
+def _bare_scope() -> dict:
+    return {"type": "http", "method": "GET", "path": "/x", "headers": [], "query_string": b"", "raw_path": b"/x",
+            "scheme": "http", "server": ("t", 80), "client": ("c", 1), "http_version": "1.1", "root_path": ""}
+
+
+def _through_boundary(app) -> list:
+    """Run `app` as bare ASGI inside the door's `_Boundary`; return the messages that reached the wire."""
+    import asyncio
+
+    from ofo_app.errors import _Boundary
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    asyncio.run(_Boundary(app)(_bare_scope(), receive, send))
+    return sent
+
+
+def _assert_only_the_internal_500(sent) -> None:
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [500]
+    assert all((b"x-evil", b"unminted") not in m["headers"] for m in starts)
+    assert SENTENCE.encode() not in b"".join(m.get("body", b"") for m in sent)
+    body = json.loads(b"".join(m.get("body", b"") for m in sent))
+    assert body["code"] == "INTERNAL_SYSTEM_002"  # catalogue template internal_system_request_failed
+
+
+def test_n5_a_seal_stamped_by_a_response_that_was_never_sent_does_not_let_raw_bytes_through() -> None:
+    """AC-2 (#200 N5, the verifier's probe of 2026-10-12): a door response called as an ASGI app with a send that goes
+    nowhere seals nothing; the raw start and body then written through the real send are dropped, and the wire gets
+    only the internal-system 500."""
+    from ofo_app.errors import respond
+
+    async def nowhere(message):
+        return None
+
+    async def app(scope, receive, send):
+        await respond(_MODEL, 200)(scope, receive, nowhere)
+        await send({"type": "http.response.start", "status": 200, "headers": [(b"x-evil", b"unminted")]})
+        await send({"type": "http.response.body", "body": SENTENCE.encode()})
+
+    _assert_only_the_internal_500(_through_boundary(app))
+
+
+def test_n5_a_door_start_message_changed_on_its_way_to_the_wire_is_dropped() -> None:
+    """AC-2 (#200 N5): a send wrapper that edits the door's own start message in place (an added header) before passing
+    it on does not get it through: the boundary compares it with the record of what the door sent."""
+    from ofo_app.errors import respond
+
+    async def app(scope, receive, send):
+        async def editing_send(message):
+            if message["type"] == "http.response.start":
+                message["headers"].append((b"x-evil", b"unminted"))
+            await send(message)
+        await respond(_MODEL, 200)(scope, receive, editing_send)
+
+    _assert_only_the_internal_500(_through_boundary(app))
+
+
+def test_n5_a_door_body_swapped_on_its_way_to_the_wire_is_dropped() -> None:
+    """AC-2 (#200 N5): a send wrapper that passes the door's start but swaps its body message for free text gets the body
+    dropped: after a sealed start only the very body message the door sent passes."""
+    from ofo_app.errors import respond
+
+    async def app(scope, receive, send):
+        async def swapping_send(message):
+            if message["type"] == "http.response.body":
+                message = {"type": "http.response.body", "body": SENTENCE.encode()}
+            await send(message)
+        await respond(_MODEL, 200)(scope, receive, swapping_send)
+
+    sent = _through_boundary(app)
+    assert SENTENCE.encode() not in b"".join(m.get("body", b"") for m in sent)
+
+
+def test_n5_the_seal_lets_the_door_response_that_is_really_sent_through_byte_for_byte() -> None:
+    """AC-2 (#200 N5, the other branch): a door response sent through the boundary reaches the wire unchanged, and the
+    real route still answers its golden bytes."""
+    from ofo_app.errors import respond
+
+    async def app(scope, receive, send):
+        await respond(_MODEL, 200)(scope, receive, send)
+
+    assert _through_boundary(app) == _wire(_door("closed"))
+    response = _client(create_app()).get(PATH)
+    assert response.status_code == 200 and response.content == GOLDEN_REFUSAL
