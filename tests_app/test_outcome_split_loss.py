@@ -79,6 +79,15 @@ def test_ac7_shape_e_a_profit_gap_narrower_than_a_paisa_is_named_as_the_excluded
     assert str(out.summary.where_do_i_start_losing) == "At every level except exactly 22,400 at expiry."
 
 
+def test_ac7_a_sub_paisa_stretch_with_one_exact_edge_still_reads_one_excluded_level(replayed) -> None:
+    """AC-7 (round 8, mixed member): shape E with 10 lots of PE sold. Below 22,400 the slope is 10 lots, so the lower
+    zero is 22,400 - 3.25/650 = 22,399.995 exactly (it terminates); above it is 22,400 + 3.25/715 = 22,400.0045...
+    Both print as 22,400.00 at the 0.01 display step, so a plain list would read "below 22,400.00 or above 22,400"
+    (two names for one level). The stretch is reported as the excluded level instead."""
+    out = _outcome(replayed, [(CE22400, "SELL", 12, "0.05"), (CE22400, "BUY", 1, "0.55"), (PE22400, "SELL", 10, "0")])
+    assert str(out.summary.where_do_i_start_losing) == "At every level except exactly 22,400 at expiry."
+
+
 def test_ac7_two_regions_without_a_zero_point_keep_the_plain_list(replayed) -> None:
     """AC-7 (other branch): crossings into profit are region edges, never "except" levels."""
     out = _outcome(replayed, [(CE22400, "SELL", 1, "50"), (PE22400, "SELL", 1, "50"), (CE22600, "BUY", 2, "0")])

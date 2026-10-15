@@ -178,6 +178,8 @@ def test_ac7_a_profit_stretch_narrower_than_a_paisa_is_reported_never_merged_awa
     for strike in map(D, z):  # every stretch is reported: the peak is never called a loss (no tolerance here)
         assert not _says_losing(regions, strike), (strike, regions)
         assert strike in excepts or any(hi <= strike <= lo for hi, lo in gaps), (strike, regions)
+    for hi, lo in gaps:  # never "below 22,400.00 or above 22,400": two named regions never print as touching
+        assert hi.quantize(STEP) < lo.quantize(STEP), regions
     for level in excepts:
         assert strategy.expiry_pnl_at(level) >= 0, level  # an except level is never a loss
     stated = _stated_levels(regions)
@@ -190,12 +192,13 @@ def test_ac7_a_profit_stretch_narrower_than_a_paisa_is_reported_never_merged_awa
 
 
 def test_both_members_of_the_class_are_generated() -> None:
-    """AC-7: the generated set holds stretches that round onto one level (except) AND exact sub-paisa gaps."""
+    """AC-7: the generated set holds stretches whose edges do not terminate (rounded to 0.01) AND stretches with an
+    exact edge finer than 0.01 (e.g. 22,399.995) - both print as the peak level at the display step."""
     kinds = set()
-    for *_, strategy in SHAPES:
-        regions = strategy_metrics(strategy).loss_regions
-        kinds |= {"except" for r in regions if len(r) == 3} | ({"gap"} if len(regions) > 1 else set())
-    assert kinds == {"except", "gap"}
+    for _, _, _, _, z, _, strategy in SHAPES:
+        near = [b for b in strategy_metrics(strategy).breakevens if any(abs(b - D(s)) < STEP for s in z)]
+        kinds |= {"exact" if b.as_tuple().exponent < -2 else "rounded" for b in near}
+    assert kinds == {"exact", "rounded"}
 
 
 def test_ac7_without_the_fix_the_shape_e_class_reads_every_level() -> None:

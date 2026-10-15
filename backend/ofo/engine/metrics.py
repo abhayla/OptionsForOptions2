@@ -99,6 +99,11 @@ def _to_decimal(value: Fraction) -> Decimal:
     return result.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
 
 
+def _shown(level: Decimal) -> Decimal:
+    """``level`` as the display prints it: rounded half-even to the 0.01 point step (engine.display.format_points)."""
+    return level.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+
+
 def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) -> list[Fraction]:
     """Zeros of the payoff over [0, inf): at a point, between two points, or on the upper tail; levels > 0 only."""
     found: set[Fraction] = set()
@@ -152,8 +157,9 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
         else:
             regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi, []])
     # Edges are shown rounded to 0.01, so two edges can round to one level: a region narrower than a paisa becomes a
-    # single-level region (lower == upper, kept: ADR-072 names every loss region). Two regions whose rounded edges meet
-    # across a real (exact) gap - a profit or zero stretch narrower than the rounding step - are never joined silently:
+    # single-level region (lower == upper, kept: ADR-072 names every loss region). Two regions whose edges PRINT as one
+    # level (compared at the 0.01 display step, so an exact edge like 22,399.995 counts too) across a real (exact) gap
+    # - a profit or zero stretch narrower than the display step - are never joined silently, nor listed as touching:
     # they become one region with the gap's best level as an "except" level (W-066 round 8, verifier's shape E). That
     # level is the knot of the gap with the highest P&L, so its own P&L is >= 0 (a positive gap peaks at a strike).
     out: list[list] = []
@@ -162,7 +168,7 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
         d_lo = None if lo is None else _to_decimal(lo)
         d_hi = None if hi is None else _to_decimal(hi)
         d_ex = [_to_decimal(z) for z in excepts]
-        if out and lo is not None and out[-1][1] is not None and d_lo <= out[-1][1]:
+        if out and lo is not None and out[-1][1] is not None and _shown(d_lo) <= _shown(out[-1][1]):
             # the gap's ends are exact zeros (knots), so the best knot's P&L is >= 0 by construction
             best = max((k for k in knots if prev_hi <= k <= lo), key=lambda k: (pnl(k), -k))
             out[-1][1] = d_hi
