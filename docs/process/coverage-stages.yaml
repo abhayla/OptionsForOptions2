@@ -245,7 +245,8 @@ work_items:
   W-011: S8
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
-  W-073: 4a           # #234 + #221 + ADR-086 item 1 in not-connected answers (Tier A); after W-072
+  W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
+  W-073: 4a         # #234 + #221 + ADR-086 item 1 in not-connected answers (Tier A); after W-072
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
