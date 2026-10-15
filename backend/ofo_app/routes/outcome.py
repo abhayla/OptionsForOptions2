@@ -324,4 +324,5 @@ def strategy_outcome(req: OutcomeRequest,
                      ctx: Optional[MarketContext] = Depends(get_market_context),
                      streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
                      rates: Optional[ChargeRates] = Depends(load_charge_rates)) -> OutcomeResponse:
-    return outcome_response(req, ctx, streaming, rates)
+    # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
+    return outcome_response(req, ctx, streaming, rates if isinstance(rates, ChargeRates) else None)

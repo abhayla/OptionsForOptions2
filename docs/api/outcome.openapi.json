@@ -1,20 +1,69 @@
 {
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OptionsForOptions2 API - outcome",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/strategies/outcome": {
+      "post": {
+        "summary": "Strategy Outcome",
+        "operationId": "strategy_outcome_api_strategies_outcome_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "components": {
     "schemas": {
       "AdvancedLegOut": {
-        "additionalProperties": false,
-        "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read).",
         "properties": {
-          "ask": {
+          "instrument_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id"
+          },
+          "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Ask"
+            "title": "Symbol"
           },
           "bid": {
             "anyOf": [
@@ -27,42 +76,38 @@
             ],
             "title": "Bid"
           },
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
           "health": {
             "anyOf": [
               {
+                "type": "string",
                 "enum": [
                   "available",
                   "stale",
                   "delayed",
                   "unhealthy",
                   "unavailable"
-                ],
-                "type": "string"
+                ]
               },
               {
                 "type": "null"
               }
             ],
             "title": "Health"
-          },
-          "instrument_id": {
-            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
-            "title": "Instrument Id",
-            "type": "string"
-          },
-          "symbol": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Symbol"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "instrument_id",
           "symbol",
@@ -71,15 +116,27 @@
           "health"
         ],
         "title": "AdvancedLegOut",
-        "type": "object"
+        "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read)."
       },
       "CellOut": {
-        "additionalProperties": false,
         "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
           "display": {
             "title": "Display"
           },
           "kind": {
+            "type": "string",
             "enum": [
               "money",
               "points",
@@ -89,19 +146,7 @@
               "quantity",
               "text"
             ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "per_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Per Unit"
+            "title": "Kind"
           },
           "reason": {
             "anyOf": [
@@ -115,11 +160,11 @@
           "side": {
             "anyOf": [
               {
+                "type": "string",
                 "enum": [
                   "Cr",
                   "Dr"
-                ],
-                "type": "string"
+                ]
               },
               {
                 "type": "null"
@@ -127,17 +172,16 @@
             ],
             "title": "Side"
           },
-          "value": {
+          "per_unit": {
             "anyOf": [
               {
                 "type": "string"
               },
-              {},
               {
                 "type": "null"
               }
             ],
-            "title": "Value"
+            "title": "Per Unit"
           },
           "vendor": {
             "anyOf": [
@@ -151,6 +195,8 @@
             "title": "Vendor"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "value",
           "display",
@@ -160,22 +206,20 @@
           "per_unit",
           "vendor"
         ],
-        "title": "CellOut",
-        "type": "object"
+        "title": "CellOut"
       },
       "ColumnOut": {
-        "additionalProperties": false,
         "properties": {
           "id": {
+            "type": "string",
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Id",
-            "type": "string"
+            "title": "Id"
           },
-          "is_scenario_level": {
-            "title": "Is Scenario Level",
-            "type": "boolean"
+          "label": {
+            "title": "Label"
           },
           "kind": {
+            "type": "string",
             "enum": [
               "money",
               "points",
@@ -185,28 +229,30 @@
               "quantity",
               "text"
             ],
-            "title": "Kind",
-            "type": "string"
+            "title": "Kind"
           },
-          "label": {
-            "title": "Label"
+          "is_scenario_level": {
+            "type": "boolean",
+            "title": "Is Scenario Level"
           },
           "markers": {
             "items": {
+              "type": "string",
               "enum": [
                 "CURRENT",
                 "ZERO_PNL"
-              ],
-              "type": "string"
+              ]
             },
-            "title": "Markers",
-            "type": "array"
+            "type": "array",
+            "title": "Markers"
           },
           "visible": {
-            "title": "Visible",
-            "type": "boolean"
+            "type": "boolean",
+            "title": "Visible"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "id",
           "label",
@@ -215,8 +261,7 @@
           "markers",
           "visible"
         ],
-        "title": "ColumnOut",
-        "type": "object"
+        "title": "ColumnOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -224,54 +269,55 @@
             "items": {
               "$ref": "#/components/schemas/ValidationError"
             },
-            "title": "Detail",
-            "type": "array"
+            "type": "array",
+            "title": "Detail"
           }
         },
-        "title": "HTTPValidationError",
-        "type": "object"
+        "type": "object",
+        "title": "HTTPValidationError"
       },
       "LegIn": {
-        "additionalProperties": false,
         "properties": {
+          "instrument_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "examples": [
+              "NSE_FO:44624"
+            ]
+          },
           "action": {
+            "type": "string",
             "enum": [
               "BUY",
               "SELL"
             ],
-            "title": "Action",
-            "type": "string"
-          },
-          "captured_at": {
-            "description": "when the planned entry was captured (ADR-068)",
-            "format": "date-time",
-            "title": "Captured At",
-            "type": "string"
-          },
-          "instrument_id": {
-            "examples": [
-              "NSE_FO:44624"
-            ],
-            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
-            "title": "Instrument Id",
-            "type": "string"
+            "title": "Action"
           },
           "lots": {
-            "exclusiveMinimum": 0.0,
+            "type": "integer",
             "maximum": 10000.0,
-            "title": "Lots",
-            "type": "integer"
+            "exclusiveMinimum": 0.0,
+            "title": "Lots"
           },
           "planned_entry": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,2})?$",
+            "title": "Planned Entry",
             "description": "the planned entry price, a decimal string (never a float)",
             "examples": [
               "104.65"
-            ],
-            "pattern": "^\\d+(\\.\\d{1,2})?$",
-            "title": "Planned Entry",
-            "type": "string"
+            ]
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Captured At",
+            "description": "when the planned entry was captured (ADR-068)"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "instrument_id",
           "action",
@@ -279,136 +325,50 @@
           "planned_entry",
           "captured_at"
         ],
-        "title": "LegIn",
-        "type": "object"
+        "title": "LegIn"
       },
       "LegOut": {
-        "additionalProperties": false,
         "properties": {
+          "instrument_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
           "action": {
+            "type": "string",
             "enum": [
               "BUY",
               "SELL"
             ],
-            "title": "Action",
-            "type": "string"
-          },
-          "captured_at": {
-            "format": "date-time",
-            "title": "Captured At",
-            "type": "string"
-          },
-          "expiry": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expiry"
-          },
-          "health": {
-            "anyOf": [
-              {
-                "enum": [
-                  "available",
-                  "stale",
-                  "delayed",
-                  "unhealthy",
-                  "unavailable"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Health"
+            "title": "Action"
           },
           "instrument": {
             "anyOf": [
               {
+                "type": "string",
                 "enum": [
                   "CE",
                   "PE",
                   "FUT"
-                ],
-                "type": "string"
+                ]
               },
               {
                 "type": "null"
               }
             ],
             "title": "Instrument"
-          },
-          "instrument_id": {
-            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
-            "title": "Instrument Id",
-            "type": "string"
-          },
-          "iv": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iv"
-          },
-          "label": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
-          },
-          "lot_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lot Size"
-          },
-          "lots": {
-            "title": "Lots",
-            "type": "integer"
-          },
-          "ltp": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ltp"
-          },
-          "planned_entry": {
-            "title": "Planned Entry",
-            "type": "string"
-          },
-          "quantity": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quantity"
           },
           "strike": {
             "anyOf": [
@@ -421,19 +381,105 @@
             ],
             "title": "Strike"
           },
-          "symbol": {
+          "expiry": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "lots": {
+            "type": "integer",
+            "title": "Lots"
+          },
+          "lot_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Size"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "planned_entry": {
+            "type": "string",
+            "title": "Planned Entry"
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Captured At"
+          },
+          "ltp": {
+            "anyOf": [
+              {
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Symbol"
+            "title": "Ltp"
+          },
+          "iv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "instrument_id",
           "symbol",
@@ -451,108 +497,244 @@
           "health",
           "label"
         ],
-        "title": "LegOut",
-        "type": "object"
+        "title": "LegOut"
       },
       "LevelOut": {
-        "additionalProperties": false,
         "properties": {
-          "current": {
-            "title": "Current",
-            "type": "boolean"
-          },
           "level": {
-            "title": "Level",
-            "type": "string"
+            "type": "string",
+            "title": "Level"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current"
           },
           "zero_pnl": {
-            "title": "Zero Pnl",
-            "type": "boolean"
+            "type": "boolean",
+            "title": "Zero Pnl"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "level",
           "current",
           "zero_pnl"
         ],
-        "title": "LevelOut",
-        "type": "object"
+        "title": "LevelOut"
       },
       "MarginOut": {
-        "additionalProperties": false,
         "properties": {
+          "state": {
+            "type": "string",
+            "const": "NOT_AVAILABLE_YET",
+            "title": "State"
+          },
           "reason": {
             "title": "Reason"
-          },
-          "state": {
-            "const": "NOT_AVAILABLE_YET",
-            "title": "State",
-            "type": "string"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "state",
           "reason"
         ],
-        "title": "MarginOut",
-        "type": "object"
+        "title": "MarginOut"
       },
       "OutcomeRequest": {
-        "additionalProperties": false,
         "properties": {
-          "fallback": {
-            "default": false,
-            "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
-            "title": "Fallback",
-            "type": "boolean"
+          "underlying": {
+            "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying"
           },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/LegIn"
             },
+            "type": "array",
             "maxItems": 20,
             "minItems": 1,
-            "title": "Legs",
-            "type": "array"
-          },
-          "underlying": {
-            "enum": [
-              "NIFTY",
-              "SENSEX"
-            ],
-            "title": "Underlying",
-            "type": "string"
+            "title": "Legs"
           },
           "ux_level": {
-            "default": "standard",
+            "type": "string",
             "enum": [
               "guided",
               "standard",
               "advanced"
             ],
             "title": "Ux Level",
-            "type": "string"
+            "default": "standard"
           },
           "view": {
-            "default": "at_expiry",
+            "type": "string",
             "enum": [
               "at_expiry",
               "estimated_now"
             ],
             "title": "View",
-            "type": "string"
+            "default": "at_expiry"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback",
+            "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
+            "default": false
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "underlying",
           "legs"
         ],
-        "title": "OutcomeRequest",
-        "type": "object"
+        "title": "OutcomeRequest"
       },
       "OutcomeResponse": {
-        "additionalProperties": false,
         "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "COMPUTED",
+              "NOT_CONNECTED",
+              "REFUSED"
+            ],
+            "title": "State"
+          },
+          "underlying": {
+            "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying"
+          },
+          "ux_level": {
+            "type": "string",
+            "enum": [
+              "guided",
+              "standard",
+              "advanced"
+            ],
+            "title": "Ux Level"
+          },
+          "status_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Label"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "valuation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation"
+          },
+          "spot_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Level"
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/LegOut"
+            },
+            "type": "array",
+            "title": "Legs"
+          },
+          "margin": {
+            "$ref": "#/components/schemas/MarginOut"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TableOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "advanced_details": {
             "anyOf": [
               {
@@ -566,146 +748,10 @@
               }
             ],
             "title": "Advanced Details"
-          },
-          "legs": {
-            "items": {
-              "$ref": "#/components/schemas/LegOut"
-            },
-            "title": "Legs",
-            "type": "array"
-          },
-          "margin": {
-            "$ref": "#/components/schemas/MarginOut"
-          },
-          "output_label": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Output Label"
-          },
-          "payoff": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PayoffOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "scenario": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScenarioOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "spot_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Spot At"
-          },
-          "spot_level": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Spot Level"
-          },
-          "state": {
-            "enum": [
-              "COMPUTED",
-              "NOT_CONNECTED",
-              "REFUSED"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "status_label": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status Label"
-          },
-          "summary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SummaryOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "table": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TableOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "underlying": {
-            "enum": [
-              "NIFTY",
-              "SENSEX"
-            ],
-            "title": "Underlying",
-            "type": "string"
-          },
-          "ux_level": {
-            "enum": [
-              "guided",
-              "standard",
-              "advanced"
-            ],
-            "title": "Ux Level",
-            "type": "string"
-          },
-          "valuation": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valuation"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "state",
           "underlying",
@@ -723,107 +769,111 @@
           "payoff",
           "summary"
         ],
-        "title": "OutcomeResponse",
-        "type": "object"
+        "title": "OutcomeResponse"
       },
       "PayoffOut": {
-        "additionalProperties": false,
         "properties": {
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/PointOut"
-            },
-            "title": "Points",
-            "type": "array"
-          },
           "view": {
+            "type": "string",
             "enum": [
               "at_expiry",
               "estimated_now"
             ],
-            "title": "View",
-            "type": "string"
+            "title": "View"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/PointOut"
+            },
+            "type": "array",
+            "title": "Points"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "view",
           "points"
         ],
-        "title": "PayoffOut",
-        "type": "object"
+        "title": "PayoffOut"
       },
       "PointOut": {
-        "additionalProperties": false,
         "properties": {
           "level": {
-            "title": "Level",
-            "type": "string"
+            "type": "string",
+            "title": "Level"
           },
           "pnl": {
-            "title": "Pnl",
-            "type": "string"
+            "type": "string",
+            "title": "Pnl"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "level",
           "pnl"
         ],
-        "title": "PointOut",
-        "type": "object"
+        "title": "PointOut"
       },
       "RowOut": {
-        "additionalProperties": false,
         "properties": {
+          "row_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Row Id"
+          },
           "cells": {
             "patternProperties": {
               "^[A-Za-z0-9_\\-.]{1,64}$": {
                 "$ref": "#/components/schemas/CellOut"
               }
             },
-            "title": "Cells",
-            "type": "object"
-          },
-          "row_id": {
-            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Row Id",
-            "type": "string"
+            "type": "object",
+            "title": "Cells"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "row_id",
           "cells"
         ],
-        "title": "RowOut",
-        "type": "object"
+        "title": "RowOut"
       },
       "ScenarioOut": {
-        "additionalProperties": false,
         "properties": {
-          "available": {
-            "title": "Available",
-            "type": "boolean"
-          },
-          "end": {
-            "title": "End",
-            "type": "string"
-          },
-          "kind": {
+          "view": {
+            "type": "string",
             "enum": [
-              "exact",
-              "estimate"
+              "at_expiry",
+              "estimated_now"
             ],
-            "title": "Kind",
-            "type": "string"
+            "title": "View"
           },
           "label": {
             "title": "Label"
           },
-          "levels": {
-            "items": {
-              "$ref": "#/components/schemas/LevelOut"
-            },
-            "title": "Levels",
-            "type": "array"
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "estimate"
+            ],
+            "title": "Kind"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           },
           "output_label": {
             "anyOf": [
@@ -834,13 +884,12 @@
             ],
             "title": "Output Label"
           },
-          "start": {
-            "title": "Start",
-            "type": "string"
-          },
-          "step": {
-            "title": "Step",
-            "type": "string"
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelOut"
+            },
+            "type": "array",
+            "title": "Levels"
           },
           "totals": {
             "anyOf": [
@@ -856,24 +905,21 @@
             ],
             "title": "Totals"
           },
-          "unavailable_reason": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unavailable Reason"
+          "step": {
+            "type": "string",
+            "title": "Step"
           },
-          "view": {
-            "enum": [
-              "at_expiry",
-              "estimated_now"
-            ],
-            "title": "View",
-            "type": "string"
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "view",
           "label",
@@ -887,44 +933,18 @@
           "start",
           "end"
         ],
-        "title": "ScenarioOut",
-        "type": "object"
+        "title": "ScenarioOut"
       },
       "SummaryOut": {
-        "additionalProperties": false,
         "properties": {
-          "breakevens": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Breakevens",
-            "type": "array"
+          "what_can_i_lose": {
+            "title": "What Can I Lose"
           },
-          "lower_be": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lower Be"
+          "what_can_i_make": {
+            "title": "What Can I Make"
           },
-          "max_loss": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Loss"
-          },
-          "max_loss_unlimited": {
-            "title": "Max Loss Unlimited",
-            "type": "boolean"
+          "where_do_i_start_losing": {
+            "title": "Where Do I Start Losing"
           },
           "max_profit": {
             "anyOf": [
@@ -937,16 +957,42 @@
             ],
             "title": "Max Profit"
           },
-          "max_profit_unlimited": {
-            "title": "Max Profit Unlimited",
-            "type": "boolean"
+          "max_loss": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss"
           },
-          "risk_boundaries": {
+          "max_profit_unlimited": {
+            "type": "boolean",
+            "title": "Max Profit Unlimited"
+          },
+          "max_loss_unlimited": {
+            "type": "boolean",
+            "title": "Max Loss Unlimited"
+          },
+          "breakevens": {
             "items": {
               "type": "string"
             },
-            "title": "Risk Boundaries",
-            "type": "array"
+            "type": "array",
+            "title": "Breakevens"
+          },
+          "lower_be": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Be"
           },
           "upper_be": {
             "anyOf": [
@@ -959,16 +1005,32 @@
             ],
             "title": "Upper Be"
           },
-          "what_can_i_lose": {
-            "title": "What Can I Lose"
+          "risk_boundaries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Boundaries"
           },
-          "what_can_i_make": {
-            "title": "What Can I Make"
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
           },
-          "where_do_i_start_losing": {
-            "title": "Where Do I Start Losing"
+          "charges_unavailable": {
+            "type": "boolean",
+            "title": "Charges Unavailable",
+            "default": false
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "what_can_i_lose",
           "what_can_i_make",
@@ -982,46 +1044,17 @@
           "upper_be",
           "risk_boundaries"
         ],
-        "title": "SummaryOut",
-        "type": "object"
+        "title": "SummaryOut"
       },
       "TableOut": {
-        "additionalProperties": false,
         "properties": {
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/ColumnOut"
-            },
-            "title": "Columns",
-            "type": "array"
-          },
-          "output_label": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
+          "underlying": {
+            "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
             ],
-            "title": "Output Label"
-          },
-          "rows": {
-            "items": {
-              "$ref": "#/components/schemas/RowOut"
-            },
-            "title": "Rows",
-            "type": "array"
-          },
-          "spot_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Spot At"
+            "title": "Underlying"
           },
           "spot_level": {
             "anyOf": [
@@ -1034,15 +1067,44 @@
             ],
             "title": "Spot Level"
           },
-          "underlying": {
-            "enum": [
-              "NIFTY",
-              "SENSEX"
+          "spot_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Underlying",
-            "type": "string"
+            "title": "Spot At"
+          },
+          "output_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Label"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnOut"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "type": "array",
+            "title": "Rows"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "underlying",
           "spot_level",
@@ -1051,8 +1113,7 @@
           "columns",
           "rows"
         ],
-        "title": "TableOut",
-        "type": "object"
+        "title": "TableOut"
       },
       "ValidationError": {
         "properties": {
@@ -1067,70 +1128,25 @@
                 }
               ]
             },
-            "title": "Location",
-            "type": "array"
+            "type": "array",
+            "title": "Location"
           },
           "msg": {
-            "title": "Message",
-            "type": "string"
+            "type": "string",
+            "title": "Message"
           },
           "type": {
-            "title": "Error Type",
-            "type": "string"
+            "type": "string",
+            "title": "Error Type"
           }
         },
+        "type": "object",
         "required": [
           "loc",
           "msg",
           "type"
         ],
-        "title": "ValidationError",
-        "type": "object"
-      }
-    }
-  },
-  "info": {
-    "title": "OptionsForOptions2 API - outcome",
-    "version": "0.1.0"
-  },
-  "openapi": "3.1.0",
-  "paths": {
-    "/api/strategies/outcome": {
-      "post": {
-        "operationId": "strategy_outcome_api_strategies_outcome_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OutcomeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OutcomeResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Strategy Outcome"
+        "title": "ValidationError"
       }
     }
   }
