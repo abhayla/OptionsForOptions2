@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Final
 
 from ofo.engine import UNLIMITED, strategy_metrics
+from ofo.engine.metrics import LossRegion
 from ofo.engine.legs import require_price
 from ofo.engine.model import ModelInputs
 from ofo.scenario.config import ScenarioConfig
@@ -113,21 +114,25 @@ def _ceil_to(value: Decimal, unit: Decimal) -> Decimal:
     return (value / unit).to_integral_value(rounding=ROUND_CEILING) * unit
 
 
-def _lower_upper(inputs: ModelInputs, breakevens: tuple[Decimal, ...], step: Decimal) -> tuple[Decimal | None, ...]:
-    """Lower/Upper BE summary values (Q213).
+def _lower_upper(
+    loss_regions: tuple[LossRegion, ...], breakevens: tuple[Decimal, ...]
+) -> tuple[Decimal | None, ...]:
+    """Lower/Upper BE summary values (Q213, ADR-089).
 
-    Two or more breakevens: the lowest and the highest. Exactly one: it is the edge of the profit zone, so it is the
-    Lower BE when the payoff is a profit above it (e.g. a long call) and the Upper BE when the profit lies below it
-    (e.g. a short call). None: both missing.
+    Two or more breakevens: the lowest and the highest. Exactly one: the Lower BE when a computed loss region (ADR-072,
+    the engine's ``loss_regions``) ends at it (loss below it), the Upper BE when a loss region starts at it (loss above
+    it). When no loss region touches it, neither label is shown. None: both missing.
     """
     if not breakevens:
         return (None, None)
     if len(breakevens) >= 2:
         return (breakevens[0], breakevens[-1])
     only = breakevens[0]
-    if inputs.strategy.expiry_pnl_at(only + step) > 0:
-        return (only, None)
-    return (None, only)
+    loss_below = any(region[1] == only for region in loss_regions)
+    loss_above = any(region[0] == only for region in loss_regions)
+    if loss_below == loss_above:  # no region touches it, or both sides (cannot say): never a guess
+        return (None, None)
+    return (only, None) if loss_below else (None, only)
 
 
 def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[Decimal, Decimal]:
@@ -209,7 +214,7 @@ def build_level_set(
             kinds.setdefault(be, set()).add(ColumnKind.ZERO_PNL)
     # Decimal("23000") and Decimal("23000.00") are equal and hash alike, so an equal level never adds a column.
     columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
-    lower_be, upper_be = _lower_upper(inputs, metrics.breakevens, step)
+    lower_be, upper_be = _lower_upper(metrics.loss_regions, metrics.breakevens)
     return LevelSet(
         index=config.index,
         current=spot,
