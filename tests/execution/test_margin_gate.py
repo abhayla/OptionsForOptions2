@@ -83,6 +83,9 @@ def test_ac1_sub_paisa_amounts_never_round_in_the_users_favour() -> None:
     assert verdict.allowed is False
     assert verdict.message is not None
     assert "needs ₹100.01 of margin; ₹100.00 is available" in verdict.message.what_happened
+    short = check_margin(Decimal("100.009"), Decimal("100.01"))
+    assert short.allowed is False and short.message is not None
+    assert "needs ₹100.01 of margin; ₹100.00 is available" in short.message.what_happened
 
 
 @pytest.mark.parametrize("bad", [68498.85, "68498.85", 68498, True, Decimal("NaN"), Decimal("Infinity"),

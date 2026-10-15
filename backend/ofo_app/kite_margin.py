@@ -1,0 +1,202 @@
+"""Zerodha's margin figures over HTTP for the owner's own connection (W-081, REQ-055 AC-1, ADR-016, ADR-054).
+
+``GET /user/margins`` gives the funds (``equity.net``); ``POST /margins/basket?consider_positions=true`` gives the
+margin the planned orders need (request shape recorded 2026-10-15 in
+docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json). Neither call sends an order.
+
+The transport is injected (tests replay the recorded reply files; no network in tests). The access token travels only
+in the Authorization header and is never logged or put in an exception: an error carries a code and nothing else.
+Fail closed: a non-200 status, a transport error, a body that is not JSON, a reply that is not ``status: success``, or a
+missing or non-numeric figure raises `KiteMarginError`, and `margin_verdict` turns that into a blocked verdict.
+Replies are parsed with ``parse_float=Decimal``, so no money touches a float (ADR-008).
+
+Codes: kite_margin_token (403 / TokenException) · kite_margin_busy (429) · kite_margin_refused (other 4xx) ·
+kite_margin_unavailable (5xx, network, junk body) · kite_margin_no_figure (success reply without a usable figure).
+"""
+from __future__ import annotations
+
+import json
+import logging
+import urllib.error
+import urllib.request
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Final
+
+from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
+
+log = logging.getLogger("ofo_app.kite_margin")
+KITE_API_URL: Final = "https://api.kite.trade"
+FUNDS_PATH: Final = "/user/margins"
+BASKET_PATH: Final = "/margins/basket?consider_positions=true"
+#: (method, url, headers, body or None) -> (HTTP status, response text)
+Transport = Callable[[str, str, dict[str, str], str | None], tuple[int, str]]
+
+_SIDES: Final = frozenset({"BUY", "SELL"})
+_PRODUCTS: Final = frozenset({"NRML", "MIS"})
+_ORDER_TYPES: Final = frozenset({"LIMIT", "MARKET"})
+
+
+class KiteMarginError(Exception):
+    """A margin read failed. Carries only a code; never the token, a header, a URL or the response body."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class BasketOrder:
+    """One planned order as Zerodha's basket-margin call takes it (a closed shape: nothing else is sent)."""
+
+    exchange: str
+    tradingsymbol: str
+    transaction_type: str
+    product: str
+    order_type: str
+    quantity: int
+    price: Decimal
+    variety: str = "regular"
+
+    def __post_init__(self) -> None:
+        if self.transaction_type not in _SIDES:
+            raise ValueError(f"transaction_type must be one of {sorted(_SIDES)}")
+        if self.product not in _PRODUCTS:
+            raise ValueError(f"product must be one of {sorted(_PRODUCTS)}")
+        if self.order_type not in _ORDER_TYPES:
+            raise ValueError(f"order_type must be one of {sorted(_ORDER_TYPES)}")
+        if self.exchange != "NFO" or self.variety != "regular":
+            raise ValueError("only regular NFO orders are checked")
+        if not isinstance(self.tradingsymbol, str) or not self.tradingsymbol.isalnum():
+            raise ValueError("tradingsymbol must be a plain symbol")
+        if type(self.quantity) is not int or self.quantity <= 0:
+            raise ValueError("quantity must be a positive int")
+        if type(self.price) is not Decimal or not self.price.is_finite() or self.price < 0:
+            raise ValueError("price must be a finite Decimal of 0 or more")
+
+    def as_json(self) -> str:
+        """The order as a JSON object; the price is written as a JSON number from its Decimal text, never via float."""
+        head = json.dumps({"exchange": self.exchange, "tradingsymbol": self.tradingsymbol,
+                           "transaction_type": self.transaction_type, "variety": self.variety,
+                           "product": self.product, "order_type": self.order_type, "quantity": self.quantity})
+        return f'{head[:-1]}, "price": {self.price:f}}}'
+
+
+@dataclass(frozen=True)
+class OrderMargin:
+    tradingsymbol: str
+    total: Decimal
+
+
+@dataclass(frozen=True)
+class BasketMargin:
+    """Zerodha's answer for a basket: `final_total` is the required margin (after the hedge benefit)."""
+
+    final_total: Decimal
+    initial_total: Decimal
+    orders: tuple[OrderMargin, ...]
+
+
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, str]:
+    request = urllib.request.Request(url, data=None if body is None else body.encode("utf-8"), headers=headers,
+                                     method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - fixed https host
+            return response.status, response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, exc.read().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return exc.code, ""
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise KiteMarginError("kite_margin_unavailable") from None
+
+
+def _money(value: object) -> Decimal:
+    if type(value) is not Decimal and type(value) is not int:
+        raise KiteMarginError("kite_margin_no_figure")
+    amount = Decimal(value)
+    if not amount.is_finite():
+        raise KiteMarginError("kite_margin_no_figure")
+    return amount
+
+
+class KiteMargin:
+    def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
+                 base_url: str = KITE_API_URL) -> None:
+        self._headers = {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}  # never logged
+        self._transport = transport
+        self._base = base_url
+
+    def __repr__(self) -> str:
+        return "KiteMargin()"
+
+    def _data(self, method: str, path: str, body: str | None, extra: dict[str, str] | None = None) -> Mapping[str, object]:
+        headers = {**self._headers, **(extra or {})}
+        try:
+            status, text = self._transport(method, self._base + path, headers, body)
+        except (OSError, TimeoutError):
+            raise KiteMarginError("kite_margin_unavailable") from None
+        if status != 200:
+            log.warning("kite margin HTTP status %s", status)
+            error_type = _error_type(text)
+            if status == 403 or error_type == "TokenException":
+                raise KiteMarginError("kite_margin_token")
+            if status == 429:
+                raise KiteMarginError("kite_margin_busy")
+            raise KiteMarginError("kite_margin_unavailable" if status >= 500 else "kite_margin_refused")
+        try:
+            reply = json.loads(text, parse_float=Decimal)
+        except ValueError:
+            raise KiteMarginError("kite_margin_unavailable") from None
+        data = reply.get("data") if isinstance(reply, dict) else None
+        if not isinstance(reply, dict) or reply.get("status") != "success" or not isinstance(data, dict):
+            raise KiteMarginError("kite_margin_no_figure")
+        return data
+
+    def fetch_available_funds(self) -> Decimal:
+        """``GET /user/margins``: ``equity.net``, Zerodha's available funds, as an exact Decimal."""
+        equity = self._data("GET", FUNDS_PATH, None).get("equity")
+        if not isinstance(equity, dict):
+            raise KiteMarginError("kite_margin_no_figure")
+        return _money(equity.get("net"))
+
+    def fetch_basket_margin(self, orders: Sequence[BasketOrder]) -> BasketMargin:
+        """``POST /margins/basket?consider_positions=true`` for the planned orders."""
+        if not orders or any(type(o) is not BasketOrder for o in orders):
+            raise ValueError("fetch_basket_margin needs one or more BasketOrder")
+        body = "[" + ", ".join(o.as_json() for o in orders) + "]"
+        data = self._data("POST", BASKET_PATH, body, {"Content-Type": "application/json"})
+        try:
+            final_total = required_from_basket_reply(data)
+        except MarginReplyError:
+            raise KiteMarginError("kite_margin_no_figure") from None
+        initial = data.get("initial")
+        rows = data.get("orders")
+        if not isinstance(initial, dict) or not isinstance(rows, list):
+            raise KiteMarginError("kite_margin_no_figure")
+        per_order = tuple(OrderMargin(str(r.get("tradingsymbol")), _money(r.get("total")))
+                          for r in rows if isinstance(r, dict))
+        if len(per_order) != len(rows):
+            raise KiteMarginError("kite_margin_no_figure")
+        return BasketMargin(final_total, _money(initial.get("total")), per_order)
+
+
+def _error_type(text: str) -> str | None:
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return None
+    return body.get("error_type") if isinstance(body, dict) else None
+
+
+def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginVerdict:
+    """The check the basket builder runs: both figures from Zerodha, then the domain gate. Any failure to read either
+    figure blocks (the gate's "could not confirm" message); nothing is retried. Funds below zero count as zero."""
+    try:
+        available: Decimal | None = max(client.fetch_available_funds(), Decimal(0))
+        required: Decimal | None = client.fetch_basket_margin(orders).final_total
+    except KiteMarginError:
+        available = required = None
+    return check_margin(available, required)
