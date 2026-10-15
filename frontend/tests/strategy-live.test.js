@@ -369,3 +369,51 @@ describe('W-073: draft URL with un-normalized values, and a leg edit while the s
     w.unmount()
   })
 })
+
+describe('W-073 round 2: the draft link is canonicalized once at the page boundary or refused', () => {
+  const link = (over) => ({ underlying: 'NIFTY', legs: real.legs.map((l, i) => ({ instrument_id: l.instrument_id, action: l.action,
+    lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at, ...(i === 0 ? over : {}) })) })
+  async function openLink(d) {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.all = []
+    apiCalls.length = 0
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(d) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+
+  it.each([['2.0'], ['+2'], [true], [' 2']])('lots %j: the link is refused with the four-part error, no request, no socket', async (lots) => {
+    apiAnswer = COMPUTED
+    const w = await openLink(link({ lots }))
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('error')
+    const err = w.find('[data-testid="state-error"]').text()
+    expect(err).toContain('Some of the values sent with this request are missing or not in the expected form.')
+    expect(err).toContain('Check the values you entered and try again.')
+    expect(apiCalls.length).toBe(0)
+    expect(FakeSocket.all.length).toBe(0)
+    w.unmount()
+  })
+
+  it('lots "02" and entry "0" + 42.70 style: accepted, sent as 2 / "42.70" on REST and the socket, pushes applied', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openLink(link({ lots: '02', planned_entry: `0${real.legs[0].planned_entry}` }))
+    const sentLeg = apiCalls[0].body.legs[0]
+    expect(sentLeg.lots).toBe(2)
+    expect(sentLeg.planned_entry).toBe(real.legs[0].planned_entry)
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    expect(JSON.parse(ws.sent[0]).legs[0]).toMatchObject({ lots: 2, planned_entry: real.legs[0].planned_entry })
+    ws.serverPush({ ...COMPUTED, legs: COMPUTED.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) })
+    await flushPromises()
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('computed')
+    w.unmount()
+  })
+})
+

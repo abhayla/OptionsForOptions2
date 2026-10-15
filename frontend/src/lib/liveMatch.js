@@ -1,5 +1,5 @@
 // Live-push matching (W-073; REQ-035 AC-4, ADR-008, #234 item 1). Pure string functions; no number is ever parsed.
-// The server normalizes what it echoes (lots as an int, a planned entry as a two-decimal Money string), so a draft URL
+// The server normalizes what it echoes (lots as an int, a planned entry as format(Decimal, 'f') text), so a draft URL
 // holding lots "2" or entry "042.70" must still match the echoed legs 2 / "42.70". Anything unparseable is null and
 // never matches (fail closed: the page keeps its own REST state).
 
@@ -37,7 +37,7 @@ export function matchesLegs(body, draft) {
   if (!draft || !Array.isArray(got) || got.length !== draft.legs.length) return false
   return draft.legs.every((l, i) => {
     const g = got[i]
-    if (!g) return false
+    if (!g || typeof l.instrument_id !== 'string' || !l.instrument_id || typeof g.instrument_id !== 'string') return false
     const lots = canonicalLots(l.lots)
     const entry = canonicalMoney(l.planned_entry)
     if (lots === null || entry === null) return false

@@ -26,6 +26,11 @@ describe('AC-4: live push matcher (core)', () => {
     expect(matchesLegs({ legs: [] }, urlDraft())).toBe(false)
     expect(matchesLegs(echoed(), null)).toBe(false)
   })
+  it('an instrument id must be a non-empty string on both sides (undefined never matches undefined)', () => {
+    expect(matchesLegs({ legs: [{ lots: 2, planned_entry: '42.70', action: 'SELL' }] }, urlDraft({ instrument_id: undefined, action: 'SELL' }))).toBe(false)
+    expect(matchesLegs(echoed({ instrument_id: undefined }), urlDraft())).toBe(false)
+    expect(matchesLegs(echoed({ instrument_id: '' }), urlDraft({ instrument_id: '' }))).toBe(false)
+  })
   it('fails closed on an unparseable lots or entry in the URL', () => {
     for (const bad of [{ lots: 'two' }, { lots: '0' }, { lots: '2.5' }, { lots: '' }, { lots: null }, { planned_entry: 'abc' },
       { planned_entry: '42.705' }, { planned_entry: '' }, { planned_entry: null }, { planned_entry: 42.7 }]) {
@@ -55,6 +60,7 @@ describe('canonicalizers', () => {
   it('the matcher source never parses a number', () => {
     const src = readFileSync(resolve(__dirname, '../src/lib/liveMatch.js'), 'utf8').replace(/\/\/.*$/gm, '')
     expect(src).not.toMatch(/parseFloat|Number\(|parseInt|Math\./)
+    expect(src).not.toMatch(/[=(,:?]\s*\+\s*[A-Za-z_(]|\*\s*1|1\s*\*/) // no unary plus on a value, no *1
   })
 })
 

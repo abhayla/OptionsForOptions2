@@ -63,3 +63,16 @@ def test_not_connected_with_no_snapshot_has_no_catalogue_to_ask_so_every_contrac
     d, _snap = _setup()
     out = not_connected(d)
     assert _names(out) == [(None, None, None, None)] * len(d.legs)
+
+
+def test_each_leg_keeps_its_own_contract_when_the_snapshot_is_built_in_another_order():
+    """MAJOR 2 (W-073 round 2): the lookup is by instrument id, never by position."""
+    d, snap = _setup()
+    reversed_snap = dataclasses.replace(snap, legs=dict(reversed(list(snap.legs.items()))))
+    assert list(reversed_snap.legs) != list(snap.legs)
+    computed = build_outcome(d, snap)
+    for out in (not_live(d, reversed_snap), build_outcome(d, dataclasses.replace(
+            reversed_snap, status=dataclasses.replace(reversed_snap.status, session_ended=True)))):
+        assert [leg.instrument_id for leg in out.legs] == [p.instrument_id for p in d.legs]
+        assert _names(out) == _names(computed)
+    assert len({n[0] for n in _names(not_live(d, reversed_snap))}) == len(d.legs)  # four different symbols
