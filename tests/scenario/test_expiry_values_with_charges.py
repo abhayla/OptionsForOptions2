@@ -69,3 +69,16 @@ def test_guard_estimated_now_is_not_changed_by_rates(golden, settings):
 def test_guard_leg_rows_stay_the_legs_own_pnl(golden, settings):
     plain, v = values(golden, settings, rates=None), values(golden, settings)
     assert plain.leg_rows == v.leg_rows
+
+
+def test_guard_a_futures_leg_has_no_rate_and_scenario_values_refuses_instead_of_guessing(settings):
+    import pytest
+    from ofo.charges.round_trip import ChargesNotComputable
+    from ofo.engine.legs import Action, Instrument
+    from scenario_fixtures import nifty_input, nifty_leg
+    fut = nifty_input([nifty_leg(Action.BUY, Instrument.FUT, None, "23000"),
+                       nifty_leg(Action.SELL, Instrument.CE, "23400", "91.50", "78.00", "0.093349")])
+    ls = build_level_set(fut, settings.for_index("NIFTY"))
+    with pytest.raises(ChargesNotComputable):
+        scenario_values(ls, fut, View.AT_EXPIRY, rates=RATES)
+    assert scenario_values(ls, fut, View.AT_EXPIRY).charges is None  # without rates it still computes

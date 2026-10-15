@@ -33,7 +33,10 @@ from ofo_app.errors import ClosedRoute
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger(__name__)
 
-_RATES_TTL, _RATES_RETRY = 300.0, 30.0  # seconds a loaded set / a failed load is reused (the live push asks every second)
+# A loaded rate set is reused for 300 s (rates change by a dated admin row, so a few minutes of lag is harmless and the
+# live push asks every second); a FAILED load (no database, no table, no complete set) is remembered as "no rates" for
+# 30 s and then retried, so a database outage costs one attempt per 30 s, not one per push.
+_RATES_TTL, _RATES_RETRY = 300.0, 30.0
 _rates_cache: dict = {"until": 0.0, "value": None}
 
 

@@ -22,6 +22,17 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+
+@pytest.fixture(autouse=True)
+def _no_charge_rates_by_default(monkeypatch):
+    """W-075: the outcome route and the live push load the charge rates in force from the database, cached in
+    ``ofo_app.routes.outcome._rates_cache``. Tests that do not care get a cached "no rate set" (never a connection
+    attempt, never a wall-clock wait); the wiring tests seed the cache with a rate set instead."""
+    import math
+
+    from ofo_app.routes import outcome
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": None})
+
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.
 os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")

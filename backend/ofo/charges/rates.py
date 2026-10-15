@@ -24,8 +24,9 @@ SEGMENTS = ("NSE_FO", "BSE_FO")
 #: GST (18%) is a fraction below 1. Brokerage is rupees and has no fraction cap. The DB CHECK carries the same caps.
 FRACTION_CAP = Decimal("0.01")
 GST_CAP = Decimal("1")
-#: Tighter per-component caps (W-074 verifier MINOR D1): about 3x the real rate, so a percentage typed as a number
-#: (0.003 for stamp's 0.003%, 0.0001 for SEBI) is refused although it is under the 1% cap. The DB CHECK
+#: Tighter per-component caps (W-074 verifier MINOR D1): stamp's cap is about 3.3x its real rate (0.00003), SEBI's is
+#: 10x its real rate (0.000001), so a percentage typed as a number (0.003 for stamp's 0.003%, 0.0001 for SEBI) is
+#: refused although it is under the 1% cap. The DB CHECK
 #: ``charge_rates_unit_caps`` (migration 0014) carries the same numbers.
 STAMP_CAP = Decimal("0.0001")  # real 0.00003
 SEBI_CAP = Decimal("0.00001")  # real 0.000001

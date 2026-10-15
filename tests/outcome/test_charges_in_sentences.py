@@ -201,3 +201,33 @@ def test_guard_charges_that_wipe_out_the_profit_read_cannot_make_money(replayed)
                        source_url="https://zerodha.com/charges")
     _, out = outcome_of(replayed, huge)
     assert out.summary.what_can_i_make == "This strategy cannot make money at expiry."
+
+
+# --- round 2: a leg the rate table cannot price falls back to ADR-071's phrase and never shows zero charges ----------
+
+def _assert_old_phrase_and_flag(out):
+    s = out.summary
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    assert s.charges is None and s.charges_unavailable  # mutant `charges = Decimal(0)` -> charges == 0, flag False: red
+    assert s.what_can_i_lose == "At most ₹8,245.25 at expiry, before charges and taxes."
+    assert s.what_can_i_make == "At most ₹4,754.75 at expiry, before charges and taxes."
+    assert "about ₹" not in s.what_can_i_lose + s.what_can_i_make
+    assert out.scenario.charges is None  # the expiry values are the plain ones: scenario_values got no rates
+
+
+def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatch):
+    import ofo.charges.round_trip as rt
+    monkeypatch.delitem(rt.SEGMENT_BY_UNDERLYING, "NIFTY")
+    _, out = outcome_of(replayed, RATES)
+    _assert_old_phrase_and_flag(out)
+
+
+def test_guard_a_zero_planned_price_leg_falls_back(replayed):
+    d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, D("0") if n == 1 else replayed.book.get(i, VALUATION).ltp,
+                                                     VALUATION) for n, (i, a) in enumerate(REPLAY_CONDOR)))
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    out = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES)
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    assert out.summary.charges is None and out.summary.charges_unavailable
+    assert "about ₹" not in out.summary.what_can_i_lose + out.summary.what_can_i_make
+    assert out.scenario.charges is None
