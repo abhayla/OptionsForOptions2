@@ -78,7 +78,8 @@ from ofo.instruments.catalogue import (
     is_revision,
 )
 from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, ListedContract
-from ofo.instruments.parser import ParsedInstruments, parse_instruments_rows, zerodha_segment
+from ofo.instruments.parser import (
+    ParsedInstruments, parse_instruments_rows, zerodha_index_row, zerodha_segment)
 from ofo_app import audit_store
 
 #: Fixed key for the update lock (any constant; only the catalogue store uses it).
@@ -253,6 +254,17 @@ def check_storable(row: ListedContract | Contract) -> None:
         _check_int(ref.freeze_limit, f"{ref.broker} freeze_limit", where, optional=True)
 
 
+def _domain_takes(row: dict) -> bool:
+    """True for exactly the rows the domain parser accepts: NFO/BFO rows and the NIFTY 50 / SENSEX index rows (an
+    allow-list through the parser's own accept tests, so the two can never drift apart)."""
+    if zerodha_segment(row.get("exchange") or "") is not None:
+        return True
+    try:
+        return zerodha_index_row(row) is not None
+    except (KeyError, AttributeError):
+        return False
+
+
 def parse_rows_naming_the_row(stream: TextIO) -> ParsedInstruments:
     """Parse a Zerodha instrument CSV like ``ofo.instruments.parser``; rows outside V1 are skipped and counted, and a V1
     row that cannot be parsed stops the load with an error naming its line and symbol."""
@@ -260,7 +272,7 @@ def parse_rows_naming_the_row(stream: TextIO) -> ParsedInstruments:
     skipped = 0
     reader = csv.DictReader(stream)
     for row in reader:
-        if zerodha_segment(row.get("exchange") or "") is None and "exchange" in row:
+        if "exchange" in row and not _domain_takes(row):
             skipped += 1
             continue
         try:
