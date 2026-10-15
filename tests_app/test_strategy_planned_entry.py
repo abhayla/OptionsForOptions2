@@ -206,7 +206,11 @@ async def test_ac5_a_draft_saved_without_entries_loads_without_them_and_is_never
                 assert saved.status_code == 201, saved.text
                 strategy_id = saved.json()["id"]
                 got = (await ac.get(f"/strategies/{strategy_id}")).json()["definition"]
-                assert all(set(leg) == set(sf.LEG_KEYS) for leg in got["legs"])
+                # the stored form carries exactly LEG_KEYS (REQ-038 AC-5: nothing live or derived is saved); the response
+                # adds only the two token fields read from the catalogue (W-071), so any other extra key still fails
+                stored_doc = sf.to_document((await store.load(conn, user, strategy_id)).saved)
+                assert all(set(leg) == set(sf.LEG_KEYS) for leg in stored_doc["legs"])
+                assert all(set(leg) == set(sf.LEG_KEYS) | {"exchange_segment", "exchange_token"} for leg in got["legs"])
                 mixed = await ac.put(f"/strategies/{strategy_id}",
                                      json=_body(ids, entries=("44.90", None, "79.05", None), expected_revision=1))
                 assert mixed.status_code == 200, mixed.text
