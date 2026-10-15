@@ -149,3 +149,40 @@ def test_a_close_exit_keeps_its_positions_product_through_the_sink(catalogue) ->
                   product=Product.MIS)
     (request,) = _sink(book, catalogue, choice="close").resolve_all((_tagged(order),))
     assert request.product is Product.MIS
+
+
+# -- round 2: a single held row is checked against the ledger's product too ---------------------------------------
+
+def _one_short_row(rows_for_short):  # noqa: ANN001, ANN202
+    book, broker = _state((LOT, LOT, LOT, 0), LOT)
+    base = next(p for p in broker.positions if p.contract == SHORT)
+    rows = [p for p in broker.positions if p.contract != SHORT] + [
+        dataclasses.replace(base, net_quantity=q, product=prod) for q, prod in rows_for_short]
+    return book, FakeBroker(rows, broker.order_statuses)
+
+
+def test_round2_flat_nrml_row_and_an_unrelated_mis_row_is_refused_not_exited(catalogue, eligibility) -> None:  # noqa: ANN001
+    """Probe: the strategy's fill is NRML; the user exited it in Kite (NRML row 0) and holds an unrelated MIS -65 on the
+    same contract. The platform must not close that MIS position as the strategy's exit."""
+    book, broker = _one_short_row([(0, Product.NRML), (-LOT, Product.MIS)])
+    a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
+    assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
+    assert any(SHORT in m and "more than one product" in m for m in a.mismatches)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    assert not prep.ready and prep.orders == ()
+
+
+def test_round2_a_single_row_in_another_product_than_the_fills_is_refused() -> None:
+    """A possible Kite MIS->NRML conversion: not guessed; the owner decides conversions later."""
+    book, broker = _one_short_row([(-LOT, Product.MIS)])
+    a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
+    assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
+    assert any(SHORT in m and "more than one product" in m for m in a.mismatches)
+
+
+def test_round2_all_zero_rows_outside_the_plan_are_listed_once() -> None:
+    book, broker = _state((LOT, LOT, LOT, 0), LOT)
+    stray = BrokerPositionLine("NIFTY26O06" + "99999CE", 0, D("1.00"), product=Product.NRML)
+    rows = broker.positions + [stray, dataclasses.replace(stray, product=Product.MIS)]
+    a = assess(big_plan(LOT), rows, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
+    assert sum("99999CE" in m for m in a.mismatches) == 1

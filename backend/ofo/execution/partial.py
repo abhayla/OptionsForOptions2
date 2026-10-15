@@ -291,13 +291,23 @@ def _strategy_position_lines(
     own_orders = book.views_for(plan.strategy_id)
     for contract, group in rows.items():
         held = [r for r in group if r.net_quantity]
-        if len(held) <= 1:
-            out.extend(held or group)
+        if not held:
+            out.append(group[0])  # flat in every product: one line, so "outside plan" is not listed twice
             continue
         products = {v.order.product for v in own_orders if v.contract == contract and v.filled_quantity > 0}
-        mine = [r for r in held if len(products) == 1 and r.product in products]
-        if len(mine) == 1:
-            out.append(mine[0])
+        if len(products) == 1:
+            # Only the row in the product the strategy's fills name is ever used. A flat or missing row there while
+            # another product is held, or one held row in a different product (a possible MIS->NRML conversion,
+            # the owner decides those later), is refused, never a fallback to the other product's row.
+            mine = [r for r in held if r.product in products]
+            if len(mine) == 1:
+                out.append(mine[0])
+                continue
+            if len(held) == 1 and held[0].product is None:  # product unread: the exit gate blocks it
+                out.append(held[0])
+                continue
+        elif len(held) == 1:  # the fills name no product (or several) but only one row is held: as before
+            out.append(held[0])
             continue
         ambiguous.append(contract)
         out.append(dataclasses.replace(held[0], net_quantity=sum(r.net_quantity for r in held), product=None))
