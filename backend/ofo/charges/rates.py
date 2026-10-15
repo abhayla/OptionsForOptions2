@@ -50,8 +50,9 @@ class ChargeRates:
 
     def __post_init__(self) -> None:
         _rate("brokerage_per_order", self.brokerage_per_order)
-        for name in ("stt_sell_rate", "stt_exercise_rate", "sebi_rate", "stamp_buy_rate"):
-            _rate(name, getattr(self, name), FRACTION_CAP)
+        for name, value in (("stt_sell_rate", self.stt_sell_rate), ("stt_exercise_rate", self.stt_exercise_rate),
+                            ("sebi_rate", self.sebi_rate), ("stamp_buy_rate", self.stamp_buy_rate)):
+            _rate(name, value, FRACTION_CAP)
         _rate("gst_rate", self.gst_rate, GST_CAP)
         if not isinstance(self.transaction_rates, Mapping) or set(self.transaction_rates) != set(SEGMENTS):
             raise ValueError(f"transaction_rates must have exactly the segments {SEGMENTS}")
