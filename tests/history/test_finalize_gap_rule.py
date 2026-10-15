@@ -26,7 +26,7 @@ def recorded_store():
         holder["rec"].attach(fan, ids)
 
     _, _, last = replay_window(W, wire)
-    holder["rec"].flush(last + datetime.timedelta(minutes=1))
+    holder["rec"].flush(last + datetime.timedelta(minutes=1), wait_s=30)
     return store
 
 

@@ -10,7 +10,7 @@ Database tests run as the application role in a rolled-back transaction; CI requ
 is where the mutation below is proven:
 
 Mutation (CI only; no PostgreSQL on the laptop): drop `broker_segment = 'INDICES'` from the lot_size CHECK in
-0006_index_segments.py -> test_a_zero_lot_option_row_is_still_refused goes red, because a lot-0 option row would then
+0006_index_segments.py -> test_a_zero_lot_or_tick_option_row_is_refused_by_the_lot_and_tick_checks goes red, because a lot-0 option row would then
 store; drop `lot_size = 0` from it -> test_index_rows_are_stored_and_read_back goes red.
 """
 

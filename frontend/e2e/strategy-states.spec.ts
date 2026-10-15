@@ -117,19 +117,32 @@ test('/broker/connected confirms the connection and links to the Strategy Builde
   await expect(page.getByTestId('strategy-builder')).toBeVisible()
 })
 
-test('/broker/refused shows the catalogue message the callback refused with (#159)', async ({ page }, info) => {
+test('/broker/refused?code= shows the catalogue message fetched for a refused login (#163)', async ({ page }, info) => {
   const msg = {
-    what_happened: 'Zerodha did not accept this login.',
+    what_happened: 'Zerodha did not complete this login.',
     impact: 'No Zerodha connection was made.',
     what_is_blocked: 'Anything that needs your Zerodha account.',
     next_action: 'Start the Zerodha login again.',
   }
-  await page.addInitScript((m) => window.sessionStorage.setItem('ofo.lastError', JSON.stringify(m)), msg)
-  await page.goto('/broker/refused')
+  let asked = ''
+  await page.route('**/api/broker/refusals/*', (route) => {
+    asked = route.request().url()
+    return route.fulfill({ status: 200, json: { code: 'broker_login_not_completed', message: msg } })
+  })
+  // The URL the callback redirects to when the user cancels at Zerodha: the closed code, nothing else.
+  await page.goto('/broker/refused?code=broker_login_not_completed')
   await expect(page.getByTestId('error-what')).toHaveText(msg.what_happened)
   await expect(page.getByTestId('error-impact')).toHaveText(msg.impact)
   await expect(page.getByTestId('error-blocked')).toHaveText(msg.what_is_blocked)
   await expect(page.getByTestId('error-next')).toHaveText(msg.next_action)
-  expect(await page.getByTestId('broker-refused').innerText()).not.toMatch(BANNED)
+  expect(asked).toContain('/api/broker/refusals/broker_login_not_completed')
+  const shown = await page.getByTestId('broker-refused').innerText()
+  expect(shown).not.toMatch(BANNED)
+  expect(shown).not.toContain('broker_login_not_completed')
   await page.screenshot({ path: `screenshots/broker-refused-${info.project.name}.png`, fullPage: true })
+})
+
+test('/broker/refused with no code shows the neutral message (#163)', async ({ page }) => {
+  await page.goto('/broker/refused')
+  await expect(page.getByTestId('error-what')).toHaveText('The Zerodha login was not completed.')
 })

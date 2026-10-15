@@ -1,79 +1,89 @@
 {
-  "id": "brief-rule-from-memory",
-  "scope": "generic",
-  "class": "Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it.",
-  "mechanism": "The brief states the rule as settled; the builder has no reason to doubt it; the spec's actual words (or the owner-reviewed source) say something else.",
-  "first_seen": {
-    "date": "2026-09-29",
-    "where": "night build, orchestrator briefs for W-001, W-015, W-014, W-004",
-    "evidence": "W-001 brief: 'UNLIMITED when the tail slope is non-zero in that direction' (wrong: an index can't go below 0; builder flagged it). W-015 brief invented a key-name secret guard no AC defines (two failed rounds). W-014 brief rule (b) entry-price worst case blocked hedged partial exits (builder flagged it). W-004 brief: header 'NIFTY at expiry | You make/lose' on every Guided column, while the owner-reviewed T1 table uses it as a pair of headings (verifier failed AC-7; item parked). Also caught before harm: 'Near adjustment' instead of ADR-010's 'Adjustment opportunity'."
+ "id": "brief-rule-from-memory",
+ "scope": "generic",
+ "class": "Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it.",
+ "mechanism": "The brief states the rule as settled; the builder has no reason to doubt it; the spec's actual words (or the owner-reviewed source) say something else.",
+ "first_seen": {
+  "date": "2026-09-29",
+  "where": "night build, orchestrator briefs for W-001, W-015, W-014, W-004",
+  "evidence": "W-001 brief: 'UNLIMITED when the tail slope is non-zero in that direction' (wrong: an index can't go below 0; builder flagged it). W-015 brief invented a key-name secret guard no AC defines (two failed rounds). W-014 brief rule (b) entry-price worst case blocked hedged partial exits (builder flagged it). W-004 brief: header 'NIFTY at expiry | You make/lose' on every Guided column, while the owner-reviewed T1 table uses it as a pair of headings (verifier failed AC-7; item parked). Also caught before harm: 'Near adjustment' instead of ADR-010's 'Adjustment opportunity'."
+ },
+ "occurrences": [
+  {
+   "date": "2026-09-29",
+   "where": "W-001 tail rule",
+   "evidence": "builder report"
   },
-  "occurrences": [
-    {
-      "date": "2026-09-29",
-      "where": "W-001 tail rule",
-      "evidence": "builder report"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-015 secret guard",
-      "evidence": "independent review: no AC defines it"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-014 rule (b)",
-      "evidence": "builder measurement -14,170 -> -19,825 on a hedged close"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-004 Guided header",
-      "evidence": "verifier: 24 columns, 1 distinct header"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-004 health label",
-      "evidence": "'Near adjustment' vs ADR-010 'Adjustment opportunity', corrected before the build"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-013 and W-020 core lines",
-      "evidence": "brief said a 'max loss 5,000' rule fires on the golden Iron Condor; at the golden LTPs the condor is +1,365 in profit, so no max-loss rule can fire (W-020 builder flagged it and built a separate loss scenario, hand-computed -3,450.00)"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-020 fix-round brief (AC-3)",
-      "evidence": "brief said 'refuse the call if there is no active version'; ADR-009 Q17 / REQ-041 entry conditions and ADR-019 Q202 'entry triggered' fire before any execution, so the refusal dropped a spec-required record; builder applied it, orchestrator caught it on reading the side-effect note and reversed it (7717c98)"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-025 builder brief default (a)",
-      "evidence": "brief said 'include the exact current level as the first value, then 100-point multiples away from it'; built as offsets from an unaligned level, so SENSEX 81,422 gave 81,322 (not a strike) and the REQ-026 note 'every value is a real strike' became false; verifier failed AC-5"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-021 fix brief (account-wide coverage)",
-      "evidence": "brief named only AFTER_EXECUTION and ORDER_EVENT for account-wide coverage; the PERIODIC trigger still compared active ids only, so a Monitoring Paused holder of a shared contract caused a false block and a corrupting adopt (verifier W-021e)"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-022 builder brief",
-      "evidence": "brief said protection needs a strike 'beyond' the sold strike (false for a bull call spread) and futures protect 'only if the spec defines it' (REQ-059's covered-call example already does); round 1 then shipped a covered call that sent the short call first (verifier W-022)"
-    },
-    {
-      "date": "2026-09-29",
-      "where": "W-037 builder brief (day session)",
-      "evidence": "brief said REQ-060 AC-2 is 'every run compares all non-exited strategies' (recalled from the W-021 PR); REQ-060 AC-2 actually reads 'It detects: missing platform position, unexpected broker position, quantity/strike/side/expiry mismatch, external broker modification, and partially executed strategy'. Caught by the builder (class 1)."
-    }
+  {
+   "date": "2026-09-29",
+   "where": "W-015 secret guard",
+   "evidence": "independent review: no AC defines it"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-014 rule (b)",
+   "evidence": "builder measurement -14,170 -> -19,825 on a hedged close"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-004 Guided header",
+   "evidence": "verifier: 24 columns, 1 distinct header"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-004 health label",
+   "evidence": "'Near adjustment' vs ADR-010 'Adjustment opportunity', corrected before the build"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-013 and W-020 core lines",
+   "evidence": "brief said a 'max loss 5,000' rule fires on the golden Iron Condor; at the golden LTPs the condor is +1,365 in profit, so no max-loss rule can fire (W-020 builder flagged it and built a separate loss scenario, hand-computed -3,450.00)"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-020 fix-round brief (AC-3)",
+   "evidence": "brief said 'refuse the call if there is no active version'; ADR-009 Q17 / REQ-041 entry conditions and ADR-019 Q202 'entry triggered' fire before any execution, so the refusal dropped a spec-required record; builder applied it, orchestrator caught it on reading the side-effect note and reversed it (7717c98)"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-025 builder brief default (a)",
+   "evidence": "brief said 'include the exact current level as the first value, then 100-point multiples away from it'; built as offsets from an unaligned level, so SENSEX 81,422 gave 81,322 (not a strike) and the REQ-026 note 'every value is a real strike' became false; verifier failed AC-5"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-021 fix brief (account-wide coverage)",
+   "evidence": "brief named only AFTER_EXECUTION and ORDER_EVENT for account-wide coverage; the PERIODIC trigger still compared active ids only, so a Monitoring Paused holder of a shared contract caused a false block and a corrupting adopt (verifier W-021e)"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-022 builder brief",
+   "evidence": "brief said protection needs a strike 'beyond' the sold strike (false for a bull call spread) and futures protect 'only if the spec defines it' (REQ-059's covered-call example already does); round 1 then shipped a covered call that sent the short call first (verifier W-022)"
+  },
+  {
+   "date": "2026-09-29",
+   "where": "W-037 builder brief (day session)",
+   "evidence": "brief said REQ-060 AC-2 is 'every run compares all non-exited strategies' (recalled from the W-021 PR); REQ-060 AC-2 actually reads 'It detects: missing platform position, unexpected broker position, quantity/strike/side/expiry mismatch, external broker modification, and partially executed strategy'. Caught by the builder (class 1)."
+  },
+  {
+   "date": "2026-10-10",
+   "where": "W-067 round-2 brief (orchestrator), docs/process/brief-W-067-r2.md item 3",
+   "evidence": "the brief ordered 'finalize refuses unless Kite candles cover the last minute for every instrument' without quoting ADR-067, which says 'a minute Kite has no candle for keeps the live bar'; check_brief passed it (no quote = nothing to check); the final Tier A review reproduced 3 ways a day stays provisional forever; corrected in round 3 (brief-W-067-r3.md quotes ADR-067)"
+  },
+  {
+   "date": "2026-10-10",
+   "where": "#155 round-1 brief (orchestrator), docs/process/brief-155.md rule (c)",
+   "evidence": "the brief let PowerShell's `$ErrorActionPreference = 'Stop'` stand in for `set -e`, from memory; the Tier A reviewer measured on this PC's pwsh 7.5.2 that a failing native program does not stop the script (PSNativeCommandUseErrorActionPreference=False), so the hook allowed exactly the masked commit it exists to block (CRITICAL); corrected in round 2."
+  }
+ ],
+ "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "tests/orchestrator/test_check_brief.py"
   ],
-  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
-  "detection": {
-    "status": "guarded",
-    "checks": [
-      "tests/orchestrator/test_check_brief.py"
-    ],
-    "note": "scripts/orchestrator/check_brief.py (W-040) checks every quoted spec citation in a brief verbatim against the cited REQ AC / ADR / Q text, before dispatch. It cannot see a paraphrase without quotes, a rule with no citation (reported UNCITED, fails only with --strict), or a correct quote used to support a wrong conclusion. Measured earlier: all 5 first occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004)."
-  },
-  "spec_ref": [
-    "spec/decisions/ADR-045.md"
-  ]
+  "note": "scripts/orchestrator/check_brief.py (W-040) checks every quoted spec citation in a brief verbatim against the cited REQ AC / ADR / Q text, before dispatch. It cannot see a paraphrase without quotes, a rule with no citation (reported UNCITED, fails only with --strict), or a correct quote used to support a wrong conclusion. Measured earlier: all 5 first occurrences were caught by builders or verifiers before merge; 4 cost a round, 1 parked an item (W-004). 2026-10-10 (W-067 r2): a paraphrased rule with no quote again cost a round - 'guarded' holds only for quoted rules; the orchestrator now quotes the decision text for every product rule it writes into a fix brief. 2026-10-10 (#155 r1): a second unquoted claim in one night - this time about TOOL behaviour (PowerShell), which check_brief cannot see at all. Status set back to unguarded: check_brief guards quoted decision and requirement text only. Practice until a mechanism exists: a claim in a brief about how a tool, shell or library behaves is either measured in the session first (the command and its output cited in the brief) or marked 'unverified - the builder must measure it'."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-045.md"
+ ]
 }

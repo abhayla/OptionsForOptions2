@@ -60,7 +60,7 @@ from ofo.errors.user_facing import UserFacing
 import dataclasses
 import logging
 import datetime
-import hmac
+from ofo.safe_compare import equal_secret
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -834,7 +834,7 @@ def _authorised_orders(preparation: Preparation, book: OrderBook, strategy_id: s
     if guard is None or guard.binding != binding:
         raise GuardRefused(render("guard_not_checked"))
     if guard.acknowledgement is not None and (
-            not isinstance(acknowledgement, str) or not hmac.compare_digest(acknowledgement, guard.acknowledgement)):
+            not isinstance(acknowledgement, str) or not equal_secret(acknowledgement, guard.acknowledgement)):
         raise acknowledgement_refused(guard)
     _GATE_ORDERS.pop(id(preparation.gate), None)
     return orders

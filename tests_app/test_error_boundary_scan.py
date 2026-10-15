@@ -23,7 +23,7 @@ APP = pathlib.Path(__file__).resolve().parents[1] / "backend" / "ofo_app"
 DOOR = "errors.py"
 BANNED_NAMES = frozenset({
     "Response", "JSONResponse", "ORJSONResponse", "UJSONResponse", "RedirectResponse", "StreamingResponse",
-    "PlainTextResponse", "HTMLResponse", "FileResponse", "HTTPException", "StarletteHTTPException",
+    "PlainTextResponse", "HTMLResponse", "FileResponse", "ClosedResponse", "SealedRedirect", "HTTPException", "StarletteHTTPException",
     "WebSocketException", "BaseHTTPMiddleware",
 })
 BANNED_MODULES = frozenset({"fastapi.responses", "starlette.responses", "starlette.exceptions",
@@ -173,6 +173,9 @@ REVIEWER_SHAPES = {
                   '    return {"ok": True}\n',
 }
 OWN_SAMPLES = (
+    'from ofo_app.errors import ClosedResponse\n',
+    'def f(r):\n    return SealedRedirect(r)\n',
+    'def f(r):\n    return errors.ClosedResponse(r)\n',
     'from fastapi.responses import JSONResponse\n',
     'import starlette.responses\n',
     'from fastapi import HTTPException as H\n',

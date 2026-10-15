@@ -5,6 +5,11 @@
         "hooks": [
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/secret_scan.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
+      { "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/gate_before_commit.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] }
     ]
   },

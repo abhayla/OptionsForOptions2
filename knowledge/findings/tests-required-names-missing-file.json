@@ -1,0 +1,29 @@
+{
+ "id": "tests-required-names-missing-file",
+ "scope": "generic",
+ "class": "A work item's tests_required can keep naming a test file that a later round deleted or renamed, and no lint or trace check notices, so an acceptance criterion's evidence points at a file that no longer exists while the test that really carries it is unlisted.",
+ "mechanism": "W-067 round 3 deleted tests/history/test_finalize_completeness.py (its rule contradicted ADR-067) and moved the tests; work/W-067.md still listed it for AC-4 and did not list test_finalize_keeps_live.py; factory_lint and trace_check stayed green; the Tier A verifier failed AC-4 on traceability.",
+ "first_seen": {
+  "date": "2026-10-10",
+  "where": "build/W-067-history-pg @ 90633d0, work/W-067.md tests_required",
+  "evidence": "verifier: 'ls tests/history/test_finalize_completeness.py -> No such file; git log --diff-filter=D -> 51d62ef'; the new guard on the 90633d0 work item (status done, with the files present on main copied in) flagged exactly ['W-067.md: tests/history/test_finalize_completeness.py']; on the current repo: 2 passed (4 not-yet-built items W-008/009/011/017 are status todo and correctly skipped)."
+ },
+ "fix": "work/W-067.md corrected (1dd86dc). Detection: tests/test_tests_required_exist.py checks every in_review/done work item's tests_required paths exist, with a self-test; kit harvest issue abhayla/Startup-Factory#94 asks trace_check to do it for every project.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/test_tests_required_exist.py"
+  ],
+  "note": "Discriminates: flags the one deleted file of the real W-067 case and passes the 4 planned (todo) items that list tests still to write."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-051.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-10",
+   "where": "W-067 AC-4",
+   "evidence": "verifier FAIL on traceability, re-check PASS after the work-item fix"
+  }
+ ]
+}

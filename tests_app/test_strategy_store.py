@@ -452,7 +452,6 @@ async def test_ac5_every_answer_state_of_a_load(app_engine):
                 assert err.value.code == store.NOT_FOUND
             good = sf.dumps(stored.saved)
             cases = [
-                (good.replace('"schema_version":1', '"schema_version":99'), 99, sf.SCHEMA_VERSION_UNKNOWN),
                 (good.replace(f'"contract_id":{ids["NIFTY26O1322800CE"]}', '"contract_id":2147483000'), 1,
                  sf.CONTRACT_NOT_IN_CATALOGUE),
             ]
@@ -463,9 +462,11 @@ async def test_ac5_every_answer_state_of_a_load(app_engine):
                     await store.load(conn, user, planted)
                 assert err.value.code == code, (code, err.value)
             # Shapes the database CHECK now refuses cannot be planted (tests_app/test_strategy_closed_shape.py proves
-            # that); the loader still refuses them with the same codes (defence in depth, e.g. a restored backup).
+            # that; migration 0010 refuses an unknown schema_version too); the loader still refuses them with the same
+            # codes (defence in depth, e.g. a restored backup).
             resolve = await store.catalogue_resolver(conn, stored.saved.contract_ids)
             for document, code in (
+                (good.replace('"schema_version":1', '"schema_version":99'), sf.SCHEMA_VERSION_UNKNOWN),
                 ('{"schema_version": 1, "underlying": "NIFTY", "legs": "not a list", "rules_ref": null, '
                  '"risk_limits": {}, "preferences": {}}', sf.MALFORMED),
                 ('{"schema_version": 1, "underlying": "NIFTY"}', sf.MISSING_KEY),

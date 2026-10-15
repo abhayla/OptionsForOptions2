@@ -35,7 +35,7 @@ from __future__ import annotations
 from ofo.errors.user_facing import UserFacing
 
 import hashlib
-import hmac
+from ofo.safe_compare import equal_secret
 import json
 import secrets
 from dataclasses import dataclass
@@ -236,7 +236,7 @@ class StrategyGuard:
         if decision is None:
             raise GuardRefused(render("guard_not_checked"))
         if decision.acknowledgement is not None:
-            if not isinstance(acknowledgement, str) or not hmac.compare_digest(acknowledgement,
+            if not isinstance(acknowledgement, str) or not equal_secret(acknowledgement,
                                                                                 decision.acknowledgement):
                 raise acknowledgement_refused(decision)
         return decision

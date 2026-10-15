@@ -1,0 +1,27 @@
+{
+ "id": "state-read-after-await",
+ "scope": "generic",
+ "class": "An async UI handler that reads or resets shared reactive state AFTER an await (or an early-return path that does not invalidate in-flight requests) lets a late reply overwrite what the user did meanwhile. Unit tests that settle every promise before the next action (flushPromises) can never see it; a real browser or an e2e that acts while the request is in flight sees it intermittently, so it looks like a flaky test.",
+ "mechanism": "W-068 LegPicker save() awaited the planned-entry POST, then read action/lots and called resetForm(), wiping the next leg's picks; StrategyBuilderPage load() returned for no-draft without bumping its request sequence, so a late outcome reply set 'computed' after every leg was removed.",
+ "first_seen": {
+  "date": "2026-10-10",
+  "where": "PR #194 (W-068), frontend/src/components/strategy/LegPicker.vue save(), frontend/src/pages/StrategyBuilderPage.vue load()",
+  "evidence": "CI run 38065650427: leg-picker.spec.ts:37 timed out on a disabled pick-strike once, passed on retry (called flaky); after a round-2 wait, CI run 38066421591: leg-picker.spec.ts:40 failed at the second addLeg on mobile x2 and desktop x1 (pick-strike disabled, 14 polls), leg-picker.spec.ts:61 expected data-state no-draft, received computed; Vitest 24/24 green throughout. Independent review (fable) traced both to the await ordering; orchestrator confirmed in the code."
+ },
+ "fix": "Snapshot every input and reset the form synchronously before the await; build the result from the snapshot; every call path (including early returns) bumps the request sequence. Tests hold the promise open while the user acts. An intermittent e2e failure is treated as a race to explain, never waited around.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The held-open-promise Vitest cases in frontend/tests/leg-picker.test.js cover these two handlers only; nothing scans other async handlers for reads after an await."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-035.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-10",
+   "where": "W-068 leg picker and Builder page",
+   "evidence": "two CI rounds red on the same race before the independent review"
+  }
+ ]
+}

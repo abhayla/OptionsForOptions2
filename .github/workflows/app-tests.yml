@@ -38,7 +38,7 @@ permissions:
 jobs:
   api:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30  # was 15; the W-067 full-day finalize test is bounded at 10 min by its own assertion
     env:
       PGHOST: localhost
       PGPORT: '5432'
@@ -113,6 +113,11 @@ jobs:
           OFO_REQUIRE_DB_TESTS: '1'
           TEST_DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           TEST_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+          # W-067 r2: finalize of a FULL trading day (F-33: about 1,603 instruments x 375 minutes = 601,125 bars) runs
+          # here only; a developer PC runs the same test at 40 instruments (its PostgreSQL also serves production).
+          OFO_HISTORY_SCALE_INSTRUMENTS: '1603'
+          OFO_HISTORY_SCALE_BOUND_S: '600'
+          OFO_HISTORY_SCALE_BATCH_BOUND_S: '45'
         run: python -m pytest -c pytest-app.ini -q -rs -p no:cacheprovider
 
   # W-054: frontend skeleton. Core proof: browser -> Vite preview /api proxy -> FastAPI (ofo_app) -> PostgreSQL.

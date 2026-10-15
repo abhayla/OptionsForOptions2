@@ -44,7 +44,7 @@ def test_after_a_replay_store_and_recorder_hold_only_minute_bars_one_per_minute(
         holder["rec"].attach(fan, ids)
 
     _, _, last = replay_window("1506-1512", wire)
-    holder["rec"].flush(last + datetime.timedelta(minutes=1))
+    holder["rec"].flush(last + datetime.timedelta(minutes=1), wait_s=30)
     stored = store.all_stored()
     assert len(stored) > 25 and all(type(b) is MinuteBar for b in stored)
     assert len({(b.instrument_id, b.minute) for b in stored}) == len(stored)  # at most one per instrument-minute

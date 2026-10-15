@@ -184,6 +184,15 @@ def test_a_value_the_table_would_round_is_refused(field: str, value, match: str)
     check_storable(with_terms(contract, strike=Decimal("25050.50"), tick_size=Decimal("0.0500")))  # fits: accepted
 
 
+@pytest.mark.parametrize("field", ["lot_size", "tick_size"])
+def test_a_zero_lot_or_tick_on_a_non_index_contract_is_refused_by_the_store(field: str) -> None:
+    option = _by_symbol(_fixture(), "NIFTY26O0625050CE")
+    assert not option.contract.is_index()
+    check_storable(option)  # a valid option passes
+    with pytest.raises(CatalogueStoreError, match="zero lot or tick size is allowed only on an index contract"):
+        check_storable(with_terms(option, **{field: Decimal("0") if field == "tick_size" else 0}))
+
+
 def test_allowlist_block_shape_guard_fails_closed() -> None:
     migration = _migration()
     previous = migration.previous_allowlist_sql()

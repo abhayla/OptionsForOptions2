@@ -22,8 +22,8 @@ every ADR that requirement cites; `CLAUDE.md` (hard rules); for engine work `spe
   from the repo root, no pipes or redirects.
 - **Legacy copy (ADR-043, spec/technical-design/legacy-reuse.md):** if you copy or adapt legacy code, the file starts
   with a comment naming source repo, commit and path, e.g. `# Adapted from abhayla/algochanakya@2a868db
-  backend/app/services/instrument_master.py`. The local checkout is `D:\Abhay\Ventures\algochanakya` (READ ONLY:
-  never edit, commit or run anything there).
+  backend/app/services/instrument_master.py`. The local checkout is the `algochanakya` folder next to this repo's
+  checkout (READ ONLY: never edit, commit or run anything there).
 - Never write under `evidence/`; never set a work item/requirement status to done/verified.
 
 ## Rules in your brief
@@ -59,6 +59,11 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   and name the test that goes red. A guard with no killing test is unfinished work; report the list.
 - **"Pre-existing" is proven on origin/main, never on your branch** (W-024 blamed its own regression on old code by
   loading its own HEAD): run the failing test on a clean checkout of origin/main and paste that result, or fix it.
+- **A guard is an allow-list, never a list of forbidden things** (finding `guard-as-forbidden-list`, 2026-10-09:
+  W-061 round 2's jsonpath CHECK refused 13 named bad shapes and accepted arrays and prices in leg slots; W-066's slot
+  detection test forbade 4 named slot types and let `Quoted` through): a check states what IS allowed (exact key sets,
+  a closed type per slot, a closed name list) and refuses everything else; its test enumerates the allowed shape and
+  every other type, generated, not hand-listed. A guard written as "refuse X, Y, Z" fails review.
 - **Grid values come from the grid** (W-025: pick-list steps offset from an unaligned level missed every strike):
   any value a user can pick that must be a strike/level is snapped to, and asserted against, the real catalogue.
 - Type hints on public functions; small modules; no dead code; no print statements.
@@ -66,6 +71,11 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 ## Before you finish
 Run from your worktree root, each as its own command:
 `python -m pytest -q -p no:cacheprovider` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
+On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
+test files your brief names plus `python scripts/orchestrator/atool.py <worktree> <W-id> --no-tests` (every ci.yml
+lint step); CI runs the full suites. Before the targeted run, grep `tests/` and `tests_app/` for every route, status,
+code and message your change touches and add every file that names one (finding `targeted-tests-miss-dependent-files`:
+#163 broke a test in a file nobody ran).
 Commit (WIP commits are fine as you go) and `git push -u origin <your-branch>`. Do NOT open a PR — the orchestrator
 does that after independent verification.
 

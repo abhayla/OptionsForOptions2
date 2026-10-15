@@ -12,6 +12,9 @@ import ast
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
+ROOT = TESTS.parent
+#: Both project test trees: tests/ (domain) and tests_app/ (database-backed app tests).
+TEST_TREES = (TESTS, ROOT / "tests_app")
 
 #: Explicit exceptions as "relative/path.py:line" with the reason. Empty: no test needs a wall-clock threshold.
 ALLOWLIST: dict[str, str] = {}
@@ -24,6 +27,8 @@ BARE_CLOCK_NAMES = CLOCK_FUNCTIONS - {"time"}
 #: timeit measures wall-clock time too: ``timeit.timeit(...) < 1`` is the same flake as a perf_counter difference.
 TIMEIT_FUNCTIONS = {"timeit", "repeat", "default_timer"}
 DATETIME_NOW = {"now", "utcnow", "today"}
+#: Methods that put a value into a collection: ``spans.append(perf_counter() - t0)`` makes ``spans`` clock-derived.
+COLLECTING_METHODS = {"append", "extend", "add", "insert"}
 
 
 class _Clocks:
@@ -109,11 +114,21 @@ def wall_clock_asserts(source: str) -> list[int]:
         if clocks.is_datetime_now(value):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             datetimes.update(n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name))
-    for node in assignments:
-        value = getattr(node, "value", None)
-        if value is not None and clock_tainted(value):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            tainted.update(n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name))
+    collectors = [n for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name)
+                  and n.func.attr in COLLECTING_METHODS]
+    while True:  # to a fixed point: a list filled with durations (``spans.append(now() - t0)``) holds clock values
+        before = len(tainted)
+        for node in assignments:
+            value = getattr(node, "value", None)
+            if value is not None and clock_tainted(value):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                tainted.update(n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name))
+        for call in collectors:
+            if any(clock_tainted(a) for a in call.args):
+                tainted.add(call.func.value.id)
+        if len(tainted) == before:
+            break
     hits = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Compare):
@@ -124,10 +139,12 @@ def wall_clock_asserts(source: str) -> list[int]:
 
 
 def test_guard_no_test_compares_elapsed_wall_clock_time_to_a_number() -> None:
-    """Guard (finding wall-clock-assertion-flakes-under-load): no file under tests/ asserts a clock reading against a number (outside the explicit ALLOWLIST)."""
+    """Guard (finding wall-clock-assertion-flakes-under-load): no file under tests/ or tests_app/ asserts a clock reading against a number (outside the explicit ALLOWLIST)."""
     found = []
-    for path in sorted(TESTS.rglob("*.py")):
-        relative = path.relative_to(TESTS).as_posix()
+    files = [p for tree in TEST_TREES if tree.is_dir() for p in sorted(tree.rglob("*.py"))]
+    assert any("tests_app" in p.parts for p in files), "tests_app/ is not being scanned"
+    for path in files:
+        relative = path.relative_to(ROOT).as_posix()
         for line in wall_clock_asserts(path.read_text(encoding="utf-8")):
             if f"{relative}:{line}" not in ALLOWLIST:
                 found.append(f"{relative}:{line}")
@@ -139,6 +156,8 @@ SHAPE_DATETIME = "from datetime import datetime\ns = datetime.now()\nassert (dat
 SHAPE_ALIAS = "import time as t\ns = t.perf_counter()\nassert t.perf_counter() - s < 1\n"
 SHAPE_CONSTANT = ("import time\nLIMIT = 0.5\ns = time.perf_counter()\nelapsed = time.perf_counter() - s\n"
                   "assert elapsed < LIMIT\n")
+SHAPE_COLLECTED = ("import time\nBOUND = 0.1\nspans = []\nt0 = time.perf_counter()\n"
+                   "spans.append(time.perf_counter() - t0)\nassert max(spans) < BOUND\n")
 SHAPE_ALIASED_BARE = "from time import perf_counter as pc\ns = pc()\nassert pc() - s < 1\n"
 
 
@@ -163,4 +182,14 @@ def test_guard_flags_every_clock_threshold_shape_and_passes_clean_code() -> None
     look_alikes = ("import datetime\nassert datetime.datetime.now().year < 3000\n"
                    "import timeit\nassert timeit.default_timer is not None\nLIMIT = 5\nassert len(x) < LIMIT\n")
     assert wall_clock_asserts(look_alikes) == []
+    assert wall_clock_asserts(SHAPE_COLLECTED) == [6]
     assert wall_clock_asserts(unrelated_number) == []
+
+
+def test_guard_scans_tests_app_and_flags_a_stopwatch_assert_in_a_tests_app_path(tmp_path) -> None:
+    """Guard self-test: tests_app/ is in the scanned trees, and a stopwatch assert written there is found."""
+    assert (ROOT / "tests_app") in TEST_TREES and (ROOT / "tests_app").is_dir()
+    sample = tmp_path / "tests_app" / "test_x.py"
+    sample.parent.mkdir()
+    sample.write_text("import time\nt0 = time.perf_counter()\nassert time.perf_counter() - t0 < 0.1\n", encoding="utf-8")
+    assert wall_clock_asserts(sample.read_text(encoding="utf-8")) == [3]
