@@ -1,0 +1,27 @@
+{
+ "id": "liveness-from-shared-subscribers",
+ "scope": "project",
+ "class": "A per-client 'is my data live?' answer computed from a shared resource's state (any subscriber on the shared fan-out) instead of the asking client's own connection: whenever another client holds the same inputs, a client whose own connection dropped is told its data is live, so its screen shows numbers without the not-live label. Wider shape: population-level state can never answer an individual-level question.",
+ "mechanism": "2026-10-15: routes/outcome.py get_streaming returns subscriber_count(instrument) > 0 on the ONE shared fan-out; the Strategy Builder page's socket-drop fallback (onDown -> load -> applyOutcome) trusts that REST answer and writes no label of its own. With a second socket holding the same legs, the fallback answered COMPUTED with a table and no label; after MAX_ATTEMPTS=10 reconnects (~181 s) the page stops asking and the unlabelled numbers stay on screen.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "build/W-065-frontend f5f6681, W-065 phase 3 Tier A verification",
+  "evidence": "attack_two_holders.py on the real create_app replay, re-run by the orchestrator: 'ATTACK two holders, mine dropped -> REST state: COMPUTED | status_label: None | output_label: None | table present: True | leg0 ltp: 30.05'; control 'CONTROL both dropped -> REST state: NOT_CONNECTED | status_label: Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.' The 27 app tests, 9 unit tests and the 2 Playwright runs all passed: every test killed the sole holder."
+ },
+ "fix": "W-065 phase 3 round 2 (brief docs/process/brief-W-065-p3-r2.md): the fallback request carries a flag set by the page when its own socket is down, and the server answers the not-live state (REQ-049 AC-5 with the newest price time, ADR-077) whenever the flag is set, whoever else subscribes.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Round 2 adds a two-holder case to tests_app/test_strategy_live_push.py and frontend/e2e/strategy-live.spec.ts; status becomes guarded when that merges."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-077.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "W-065 phase 3 verification",
+   "evidence": "verifier FAIL on REQ-035 AC-4, reproduced by the orchestrator"
+  }
+ ]
+}

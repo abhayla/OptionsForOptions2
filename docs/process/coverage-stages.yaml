@@ -218,6 +218,7 @@ issues:
   "#221": 4a            # deferred: draft label hyphen vs ADR-020 long dash (W-065 round 2)
   "#222": 4a            # deferred/owner question: REST fallback label after the browser socket closes (W-065 r2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
+  "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
   "#206": 4a            # REST outcome route never subscribes legs (W-065 phase 2)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
