@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Mapping
 
+from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import ListedContract
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import MarketDataProvider, ProviderStatus
@@ -37,7 +38,7 @@ class LegMarket:
     instrument_id: str
     contract: ListedContract | None
     quote: NormalizedQuote | None
-    problem: str | None = None
+    problem: ExplanationText | None = None  # a catalogue render (W-066)
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,7 @@ class MarketSnapshot:
     spot: NormalizedQuote | None
     legs: Mapping[str, LegMarket]
     forwards: Mapping[datetime.date, ExpiryForward]
-    forward_errors: Mapping[datetime.date, str] = field(default_factory=dict)
+    forward_errors: Mapping[datetime.date, ExplanationText] = field(default_factory=dict)
 
 
 def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],
@@ -65,14 +66,15 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
     for iid in instrument_ids:
         lc = master.get(iid)
         if lc is None:
-            legs[iid] = LegMarket(iid, None, None, "unknown instrument")
+            legs[iid] = LegMarket(iid, None, None, render_explanation("outcome_why_unknown_instrument"))
             continue
         c = lc.contract
         if c.name != underlying:
-            legs[iid] = LegMarket(iid, lc, None, f"the contract is on {c.name}, the strategy is on {underlying}")
+            legs[iid] = LegMarket(iid, lc, None, render_explanation("outcome_why_other_underlying", contract_on=c.name,
+                                                              underlying=underlying))
             continue
         if c.expiry is None or c.expiry < valuation.date():
-            legs[iid] = LegMarket(iid, lc, None, "expired")
+            legs[iid] = LegMarket(iid, lc, None, render_explanation("outcome_why_expired"))
             continue
         if c.expiry not in chains:
             chains[c.expiry] = provider.option_chain_snapshot(underlying, c.expiry)
@@ -83,6 +85,6 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
     for expiry, chain in chains.items():
         try:
             forwards[expiry] = parity_forward(chain, spot, expiry, valuation, rate)
-        except ForwardUnavailable as exc:
-            errors[expiry] = str(exc)
+        except ForwardUnavailable:
+            errors[expiry] = render_explanation("outcome_why_forward")  # the cause goes to no user
     return MarketSnapshot(underlying, valuation, rate, status, spot, legs, forwards, errors)

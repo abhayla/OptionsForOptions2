@@ -62,8 +62,8 @@ PENDING: dict[str, dict[str, int]] = {
     'engine/display.py': {'describe_estimate': 1},
     # merged from main (W-060 forward/ModelInputs, 2026-10-08): field names and data labels, not routed yet
     'engine/inputs.py': {'__post_init__': 1},
-    'engine/model.py': {'data_label': 2, 'expiry_model': 3, 'model_inputs': 2},
-    'marketdata/forward.py': {'<module>': 2},
+    'engine/model.py': {'expiry_model': 3, 'model_inputs': 2},
+    'marketdata/forward.py': {'<module>': 1},
     'engine/interfaces.py': {'__post_init__': 2},
     'errors/classes.py': {'<module>': 9},
     'execution/partial.py': {'assess': 3, 'submit_confirmed': 2},
@@ -71,9 +71,6 @@ PENDING: dict[str, dict[str, int]] = {
     'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1, 'slice_quantity': 1},
     'marketdata/health.py': {'evaluate_health': 1},
     'marketdata/quote.py': {'__post_init__': 3},
-    # issue #151 (outcome route text built in the domain; the real fix is a later Tier A round), exact producers only
-    'outcome/service.py': {'<module>': 2, '_refused': 1, '_summary': 12, 'build_outcome': 9, 'not_connected': 1},
-        'outcome/snapshot.py': {'read_snapshot': 2},
     'orders/model.py': {'<module>': 1},
     'range/pick_lists.py': {'<module>': 1, '__post_init__': 1},
     'reconciliation/compare.py': {'<module>': 9, '__post_init__': 7, '_check_breakdown': 1, '_check_contract_pairs': 1, 'compare': 3, 'describe': 2, 'require_id': 1, 'unexplained_changes': 3},
@@ -88,8 +85,6 @@ PENDING: dict[str, dict[str, int]] = {
     'strategy/matching.py': {'<module>': 1, '_fit': 2},
     'strategy/model.py': {'violation': 3, 'violations': 4},
     'strategy/versions.py': {'__post_init__': 2, 'apply_result': 1, 'check_contract': 1, 'check_observation': 2, 'propose_execution': 2, 'reconcile': 2, 'restore': 1},
-    'table/columns.py': {'<module>': 6},
-    'table/model.py': {'_greek_cell': 1, '_iv_cell': 2, '_leg_per_unit_greeks': 1, '_leg_row': 8, '_money': 1, '_net_premium_cell': 2, '_percent_cell': 1, '_points': 1, '_text': 1, '_total_pnl_percent_cell': 4, '_total_row': 10},
     'timeline/catalogue.py': {'<module>': 12},
     'timeline/records.py': {'__post_init__': 2, 'from_evaluation': 3},
 }

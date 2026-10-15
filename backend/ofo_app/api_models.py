@@ -5,6 +5,8 @@ tests_app/test_api_models.py). An `ApiModel` cannot hold free text: at class def
 and a plain `str` (or anything not listed below) raises TypeError. Allowed leaves:
 - `CatalogueText`: a `render()` result (`UserFacingError`, shown as its four parts) or a `render_explanation()`
   result (`ExplanationText`); a plain string is refused at validation, so text built in route code cannot pass;
+- `InstrumentId`: a closed `SEGMENT:digits` pattern (`NSE_FO:44595`);
+- `dict[Identifier, <allowed>]`: a map whose keys are closed identifiers (a key can never carry a sentence);
 - `Identifier`: a closed token (letters, digits, `_ - .`; no `:` or `=`), at most 64 characters and no space, so it can never
   carry a sentence;
 - `Literal[...]` of Identifier-pattern strings, `bool` and `int` (no Enum: its values are free text), `Decimal`
@@ -58,8 +60,12 @@ CatalogueText = Annotated[object, PlainValidator(_catalogue_only), PlainSerializ
 #: `key:value` or `key=value` pair (e.g. `access_token:...`) can never pass as an id; at most IDENTIFIER_MAX characters.
 IDENTIFIER_MAX = 64
 Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$" % IDENTIFIER_MAX)]
-Money = Annotated[Decimal, PlainSerializer(lambda v: str(v), return_type=str)]
+#: An instrument id as the exchange segment and token, `NSE_FO:44595` (W-066): capitals and `_` before one `:`, digits after;
+#: no space or other character, so it can never carry a sentence.
+InstrumentId = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$")]
+Money = Annotated[Decimal, PlainSerializer(lambda v: format(v, "f"), return_type=str)]
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_\-.]{1,%d}" % IDENTIFIER_MAX)  # the same pattern, re-checked at the door
+_INSTRUMENT_ID = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")  # InstrumentId's pattern, re-checked at the door
 _FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
 
 _LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date)
@@ -73,11 +79,11 @@ def _closed_literal(tp: Any) -> bool:
 
 def check_field_type(tp: Any, where: str) -> None:
     """Raise TypeError unless `tp` is one of the allowed shapes (module docstring)."""
-    if tp == CatalogueText or tp == Identifier or tp == Money:
+    if tp == CatalogueText or tp == Identifier or tp == Money or tp == InstrumentId:
         return
     origin = typing.get_origin(tp)
     if origin is Annotated:
-        raise TypeError(f"{where}: only CatalogueText, Identifier and Money may be Annotated types")
+        raise TypeError(f"{where}: only CatalogueText, Identifier, InstrumentId and Money may be Annotated types")
     if origin is Literal:
         if _closed_literal(tp):
             return
@@ -164,9 +170,9 @@ class ApiModel(BaseModel):
             annotation = info.annotation
             if info.metadata:  # Annotated[...] was unpacked: compare the original alias by identity
                 annotation = Annotated[(annotation, *info.metadata)]  # type: ignore[valid-type]
-                if annotation != CatalogueText and annotation != Identifier and annotation != Money:
-                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier and Money may be "
-                                    f"Annotated types")
+                if annotation not in (CatalogueText, Identifier, InstrumentId, Money):
+                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier, InstrumentId and "
+                                    f"Money may be Annotated types")
                 continue
             check_field_type(annotation, f"{cls.__name__}.{name}")
 
@@ -226,6 +232,10 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is str and _IDENTIFIER.fullmatch(value):
             return value
         raise _refuse(path, value, "Identifier")
+    if tp == InstrumentId:
+        if type(value) is str and _INSTRUMENT_ID.fullmatch(value):
+            return value
+        raise _refuse(path, value, "InstrumentId")
     if tp == Money:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
