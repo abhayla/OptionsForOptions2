@@ -19,9 +19,9 @@ def test_round_trip_over_generated_ids() -> None:
 
 def test_tags_of_a_real_basket_decode_to_the_same_strategy_and_version() -> None:
     cat = real_catalogue()
-    basket = build_basket(real_plan(cat), cat, 12, 3, freeze_check=FakeFreeze(), margin_check=OkMargin())
+    basket = build_basket(real_plan(cat), cat, 3, freeze_check=FakeFreeze(), margin_check=OkMargin())
     parts = [parse_tag(o.tag) for o in basket.orders]
-    assert {(p.strategy_id, p.plan_version) for p in parts} == {(12, 3)}
+    assert {(p.strategy_id, p.plan_version) for p in parts} == {(9, 3)}
     assert [p.leg_index for p in parts] == [0, 1, 2, 3]
     assert len({o.tag for o in basket.orders}) == 4
 
@@ -31,7 +31,7 @@ def test_ids_that_cannot_fit_are_refused_not_truncated() -> None:
         make_tag(10**12, 10**6, 19)  # more than 20 characters
     cat = real_catalogue()
     with pytest.raises(BasketRefused):
-        build_basket(real_plan(cat), cat, 10**12, 10**6, freeze_check=FakeFreeze(), margin_check=OkMargin())
+        build_basket(real_plan(cat, strategy_id="S-1000000000000"), cat, 10**6, freeze_check=FakeFreeze(), margin_check=OkMargin())
 
 
 @pytest.mark.parametrize("args", [(0, 1, 0), (1, 0, 0), (1, 1, -1), (True, 1, 0), (1.5, 1, 0), ("1", 1, 0)])

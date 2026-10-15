@@ -5,6 +5,7 @@ accepted on 2026-10-15), never from literals typed here."""
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import json
 from decimal import Decimal as D
 
@@ -19,7 +20,7 @@ from ofo.instruments.models import ZERODHA, MissingBrokerRef
 def _build(plan=None, cat=None, freeze=None, margin=None):
     cat = cat or real_catalogue()
     plan = plan or real_plan(cat)
-    return build_basket(plan, cat, 12, 3, freeze_check=freeze or FakeFreeze(), margin_check=margin or OkMargin())
+    return build_basket(plan, cat, 3, freeze_check=freeze or FakeFreeze(), margin_check=margin or OkMargin())
 
 
 def test_core_real_condor_makes_four_read_only_limit_orders() -> None:
@@ -102,13 +103,53 @@ def test_unknown_contract_refuses_and_nothing_is_guessed() -> None:
         _build(bad, cat)
 
 
-def test_ambiguous_symbol_refuses() -> None:
-    """Two catalogue entries carrying the same Zerodha symbol (F-03): no way to pick, so no basket."""
+def _twin_entry(cat, symbol):
+    """A second catalogue entry (other exchange token) carrying the same Zerodha symbol, as F-03 allows."""
+    from ofo.instruments.catalogue import CatalogueEntry
+
+    (e,) = cat.entries_for_broker_symbol(ZERODHA, symbol)
+    contract = dataclasses.replace(e.contract, exchange_token=e.contract.exchange_token + 7_000_000)
+    twin = CatalogueEntry(contract, True, dict(e.broker_refs))
+    cat._entries[twin.id] = twin
+
+
+def test_symbol_carried_by_two_entries_refuses_the_whole_basket() -> None:
+    """Leg 0's symbol twice, every other leg intact: no way to pick, so no basket (kills `len != 1` -> `not entries`)."""
     cat = real_catalogue()
     plan = real_plan(cat)
-    (b,) = cat.entries_for_broker_symbol(ZERODHA, plan.legs[1].contract)
-    b.broker_refs[ZERODHA] = dataclasses.replace(b.ref(ZERODHA), broker_symbol=plan.legs[0].contract)
+    _twin_entry(cat, plan.legs[0].contract)
+    assert len(cat.entries_for_broker_symbol(ZERODHA, plan.legs[0].contract)) == 2
+    assert all(len(cat.entries_for_broker_symbol(ZERODHA, p.contract)) >= 1 for p in plan.legs)
     with pytest.raises(MissingBrokerRef):
+        _build(plan, cat)
+
+
+@pytest.mark.parametrize("field", ["strike", "expiry", "type"])
+def test_row_that_disagrees_with_the_plan_leg_refuses(field) -> None:
+    cat = real_catalogue()
+    plan = real_plan(cat)
+    (e,) = cat.entries_for_broker_symbol(ZERODHA, plan.legs[1].contract)
+    c = e.contract
+    changed = {"strike": dict(strike=c.strike + 50), "expiry": dict(expiry=c.expiry + datetime.timedelta(days=7)),
+               "type": dict(instrument_type="PE" if c.instrument_type == "CE" else "CE")}[field]
+    e.contract = dataclasses.replace(c, **changed)
+    with pytest.raises(BasketRefused):
+        _build(plan, cat)
+
+
+def test_margin_is_asked_about_exactly_the_orders_that_are_sent() -> None:
+    margin = OkMargin()
+    basket = _build(margin=margin)
+    assert len(margin.calls) == 1 and margin.calls[0] == basket.orders
+
+
+def test_tag_strategy_comes_from_the_plan_not_the_caller() -> None:
+    from ofo.execution.basket import parse_tag
+
+    assert {parse_tag(o.tag).strategy_id for o in _build().orders} == {9}  # the plan is "S-9"
+    cat = real_catalogue()
+    plan = real_plan(cat, strategy_id="not-a-number")
+    with pytest.raises(BasketRefused):
         _build(plan, cat)
 
 
@@ -158,9 +199,9 @@ def test_gate_that_raises_fails_closed() -> None:
 def test_gates_are_required_parameters() -> None:
     cat = real_catalogue()
     with pytest.raises(TypeError):
-        build_basket(real_plan(cat), cat, 12, 3)  # type: ignore[call-arg]
+        build_basket(real_plan(cat), cat, 3)  # type: ignore[call-arg]
     with pytest.raises(TypeError):
-        build_basket(real_plan(cat), cat, 12, 3, freeze_check=FakeFreeze())  # type: ignore[call-arg]
+        build_basket(real_plan(cat), cat, 3, freeze_check=FakeFreeze())  # type: ignore[call-arg]
 
 
 def test_freeze_result_of_wrong_type_fails_closed() -> None:
@@ -170,4 +211,4 @@ def test_freeze_result_of_wrong_type_fails_closed() -> None:
 
 def test_non_plan_input_is_rejected() -> None:
     with pytest.raises(ValueError):
-        build_basket("plan", real_catalogue(), 12, 3, freeze_check=FakeFreeze(), margin_check=OkMargin())  # type: ignore[arg-type]
+        build_basket("plan", real_catalogue(), 3, freeze_check=FakeFreeze(), margin_check=OkMargin())  # type: ignore[arg-type]

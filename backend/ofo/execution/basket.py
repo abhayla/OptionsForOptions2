@@ -137,20 +137,30 @@ def _number(price: Decimal) -> str:
 
 
 class MarginVerdict(Protocol):
-    """What the margin gate returns: ``allowed`` must be exactly ``True`` for the basket to be built."""
+    """What the margin gate returns: ``allowed`` must be exactly ``True`` for the basket to be built. (W-081's own
+    verdict type is adapted to this at integration.)"""
 
     allowed: bool
 
 
 FreezeGate = Callable[[ExecutionPlan], FreezeCheck]
-MarginGate = Callable[[ExecutionPlan], MarginVerdict]
+MarginGate = Callable[[tuple[KiteOrder, ...]], MarginVerdict]  # asked about exactly the orders that would be sent
+_STRATEGY_ID_RE: Final = re.compile(r"(?:S-)?([1-9][0-9]*)", re.ASCII)
 
 
-def _ask(gate: Callable, plan: ExecutionPlan, name: str) -> object:
+def _ask(gate: Callable, arg: object, name: str) -> object:
     try:
-        return gate(plan)
+        return gate(arg)
     except Exception as exc:  # fail closed: a gate that cannot answer is not a pass
         raise BasketRefused(f"the {name} check could not be completed ({type(exc).__name__}); no basket built") from exc
+
+
+def _strategy_number(plan: ExecutionPlan) -> int:
+    """The tag's strategy id is the plan's own (``S-<n>`` or ``<n>``); any other shape cannot be tagged, so refuse."""
+    m = _STRATEGY_ID_RE.fullmatch(plan.strategy_id)
+    if m is None:
+        raise BasketRefused(f"strategy id {plan.strategy_id!r} cannot be written into a tag; no basket built")
+    return int(m.group(1))
 
 
 def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[InstrumentId, str, str]]:
@@ -164,6 +174,11 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
         ref = entry.ref(ZERODHA)  # MissingBrokerRef when there is no row
         if not entry.currently_listed:
             raise BasketRefused(f"{ref.broker_symbol} is no longer listed; no basket built")
+        c, leg = entry.contract, planned.leg
+        if (c.instrument_type != leg.instrument.value or c.expiry != leg.expiry
+                or (leg.strike is not None and c.strike != leg.strike)):
+            raise BasketRefused(f"{ref.broker_symbol} is not the contract of leg {planned.leg_ref} "
+                                "(type, expiry or strike differ); no basket built")
         exchange = _SEGMENT_TO_EXCHANGE.get(entry.id.exchange_segment)
         if exchange is None:
             raise BasketRefused(f"no Zerodha exchange for segment {entry.id.exchange_segment!r}")
@@ -171,37 +186,39 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
     return out
 
 
-def build_basket(plan: ExecutionPlan, catalogue: Catalogue, strategy_id: int, plan_version: int, *,
+def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,
                  freeze_check: FreezeGate, margin_check: MarginGate) -> KiteBasket:
     """Turn ``plan`` into a basket of read-only LIMIT orders in plan order, or refuse the whole basket.
 
-    ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_check`` (plan -> object with ``allowed is True``) are
-    REQUIRED; the basket asks them itself and never trusts a caller's earlier verdict."""
+    The tag's strategy id is read from ``plan.strategy_id``; ``plan_version`` is the one caller value (the plan holds no
+    version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_check`` (the resolved orders -> object with
+    ``allowed is True``) are REQUIRED; the basket asks them itself and never trusts a caller's earlier verdict."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"build_basket needs an ExecutionPlan, got {plan!r}")
     if not isinstance(catalogue, Catalogue):
         raise ValueError(f"build_basket needs a Catalogue, got {catalogue!r}")
+    strategy = _strategy_number(plan)
     try:
-        tags = [make_tag(strategy_id, plan_version, i) for i in range(len(plan.legs))]
+        tags = [make_tag(strategy, plan_version, i) for i in range(len(plan.legs))]
     except ValueError as exc:
         raise BasketRefused(str(exc)) from exc
     resolved = _resolve(plan, catalogue)
-    freeze = _ask(freeze_check, plan, "freeze limit")
-    if not isinstance(freeze, FreezeCheck):
-        raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
-    if freeze.blocks:
-        raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
-    margin = _ask(margin_check, plan, "margin")
-    if getattr(margin, "allowed", None) is not True:
-        raise BasketRefused("the margin check did not allow this basket; no basket built")
     orders = tuple(
         KiteOrder(instrument_id=iid, exchange=exchange, tradingsymbol=symbol, transaction_type=p.leg.action.value,
                   quantity=p.leg.quantity, price=p.leg.entry_price, tag=tag)
         for p, (iid, exchange, symbol), tag in zip(plan.legs, resolved, tags))
     for o in orders:
         _number(o.price)  # refuse a non-positive price before anything is handed out
+    freeze = _ask(freeze_check, plan, "freeze limit")
+    if not isinstance(freeze, FreezeCheck):
+        raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
+    if freeze.blocks:
+        raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
+    margin = _ask(margin_check, orders, "margin")
+    if getattr(margin, "allowed", None) is not True:
+        raise BasketRefused("the margin check did not allow this basket; no basket built")
     return KiteBasket(orders)
 
 
-__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "TagParts", "build_basket", "make_tag",
-           "parse_tag"]
+__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginVerdict", "TagParts", "build_basket",
+           "make_tag", "parse_tag"]
