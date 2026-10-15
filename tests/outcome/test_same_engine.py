@@ -135,5 +135,9 @@ def test_breakevens_and_max_profit_loss_match_the_formula(replayed):
     assert s.upper_be == Decimal("22800") + credit
     assert s.breakevens == (s.lower_be, s.upper_be)
     assert s.what_can_i_lose.startswith("At most ₹")
+    # ADR-071: the exact sentences, literally (real W-063 frames: max loss 8,245.25, max profit 4,754.75)
+    assert s.max_loss == Decimal("8245.25") and s.max_profit == Decimal("4754.75")
+    assert s.what_can_i_lose == "At most ₹8,245.25 at expiry, before charges and taxes."
+    assert s.what_can_i_make == "At most ₹4,754.75 at expiry, before charges and taxes."
     assert s.where_do_i_start_losing.startswith("If NIFTY ends below ")
     assert out.margin.state == "NOT_AVAILABLE_YET"

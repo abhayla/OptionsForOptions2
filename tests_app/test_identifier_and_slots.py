@@ -43,7 +43,11 @@ def _all_subclasses(cls):
 PINNED_SLOT_TYPES = frozenset({
     *(f"ofo.errors.explanations.{n}" for n in (
         "Recorded", "Explained", "Quoted", "UserText", "Amount", "Days", "ClockHm", "InputLabels", "YesNo", "Values",
-        "LegacyRecorded", "OpWords", "ActionWords", "MeasureWords", "DirectionWords", "FollowUpLabel", "InputLabel")),
+        "LegacyRecorded", "OpWords", "ActionWords", "MeasureWords", "DirectionWords", "FollowUpLabel", "InputLabel",
+        # W-066 (outcome text from the catalogue)
+        "Rupees", "Points", "ExceptLevels", "LevelRegions", "SignedAmount", "HourMinute", "ClockSeconds",
+        "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "CellText",
+        "ColumnLabel", "HealthLabel", "ScenarioViewLabel")),
     *(f"ofo.errors.gate_slots.{n}" for n in (
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",

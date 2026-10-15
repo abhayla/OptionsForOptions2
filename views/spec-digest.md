@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (74)
+## Decisions (76)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -76,6 +76,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-068 2026-10-08: (1) A draft leg's entry price is its planned entry: the leg's LTP captured when the leg is added (or the mid of bid and ask when no LTP exists), show… [refines ADR-035]
 - ADR-069 2026-10-09: The values of a strategy definition's rules reference, risk limits and preferences are short identifiers or numbers only - letters, digits, underscor… [refines ADR-064]
 - ADR-070 2026-10-09: The GitHub repository is public. [refines ADR-046]
+- ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-profit sentence of the outcome view states that the amount is at expiry, before charges and taxes (for… [refines ADR-003]
+- ADR-072 2026-10-09: The plain-language answer to "Where do I start losing?" (REQ-034 AC-7) names every region of the underlying at expiry where the strategy's expiry P&L… [applies REQ-034]
 - ADR-073 2026-10-10: The framework-generated API docs page (/docs) and API description (/openapi.json) are served only when APP_ENV is development or test; there they are… [applies ADR-003]
 - ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass with REQ-065 (the closed response door) named as… [none — it amends only the master-plan Stage 4 cor…]
 - ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition, and a reopened draft shows exactly those; they ch… [refines ADR-062]

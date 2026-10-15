@@ -141,3 +141,18 @@ def test_no_provider_is_the_not_connected_state(replayed):
     assert out.margin.state == "NOT_AVAILABLE_YET"
     assert [leg.planned_entry for leg in out.legs] == [p.planned_entry for p in d.legs]
     assert out.table is None
+
+
+def test_estimated_now_without_an_iv_names_the_legs_in_a_closed_sentence(replayed):
+    """W-066 round 2: `scenario_estimated_unavailable` takes a closed list of leg references, through the real view."""
+    from ofo.scenario.views import View
+    provider, _, _ = replayed
+    d, snap = _snap(provider)
+    q = snap.legs[STALE_LEG].quote
+    no_iv = dataclasses.replace(q, ltp=Decimal("9999999"), bid=None, ask=None)  # no volatility reproduces this price
+    out = build_outcome(d, _with_leg(snap, STALE_LEG, no_iv), view=View.ESTIMATED_NOW)
+    assert out.state is OutcomeState.COMPUTED
+    leg = _leg(out, STALE_LEG)
+    assert leg.iv is None
+    assert out.scenario.available is False
+    assert out.scenario.unavailable_reason == f"Estimated Now is unavailable: no implied volatility for {leg.symbol}"

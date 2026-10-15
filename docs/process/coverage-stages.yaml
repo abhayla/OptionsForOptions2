@@ -148,6 +148,8 @@ decisions:
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
+  ADR-071: 4a           # max-loss/max-profit sentences say "before charges and taxes" (owner 2026-10-09, W-066)
+  ADR-072: 4a           # "where do I start losing" names every loss region from the payoff (W-066, independent review)
   ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
   ADR-075: 4a           # saved draft keeps planned entry + capture time (owner 2026-10-15, live gate check 2)
   ADR-074: [4a, S5]     # REQ-065 open exception at the core gate; Verified before Stage 5 (owner 2026-10-15)

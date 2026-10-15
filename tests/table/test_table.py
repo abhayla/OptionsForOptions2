@@ -15,7 +15,7 @@ from ofo.engine.inputs import LegInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.black_scholes import Greeks
 from ofo.table.columns import ColumnId
-from ofo.table.model import CellKind, StrategyHealth, TOTAL_ROW_ID, build_table
+from ofo.table.model import CellKind, LegStatus, StrategyHealth, TOTAL_ROW_ID, build_table
 
 from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
 
@@ -289,7 +289,7 @@ def test_status_leg_and_total_are_caller_supplied_not_computed(golden, golden_sc
 
     table2 = build_table(
         golden, level_set=level_set, scenario=values,
-        leg_statuses=["Open", "Open", "Open", "Open"],
+        leg_statuses=[LegStatus.OPEN] * 4,
         strategy_health=StrategyHealth.WATCH,
     )
     for row in table2.rows[:4]:
