@@ -47,9 +47,10 @@ class Settings(BaseSettings):
         if self.LIVE_MARKET:
             db = database_name(self.DATABASE_URL)
             test_db = database_name(os.environ.get("TEST_DATABASE_URL", ""))
-            if db is not None and (db == TEST_DATABASE_NAME or (test_db is not None and db == test_db)):
+            if db is None or db == TEST_DATABASE_NAME or (test_db is not None and db == test_db):
                 raise ValueError(
-                    f"LIVE_MARKET must not use the test database '{db}' (ADR-078): live runs use ofo_dev; point "
+                    f"LIVE_MARKET must not use the test database or an unnamed one ('{db or ''}') (ADR-078): "
+                    "live runs use ofo_dev; point "
                     "DATABASE_URL at DEV_DATABASE_URL, because the test suites use only the test database"
                 )
         return self

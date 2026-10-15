@@ -5,6 +5,8 @@ through refuses LIVE_MARKET when DATABASE_URL names ofo_test (or the database na
 """
 from __future__ import annotations
 
+import base64
+
 import pytest
 
 from ofo_app.config import Settings, database_name
@@ -55,3 +57,36 @@ def test_database_name_parsing():
     assert database_name(BASE + "ofo_test?x=1") == "ofo_test"
     assert database_name("") is None
     assert database_name("postgresql://example:5432") is None
+
+
+def _create_app(monkeypatch, url: str):
+    from ofo_app import main
+
+    monkeypatch.setenv("LIVE_MARKET", "1")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("DATABASE_URL", url)
+    for k, v in (("KITE_API_KEY", "k"), ("KITE_API_SECRET", "s"), ("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback"),
+                 ("KITE_EXPECTED_USER_ID", "ZZ0000"), ("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(bytes(32)).decode())):
+        monkeypatch.setenv(k, v)
+    return main.create_app()
+
+
+def test_create_app_raises_for_live_market_on_ofo_test(monkeypatch):
+    with pytest.raises(ValueError, match="ADR-078"):
+        _create_app(monkeypatch, BASE + "ofo_test")
+
+
+def test_create_app_raises_for_live_market_with_an_unnamed_database(monkeypatch):
+    with pytest.raises(ValueError, match="ADR-078"):
+        _create_app(monkeypatch, BASE)
+
+
+def test_create_app_builds_for_live_market_on_ofo_dev(monkeypatch):
+    assert _create_app(monkeypatch, BASE + "ofo_dev") is not None
+
+
+def test_empty_or_missing_name_refused_under_live_market():
+    for url in ("postgresql+asyncpg://example@127.0.0.1:5432/", "postgresql+asyncpg://example@127.0.0.1:5432"):
+        with pytest.raises(ValueError, match="ADR-078"):
+            Settings(DATABASE_URL=url, LIVE_MARKET=True, _env_file=None)
+    assert Settings(DATABASE_URL=BASE, _env_file=None).LIVE_MARKET is False
