@@ -20,7 +20,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from ofo.engine.legs import Action
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
 from ofo.table import UXLevel
@@ -40,8 +40,10 @@ class MarketContext:
 
 
 def get_market_context() -> Optional[MarketContext]:
-    """No live provider is wired yet (the live socket item, W-058): the route answers "not connected"."""
-    return None
+    """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
+    answers "not connected". Tests and the replay mode override this dependency."""
+    from ofo_app import live_market  # late: live_market imports MarketContext from this module
+    return live_market.current_context()
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
@@ -225,22 +227,61 @@ def _definition(req: OutcomeRequest) -> StrategyDefinition:
     return StrategyDefinition(req.underlying, tuple(legs))
 
 
-@router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
-def strategy_outcome(req: OutcomeRequest,
-                     ctx: Optional[MarketContext] = Depends(get_market_context)) -> OutcomeResponse:
+def get_streaming() -> Optional[Callable[[str], bool]]:
+    """Issue #206: in the running app with live market data, "is this instrument streaming?" = it has a subscriber on
+    the ONE shared fan-out (only a strategy socket subscribes). None when there is no live feed (not connected, the test
+    replay, a test's own context): then every input the provider holds is used as it is."""
+    from ofo_app import live_market  # late: live_market imports MarketContext from this module
+    feed = live_market.current_feed()
+    if feed is None:
+        return None
+    return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
+
+
+def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
+    if streaming is None or ctx is not live_context():
+        return False
+    index_id = getattr(ctx.provider, "index_id", lambda _u: None)(req.underlying)
+    ids = [leg.instrument_id for leg in req.legs] + ([index_id] if index_id else [])
+    return not all(streaming(i) for i in ids)
+
+
+def live_context() -> Optional[MarketContext]:
+    from ofo_app import live_market
+    return live_market.current_context()
+
+
+def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
+                     streaming: Optional[Callable[[str], bool]] = None) -> OutcomeResponse:
+    """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
+    (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
+    not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
+    frozen quotes."""
     definition = _definition(req)
     ux = UXLevel(req.ux_level)
+    live_blocked = False
     if ctx is None:
         out = build_outcome(definition, None, ux)
     else:
         valuation = ctx.clock()
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  valuation, ctx.rate)
-        out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
+        live_blocked = _not_streaming(req, ctx, streaming) and not snapshot.status.session_ended
+        if live_blocked:
+            out = not_live(definition, snapshot, ux)
+        else:
+            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
     body = outcome_to_dict(out)
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
-    if ctx is not None and ux is UXLevel.ADVANCED:  # the UX gate: nothing else ever carries bid/ask
+    if ctx is not None and ux is UXLevel.ADVANCED and not live_blocked:  # not live: no frozen bid/ask either  # the UX gate: nothing else ever carries bid/ask
         body["advanced_details"] = _advanced_details(snapshot, definition,
                                                      {l["instrument_id"]: l["symbol"] for l in body["legs"]})
     return OutcomeResponse.model_validate(body)
+
+
+@router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
+def strategy_outcome(req: OutcomeRequest,
+                     ctx: Optional[MarketContext] = Depends(get_market_context),
+                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming)) -> OutcomeResponse:
+    return outcome_response(req, ctx, streaming)

@@ -785,13 +785,19 @@ def _route_problems(routes) -> tuple[list[str], set[str]]:
 
     from fastapi.routing import APIRoute
 
-    from ofo_app.errors import ClosedRoute
+    from ofo_app.errors import ClosedRoute, ClosedWebSocketRoute
 
     models = set(_app_models())
     problems, docs_seen = [], set()
     for route in routes:
         if getattr(route, "path", "") in DOCS_PATHS + ("/docs/oauth2-redirect",) and not isinstance(route, APIRoute):
             docs_seen.add(route.path)
+            continue
+        if type(route) is ClosedWebSocketRoute:  # W-065: the door's socket class, minted messages only
+            if getattr(route.endpoint, "ofo_door", False) is not True:
+                problems.append(f"{route.path}: no door marker")
+            if not route.message_models or not set(route.message_models) <= models:
+                problems.append(f"{route.path}: message_models {route.message_models!r}")
             continue
         if type(route) is not ClosedRoute:
             problems.append(f"{getattr(route, 'path', route)}: {type(route).__name__}")
@@ -816,6 +822,64 @@ def test_a_stand_in_route_at_the_outcome_path_is_not_exempt() -> None:
     routes = [*create_app().routes, APIRoute("/api/strategies/outcome", stand_in, methods=["POST"])]
     problems, _ = _route_problems(routes)
     assert any("/api/strategies/outcome" in p for p in problems), problems
+
+
+def test_a_socket_route_off_the_door_is_a_problem() -> None:
+    """W-065: only the door's socket class passes the enumeration. A plain APIWebSocketRoute at the live path, a door
+    socket whose endpoint lost the door marker, and one declaring a model that is not an app ApiModel each fail it."""
+    from fastapi.routing import APIWebSocketRoute
+
+    from ofo_app.api_models import ApiModel
+    from ofo_app.errors import ClosedWebSocketRoute
+    from ofo_app.routes.outcome import OutcomeResponse
+
+    async def raw(websocket) -> None:
+        await websocket.accept()
+
+    async def endpoint(socket) -> None:
+        return None
+
+    unmarked = ClosedWebSocketRoute("/api/strategies/live2", endpoint, message_models=(OutcomeResponse,))
+    unmarked.endpoint = endpoint
+
+    class Foreign(ApiModel):
+        pass
+
+    Foreign.__module__ = "elsewhere"
+    foreign = ClosedWebSocketRoute("/api/strategies/live3", endpoint, message_models=(Foreign,))
+    for route, path in ((APIWebSocketRoute("/api/strategies/live", raw), "/api/strategies/live"),
+                        (unmarked, "/api/strategies/live2"), (foreign, "/api/strategies/live3")):
+        problems, _ = _route_problems([*create_app().routes, route])
+        assert any(p.startswith(path + ":") for p in problems), (path, problems)
+    assert _route_problems(create_app().routes)[0] == []  # the real live route passes
+
+
+def test_add_socket_route_takes_only_the_door_socket_class() -> None:
+    """W-065 round 2: `errors.add_socket_route` appends exactly a ClosedWebSocketRoute; a plain APIWebSocketRoute, a
+    Starlette WebSocketRoute and a ClosedRoute are refused and the app's route table is left unchanged."""
+    from fastapi.routing import APIWebSocketRoute
+    from starlette.routing import WebSocketRoute
+
+    from ofo_app.api_models import DoorRefused
+    from ofo_app.errors import ClosedWebSocketRoute, add_socket_route
+    from ofo_app.routes.outcome import OutcomeResponse
+
+    async def raw(websocket) -> None:
+        await websocket.accept()
+
+    async def endpoint(socket) -> None:
+        return None
+
+    app = create_app()
+    before = list(app.router.routes)
+    for bad in (APIWebSocketRoute("/api/x", raw), WebSocketRoute("/api/x", raw),
+                _closed("/api/x", lambda: None)):
+        with pytest.raises(DoorRefused):
+            add_socket_route(app, bad)
+    assert app.router.routes == before
+    good = ClosedWebSocketRoute("/api/x", endpoint, message_models=(OutcomeResponse,))
+    add_socket_route(app, good)
+    assert app.router.routes == [*before, good]
 
 
 def test_the_exemptions_are_exactly_the_docs_paths() -> None:

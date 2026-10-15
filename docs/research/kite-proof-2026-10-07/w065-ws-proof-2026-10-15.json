@@ -1,0 +1,38 @@
+{
+  "pushes": 57,
+  "messages_total": 57,
+  "min_gap_s": 1.037,
+  "distinct_ltp_per_leg": [
+    41,
+    23,
+    38,
+    26
+  ],
+  "distinct_unrealized_pnl": 16,
+  "states": [
+    "COMPUTED"
+  ],
+  "health_after_first_tick": [
+    "available"
+  ],
+  "checks": {
+    "pushes>=30": true,
+    "min_gap>=1.0": true,
+    "ltp_changed": true,
+    "pnl_changed": true,
+    "health_available": true
+  },
+  "passed": true,
+  "started_ist": "2026-10-15T13:31:17+05:30",
+  "ended_ist": "2026-10-15T13:32:18+05:30",
+  "route": "/api/strategies/live",
+  "expiry": "2026-10-19",
+  "spot_seen": "23029.65",
+  "strikes": [
+    "SELL CE 23250.00",
+    "BUY CE 23450.00",
+    "SELL PE 22850.00",
+    "BUY PE 22650.00"
+  ],
+  "seconds": 60.0
+}

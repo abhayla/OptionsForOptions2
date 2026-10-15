@@ -78,6 +78,8 @@ BROKER_ADAPTER_PATHS = {
                               "frames for the outcome route (APP_ENV=test only, W-064) - REQ-063 AC-1",
     "ofo_app/broker_token_store.py": "the broker adapter's token store: ends a session on Kite's TokenException "
                                      "(adapter error type) - REQ-063 AC-1",
+    "ofo_app/live_market.py": "live composition root: wires the Kite market-data provider and socket to the owner's "
+                              "stored session (W-065; the live twin of replay_mode.py) - REQ-063 AC-1",
     "ofo_app/history_finalize.py": "composition root of the after-close job: wires Kite's historical candle client to "
                                    "the history store (W-067, ADR-066/067) - REQ-063 AC-1",
 }

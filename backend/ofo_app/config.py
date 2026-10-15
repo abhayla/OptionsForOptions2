@@ -22,11 +22,17 @@ class Settings(BaseSettings):
     #: W-064: TEST-ONLY. Serves the outcome route from the recorded 2026-10-08 frames (ofo_app.replay_mode). Refused at
     #: start-up unless APP_ENV is exactly "test", so production settings cannot enable it.
     OUTCOME_REPLAY: bool = False
+    #: W-065: live market data. Off by default. When on, the app holds a KiteProvider fed by the Kite WebSocket with the
+    #: owner's stored session. Refused under APP_ENV=test unless KITE_WS_URL is a local fake (tests never reach Kite).
+    LIVE_MARKET: bool = False
+    KITE_WS_URL: str = "wss://ws.kite.trade"
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":
         if self.OUTCOME_REPLAY and self.APP_ENV != "test":
             raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")
+        if self.LIVE_MARKET and self.APP_ENV == "test" and self.KITE_WS_URL.startswith("wss://ws.kite.trade"):
+            raise ValueError("LIVE_MARKET under APP_ENV=test needs a KITE_WS_URL that is not the real Kite")
         return self
 
 

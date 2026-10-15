@@ -33,10 +33,13 @@ from enum import Enum
 from types import MappingProxyType
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from fastapi import FastAPI, Request
+import contextlib
+import json
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -319,6 +322,106 @@ class ClosedRoute(APIRoute):
         holder: list[ClosedRoute] = []
         super().__init__(path, _through_the_door(endpoint, holder), **kwargs)  # type: ignore[arg-type]
         holder.append(self)
+
+
+def add_socket_route(app: FastAPI, route: ClosedWebSocketRoute) -> None:
+    """Adds a door socket route to the app's own table, exactly as built (``include_router`` would rebuild it as a plain
+    APIWebSocketRoute, off the door). Anything but a ClosedWebSocketRoute is refused."""
+    if type(route) is not ClosedWebSocketRoute:
+        raise DoorRefused("a socket route is a ClosedWebSocketRoute")
+    app.router.routes.append(route)
+
+
+# --- the socket door (W-065): a WebSocket route whose every message is minted by `emit` ---------------------------------
+
+#: The largest client message a door socket reads; a bigger one is answered as a request the API cannot read.
+SOCKET_MAX_MESSAGE = 65536
+
+
+class SocketClosed(Exception):
+    """The client's WebSocket connection ended."""
+
+
+class _Unreadable:
+    """A client message the socket could not read (not text, not JSON, too long): the endpoint answers it as invalid."""
+
+
+UNREADABLE = _Unreadable()
+
+
+def socket_body(source: object, message_models: tuple[type, ...]) -> Emitted:
+    """THE only way a door socket message is made: an instance of EXACTLY one of the route's declared message models,
+    written by `emit` (exclude_unset, like the REST routes), or a catalogue `UserFacingError` written by `emit_message`.
+    Anything else (a dict, a subclass, free text, bytes) raises `DoorRefused`."""
+    if type(source) is UserFacingError:
+        return emit_message(source)
+    if type(source) in message_models and isinstance(source, ApiModel):
+        return emit(source, True)
+    raise DoorRefused(f"a door socket message is one of its declared models or a catalogue message, "
+                      f"not {type(source).__name__}")
+
+
+class ClosedSocket:
+    """The only object a door socket endpoint holds: `receive()` gives one parsed JSON client message (or `UNREADABLE`)
+    and raises `SocketClosed` when the connection ends; `send()` writes a door-minted body. The raw WebSocket, its URL
+    and its query string are never handed to the endpoint."""
+
+    __slots__ = ("_ws", "_models")
+
+    def __init__(self, websocket: WebSocket, message_models: tuple[type, ...]) -> None:
+        self._ws = websocket
+        self._models = message_models
+
+    async def receive(self) -> object:
+        message = await self._ws.receive()
+        if message["type"] == "websocket.disconnect":
+            raise SocketClosed()
+        text = message.get("text")
+        if type(text) is not str or len(text) > SOCKET_MAX_MESSAGE:
+            return UNREADABLE
+        try:
+            return json.loads(text)
+        except ValueError:
+            return UNREADABLE
+
+    async def send(self, source: object) -> None:
+        body = socket_body(source, self._models)
+        try:
+            await self._ws.send_text(bytes(body).decode("utf-8"))
+        except (WebSocketDisconnect, RuntimeError):  # the client went away mid-send
+            raise SocketClosed() from None
+
+
+class ClosedWebSocketRoute(APIWebSocketRoute):
+    """The only WebSocket route class of the API. Its endpoint is ``async def endpoint(socket: ClosedSocket)``; the door
+    accepts the connection, hands the endpoint a `ClosedSocket` limited to ``message_models`` (closed `ApiModel`s), and
+    closes the connection when the endpoint returns. An exception inside the endpoint is logged by class name only and
+    the connection closes with 1011; no exception text ever reaches the client."""
+
+    def __init__(self, path: str, endpoint: Callable[..., object], *, message_models: tuple[type, ...],
+                 **kwargs: object) -> None:
+        if not message_models or not all(isinstance(m, type) and issubclass(m, ApiModel) for m in message_models):
+            raise TypeError("a door socket declares its message models, each a closed ApiModel")
+        self.message_models = tuple(message_models)
+        models = self.message_models
+
+        async def door(websocket: WebSocket) -> None:
+            await websocket.accept()
+            code = 1000
+            try:
+                await endpoint(ClosedSocket(websocket, models))
+            except SocketClosed:
+                return
+            except Exception as exc:  # never the message: it could hold a request value
+                log.error("socket door: %s on %s", type(exc).__name__, path)
+                code = 1011
+            with contextlib.suppress(Exception):
+                await websocket.close(code)
+
+        door.__name__ = getattr(endpoint, "__name__", "socket")
+        door.ofo_door = True  # type: ignore[attr-defined]
+        door.ofo_endpoint = endpoint  # type: ignore[attr-defined]
+        super().__init__(path, door, **kwargs)  # type: ignore[arg-type]
 
 
 #: The one allow-list for a path Location (W-070 round 5): a single leading `/` (never `//`), then RFC 3986 unreserved
