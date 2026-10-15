@@ -266,7 +266,7 @@ def test_a_second_holder_of_the_expired_contract_keeps_the_mismatch_blocking():
     assert waiting.awaiting_settlement == frozenset({SHORT_CE}) and other.awaiting_settlement == frozenset()
     report = recon({FAR_FUT: 20, SHORT_PE: -20}, WAIT=waiting, OTHER=other)
     (m,) = report.mismatches
-    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("OTHER", "WAIT")
+    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("OTHER", "WAIT")  # Zerodha shows none: still missing
     assert report.blocked_strategy_ids == frozenset({"OTHER", "WAIT"})
 
 
@@ -375,7 +375,7 @@ def test_verifier_case_expired_leg_plus_standalone_both_gone_at_zerodha_blocks_n
 def test_a_standalone_alone_on_an_expired_contract_is_not_standalone_changed_but_a_live_one_still_is():
     alone_expired = {SHORT_CE: -10}
     (m,) = compare({}, {}, alone_expired, at=AFTER_CLOSE, clock=clock).mismatches
-    assert m.kind is MismatchKind.AWAITING_SETTLEMENT and not m.blocks
+    assert m.kind is MismatchKind.EXPIRED_STANDALONE_RETIRED and not m.blocks  # issue #279 item 2: its own note
     before_close = datetime.datetime(2026, 10, 15, 15, 0, tzinfo=IST)
     (m,) = compare({}, {}, alone_expired, at=before_close, clock=clock).mismatches
     assert m.kind is MismatchKind.STANDALONE_CHANGED  # not yet expired: as before
@@ -393,3 +393,70 @@ def test_expired_leg_listed_at_a_different_quantity_is_not_the_harmless_note():
     settle(record)
     (m,) = recon({SHORT_CE: -10, FAR_FUT: 20}, CAL=record).mismatches
     assert m.kind is MismatchKind.UNEXPECTED_BROKER_POSITION and m.kind is not MismatchKind.EXPIRED_STILL_AT_BROKER
+
+
+# ---- issue #279 items 2 and 3 (expired standalone retirement, accurate labels) -------------------------------------
+
+def test_279_item2_standalone_only_expired_contract_gets_one_retire_note_then_nothing():
+    """A recorded standalone on an expired contract that Zerodha no longer shows: one non-blocking retire note with
+    its own kind (no leg will close), the record is retired, and the next run is silent."""
+    from ofo.reconciliation.compare import retired_standalones, without_retired_standalones
+
+    standalone = {SHORT_CE: -10}
+    report = compare({}, {}, standalone, at=AFTER_CLOSE, clock=clock)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.EXPIRED_STANDALONE_RETIRED and not m.blocks
+    assert m.difference == ((SHORT_CE, 10),) and m.platform_state == ((SHORT_CE, -10),)
+    assert "leg is then closed" not in m.text and "settlement price" not in m.text  # not the awaiting text
+    assert retired_standalones(report) == {SHORT_CE: -10}
+    remaining = without_retired_standalones(standalone, report)
+    assert remaining == {} and standalone == {SHORT_CE: -10}  # the input is not mutated
+    assert compare({}, {}, remaining, at=AFTER_CLOSE, clock=clock).mismatches == ()
+
+
+def test_279_item2_a_live_standalone_and_one_still_at_zerodha_are_not_retired():
+    from ofo.reconciliation.compare import retired_standalones
+
+    before_close = datetime.datetime(2026, 10, 15, 15, 0, tzinfo=IST)
+    live = compare({}, {}, {SHORT_CE: -10}, at=before_close, clock=clock)
+    assert live.mismatches[0].kind is MismatchKind.STANDALONE_CHANGED and retired_standalones(live) == {}
+    still_there = compare({SHORT_CE: -5}, {}, {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock)
+    assert still_there.mismatches[0].kind is not MismatchKind.EXPIRED_STANDALONE_RETIRED
+    assert retired_standalones(still_there) == {}
+    outside = compare({}, {}, {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock, external={SHORT_CE: 10})
+    assert retired_standalones(outside) == {}  # an unexplained external change is never retired silently
+
+
+def test_279_item2_an_awaiting_leg_plus_standalone_stays_the_awaiting_note():
+    record = calendar()
+    settle(record, prices={})
+    (m,) = compare({FAR_FUT: 20}, {"CAL": record}, {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock).mismatches
+    assert m.kind is MismatchKind.AWAITING_SETTLEMENT
+
+
+def test_279_item3_awaiting_leg_plus_standalone_with_zerodha_showing_the_standalone_quantity_is_labelled_accurately():
+    record = calendar()
+    settle(record, prices={})
+    report = compare({SHORT_CE: -10, FAR_FUT: 20}, {"CAL": record}, {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.EXPIRED_QUANTITY_DIFFERS and m.blocks  # blocking unchanged
+    assert report.blocked_strategy_ids == frozenset({"CAL"}) and m.strategy_ids == ("CAL",)
+
+
+def test_279_item3_non_awaiting_second_holder_plus_standalone_is_not_side_or_missing_but_still_blocks():
+    waiting, other = calendar(), straddle()
+    settle(waiting, prices={})
+    report = compare({FAR_FUT: 20, SHORT_PE: -20, SHORT_CE: 10}, {"WAIT": waiting, "OTHER": other},
+                     {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.EXPIRED_QUANTITY_DIFFERS
+    assert m.strategy_ids == ("OTHER", "WAIT") and report.blocked_strategy_ids == frozenset({"OTHER", "WAIT"})
+
+
+def test_279_item3_a_live_contract_keeps_its_ordinary_labels():
+    """The relabel is for EXPIRED contracts only: the same shape on a live contract stays MISSING_PLATFORM_POSITION."""
+    before_close = datetime.datetime(2026, 10, 15, 15, 0, tzinfo=IST)
+    record = calendar()
+    (m,) = compare({FAR_FUT: 20, SHORT_CE: -10}, {"CAL": record}, {SHORT_CE: -10}, at=before_close,
+                   clock=clock).mismatches
+    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("CAL",)

@@ -74,6 +74,8 @@ class MismatchKind(Enum):
     STANDALONE_CHANGED = "standalone position changed"
     AWAITING_SETTLEMENT = "awaiting_settlement"  # an expired leg, no settlement price yet, gone at Zerodha (ADR-083)
     EXPIRED_STILL_AT_BROKER = "expired_still_at_broker"  # settled in the platform; Zerodha still lists it
+    EXPIRED_STANDALONE_RETIRED = "expired_standalone_retired"  # a standalone on an expired contract, gone at Zerodha
+    EXPIRED_QUANTITY_DIFFERS = "expired_quantity_differs"  # an expired contract still at Zerodha, wrong quantity: BLOCKS
 
 
 #: The catalogue template for each kind (ofo.errors.templates): the user's four-part text comes only from render().
@@ -89,10 +91,14 @@ _KIND_TEMPLATE = {
     MismatchKind.STANDALONE_CHANGED: "recon_standalone_changed",
     MismatchKind.AWAITING_SETTLEMENT: "recon_awaiting_settlement",
     MismatchKind.EXPIRED_STILL_AT_BROKER: "recon_expired_still_at_broker",
+    MismatchKind.EXPIRED_STANDALONE_RETIRED: "recon_expired_standalone_retired",
+    MismatchKind.EXPIRED_QUANTITY_DIFFERS: "recon_expired_quantity_differs",
 }
 
 #: ADR-083 kinds: shown, never blocking (``strategy_ids`` empty). Only a strategy with settlement state produces them.
 SETTLEMENT_KINDS = frozenset({MismatchKind.AWAITING_SETTLEMENT, MismatchKind.EXPIRED_STILL_AT_BROKER})
+#: Every kind that needs an expired contract (so the random live-contract account generator never reaches them).
+EXPIRY_KINDS = SETTLEMENT_KINDS | {MismatchKind.EXPIRED_STANDALONE_RETIRED, MismatchKind.EXPIRED_QUANTITY_DIFFERS}
 #: The next-action part of each kind's template: what the audit record keeps (``Mismatch.next_action``).
 _NEXT_ACTION = {kind: CATALOGUE[template_id].next_action for kind, template_id in _KIND_TEMPLATE.items()}
 
@@ -430,6 +436,11 @@ def compare(
         if owners:
             anchor = next(contract for contract in contracts if held[contract])
             kind = kind_hint or _classify_held(anchor, owners, broker, alone, actives, proposals, index)
+            if (kind in (MismatchKind.MISSING_PLATFORM_POSITION, MismatchKind.SIDE_MISMATCH)
+                    and is_expired(anchor, at) and broker.get(anchor, 0)):
+                # Issue #279 item 3 (ADR-083: not raised for an expired contract): a quantity is still at Zerodha, so
+                # it is not "missing" and not a side flip. LABEL only; ``owners`` (the blocking set) is untouched.
+                kind = MismatchKind.EXPIRED_QUANTITY_DIFFERS
         else:
             kind = MismatchKind.STANDALONE_CHANGED if alone.get(contracts[0]) else MismatchKind.UNEXPECTED_BROKER_POSITION
         if owners and any(outside.get(c) for c in contracts):
@@ -460,6 +471,20 @@ def compare(
     shares = tuple((sid, broker_share(sid, broker, alone, actives, involved.get(sid, set()), index)) for sid in covered)
     broker_lines = tuple(sorted(broker.items(), key=lambda item: contract_sort_key(item[0])))
     return ReconciliationReport(at, broker_lines, tuple(mismatches), shares)
+
+
+def retired_standalones(report: ReconciliationReport) -> dict[Contract, int]:
+    """The recorded standalone quantities this run retires (issue #279 item 2): contract -> the recorded units."""
+    return {
+        m.platform_state[0][0]: m.platform_state[0][1]
+        for m in report.mismatches if m.kind is MismatchKind.EXPIRED_STANDALONE_RETIRED
+    }
+
+
+def without_retired_standalones(standalone: Mapping[Contract, int], report: ReconciliationReport) -> dict[Contract, int]:
+    """A copy of the recorded standalone map (the one passed to ``compare``) minus this run's retired contracts."""
+    retired = retired_standalones(report)
+    return {c: u for c, u in standalone.items() if c not in retired}
 
 
 def _settlement_notes(
@@ -496,8 +521,12 @@ def _settlement_notes(
         kind = None
         if outside.get(contract):
             pass  # an unexplained external change (AC-4): never a settlement note, reported and blocking as before
-        elif broker.get(contract, 0) == 0 and set(held[contract]) <= awaiting_by.get(contract, set()) and (
-                held[contract] or (alone.get(contract) and is_expired(contract, at))):
+        elif (broker.get(contract, 0) == 0 and not held[contract] and alone.get(contract)
+              and is_expired(contract, at)):
+            # Issue #279 item 2: held ONLY by a recorded standalone: no leg will ever close, so it is not an awaiting
+            # note; it is retired once (``without_retired_standalones``), after which the next run is silent.
+            kind = MismatchKind.EXPIRED_STANDALONE_RETIRED
+        elif broker.get(contract, 0) == 0 and set(held[contract]) <= awaiting_by.get(contract, set()) and held[contract]:
             # Once expired, EVERY holder is expected gone from Zerodha: strategy legs awaiting their price and a
             # recorded standalone on the same contract alike (round 3). Never SIDE_MISMATCH / STANDALONE_CHANGED.
             kind = MismatchKind.AWAITING_SETTLEMENT
