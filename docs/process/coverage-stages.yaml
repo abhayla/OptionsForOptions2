@@ -229,6 +229,8 @@ issues:
   "#242": 4a            # mechanism: atool runs tests_app files that reference a changed route/response model (4th occurrence)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
+  "#245": 4a            # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
+  "#244": 4a           # deferred: W-072 review MINORs (istTime rollover, microsecond parsing, three untested renderings)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
@@ -243,7 +245,6 @@ work_items:
   W-011: S8
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
-  W-072: 4a           # #232 items 2-4: contract names, IST times, four-part errors (ADR-086, Tier B); before the gate re-run
   W-073: 4a           # #234 + #221 + ADR-086 item 1 in not-connected answers (Tier A); after W-072
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
