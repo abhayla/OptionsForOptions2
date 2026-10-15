@@ -525,3 +525,31 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Meaning: a rate table from the published page is accurate to the paisa on brokerage, exchange, SEBI and GST; STT and
   stamp need a stated rounding rule, and an estimate can differ from the contract note by under Rs 1 per order.
 - Bears on: Q267 / ADR-082, ADR-071, REQ-032 (charges interface), REQ-059 AC-3. Status: **decided** (ADR-082).
+- Added 2026-10-16 00:45 IST (orchestrator): all 4 real BUY rows in the 2026-10-15 replies (`charges_orders.json`,
+  `charges_CE.json`, `charges_PE.json`) carry stamp 0, the largest at premium Rs 2,210.00 (BUY NIFTY26O1922550PE 34 x
+  65), where 0.003% gives 0.0663; every other component of all 8 rows (4 BUY, 4 SELL) equals the published rates to 4
+  decimals (e.g. SELL NIFTY26O1923150CE 53.3 x 65: STT 5.19675, exchange 1.23093685). Whether the order-level reply
+  omits stamp or rounds it to whole rupees cannot be told from these rows (all under Rs 0.50).
+
+## F-36 - NSE no longer publishes a separate freeze-quantity file; the freeze limit is the `MaxTradQty` column of NSE's daily F&O contract file, one more than the largest allowed order, keyed by the exchange token
+- Measured 2026-10-16 00:35-00:45 IST by the orchestrator. Sources: NSE circular NSE/FAOP/61157 (29/2024, 15 Mar
+  2024), served at `https://nsearchives.nseindia.com/content/fo/qtyfreeze.xls` (a PDF despite the name), and
+  `https://nsearchives.nseindia.com/content/fo/NSE_FO_contract_15102026.csv.gz` (1,835,945 bytes, 85,592 lines, sha256
+  9b4e035d...4140; kept outside the repo at `D:\Abhay\Ventures\ofo-exchange-files\2026-10-15\`). Level P1.
+- The circular discontinued `Qtyfreeze.csv` and `fo_mktlots.csv` from 15 Apr 2024: "said MII contract file also
+  contains quantity freeze & market lot related information", file `NSE_FO_contract_ddmmyyyy.csv.gz` on the "all
+  reports - derivatives" page. The old `archives.nseindia.com/content/fo/qtyfreeze.xls` still answers with a stale
+  workbook saved 30 Nov 2023 - a reader that trusts it would load 2023 limits.
+- In the contract file the freeze limit is `MaxTradQty`; 15 Oct 2026 values for every contract of an index were one
+  number: NIFTY 3511 (4,092 rows), BANKNIFTY 1441, FINNIFTY 3241, MIDCPNIFTY 5761. Each is one more than a whole number
+  of lots (3511 = 54 x 65 + 1; 1441 = 48 x 30 + 1; 3241 = 54 x 60 + 1; 5761 = 48 x 120 + 1), so the largest allowed
+  order is `MaxTradQty - 1` (NIFTY 3510 units = 54 lots), agreeing with ADR-081's "about 54 lots" and F-04's 3,511 vs
+  3,510 across two brokers. For lot-multiple quantities "quantity < MaxTradQty" and "quantity <= MaxTradQty - 1" agree.
+- `FinInstrmId` is the exchange token: NIFTY26O1923550CE has `FinInstrmId` 47185 and Kite's `exchange_token` 47185
+  (`rest-2026-10-15-order/instrument_CE.json`), so the limit joins on the contract identity (NSE_FO, token) of ADR-050.
+  Dates (`XpryDt`) are seconds from 1980-01-01 (1476887400 = 2026-10-19 14:30) and `StrkPric` is in paise (2355000 =
+  23,550.00); the file for a day appears after that day (16 Oct's file was 404 at 00:36 IST on 16 Oct).
+- BSE (SENSEX on BFO): not yet measured; until a BSE source is read, ADR-081's warning ("Zerodha may reject a large
+  order") applies to BFO legs.
+- Meaning: ADR-081's "exchange's published freeze-quantity file" is, for NSE, this contract file - no decision change.
+- Bears on: ADR-081, REQ-054 AC-4, F-04. Status: **measured** (built by W-076).

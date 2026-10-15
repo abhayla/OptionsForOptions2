@@ -173,7 +173,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (193)
+## Spec sections (194)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -269,6 +269,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-33 - Afternoon market-hours capture: strikes are added during the d…
 - ## F-34 - One-minute bars built from our own Kite ticks match Kite's min…
 - ## F-35 - Zerodha's published F&O options rates reproduce its own charge…
+- ## F-36 - NSE no longer publishes a separate freeze-quantity file; the f…
 
 ### spec/open-questions.md
 

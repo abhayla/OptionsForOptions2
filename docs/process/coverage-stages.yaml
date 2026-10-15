@@ -247,6 +247,8 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
+  W-074: 4b           # charges rate table + calculator (ADR-082 part 1, #240)
+  W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -285,6 +287,7 @@ findings:
   F-33: 4a        # afternoon capture: intraday strikes, REST charges/history, floats, sessions, expiry close
   F-34: done      # bars from ticks vs Kite candles (decided, ADR-067)
   F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
+  F-36: 4b        # NSE freeze limit = MaxTradQty in the daily contract file (old qtyfreeze discontinued); BSE unmeasured (ADR-081, W-076)
 
 hypotheses:
   H1: done
