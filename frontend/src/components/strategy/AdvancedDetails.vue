@@ -7,7 +7,7 @@ defineProps({ rows: { type: Array, required: true } })
 <template>
   <section class="mt-4 rounded border border-line bg-surface p-3" data-testid="advanced-details">
     <h2 class="text-sm font-medium">Advanced details</h2>
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto" data-h-scroll>
       <table class="mt-2 min-w-full text-sm">
         <thead>
           <tr class="text-left text-xs text-ink-muted">

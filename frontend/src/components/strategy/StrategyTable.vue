@@ -19,7 +19,7 @@ const cols = computed(() => columnsToRender(props.table.columns))
 
 <template>
   <div class="strategy-table-wrapper">
-    <div class="table-scroll" data-testid="strategy-table-scroll">
+    <div class="table-scroll" data-h-scroll data-testid="strategy-table-scroll">
       <table class="strategy-table" data-testid="strategy-table">
         <thead>
           <tr>
