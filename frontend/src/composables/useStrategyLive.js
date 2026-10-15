@@ -19,7 +19,8 @@ export const MAX_ATTEMPTS = 10
 
 /** The delay before reconnect attempt `attempt` (1-based). */
 export function backoffDelay(attempt) {
-  return Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS)
+  const delay = BASE_DELAY_MS * 2 ** (attempt - 1) // a timer value in ms, never a price or P&L
+  return delay > MAX_DELAY_MS ? MAX_DELAY_MS : delay
 }
 
 /** Same-origin socket URL for the current page: never a host from config, never a query string. */
