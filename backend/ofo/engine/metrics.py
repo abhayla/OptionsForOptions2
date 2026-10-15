@@ -24,7 +24,9 @@ Conventions (orchestrator decision under ADR-045, spec basis REQ-033 AC-6 "compu
   the last knot. Signs are decided in exact fractions before any 0.01 rounding of a bound. Never inferred from the
   breakevens: a zero can be a touch or the end of a flat stretch. A single zero point between two loss intervals (a
   touch from below, always at a strike) does not split the region: it is carried as the region's "except" level
-  (issue #172), so regions never touch.
+  (issue #172), so regions never touch. Likewise a profit or zero stretch between two loss regions that is narrower
+  than the 0.01 display step (both edges round to one level) is carried as an "except" level - the stretch's
+  highest-P&L knot, a strike - never merged away (W-066 round 8).
 - **Multi-expiry** strategies have no exact at-expiry payoff and raise ``MultiExpiryError``.
 """
 from __future__ import annotations
@@ -150,18 +152,25 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
         else:
             regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi, []])
     # Edges are shown rounded to 0.01, so two edges can round to one level: a region narrower than a paisa becomes a
-    # single-level region (lower == upper, kept: ADR-072 names every loss region), and rounded regions that touch or
-    # overlap across a real (exact) gap are merged.
+    # single-level region (lower == upper, kept: ADR-072 names every loss region). Two regions whose rounded edges meet
+    # across a real (exact) gap - a profit or zero stretch narrower than the rounding step - are never joined silently:
+    # they become one region with the gap's best level as an "except" level (W-066 round 8, verifier's shape E). That
+    # level is the knot of the gap with the highest P&L, so its own P&L is >= 0 (a positive gap peaks at a strike).
     out: list[list] = []
+    prev_hi: Fraction | None = None
     for lo, hi, excepts in regions:
         d_lo = None if lo is None else _to_decimal(lo)
         d_hi = None if hi is None else _to_decimal(hi)
         d_ex = [_to_decimal(z) for z in excepts]
         if out and lo is not None and out[-1][1] is not None and d_lo <= out[-1][1]:
+            # the gap's ends are exact zeros (knots), so the best knot's P&L is >= 0 by construction
+            best = max((k for k in knots if prev_hi <= k <= lo), key=lambda k: (pnl(k), -k))
             out[-1][1] = d_hi
+            out[-1][2].append(_to_decimal(best))
             out[-1][2].extend(d_ex)
         else:
             out.append([d_lo, d_hi, d_ex])
+        prev_hi = hi
     # An except level is a strike (a zero inside a loss is a kink) and each side of it is negative up to at least the
     # next strike, so it stays strictly inside its rounded region; the LevelRegions slot refuses it otherwise.
     return tuple((lo, hi, tuple(ex)) if ex else (lo, hi) for lo, hi, ex in out)

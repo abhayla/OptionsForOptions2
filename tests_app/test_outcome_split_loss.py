@@ -68,6 +68,17 @@ def test_ac7_an_unbounded_below_loss_split_at_one_strike_renders_below_with_exce
         "If NIFTY ends below 22,800 (except exactly 22,400) at expiry.")
 
 
+def test_ac7_shape_e_a_profit_gap_narrower_than_a_paisa_is_named_as_the_excluded_level(replayed) -> None:
+    """AC-7 (W-066 round 8, verifier's shape E): SELL 12 lots CE22400 @0.05, BUY 1 lot CE22400 @0.55, SELL 11 lots
+    PE22400 @0. Hand computation per lot of 65 units: at 22,400 every option expires worthless, P&L = 12*0.05*65 -
+    0.55*65 = 39.00 - 35.75 = +3.25; either side the net slope is 11 lots, so the zeros sit 3.25 / (11*65) = 0.004545...
+    points away. Both crossings round to 22,400.00, so the profit stretch is narrower than the display step: before
+    round 8 the two loss regions were merged silently ("At every level at expiry.", false at 22,400). The sentence
+    names 22,400 as the excluded level instead (ADR-072's except wording)."""
+    out = _outcome(replayed, [(CE22400, "SELL", 12, "0.05"), (CE22400, "BUY", 1, "0.55"), (PE22400, "SELL", 11, "0")])
+    assert str(out.summary.where_do_i_start_losing) == "At every level except exactly 22,400 at expiry."
+
+
 def test_ac7_two_regions_without_a_zero_point_keep_the_plain_list(replayed) -> None:
     """AC-7 (other branch): crossings into profit are region edges, never "except" levels."""
     out = _outcome(replayed, [(CE22400, "SELL", 1, "50"), (PE22400, "SELL", 1, "50"), (CE22600, "BUY", 2, "0")])
