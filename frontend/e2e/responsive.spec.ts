@@ -4,6 +4,7 @@
 // a parameter and no sample value, or an empty route list, is an error, never a silent skip.
 import { test, expect } from '@playwright/test'
 import fs from 'node:fs'
+import { findClippedElements, describeClipped, SCROLLER_ATTR } from './clipping-check'
 // @ts-expect-error plain JS module, no type declarations
 import { routes } from '../src/router/routes.js'
 // @ts-expect-error plain JS module, no type declarations
@@ -55,6 +56,10 @@ for (const path of PATHS) {
     const m = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }))
     expect(m.scroll, `${where}: horizontal page scroll (scrollWidth ${m.scroll} > innerWidth ${m.inner})`).toBeLessThanOrEqual(m.inner)
 
+    // clipped content: overflow:hidden keeps scrollWidth small, so measure the boxes (issue #110)
+    const clipped = await findClippedElements(page)
+    expect(clipped, describeClipped(path, width, clipped)).toEqual([])
+
     // primary navigation visible and every link reachable within the viewport (the strip may scroll inside itself)
     const nav = page.getByTestId('primary-nav')
     await expect(nav, `${where}: primary navigation not visible`).toBeVisible()
@@ -80,6 +85,33 @@ for (const path of PATHS) {
     await page.screenshot({ path: `test-results/responsive/${name}-${info.project.name}.png`, fullPage: true })
   })
 }
+
+// Proof for issue #110: an over-wide table clipped by overflow:hidden passes the page-scroll check but must fail the
+// clipping check naming route and width; the same table inside a marked scroller must pass.
+const WIDE_TABLE = `<div id="fx" style="overflow:hidden"><table style="width:900px"><tr><td>wide</td></tr></table></div>`
+
+test('clipped over-wide table is caught, naming route and width; a marked scroller passes', async ({ page }) => {
+  const width = page.viewportSize()!.width
+  await page.goto('/home')
+  expect(await findClippedElements(page), 'baseline route must be clean').toEqual([])
+
+  await page.evaluate((html) => document.querySelector('[data-testid="app-content"]')!.insertAdjacentHTML('beforeend', html), WIDE_TABLE)
+  const pageScrollOk = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+  expect(pageScrollOk, 'the old page-scroll check is blind to this fixture').toBe(true)
+  const bad = await findClippedElements(page)
+  if (width < 900) {
+    expect(bad.length, 'clipped table not detected').toBeGreaterThan(0)
+    const msg = describeClipped('/home', width, bad)
+    expect(msg).toContain('route /home')
+    expect(msg).toContain(`at ${width}px`)
+    expect(msg).toContain('table')
+  }
+
+  await page.evaluate((a) => document.querySelector('#fx')!.setAttribute(a, ''), SCROLLER_ATTR)
+  const still = await findClippedElements(page)
+  // the marked wrapper itself fits (it is the viewport-wide block); its wide table is allowed
+  expect(still, 'marked scroller must pass').toEqual([])
+})
 
 test('account menu fits the viewport and does not cause horizontal scroll', async ({ page }) => {
   const width = page.viewportSize()!.width
