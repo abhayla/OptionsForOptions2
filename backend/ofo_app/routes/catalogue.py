@@ -44,6 +44,7 @@ class ExpiriesOut(ApiModel):
 
 
 class ContractOut(ApiModel):
+    contract_id: int  # the catalogue's internal id; a saved strategy leg links to it (ADR-057)
     exchange_segment: Identifier
     exchange_token: int
     instrument_type: Literal["CE", "PE", "FUT"]
@@ -85,6 +86,6 @@ async def contracts(underlying: str, expiry: datetime.date = Query(), db: Any = 
     check_underlying(underlying)
     rows = await picker.pickable_contracts(db, underlying, today, expiry)
     return ContractsOut.model_validate({"underlying": underlying, "contracts": [
-        {"exchange_segment": r.exchange_segment, "exchange_token": r.exchange_token,
+        {"contract_id": r.contract_id, "exchange_segment": r.exchange_segment, "exchange_token": r.exchange_token,
          "instrument_type": r.instrument_type, "expiry": r.expiry, "strike": r.strike, "lot_size": r.lot_size,
          "symbol": r.symbol} for r in rows]})

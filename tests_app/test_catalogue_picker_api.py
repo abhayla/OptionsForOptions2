@@ -215,8 +215,16 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
                     body = resp.json()
                     assert set(body) == {"underlying", "contracts"} and len(body["contracts"]) == 2 * 148 - 1
                     first = body["contracts"][0]
-                    assert set(first) == {"exchange_segment", "exchange_token", "instrument_type", "expiry", "strike",
-                                          "lot_size", "symbol"}
+                    assert set(first) == {"contract_id", "exchange_segment", "exchange_token", "instrument_type", "expiry",
+                                          "strike", "lot_size", "symbol"}
+                    # W-071 (ADR-057): contract_id is the catalogue's internal id of THAT segment:token row
+                    assert isinstance(first["contract_id"], int) and not isinstance(first["contract_id"], bool)
+                    stored = (await conn.execute(text(
+                        "SELECT exchange_segment, exchange_token FROM public.catalogue_contracts WHERE id = :i"),
+                        {"i": first["contract_id"]})).one()
+                    assert (stored.exchange_segment, int(stored.exchange_token)) == (first["exchange_segment"],
+                                                                                    first["exchange_token"])
+                    assert len({c["contract_id"] for c in body["contracts"]}) == len(body["contracts"])
                     assert isinstance(first["strike"], str) and Decimal(first["strike"]) > 0
                     assert isinstance(first["exchange_token"], int) and isinstance(first["lot_size"], int)
                     ids = {f"{c['exchange_segment']}:{c['exchange_token']}" for c in body["contracts"]}
