@@ -22,6 +22,7 @@ import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
+import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
 const router = useRouter()
@@ -76,10 +77,7 @@ async function load() {
   try {
     const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value })
     if (mine !== loadSeq) return
-    data.value = res.data
-    if (data.value.state === 'COMPUTED') state.value = data.value.legs.some((l) => l.label) ? 'stale' : 'computed'
-    else if (data.value.state === 'NOT_CONNECTED') state.value = 'not-connected'
-    else state.value = 'refused'
+    applyOutcome(res.data)
   } catch (e) {
     if (mine !== loadSeq) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -91,13 +89,47 @@ async function load() {
     }
   }
 }
+
+// One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
+function applyOutcome(body) {
+  data.value = body
+  if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
+  else if (body.state === 'NOT_CONNECTED') state.value = 'not-connected'
+  else state.value = 'refused'
+}
+
+// W-065 (REQ-035 AC-4; ADR-068 (2), ADR-077): live numbers from the platform socket. A push replaces the page's answer
+// and makes any REST answer still in flight obsolete; when the socket drops, the REST route answers, and its not-live
+// label (REQ-049 AC-5's message with the last price time) is the server's text.
+const live = useStrategyLive({
+  onPush: (body) => {
+    loadSeq++
+    clearTimeout(slowTimer)
+    slow.value = false
+    applyOutcome(body)
+  },
+  onDown: () => load(),
+})
+function syncLive() {
+  const draft = buildDraft(legs.value)
+  if (draft) live.follow({ ...draft, ux_level: uxLevel.value })
+  else live.stop()
+}
+
 const setLegs = (next) => {
   legs.value = next
   load()
+  syncLive()
 }
 
-onMounted(load)
-watch(() => route.query.ux, load)
+onMounted(() => {
+  load()
+  syncLive()
+})
+watch(() => route.query.ux, () => {
+  load()
+  syncLive()
+})
 const setUx = (ux) => router.replace({ query: { ...route.query, ux } })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
@@ -110,7 +142,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
 </script>
 
 <template>
-  <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel">
+  <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel" :data-live="live.status.value">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
