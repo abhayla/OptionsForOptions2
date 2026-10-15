@@ -258,16 +258,34 @@ def test_an_exited_strategy_is_left_alone_and_a_second_run_settles_nothing():
     assert again.settled == () and again.awaiting == () and not again.exited
 
 
-def test_a_second_holder_of_the_expired_contract_keeps_the_mismatch_blocking():
-    """Awaiting is only for contracts held by strategies that await it: with another holder the broker's single
-    net number cannot be explained, so both strategies stay blocked (ordinary AC-7 rule)."""
+def test_a_second_holder_of_the_expired_contract_not_yet_settled_is_awaiting_too():
+    """Issue #279 item 1 (changed expectation): the second holder's leg on the same contract has expired as well and is
+    not settled, and Zerodha shows none of it, so the broker's net 0 is fully explained: awaiting, nothing blocks
+    (ADR-083). Before #279 item 1 this blocked both strategies as MISSING_PLATFORM_POSITION."""
     waiting, other = calendar(), straddle()  # both hold the short 72600 CE of 2026-10-15
     settle(waiting, prices={})
     assert waiting.awaiting_settlement == frozenset({SHORT_CE}) and other.awaiting_settlement == frozenset()
     report = recon({FAR_FUT: 20, SHORT_PE: -20}, WAIT=waiting, OTHER=other)
     (m,) = report.mismatches
-    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("OTHER", "WAIT")  # Zerodha shows none: still missing
-    assert report.blocked_strategy_ids == frozenset({"OTHER", "WAIT"})
+    assert m.kind is MismatchKind.AWAITING_SETTLEMENT and not m.blocks
+    assert report.blocked_strategy_ids == frozenset()
+
+
+def test_a_second_holder_with_the_expired_contract_only_in_a_proposal_keeps_the_mismatch_blocking():
+    """Fail closed: a holder whose ACTIVE version lacks the contract (only its pending proposal wants it) is not an
+    expired open leg, so the broker's single net number cannot be explained: both stay blocked (AC-7 rule)."""
+    waiting = calendar()
+    settle(waiting, prices={})
+    proposer = _active((DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),))
+    proposer.edit(
+        StrategyDefinition("SENSEX", (
+            DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),
+            DefinitionLeg(Action.SELL, Instrument.CE, D("72600"), EXPIRY_DAY, 20),
+        )), at=ENTERED + datetime.timedelta(hours=2))
+    report = recon({FAR_FUT: 40}, WAIT=waiting, PROP=proposer)
+    (m,) = report.mismatches
+    assert m.kind is not MismatchKind.AWAITING_SETTLEMENT and m.strategy_ids == ("PROP", "WAIT")
+    assert report.blocked_strategy_ids == frozenset({"PROP", "WAIT"})
 
 
 def test_a_settled_contract_a_proposal_wants_again_is_not_treated_as_a_stale_listing():

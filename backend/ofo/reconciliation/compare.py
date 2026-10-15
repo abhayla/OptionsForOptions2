@@ -526,9 +526,15 @@ def _settlement_notes(
             # Issue #279 item 2: held ONLY by a recorded standalone: no leg will ever close, so it is not an awaiting
             # note; it is retired once (``without_retired_standalones``), after which the next run is silent.
             kind = MismatchKind.EXPIRED_STANDALONE_RETIRED
-        elif broker.get(contract, 0) == 0 and set(held[contract]) <= awaiting_by.get(contract, set()) and held[contract]:
+        elif (broker.get(contract, 0) == 0 and held[contract]
+              and set(held[contract]) <= awaiting_by.get(contract, set()) | _expired_unsettled_holders(
+                  contract, held[contract], records, actives, at)):
             # Once expired, EVERY holder is expected gone from Zerodha: strategy legs awaiting their price and a
             # recorded standalone on the same contract alike (round 3). Never SIDE_MISMATCH / STANDALONE_CHANGED.
+            # Issue #279 item 1: a run after the close but BEFORE ``settle_expired_legs`` has flagged anything sees the
+            # same expired, unsettled leg; it is awaiting too (ADR-083: "would block every calendar strategy once per
+            # near expiry"). Fail closed: Zerodha must show none of it, and a holder that has it only in a proposal
+            # (not in its active version) still blocks.
             kind = MismatchKind.AWAITING_SETTLEMENT
         elif (contract in settled and not expected.get(contract) and not held[contract]
               and broker.get(contract, 0) == settled[contract]):
@@ -548,6 +554,26 @@ def _settlement_notes(
             next_action=_NEXT_ACTION[kind],
         ))
     return notes, rest
+
+
+def _expired_unsettled_holders(
+    contract: Contract,
+    holders: tuple[str, ...],
+    records: Mapping[str, StrategyRecord],
+    actives: Mapping[str, Mapping[Contract, int]],
+    at: datetime.datetime,
+) -> set[str]:
+    """Holders whose ACTIVE version still carries ``contract``, expired at ``at`` and not settled (issue #279 item 1).
+
+    Expired is ``settlement.is_expired`` on the run time ``at`` (the only date input; no clock read): the expiry date
+    is before ``at``'s IST date, or is that date from ``EXPIRY_DAY_SETTLE_FROM``. Same-day before that time: live.
+    """
+    if not is_expired(contract, at):
+        return set()
+    return {
+        sid for sid in holders
+        if actives[sid].get(contract) and not records[sid].exited and contract not in records[sid].settled_units
+    }
 
 
 def _pair_moved_contracts(
