@@ -16,6 +16,8 @@ from datetime import date
 
 from ofo.errors import UserFacingError, render
 from ofo.execution.planned import ExecutionPlan
+from ofo.instruments.catalogue import Catalogue
+from ofo.instruments.models import ZERODHA, InstrumentId
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,23 @@ class FreezeCheck:
     warnings: tuple[FreezeFinding, ...]
 
 
+def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
+                           stored: Mapping[InstrumentId, tuple[int, date]]) -> dict[str, StoredFreeze]:
+    """The review's input, built from the store: for each plan contract, the catalogue entry that carries that Zerodha
+    trading symbol (exactly one; none or several = no entry, so the warning), its stored (limit, file date) by
+    ``InstrumentId``, and the LOT from the catalogue contract, never from the caller."""
+    if not isinstance(plan, ExecutionPlan):
+        raise ValueError(f"freeze_limits_for_plan needs an ExecutionPlan, got {plan!r}")
+    out: dict[str, StoredFreeze] = {}
+    for planned in plan.legs:
+        entries = catalogue.entries_for_broker_symbol(ZERODHA, planned.contract)
+        if len(entries) != 1 or entries[0].id not in stored:
+            continue
+        limit, file_date = stored[entries[0].id]
+        out[planned.contract] = StoredFreeze(limit, entries[0].contract.lot_size, file_date)
+    return out
+
+
 def largest_allowed_units(stored: StoredFreeze) -> int:
     """The largest whole-lot order below the limit (NIFTY: 3,511 and lot 65 -> 3,510 = 54 lots)."""
     return (stored.limit - 1) // stored.lot * stored.lot
@@ -64,6 +83,8 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None)
         if stored is None:
             warnings.append(FreezeFinding(planned.leg_ref, planned.contract,
                                           render("freeze_limit_unknown", contract=planned.contract)))
+        elif units % stored.lot != 0:
+            raise ValueError(f"{planned.contract}: {units} units is not a whole number of lots of {stored.lot}")
         elif not units < stored.limit:
             top = largest_allowed_units(stored)
             blocks.append(FreezeFinding(planned.leg_ref, planned.contract, render(
@@ -72,4 +93,4 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None)
     return FreezeCheck(tuple(blocks), tuple(warnings))
 
 
-__all__ = ["FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "largest_allowed_units"]
+__all__ = ["FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]

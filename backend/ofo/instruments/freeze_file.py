@@ -123,6 +123,9 @@ def parse_freeze_rows(rows: Iterable[dict[str, str]], file_date: date) -> Freeze
         missing = [c for c in REQUIRED_COLUMNS if c not in raw]
         if missing:
             raise ValueError(f"contract file is missing required column(s): {missing}")
+        short = [c for c in REQUIRED_COLUMNS if not isinstance(raw[c], str)]
+        if short:
+            raise ValueError(f"contract file row has no value for column(s) {short} (a short row)")
         row = _row(raw)
         if row is None:
             skipped += 1
@@ -131,6 +134,8 @@ def parse_freeze_rows(rows: Iterable[dict[str, str]], file_date: date) -> Freeze
             raise ValueError(f"exchange token {row.exchange_token} appears twice in the file")
         seen.add(row.exchange_token)
         kept.append(row)
+    if not kept:
+        raise ValueError(f"the contract file has no usable NIFTY row ({skipped} rows read): empty or the wrong file")
     return FreezeFile(file_date=file_date, rows=tuple(kept), skipped=skipped)
 
 

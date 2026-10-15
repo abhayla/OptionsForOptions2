@@ -83,12 +83,13 @@ def _notes(seq: OrderSequence) -> tuple[str, ...]:
 
 
 def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
-                     constraints: BrokerConstraints | None = None,
-                     freeze_limits: Mapping[str, StoredFreeze] | None = None) -> ExecutionReview:
+                     constraints: BrokerConstraints | None = None, *,
+                     freeze_limits: Mapping[str, StoredFreeze] | None) -> ExecutionReview:
     """AC-5: build the review from the engine, the margin planner and the sequence builder.
 
     W-076 (ADR-081): ``freeze_limits`` (broker trading symbol -> stored limit) decides which legs are blocked; a leg
-    with no entry carries the warning. Omitting it means no limit is known, so every leg warns."""
+    with no entry carries the warning. The argument is REQUIRED (no default, so the check cannot be skipped by
+    omission); ``None`` means no limit is known, so every leg warns. Build it with ``freeze_limits_for_plan``."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"execution_review needs an ExecutionPlan, got {plan!r}")
     strategy = Strategy(tuple(p.leg for p in plan.legs))

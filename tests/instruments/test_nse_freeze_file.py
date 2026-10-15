@@ -145,3 +145,26 @@ def test_other_underlyings_and_kinds_are_skipped_not_parsed() -> None:
     stock = dict(row, TckrSymb="RELIANCE", MaxTradQty="junk")
     parsed = parse_freeze_rows([row, stock], date(2026, 10, 15))
     assert (len(parsed.rows), parsed.skipped) == (1, 1)
+
+
+def test_empty_header_only_and_wrong_file_are_refused(tmp_path: pathlib.Path) -> None:
+    """AC-4: an empty file, a header-only file, and a file with no NIFTY row are errors, never a silent zero-row load."""
+    header = FIXTURE.read_text(encoding="utf-8").splitlines()[0] + "\n"
+    for name, body in (("empty", ""), ("header", header)):
+        f = tmp_path / "NSE_FO_contract_15102026.csv"
+        f.write_text(body, encoding="utf-8")
+        with pytest.raises(ValueError):
+            parse_freeze_file(f)
+    banknifty = [dict(r) for r in _real_rows() if r["TckrSymb"] == "BANKNIFTY"]
+    with pytest.raises(ValueError, match="no usable NIFTY row"):
+        parse_freeze_rows(banknifty, date(2026, 10, 15))
+
+
+def test_short_row_is_a_value_error_not_an_attribute_error(tmp_path: pathlib.Path) -> None:
+    """AC-4: a row cut short (fewer fields than the header) is refused with ValueError."""
+    lines = FIXTURE.read_text(encoding="utf-8").splitlines()
+    cut = ",".join(lines[1].split(",")[:5])
+    f = tmp_path / "NSE_FO_contract_15102026.csv"
+    f.write_text("\n".join([lines[0], cut]) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="short row"):
+        parse_freeze_file(f)

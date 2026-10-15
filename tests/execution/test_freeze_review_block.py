@@ -7,6 +7,7 @@ Tests marked synthetic use lot 1 so that units == limit is reachable (a real lot
 from __future__ import annotations
 
 import datetime
+import pathlib
 
 import pytest
 from plan_inputs import CE, SELL, FakeMargin, leg
@@ -107,3 +108,72 @@ def test_review_still_needs_an_execution_plan() -> None:
     """AC-4: freeze_check never accepts a hand-built plan substitute."""
     with pytest.raises(ValueError):
         freeze_check("plan", {})  # type: ignore[arg-type]
+
+
+def test_freeze_limits_is_a_required_argument() -> None:
+    """AC-4 (fail closed): execution_review cannot be called without freeze_limits; omission is a TypeError, not a
+    silent pass. None is the explicit 'no limits known' and warns."""
+    with pytest.raises(TypeError):
+        execution_review(plan_of(54 * 65), FakeMargin({}))  # type: ignore[call-arg]
+    assert execution_review(plan_of(54 * 65), FakeMargin({}), freeze_limits=None).warnings
+
+
+def test_units_that_are_not_a_lot_multiple_are_refused() -> None:
+    """AC-4: 3,576 units against lot 65 is not a whole number of lots: refused, never floored to 55 lots."""
+    with pytest.raises(ValueError, match="whole number of lots"):
+        freeze_check(plan_of(3576), {SYMBOL: REAL})
+
+
+def _adapter_inputs():
+    """Real fixture rows -> parsed file -> catalogue join -> stored limits keyed by InstrumentId (what the store holds)."""
+    from decimal import Decimal
+
+    from ofo.instruments.catalogue import Catalogue
+    from ofo.instruments.freeze_file import match_to_catalogue, parse_freeze_file
+    from ofo.instruments.parser import zerodha_listed
+
+    path = pathlib.Path(__file__).parent.parent / "fixtures" / "exchange" / "NSE_FO_contract_15102026_sample.csv"
+    parsed = parse_freeze_file(path, nse_name="NSE_FO_contract_15102026.csv.gz")
+    listed = zerodha_listed(
+        instrument_token=47185 * 256 + 9, exchange_token=47185, tradingsymbol=SYMBOL, name="NIFTY", expiry=EXPIRY,
+        strike=Decimal("23550"), tick_size=Decimal("0.05"), lot_size=65, instrument_type="CE", segment="NFO-OPT",
+        exchange="NFO", seen_on=datetime.date(2026, 10, 15))
+    catalogue = Catalogue()
+    catalogue.load([listed])
+    join = match_to_catalogue(parsed, catalogue)
+    return catalogue, {m.instrument_id: (m.freeze_limit, parsed.file_date) for m in join.matched}
+
+
+def test_store_to_adapter_to_review_on_real_rows() -> None:
+    """AC-4 core, no hand-built dict: stored limit of token 47185 (3511, 2026-10-15) -> adapter (lot 65 from the
+    catalogue) -> review: 55 lots blocked, 54 lots passes."""
+    from ofo.execution.freeze import freeze_limits_for_plan
+
+    catalogue, stored = _adapter_inputs()
+    assert stored and list(stored.values()) == [(3511, datetime.date(2026, 10, 15))]
+    for units, allowed in ((55 * 65, False), (54 * 65, True)):
+        plan = plan_of(units)
+        limits = freeze_limits_for_plan(plan, catalogue, stored)
+        assert limits == {SYMBOL: StoredFreeze(3511, 65, datetime.date(2026, 10, 15))}
+        assert execution_review(plan, FakeMargin({}), freeze_limits=limits).can_execute is allowed
+
+
+def test_adapter_gives_no_entry_for_an_unknown_or_unstored_symbol() -> None:
+    """AC-4: a symbol the catalogue does not hold, or holds with no stored limit, gets no entry, so the review warns."""
+    from ofo.execution.freeze import freeze_limits_for_plan
+
+    catalogue, stored = _adapter_inputs()
+    assert freeze_limits_for_plan(plan_of(65, "OTHERCONTRACT"), catalogue, stored) == {}
+    assert freeze_limits_for_plan(plan_of(65), catalogue, {}) == {}
+    r = execution_review(plan_of(55 * 65, "OTHERCONTRACT"), FakeMargin({}),
+                         freeze_limits=freeze_limits_for_plan(plan_of(65, "OTHERCONTRACT"), catalogue, stored))
+    assert r.can_execute and len(r.warnings) == 1
+
+
+def test_adapter_takes_the_lot_from_the_catalogue_not_the_caller() -> None:
+    """AC-4: the adapter has no lot parameter; with the catalogue's lot 65 a 3,575-unit leg is 55 lots in the message."""
+    from ofo.execution.freeze import freeze_limits_for_plan
+
+    catalogue, stored = _adapter_inputs()
+    limits = freeze_limits_for_plan(plan_of(55 * 65), catalogue, stored)
+    assert limits[SYMBOL].lot == 65

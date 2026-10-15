@@ -8,8 +8,8 @@ database clock, never the application's); ADR-048 (the limited application role)
 Copy from: none - modelled on 0009's table, guard and allowlist block.
 
 CHAIN NOTE: built on this branch with down_revision ``0011_strategy_planned_entry``. W-074 adds ``0012_charge_rates``
-in parallel; the orchestrator re-chains this file at merge (down_revision -> ``0012_charge_rates`` and the allowlist
-base -> that migration's ``extended_allowlist_sql()``).
+in parallel; the orchestrator re-chains this file at merge (down_revision -> ``0012_charge_rates``; the allowlist base
+follows it, and tests_app/test_freeze_allowlist_chain.py fails if an earlier block is lost).
 
 Changes (owner-run, one transaction):
 - public.exchange_freeze_limits: (exchange_segment, exchange_token, file_date) is the key; freeze_limit INTEGER > 0;
@@ -17,7 +17,7 @@ Changes (owner-run, one transaction):
   UPDATE or DELETE and refuses a file_date later than today on the database clock (IST). The newest file date is the
   one in force (the read picks it); an older file never replaces a newer limit.
 - Grants: the application role gets SELECT and INSERT on every column. No UPDATE, DELETE or TRUNCATE.
-- public.ofo_assert_app_role_allowlist: 0011's text plus block 13 for this table.
+- public.ofo_assert_app_role_allowlist: 0011's text plus block 14 for this table.
 
 Revision ID: 0013_exchange_freeze_limits
 Revises: 0011_strategy_planned_entry
@@ -46,7 +46,9 @@ def _load(filename: str, name: str):
     return module
 
 
-_PREVIOUS = _load("0011_strategy_planned_entry.py", "ofo_migration_0011_for_0013")
+# The predecessor is read from down_revision (one source of truth): a re-chain changes that one line and the
+# allowlist base follows it. The file is the one named exactly <down_revision>.py.
+_PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0013")
 _M8 = _PREVIOUS._M8
 _M4 = _M8._M4
 _M3 = _M8._M3
@@ -61,7 +63,7 @@ TRIGGER = "exchange_freeze_limits_guard"
 GUARD = "public.exchange_freeze_limits_guard"
 SEGMENTS = ("NSE_FO", "BSE_FO")  # ofo.instruments.models DERIVATIVE_SEGMENTS
 INSERT_COLUMNS = ("exchange_segment", "exchange_token", "file_date", "freeze_limit", "file_name")
-ALLOWLIST_BLOCK_MARKER = "-- 13. exchange freeze limits"
+ALLOWLIST_BLOCK_MARKER = "-- 14. exchange freeze limits"
 
 
 def _guard_sql() -> str:
@@ -114,7 +116,7 @@ _INSERT_BEFORE = _PREV._INSERT_BEFORE
 
 
 def extended_allowlist_sql() -> str:
-    """0011's allowlist text plus block 13. Fails closed (RuntimeError) on a changed shape or a block 13 already in."""
+    """0011's allowlist text plus block 14. Fails closed (RuntimeError) on a changed shape or a block 14 already in."""
     previous = previous_allowlist_sql()
     headers = previous.count("CREATE FUNCTION") + previous.count("CREATE OR REPLACE FUNCTION")
     if headers != 1 or previous.count(_INSERT_BEFORE) != 1 or ALLOWLIST_BLOCK_MARKER in previous:

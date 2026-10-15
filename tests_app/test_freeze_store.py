@@ -141,3 +141,45 @@ def test_format_result_names_each_disagreement() -> None:
     out = freeze_store.format_result(freeze_store.FreezeLoadResult(
         date(2026, 10, 15), 1, 0, 83, (Disagreement(47112, ("lot", "strike")),)))
     assert "disagreements=1" in out and "token 47112 differs from the catalogue in lot, strike" in out
+
+
+async def test_same_date_file_with_a_different_limit_is_refused(app_engine: AsyncEngine, tmp_path) -> None:
+    """AC-4: a second file for 15 Oct that shows 3510 for token 47185 (stored 3511) is refused and writes nothing; the
+    same value again is simply 'already stored'."""
+    changed = tmp_path / "NSE_FO_contract_15102026.csv"
+    changed.write_text(FIXTURE.read_text(encoding="utf-8").replace("3.511000E+03", "3.510000E+03"), encoding="utf-8")
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _catalogue(conn, _listed(47185, "23550", "CE"))
+            await freeze_store.load_freeze_file(conn, FIXTURE, nse_name=NSE_NAME)
+            with pytest.raises(ValueError, match="47185.*3510.*3511"):
+                await freeze_store.load_freeze_file(conn, changed)
+            inforce = await freeze_store.limits_in_force(conn)
+            assert inforce[InstrumentId(NSE_FO, 47185)].freeze_limit == 3511
+        finally:
+            await trans.rollback()
+
+
+async def test_store_to_adapter_to_review_on_the_real_rows(app_engine: AsyncEngine) -> None:
+    """AC-4 core through the database: load the real file, build the review input from the store (lot from the
+    catalogue), and the 55-lot leg is blocked while the 54-lot leg passes."""
+    from ofo.engine import Action, Instrument, Leg
+    from ofo.execution.planned import ExecutionPlan, PlannedLeg
+    from ofo.execution.review import execution_review
+
+    def plan(units: int) -> ExecutionPlan:
+        lg = Leg(Action.SELL, Instrument.CE, Decimal("23550"), date(2026, 10, 19), units, Decimal("50.00"))
+        return ExecutionPlan("S-1", (PlannedLeg("leg-1", "NIFTY26O1923550CE", lg),))
+
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _catalogue(conn, _listed(47185, "23550", "CE"))
+            await freeze_store.load_freeze_file(conn, FIXTURE, nse_name=NSE_NAME)
+            for units, can in ((55 * 65, False), (54 * 65, True)):
+                limits = await freeze_store.review_freeze_limits(conn, plan(units))
+                assert limits["NIFTY26O1923550CE"].limit == 3511 and limits["NIFTY26O1923550CE"].lot == 65
+                assert execution_review(plan(units), None, freeze_limits=limits).can_execute is can
+        finally:
+            await trans.rollback()
