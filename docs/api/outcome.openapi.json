@@ -500,6 +500,12 @@
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
+          "fallback": {
+            "default": false,
+            "description": "true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer is then the not-live state whoever else subscribes to the same contracts",
+            "title": "Fallback",
+            "type": "boolean"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/LegIn"
