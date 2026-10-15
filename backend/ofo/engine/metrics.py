@@ -22,7 +22,9 @@ Conventions (orchestrator decision under ADR-045, spec basis REQ-033 AC-6 "compu
   not a loss), read from the same payoff: between consecutive knots (0, every strike, every exact zero) the payoff is
   linear, so its sign at the midpoint is its sign on the whole interval; the upper tail's sign is taken one point past
   the last knot. Signs are decided in exact fractions before any 0.01 rounding of a bound. Never inferred from the
-  breakevens: a zero can be a touch or the end of a flat stretch.
+  breakevens: a zero can be a touch or the end of a flat stretch. A single zero point between two loss intervals (a
+  touch from below, always at a strike) does not split the region: it is carried as the region's "except" level
+  (issue #172), so regions never touch.
 - **Multi-expiry** strategies have no exact at-expiry payoff and raise ``MultiExpiryError``.
 """
 from __future__ import annotations
@@ -58,14 +60,20 @@ class MultiExpiryError(ValueError):
     """Exact at-expiry metrics were asked for a strategy whose legs expire on different dates."""
 
 
+#: One expiry loss region: ``(lower, upper)``, or ``(lower, upper, excepts)`` when single zero points split the loss
+#: inside it (``excepts`` = those levels, ascending, strictly inside; issue #172). None = an open end.
+LossRegion = (tuple[Decimal | None, Decimal | None]
+              | tuple[Decimal | None, Decimal | None, tuple[Decimal, ...]])
+
+
 @dataclass(frozen=True)
 class StrategyMetrics:
     max_profit: Decimal | _Unlimited
     min_pnl: Decimal | _Unlimited
     max_loss: Decimal | _Unlimited
     breakevens: tuple[Decimal, ...]
-    #: Expiry loss regions (P&L below zero), ordered; (lower, upper) with None = open end. ADR-072.
-    loss_regions: tuple[tuple[Decimal | None, Decimal | None], ...] = ()
+    #: Expiry loss regions (P&L below zero), ordered and never touching (ADR-072); see ``LossRegion``.
+    loss_regions: tuple[LossRegion, ...] = ()
 
 
 def _upper_tail_slope(leg: Leg) -> int:
@@ -110,8 +118,9 @@ def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) 
 
 
 def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int,
-                  zeros: list[Fraction]) -> tuple[tuple[Decimal | None, Decimal | None], ...]:
-    """The open intervals of [0, inf) where the payoff is below zero, merged across a knot whose own P&L is below zero."""
+                  zeros: list[Fraction]) -> tuple[LossRegion, ...]:
+    """The open intervals of [0, inf) where the payoff is below zero, merged across a knot whose own P&L is below zero
+    or exactly zero (then the knot is carried as an "except" level of the region)."""
     pts = [Fraction(p) for p in points]
     vals = [Fraction(v) for v in values]
 
@@ -127,29 +136,37 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
     # one entry per interval: (lower, upper-or-None, is_loss); the last interval is the open upper tail
     intervals = [(knots[i], knots[i + 1], pnl((knots[i] + knots[i + 1]) / 2) < 0) for i in range(len(knots) - 1)]
     intervals.append((knots[-1], None, pnl(knots[-1] + 1) < 0))
-    regions: list[list[Fraction | None]] = []
+    # one entry per region: [lower, upper, exact zero points inside it]. Two loss intervals meeting at a knot are ONE
+    # region: merged plainly when the knot's own P&L is below zero, and with the knot as an "except" level when it is
+    # exactly zero (a single zero point inside a loss; ADR-072, issue #172), never two touching regions.
+    regions: list[list] = []
     for lo, hi, is_loss in intervals:
         if not is_loss:
             continue
-        if regions and regions[-1][1] == lo and pnl(lo) < 0:
+        if regions and regions[-1][1] == lo:
+            if pnl(lo) == 0:
+                regions[-1][2].append(lo)
             regions[-1][1] = hi
         else:
-            regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi])
+            regions.append([None if lo == 0 and pnl(lo) < 0 else lo, hi, []])
     # Edges are shown rounded to 0.01, so two edges can round to one level: a region narrower than a paisa becomes a
     # single-level region (lower == upper, kept: ADR-072 names every loss region), and rounded regions that touch or
-    # overlap across a real (exact) gap are merged. Regions meeting at an exact zero point stay separate.
+    # overlap across a real (exact) gap are merged.
     out: list[list] = []
-    prev_exact_hi: Fraction | None = None
-    for lo, hi in regions:
+    for lo, hi, excepts in regions:
         d_lo = None if lo is None else _to_decimal(lo)
         d_hi = None if hi is None else _to_decimal(hi)
-        if (out and prev_exact_hi is not None and lo is not None and lo != prev_exact_hi
-                and out[-1][1] is not None and d_lo <= out[-1][1]):
+        d_ex = [_to_decimal(z) for z in excepts]
+        if out and lo is not None and out[-1][1] is not None and d_lo <= out[-1][1]:
             out[-1][1] = d_hi
+            out[-1][2].extend(d_ex)
         else:
-            out.append([d_lo, d_hi])
-        prev_exact_hi = hi
-    return tuple((lo, hi) for lo, hi in out)
+            out.append([d_lo, d_hi, d_ex])
+    for lo, hi, excepts in out:
+        # an except level is a strike (a zero inside a loss is a kink), at least one strike gap from either edge
+        if any((lo is not None and z <= lo) or (hi is not None and z >= hi) for z in excepts):
+            raise ValueError("an exact zero point inside a loss region rounds onto the region's edge")
+    return tuple((lo, hi, tuple(ex)) if ex else (lo, hi) for lo, hi, ex in out)
 
 
 def strategy_metrics(strategy: Strategy) -> StrategyMetrics:

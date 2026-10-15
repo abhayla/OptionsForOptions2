@@ -394,27 +394,55 @@ class Points(SlotType):
         return format_points(value)
 
 
+class ExceptLevels(SlotType):
+    """A non-empty, strictly ascending tuple of `Points` levels in plain notation: printed "X", "X and Y", "X, Y and Z"
+    (the exact zero points inside a loss; issue #172)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not tuple or not value:
+            raise TypeError(f"ExceptLevels slot takes a non-empty tuple, got {type(value).__name__}")
+        for level in value:
+            Points.validate(level)
+            if "E" in str(level).upper():
+                raise ValueError(f"a level is written in plain notation, got {level!r:.40}")
+        if any(not value[i - 1] < value[i] for i in range(1, len(value))):
+            raise ValueError("except levels must be strictly ascending")
+
+    @staticmethod
+    def format(value: tuple) -> str:
+        parts = [Points.format(level) for level in value]
+        return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
 class LevelRegions(SlotType):
-    """A non-empty tuple of level intervals ``(lower, upper)``, each bound a `Points` value or None (an open end, never
-    both None): printed "below X", "between X and Y", "above X", joined "a, b or c" (ADR-072)."""
+    """A non-empty tuple of level intervals ``(lower, upper)`` or ``(lower, upper, excepts)``, each bound a `Points`
+    value or None (an open end, never both None) and ``excepts`` an `ExceptLevels` value strictly inside the interval:
+    printed "below X", "between X and Y", "above X", with " (except exactly Z)" after a region that has excepts, joined
+    "a, b or c" (ADR-072; issue #172)."""
 
     @staticmethod
     def validate(value: object) -> None:
         if type(value) is not tuple or not value:
             raise TypeError(f"LevelRegions slot takes a non-empty tuple, got {type(value).__name__}")
         for item in value:
-            if type(item) is not tuple or len(item) != 2 or item[0] is None and item[1] is None:
-                raise TypeError(f"a level region is (lower, upper) with at least one bound, got {item!r:.40}")
-            for bound in item:
+            if type(item) is not tuple or len(item) not in (2, 3) or item[0] is None and item[1] is None:
+                raise TypeError(f"a level region is (lower, upper[, excepts]) with at least one bound, got {item!r:.40}")
+            for bound in item[:2]:
                 if bound is not None:
                     Points.validate(bound)
-            for bound in item:
+            for bound in item[:2]:
                 if bound is not None and "E" in str(bound).upper():
                     raise ValueError(f"a level bound is written in plain notation, got {bound!r:.40}")
             if item[0] is not None and item[1] is not None and item[0] > item[1]:
                 raise ValueError(f"a level region needs lower <= upper, got {item!r:.40}")
+            if len(item) == 3:
+                ExceptLevels.validate(item[2])
+                if any((item[0] is not None and z <= item[0]) or (item[1] is not None and z >= item[1])
+                       for z in item[2]):
+                    raise ValueError(f"an except level lies strictly inside its region, got {item!r:.60}")
         last = len(value) - 1
-        for i, (lo, hi) in enumerate(value):
+        for i, (lo, hi, *_) in enumerate(value):
             if lo is None and i != 0:
                 raise ValueError("only the first level region may have an open lower end")
             if hi is None and i != last:
@@ -425,15 +453,18 @@ class LevelRegions(SlotType):
     @staticmethod
     def format(value: tuple) -> str:
         parts = []
-        for lo, hi in value:
+        for lo, hi, *excepts in value:
             if lo is not None and lo == hi:
-                parts.append(f"at {Points.format(lo)}")
+                part = f"at {Points.format(lo)}"
             elif lo is None:
-                parts.append(f"below {Points.format(hi)}")
+                part = f"below {Points.format(hi)}"
             elif hi is None:
-                parts.append(f"above {Points.format(lo)}")
+                part = f"above {Points.format(lo)}"
             else:
-                parts.append(f"between {Points.format(lo)} and {Points.format(hi)}")
+                part = f"between {Points.format(lo)} and {Points.format(hi)}"
+            if excepts:
+                part += f" (except exactly {ExceptLevels.format(excepts[0])})"
+            parts.append(part)
         return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " or " + parts[-1]
 
 
@@ -899,8 +930,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
     ExplanationTemplate("summary_start_regions", "values_seen", "If {index} ends {regions} at expiry.",
                         {"index": UnderlyingName, "regions": LevelRegions}),
-    ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {level} at expiry.",
-                        {"level": Points}),
+    ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {levels} at expiry.",
+                        {"levels": ExceptLevels}),
     ExplanationTemplate("summary_start_never", "values_seen", "At no level at expiry."),
     ExplanationTemplate("summary_start_everywhere", "values_seen",
                         "At every level at expiry."),

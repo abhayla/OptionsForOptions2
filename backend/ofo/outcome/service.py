@@ -179,8 +179,8 @@ def _start_losing(regions, idx) -> ExplanationText:
         return render_explanation("summary_start_never")
     if regions == ((None, None),):
         return render_explanation("summary_start_everywhere")
-    if len(regions) == 2 and regions[0][0] is None and regions[1][1] is None and regions[0][1] == regions[1][0]:
-        return render_explanation("summary_start_touch", level=regions[0][1])  # two regions meeting at one zero point
+    if len(regions) == 1 and regions[0][:2] == (None, None):  # a loss everywhere but its single zero points (#172)
+        return render_explanation("summary_start_touch", levels=regions[0][2])
     return render_explanation("summary_start_regions", index=idx, regions=regions)
 
 
