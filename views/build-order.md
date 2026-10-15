@@ -47,7 +47,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
-| REQ-061 | Existing positions on connect | feature | normal | next |
+| REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 waits on owner OQ-7 (build an order-free adopt-into-existing path, or defer it in REQ-061); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
 | REQ-068 | Strategy preferences | feature | normal | next |
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
