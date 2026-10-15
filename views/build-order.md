@@ -29,7 +29,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
-| REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: PARKED (run-discipline B1, 9 rounds): merged PARTIAL as strictly stronger than main; remainder and the designed next fix in #200 |
+| REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: #200 remainder (fix (1) and (2), one bounded round, ADR-074) built on branch fix/200-door-remainder: rebinding + ASGI send-path CI scans, seal recorded in the door send path; awaiting the independent verifier |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-013 | Email change and account deletion | feature | normal | next |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | normal | next |
