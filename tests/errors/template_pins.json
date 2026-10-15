@@ -1264,11 +1264,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:flag_expiry_day_entry": {
-    "sha256": "83e694cea935a44ce5101f8bb60d6f85fc20e0495c9f2981c0f2d548f493e54b",
+    "sha256": "f5b9f82fe3efbe78476ea0e59b5b5d4ed9e10e9c98a6959e63901a64a54686de",
     "reviewed": "pending owner read"
   },
   "explanation:flag_expiry_day_short": {
-    "sha256": "98cfc78f93ad535a7567cfe595cb6c874f5510fe15566369693032691a87a203",
+    "sha256": "975a26d419b2fabfb40e3ccd864f1e86a6248fd5eb72171d2aac836f2722292c",
     "reviewed": "pending owner read"
   }
 }

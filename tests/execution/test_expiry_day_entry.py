@@ -78,7 +78,7 @@ def test_buy_leg_on_its_expiry_day_only_warns_without_claiming_extra_margin(cat,
     assert r.confirmation_text is None
     assert _codes(r) == {FlagCode.EXPIRY_DAY_ENTRY}
     (flag,) = [f for f in r.flags if f.code is FlagCode.EXPIRY_DAY_ENTRY]
-    assert "expires today" in flag.message and "calendar-spread" in flag.message
+    assert "expires today" in flag.message and "no margin offset" in flag.message
     assert "2%" not in flag.message and "extra expiry-day margin" not in flag.message  # a long pays its premium only
 
 
