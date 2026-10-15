@@ -874,8 +874,9 @@ APP_ASSEMBLY_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
         "create_app: the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
         "the test override of the market context; its lifespan reads app.state.broker to start live market data (W-065)"),
     "ofo_app/errors.py": (frozenset({"FastAPI", "app", "exempt", "add_middleware", "add_exception_handler", "_Boundary",
-                                     "ClosedRoute"}),
-        "the door itself: ClosedRoute and _Boundary are defined here; install(app) adds the boundary and the one handler"),
+                                     "ClosedRoute", "router", "routes"}),
+        "the door itself: ClosedRoute and _Boundary are defined here; install(app) adds the boundary and the one handler; "
+        "add_socket_route(app, route) appends a ClosedWebSocketRoute (and nothing else) to app.router.routes (W-065)"),
     "ofo_app/routes/broker.py": (frozenset({"FastAPI", "app", "state", "include_router", "add_api_route"}),
         "broker.mount(app, config) stores the runtime on app.state and adds the callback route; get-runtime reads "
         "request.app.state.broker"),

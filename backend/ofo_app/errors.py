@@ -324,6 +324,14 @@ class ClosedRoute(APIRoute):
         holder.append(self)
 
 
+def add_socket_route(app: FastAPI, route: ClosedWebSocketRoute) -> None:
+    """Adds a door socket route to the app's own table, exactly as built (``include_router`` would rebuild it as a plain
+    APIWebSocketRoute, off the door). Anything but a ClosedWebSocketRoute is refused."""
+    if type(route) is not ClosedWebSocketRoute:
+        raise DoorRefused("a socket route is a ClosedWebSocketRoute")
+    app.router.routes.append(route)
+
+
 # --- the socket door (W-065): a WebSocket route whose every message is minted by `emit` ---------------------------------
 
 #: The largest client message a door socket reads; a bigger one is answered as a request the API cannot read.

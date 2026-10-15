@@ -12,8 +12,6 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from fastapi import FastAPI
-
 from ofo_app.errors import ClosedSocket, ClosedWebSocketRoute
 from ofo_app.live_push import LiveFeed, StrategyPush
 from ofo_app.routes.outcome import OutcomeResponse
@@ -41,7 +39,7 @@ async def strategy_live(socket: ClosedSocket) -> None:
     await StrategyPush(socket, current_feed(), monotonic=time.monotonic).run()
 
 
-def mount(app: FastAPI) -> None:
-    """Adds the door socket route to the app itself: ``include_router`` would rebuild it as a plain APIWebSocketRoute."""
-    app.router.routes.append(ClosedWebSocketRoute(PATH, strategy_live, message_models=(OutcomeResponse,),
-                                                  name="strategy_live"))
+def socket_route() -> ClosedWebSocketRoute:
+    """The door socket route; create_app adds it with ``errors.add_socket_route`` (not ``include_router``, which would
+    rebuild it as a plain APIWebSocketRoute)."""
+    return ClosedWebSocketRoute(PATH, strategy_live, message_models=(OutcomeResponse,), name="strategy_live")
