@@ -17,9 +17,8 @@ def duplicate_codes(templates) -> dict[str, list[str]]:
     return {code: ids for code, ids in by_code.items() if len(ids) > 1}
 
 
-#: Found by this guard on main (not introduced here): two MARKET_DATA templates already share code 120. Renumbering a
-#: shipped code is an owner/orchestrator call (issue to file); the entry must be removed when it is fixed.
-KNOWN_DUPLICATES = {"MARKET_DATA_120": ["gate_price_outside_circuit", "marketdata_disconnected"]}
+#: No known duplicates: every shipped code is unique. Do not add an exception; renumber the new template instead.
+KNOWN_DUPLICATES: dict[str, list[str]] = {}
 
 
 def test_no_two_templates_share_a_code() -> None:
