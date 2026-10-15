@@ -2,6 +2,18 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+
+const apiCalls = []
+let apiAnswer = null
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')),
+    post: (url, body) => { apiCalls.push({ url, body }); return typeof apiAnswer === 'function' ? apiAnswer(body) : Promise.resolve({ data: apiAnswer }) } } }
+})
+import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import real from './fixtures/outcome-condor-advanced.json'
 import { BASE_DELAY_MS, LIVE_PATH, MAX_ATTEMPTS, MAX_DELAY_MS, backoffDelay, createLiveSocket, isOutcome, liveUrl } from '@/composables/useStrategyLive'
 
 class FakeSocket {
@@ -170,5 +182,113 @@ describe('AC-4: the Builder live socket', () => {
     for (const banned of ['parseFloat', 'Number(', 'toFixed', 'ltp *', 'pnl', 'planned_entry']) expect(src).not.toContain(banned)
     const page = readFileSync(resolve(__dirname, '../src/pages/StrategyBuilderPage.vue'), 'utf-8')
     for (const banned of ['parseFloat', 'Number(', 'toFixed']) expect(page).not.toContain(banned)
+  })
+})
+
+// ---- W-065 phase 3 round 2 (ADR-077, REQ-049 AC-5): the fallback follows THIS page's own socket --------------------------
+// The COMPUTED answer is the real recorded condor outcome (tests/fixtures/outcome-condor-advanced.json); the not-live
+// answer has the shape the server sends (NOT_CONNECTED, AC-5's text, no table, no ltp).
+const AC5 = 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.'
+const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
+  planned_entry: l.planned_entry, captured_at: l.captured_at })) }
+const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: null, summary: null, payoff: null, scenario: null,
+  advanced_details: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, label: AC5 })) }
+const COMPUTED = real
+const OTHER_STRATEGY = { ...real, legs: real.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) }
+
+describe('W-065 p3 r2: the page asks for the not-live answer when its own socket is down', () => {
+  async function openPage() {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  const state = (w) => w.find('[data-testid="strategy-builder"]').attributes('data-state')
+  const reconnect = () => {
+    vi.advanceTimersByTime(MAX_DELAY_MS + 1)
+    return FakeSocket.all.at(-1)
+  }
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) // flushPromises needs the real microtask/immediate queue
+  })
+
+  it('a normal load sends fallback false; the socket drop sends fallback true; the socket body never carries it', async () => {
+    apiAnswer = COMPUTED
+    const w = await openPage()
+    expect(apiCalls.map((c) => c.body.fallback)).toEqual([false])
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    expect(JSON.parse(ws.sent[0])).not.toHaveProperty('fallback')
+    apiAnswer = NOT_LIVE
+    ws.serverClose()
+    await flushPromises()
+    expect(apiCalls.map((c) => c.body.fallback)).toEqual([false, true])
+    expect(state(w)).toBe('not-connected')
+    expect(w.text()).toContain(AC5)
+    w.unmount()
+  })
+
+  it('a push after the reconnect clears the flag: the next load is false again', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openPage()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(apiCalls.at(-1).body.fallback).toBe(true)
+    const second = reconnect()
+    second.serverOpen()
+    second.serverPush(COMPUTED)
+    await flushPromises()
+    expect(state(w)).toBe('computed')
+    await w.vm.$router.replace({ query: { ...w.vm.$route.query, ux: 'guided' } })
+    await flushPromises()
+    expect(apiCalls.at(-1).body.fallback).toBe(false)
+    w.unmount()
+  })
+
+  it('a push whose legs differ from the legs on screen is not applied; the matching one is', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openPage()
+    expect(state(w)).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    ws.serverPush(OTHER_STRATEGY)
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    ws.serverPush({ ...COMPUTED, legs: COMPUTED.legs.map((l, i) => (i === 1 ? { ...l, planned_entry: '101.00' } : l)) })
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    ws.serverPush({ ...COMPUTED, legs: [...COMPUTED.legs].reverse() }) // same legs, other order = another strategy as sent
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    ws.serverPush(COMPUTED)
+    await flushPromises()
+    expect(state(w)).toBe('computed')
+    w.unmount()
+  })
+
+  it('the not-live message stays on screen during a fallback reload (no loading in between)', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openPage()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    let release
+    apiAnswer = () => new Promise((res) => { release = () => res({ data: NOT_LIVE }) })
+    const second = reconnect()
+    second.serverOpen()
+    second.serverClose() // the second drop asks REST again; the answer is still in flight
+    await flushPromises()
+    expect(state(w)).toBe('not-connected') // not 'loading'
+    expect(w.text()).toContain(AC5)
+    release()
+    await flushPromises()
+    expect(state(w)).toBe('not-connected')
+    w.unmount()
   })
 })

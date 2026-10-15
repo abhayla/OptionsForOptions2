@@ -61,6 +61,10 @@ function legsFromQuery() {
 }
 const legs = ref(legsFromQuery())
 let loadSeq = 0 // only the newest outcome answer is shown
+// ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
+// every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
+// (another tab, another user) still holds the same contracts.
+let socketDropped = false
 
 async function load() {
   const mine = ++loadSeq // every call invalidates the answers still in flight, also the ones that return early
@@ -72,10 +76,12 @@ async function load() {
     data.value = null
     return
   }
-  state.value = 'loading'
+  const fallback = socketDropped
+  // A fallback reload while the not-live message is already on screen keeps it there (no flicker through 'loading').
+  if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value })
+    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, fallback })
     if (mine !== loadSeq) return
     applyOutcome(res.data)
   } catch (e) {
@@ -88,6 +94,15 @@ async function load() {
       slow.value = false
     }
   }
+}
+
+// True when a pushed answer belongs to the strategy on screen: same legs (instrument, action, lots, planned entry), in
+// order. Plain string equality, as the server echoes the request's values untouched (no number is parsed here).
+function matchesLegs(body, draft) {
+  const got = body?.legs
+  if (!draft || !Array.isArray(got) || got.length !== draft.legs.length) return false
+  return draft.legs.every((l, i) => got[i].instrument_id === l.instrument_id && got[i].action === l.action
+    && got[i].lots === l.lots && got[i].planned_entry === l.planned_entry)
 }
 
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
@@ -103,12 +118,18 @@ function applyOutcome(body) {
 // label (REQ-049 AC-5's message with the last price time) is the server's text.
 const live = useStrategyLive({
   onPush: (body) => {
+    // A late push of the previous strategy (the socket was told the new one a moment ago) is dropped, never shown.
+    if (!matchesLegs(body, buildDraft(legs.value))) return
+    socketDropped = false
     loadSeq++
     clearTimeout(slowTimer)
     slow.value = false
     applyOutcome(body)
   },
-  onDown: () => load(),
+  onDown: () => {
+    socketDropped = true
+    load()
+  },
 })
 function syncLive() {
   const draft = buildDraft(legs.value)
