@@ -225,6 +225,7 @@ issues:
 
 # Work items whose status is not done.
 work_items:
+  W-071: 4a           # Save Draft and reopen in the Builder screen (gap found 2026-10-15)
   W-008: S8
   W-009: S8
   W-011: S8
