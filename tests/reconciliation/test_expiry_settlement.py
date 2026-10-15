@@ -258,16 +258,34 @@ def test_an_exited_strategy_is_left_alone_and_a_second_run_settles_nothing():
     assert again.settled == () and again.awaiting == () and not again.exited
 
 
-def test_a_second_holder_of_the_expired_contract_keeps_the_mismatch_blocking():
-    """Awaiting is only for contracts held by strategies that await it: with another holder the broker's single
-    net number cannot be explained, so both strategies stay blocked (ordinary AC-7 rule)."""
+def test_a_second_holder_of_the_expired_contract_not_yet_settled_is_awaiting_too():
+    """Issue #279 item 1 (changed expectation): the second holder's leg on the same contract has expired as well and is
+    not settled, and Zerodha shows none of it, so the broker's net 0 is fully explained: awaiting, nothing blocks
+    (ADR-083). Before #279 item 1 this blocked both strategies as MISSING_PLATFORM_POSITION."""
     waiting, other = calendar(), straddle()  # both hold the short 72600 CE of 2026-10-15
     settle(waiting, prices={})
     assert waiting.awaiting_settlement == frozenset({SHORT_CE}) and other.awaiting_settlement == frozenset()
     report = recon({FAR_FUT: 20, SHORT_PE: -20}, WAIT=waiting, OTHER=other)
     (m,) = report.mismatches
-    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("OTHER", "WAIT")  # Zerodha shows none: still missing
-    assert report.blocked_strategy_ids == frozenset({"OTHER", "WAIT"})
+    assert m.kind is MismatchKind.AWAITING_SETTLEMENT and not m.blocks
+    assert report.blocked_strategy_ids == frozenset()
+
+
+def test_a_second_holder_with_the_expired_contract_only_in_a_proposal_keeps_the_mismatch_blocking():
+    """Fail closed: a holder whose ACTIVE version lacks the contract (only its pending proposal wants it) is not an
+    expired open leg, so the broker's single net number cannot be explained: both stay blocked (AC-7 rule)."""
+    waiting = calendar()
+    settle(waiting, prices={})
+    proposer = _active((DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),))
+    proposer.edit(
+        StrategyDefinition("SENSEX", (
+            DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),
+            DefinitionLeg(Action.SELL, Instrument.CE, D("72600"), EXPIRY_DAY, 20),
+        )), at=ENTERED + datetime.timedelta(hours=2))
+    report = recon({FAR_FUT: 40}, WAIT=waiting, PROP=proposer)
+    (m,) = report.mismatches
+    assert m.kind is not MismatchKind.AWAITING_SETTLEMENT and m.strategy_ids == ("PROP", "WAIT")
+    assert report.blocked_strategy_ids == frozenset({"PROP", "WAIT"})
 
 
 def test_a_settled_contract_a_proposal_wants_again_is_not_treated_as_a_stale_listing():
@@ -460,3 +478,95 @@ def test_279_item3_a_live_contract_keeps_its_ordinary_labels():
     (m,) = compare({FAR_FUT: 20, SHORT_CE: -10}, {"CAL": record}, {SHORT_CE: -10}, at=before_close,
                    clock=clock).mismatches
     assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("CAL",)
+
+
+# ---- issue #279 item 1: a run after the close but BEFORE settle_expired_legs never blocks -----------------------------
+# Expired means ``settlement.is_expired``: expiry date before the run's IST date, or the expiry date itself from
+# 15:39 IST (EXPIRY_DAY_SETTLE_FROM). The reconcile time ``at`` is the only date input (no clock read in the domain).
+
+LONG_CE = _real_contract(_OPTION_ROWS, "CE", "72800", EXPIRY_DAY)
+BEFORE_CLOSE = datetime.datetime(2026, 10, 15, 15, 38, 59, tzinfo=IST)
+AT_CLOSE = datetime.datetime(2026, 10, 15, 15, 39, tzinfo=IST)
+
+
+def single_leg() -> StrategyRecord:
+    return _active((DefinitionLeg(Action.SELL, Instrument.CE, D("72600"), EXPIRY_DAY, 20),))
+
+
+def bear_call_spread() -> StrategyRecord:
+    """Short 72600 CE, long 72800 CE, both expiring 2026-10-15."""
+    return _active((
+        DefinitionLeg(Action.SELL, Instrument.CE, D("72600"), EXPIRY_DAY, 20),
+        DefinitionLeg(Action.BUY, Instrument.CE, D("72800"), EXPIRY_DAY, 20),
+    ))
+
+
+def _kinds(report):
+    return sorted((m.kind.name, m.blocks) for m in report.mismatches)
+
+
+def test_279_item1_core_calendar_reconciled_after_close_before_settlement_is_awaiting_not_blocking():
+    """The W-085 verifier's reproduction: on main this gave [('MISSING_PLATFORM_POSITION', True)] for CAL."""
+    record = calendar()  # settle_expired_legs has NOT run: no awaiting or settled state at all
+    assert record.awaiting_settlement == frozenset() and record.settled_contracts == frozenset()
+    report = recon({FAR_FUT: 20}, CAL=record)
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False)]
+    (m,) = report.mismatches
+    assert m.difference == ((SHORT_CE, 20),) and m.strategy_ids == ()
+    assert report.blocked_strategy_ids == frozenset()
+    assert report.share("CAL").as_dict() == {SHORT_CE: -20, FAR_FUT: 20}  # nothing rewritten
+
+
+def test_279_item1_calendar_far_leg_is_still_compared_normally():
+    record = calendar()
+    report = recon({}, CAL=record)  # Zerodha lost the far future too: that is a real, blocking mismatch
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False), ("MISSING_PLATFORM_POSITION", True)]
+    blocking = next(m for m in report.mismatches if m.blocks)
+    assert blocking.difference == ((FAR_FUT, -20),) and blocking.strategy_ids == ("CAL",)
+
+
+def test_279_item1_single_expired_leg_before_settlement_is_awaiting():
+    report = recon({}, ONE=single_leg())
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False)] and report.blocked_strategy_ids == frozenset()
+
+
+def test_279_item1_spread_with_both_legs_expired_before_settlement_is_two_awaiting_notes():
+    report = recon({}, SPR=bear_call_spread())
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False), ("AWAITING_SETTLEMENT", False)]
+    assert {m.difference[0][0] for m in report.mismatches} == {SHORT_CE, LONG_CE}
+    assert report.blocked_strategy_ids == frozenset()
+
+
+def test_279_item1_unsettled_expired_leg_still_at_zerodha_at_a_different_quantity_still_blocks():
+    """Fail closed: only expired + ABSENT at Zerodha + not settled becomes awaiting."""
+    report = recon({SHORT_CE: -10, FAR_FUT: 20}, CAL=calendar())
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.QUANTITY_MISMATCH and m.strategy_ids == ("CAL",)  # main's label and blocking
+    flipped = recon({SHORT_CE: 20, FAR_FUT: 20}, CAL=calendar())
+    assert flipped.blocked_strategy_ids == frozenset({"CAL"})
+
+
+def test_279_item1_unsettled_expired_leg_with_an_external_change_still_blocks():
+    report = compare({FAR_FUT: 20}, {"CAL": calendar()}, None, at=AFTER_CLOSE, clock=clock, external={SHORT_CE: 20})
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.EXTERNAL_MODIFICATION and m.strategy_ids == ("CAL",)
+
+
+def test_279_item1_expiry_day_before_the_close_is_live_and_blocks_from_the_close_it_is_awaiting():
+    before = compare({FAR_FUT: 20}, {"CAL": calendar()}, None, at=BEFORE_CLOSE, clock=clock)
+    assert _kinds(before) == [("MISSING_PLATFORM_POSITION", True)]
+    at_close = compare({FAR_FUT: 20}, {"CAL": calendar()}, None, at=AT_CLOSE, clock=clock)
+    assert _kinds(at_close) == [("AWAITING_SETTLEMENT", False)]
+
+
+def test_279_item1_an_earlier_day_expiry_is_awaiting_at_any_time_of_day():
+    morning_after = datetime.datetime(2026, 10, 16, 9, 0, tzinfo=IST)
+    report = compare({FAR_FUT: 20}, {"CAL": calendar()}, None, at=morning_after, clock=clock)
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False)]
+
+
+def test_279_item1_two_unsettled_holders_of_an_expired_contract_gone_at_zerodha_block_nothing():
+    """Both holders' legs on the contract have expired and Zerodha shows none: the net 0 is fully explained."""
+    report = recon({FAR_FUT: 20, SHORT_PE: -20}, CAL=calendar(), STR=straddle())
+    assert _kinds(report) == [("AWAITING_SETTLEMENT", False)]
+    assert report.mismatches[0].platform_breakdown == (("CAL", SHORT_CE, -20), ("STR", SHORT_CE, -20))
