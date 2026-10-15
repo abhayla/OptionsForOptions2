@@ -118,9 +118,9 @@ sales@globaldatafeeds.in), NSE Data & Analytics (marketdata@nse.co.in, not yet c
 Record each reply in ADR-014 when it arrives.
 
 ## Open areas with no question yet (become Q-numbers when work needs them)
-Pricing model for "Estimated Now" · bid/ask/slippage · charges model · tick rounding · timeout/cancel/repricing ·
-MIS/NRML · expiry/multi-expiry execution edge cases · quantity edge cases · existing-position grouping algorithm ·
-alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits · adjustment rule priority/conflict/
+Pricing model for "Estimated Now" · now numbered for 4b: bid/ask/slippage (Q268) · charges model (Q267) · tick rounding
+(Q265) · timeout/cancel/repricing (Q263) · MIS/NRML (Q264) · expiry/multi-expiry execution edge cases (Q269) · quantity
+edge cases (Q266) · existing-position grouping algorithm (Q270) · alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits · adjustment rule priority/conflict/
 cooldown · security architecture · data-retention policy · admin/system-health screens · final cloud/stack · the
 strategy state transition table (proposal in `spec/data/domain-model.md`) · what happens when a Client ID leaves the
 complimentary list · Zerodha rate limits for per-user WebSockets.
@@ -402,3 +402,35 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
   contract. Reason: the expiry is in every broker's file and in the exchange file, so the key stays broker-neutral
   (F-01). SPEC CHANGE to ADR-050 item 1 and REQ-054 AC-3. Spec basis: ADR-050, REQ-053, REQ-054, #116. Needed before
   Stage 4a stores any strategy.
+
+## Stage 4b questions (2026-10-15; master plan D7, drafted against the 2026-10-15 Kite captures)
+Every 4b area is read under ADR-054 (the platform sends no orders; the user places a read-only Kite basket of LIMIT
+orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4b-draft-2026-10-15.md`.
+
+## Q263 — DECIDED → ADR-079 (owner, 2026-10-15) — Timeout, cancel and repricing: what does the platform show and offer for an unfilled basket order it cannot cancel?
+- Answer: age and Zerodha's status shown, the user cancels in Kite, repricing only after Zerodha shows Cancelled.
+
+## Q264 — DECIDED → ADR-080 (expert role, owner delegation 2026-10-08) — MIS/NRML: which product does every basket order carry?
+- Answer: entries and adjustments NRML; an exit carries the product of the position it closes.
+
+## Q265 — DECIDED → ADR-080 (expert role) — Tick rounding: which way is a derived LIMIT price rounded?
+- Answer: BUY down, SELL up, never worse than the user's terms; outside the circuit band the leg is blocked.
+
+## Q266 — DECIDED → ADR-081 (owner, 2026-10-15) — Quantity edge cases: how is a leg above the exchange freeze limit handled, and where does the freeze limit come from?
+- Answer: blocked at review, never split; the limit is loaded daily from the exchange's freeze-quantity file.
+
+## Q267 — OPEN (owner) — Charges model: where do the charges on the review, in P&L and in the money sentences come from?
+- Gap: ADR-071's phrase "before charges and taxes" holds "until the charges model is decided"; its consequence expects
+  a new decision to replace the phrase with numbers that include charges.
+- Real case: 1 lot NIFTY 19-Oct-2026 23550 CE at 3.95, Zerodha's charges Rs 23.71 buy + Rs 24.09 sell = Rs 47.80, 18.6%
+  of the Rs 256.75 premium; the 1-lot iron condor entry Rs 110.59.
+
+## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT does "Execute at current market conditions" send, and how is slippage shown?
+- Answer: the depth level that fills the whole quantity; planned vs executable and the slippage in rupees on the review.
+
+## Q269 — OPEN (owner) — Expiry and multi-expiry execution: what happens when a leg expires, and is expiry-day entry allowed?
+- Gap: an expired leg leaves Zerodha's positions and would read as a mismatch (REQ-060 AC-2); expiry-day entry carries
+  extra margin (F-20).
+
+## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
+- Gap: no suggestion rule and no entry-price source for an adopted leg; no real position on the owner's account yet.
