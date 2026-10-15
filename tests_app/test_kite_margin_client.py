@@ -261,3 +261,40 @@ def test_ac1_urllib_transport_itself_raises_only_the_typed_error(monkeypatch, re
     monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: response)
     with pytest.raises(KiteMarginError):
         urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)
+
+
+@pytest.mark.parametrize("opener", ["[", '{"a":'], ids=["arrays", "objects"])
+def test_ac1_deeply_nested_json_is_the_typed_error_and_blocks(opener: str) -> None:
+    """AC-1 (round 3 M1): a reply nested past the recursion limit -> kite_margin_unavailable, never RecursionError;
+    also on the error-body path (a 401 with such a body is still just refused)."""
+    text = opener * 200000
+    for call in (lambda c: c.fetch_available_funds(), lambda c: c.fetch_basket_margin(condor())):
+        with pytest.raises(KiteMarginError) as raised:
+            call(client(Fake(text=text)))
+        assert raised.value.code == "kite_margin_unavailable"
+    with pytest.raises(KiteMarginError) as raised:
+        client(Fake(status=401, text=text)).fetch_available_funds()
+    assert raised.value.code == "kite_margin_refused"
+    assert margin_verdict(client(Fake(text=text)), condor()).allowed is False
+
+
+class _Unreadable:
+    def read(self, *args):
+        raise http.client.IncompleteRead(b"x")
+
+    def close(self) -> None:
+        pass
+
+
+def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypatch) -> None:
+    """AC-1 (round 3 M3): the status alone decides when the error body cannot be read (IncompleteRead is not an
+    OSError): 403 -> kite_margin_token, not kite_margin_unavailable."""
+    import urllib.error
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, _Unreadable())
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    with pytest.raises(KiteMarginError) as raised:
+        KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
+    assert raised.value.code == "kite_margin_token"

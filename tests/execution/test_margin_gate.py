@@ -126,6 +126,22 @@ def test_ac1_an_unknown_amount_blocks_the_basket(available: Decimal | None, requ
         "We could not confirm your available margin with Zerodha. Execution is paused.")
 
 
+@pytest.mark.parametrize("required", [Decimal("1e12") + 1, Decimal("1e30"), Decimal("1e100"), Decimal("1E+999999")])
+def test_ac1_an_absurd_required_margin_blocks_with_a_message_never_raises(required: Decimal) -> None:
+    """AC-1 (round 3 M2): a required margin too large to round to the paisa or to show blocks the basket with the
+    could-not-confirm message; no InvalidOperation or ValueError escapes."""
+    verdict = check_margin(Decimal("68498.85"), required)
+    assert verdict.allowed is False
+    assert verdict.message is not None
+    assert verdict.message.what_happened == (
+        "We could not confirm your available margin with Zerodha. Execution is paused.")
+
+
+def test_ac1_a_huge_balance_still_covers_a_normal_requirement() -> None:
+    """AC-1 (round 3 M2): the cap on shown amounts does not block a balance that covers the requirement."""
+    assert check_margin(Decimal("1e30"), Decimal("68498.85")).allowed is True
+
+
 def test_ac1_a_caller_cannot_forge_an_allowed_verdict() -> None:
     """AC-1: MarginVerdict cannot be built outside check_margin (caller-supplied-verdict-trusted)."""
     with pytest.raises(TypeError):

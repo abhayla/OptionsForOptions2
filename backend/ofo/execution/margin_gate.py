@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Final
 
 from ofo.errors import UserFacingError, render
@@ -61,10 +61,14 @@ class MarginVerdict:
             allowed, message = True, None
         else:
             # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
-            message = render("margin_basket_insufficient",
-                             available=self.available.quantize(_PAISE, rounding=ROUND_FLOOR),
-                             required=self.required.quantize(_PAISE, rounding=ROUND_CEILING))
             allowed = False
+            try:
+                message = render("margin_basket_insufficient",
+                                 available=self.available.quantize(_PAISE, rounding=ROUND_FLOOR),
+                                 required=self.required.quantize(_PAISE, rounding=ROUND_CEILING))
+            except (InvalidOperation, ValueError):
+                # An amount too large to round to the paisa or to show (cap 1e12): still blocked, never raises.
+                message = render("gate_margin_unconfirmed")
         object.__setattr__(self, "allowed", allowed)
         object.__setattr__(self, "message", message)
 

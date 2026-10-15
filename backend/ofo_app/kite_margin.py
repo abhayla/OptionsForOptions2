@@ -151,7 +151,7 @@ class KiteMargin:
             raise KiteMarginError("kite_margin_unavailable" if status >= 500 else "kite_margin_refused")
         try:
             reply = json.loads(text, parse_float=Decimal)
-        except ValueError:
+        except (ValueError, RecursionError):  # deeply nested JSON raises RecursionError, not ValueError
             raise KiteMarginError("kite_margin_unavailable") from None
         data = reply.get("data") if isinstance(reply, dict) else None
         if not isinstance(reply, dict) or reply.get("status") != "success" or not isinstance(data, dict):
@@ -189,7 +189,7 @@ class KiteMargin:
 def _error_type(text: str) -> str | None:
     try:
         body = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     return body.get("error_type") if isinstance(body, dict) else None
 
