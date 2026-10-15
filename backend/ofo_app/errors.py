@@ -511,12 +511,6 @@ async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
     return _internal_response(exc, request)
 
 
-#: The outcome route predates the door (plain `str` fields built in the domain, instrument ids with ':'): exempt by exact
-#: method and path until W-066 (issue #172) moves it onto the door and deletes this entry. Nothing else is exempt but
-#: the framework docs pages, and those only where `main.create_app` mounts them (ADR-073).
-OUTCOME_EXEMPTION = ("POST", "/api/strategies/outcome")
-
-
 class _Boundary:
     """Inner ASGI middleware: an exception the framework's own middleware did not answer is answered here, through
     `handle_error`, and NOT re-raised, so no server logger ever receives the raw exception.
@@ -569,4 +563,4 @@ def install(app: FastAPI) -> None:
         app.add_exception_handler(exc_type, handle_error)
     docs = {("GET", url) for url in (app.docs_url, app.redoc_url, app.openapi_url,
                                       app.swagger_ui_oauth2_redirect_url if app.docs_url else None) if url}
-    app.add_middleware(_Boundary, exempt=frozenset(docs | {OUTCOME_EXEMPTION}))
+    app.add_middleware(_Boundary, exempt=frozenset(docs))

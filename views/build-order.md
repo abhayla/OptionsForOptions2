@@ -24,6 +24,8 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
+| REQ-043 | Live monitoring and status colours | foundation | normal | next |
+| REQ-055 | Margin checks | foundation | normal | next |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
 | REQ-064 | Audit log | foundation | normal | next |
@@ -40,9 +42,12 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-027 | Strike selection modes | feature | normal | next |
 | REQ-037 | Strategy modification | feature | normal | next |
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | normal | next |
+| REQ-042 | Automation: Alert + Prepare Orders | feature | normal | next |
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
+| REQ-061 | Existing positions on connect | feature | normal | next |
+| REQ-062 | Notifications | feature | normal | next |
 | REQ-068 | Strategy preferences | feature | normal | next |
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
@@ -65,14 +70,9 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-029 (Specified): Option Chain display and live data
 - REQ-030 (Specified): Option Chain leg selection and import
 - REQ-031 (Specified): Option Chain live strategy preview
-- REQ-042 (Specified): Automation: Alert + Prepare Orders
-- REQ-043 (Specified): Live monitoring and status colours
 - REQ-044 (Specified): Strategy control center and Positions screen
 - REQ-047 (Specified): Adjustment-relevant data collection
 - REQ-050 (Specified): Shared computation and scale
-- REQ-055 (Specified): Margin checks
-- REQ-061 (Specified): Existing positions on connect
-- REQ-062 (Specified): Notifications
 - REQ-066 (Specified): Compliance gates
 - REQ-067 (Specified): Delivery controls
 - REQ-073 (Specified): Orders reach Zerodha as a read-only basket the user places on Kite's own page

@@ -2,7 +2,7 @@
 
 # Findings index
 
-45 finding(s), generated from `knowledge/findings/*.json`.
+46 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -33,6 +33,7 @@
 | parallel-branches-green-alone-red-together | Two work items built in parallel branches each pass CI on their own base, but one adds a repo-wide guard (an import scan, an inventory, an allowlist) that the other's new code violates; the clash shows only when the branches meet, so a branch merged first can turn the other red after it was verified. | unguarded | occurrences, scope, spec_ref |
 | pipe-masks-gate-exit-code | A failing step does not stop the step after it: a gate piped into a filter (`gate \| tail`) takes the filter's exit status, and a command on its own line (or after `;`) runs whatever the line before returned - so a following commit, push or merge goes ahead after a failed gate; chaining with && is not enough when the gate's output is piped. | guarded | occurrences, scope, spec_ref |
 | pre-existing-failure-claim-not-checked-on-base | Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes. | unguarded | occurrences, scope, spec_ref |
+| prefilter-narrower-than-parser | A cheap pre-filter placed in front of a parser (skip rows whose exchange, type or kind is not in a short list) silently drops rows the parser itself was later taught to accept. The parser's tests pass, the caller's tests pass on data without those rows, and the loss shows only when the dropped rows are needed downstream. The accept rule must live in one place: the pre-filter asks the parser's own accept test, or there is no pre-filter. | guarded | occurrences, scope, spec_ref |
 | privilege-guard-as-denylist | Any guard that protects data by refusing a list of forbidden privilege paths (superuser, a named role membership, table ownership) misses every path not on the list, because a database grants power through many routes (database ownership, schema ownership, role membership, default PUBLIC grants); the guard must instead assert that the role's effective privileges are exactly an allowed set. Wider shape of secret-filter-by-key-name: a denylist over an open-ended space is never complete. | guarded | scope, spec_ref |
 | remote-shell-read-transcodes-file | Reading a file through a remote shell command (ssh host 'type file', 'cat' in a PowerShell default shell, Get-Content) returns the shell's re-encoded text, not the file's bytes - the byte-order mark is dropped, line endings are converted and non-ASCII characters are replaced by the console code page; editing that text and writing it back silently rewrites every such line. | unguarded | occurrences, scope, spec_ref |
 | research-finding-held-in-chat | Any research finding proven during a session but reported only in chat (or held back until a decision) is lost to the next reader and lets work proceed on assumptions the finding contradicts; findings must be written to the spec findings list, the spec sections they bear on and (for failure classes) the registry in the same turn they are proven, before any decision or implementation. | unguarded | scope, spec_ref |

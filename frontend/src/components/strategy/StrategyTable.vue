@@ -32,7 +32,7 @@ const cols = computed(() => columnsToRender(props.table.columns))
               :data-current="isCurrentColumn(c) ? 'true' : 'false'"
               data-testid="col-head"
             >
-              {{ c.label }}<span v-for="m in c.markers" :key="m" class="ml-1 text-xs" data-testid="col-marker">{{ m }}</span>
+              {{ c.label }}
             </th>
           </tr>
         </thead>

@@ -67,7 +67,7 @@ requirements:
   REQ-059: [done, 4b]
   REQ-060: [done, 4b]
   REQ-061: 4b
-  REQ-062: 4c
+  REQ-062: {AC-1: [4c, S6], AC-2: S6, AC-3: 4c, AC-4: 4c}   # owner 2026-10-15: Stage 4 = in-app + WhatsApp via the Notifier; push, email, full matrix later
   REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b]}
   REQ-064: 4a
   REQ-065: 4a
@@ -148,6 +148,11 @@ decisions:
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
+  ADR-071: 4a           # max-loss/max-profit sentences say "before charges and taxes" (owner 2026-10-09, W-066)
+  ADR-072: 4a           # "where do I start losing" names every loss region from the payoff (W-066, independent review)
+  ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
+  ADR-075: 4a           # saved draft keeps planned entry + capture time (owner 2026-10-15, live gate check 2)
+  ADR-074: [4a, S5]     # REQ-065 open exception at the core gate; Verified before Stage 5 (owner 2026-10-15)
   ADR-073: 4a           # framework docs routes only in development/test (#148 response door; owner Q7)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
   ADR-054: 4b           # order path = Kite offsite basket, pending Zerodha
@@ -212,6 +217,10 @@ issues:
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
   "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
+  "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
+  "#206": 4a            # REST outcome route never subscribes legs (W-065 phase 2)
+  "#208": 4a            # Save Draft drops planned entry + capture time (ADR-075)
+  "#209": 4a            # TOTAL Current Value net with Cr/Dr (ADR-076)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 

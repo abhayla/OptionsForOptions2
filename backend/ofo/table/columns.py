@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from ofo.errors.explanations import render_explanation
+
 
 class ColumnId(Enum):
     """The fixed (non-scenario) columns, in their locked order."""
@@ -74,28 +76,8 @@ TRAILING_COLUMNS: tuple[ColumnId, ...] = (
     ColumnId.STATUS,
 )
 
-HEADER_LABELS: dict[ColumnId, str] = {
-    ColumnId.LEG: "Leg",
-    ColumnId.ACTION: "Action",
-    ColumnId.INSTRUMENT: "Instrument",
-    ColumnId.EXPIRY: "Expiry",
-    ColumnId.STRIKE: "Strike",
-    ColumnId.QUANTITY: "Quantity",
-    ColumnId.ENTRY_PRICE: "Entry Price",
-    ColumnId.LTP: "LTP",
-    ColumnId.ENTRY_VALUE: "Entry Value",
-    ColumnId.CURRENT_VALUE: "Current Value",
-    ColumnId.UNREALIZED_PNL: "Unrealized P&L",
-    ColumnId.PNL_PERCENT: "P&L %",
-    ColumnId.IV: "IV",
-    ColumnId.DELTA: "Delta",
-    ColumnId.GAMMA: "Gamma",
-    ColumnId.THETA: "Theta",
-    ColumnId.VEGA: "Vega",
-    ColumnId.LOWER_BE: "Lower Breakeven",
-    ColumnId.UPPER_BE: "Upper Breakeven",
-    ColumnId.STATUS: "Status",
-}
+#: Each heading is a catalogue render (W-066): template `table_column_label`, words in `COLUMN_LABEL_TEXT`.
+HEADER_LABELS: dict[ColumnId, str] = {cid: render_explanation("table_column_label", column=cid) for cid in ColumnId}
 
 
 class UXLevel(Enum):

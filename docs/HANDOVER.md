@@ -1,5 +1,9 @@
 # Handover
 
+**2026-10-15 — START HERE: `docs/process/session-handover-2026-10-15.md`.** Work moves from the Windows VPS to
+another PC; everything is pushed. The W-065 live proof did not run (no Kite login in the 2026-10-12 window) and is
+the first item on the new PC, then W-066 (#172). The note also gives the two-way GLOBAL.env sync recipe.
+
 **2026-10-12 — START HERE: `docs/process/session-handover-2026-10-12.md`.** Merged: #201 (W-070 response door
 part 2, PARTIAL after 9 rounds; remainder parked #200). REQ-065 back to Testing: W-069's AC-2 pass was withdrawn
 (Sonnet verifier; the door was forgeable). NEXT: W-065 live proof with the owner's Kite login, then W-066 (#172).

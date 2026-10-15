@@ -19,8 +19,7 @@ from ofo.errors.explanations import (
 )
 
 #: The pinned gap: W-060 (engine/display.py, scenario/views.py) callers still pass joined or formatted strings.
-PINNED_LEGACY = frozenset({"estimate_line", "estimate_assume_iv", "estimate_assume_valued",
-                           "scenario_estimated_unavailable"})
+PINNED_LEGACY = frozenset({"estimate_line", "estimate_assume_iv", "estimate_assume_valued"})
 
 
 def test_legacy_slot_set_is_pinned_and_can_only_shrink() -> None:
