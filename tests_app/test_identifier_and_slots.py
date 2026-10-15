@@ -51,7 +51,9 @@ PINNED_SLOT_TYPES = frozenset({
     *(f"ofo.errors.gate_slots.{n}" for n in (
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",
-        "OrderRef", "UnitsByContract")),
+        "OrderRef", "UnitsByContract",
+        # W-081 (margin gate): exact Decimal only, shown by the engine's rupee formatter (ADR-008)
+        "DisplayRupees")),
     *(f"ofo.errors.slots.{n}" for n in (
         "Money", "PnLMoney", "Int", "Count", "Time", "Instrument", "Code", "Underlying", "ExternalText")),
 })
