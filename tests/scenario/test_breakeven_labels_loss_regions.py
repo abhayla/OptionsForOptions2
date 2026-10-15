@@ -49,15 +49,29 @@ def test_iron_condor_two_breakevens_unchanged(settings):
     assert _labels(legs, settings) == ((D("22909"), D("23491")), D("22909"), D("23491"))
 
 
-def test_no_loss_region_touching_breakeven_shows_neither(settings, monkeypatch):
-    """If the metrics cannot say which side the loss is on, show neither label: no guess, no exception."""
-    import ofo.scenario.levels as levels
+def test_zero_cost_bull_call_spread_no_loss_region_profit_above_is_lower(settings):
+    """Buy 22200 CE + sell 22400 CE, both @100: P&L is 0 at and below 22,200, rising above; no loss -> Lower 22,200."""
+    legs = [nifty_leg(BUY, CE, "22200", "100.00"), nifty_leg(SELL, CE, "22400", "100.00")]
+    assert _labels(legs, settings) == ((D("22200"),), D("22200"), None)
 
-    real = levels.strategy_metrics
 
-    def no_regions(strategy):
-        from dataclasses import replace
-        return replace(real(strategy), loss_regions=())
+def test_zero_cost_bear_put_spread_no_loss_region_profit_below_is_upper(settings):
+    """Buy 22400 PE + sell 22200 PE, both @100: P&L is 0 at and above 22,400, rising below; no loss -> Upper 22,400."""
+    legs = [nifty_leg(BUY, PE, "22400", "100.00"), nifty_leg(SELL, PE, "22200", "100.00")]
+    assert _labels(legs, settings) == ((D("22400"),), None, D("22400"))
 
-    monkeypatch.setattr(levels, "strategy_metrics", no_regions)
-    assert _labels([nifty_leg(BUY, CE, "23000", "100.00")], settings) == ((D("23100"),), None, None)
+
+def _fly(flip):
+    rows = [(SELL, CE, "23000"), (SELL, PE, "23000"), (BUY, CE, "25000"), (BUY, PE, "21000")]
+    opposite = {BUY: SELL, SELL: BUY}
+    return [nifty_leg(opposite[a] if flip else a, i, k, "50.00") for a, i, k in rows]
+
+
+def test_credit_zero_iron_fly_loss_both_sides_is_both_labels(settings):
+    """Sell 23000 CE+PE, buy 25000 CE + 21000 PE, all @50: P&L is 0 only at 23,000, negative either side -> both."""
+    assert _labels(_fly(False), settings) == ((D("23000"),), D("23000"), D("23000"))
+
+
+def test_debit_zero_reverse_fly_no_loss_uses_profit_side(settings):
+    """Flipped legs: P&L is 0 at 23,000 and positive on both sides, no loss region; profit above it -> Lower 23,000."""
+    assert _labels(_fly(True), settings) == ((D("23000"),), D("23000"), None)

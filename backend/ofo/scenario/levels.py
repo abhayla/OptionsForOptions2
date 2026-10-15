@@ -115,24 +115,32 @@ def _ceil_to(value: Decimal, unit: Decimal) -> Decimal:
 
 
 def _lower_upper(
-    loss_regions: tuple[LossRegion, ...], breakevens: tuple[Decimal, ...]
+    inputs: ModelInputs, loss_regions: tuple[LossRegion, ...], breakevens: tuple[Decimal, ...], step: Decimal
 ) -> tuple[Decimal | None, ...]:
     """Lower/Upper BE summary values (Q213, ADR-089).
 
-    Two or more breakevens: the lowest and the highest. Exactly one: the Lower BE when a computed loss region (ADR-072,
-    the engine's ``loss_regions``) ends at it (loss below it), the Upper BE when a loss region starts at it (loss above
-    it). When no loss region touches it, neither label is shown. None: both missing.
+    Two or more breakevens: the lowest and the highest. Exactly one, from the engine's ``loss_regions`` (ADR-072):
+    loss below only -> Lower BE; loss above only -> Upper BE; loss on both sides -> both labels; no loss region at all
+    -> the profit side decides (profit above -> Lower BE, below -> Upper BE). None: both missing.
     """
     if not breakevens:
         return (None, None)
     if len(breakevens) >= 2:
         return (breakevens[0], breakevens[-1])
     only = breakevens[0]
-    loss_below = any(region[1] == only for region in loss_regions)
-    loss_above = any(region[0] == only for region in loss_regions)
-    if loss_below == loss_above:  # no region touches it, or both sides (cannot say): never a guess
-        return (None, None)
-    return (only, None) if loss_below else (None, only)
+    split = any(len(region) == 3 and only in region[2] for region in loss_regions)  # a zero point inside one region
+    loss_below = split or any(region[1] == only for region in loss_regions)
+    loss_above = split or any(region[0] == only for region in loss_regions)
+    if loss_below and loss_above:  # the profit zone is that single point: the level is both edges
+        return (only, only)
+    if loss_below:
+        return (only, None)
+    if loss_above:
+        return (None, only)
+    # No loss region at all (P&L >= 0 everywhere): the profit side decides.
+    if inputs.strategy.expiry_pnl_at(only + step) > 0:
+        return (only, None)
+    return (None, only)
 
 
 def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[Decimal, Decimal]:
@@ -214,7 +222,7 @@ def build_level_set(
             kinds.setdefault(be, set()).add(ColumnKind.ZERO_PNL)
     # Decimal("23000") and Decimal("23000.00") are equal and hash alike, so an equal level never adds a column.
     columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
-    lower_be, upper_be = _lower_upper(metrics.loss_regions, metrics.breakevens)
+    lower_be, upper_be = _lower_upper(inputs, metrics.loss_regions, metrics.breakevens, step)
     return LevelSet(
         index=config.index,
         current=spot,
