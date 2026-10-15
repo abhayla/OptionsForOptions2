@@ -1,0 +1,27 @@
+{
+ "id": "local-python-differs-from-ci",
+ "scope": "generic",
+ "class": "When the local interpreter is a newer minor version than CI's (here 3.13 locally, 3.12 in CI), a test that pins a standard-library behaviour that changed between the two versions - an exception type, a message, a deprecation - passes locally and fails in CI; any assertion on a stdlib exception type must either accept every type the supported versions raise or be run on CI's version before push.",
+ "mechanism": "tests/execution/test_margin_gate.py asserted pytest.raises(TypeError) for dataclasses.replace(verdict, allowed=True) on a field declared init=False. Python 3.13 raises TypeError; Python 3.12.15 (CI, actions/setup-python) raises ValueError('field allowed is declared with init=False, it cannot be specified with replace()'). The builder's local run (3.13.7) was green.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "PR #274 (build/W-081-margin-gate), CI job lint-and-test",
+  "evidence": "CI: '1 failed, 4128 passed' - ValueError at dataclasses.py:1572 in test_ac1_replace_cannot_forge_an_allowed_verdict; locally (python 3.13.7, memory pc-setup-2026-10-15) 37 passed; fixed at 48c4aa2 with pytest.raises((TypeError, ValueError)) - the guarantee (no forged verdict) holds on both versions."
+ },
+ "fix": "Instance: accept both exception types. Class: the CI mirror (scripts/orchestrator/atool.py) runs the domain suite with the local interpreter only; a py-version check (or running the suite under the CI version via a pinned interpreter) is the mechanism - not built yet. Until then: assertions on stdlib exception types name every type the supported Python versions raise.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by CI after push (one CI round lost). Proposed: atool.py warns when sys.version_info differs from the version in .github/workflows/ci.yml (3.12), or the PC installs 3.12 for the mirror. Measured: one occurrence in this repo."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-055.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "PR #274",
+   "evidence": "one CI round lost (lint-and-test)"
+  }
+ ]
+}

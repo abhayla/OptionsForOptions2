@@ -231,9 +231,7 @@ issues:
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
-  "#259": 4a           # deferred: W-077 review MINORs (socket no-provider names, read timeout, fragile test, OpenAPI order)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
-  "#171": 4a           # Lower/Upper BE labels from loss regions - fixed by W-082 (PR #268); drop once closed
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
   "#275": 4b           # deferred: W-083 duplicate row + hidden-position audit; W-086 futures wording + repeated ack
