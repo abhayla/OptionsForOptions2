@@ -1,0 +1,10 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.7 [39m[90mD:/Abhay/Ventures/OptionsForOptions2/.claude/worktrees/agent-ae17c9a6488fa85b7/frontend[39m
+
+ [32m✓[39m tests/builder-lines.test.js [2m([22m[2m8 tests[22m[2m)[22m[32m 271[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m8 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 01:10:45
+[2m   Duration [22m 4.54s[2m (transform 818ms, setup 280ms, collect 1.52s, tests 271ms, environment 1.20s, prepare 328ms)[22m
+

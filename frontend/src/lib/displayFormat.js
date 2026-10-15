@@ -62,14 +62,14 @@ const ISO_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(
 function isoMillis(text) {
   const m = ISO_INSTANT.exec(text.trim())
   if (!m) return null
-  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number)
+  const [y, mo, d, h, mi, s] = m.slice(1, 7).map((x) => +x)
   const day = new Date(Date.UTC(y, mo - 1, d, h, mi, s))
   if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return null
   if (h > 23 || mi > 59 || s > 59) return null
   let offset = 0
   if (m[7]) {
-    if (Number(m[8]) > 23 || Number(m[9]) > 59) return null
-    offset = (m[7] === '-' ? -1 : 1) * (Number(m[8]) * 60 + Number(m[9])) * 60000
+    if (+m[8] > 23 || +m[9] > 59) return null
+    offset = (m[7] === '-' ? -1 : 1) * (+m[8] * 60 + +m[9]) * 60000
   }
   return day.getTime() - offset
 }

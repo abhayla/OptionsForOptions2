@@ -25,7 +25,7 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
-import { nameFromPool } from '@/lib/displayFormat'
+import { istTime, nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
