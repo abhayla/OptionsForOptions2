@@ -173,6 +173,10 @@ class ExecutionContext:
     # ADR-080 circuit band per leg, keyed by ``product_key(leg)``: (lower, upper) from the quote. Required: None or a
     # leg without a band BLOCKS (the gate never assumes a price is inside a band it could not read).
     price_bands: Mapping[tuple, tuple[Decimal | int, Decimal | int]] | None = None
+    # The limit price each ADJUSTMENT order will carry, keyed by ``product_key(leg)`` (the adjustment gate's legs hold
+    # a 0.00 placeholder, never a real price). An adjustment leg without one blocks ("price not known yet"). Entry and
+    # exit orders carry their own leg price, so this is not read for them.
+    order_prices: Mapping[tuple, Decimal | int] | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -223,6 +227,12 @@ class ExecutionContext:
             ):
                 raise ValueError("price_bands must be a mapping of position key to (lower, upper) or None")
             object.__setattr__(self, "price_bands", MappingProxyType(self.price_bands))  # a read-only view
+        if self.order_prices is not None:
+            if not isinstance(self.order_prices, Mapping) or not all(
+                isinstance(v, (Decimal, int)) and not isinstance(v, bool) for v in self.order_prices.values()
+            ):
+                raise ValueError("order_prices must be a mapping of position key to a Decimal price or None")
+            object.__setattr__(self, "order_prices", MappingProxyType(self.order_prices))  # a read-only view
         # frozen copies (read-only views), so a caller's later edit cannot change what the gate decided on
         if self.active_products is not None:
             object.__setattr__(self, "active_products", MappingProxyType(dict(self.active_products)))

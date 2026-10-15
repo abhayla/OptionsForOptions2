@@ -283,6 +283,11 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "no order has been submitted.",
           "An order priced outside the band would be rejected by Zerodha.", "This leg.",
           "Refresh market data, then try again.", {"leg": LegRef}),
+    _gate("gate_price_not_known", _MD, 122,
+          "The price for {leg} is not known yet, so it cannot be checked against today's price band. Execution is "
+          "blocked and no order has been submitted.",
+          "An order priced outside the band would be rejected by Zerodha.", "This leg.",
+          "Set the order price for this leg, then try again.", {"leg": LegRef}),
     _gate("gate_price_outside_circuit", _MD, 120,
           "The price {limit} for {leg} is outside today's price band for this contract ({lower} to {upper}). The "
           "price has not been changed.",

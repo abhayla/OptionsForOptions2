@@ -1246,5 +1246,9 @@
   "explanation:flag_price_band_unknown_on_exit": {
     "sha256": "4ece3beeaa4f38bc864175271ed3df673c26442e15feb883a87a1b737d5639e4",
     "reviewed": "pending owner read"
+  },
+  "gate_price_not_known": {
+    "sha256": "17a1306d1ac0ebe2b80c8b90a9a59478a66303ba510dcb674eefdad73f3baaf5",
+    "reviewed": "pending owner read"
   }
 }

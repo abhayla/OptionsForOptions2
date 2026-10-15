@@ -68,10 +68,23 @@ def eligibility(catalogue: Catalogue) -> EligibilityRegistry:
 
 
 class AnyBand(Mapping):
-    """A price band for every leg: 0 to 1,000,000 (test default; the real band is read from the quote)."""
+    """A price band for every leg: 0.05 to 1,000,000 (test default; the real band is read from the quote)."""
 
     def __getitem__(self, key):  # noqa: ANN001, ANN204
-        return (D("0"), D("1000000"))
+        return (D("0.05"), D("1000000"))
+
+    def __iter__(self):  # noqa: ANN204
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+class AnyPrice(Mapping):
+    """An adjustment order price for every leg (test default): a real, in-band 50.00."""
+
+    def __getitem__(self, key):  # noqa: ANN001, ANN204
+        return D("50.00")
 
     def __iter__(self):  # noqa: ANN204
         return iter(())
@@ -101,7 +114,8 @@ def all_true_context(**overrides: Any) -> ExecutionContext:
         reconciliation_blocked_strategy_ids=frozenset({"S-OTHER"}),
         charges_estimate=D("236.40"),
     )
-    overrides.setdefault("price_bands", AnyBand())  # a band wide enough for any test price; tests override or pass None
+    overrides.setdefault("price_bands", AnyBand())
+    overrides.setdefault("order_prices", AnyPrice())  # a band wide enough for any test price; tests override or pass None
     if overrides.get("action") is ExecutionAction.EXIT and overrides.get("active_legs") is not None:
         # an EXIT whose position and order products both read NRML, unless a test says otherwise (explicit None blocks)
         held = {product_key(leg): Product.NRML for leg in overrides["active_legs"]}

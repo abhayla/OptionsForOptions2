@@ -507,10 +507,17 @@ def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Che
         band = None if ctx.price_bands is None else ctx.price_bands.get(product_key(leg))
         if is_exit and (band is None or leg.entry_price is None or leg.entry_price <= 0):
             unchecked = True
+        elif ctx.action is ExecutionAction.ADJUSTMENT and (
+            ctx.order_prices is None or ctx.order_prices.get(product_key(leg)) is None
+        ):  # the leg holds a placeholder: compare the ORDER's price or nothing, never the placeholder
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_not_known", leg_number=number, leg=value))
         elif band is None:
             out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_band_unknown", leg_number=number, leg=value))
-        elif leg.entry_price is not None:
-            blocked = circuit_block(leg.entry_price, band[0], band[1], value)
+        else:
+            price = ctx.order_prices[product_key(leg)] if ctx.action is ExecutionAction.ADJUSTMENT else leg.entry_price
+            if price is None:
+                continue
+            blocked = circuit_block(price, band[0], band[1], value)
             if blocked is not None:
                 out.append(CheckFailure(CheckCode.PRICE_OUTSIDE_BAND, blocked, leg_number=number))
     return out, unchecked
@@ -564,6 +571,8 @@ def _run_checks(
         if any(f.code is CheckCode.DATA_UNHEALTHY for f in failures):
             flags.append(Flag(FlagCode.DATA_STALE_ON_EXIT, STALE_ON_EXIT))
         failures = [f for f in failures if f.code not in not_applicable]
+        if band_unchecked and not any(f.code is CheckCode.PRICE_OUTSIDE_BAND for f in failures):
+            not_checked = not_checked + (CheckCode.PRICE_OUTSIDE_BAND,)  # warned, not verified: never "passed"
         if unverified is None:
             exit_failure = _exit_failure(strategy, ctx)
             if exit_failure is not None:
@@ -580,6 +589,13 @@ def _run_checks(
     failed = {f.code for f in failures}
     passed = tuple(c for c in CheckCode if c not in failed and c not in not_checked and c not in not_applicable)
     return failures, passed, not_checked, not_applicable - {CheckCode.INTERNAL_ERROR}, flags, max_loss
+
+
+def _confirmation_text(flags: list[Flag]) -> str:
+    stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
+    band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
+    texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
+    return " ".join(texts)
 
 
 def check_pre_execution(
@@ -622,7 +638,7 @@ def check_pre_execution(
         failures=tuple(failures), passed=passed, not_checked=not_checked,
         not_applicable=tuple(c for c in CheckCode if c in not_applicable), flags=tuple(flags), max_loss=max_loss,
         margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
-        requires_confirmation=needs_confirmation, confirmation_text=STALE_ON_EXIT if needs_confirmation else None,
+        requires_confirmation=needs_confirmation, confirmation_text=_confirmation_text(flags) if needs_confirmation else None,
     )
     if result.blocked:
         logger.warning(

@@ -20,7 +20,7 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-from execution_inputs import AnyBand as _AnyBand
+from execution_inputs import AnyBand as _AnyBand, AnyPrice as _AnyPrice
 from partial_inputs import (
     CONTRACTS,
     LOT,
@@ -151,7 +151,7 @@ def _context(version_number: int) -> ExecutionContext:
         pro_entitled=True, version_state=VersionState.PROPOSED, rules_valid=True, dependencies_satisfied=True,
         data_health={d: DataHealth.HEALTHY for d in DataInput}, margin_available=D("500000.00"),
         margin_required=D("50000.00"), reconciliation_blocked_strategy_ids=frozenset(), charges_estimate=D("236.40"),
-        price_bands=_AnyBand(),
+        price_bands=_AnyBand(), order_prices=_AnyPrice(),
     )
 
 

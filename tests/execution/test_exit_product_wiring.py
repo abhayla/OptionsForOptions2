@@ -19,7 +19,7 @@ from test_close_slices import BUY_PE, QTY, SELL_CE, SELL_PE, _state, big_plan
 
 from ofo.engine import Action, Strategy
 from ofo.engine.product import Product
-from ofo.execution import CheckCode, ExecutionAction
+from ofo.execution import CheckCode, ExecutionAction, VersionState
 from ofo.execution.safety import FlagCode
 from ofo.execution.context import product_key
 from ofo.execution.partial import close_partial_strategy
@@ -169,3 +169,50 @@ def test_exit_inside_a_known_band_has_no_warning(catalogue, eligibility):
     result = check(strategy, ctx, catalogue, eligibility)
     assert result.failures == () and not any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in result.flags)
     assert result.requires_confirmation is False
+
+
+# -- round 4: the band is compared with the price the ORDER will carry, never a leg placeholder -------------------
+
+def _adjust(order_prices, bands=None):
+    bands = bands if bands is not None else _bands(D("0.05"), D("500"))
+    placeholder = tuple(dataclasses.replace(l, entry_price=D("0")) for l in condor_legs())  # as modification.py builds
+    ctx = all_true_context(action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED, price_bands=bands,
+                           order_prices=order_prices)
+    return Strategy(placeholder), ctx
+
+
+def _prices(value, legs=None):
+    return {product_key(l): value for l in (legs or condor_legs())}
+
+
+def test_adjustment_with_real_order_prices_inside_a_real_band_passes(catalogue, eligibility):
+    strategy, ctx = _adjust(_prices(D("42.50")))
+    assert check(strategy, ctx, catalogue, eligibility).failures == ()
+
+
+def test_adjustment_with_an_order_price_outside_the_band_blocks_that_leg(catalogue, eligibility):
+    prices = _prices(D("42.50"))
+    prices[product_key(condor_legs()[2])] = D("500.01")
+    result = check(*_adjust(prices)[:1], _adjust(prices)[1], catalogue, eligibility)
+    assert [(f.code, f.leg_number) for f in result.failures] == [(CheckCode.PRICE_OUTSIDE_BAND, 3)]
+
+
+@pytest.mark.parametrize("prices", [None, {}], ids=["no-prices", "leg-without-price"])
+def test_adjustment_with_no_order_price_yet_blocks_not_known_yet(prices, catalogue, eligibility):
+    result = check(*_adjust(prices)[:1], _adjust(prices)[1], catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.PRICE_OUTSIDE_BAND}
+    assert "not known yet" in result.failures[0].reason
+
+
+def test_exit_with_no_band_is_not_checked_rather_than_passed(catalogue, eligibility):
+    strategy, ctx = _exit_inputs()
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert CheckCode.PRICE_OUTSIDE_BAND in result.not_checked
+    assert CheckCode.PRICE_OUTSIDE_BAND not in result.passed
+
+
+def test_confirmation_text_names_the_unknown_band_when_it_is_the_only_warning(catalogue, eligibility):
+    strategy, ctx = _exit_inputs()
+    result = check(strategy, ctx, catalogue, eligibility)
+    assert result.confirmation_text == "We could not check this exit's price against today's price band — confirm to continue."
+    assert "stale" not in result.confirmation_text
