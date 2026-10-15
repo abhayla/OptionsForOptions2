@@ -283,3 +283,53 @@ def test_a_settled_contract_a_proposal_wants_again_is_not_treated_as_a_stale_lis
     ce = [m for m in report.mismatches if m.difference and m.difference[0][0] == SHORT_CE]
     assert ce and all(m.kind is not MismatchKind.EXPIRED_STILL_AT_BROKER for m in ce)
     assert ce[0].strategy_ids == ("PROP",)
+
+
+# ---- round 2: external changes, atomicity, quantity ------------------------------------------------------------
+
+def test_external_change_on_an_awaiting_leg_is_a_blocking_external_modification_not_a_note():
+    """The user squared off the expiring short in Kite before any run: AC-4/AC-6 still block (as on main)."""
+    record = calendar()
+    settle(record, prices={})
+    report = compare({FAR_FUT: 20}, {"CAL": record}, None, at=AFTER_CLOSE, clock=clock, external={SHORT_CE: 20})
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.EXTERNAL_MODIFICATION and m.strategy_ids == ("CAL",)
+    assert report.blocked_strategy_ids == frozenset({"CAL"})
+
+
+def test_external_change_on_a_settled_contract_is_not_the_stale_listing_note():
+    record = calendar()
+    settle(record)
+    report = compare({SHORT_CE: -20, FAR_FUT: 20}, {"CAL": record}, None, at=AFTER_CLOSE, clock=clock,
+                     external={SHORT_CE: -20})
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.UNEXPECTED_BROKER_POSITION  # what main reports for the same input
+
+
+def test_settle_refuses_a_leg_with_an_unexplained_external_change_and_changes_nothing():
+    record, timeline = calendar(), Timeline("CAL-3", clock=clock)
+    with pytest.raises(SettlementError, match="external change"):
+        settle_expired_legs(record, AFTER_CLOSE, source_of(SETTLEMENT), ENTRY_PRICES, timeline=timeline,
+                            external_changes={SHORT_CE: 20})
+    assert record.active_version.intended_position.as_dict() == {SHORT_CE: -20, FAR_FUT: 20}
+    assert timeline.entries == () and record.settled_contracts == frozenset()
+    # An external change on a contract that is not expiring does not stop the expired leg settling.
+    ok = settle_expired_legs(record, AFTER_CLOSE, source_of(SETTLEMENT), ENTRY_PRICES, external_changes={FAR_FUT: 5})
+    assert [leg.contract for leg in ok.settled] == [SHORT_CE]
+
+
+def test_settlement_is_atomic_a_failing_timeline_write_changes_nothing():
+    record, timeline = calendar(), Timeline("CAL-4", clock=clock)
+    timeline.append(EntryType.CREATED, at=AFTER_CLOSE + datetime.timedelta(hours=1), actor="system")
+    with pytest.raises(ValueError, match="chronological"):
+        settle(record, timeline=timeline)  # the new entry would predate the last one: the write fails
+    assert record.active_version.intended_position.as_dict() == {SHORT_CE: -20, FAR_FUT: 20}
+    assert record.settled_contracts == frozenset() and len(timeline.entries) == 1
+    assert len(record.outcomes) == 1  # only the original activation
+
+
+def test_expired_leg_listed_at_a_different_quantity_is_not_the_harmless_note():
+    record = calendar()
+    settle(record)
+    (m,) = recon({SHORT_CE: -10, FAR_FUT: 20}, CAL=record).mismatches
+    assert m.kind is MismatchKind.UNEXPECTED_BROKER_POSITION and m.kind is not MismatchKind.EXPIRED_STILL_AT_BROKER

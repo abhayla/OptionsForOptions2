@@ -259,7 +259,7 @@ class StrategyRecord:
     __slots__ = (
         "_clock", "_last_at", "_draft", "_history", "_versions", "_outcomes", "_active", "_pending",
         "_confirmed", "_actual", "_executed", "_references", "_reconcile", "_exited",
-        "_observed_at", "_guard", "_awaiting", "_settled",
+        "_observed_at", "_guard", "_awaiting", "_settled", "_settled_units",
     )
 
     def __init__(
@@ -289,6 +289,7 @@ class StrategyRecord:
         self._set("_observed_at", None)
         self._set("_awaiting", frozenset())
         self._set("_settled", frozenset())
+        self._set("_settled_units", ())
         self._set("_guard", StrategyGuard())  # REQ-036 AC-5: this strategy's own guard; never supplied by a caller
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -346,6 +347,11 @@ class StrategyRecord:
     def settled_contracts(self) -> frozenset[Contract]:
         """Every contract this strategy closed as an expiry settlement (reconciliation expects it gone at Zerodha)."""
         return self._settled
+
+    @property
+    def settled_units(self) -> dict[Contract, int]:
+        """The signed units each settled contract held when it settled (what Zerodha may still list afterwards)."""
+        return dict(self._settled_units)
 
     @property
     def history(self) -> tuple[HistoryEntry, ...]:
@@ -619,6 +625,10 @@ class StrategyRecord:
     ) -> ExecutionOutcome | None:
         """Close expired legs in the platform's books (ADR-083), or record that they await a settlement price.
 
+        NOT persisted (W-085 round 2): the awaiting and settled sets live in memory only; storing them is the next
+        step. The settlement source must return None until the exchange's final price is published: there is no
+        correction path once a leg has settled.
+
         ``settled``: contracts of the ACTIVE version closed at the exchange settlement price; the active version is
         replaced by a new one without them (a SETTLED outcome). When none is left the strategy becomes Exited through
         an EXITED outcome (REQ-039 AC-2), never inferred from an empty position. ``awaiting``: expired contracts
@@ -645,6 +655,8 @@ class StrategyRecord:
             raise VersionError(f"settlement {reference!r} was already recorded")
         if len(self._outcomes) >= MAX_OUTCOMES:
             raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        if len(self._versions) >= MAX_VERSIONS and len(settled) < len(held):
+            raise VersionError(f"version list is full ({MAX_VERSIONS})")
         self._stamp(at)
         before = self._active_intended()
         remaining = tuple(
@@ -656,6 +668,7 @@ class StrategyRecord:
         self._set("_actual", Position.of(actual))
         self._set("_observed_at", None)
         self._set("_settled", self._settled | settled)
+        self._set("_settled_units", self._settled_units + tuple((c, held[c]) for c in sorted(settled, key=contract_sort_key)))
         self._set("_awaiting", awaiting)
         if not remaining:
             self._set("_exited", True)

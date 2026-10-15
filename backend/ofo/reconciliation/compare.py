@@ -417,7 +417,8 @@ def compare(
     )
     diff = {c: broker.get(c, 0) - expected.get(c, 0) for c in differing}
     held = holders_by_contract(differing, actives, proposals)
-    settlement_notes, differing = _settlement_notes(differing, diff, held, broker, expected, alone, records, actives, at)
+    settlement_notes, differing = _settlement_notes(
+        differing, diff, held, broker, expected, alone, outside, records, actives, at)
     index = _ActiveIndex.build(differing, actives)
 
     groups = _pair_moved_contracts(differing, diff, held)
@@ -467,6 +468,7 @@ def _settlement_notes(
     broker: Mapping[Contract, int],
     expected: Mapping[Contract, int],
     alone: Mapping[Contract, int],
+    outside: Mapping[Contract, int],
     records: Mapping[str, StrategyRecord],
     actives: Mapping[str, Mapping[Contract, int]],
     at: datetime.datetime,
@@ -480,9 +482,10 @@ def _settlement_notes(
     ordinary, blocking mismatch. Strategies with no settlement state change nothing here.
     """
     awaiting_by: dict[Contract, set[str]] = {}
-    settled: set[Contract] = set()
+    settled: dict[Contract, int] = {}
     for sid, record in records.items():
-        settled |= record.settled_contracts
+        for contract, units in record.settled_units.items():
+            settled[contract] = settled.get(contract, 0) + units
         for contract in record.awaiting_settlement:
             if not record.exited:
                 awaiting_by.setdefault(contract, set()).add(sid)
@@ -492,10 +495,13 @@ def _settlement_notes(
     rest: list[Contract] = []
     for contract in differing:
         kind = None
-        if (broker.get(contract, 0) == 0 and contract in awaiting_by and not alone.get(contract)
+        if outside.get(contract):
+            pass  # an unexplained external change (AC-4): never a settlement note, reported and blocking as before
+        elif (broker.get(contract, 0) == 0 and contract in awaiting_by and not alone.get(contract)
                 and set(held[contract]) <= awaiting_by[contract]):
             kind = MismatchKind.AWAITING_SETTLEMENT
-        elif contract in settled and not expected.get(contract) and not held[contract] and broker.get(contract, 0):
+        elif (contract in settled and not expected.get(contract) and not held[contract]
+              and broker.get(contract, 0) == settled[contract]):
             kind = MismatchKind.EXPIRED_STILL_AT_BROKER
         if kind is None:
             rest.append(contract)

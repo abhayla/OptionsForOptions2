@@ -80,6 +80,7 @@ def settle_expired_legs(
     settlement_source: SettlementSource,
     entry_prices: Mapping[Contract, Decimal],
     *,
+    external_changes: Mapping[Contract, int] | None = None,
     timeline: Timeline | None = None,
     actor: str = "system",
 ) -> SettlementResult:
@@ -90,6 +91,15 @@ def settle_expired_legs(
     P&L), then, when no leg is left, a COMPLETION entry and the strategy's recorded transition to Exited. An exited
     strategy has nothing to settle. A strategy blocked by reconciliation, or with a proposal in flight, is refused
     (``VersionError``): settling would write over a position nobody has resolved.
+
+    ``external_changes`` is ``unexplained_changes`` for the run (REQ-060 AC-4). A held, expired contract with an
+    unexplained change is never settled over: the call raises ``SettlementError`` and changes nothing (the user's
+    own exit in Zerodha would otherwise be booked at the settlement price, a wrong realized P&L). The settlement
+    source must return None until the exchange's final price is published: there is no correction path after
+    settling. The strategy's awaiting and settled sets are in memory only; persisting them is the next step.
+
+    Atomic: the timeline entries are first written to a throwaway copy of the timeline; if that fails, nothing is
+    changed. Only then are the legs closed and the real timeline written.
     """
     if not isinstance(strategy, StrategyRecord):
         raise SettlementError(f"strategy must be a StrategyRecord, got {strategy!r}")
@@ -98,6 +108,10 @@ def settle_expired_legs(
     if strategy.exited or strategy.active_version is None:
         return SettlementResult((), (), False)
     held = strategy.active_version.intended_position.as_dict()
+    for contract, change in (external_changes or {}).items():
+        if change and contract in held and is_expired(contract, now):
+            raise SettlementError(
+                f"{describe_contract(contract)} has an unexplained external change ({change:+d}); not settled")
     settled: list[SettledLeg] = []
     awaiting: list[Contract] = []
     for contract in sorted((c for c in held if is_expired(c, now)), key=lambda c: (c[3], c[1].value, c[2] or 0)):
@@ -109,21 +123,27 @@ def settle_expired_legs(
         units = held[contract]
         leg = Leg(Action.BUY if units > 0 else Action.SELL, contract[1], contract[2], contract[3], abs(units), entry)
         settled.append(SettledLeg(contract, units, price, entry, position_pnl(leg, price)))
-    stamp = now
     reference = f"settled:{now.astimezone(IST).isoformat()}:{len(strategy.outcomes)}"
-    outcome = strategy.settle_legs(
-        [leg.contract for leg in settled], awaiting, at=stamp, reference=reference)
-    exited = outcome is not None and strategy.exited
+    exited = bool(settled) and len(settled) == len(held)
+    entries = [
+        (EntryType.EXIT, {
+            "event": "leg_settled",
+            "contract": describe_contract(leg.contract),
+            "settlement_price": str(leg.settlement_price),
+            "units": leg.units,
+            "realized_pnl": str(leg.realized_pnl),
+        }) for leg in settled
+    ]
+    if exited:
+        entries.append((EntryType.COMPLETION, {"event": "all_legs_settled", "transition": "exited"}))
+
+    def write(target: Timeline) -> None:
+        for entry_type, detail in entries:
+            target.append(entry_type, at=now, actor=actor, detail=detail)
+
+    if timeline is not None and entries:
+        write(Timeline.from_entries(timeline.strategy_id, timeline.entries, clock=timeline._clock))  # dry run
+    strategy.settle_legs([leg.contract for leg in settled], awaiting, at=now, reference=reference)
     if timeline is not None:
-        for leg in settled:
-            timeline.append(EntryType.EXIT, at=stamp, actor=actor, detail={
-                "event": "leg_settled",
-                "contract": describe_contract(leg.contract),
-                "settlement_price": str(leg.settlement_price),
-                "units": leg.units,
-                "realized_pnl": str(leg.realized_pnl),
-            })
-        if exited:
-            timeline.append(EntryType.COMPLETION, at=stamp, actor=actor, detail={
-                "event": "all_legs_settled", "transition": "exited"})
+        write(timeline)
     return SettlementResult(tuple(settled), tuple(awaiting), exited)
