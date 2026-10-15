@@ -1,7 +1,7 @@
 <!-- Advanced Details (REQ-035 AC-5): per-leg Bid and Ask, drawn only when the outcome response carries
      `advanced_details` (the API sends it at the Advanced level only). Every value is the API's string as given. -->
 <script setup>
-defineProps({ rows: { type: Array, required: true } })
+defineProps({ rows: { type: Array, required: true }, nameOf: { type: Function, required: true } })
 </script>
 
 <template>
@@ -16,7 +16,7 @@ defineProps({ rows: { type: Array, required: true } })
         </thead>
         <tbody>
           <tr v-for="r in rows" :key="r.instrument_id" :data-leg="r.instrument_id">
-            <td class="pr-4" data-testid="adv-symbol">{{ r.symbol ?? r.instrument_id }}</td>
+            <td class="pr-4" data-testid="adv-symbol">{{ nameOf(r) }}</td>
             <td class="pr-4" data-testid="adv-bid">{{ r.bid ?? '-' }}</td>
             <td class="pr-4" data-testid="adv-ask">{{ r.ask ?? '-' }}</td>
             <td data-testid="adv-health">{{ r.health ?? '-' }}</td>

@@ -8,6 +8,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { contractName, istTime } from '@/lib/displayFormat'
 import {
   NOT_CONNECTED_LABEL,
   REPRICE_PROMPT,
@@ -176,16 +178,14 @@ function remove(leg) {
   emit('update:legs', props.legs.filter((l) => l.id !== leg.id))
 }
 
-const legName = (l) => l.symbol ?? l.instrument_id
+const legName = (l) => contractName(l)
 </script>
 
 <template>
   <section class="mt-4 rounded border border-line bg-surface p-4" data-testid="leg-picker">
     <h2 class="text-sm font-medium">{{ editing ? 'Edit leg' : 'Add a leg' }}</h2>
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
-    <p v-if="errorParts" class="mt-2 text-sm" role="alert" data-testid="picker-error">
-      {{ errorParts.what_happened }} {{ errorParts.what_is_blocked }} {{ errorParts.next_action }}
-    </p>
+    <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
     <form class="mt-2 flex flex-wrap items-end gap-3 text-sm" @submit.prevent>
       <label class="flex flex-col">Underlying
         <select data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
@@ -223,16 +223,16 @@ const legName = (l) => l.symbol ?? l.instrument_id
       <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
     </form>
     <p v-if="!lotsOk" class="mt-1 text-sm" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
-    <p v-if="contract" class="mt-1 text-sm text-ink-muted" data-testid="lot-size">{{ contract.symbol }}, lot size {{ contract.lot_size }}</p>
+    <p v-if="contract" class="mt-1 text-sm text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
 
     <ul v-if="legs.length" class="mt-3 text-sm" data-testid="leg-list">
       <li
 v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-testid="leg-row"
           :data-instrument-id="l.instrument_id" :data-action="l.action" :data-lots="l.lots" :data-entry="l.planned_entry ?? ''"
           :data-captured="l.captured_at ?? ''" :data-strike="l.strike ?? ''" :data-type="l.instrument_type" :data-expiry="l.expiry">
-        <span>{{ l.action }} {{ l.lots }} lot, {{ legName(l) }}</span>
+        <span>{{ l.action }} {{ l.lots }} lot, <span data-testid="leg-name">{{ legName(l) }}</span></span>
         <span v-if="l.planned_entry != null" data-testid="leg-entry">planned entry {{ l.planned_entry }}</span>
-        <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ l.captured_at }}</span>
+        <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ istTime(l.captured_at) }}</span>
         <span v-if="l.planned_entry == null" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
         <template v-if="l.planned_entry == null && l.reason_code === 'needs_reprice'">
           <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>

@@ -23,6 +23,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
+import { nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -160,6 +161,8 @@ const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?
 const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
 const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
 const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
+// A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
+const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
 </script>
 
@@ -190,7 +193,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
       <ul class="mt-2 text-sm" data-testid="draft-legs">
-        <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, {{ leg.instrument_id }}, planned entry {{ leg.planned_entry }}</li>
+        <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
       </ul>
     </div>
 
@@ -204,7 +207,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <div v-if="data.output_label || staleLegs.length" class="mt-4 rounded border border-line bg-accent-soft p-3 text-sm" data-testid="data-health">
         <p v-if="data.output_label" data-testid="output-label">{{ data.output_label }}</p>
         <ul v-if="staleLegs.length">
-          <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ l.symbol }}: {{ l.label }}</li>
+          <li v-for="l in staleLegs" :key="l.instrument_id" data-testid="stale-leg">{{ nameOf(l) }}: {{ l.label }}</li>
         </ul>
       </div>
 
@@ -230,7 +233,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
-      <AdvancedDetails v-if="advancedRows" :rows="advancedRows" />
+      <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" @recalculate="load" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
