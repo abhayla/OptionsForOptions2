@@ -234,6 +234,7 @@ issues:
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#259": 4a           # deferred: W-077 review MINORs (socket no-provider names, read timeout, fragile test, OpenAPI order)
+  "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#245": 4a           # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
   "#244": 4a           # deferred: W-072 review MINORs (istTime rollover, microsecond parsing, three untested renderings)
@@ -251,7 +252,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-075: 4b           # charges in max-loss/max-profit sentences and expiry values (ADR-082 part 2)
-  W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
   W-078: 4b           # executable price: tick rounding, depth limit + slippage, circuit block, NRML/product reduce-only (ADR-080)
   W-080: 4b           # read-only Kite basket, tags, InstrumentId, no-placement guard (REQ-073, #115)
   W-081: 4b           # margin gate before the basket, final.total vs available (REQ-055)
