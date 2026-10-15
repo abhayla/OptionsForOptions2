@@ -7,9 +7,8 @@ database clock, never the application's); ADR-048 (the limited application role)
 
 Copy from: none - modelled on 0009's table, guard and allowlist block.
 
-CHAIN NOTE: built on this branch with down_revision ``0011_strategy_planned_entry``. W-074 adds ``0012_charge_rates``
-in parallel; the orchestrator re-chains this file at merge (down_revision -> ``0012_charge_rates``; the allowlist base
-follows it, and tests_app/test_freeze_allowlist_chain.py fails if an earlier block is lost).
+CHAIN NOTE: chained after ``0012_charge_rates`` (W-074); the predecessor and its allowlist text are read from
+``down_revision`` (tests_app/test_freeze_allowlist_chain.py fails if an earlier block is lost).
 
 Changes (owner-run, one transaction):
 - public.exchange_freeze_limits: (exchange_segment, exchange_token, file_date) is the key; freeze_limit INTEGER > 0;
@@ -17,10 +16,10 @@ Changes (owner-run, one transaction):
   UPDATE or DELETE and refuses a file_date later than today on the database clock (IST). The newest file date is the
   one in force (the read picks it); an older file never replaces a newer limit.
 - Grants: the application role gets SELECT and INSERT on every column. No UPDATE, DELETE or TRUNCATE.
-- public.ofo_assert_app_role_allowlist: 0011's text plus block 14 for this table.
+- public.ofo_assert_app_role_allowlist: 0012's text plus block 14 for this table.
 
 Revision ID: 0013_exchange_freeze_limits
-Revises: 0011_strategy_planned_entry
+Revises: 0012_charge_rates
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0013_exchange_freeze_limits"
-down_revision = "0011_strategy_planned_entry"
+down_revision = "0012_charge_rates"
 branch_labels = None
 depends_on = None
 
@@ -116,7 +115,7 @@ _INSERT_BEFORE = _PREV._INSERT_BEFORE
 
 
 def extended_allowlist_sql() -> str:
-    """0011's allowlist text plus block 14. Fails closed (RuntimeError) on a changed shape or a block 14 already in."""
+    """0012's allowlist text plus block 14. Fails closed (RuntimeError) on a changed shape or a block 14 already in."""
     previous = previous_allowlist_sql()
     headers = previous.count("CREATE FUNCTION") + previous.count("CREATE OR REPLACE FUNCTION")
     if headers != 1 or previous.count(_INSERT_BEFORE) != 1 or ALLOWLIST_BLOCK_MARKER in previous:

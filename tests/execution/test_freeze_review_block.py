@@ -177,3 +177,29 @@ def test_adapter_takes_the_lot_from_the_catalogue_not_the_caller() -> None:
     catalogue, stored = _adapter_inputs()
     limits = freeze_limits_for_plan(plan_of(55 * 65), catalogue, stored)
     assert limits[SYMBOL].lot == 65
+
+
+def test_two_catalogue_entries_for_one_symbol_give_no_entry_so_the_review_warns() -> None:
+    """AC-4: a Zerodha symbol carried by two catalogue contracts is ambiguous (F-03): no limit entry, the warning.
+    Kills `len(entries) != 1` mutated to `not entries`."""
+    import dataclasses
+    from decimal import Decimal
+
+    from ofo.execution.freeze import freeze_limits_for_plan
+    from ofo.instruments.catalogue import Catalogue
+    from ofo.instruments.parser import zerodha_listed
+
+    def listed(token: int):
+        return zerodha_listed(
+            instrument_token=token * 256 + 9, exchange_token=token, tradingsymbol=SYMBOL, name="NIFTY", expiry=EXPIRY,
+            strike=Decimal("23550"), tick_size=Decimal("0.05"), lot_size=65, instrument_type="CE", segment="NFO-OPT",
+            exchange="NFO", seen_on=datetime.date(2026, 10, 15))
+
+    catalogue = Catalogue()
+    catalogue.load([listed(47185), listed(47999)])
+    assert len(catalogue.entries_for_broker_symbol("zerodha", SYMBOL)) == 2
+    stored = {e.id: (3511, datetime.date(2026, 10, 15)) for e in catalogue.all_entries()}
+    limits = freeze_limits_for_plan(plan_of(55 * 65), catalogue, stored)
+    assert limits == {}
+    r = execution_review(plan_of(55 * 65), FakeMargin({}), freeze_limits=limits)
+    assert r.can_execute and len(r.warnings) == 1 and dataclasses.is_dataclass(r)
