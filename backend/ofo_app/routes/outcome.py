@@ -4,7 +4,7 @@ The browser sends a draft strategy (legs with their planned entry and its captur
 the scenario levels, the payoff points, the plain-language summary and the margin state, all from
 :func:`ofo.outcome.build_outcome`: the screen does no maths. Every money/points value is a string from the Decimal,
 never a JSON float. The market data comes through :func:`get_market_context`, a dependency: tests inject the replay
-provider; with no provider configured the response is the "Draft - Live data not connected" state, not an error.
+provider; with no provider configured the response is the "Draft — Live data not connected" state, not an error.
 Text is catalogue text and errors go through the error boundary (ofo_app.errors): no exemption from the W-024
 guards (W-066, issue #151).
 """

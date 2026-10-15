@@ -50,7 +50,7 @@ test('loading, then a slow answer is said to be slow, and no number is shown mea
 test('not connected: the draft label is shown and no number, table or chart', async ({ page }, info) => {
   await page.goto(url(PLAIN_URL))
   await expect(state(page)).toHaveAttribute('data-state', 'not-connected')
-  await expect(page.getByTestId('status-label')).toHaveText('Draft - Live data not connected')
+  await expect(page.getByTestId('status-label')).toHaveText('Draft — Live data not connected')
   for (const id of ['strategy-table', 'payoff-chart', 'summary-cards', 'cell']) await expect(page.getByTestId(id)).toHaveCount(0)
   await page.screenshot({ path: `screenshots/strategy-not-connected-${info.project.name}.png`, fullPage: true })
 })

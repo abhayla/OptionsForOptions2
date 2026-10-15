@@ -10,7 +10,7 @@ AC-8 by construction: :func:`build_outcome` computes the scenario values ONCE (`
 
 Answer states (run-discipline B4 (d)), each with its label or refusal:
 
-- no provider / no Zerodha session: ``NOT_CONNECTED``, "Draft - Live data not connected" (ADR-068, ADR-020 Q185).
+- no provider / no Zerodha session: ``NOT_CONNECTED``, "Draft — Live data not connected" (ADR-068, ADR-020 Q185).
 - all inputs live: ``COMPUTED``, no data label.
 - spot STALE/DELAYED: ``COMPUTED`` and every number carries "stale since HH:MM IST" (REQ-072 AC-2); when the feed has
   dropped, REQ-049 AC-5's message is added.
@@ -152,10 +152,32 @@ class Outcome:
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
 
 
-def not_connected(definition: StrategyDefinition, ux_level: UXLevel = UXLevel.STANDARD) -> Outcome:
-    """No provider or no Zerodha session (ADR-068 consequence, ADR-020 Q185): a state, never an error."""
-    legs = tuple(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None, p.planned_entry,
-                            p.captured_at, None, None, None, NOT_CONNECTED_LABEL) for p in definition.legs)
+def _contract_fields(snapshot: MarketSnapshot | None, instrument_id: str):
+    """The one lookup of a leg's contract: the snapshot's catalogue entry (symbol, instrument, strike, expiry), the same
+    one the COMPUTED path reads. A contract the catalogue does not know (or no snapshot at all) gives all None."""
+    lm = None if snapshot is None else snapshot.legs.get(instrument_id)
+    if lm is None or lm.contract is None:
+        return None, None, None, None
+    c = lm.contract.contract
+    kind = Instrument(c.instrument_type)
+    symbol = lm.contract.ref(ZERODHA).broker_symbol if lm.contract.broker_refs else None
+    return symbol, kind, (None if kind is Instrument.FUT else c.strike), c.expiry
+
+
+def _unpriced_legs(definition: StrategyDefinition, snapshot: MarketSnapshot | None, label) -> tuple:
+    out = []
+    for p in definition.legs:
+        symbol, kind, strike, expiry = _contract_fields(snapshot, p.instrument_id)
+        out.append(OutcomeLeg(p.instrument_id, symbol, p.action, kind, strike, expiry, p.lots, None, None, p.planned_entry,
+                              p.captured_at, None, None, None, label))
+    return tuple(out)
+
+
+def not_connected(definition: StrategyDefinition, ux_level: UXLevel = UXLevel.STANDARD,
+                  snapshot: MarketSnapshot | None = None) -> Outcome:
+    """No provider or no Zerodha session (ADR-068 consequence, ADR-020 Q185): a state, never an error. With a
+    ``snapshot`` (a session that ended) the legs name their contract; with none, there is no catalogue to ask."""
+    legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, NOT_CONNECTED_LABEL,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
 
@@ -164,17 +186,17 @@ def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot,
              ux_level: UXLevel = UXLevel.STANDARD) -> Outcome:
     """The live market is connected but this strategy's inputs are not streaming (no subscriber on the shared feed, e.g.
     the REST fallback while the socket is down; ADR-068 (2) "labelled as not live"). No number is shown as live
-    (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too."""
+    (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too. Each leg
+    names its contract (ADR-086), from the same snapshot lookup the computed answer uses."""
     label = _not_live_label(snapshot)
-    legs = tuple(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None, p.planned_entry,
-                            p.captured_at, None, None, None, label) for p in definition.legs)
+    legs = _unpriced_legs(definition, snapshot, label)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, label, None, legs, MARGIN)
 
 
 def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
     """REQ-049 AC-5's message ("When live data drops ... Last updated: <time>") ONLY when a quote was held and then
     lost, stamped with the newest quote time held. When no quote was ever held for any input, nothing "dropped" and
-    there is no last update to name: ADR-020 Q185's draft label ("Draft - Live data not connected", the catalogue's
+    there is no last update to name: ADR-020 Q185's draft label ("Draft — Live data not connected", the catalogue's
     ``outcome_not_connected``), never the request time."""
     times = [q.timestamp for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
     times += list(snapshot.ended_times.values())  # ADR-077: times kept after the subscription ended
@@ -240,7 +262,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if not isinstance(ux_level, UXLevel):
         raise ValueError(f"ux_level must be a UXLevel, got {ux_level!r}")
     if snapshot is None or snapshot.status.session_ended:
-        return not_connected(definition, ux_level)
+        return not_connected(definition, ux_level, snapshot)
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
     valuation = snapshot.valuation if valuation is None else valuation
@@ -261,9 +283,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                                    p.planned_entry, p.captured_at, None, None, None, why))
             continue
         c = lm.contract.contract
-        symbol = lm.contract.ref(ZERODHA).broker_symbol if lm.contract.broker_refs else None
-        kind = Instrument(c.instrument_type)
-        strike = None if kind is Instrument.FUT else c.strike
+        symbol, kind, strike, _expiry = _contract_fields(snapshot, p.instrument_id)
         q = lm.quote
         ltp = iv = None
         if q is None:

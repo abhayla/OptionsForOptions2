@@ -87,7 +87,7 @@ test('without live data the leg is added with no price and the not-connected wor
   await page.goto(`${PLAIN_URL}/strategy/builder`)
   await page.getByTestId('pick-expiry').selectOption('2026-10-13')
   await addLeg(page, 'CE', '22800.00', 'SELL')
-  await expect(page.getByTestId('leg-unpriced')).toHaveText('Draft - Live data not connected')
+  await expect(page.getByTestId('leg-unpriced')).toHaveText('Draft — Live data not connected')
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'unpriced')
   for (const id of ['strategy-table', 'payoff-chart', 'summary-cards']) await expect(page.getByTestId(id)).toHaveCount(0)
   await page.screenshot({ path: `screenshots/leg-picker-unpriced-${info.project.name}.png`, fullPage: true })

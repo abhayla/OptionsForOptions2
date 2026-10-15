@@ -1,7 +1,7 @@
 """REQ-034 AC-1 (W-063): the NIFTY 13-Oct iron condor through POST /api/strategies/outcome on the real 2026-10-08
 replay. Every part AC-1 names is present (P&L, max profit/loss, breakevens, payoff, scenario behaviour, margin as
 NOT_AVAILABLE_YET, risk), every money/points value is a JSON string, and with no provider the route answers the
-"Draft - Live data not connected" state. No database is needed."""
+"Draft — Live data not connected" state. No database is needed."""
 from __future__ import annotations
 
 import datetime
@@ -113,7 +113,7 @@ async def test_no_provider_returns_not_connected_state(replayed):
     assert resp.status_code == 200
     out = resp.json()
     assert out["state"] == "NOT_CONNECTED"
-    assert out["status_label"] == "Draft - Live data not connected"
+    assert out["status_label"] == "Draft — Live data not connected"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET"
     assert out["table"] is None and out["payoff"] is None and out["summary"] is None
     assert [leg["planned_entry"] for leg in out["legs"]] == [leg["planned_entry"] for leg in _body(replayed)["legs"]]

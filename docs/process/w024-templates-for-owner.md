@@ -229,7 +229,7 @@ Every platform message template, as written. `{name}` is a typed slot filled at 
 | `change_restored` | values_seen | restored entry {seq} |
 | `scenario_caption_left` | values_seen | {underlying} at expiry |
 | `scenario_caption_right` | values_seen | You make/lose |
-| `outcome_not_connected` | values_seen | Draft - Live data not connected |
+| `outcome_not_connected` | values_seen | Draft — Live data not connected |
 | `outcome_refused` | values_seen | Outcome refused |
 | `outcome_reason_no_provider` | values_seen | no live market data provider is connected |
 | `outcome_margin_pending` | values_seen | Margin from Zerodha is not shown yet; it needs your Kite login. |

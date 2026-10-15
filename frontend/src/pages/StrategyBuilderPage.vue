@@ -23,6 +23,8 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
+import { matchesLegs } from '@/lib/liveMatch'
+import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import { nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
@@ -45,23 +47,30 @@ function readDraft() {
   }
 }
 
-// The picked legs. A `draft` query seeds them (each already carries its planned entry and capture time).
+// The picked legs. A `draft` query seeds them (each already carries its planned entry and capture time). Every leg is
+// canonicalized once here (W-073); a link with a leg that will not canonicalize is refused, never half-opened.
+const draftQuery = readDraft()
+const canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
+const linkRefused = ref(draftQuery !== null && canonicalQueryLegs === null)
 function legsFromQuery() {
-  const d = readDraft()
-  if (!d) return []
-  return d.legs.map((l, i) => ({
+  if (!draftQuery || canonicalQueryLegs === null) return []
+  return canonicalQueryLegs.map((l, i) => ({
     id: `draft-${i}`,
-    underlying: d.underlying,
+    underlying: draftQuery.underlying,
     instrument_id: l.instrument_id,
     symbol: null,
     action: l.action,
     lots: l.lots,
-    planned_entry: l.planned_entry ?? null,
+    planned_entry: l.planned_entry,
     captured_at: l.captured_at ?? null,
     source: null,
   }))
 }
 const legs = ref(legsFromQuery())
+if (linkRefused.value) {
+  state.value = 'error'
+  errorParts.value = INVALID_LINK_PARTS
+}
 let loadSeq = 0 // only the newest outcome answer is shown
 // ADR-077: "not live" follows THIS page's own socket. Set when it drops, cleared by the next push it receives; while set,
 // every outcome request says `fallback: true`, so the server answers the not-live message even when another socket
@@ -69,6 +78,7 @@ let loadSeq = 0 // only the newest outcome answer is shown
 let socketDropped = false
 
 async function load() {
+  if (linkRefused.value) return // a refused draft link sends no request (W-073)
   const mine = ++loadSeq // every call invalidates the answers still in flight, also the ones that return early
   clearTimeout(slowTimer)
   slow.value = false
@@ -98,15 +108,6 @@ async function load() {
   }
 }
 
-// True when a pushed answer belongs to the strategy on screen: same legs (instrument, action, lots, planned entry), in
-// order. Plain string equality, as the server echoes the request's values untouched (no number is parsed here).
-function matchesLegs(body, draft) {
-  const got = body?.legs
-  if (!draft || !Array.isArray(got) || got.length !== draft.legs.length) return false
-  return draft.legs.every((l, i) => got[i].instrument_id === l.instrument_id && got[i].action === l.action
-    && got[i].lots === l.lots && got[i].planned_entry === l.planned_entry)
-}
-
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
@@ -134,12 +135,14 @@ const live = useStrategyLive({
   },
 })
 function syncLive() {
+  if (linkRefused.value) return
   const draft = buildDraft(legs.value)
   if (draft) live.follow({ ...draft, ux_level: uxLevel.value })
   else live.stop()
 }
 
 const setLegs = (next) => {
+  linkRefused.value = false
   legs.value = next
   load()
   syncLive()

@@ -892,7 +892,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
-    ExplanationTemplate("outcome_not_connected", "values_seen", "Draft - Live data not connected"),
+    ExplanationTemplate("outcome_not_connected", "values_seen", "Draft — Live data not connected"),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),

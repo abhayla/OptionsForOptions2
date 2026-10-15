@@ -292,3 +292,128 @@ describe('W-065 p3 r2: the page asks for the not-live answer when its own socket
     w.unmount()
   })
 })
+
+describe('W-073: draft URL with un-normalized values, and a leg edit while the socket is down', () => {
+  const RAW = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: String(l.lots),
+    planned_entry: `0${l.planned_entry}`, captured_at: l.captured_at })) }
+  async function openRaw() {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    apiCalls.length = 0
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(RAW) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  const st = (w) => w.find('[data-testid="strategy-builder"]').attributes('data-state')
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+
+  it('AC-4: a draft URL with lots "2"-style strings and a zero-padded entry keeps applying live pushes', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openRaw()
+    expect(st(w)).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    ws.serverPush(COMPUTED)
+    await flushPromises()
+    expect(st(w)).toBe('computed')
+    ws.serverPush(NOT_LIVE)
+    await flushPromises()
+    expect(st(w)).toBe('not-connected')
+    ws.serverPush(COMPUTED)
+    await flushPromises()
+    expect(st(w)).toBe('computed')
+    w.unmount()
+  })
+
+  async function editLeg(w) {
+    const picker = w.findComponent({ name: 'LegPicker' })
+    const next = picker.props('legs').map((l, i) => (i === 0 ? { ...l, lots: 3 } : l))
+    picker.vm.$emit('update:legs', next)
+    await flushPromises()
+  }
+
+  it('#234 item 3: a leg edit during an outage sends fallback true', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openRaw()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    apiCalls.length = 0
+    await editLeg(w)
+    expect(apiCalls.length).toBeGreaterThan(0)
+    expect(apiCalls.every((c) => c.body.fallback === true)).toBe(true)
+    w.unmount()
+  })
+
+  it('#234 item 3: after MAX_ATTEMPTS failed reconnects, a leg edit still sends fallback true', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openRaw()
+    FakeSocket.all[0].serverOpen()
+    FakeSocket.all[0].serverClose()
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      vi.advanceTimersByTime(MAX_DELAY_MS + 1)
+      FakeSocket.all.at(-1).serverClose()
+    }
+    await flushPromises()
+    const before = FakeSocket.all.length
+    vi.advanceTimersByTime(MAX_DELAY_MS + 1)
+    expect(FakeSocket.all.length).toBe(before) // gave up: no further attempt
+    apiCalls.length = 0
+    await editLeg(w)
+    expect(apiCalls.length).toBeGreaterThan(0)
+    expect(apiCalls.every((c) => c.body.fallback === true)).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('W-073 round 2: the draft link is canonicalized once at the page boundary or refused', () => {
+  const link = (over) => ({ underlying: 'NIFTY', legs: real.legs.map((l, i) => ({ instrument_id: l.instrument_id, action: l.action,
+    lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at, ...(i === 0 ? over : {}) })) })
+  async function openLink(d) {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    FakeSocket.all = []
+    apiCalls.length = 0
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(d) } })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+    await flushPromises()
+    return w
+  }
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+
+  it.each([['2.0'], ['+2'], [true], [' 2']])('lots %j: the link is refused with the four-part error, no request, no socket', async (lots) => {
+    apiAnswer = COMPUTED
+    const w = await openLink(link({ lots }))
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('error')
+    const err = w.find('[data-testid="state-error"]').text()
+    expect(err).toContain('Some of the values sent with this request are missing or not in the expected form.')
+    expect(err).toContain('Check the values you entered and try again.')
+    expect(apiCalls.length).toBe(0)
+    expect(FakeSocket.all.length).toBe(0)
+    w.unmount()
+  })
+
+  it('lots "02" and entry "0" + 42.70 style: accepted, sent as 2 / "42.70" on REST and the socket, pushes applied', async () => {
+    apiAnswer = NOT_LIVE
+    const w = await openLink(link({ lots: '02', planned_entry: `0${real.legs[0].planned_entry}` }))
+    const sentLeg = apiCalls[0].body.legs[0]
+    expect(sentLeg.lots).toBe(2)
+    expect(sentLeg.planned_entry).toBe(real.legs[0].planned_entry)
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('not-connected')
+    const ws = FakeSocket.all[0]
+    ws.serverOpen()
+    expect(JSON.parse(ws.sent[0]).legs[0]).toMatchObject({ lots: 2, planned_entry: real.legs[0].planned_entry })
+    ws.serverPush({ ...COMPUTED, legs: COMPUTED.legs.map((l, i) => (i === 0 ? { ...l, lots: 2 } : l)) })
+    await flushPromises()
+    expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('computed')
+    w.unmount()
+  })
+})
+

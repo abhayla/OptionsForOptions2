@@ -23,6 +23,7 @@
   {"date": "2026-10-15", "where": "W-065 phase 3 round 2", "evidence": "74 tool uses against a 40-call budget"},
   {"date": "2026-10-15", "where": "W-071 round 3", "evidence": "93 tool uses against a 60-call budget; the next two rounds, briefed 'hard limit; count your calls; at N-3 commit and report', used 23/30 and stayed inside (a prose mitigation, not a mechanism)"},
   {"date": "2026-10-15", "where": "W-072 round 1 (evening)", "evidence": "55 tool uses against a 45-call 'HARD limit; at call 42 commit and report' brief - the prose mitigation failed"},
-  {"date": "2026-10-15", "where": "#242 fix round (evening)", "evidence": "44 tool uses against a 20-call hard limit; round 1 of the same builder stayed inside (32/40). Tonight the 'hard limit' wording held 1 of 3 rounds"}
+  {"date": "2026-10-15", "where": "#242 fix round (evening)", "evidence": "44 tool uses against a 20-call hard limit; round 1 of the same builder stayed inside (32/40). Tonight the 'hard limit' wording held 1 of 3 rounds"},
+  {"date": "2026-10-15", "where": "W-072 fix round and W-073 round 1 (evening)", "evidence": "W-072 fix round 28/25; W-073 round 1 67/50, and it skipped lint, build and Playwright to stop - an overrun AND unrun checks. Rounds that stayed inside tonight: #242 round 1 (32/40), its 8-call fix (5) and round 2 (15/30) - all small, single-file scopes"}
  ]
 }
