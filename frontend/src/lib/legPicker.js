@@ -6,6 +6,9 @@ export const UNDERLYINGS = ['NIFTY', 'SENSEX']
 /** The one wording for a draft that has no live data (the backend constant NOT_CONNECTED_LABEL, ADR-020 Q185). */
 export const NOT_CONNECTED_LABEL = 'Draft - Live data not connected'
 
+/** A reopened leg saved without a planned entry (pre-ADR-075 draft): nothing is captured until the user reprices it. */
+export const REPRICE_PROMPT = 'This leg was saved without a planned entry; reprice it to see its numbers.'
+
 /** The outcome API's instrument id. The catalogue API sends segment and token apart (its Identifier type forbids ':'),
  *  so the browser joins the two strings. This is identifier assembly, not a calculation. */
 export function instrumentId(exchangeSegment, exchangeToken) {

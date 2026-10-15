@@ -23,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { NOT_CONNECTED_LABEL, lotsValid, instrumentId, buildDraft } from '@/lib/legPicker'
+import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
 const c = (token, type, strike, symbol, expiry = '2026-10-13') => ({
@@ -423,5 +423,54 @@ describe('the Builder page', () => {
   it('a malformed ?draft= is ignored like before (no-draft)', async () => {
     const w = await open({ draft: '{not json' })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('no-draft')
+  })
+})
+
+// W-071 round 4: a reopened leg's template branches, and the reprice prompt for a draft saved without planned entries.
+describe('leg row branches: unpriced label follows planned_entry, capture time shows only with it', () => {
+  const base = { id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1 }
+  it('both: entry and capture time, no unpriced label, no prompt', () => {
+    const w = mountPicker([{ ...base, planned_entry: '104.65', captured_at: AT, reason_code: null }])
+    expect(t(w, 'leg-entry').exists()).toBe(true)
+    expect(t(w, 'leg-captured').exists()).toBe(true)
+    expect(t(w, 'leg-unpriced').exists()).toBe(false)
+    expect(t(w, 'leg-reprice-prompt').exists()).toBe(false)
+  })
+  it('capture time without an entry shows neither the time nor a price', () => {
+    const w = mountPicker([{ ...base, planned_entry: null, captured_at: AT, reason_code: 'no_live_price' }])
+    expect(t(w, 'leg-entry').exists()).toBe(false)
+    expect(t(w, 'leg-captured').exists()).toBe(false)
+    expect(t(w, 'leg-unpriced').text()).toBe(NOT_CONNECTED_LABEL)
+    expect(t(w, 'leg-reprice-prompt').exists()).toBe(false)
+  })
+  it('entry without a capture time shows the unpriced label nowhere', () => {
+    const w = mountPicker([{ ...base, planned_entry: '104.65', captured_at: null, reason_code: null }])
+    expect(t(w, 'leg-entry').exists()).toBe(true)
+    expect(t(w, 'leg-captured').exists()).toBe(false)
+    expect(t(w, 'leg-unpriced').exists()).toBe(false)
+  })
+  it('neither: unpriced label, no capture time', () => {
+    const w = mountPicker([{ ...base, planned_entry: null, captured_at: null, reason_code: 'no_live_price' }])
+    expect(t(w, 'leg-unpriced').exists()).toBe(true)
+    expect(t(w, 'leg-captured').exists()).toBe(false)
+  })
+})
+
+describe('a draft reopened without planned entries asks for a reprice', () => {
+  const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
+  it('shows the prompt, captures nothing on load, and captures only after Reprice then Save leg', async () => {
+    answers['POST /strategies/planned-entry'] = { entries: [entry(44624, '104.65')] }
+    const w = mountPicker(legs)
+    await flushPromises()
+    expect(t(w, 'leg-reprice-prompt').text()).toBe(REPRICE_PROMPT)
+    expect(calls.some((x) => x.method === 'POST')).toBe(false)
+    await t(w, 'reprice-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'add-leg').trigger('click')
+    await flushPromises()
+    expect(calls.filter((x) => x.method === 'POST')).toHaveLength(1)
+    const [leg] = w.props('legs')
+    expect(leg).toMatchObject({ planned_entry: '104.65', captured_at: AT, reason_code: null })
+    expect(t(w, 'leg-reprice-prompt').exists()).toBe(false)
   })
 })
