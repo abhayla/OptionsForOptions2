@@ -63,7 +63,7 @@ def is_expired(contract: Contract, now: datetime.datetime) -> bool:
     return expiry < today or (expiry == today and local.time() >= EXPIRY_DAY_SETTLE_FROM)
 
 
-def _price(value: object, contract: Contract) -> Decimal | None:
+def _checked_value(value: object, contract: Contract) -> Decimal | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -101,7 +101,7 @@ def settle_expired_legs(
     settled: list[SettledLeg] = []
     awaiting: list[Contract] = []
     for contract in sorted((c for c in held if is_expired(c, now)), key=lambda c: (c[3], c[1].value, c[2] or 0)):
-        price = _price(settlement_source(contract), contract)
+        price = _checked_value(settlement_source(contract), contract)
         entry = entry_prices.get(contract)
         if price is None or entry is None:
             awaiting.append(contract)
