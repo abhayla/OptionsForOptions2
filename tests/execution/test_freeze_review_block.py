@@ -49,6 +49,8 @@ def test_largest_allowed_is_limit_minus_one_rounded_to_lots() -> None:
     """AC-4: F-36 arithmetic by hand: 3511 - 1 = 3510 = 54 x 65; BANKNIFTY 1441 -> 1440 = 48 x 30."""
     assert largest_allowed_units(REAL) == 3510
     assert largest_allowed_units(StoredFreeze(1441, 30, datetime.date(2026, 10, 15))) == 1440
+    # synthetic: a limit that IS a lot multiple (3510 = 54 x 65): an order of 3,510 is not below it, so 53 lots is the top
+    assert largest_allowed_units(StoredFreeze(3510, 65, datetime.date(2026, 10, 15))) == 3445
 
 
 def test_boundary_units_equal_to_limit_is_blocked_synthetic() -> None:

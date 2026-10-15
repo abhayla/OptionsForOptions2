@@ -8,7 +8,6 @@ Zerodha's list of that day showed. Every test runs in a transaction that is roll
 from __future__ import annotations
 
 import gzip
-import io
 import pathlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -111,8 +110,8 @@ async def test_app_role_cannot_update_or_delete(app_engine: AsyncEngine) -> None
                 f"INSERT INTO {TABLE} (exchange_segment, exchange_token, file_date, freeze_limit, file_name) "
                 "VALUES ('NSE_FO', 47185, '2026-10-15', 3511, 'NSE_FO_contract_15102026.csv.gz')"))
             for sql in (f"UPDATE {TABLE} SET freeze_limit = 1", f"DELETE FROM {TABLE}"):
-                async with conn.begin_nested():
-                    with pytest.raises(DBAPIError, match="permission denied"):
+                with pytest.raises(DBAPIError, match="permission denied"):
+                    async with conn.begin_nested():
                         await conn.execute(text(sql))
         finally:
             await trans.rollback()
@@ -128,8 +127,8 @@ async def test_guard_refuses_update_delete_and_a_future_date_even_for_the_owner(
             await conn.execute(text(insert), {"d": date(2026, 10, 15)})
             for sql, params in ((f"UPDATE {TABLE} SET freeze_limit = 1", {}), (f"DELETE FROM {TABLE}", {}),
                                 (insert, {"d": date(2099, 1, 1)})):
-                async with conn.begin_nested():
-                    with pytest.raises(DBAPIError, match="freeze limits"):
+                with pytest.raises(DBAPIError, match="freeze limits"):
+                    async with conn.begin_nested():
                         await conn.execute(text(sql), params)
         finally:
             await trans.rollback()
@@ -142,4 +141,3 @@ def test_format_result_names_each_disagreement() -> None:
     out = freeze_store.format_result(freeze_store.FreezeLoadResult(
         date(2026, 10, 15), 1, 0, 83, (Disagreement(47112, ("lot", "strike")),)))
     assert "disagreements=1" in out and "token 47112 differs from the catalogue in lot, strike" in out
-    assert isinstance(io.StringIO(), io.StringIO)
