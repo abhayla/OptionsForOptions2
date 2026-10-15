@@ -319,6 +319,34 @@ def _position_mismatches(plan: ExecutionPlan, positions: Sequence[BrokerPosition
     return out
 
 
+def _strategy_position_lines(
+    plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], book: OrderBook,
+) -> tuple[tuple[BrokerPositionLine, ...], list[str]]:
+    """One line per contract. A contract held in several products is narrowed to the product the strategy's own
+    filled orders carry; when the ledger cannot name exactly one held product the contract is AMBIGUOUS: its rows are
+    merged into one product-less line (so an exit of it is blocked) and listed, never guessed (class: broker rows keyed
+    by contract alone, while Zerodha keys them by contract and product)."""
+    rows: dict[str, list[BrokerPositionLine]] = {}
+    for line in positions:
+        rows.setdefault(line.contract, []).append(line)
+    out: list[BrokerPositionLine] = []
+    ambiguous: list[str] = []
+    own_orders = book.views_for(plan.strategy_id)
+    for contract, group in rows.items():
+        held = [r for r in group if r.net_quantity]
+        if len(held) <= 1:
+            out.extend(held or group)
+            continue
+        products = {v.order.product for v in own_orders if v.contract == contract and v.filled_quantity > 0}
+        mine = [r for r in held if len(products) == 1 and r.product in products]
+        if len(mine) == 1:
+            out.append(mine[0])
+            continue
+        ambiguous.append(contract)
+        out.append(dataclasses.replace(held[0], net_quantity=sum(r.net_quantity for r in held), product=None))
+    return tuple(out), ambiguous
+
+
 def assess(
     plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], statuses: Sequence[BrokerOrderStatus],
     book: OrderBook, planner: MarginPlanner, *, read_at: datetime.datetime,
@@ -338,12 +366,15 @@ def assess(
         raise ValueError("positions must be BrokerPositionLine values")
     if not all(isinstance(s, BrokerOrderStatus) for s in statuses):
         raise ValueError("statuses must be BrokerOrderStatus values")
-    for name, keys in (("position contract", [p.contract for p in positions]),
+    for name, keys in (("position contract and product", [(p.contract, p.product) for p in positions]),
                        ("broker order id", [s.broker_order_id for s in statuses])):
         if len(set(keys)) != len(keys):
             raise ValueError(f"duplicate {name} in the broker read: {keys}")
 
     mismatches, reasons = _sync_book(plan, statuses, book, read_at, grace)
+    # Zerodha keys a position by (contract, product): pick the row this strategy's own fills belong to (ADR-080).
+    positions, ambiguous = _strategy_position_lines(plan, positions, book)
+    mismatches += [_mismatch("partial_mismatch_product_ambiguous", contract=c) for c in ambiguous]
     mismatches += _position_mismatches(plan, positions, book)
     if book.is_submit_blocked(plan.strategy_id):
         mismatches.append(_mismatch("partial_mismatch_unresolved"))

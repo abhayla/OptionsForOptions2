@@ -1270,5 +1270,13 @@
   "explanation:flag_expiry_day_short": {
     "sha256": "975a26d419b2fabfb40e3ccd864f1e86a6248fd5eb72171d2aac836f2722292c",
     "reviewed": "pending owner read"
+  },
+  "send_entry_product_not_nrml": {
+    "sha256": "00ddcaf7f6dce0f7521d081cdd69aecfefe6318c4e21c07f33fd014955b8bdb5",
+    "reviewed": "pending owner read"
+  },
+  "partial_mismatch_product_ambiguous": {
+    "sha256": "0d0189391be2c539ca420db6c2fa1c261e735ed618a7793d9d573c6736807336",
+    "reviewed": "pending owner read"
   }
 }
