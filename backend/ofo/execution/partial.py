@@ -276,6 +276,48 @@ def _position_mismatches(plan: ExecutionPlan, positions: Sequence[BrokerPosition
     return out
 
 
+def _strategy_position_lines(
+    plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], book: OrderBook,
+) -> tuple[tuple[BrokerPositionLine, ...], list[str], list[str]]:
+    """One line per contract. A contract held in several products is narrowed to the product the strategy's own
+    filled orders carry; when the ledger cannot name exactly one held product the contract is AMBIGUOUS: its rows are
+    merged into one product-less line (so an exit of it is blocked) and listed, never guessed (class: broker rows keyed
+    by contract alone, while Zerodha keys them by contract and product)."""
+    rows: dict[str, list[BrokerPositionLine]] = {}
+    for line in positions:
+        rows.setdefault(line.contract, []).append(line)
+    out: list[BrokerPositionLine] = []
+    ambiguous: list[str] = []
+    foreign: list[str] = []  # the strategy's own product row is not open; another product's position is
+    own_orders = book.views_for(plan.strategy_id)
+    for contract, group in rows.items():
+        held = [r for r in group if r.net_quantity]
+        if not held:
+            out.append(group[0])  # flat in every product: one line, so "outside plan" is not listed twice
+            continue
+        products = {v.order.product for v in own_orders if v.contract == contract and v.filled_quantity > 0}
+        if len(products) == 1:
+            # Only the row in the product the strategy's fills name is ever used. A flat or missing row there while
+            # another product is held, or one held row in a different product (a possible MIS->NRML conversion,
+            # the owner decides those later), is refused, never a fallback to the other product's row.
+            mine = [r for r in held if r.product in products]
+            if len(mine) == 1:
+                out.append(mine[0])
+                continue
+            own_row_exists = any(r.product in products for r in group)
+            if len(held) == 1 and held[0].product is None and not own_row_exists:
+                out.append(held[0])  # product unread and no row in the fills' product at all: the exit gate blocks it
+                continue
+            (foreign if len(held) == 1 else ambiguous).append(contract)
+        elif len(held) == 1:  # the fills name no product (or several) but only one row is held: as before
+            out.append(held[0])
+            continue
+        else:
+            ambiguous.append(contract)
+        out.append(dataclasses.replace(held[0], net_quantity=sum(r.net_quantity for r in held), product=None))
+    return tuple(out), ambiguous, foreign
+
+
 def assess(
     plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], statuses: Sequence[BrokerOrderStatus],
     book: OrderBook, planner: MarginPlanner, *, read_at: datetime.datetime,
@@ -295,12 +337,16 @@ def assess(
         raise ValueError("positions must be BrokerPositionLine values")
     if not all(isinstance(s, BrokerOrderStatus) for s in statuses):
         raise ValueError("statuses must be BrokerOrderStatus values")
-    for name, keys in (("position contract", [p.contract for p in positions]),
+    for name, keys in (("position contract and product", [(p.contract, p.product) for p in positions]),
                        ("broker order id", [s.broker_order_id for s in statuses])):
         if len(set(keys)) != len(keys):
             raise ValueError(f"duplicate {name} in the broker read: {keys}")
 
     mismatches, reasons = _sync_book(plan, statuses, book, read_at, grace)
+    # Zerodha keys a position by (contract, product): pick the row this strategy's own fills belong to (ADR-080).
+    positions, ambiguous, foreign = _strategy_position_lines(plan, positions, book)
+    mismatches += [_mismatch("partial_mismatch_other_product_only", contract=c) for c in foreign]
+    mismatches += [_mismatch("partial_mismatch_product_ambiguous", contract=c) for c in ambiguous]
     mismatches += _position_mismatches(plan, positions, book)
     if book.is_submit_blocked(plan.strategy_id):
         mismatches.append(_mismatch("partial_mismatch_unresolved"))

@@ -55,6 +55,12 @@ def _close_with(catalogue, eligibility, *, short_product, default_product=Produc
     lines = [dataclasses.replace(p, product=short_product if p.net_quantity < 0 else Product.NRML)
              for p in broker.positions]
     broker = FakeBroker(lines, broker.order_statuses, default_product=default_product)
+    # #263 round 2: the position's product must be the one the strategy's own fills carry (a lone row in another
+    # product is refused, not exited), so the ledger's orders take each held line's product here.
+    held_product = {p.contract: p.product for p in lines}
+    for key, order in list(book._orders.items()):
+        if held_product.get(order.contract) is not None:
+            book._orders[key] = dataclasses.replace(order, product=held_product[order.contract])
     return close_partial_strategy(big_plan(), broker, book, FakePlanner(), context or entry_context(), catalogue,
                                   eligibility)
 

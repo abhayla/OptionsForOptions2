@@ -120,6 +120,8 @@ def allowed_or_refuse(
             raise _refuse("send_contract_not_a_leg", version=version.number)
         if (order.side is leg[1]) == reducing:
             raise _refuse("send_side_not_allowed")
+        if not reducing and order.product is not Product.NRML:  # ADR-080, structural (run-discipline B8)
+            raise _refuse("send_entry_product_not_nrml")
         wanted[order.contract] = wanted.get(order.contract, 0) + order.quantity
     views = book.views_for(strategy_id)
     for contract, units in wanted.items():

@@ -502,6 +502,10 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The broker sink did not resolve this request, or it was already sent.",
           _SEND_IMPACT + " Each request is sent once at most.", _SEND_BLOCKED,
           "Check the strategy's orders in Zerodha before preparing anything again."),
+    _gate("send_entry_product_not_nrml", _SV, 211,
+          "An entry or adjustment order carries a product other than NRML.",
+          _SEND_IMPACT + " Every entry and adjustment order is NRML; only an exit takes its position's product.",
+          _SEND_BLOCKED, _SEND_REPREPARE),
 )
 
 
@@ -688,6 +692,18 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("partial_mismatch_unresolved", _RM, 308, "This strategy has an unresolved reconciliation mismatch.",
           "The strategy's position cannot be trusted until it is reconciled.", _MISMATCH_BLOCKED,
           "Reconcile this strategy first, then choose again."),
+    _gate("partial_mismatch_product_ambiguous", _RM, 309,
+          "{contract}: Zerodha shows this contract in more than one product and the platform's own orders do not "
+          "say which one belongs to this strategy.",
+          "The platform cannot tell which position this strategy would reduce.", _MISMATCH_BLOCKED,
+          "Exit the position in Zerodha yourself, then refresh this strategy from Zerodha and choose again.",
+          _PCONTRACT),
+    _gate("partial_mismatch_other_product_only", _RM, 310,
+          "{contract}: the strategy's own position (the product its fills carry) is not open at Zerodha; Zerodha "
+          "shows a position in another product on this contract that the platform did not place.",
+          "The platform cannot treat that other position as this strategy's.", _MISMATCH_BLOCKED,
+          "Check the position in Zerodha; the platform will not close the other position for this strategy.",
+          _PCONTRACT),
 )
 
 # --- Round 9 part 6: the API boundary (backend/ofo_app/errors.py). Any exception that is not `UserFacing` shows the
