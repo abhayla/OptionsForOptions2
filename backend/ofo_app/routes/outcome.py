@@ -239,7 +239,10 @@ def get_streaming() -> Optional[Callable[[str], bool]]:
 
 
 def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
-    if streaming is None or ctx is not live_context():
+    if streaming is None:
+        return False
+    owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
+    if ctx is not (owner if owner is not None else live_context()):
         return False
     index_id = getattr(ctx.provider, "index_id", lambda _u: None)(req.underlying)
     ids = [leg.instrument_id for leg in req.legs] + ([index_id] if index_id else [])
