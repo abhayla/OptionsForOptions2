@@ -430,5 +430,5 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
 - Answer: an expired leg is closed at the settlement price as a recorded event, not a mismatch; expiry-day entry is
   allowed with a warning; a short leg expiring that day needs an explicit acknowledgement.
 
-## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
-- Gap: no suggestion rule and no entry-price source for an adopted leg; no real position on the owner's account yet.
+## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
+- Answer: one suggested group per underlying and expiry, confirmed by the user; entry = Zerodha's average, editable.
