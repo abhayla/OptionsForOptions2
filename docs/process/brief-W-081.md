@@ -1,4 +1,4 @@
-﻿# Builder brief: W-081 margin check before the basket (Tier A)
+# Builder brief: W-081 margin check before the basket (Tier A)
 
 Core: against the real 2026-10-15 basket-margin reply for the 4-leg NIFTY iron condor (`final.total` 68498.85,
 `initial.total` 296332.8), available Rs 68,498.85 builds the basket and Rs 68,498.84 blocks it, the message showing
