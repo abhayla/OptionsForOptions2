@@ -160,6 +160,9 @@ class KiteProvider(MarketDataProvider):
                 self._wanted.discard(token)
                 self._removed.append(token)
 
+    def last_quote_time(self, instrument_id: str) -> datetime.datetime | None:
+        return self.book.ended_time(instrument_id)
+
     def subscribed_tokens(self) -> list[int]:
         return sorted(self._wanted)
 
