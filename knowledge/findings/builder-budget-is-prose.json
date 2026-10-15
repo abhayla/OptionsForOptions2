@@ -20,6 +20,7 @@
  "occurrences": [
   {"date": "2026-10-15", "where": "W-066 round 7", "evidence": "handover 2026-10-15b, Misses"},
   {"date": "2026-10-15", "where": "a second builder (handover 2026-10-15b, Misses: 'twice')", "evidence": "handover 2026-10-15b"},
-  {"date": "2026-10-15", "where": "W-065 phase 3 round 2", "evidence": "74 tool uses against a 40-call budget"}
+  {"date": "2026-10-15", "where": "W-065 phase 3 round 2", "evidence": "74 tool uses against a 40-call budget"},
+  {"date": "2026-10-15", "where": "W-071 round 3", "evidence": "93 tool uses against a 60-call budget; the next two rounds, briefed 'hard limit; count your calls; at N-3 commit and report', used 23/30 and stayed inside (a prose mitigation, not a mechanism)"}
  ]
 }

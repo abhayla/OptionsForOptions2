@@ -99,12 +99,16 @@ FILLED_PREFS = {"objective": "income", "market_view": "neutral", "risk_preferenc
 FILLED = {"rules_ref": "rule_set_1", "risk_limits": FILLED_LIMITS, "preferences": FILLED_PREFS}
 
 
-def _expected_document(ids: dict[str, int], strike_text: dict[str, str], maps: dict | None = None) -> dict:
+def _expected_document(ids: dict[str, int], strike_text: dict[str, str], maps: dict | None = None,
+                       tokens: dict[str, tuple[str, int]] | None = None) -> dict:
     """The stored form, written from the fixture and the requirement (never from running the code)."""
     maps = maps or {"rules_ref": None, "risk_limits": {}, "preferences": {}}
     return {"schema_version": 1, "underlying": "NIFTY", **maps,
             "legs": [{"contract_id": ids[s], "action": side, "instrument": inst.value, "strike": strike_text[s],
-                      "expiry": "2026-10-13", "quantity": 65} for s, side, inst, *_ in IRON_CONDOR]}
+                      "expiry": "2026-10-13", "quantity": 65,
+                      # W-071 (ADR-057): the stored contract's segment and token, so the browser can price the leg
+                      **({} if tokens is None else {"exchange_segment": tokens[s][0], "exchange_token": tokens[s][1]})}
+                     for s, side, inst, *_ in IRON_CONDOR]}
 
 
 def _app(maker, user_ref: str):
@@ -177,9 +181,13 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
             strike_text = dict((await conn.execute(text(
                 "SELECT b.broker_symbol, c.strike::text FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                 "ON b.contract_id = c.id WHERE c.id = ANY(:ids)"), {"ids": list(ids.values())})).all())
+            tokens = {r[0]: (r[1], int(r[2])) for r in (await conn.execute(text(
+                "SELECT b.broker_symbol, c.exchange_segment, c.exchange_token FROM public.catalogue_contracts c "
+                "JOIN public.broker_instruments b ON b.contract_id = c.id WHERE c.id = ANY(:ids)"),
+                {"ids": list(ids.values())})).all()}
         assert set(ids) == set(SYMBOLS)
         assert all(Decimal(strike_text[s]) == strike for s, _, _, strike, _ in IRON_CONDOR)
-        expected = _expected_document(ids, strike_text, FILLED)
+        expected = _expected_document(ids, strike_text, FILLED, tokens)
         # Save Draft
         maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
         async with _client(_app(maker, user)) as ac:
@@ -197,7 +205,7 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
         assert [(leg.action.value, leg.instrument, leg.strike, leg.expiry, leg.quantity) for leg in legs] == [
             (side, inst, strike, EXPIRY, 65) for _, side, inst, strike, _ in IRON_CONDOR]
         assert loaded.saved.contract_ids == tuple(ids[s] for s, *_ in IRON_CONDOR)
-        assert sf.to_document(loaded.saved) == expected
+        assert sf.to_document(loaded.saved) == _expected_document(ids, strike_text, FILLED)  # stored form: no token
         assert dict(loaded.saved.definition.risk_limits) == {
             "max_loss": Decimal("9000.50"), "max_capital": Decimal("250000"), "max_margin": Decimal("180000.25")}
         assert dict(loaded.saved.definition.preferences) == FILLED_PREFS

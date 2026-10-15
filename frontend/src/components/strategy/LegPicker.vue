@@ -10,6 +10,7 @@ import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import {
   NOT_CONNECTED_LABEL,
+  REPRICE_PROMPT,
   UNDERLYINGS,
   instrumentId,
   lotsValid,
@@ -154,6 +155,7 @@ async function save() {
       id: old ? old.id : nextId++,
       underlying: und,
       instrument_id: id,
+      contract_id: c ? c.contract_id : old.contract_id, // W-071: what Save Draft sends (ADR-057)
       symbol: c ? c.symbol : old.symbol,
       expiry: c ? c.expiry : old.expiry,
       instrument_type: c ? c.instrument_type : old.instrument_type,
@@ -224,10 +226,18 @@ const legName = (l) => l.symbol ?? l.instrument_id
     <p v-if="contract" class="mt-1 text-sm text-ink-muted" data-testid="lot-size">{{ contract.symbol }}, lot size {{ contract.lot_size }}</p>
 
     <ul v-if="legs.length" class="mt-3 text-sm" data-testid="leg-list">
-      <li v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-testid="leg-row">
+      <li
+v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-testid="leg-row"
+          :data-instrument-id="l.instrument_id" :data-action="l.action" :data-lots="l.lots" :data-entry="l.planned_entry ?? ''"
+          :data-captured="l.captured_at ?? ''" :data-strike="l.strike ?? ''" :data-type="l.instrument_type" :data-expiry="l.expiry">
         <span>{{ l.action }} {{ l.lots }} lot, {{ legName(l) }}</span>
         <span v-if="l.planned_entry != null" data-testid="leg-entry">planned entry {{ l.planned_entry }}</span>
-        <span v-else data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
+        <span v-if="l.planned_entry != null && l.captured_at != null" class="text-ink-muted" data-testid="leg-captured">captured {{ l.captured_at }}</span>
+        <span v-if="l.planned_entry == null" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
+        <template v-if="l.planned_entry == null && l.reason_code === 'needs_reprice'">
+          <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
+          <button type="button" data-testid="reprice-leg" class="underline" @click="startEdit(l)">Reprice</button>
+        </template>
         <button type="button" data-testid="edit-leg" class="underline" @click="startEdit(l)">Edit</button>
         <button type="button" data-testid="remove-leg" class="underline" @click="remove(l)">Remove</button>
       </li>

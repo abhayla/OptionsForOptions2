@@ -33,6 +33,7 @@ from types import MappingProxyType
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo.engine.legs import Action
@@ -92,6 +93,8 @@ class StrategyUpdateIn(StrategyIn):
 class LegOut(ApiModel):
     contract_id: int
     action: Literal["BUY", "SELL"]
+    exchange_segment: Identifier  # of the leg's stored contract: with the token, the id the outcome API prices by
+    exchange_token: int
     instrument: Identifier
     strike: Optional[Identifier]
     expiry: Identifier
@@ -210,11 +213,28 @@ def _definition_out(saved: sf.SavedDefinition) -> dict:
     return doc
 
 
-def _strategy_out(stored: store.StoredStrategy) -> StrategyOut:
+_TOKENS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
+               "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
+
+
+async def _with_tokens(db: Any, *docs: dict) -> None:
+    """Adds each leg's exchange segment and token (read from its stored catalogue contract) to the documents in place.
+    The stored form keeps only the contract id (ADR-057); a leg whose contract is gone cannot reach here (the load
+    already refused it as 409)."""
+    ids = sorted({leg["contract_id"] for doc in docs for leg in doc["legs"]})
+    found = {int(r.id): (r.exchange_segment, int(r.exchange_token))
+             for r in (await db.execute(_TOKENS, {"ids": ids})).all()} if ids else {}
+    for doc in docs:
+        for leg in doc["legs"]:
+            leg["exchange_segment"], leg["exchange_token"] = found[leg["contract_id"]]
+
+
+async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
+    doc = _definition_out(stored.saved)
+    await _with_tokens(db, doc)
     return StrategyOut.model_validate({
         "id": stored.id, "status": stored.status, "revision": stored.revision,
-        "created_at": stored.created_at, "updated_at": stored.updated_at,
-        "definition": _definition_out(stored.saved)})
+        "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc})
 
 
 async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
@@ -249,7 +269,7 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
 async def save_draft(body: StrategyIn, db: Any = Depends(get_db),
                      user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        return _strategy_out(await store.save_draft(db, user_ref, await _definition(db, body)))
+        return await _strategy_out(db, await store.save_draft(db, user_ref, await _definition(db, body)))
     return await _run(db, work, form_status=422)
 
 
@@ -267,7 +287,7 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
 async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
                        user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        return _strategy_out(await store.load(db, user_ref, strategy_id))
+        return await _strategy_out(db, await store.load(db, user_ref, strategy_id))
     return await _run(db, work, form_status=409)
 
 
@@ -276,8 +296,8 @@ async def update_strategy(strategy_id: int, body: StrategyUpdateIn, db: Any = De
                           user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         store.check_strategy_id(strategy_id)  # before the catalogue is read
-        return _strategy_out(await store.update(db, user_ref, strategy_id, await _definition(db, body),
-                                                expected_revision=body.expected_revision))
+        return await _strategy_out(db, await store.update(db, user_ref, strategy_id, await _definition(db, body),
+                                                          expected_revision=body.expected_revision))
     return await _run(db, work, form_status=422)
 
 
@@ -287,6 +307,7 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
     async def work():
         entries = await store.history(db, user_ref, strategy_id)
         docs = [sf.entry_to_document(e) | {"definition": _definition_out(e.saved)} for e in entries]
+        await _with_tokens(db, *(d["definition"] for d in docs))
         return HistoryOut.model_validate({"entries": [
             doc | {"change_summary": sf.render_summary(doc["change_summary"])} for doc in docs]})
     return await _run(db, work, form_status=409)
@@ -296,5 +317,6 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
 async def restore_strategy(strategy_id: int, seq: int, expected_revision: int = Query(gt=0),
                            db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        return _strategy_out(await store.restore(db, user_ref, strategy_id, seq, expected_revision=expected_revision))
+        return await _strategy_out(db, await store.restore(db, user_ref, strategy_id, seq,
+                                                           expected_revision=expected_revision))
     return await _run(db, work, form_status=409)

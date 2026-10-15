@@ -947,6 +947,10 @@
     "sha256": "e9dfcbf9b0722df79967945aaea362b54c74a2d59f31a794933e4d1c68899c3b",
     "reviewed": "pending owner read"
   },
+  "explanation:draft_leg_needs_reprice": {
+    "sha256": "1199943cb966b48c43b6237ca899de9d46c726cfcfaa607398c927e56282093a",
+    "reviewed": "pending owner read"
+  },
   "explanation:outcome_not_connected": {
     "sha256": "9f371859bef5ece10221086f93019d9251b51e00a3a58aa3815f2c4ea073c793",
     "reviewed": "pending owner read"

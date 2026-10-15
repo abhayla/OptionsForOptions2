@@ -21,6 +21,7 @@ import { advancedDetails } from '@/lib/strategyTable'
 import StrategyFooter from '@/components/strategy/StrategyFooter.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
+import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
@@ -168,6 +169,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="setLegs" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
 
