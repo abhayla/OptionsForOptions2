@@ -158,11 +158,12 @@ def test_ac1_replace_cannot_forge_an_allowed_verdict() -> None:
     """AC-1 (round 2 item 1): dataclasses.replace cannot set `allowed` or drop the message; copying with other
     amounts re-derives both from available >= required."""
     blocked = check_margin(Decimal("68498.84"), Decimal("68498.85"))
-    with pytest.raises(TypeError):
+    # Python 3.12 raises ValueError here, 3.13 TypeError; the guarantee (no forged field) is the same.
+    with pytest.raises((TypeError, ValueError)):
         dataclasses.replace(blocked, allowed=True, message=None)
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, ValueError)):
         dataclasses.replace(blocked, message=None)
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, ValueError)):
         dataclasses.replace(blocked, allowed=True)
     still_blocked = dataclasses.replace(blocked, available=Decimal("1"))
     assert still_blocked.allowed is False and still_blocked.message is not None
