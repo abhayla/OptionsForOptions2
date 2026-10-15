@@ -54,4 +54,31 @@ if "--no-tests" in sys.argv:
         out = (r.stdout + r.stderr).strip().splitlines()
         print("migration tests", f"({len(files)} files)", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
         bad |= r.returncode
+
+    # A changed route / response model / store can break tests_app files the builder never ran (finding
+    # targeted-tests-miss-dependent-files, 4th occurrence: #241 changed the strategy response; two files pinning it
+    # went red in CI). select_app_tests.py picks the files naming what the diff changed; run them like the step above.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import select_app_tests
+    diff = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/"], cwd=wt, capture_output=True,
+                          text=True, encoding="utf-8").stdout
+    unparsed = False
+    try:
+        picked = select_app_tests.select(changed, diff, os.path.join(wt, "tests_app"))
+    except select_app_tests.DiffNotParsed as e:
+        print(f"route tests: diff not parsed - run the route files by hand ({e})")
+        bad |= 1
+        picked, unparsed = [], True
+    if picked:
+        runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_run.py")
+        main_checkout = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        r = subprocess.run([sys.executable, runner, wt, sys.executable, "-m", "pytest", "-q", "-rs", "-p",
+                            "no:cacheprovider", "-c", "pytest-app.ini", *picked], cwd=main_checkout,
+                           capture_output=True, text=True)
+        out = (r.stdout + r.stderr).strip().splitlines()
+        print("route tests", f"({len(picked)} files)", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
+        print("  " + ", ".join(os.path.basename(p) for p in picked))
+        bad |= r.returncode
+    elif not unparsed:
+        print("route tests (0 files) rc 0 | nothing selected")
 sys.exit(bad)
