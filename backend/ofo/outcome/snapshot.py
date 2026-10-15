@@ -51,6 +51,8 @@ class MarketSnapshot:
     legs: Mapping[str, LegMarket]
     forwards: Mapping[datetime.date, ExpiryForward]
     forward_errors: Mapping[datetime.date, ExplanationText] = field(default_factory=dict)
+    #: ADR-077: the kept last quote TIME of each input (spot index, legs) that holds no quote now; never a price.
+    ended_times: Mapping[str, datetime.datetime] = field(default_factory=dict)
 
 
 def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids: list[str],
@@ -87,4 +89,11 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
             forwards[expiry] = parity_forward(chain, spot, expiry, valuation, rate)
         except ForwardUnavailable:
             errors[expiry] = render_explanation("outcome_why_forward")  # the cause goes to no user
-    return MarketSnapshot(underlying, valuation, rate, status, spot, legs, forwards, errors)
+    ended: dict[str, datetime.datetime] = {}
+    index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
+    for iid in [*instrument_ids, *([index_id] if index_id else [])]:
+        held = spot if iid == index_id else (legs[iid].quote if iid in legs else None)
+        t = provider.last_quote_time(iid) if held is None else None
+        if t is not None:
+            ended[iid] = t
+    return MarketSnapshot(underlying, valuation, rate, status, spot, legs, forwards, errors, ended)

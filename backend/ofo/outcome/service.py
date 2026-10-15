@@ -177,6 +177,7 @@ def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
     there is no last update to name: ADR-020 Q185's draft label ("Draft - Live data not connected", the catalogue's
     ``outcome_not_connected``), never the request time."""
     times = [q.timestamp for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
+    times += list(snapshot.ended_times.values())  # ADR-077: times kept after the subscription ended
     if not times:
         return NOT_CONNECTED_LABEL
     return render_explanation("outcome_feed_disconnected", time=max(times))

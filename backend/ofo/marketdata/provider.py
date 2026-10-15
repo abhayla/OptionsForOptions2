@@ -48,6 +48,11 @@ class MarketDataProvider(abc.ABC):
     @abc.abstractmethod
     def instrument_master(self) -> list[ListedContract]: ...
 
+    def last_quote_time(self, instrument_id: str) -> datetime.datetime | None:
+        """ADR-077: the time (never the price) of the last quote held for an instrument whose subscription ended;
+        None when none was kept. A provider that keeps no such time inherits this."""
+        return None
+
     @abc.abstractmethod
     def underlying_quote(self, underlying: str) -> NormalizedQuote | None: ...
 
