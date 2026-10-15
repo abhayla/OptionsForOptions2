@@ -1,6 +1,8 @@
 ---
 work_item: W-066
 ac: AC-7
+requirement: REQ-034
+ac_fp: "5250eb0c6b9d"
 result: pass
 verified_by: "verifier (Opus, independent, Tier A, 2026-10-15)"
 builder: "builder (Opus, rounds 7-8, 2026-10-15)"
