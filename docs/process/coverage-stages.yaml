@@ -219,6 +219,7 @@ issues:
   "#222": 4a            # deferred/owner question: REST fallback label after the browser socket closes (W-065 r2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
+  "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
   "#206": 4a            # REST outcome route never subscribes legs (W-065 phase 2)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
@@ -231,7 +232,6 @@ work_items:
   W-009: S8
   W-011: S8
   W-017: 4b
-  W-065: 4a           # live push to the screen; live proof needs the owner's Kite login (Monday 2026-10-12)
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
