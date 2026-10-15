@@ -462,7 +462,8 @@ describe('a draft reopened without planned entries asks for a reprice', () => {
     answers['POST /strategies/planned-entry'] = { entries: [entry(44624, '104.65')] }
     const w = mountPicker(legs)
     await flushPromises()
-    expect(t(w, 'leg-reprice-prompt').text()).toBe(REPRICE_PROMPT)
+    expect(REPRICE_PROMPT).toBe('This leg was saved without a planned entry. Reprice it to see its numbers.')
+    expect(t(w, 'leg-reprice-prompt').text()).toBe('This leg was saved without a planned entry. Reprice it to see its numbers.')
     expect(calls.some((x) => x.method === 'POST')).toBe(false)
     await t(w, 'reprice-leg').trigger('click')
     await flushPromises()
