@@ -130,6 +130,22 @@ class Rupees(SlotType):
         return f"₹{value:,}"
 
 
+class DisplayRupees(SlotType):
+    """A rupee amount in the engine's money formatter (ADR-008, lakh grouping: "₹2,96,332.80"), whole paise only; a negative balance prints with its minus."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _validate_money(value, "DisplayRupees", signed=True)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_rupees  # lazy: ofo.engine.display imports ofo.errors
+
+        # The engine's minus sign (U+2212) fails the platform-wording Latin check, so a negative balance is
+        # printed with an ASCII hyphen in front of the engine's own text for the magnitude.
+        return f"-{format_rupees(-value)}" if value < 0 else format_rupees(value)
+
+
 class WorstCase(SlotType):
     """A premium-free worst case at expiry: a Decimal P&L or the engine's UNLIMITED marker."""
 
