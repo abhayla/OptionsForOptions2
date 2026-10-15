@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (76)
+## Decisions (78)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -82,6 +82,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass with REQ-065 (the closed response door) named as… [none — it amends only the master-plan Stage 4 cor…]
 - ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition, and a reopened draft shows exactly those; they ch… [refines ADR-062]
 - ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells minus buys at each leg's LTP, times quantity, labell… [none — adds the TOTAL Current Value rule next to…]
+- ADR-077 2026-10-15: When a strategy's live connection to the platform drops (the browser's own socket closes) and the screen falls back, it shows REQ-049 AC-5's message,… [refines ADR-068]
+- ADR-078 2026-10-15: A second database, ofo_dev, is created on the same Windows VPS PostgreSQL as ofo_test, reached by the same limited ofo_app role (whose privileges mig… [refines ADR-048]
 
 ## Requirements (74)
 

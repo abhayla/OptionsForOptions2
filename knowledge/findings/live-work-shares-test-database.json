@@ -8,11 +8,11 @@
   "where": "ofo_test on the Windows VPS PostgreSQL",
   "evidence": "#204 builder: 22 of 101 tests failed with 'catalogue table must be empty'; #208 verifier: 62 'Catalogue update refused ... (ADR-058)' + 1 'strategy store holds rows'."
  },
- "fix": "Open for owner decision: a separate development database for live runs on the same host (the host also serves production, so it needs the owner's OK), or a reset step after live runs.",
+ "fix": "Owner decision ADR-078 (2026-10-15): live runs use a separate database ofo_dev on the same host (created 2026-10-15, migrated to head, CONNECT only for ofo_app); ofo_test was returned to empty for the live-run tables the same day (catalogue 7,397 + broker rows 7,397 + 1 strategy truncated; audit, ledger and sessions untouched), after which tests_app/test_catalogue_load_command.py and test_broker_instruments.py passed locally (20 passed).",
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "Verifiers currently judge database tests from CI and name local 'empty table' failures as environmental."
+  "note": "Mitigated by ADR-078; still no check stops a live run from pointing at ofo_test (candidate structural guard: the app refuses LIVE_MARKET=1 when its database is the test database)."
  },
  "spec_ref": [
   "spec/decisions/ADR-048.md"
