@@ -35,7 +35,7 @@ Requirements: 74; sections: 18
 | REQ-057 | Order lifecycle | foundation | Verified |
 | REQ-058 | Partial execution and no automatic retry | foundation | Verified |
 | REQ-059 | Pre-execution safety checks and validation | foundation | Verified |
-| REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | Specified |
+| REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | Approved |
 
 ## Calculations and outcome (4)
 
