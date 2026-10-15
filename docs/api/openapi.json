@@ -816,6 +816,10 @@
       },
       "ContractOut": {
         "properties": {
+          "contract_id": {
+            "type": "integer",
+            "title": "Contract Id"
+          },
           "exchange_segment": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -863,6 +867,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "contract_id",
           "exchange_segment",
           "exchange_token",
           "instrument_type",
@@ -2439,6 +2444,15 @@
             ],
             "title": "Action"
           },
+          "exchange_segment": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Exchange Segment"
+          },
+          "exchange_token": {
+            "type": "integer",
+            "title": "Exchange Token"
+          },
           "instrument": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -2494,6 +2508,8 @@
         "required": [
           "contract_id",
           "action",
+          "exchange_segment",
+          "exchange_token",
           "instrument",
           "strike",
           "expiry",
