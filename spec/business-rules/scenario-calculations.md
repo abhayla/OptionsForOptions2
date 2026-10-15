@@ -87,8 +87,8 @@ calculation engine.
     present, even outside a user range (at its price position); a breakeven outside the range is not inserted but
     still shows in Lower BE / Upper BE.
   - Lower BE / Upper BE: with two or more breakevens, the lowest and highest; with exactly one, it is the Lower BE
-    when the payoff is a profit above it (long call, short put) and the Upper BE when the profit lies below it;
-    the other shows "—".
+    when the loss region lies below it (long call, short put) and the Upper BE when the loss region lies above it,
+    read from the computed loss regions (ADR-072, ADR-089; a zero-P&L side is not a loss side); the other shows "—".
   - Estimated Now at a breakeven with more than two decimals is taken at that level rounded half-even to 0.01; a
     strategy with an option leg lacking IV has no Estimated Now view (shown unavailable with the reason).
 

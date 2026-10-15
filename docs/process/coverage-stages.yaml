@@ -157,6 +157,9 @@ decisions:
   ADR-081: 4b           # freeze limit: block at review, exchange file source (owner 2026-10-15, Q266)
   ADR-082: 4b           # charges from Zerodha's published rates; money sentences include charges (owner 2026-10-15, Q267)
   ADR-086: 4a           # Builder: contract names, IST times, four-part errors (owner 2026-10-15, #232 items 2-4)
+  ADR-087: 4b           # 4b built ahead of the 4a gate; gate still closes 4b + real order; core first (owner 2026-10-16)
+  ADR-088: 4a           # "Checked at" server answer time on 4 non-normal Builder states (owner 2026-10-16, #245)
+  ADR-089: 4a           # one-breakeven Lower/Upper BE label from loss regions (owner 2026-10-16, #171)
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
@@ -226,7 +229,6 @@ issues:
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
-  "#221": 4a            # draft label hyphen vs ADR-020 long dash; fixed by W-073 - drop the row once closed
   "#249": 4a           # deferred: draft-link legs unnamed with no live provider (ADR-086 item 1 remainder after W-073)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#245": 4a           # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names

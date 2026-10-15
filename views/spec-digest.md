@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (86)
+## Decisions (89)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -92,6 +92,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one group per underlying and expiry from the open positions not already in a strategy. [refines ADR-018]
 - ADR-085 2026-10-15: When a draft saved without planned entries (before ADR-075) is reopened in the Builder, each such leg shows the catalogue message "This leg was saved…
 - ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is named by its contract - underlying, expiry day and short month, strike, then CE / PE / FUT, e.g.
+- ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be built, reviewed, verified and merged before the Stage 4a gate has passed, using fakes and the real K… [none — changes the master plan's gate rule (a pro…]
+- ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - each show "Checked at <time>", where <time> is the… [none — fills the time REQ-039 AC-3 left open and…]
+- ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE when the loss region lies above it, taken from the… [none — uses the ADR-072 loss regions for the tabl…]
 
 ## Requirements (74)
 
