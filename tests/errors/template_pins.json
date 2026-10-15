@@ -1324,7 +1324,19 @@
     "reviewed": "pending owner read"
   },
   "explanation:confirm_expiry_day_short": {
-    "sha256": "525342760233001a2e7edad471724b72c14a85e4d7e41852daf517dec278d2be",
+    "sha256": "7d7701d54e4dbd79b92cec726015da45fa205c7e6dae4c651cdc64969b4ca499",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_future_short": {
+    "sha256": "c2945be41bddf265e39a71bae6b63d4de795947eb78f53c3b79beebc2e36d86a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:confirm_expiry_day_short_future": {
+    "sha256": "21bf49b397bf2d09b3fba2292a7df58304058cd08ccbf8f9ab3bab1f447e8b52",
+    "reviewed": "pending owner read"
+  },
+  "explanation:confirm_to_continue": {
+    "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
   }
 }

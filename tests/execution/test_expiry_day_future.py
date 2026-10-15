@@ -19,7 +19,7 @@ from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, p
 FUT_EXPIRY = datetime.date(2026, 10, 29)
 DAY = datetime.datetime(2026, 10, 29, 10, 0, tzinfo=IST)
 DAY_BEFORE = datetime.datetime(2026, 10, 28, 10, 0, tzinfo=IST)
-EXPIRY_FLAGS = {FlagCode.EXPIRY_DAY_ENTRY, FlagCode.EXPIRY_DAY_SHORT}
+EXPIRY_FLAGS = {FlagCode.EXPIRY_DAY_ENTRY, FlagCode.EXPIRY_DAY_SHORT, FlagCode.EXPIRY_DAY_SHORT_FUTURE}
 
 
 @pytest.fixture(scope="module")
@@ -42,8 +42,8 @@ def _run(action: Action, cat, elig, as_of=DAY):
     return check(Strategy((leg,)), all_true_context(underlying="SENSEX", as_of=as_of), cat, elig)
 
 
-def test_a_long_future_expiring_today_only_warns():
-    r = _run(Action.BUY, CAT, ELIG)
+def test_a_long_future_expiring_today_only_warns(cat, elig):
+    r = _run(Action.BUY, cat, elig)
     assert not r.blocked and r.requires_confirmation is False and r.confirmation_text is None
     (flag,) = [f for f in r.flags if f.code in EXPIRY_FLAGS]
     assert flag.code is FlagCode.EXPIRY_DAY_ENTRY
@@ -51,8 +51,8 @@ def test_a_long_future_expiring_today_only_warns():
     assert "2%" not in flag.message and "short options" not in flag.message
 
 
-def test_a_short_future_expiring_today_needs_the_acknowledgement_without_the_option_claim():
-    r = _run(Action.SELL, CAT, ELIG)
+def test_a_short_future_expiring_today_needs_the_acknowledgement_without_the_option_claim(cat, elig):
+    r = _run(Action.SELL, cat, elig)
     assert not r.blocked and r.requires_confirmation is True
     (flag,) = [f for f in r.flags if f.code in EXPIRY_FLAGS]
     assert flag.code is FlagCode.EXPIRY_DAY_SHORT_FUTURE
