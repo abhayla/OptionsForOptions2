@@ -13,7 +13,7 @@ from decimal import Decimal as D
 import pytest
 
 from grouping_inputs import (CONDOR_SYMBOLS, EXP_CONDOR, EXP_SECOND, IN_STRATEGY, LOT, SECOND_EXPIRY_CALL, SENSEX_PUT,
-                             SPOTS, audit_log, catalogue, clock, instrument_id_of, row, seven_rows, strategies,
+                             SPOTS, audit_log, catalogue, clock, key_of, row, seven_rows, strategies,
                              templates, token_of)
 from ofo.engine import Action, Instrument
 from ofo.engine.product import Product
@@ -124,7 +124,7 @@ def test_quantity_not_a_lot_multiple_is_refused_for_adoption():
 
 def test_move_between_groups_of_the_same_underlying_is_allowed_by_explicit_move_a_calendar():
     s = session()
-    call = instrument_id_of(SECOND_EXPIRY_CALL)
+    call = key_of(SECOND_EXPIRY_CALL)
     s.move(call, ToGroup(f"NIFTY:{EXP_CONDOR}"))
     groups = by_id(s.groups())
     assert SECOND_EXPIRY_CALL in {p.tradingsymbol for p in groups[f"NIFTY:{EXP_CONDOR}"].positions}
@@ -135,26 +135,25 @@ def test_move_between_groups_of_the_same_underlying_is_allowed_by_explicit_move_
 def test_move_into_a_group_of_another_underlying_is_refused_and_changes_nothing():
     s = session()
     with pytest.raises(GroupingError) as err:
-        s.move(instrument_id_of(SENSEX_PUT), ToGroup(f"NIFTY:{EXP_CONDOR}"))
+        s.move(key_of(SENSEX_PUT), ToGroup(f"NIFTY:{EXP_CONDOR}"))
     assert err.value.user_message is not None
     assert SENSEX_PUT in {p.tradingsymbol for p in by_id(s.groups())["SENSEX:2026-10-01"].positions}
 
 
-def test_move_into_an_existing_strategy_needs_the_same_underlying():
+def test_adding_to_an_existing_strategy_is_not_available_yet_and_leaves_everything_visible():
+    """Round 2 item 4: no order-free path exists (W-027's add prepares orders), so the move is refused honestly."""
     s = session()
-    s.move(instrument_id_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
-    with pytest.raises(GroupingError):
-        s.move(instrument_id_of(SENSEX_PUT), ToStrategy("S-1"))
-    with pytest.raises(GroupingError):
-        s.move(instrument_id_of(SENSEX_PUT), ToStrategy("S-DOES-NOT-EXIST"))
-    proposal = s.confirm_existing("S-1")
-    assert [a.tradingsymbol for a in proposal.legs] == [SECOND_EXPIRY_CALL] and proposal.strategy_id == "S-1"
-    assert proposal.legs[0].leg.entry_price == D("120.25")
+    before = len(s.groups())
+    with pytest.raises(GroupingError) as err:
+        s.move(key_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
+    assert "not available yet" in err.value.user_message.what_happened
+    assert len(s.groups()) == before and SECOND_EXPIRY_CALL in {p.tradingsymbol for g in s.groups() for p in g.positions}
+    assert not hasattr(s, "confirm_existing")
 
 
 def test_standalone_position_is_shown_and_never_adopted():
     s = session()
-    s.move(instrument_id_of(SENSEX_PUT), STANDALONE)
+    s.move(key_of(SENSEX_PUT), STANDALONE)
     assert [p.tradingsymbol for p in s.standalone()] == [SENSEX_PUT]
     assert "SENSEX:2026-10-01" not in by_id(s.groups())
     with pytest.raises(GroupingError):
@@ -165,7 +164,7 @@ def test_standalone_position_is_shown_and_never_adopted():
 
 def test_edited_entry_price_is_marked_edited_and_the_average_is_kept_otherwise():
     s = session()
-    leg = instrument_id_of("NIFTY26O0623400CE")
+    leg = key_of("NIFTY26O0623400CE")
     s.set_entry(leg, D("95.05"))
     adopted = s.confirm(f"NIFTY:{EXP_CONDOR}", strategy_id="S-C")
     legs = {a.tradingsymbol: a for a in adopted.legs}
@@ -175,11 +174,11 @@ def test_edited_entry_price_is_marked_edited_and_the_average_is_kept_otherwise()
     assert legs["NIFTY26O0623600CE"].leg.entry_price == D("44.00")
 
 
-@pytest.mark.parametrize("bad", [D("0"), D("-1"), D("91.52"), 91.5, "91.50", D("NaN")])
-def test_entry_price_must_be_a_positive_tick_valid_decimal(bad):
+@pytest.mark.parametrize("bad", [D("0"), D("-1"), D("91.525"), 91.5, "91.50", D("NaN")])
+def test_entry_price_must_be_a_positive_paise_decimal(bad):
     s = session()
     with pytest.raises(GroupingError):
-        s.set_entry(instrument_id_of("NIFTY26O0623400CE"), bad)
+        s.set_entry(key_of("NIFTY26O0623400CE"), bad)
 
 
 def test_a_group_is_confirmed_once():
@@ -198,4 +197,86 @@ def test_confirming_a_new_strategy_under_an_existing_id_is_refused():
 def test_a_position_not_in_the_suggestion_cannot_be_moved():
     s = session()
     with pytest.raises(GroupingError):
-        s.move(instrument_id_of(IN_STRATEGY), STANDALONE)
+        s.move(key_of(IN_STRATEGY), STANDALONE)
+
+
+# ---- round 2 ---------------------------------------------------------------------------------------------------------
+
+LEG = "NIFTY26O0623000PE"
+
+
+def test_one_contract_in_two_products_is_two_positions_and_both_are_adopted_as_separate_legs():
+    """Item 1: Zerodha sends one row per (contract, product); the MIS row must not replace the NRML row."""
+    rows = [row(LEG, -LOT, "80.00", "NRML"), row(LEG, -LOT, "86.00", "MIS")]
+    s = session(rows, {})
+    (g,) = s.groups()
+    assert sorted((p.product.value, p.average_price) for p in g.positions) == [("MIS", D("86.00")), ("NRML", D("80.00"))]
+    s.set_entry(key_of(LEG, "MIS"), D("87.00"))
+    adopted = s.confirm(g.id, strategy_id="S-P")
+    legs = sorted((a.product.value, a.leg.entry_price, a.entry_source.value) for a in adopted.legs)
+    assert legs == [("MIS", D("87.00"), "edited"), ("NRML", D("80.00"), "from_zerodha")]
+    assert len(adopted.legs) == 2
+
+
+def test_moving_one_product_row_leaves_the_other_row_of_the_same_contract_in_the_group():
+    s = session([row(LEG, -LOT, "80.00", "NRML"), row(LEG, -LOT, "86.00", "MIS")], {})
+    s.move(key_of(LEG, "MIS"), STANDALONE)
+    assert [p.product for p in s.standalone()] == [Product.MIS]
+    assert [p.product for g in s.groups() for p in g.positions] == [Product.NRML]
+
+
+def test_closed_row_with_average_zero_is_dropped_before_parsing():
+    s = suggest(seven_rows() + [row("NIFTY26O0623300CE", 0, "0")])
+    assert s.unresolved == () and len(s.groups) == 3
+
+
+def test_average_with_more_than_two_decimals_stays_adoptable_and_is_kept_exact():
+    rows = [row("NIFTY26O0623400CE", -LOT, "91.525")] + [r for r in seven_rows()[:4] if r["tradingsymbol"] != "NIFTY26O0623400CE"]
+    s = session(rows, {})
+    (g,) = s.groups()
+    assert g.resembles == "Iron Condor" and s.suggestion.unresolved == ()
+    (call,) = [p for p in g.positions if p.tradingsymbol == "NIFTY26O0623400CE"]
+    assert call.average_price == D("91.525")
+    with pytest.raises(GroupingError) as err:  # the leg model holds paise: the user sets the entry first
+        s.confirm(g.id, strategy_id="S-3")
+    assert err.value.user_message.next_action and s.adopted == ()
+    s.set_entry(key_of("NIFTY26O0623400CE"), D("91.53"))  # paise, not a tick multiple: a cost, not an order price
+    adopted = s.confirm(g.id, strategy_id="S-3")
+    assert len(adopted.legs) == 4
+
+
+def test_no_partial_group_adoption_when_one_row_needs_an_entry():
+    rows = [row("NIFTY26O0623400CE", -LOT, "91.525"), row("NIFTY26O0623600CE", LOT, "44.00")]
+    s = session(rows, {})
+    with pytest.raises(GroupingError):
+        s.confirm(f"NIFTY:{EXP_CONDOR}", strategy_id="S-4")
+    assert s.adopted == () and len(s.groups()[0].positions) == 2
+
+
+@pytest.mark.parametrize("zerodha_qty,reason", [(-2 * LOT, "differs_from_strategy"), (LOT, "differs_from_strategy")])
+def test_a_contract_in_a_strategy_with_another_quantity_or_side_is_shown_never_hidden(zerodha_qty, reason):
+    s = suggest([row(IN_STRATEGY, zerodha_qty, "70.00")])
+    assert s.groups == ()
+    (u,) = s.unresolved
+    assert (u.tradingsymbol, u.reason) == (IN_STRATEGY, reason) and "strategy" in u.detail
+
+
+def test_two_product_rows_that_sum_to_the_strategy_quantity_are_the_strategys_and_hidden():
+    two = StrategyDefinition("NIFTY", (DefinitionLeg(Action.SELL, Instrument.CE, D("23200"), EXP_CONDOR, 2 * LOT),))
+    s = suggest([row(IN_STRATEGY, -LOT, "70.00", "NRML"), row(IN_STRATEGY, -LOT, "71.00", "MIS")], {"S-2": two})
+    assert s.groups == () and s.unresolved == ()
+
+
+def test_unknown_product_is_refused_for_adoption():
+    s = suggest([row("NIFTY26O0623400CE", -LOT, "91.50", "CO")])
+    assert s.groups == () and [u.reason for u in s.unresolved] == ["unknown_product"]
+
+
+@pytest.mark.parametrize("what", ["unknown_contract", "not_lot_multiple"])
+def test_unadoptable_messages_do_not_offer_standalone_because_the_row_is_only_shown(what):
+    stray = {**row(SECOND_EXPIRY_CALL, -LOT, "10.00"), "tradingsymbol": "NIFTY99ZZ99999CE", "instrument_token": 999999999}
+    rows = [stray] if what == "unknown_contract" else [row("NIFTY26O0623400CE", -(LOT + 5), "91.50")]
+    s = session(rows, {})
+    with pytest.raises(GroupingError) as err:
+        s.move_unresolved(s.suggestion.unresolved[0].tradingsymbol, STANDALONE)
+    assert "standalone" not in err.value.user_message.next_action.lower()

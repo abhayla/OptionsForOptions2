@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ofo.audit import AuditLog
 from ofo.engine import Action, Instrument
+from ofo.engine.product import Product
 from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.loader import load_templates
@@ -69,6 +70,12 @@ def row(symbol: str, quantity: int, average_price: str, product: str = "NRML", *
         "average_price": D(average_price),
         "last_price": D(last_price),
     }
+
+
+def key_of(symbol: str, product: str = "NRML"):
+    """The position key: one Zerodha row per (contract, product)."""
+    from ofo.reconciliation.grouping import PositionKey
+    return PositionKey(instrument_id_of(symbol), Product(product))
 
 
 def seven_rows() -> list[dict]:

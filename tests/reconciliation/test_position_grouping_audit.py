@@ -10,7 +10,7 @@ from decimal import Decimal as D
 import pytest
 
 from grouping_inputs import (EXP_CONDOR, EXP_SECOND, IN_STRATEGY, SECOND_EXPIRY_CALL, SENSEX_PUT, SPOTS, audit_log,
-                             catalogue, clock, instrument_id_of, seven_rows, strategies, templates)
+                             catalogue, clock, key_of, seven_rows, strategies, templates)
 from ofo.audit import EventType
 from ofo.reconciliation.grouping import (STANDALONE, GroupingError, GroupingSession, ToGroup, ToStrategy,
                                          suggest_groups)
@@ -40,22 +40,20 @@ def test_start_records_one_suggest_entry_listing_groups_and_resemblance():
 
 def test_move_and_standalone_each_write_one_entry_naming_position_from_and_to():
     s, log = started()
-    s.move(instrument_id_of(SECOND_EXPIRY_CALL), ToGroup(CONDOR_GROUP))
-    s.move(instrument_id_of(SENSEX_PUT), STANDALONE)
-    s.move(instrument_id_of(CALL), ToStrategy("S-1"))
+    s.move(key_of(SECOND_EXPIRY_CALL), ToGroup(CONDOR_GROUP))
+    s.move(key_of(SENSEX_PUT), STANDALONE)
     moves = [e.payload for e in log.events[1:]]
-    assert len(log.events) == 4
+    assert len(log.events) == 3
     assert [(m["action"], m["position"], m["from"], m["to"]) for m in moves] == [
         ("move", SECOND_EXPIRY_CALL, f"group:NIFTY:{EXP_SECOND}", f"group:{CONDOR_GROUP}"),
         ("standalone", SENSEX_PUT, "group:SENSEX:2026-10-01", "standalone"),
-        ("move", CALL, f"group:{CONDOR_GROUP}", "strategy:S-1"),
     ]
     assert all(e.event_type is EventType.USER_APPROVAL_RECORDED for e in log.events[1:])
 
 
 def test_set_entry_writes_one_entry_with_old_and_new_price():
     s, log = started()
-    s.set_entry(instrument_id_of(CALL), D("95.05"))
+    s.set_entry(key_of(CALL), D("95.05"))
     payload = log.events[-1].payload
     assert len(log.events) == 2
     assert (payload["action"], payload["position"], payload["old_price"], payload["new_price"]) == (
@@ -64,7 +62,7 @@ def test_set_entry_writes_one_entry_with_old_and_new_price():
 
 def test_confirm_writes_one_entry_with_prices_sources_and_products():
     s, log = started()
-    s.set_entry(instrument_id_of(CALL), D("95.05"))
+    s.set_entry(key_of(CALL), D("95.05"))
     s.confirm(CONDOR_GROUP, strategy_id="S-C")
     event = log.events[-1]
     assert len(log.events) == 3 and event.event_type is EventType.STRATEGY_CHANGED
@@ -74,25 +72,37 @@ def test_confirm_writes_one_entry_with_prices_sources_and_products():
     assert event.payload["strategy_id"] == "S-C" and event.payload["resembles"] == "Iron Condor"
 
 
-def test_confirm_existing_writes_one_entry():
+def test_move_into_an_existing_strategy_is_refused_and_not_audited():
     s, log = started()
-    s.move(instrument_id_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
-    s.confirm_existing("S-1")
-    assert [e.payload["action"] for e in log.events] == ["suggest", "move", "confirm_existing"]
+    with pytest.raises(GroupingError):
+        s.move(key_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
+    assert len(log.events) == 1
+
+
+def test_audit_entries_name_the_product_so_two_rows_of_one_contract_are_distinct():
+    log = audit_log()
+    from grouping_inputs import row
+    suggestion = suggest_groups([row(CALL, -65, "80.00", "NRML"), row(CALL, -65, "86.00", "MIS")], {}, catalogue(),
+                                templates=templates(), spots=SPOTS)
+    s = GroupingSession.start(suggestion, audit=log, clock=clock, actor="u", session_id="x")
+    s.set_entry(key_of(CALL, "MIS"), D("87.00"))
+    s.move(key_of(CALL, "NRML"), STANDALONE)
+    set_entry, move = (e.payload for e in log.events[1:])
+    assert (set_entry["product"], set_entry["old_price"], set_entry["new_price"]) == ("MIS", "86.00", "87.00")
+    assert (move["product"], move["action"]) == ("NRML", "standalone")
 
 
 def test_a_refused_action_appends_nothing_and_changes_nothing():
     s, log = started()
     before = len(log.events)
     refusals = [
-        lambda: s.move(instrument_id_of(SENSEX_PUT), ToGroup(CONDOR_GROUP)),
-        lambda: s.move(instrument_id_of(IN_STRATEGY), STANDALONE),
-        lambda: s.move(instrument_id_of(CALL), ToStrategy("S-NOPE")),
-        lambda: s.set_entry(instrument_id_of(CALL), D("0")),
-        lambda: s.set_entry(instrument_id_of(CALL), 91.5),
+        lambda: s.move(key_of(SENSEX_PUT), ToGroup(CONDOR_GROUP)),
+        lambda: s.move(key_of(IN_STRATEGY), STANDALONE),
+        lambda: s.move(key_of(CALL), ToStrategy("S-1")),
+        lambda: s.set_entry(key_of(CALL), D("0")),
+        lambda: s.set_entry(key_of(CALL), 91.5),
         lambda: s.confirm("NIFTY:2000-01-01", strategy_id="S-C"),
         lambda: s.confirm(CONDOR_GROUP, strategy_id="S-1"),
-        lambda: s.confirm_existing("S-1"),
     ]
     for refusal in refusals:
         with pytest.raises(GroupingError):
@@ -103,8 +113,8 @@ def test_a_refused_action_appends_nothing_and_changes_nothing():
 
 def test_the_audit_chain_verifies_after_a_whole_session():
     s, log = started()
-    s.move(instrument_id_of(SENSEX_PUT), STANDALONE)
-    s.set_entry(instrument_id_of(CALL), D("95.05"))
+    s.move(key_of(SENSEX_PUT), STANDALONE)
+    s.set_entry(key_of(CALL), D("95.05"))
     s.confirm(CONDOR_GROUP, strategy_id="S-C")
     assert log.verify().ok and len(log.events) == 4
 

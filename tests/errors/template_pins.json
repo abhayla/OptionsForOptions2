@@ -1260,11 +1260,11 @@
     "reviewed": "pending owner read"
   },
   "grouping_unknown_contract": {
-    "sha256": "f375f7f765c425510af99868027af515e5a2a2e1a012ec328e3543fe2e37c867",
+    "sha256": "00d697921502c3e41611e6d3121963ebd6a6aed9472da88ef93fd115d173a03c",
     "reviewed": "pending owner read"
   },
   "grouping_not_lot_multiple": {
-    "sha256": "dfeb075a21340b65966dfe78a9cc3e863aff8aacef436dca27c2c6debcc1b897",
+    "sha256": "b47f40f9ee7023e982b0a8322fa7054d500e7d09016e20e2dcdd80eeb306cbd5",
     "reviewed": "pending owner read"
   },
   "grouping_move_refused": {
@@ -1276,7 +1276,23 @@
     "reviewed": "pending owner read"
   },
   "grouping_entry_price_invalid": {
-    "sha256": "3e24d430679ec72622935eb0438142713e10a85ad7857ec09776b0d619b07fa2",
+    "sha256": "081d3639ca609325502803a9b5466814256c8e420a3d415b21f666c0af65d6cf",
+    "reviewed": "pending owner read"
+  },
+  "grouping_differs_from_strategy": {
+    "sha256": "25c8b53c6d5bd49cc51bc0528be8094d86b4c446cc1b210d4aeecd60ee27fb8a",
+    "reviewed": "pending owner read"
+  },
+  "grouping_entry_needed": {
+    "sha256": "0a0dc17a6d489e583650882daf17393bd912c813e50ba7a69907ddb1ba9fe72d",
+    "reviewed": "pending owner read"
+  },
+  "grouping_unknown_product": {
+    "sha256": "11dedfe0f8d0e9ab25ada1c0ecd57d28e3f32524c0da22c3fad861ec16ed0164",
+    "reviewed": "pending owner read"
+  },
+  "grouping_not_available": {
+    "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
     "reviewed": "pending owner read"
   }
 }
