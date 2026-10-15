@@ -16,4 +16,6 @@ commands: as in the frontmatter
 observed: W-072's AC-3 verification failed on 2026-10-15 only because four non-normal states showed no "when" (#245). W-077 (ADR-088) added "Checked at <server answer time, IST>" to those states on top of W-072's code; the W-077 verifier ran the whole vitest suite (151 passed, including W-072's display-format and error-parts tests), lint, build, domain 731 and the targeted app tests, and passed REQ-039 AC-3 (see evidence/W-077/AC-3.md). W-072's e2e spec frontend/e2e/strategy-display-format.spec.ts is run by CI's Playwright job on the merging PR, not by the verifier.
 attack: see evidence/W-077/AC-3.md (browser clock faked to 2031; answered_at stripped; ADR/code drift check).
 
-Recorded by the orchestrator from the W-077 verifier's returned blocks; W-072's remaining AC was delivered by W-077.
+Two verifier runs (full check at fc446ff, honesty re-check at 2a7d4f7); W-072's AC-3 was delivered by W-077.
+
+Recorded by the orchestrator from the verifier's returned block.

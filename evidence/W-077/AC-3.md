@@ -16,4 +16,6 @@ commands: as in the frontmatter
 observed: At fc446ff: vitest 151/151, lint 0, build 0, domain 731 passed, app 30 passed. All four states render 'Checked at <IST>' from answered_at (outcome and planned-entry) or the HTTP Date header (error). Browser clock faked to 2031: NOT_CONNECTED and REFUSED still showed 'Checked at 16 Oct 2026, 09:20:05 IST' for answered_at 2026-10-16T03:50:05Z. Missing answered_at: 'Checked at Time not available'. First run FAILED AC-3 only because not connected uses the answer time while ADR-088 named the last connection attempt, unrecorded. At 2a7d4f7 (no code change since fc446ff, 0 lines in frontend/backend/tests/tests_app): ADR-088 clarified (not connected = answer time, the server keeps no attempt record; provenance orchestrator under the owner's overnight instruction, reversible, OQ-3) and the card lists each state's time; code matches (outcome.py answered_at, planned_entry.py, api.js mapError Date header, StrategyBuilderPage istTime(null) -> 'Time not available').
 attack: Browser clock faked: shown time unchanged. answered_at removed: 3 builder tests red (not connected, refused, browser clock). Re-check: looked for drift between the clarified ADR and the code on the not-connected, error-without-Date and unpriced paths - none; no browser-clock fallback exists.
 
-Recorded by the orchestrator from the verifier's returned blocks (two runs).
+Two verifier runs (full check at fc446ff, honesty re-check at 2a7d4f7); W-072's AC-3 was delivered by W-077.
+
+Recorded by the orchestrator from the verifier's returned block.
