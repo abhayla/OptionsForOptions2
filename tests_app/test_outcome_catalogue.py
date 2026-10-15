@@ -55,10 +55,10 @@ def _request(provider, ux_level):
 
 
 def _response(provider, ux_level, with_provider=True):
-    from ofo_app.routes.outcome import MarketContext, strategy_outcome
+    from ofo_app.routes.outcome import MarketContext, server_now, strategy_outcome
 
     ctx = MarketContext(provider, lambda: VALUATION, RATE) if with_provider else None
-    return strategy_outcome(_request(provider, ux_level), ctx)
+    return strategy_outcome(_request(provider, ux_level), ctx, now=server_now, stored=None)
 
 
 def _leaf(path, name, value):

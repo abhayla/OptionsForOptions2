@@ -662,6 +662,11 @@
             ],
             "title": "Valuation"
           },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Answered At"
+          },
           "spot_level": {
             "anyOf": [
               {
@@ -760,6 +765,7 @@
           "reason",
           "output_label",
           "valuation",
+          "answered_at",
           "spot_level",
           "spot_at",
           "legs",

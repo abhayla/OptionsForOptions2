@@ -745,8 +745,11 @@ def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monk
 def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers():
     from ofo_app.routes.outcome import OutcomeRequest, outcome_response
 
-    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None).model_dump(
+    import datetime
+
+    fixed = lambda: datetime.datetime(2026, 10, 16, 3, 50, 5, tzinfo=datetime.timezone.utc)  # noqa: E731 - the answer clock
+    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None, now=fixed).model_dump(
         mode="json", exclude_unset=True)
-    flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None).model_dump(
-        mode="json", exclude_unset=True)
+    flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None,
+                               now=fixed).model_dump(mode="json", exclude_unset=True)
     assert flagged == plain and flagged["state"] != "COMPUTED"

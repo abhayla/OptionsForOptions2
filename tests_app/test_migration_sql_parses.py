@@ -23,7 +23,7 @@ VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembi
 MIGRATIONS = ("0001_baseline_ledger_clock", "0002_audit_store", "0003_catalogue_store", "0004_broker_instruments",
               "0005_contract_lifecycle", "0006_index_segments", "0007_broker_sessions", "0008_strategy_store",
               "0009_minute_history", "0010_strategy_schema_version", "0011_strategy_planned_entry",
-              "0012_charge_rates", "0014_charge_rates_caps")
+              "0012_charge_rates", "0013_exchange_freeze_limits", "0014_charge_rates_caps")
 _DO = re.compile(r"^\s*DO\s+(\$\w*\$)(.*)\1\s*;?\s*$", re.DOTALL)
 
 

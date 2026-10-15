@@ -10,7 +10,16 @@ export function mapError(error) {
   const out = { message: NEUTRAL_ERROR, status: error?.response?.status ?? null }
   const parts = catalogueParts(error?.response?.data)
   if (parts) out.parts = parts
+  const stamped = serverTime(error?.response?.headers?.date)
+  if (stamped) out.answered_at = stamped
   return out
+}
+
+/** The server's own answer time from its HTTP `Date` header (every answer carries it, error bodies included), as an ISO
+ *  instant; null when absent or unreadable. Never the browser's clock (ADR-088). */
+function serverTime(header) {
+  const ms = typeof header === 'string' ? Date.parse(header) : NaN
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString()
 }
 
 const PART_KEYS = ['what_happened', 'impact', 'what_is_blocked', 'next_action']

@@ -158,32 +158,35 @@ class Outcome:
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
 
 
-def _contract_fields(snapshot: MarketSnapshot | None, instrument_id: str):
+def _contract_fields(snapshot: MarketSnapshot | None, instrument_id: str, stored=None):
     """The one lookup of a leg's contract: the snapshot's catalogue entry (symbol, instrument, strike, expiry), the same
-    one the COMPUTED path reads. A contract the catalogue does not know (or no snapshot at all) gives all None."""
+    one the COMPUTED path reads. With no snapshot (no provider, #249) ``stored`` maps instrument id to the stored
+    catalogue entry. A contract neither knows gives all None."""
     lm = None if snapshot is None else snapshot.legs.get(instrument_id)
-    if lm is None or lm.contract is None:
+    listed = lm.contract if lm is not None else (stored or {}).get(instrument_id)
+    if listed is None:
         return None, None, None, None
-    c = lm.contract.contract
+    c = listed.contract
     kind = Instrument(c.instrument_type)
-    symbol = lm.contract.ref(ZERODHA).broker_symbol if lm.contract.broker_refs else None
+    symbol = listed.ref(ZERODHA).broker_symbol if listed.broker_refs else None
     return symbol, kind, (None if kind is Instrument.FUT else c.strike), c.expiry
 
 
-def _unpriced_legs(definition: StrategyDefinition, snapshot: MarketSnapshot | None, label) -> tuple:
+def _unpriced_legs(definition: StrategyDefinition, snapshot: MarketSnapshot | None, label, stored=None) -> tuple:
     out = []
     for p in definition.legs:
-        symbol, kind, strike, expiry = _contract_fields(snapshot, p.instrument_id)
+        symbol, kind, strike, expiry = _contract_fields(snapshot, p.instrument_id, stored)
         out.append(OutcomeLeg(p.instrument_id, symbol, p.action, kind, strike, expiry, p.lots, None, None, p.planned_entry,
                               p.captured_at, None, None, None, label))
     return tuple(out)
 
 
 def not_connected(definition: StrategyDefinition, ux_level: UXLevel = UXLevel.STANDARD,
-                  snapshot: MarketSnapshot | None = None) -> Outcome:
+                  snapshot: MarketSnapshot | None = None, stored=None) -> Outcome:
     """No provider or no Zerodha session (ADR-068 consequence, ADR-020 Q185): a state, never an error. With a
-    ``snapshot`` (a session that ended) the legs name their contract; with none, there is no catalogue to ask."""
-    legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL)
+    ``snapshot`` (a session that ended) the legs name their contract; with none, ``stored`` (instrument id -> the stored
+    catalogue entry, #249) names them, and a contract it lacks stays unnamed."""
+    legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL, stored)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, NOT_CONNECTED_LABEL,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
 

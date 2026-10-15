@@ -40,4 +40,9 @@ def test_the_migration_carries_the_same_caps_as_the_code():
             / "0014_charge_rates_caps.py").read_text(encoding="utf-8")
     assert D(re.search(r'^SEBI_CAP = "([\d.]+)"', text, re.M).group(1)) == SEBI_CAP
     assert D(re.search(r'^STAMP_CAP = "([\d.]+)"', text, re.M).group(1)) == STAMP_CAP
-    assert 'down_revision = "0012_charge_rates"' in text
+    # the chain: 0014 revises 0013, which revises 0012; 0014 loads its predecessor from down_revision and re-exports
+    # what a later migration chains on
+    versions = Path(text and __file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions"
+    assert 'down_revision = "0013_exchange_freeze_limits"' in text
+    assert 'down_revision = "0012_charge_rates"' in (versions / "0013_exchange_freeze_limits.py").read_text(encoding="utf-8")
+    assert "_load(f\"{down_revision}.py\"" in text and "_M8 = _PREVIOUS._M8" in text and "def extended_allowlist_sql" in text

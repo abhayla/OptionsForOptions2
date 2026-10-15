@@ -1237,6 +1237,11 @@
             ],
             "title": "Valuation"
           },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Answered At"
+          },
           "spot_level": {
             "anyOf": [
               {
@@ -1335,6 +1340,7 @@
           "reason",
           "output_label",
           "valuation",
+          "answered_at",
           "spot_level",
           "spot_at",
           "legs",
@@ -1380,12 +1386,18 @@
             },
             "type": "array",
             "title": "Entries"
+          },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Answered At"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "entries"
+          "entries",
+          "answered_at"
         ],
         "title": "PlannedEntriesOut"
       },
