@@ -14,11 +14,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo_app import errors, live_market, replay_mode
+from ofo.marketdata.fanout import FanOut
+from ofo_app import errors, live_market, live_push, replay_mode
 from ofo_app.config import app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
-from ofo_app.routes import broker, catalogue, health, outcome, planned_entry, strategies
+from ofo_app.routes import broker, catalogue, health, live, outcome, planned_entry, strategies
 
 log = logging.getLogger(__name__)
 
@@ -58,12 +59,15 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
+    live.set_replay_feed(None)
     if replay_mode.replay_requested():  # W-064 test-only; refused outside APP_ENV=test, before anything is served
         replay_mode.require_test_env(app_env() or "")
         ctx = replay_mode.build_replay_context()
         app.dependency_overrides[outcome.get_market_context] = lambda: ctx
+        live.set_replay_feed(live_push.LiveFeed(ctx, FanOut(ctx.provider)))  # the socket replays the same frames
     app.include_router(health.router)
     app.include_router(outcome.router)
+    app.include_router(live.router)  # W-065: the strategy live push, a door socket
     broker.mount(app, config)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)

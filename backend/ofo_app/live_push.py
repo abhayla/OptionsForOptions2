@@ -6,7 +6,8 @@ the push subscribes the legs' instruments and the underlying index on the shared
 outcome from :func:`ofo_app.routes.outcome.outcome_response` (the same function the REST route returns). A new client
 message replaces the strategy. When the connection ends, everything it subscribed is released.
 
-The channel is a two-method adapter (``receive`` / ``send``) so this logic is tested without a socket. Bad input is
+The channel is a two-method adapter (``receive`` / ``send``) so this logic is tested without a socket; in the app it is
+the door's ``ClosedSocket`` (ofo_app.errors), which mints every message from the model with ``emit``. Bad input is
 answered with one catalogue message (``user_input_request_invalid``), never free text. The access token is never here.
 """
 from __future__ import annotations
@@ -20,20 +21,20 @@ from pydantic import ValidationError
 
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
+from ofo_app.errors import SocketClosed
 from ofo_app.routes.outcome import MarketContext, OutcomeRequest, outcome_response
 
 MIN_PUSH_INTERVAL = 1.0  # ADR-068: at most once a second per strategy
 POLL_SECONDS = 0.05
 
 
-class ChannelClosed(Exception):
-    """The browser connection ended."""
+ChannelClosed = SocketClosed  # the browser connection ended (the door socket raises it)
 
 
 class Channel(Protocol):
     async def receive(self) -> Any: ...  # one client message; ChannelClosed when the connection ends
 
-    async def send(self, body: dict) -> None: ...
+    async def send(self, source: Any) -> None: ...  # an OutcomeResponse or a catalogue message; the door mints it
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ class StrategyPush:
         return ids + ([index_id] if index_id else [])
 
     async def _error(self) -> None:
-        await self._channel.send(render("user_input_request_invalid").as_dict())
+        await self._channel.send(render("user_input_request_invalid"))
 
     async def _replace(self, raw: Any) -> None:
         try:
@@ -100,8 +101,7 @@ class StrategyPush:
     async def _push(self) -> None:
         self._dirty = False
         try:
-            body = outcome_response(self._req, None if self._feed is None else self._feed.ctx).model_dump(
-                mode="json", exclude_unset=True)
+            body = outcome_response(self._req, None if self._feed is None else self._feed.ctx)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return
