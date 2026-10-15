@@ -44,12 +44,12 @@ def replayed():
 
 
 def _outcome(provider, legs):
-    from ofo_app.routes.outcome import MarketContext, OutcomeRequest, strategy_outcome
+    from ofo_app.routes.outcome import MarketContext, OutcomeRequest, server_now, strategy_outcome
 
     body = [{"instrument_id": iid, "action": action, "lots": lots, "planned_entry": entry,
              "captured_at": VALUATION.isoformat()} for iid, action, lots, entry in legs]
     request = OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": body, "ux_level": "standard"})
-    return strategy_outcome(request, MarketContext(provider, lambda: VALUATION, RATE))
+    return strategy_outcome(request, MarketContext(provider, lambda: VALUATION, RATE), now=server_now, stored=None)
 
 
 def test_ac7_the_172_repro_renders_one_bounded_region_with_one_excluded_level(replayed) -> None:
