@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { canonicalLots, canonicalMoney, matchesLegs } from '@/lib/liveMatch'
 
 const urlDraft = (over = {}) => ({ underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: '2',
@@ -54,5 +55,12 @@ describe('canonicalizers', () => {
   it('the matcher source never parses a number', () => {
     const src = readFileSync(resolve(__dirname, '../src/lib/liveMatch.js'), 'utf8').replace(/\/\/.*$/gm, '')
     expect(src).not.toMatch(/parseFloat|Number\(|parseInt|Math\./)
+  })
+})
+
+describe('#221: the draft label is ADR-020 Q185 with the long dash', () => {
+  it('exact text, no hyphen', () => {
+    expect(NOT_CONNECTED_LABEL).toBe('Draft — Live data not connected')
+    expect(NOT_CONNECTED_LABEL).not.toContain('-')
   })
 })

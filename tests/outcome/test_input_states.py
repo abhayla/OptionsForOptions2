@@ -137,7 +137,7 @@ def test_no_provider_is_the_not_connected_state(replayed):
     d = definition(provider)
     out = build_outcome(d, None, UXLevel.GUIDED)
     assert out.state is OutcomeState.NOT_CONNECTED
-    assert out.status_label == NOT_CONNECTED_LABEL == "Draft - Live data not connected"
+    assert out.status_label == NOT_CONNECTED_LABEL == "Draft — Live data not connected"
     assert out.margin.state == "NOT_AVAILABLE_YET"
     assert [leg.planned_entry for leg in out.legs] == [p.planned_entry for p in d.legs]
     assert out.table is None

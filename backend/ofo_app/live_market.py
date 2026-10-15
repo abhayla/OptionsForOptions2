@@ -3,7 +3,7 @@
 When ``LIVE_MARKET`` is on, the lifespan reads the owner's active Kite session (W-058, ``access_token_for``), builds one
 ``KiteProvider`` over the stored catalogue, wraps it in one ``FanOut`` (one vendor subscription per instrument, however
 many screens watch it) and runs ``KiteSocket`` as a background task. ``get_market_context()`` then answers with it.
-No session -> no context ("Draft - Live data not connected", unchanged). A 403 on the socket (session ended) ends the
+No session -> no context ("Draft — Live data not connected", unchanged). A 403 on the socket (session ended) ends the
 task; the provider's feed state then reports the session as ended, so every quote shows a not-live health.
 
 The access token lives only in the socket's URL string and in the redaction registry; this module never logs, prints or

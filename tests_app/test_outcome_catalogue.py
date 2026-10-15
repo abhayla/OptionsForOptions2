@@ -117,10 +117,10 @@ async def test_the_three_plain_language_sentences_keep_the_w063_numbers(replayed
 
 def test_status_and_margin_texts_are_exact(replayed) -> None:
     none = _response(replayed, "standard", with_provider=False).model_dump(mode="json")
-    assert none["status_label"] == "Draft - Live data not connected"
+    assert none["status_label"] == "Draft — Live data not connected"
     assert none["reason"] == "no live market data provider is connected"
     assert none["margin"]["reason"] == "Margin from Zerodha is not shown yet; it needs your Kite login."
-    assert all(leg["label"] == "Draft - Live data not connected" for leg in none["legs"])
+    assert all(leg["label"] == "Draft — Live data not connected" for leg in none["legs"])
 
 
 def test_column_and_cell_texts_are_exact(replayed) -> None:

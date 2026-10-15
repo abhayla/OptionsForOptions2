@@ -4,7 +4,7 @@
 export const UNDERLYINGS = ['NIFTY', 'SENSEX']
 
 /** The one wording for a draft that has no live data (the backend constant NOT_CONNECTED_LABEL, ADR-020 Q185). */
-export const NOT_CONNECTED_LABEL = 'Draft - Live data not connected'
+export const NOT_CONNECTED_LABEL = 'Draft — Live data not connected'
 
 /** Catalogue template `draft_leg_needs_reprice` (owner-approved 2026-10-15). A reopened leg saved without a planned entry (pre-ADR-075 draft): nothing is captured until the user reprices it. */
 export const REPRICE_PROMPT = 'This leg was saved without a planned entry. Reprice it to see its numbers.'

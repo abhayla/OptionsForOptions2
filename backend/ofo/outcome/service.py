@@ -10,7 +10,7 @@ AC-8 by construction: :func:`build_outcome` computes the scenario values ONCE (`
 
 Answer states (run-discipline B4 (d)), each with its label or refusal:
 
-- no provider / no Zerodha session: ``NOT_CONNECTED``, "Draft - Live data not connected" (ADR-068, ADR-020 Q185).
+- no provider / no Zerodha session: ``NOT_CONNECTED``, "Draft — Live data not connected" (ADR-068, ADR-020 Q185).
 - all inputs live: ``COMPUTED``, no data label.
 - spot STALE/DELAYED: ``COMPUTED`` and every number carries "stale since HH:MM IST" (REQ-072 AC-2); when the feed has
   dropped, REQ-049 AC-5's message is added.
@@ -174,7 +174,7 @@ def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot,
 def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
     """REQ-049 AC-5's message ("When live data drops ... Last updated: <time>") ONLY when a quote was held and then
     lost, stamped with the newest quote time held. When no quote was ever held for any input, nothing "dropped" and
-    there is no last update to name: ADR-020 Q185's draft label ("Draft - Live data not connected", the catalogue's
+    there is no last update to name: ADR-020 Q185's draft label ("Draft — Live data not connected", the catalogue's
     ``outcome_not_connected``), never the request time."""
     times = [q.timestamp for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
     times += list(snapshot.ended_times.values())  # ADR-077: times kept after the subscription ended
