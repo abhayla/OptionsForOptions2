@@ -156,6 +156,7 @@ decisions:
   ADR-080: 4b           # NRML, tick rounding, executable limit from depth (expert role 2026-10-15, Q264/Q265/Q268)
   ADR-081: 4b           # freeze limit: block at review, exchange file source (owner 2026-10-15, Q266)
   ADR-082: 4b           # charges from Zerodha's published rates; money sentences include charges (owner 2026-10-15, Q267)
+  ADR-086: 4a           # Builder: contract names, IST times, four-part errors (owner 2026-10-15, #232 items 2-4)
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
@@ -242,6 +243,8 @@ work_items:
   W-011: S8
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
+  W-072: 4a           # #232 items 2-4: contract names, IST times, four-part errors (ADR-086, Tier B); before the gate re-run
+  W-073: 4a           # #234 + #221 + ADR-086 item 1 in not-connected answers (Tier A); after W-072
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
