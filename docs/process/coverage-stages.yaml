@@ -217,7 +217,6 @@ issues:
   "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
   "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
   "#206": 4a            # REST outcome route never subscribes legs (W-065 phase 2)
-  "#207": 4a            # frontend proxy strips /api only for /api/strategies (leg picker 404)
   "#208": 4a            # Save Draft drops planned entry + capture time (ADR-075)
   "#209": 4a            # TOTAL Current Value net with Cr/Dr (ADR-076)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
