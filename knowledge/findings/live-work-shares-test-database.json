@@ -1,0 +1,27 @@
+{
+ "id": "live-work-shares-test-database",
+ "scope": "project",
+ "class": "Running the app live against the same database the test suites use leaves committed rows (a real catalogue, a saved draft, a broker session) that tests written for an empty database then trip over, so local database tests fail for an environmental reason and verifiers must discount failures by hand.",
+ "mechanism": "2026-10-15: the live W-065 proof and the 4a gate checks loaded 7,397 real catalogue rows and saved draft 948 into ofo_test; local runs of the catalogue and strategy tests then failed on 'catalogue table must be empty (tests roll back)' and the ADR-058 delist refusal (62-84 failures per run), while CI on its own empty database passed.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "ofo_test on the Windows VPS PostgreSQL",
+  "evidence": "#204 builder: 22 of 101 tests failed with 'catalogue table must be empty'; #208 verifier: 62 'Catalogue update refused ... (ADR-058)' + 1 'strategy store holds rows'."
+ },
+ "fix": "Open for owner decision: a separate development database for live runs on the same host (the host also serves production, so it needs the owner's OK), or a reset step after live runs.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Verifiers currently judge database tests from CI and name local 'empty table' failures as environmental."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "#204, #208, W-066 verification runs",
+   "evidence": "verifier reports"
+  }
+ ]
+}
