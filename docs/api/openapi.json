@@ -581,12 +581,14 @@
         "properties": {
           "instrument_id": {
             "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id"
           },
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$"
               },
               {
                 "type": "null"
@@ -619,7 +621,14 @@
           "health": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ]
               },
               {
                 "type": "null"
@@ -628,6 +637,7 @@
             "title": "Health"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "instrument_id",
@@ -666,6 +676,7 @@
               {
                 "type": "string"
               },
+              {},
               {
                 "type": "null"
               }
@@ -673,18 +684,24 @@
             "title": "Value"
           },
           "display": {
-            "type": "string",
             "title": "Display"
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "money",
+              "points",
+              "percent",
+              "greek",
+              "iv",
+              "quantity",
+              "text"
+            ],
             "title": "Kind"
           },
           "reason": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -694,7 +711,11 @@
           "side": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "Cr",
+                  "Dr"
+                ]
               },
               {
                 "type": "null"
@@ -725,6 +746,7 @@
             "title": "Vendor"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "value",
@@ -741,14 +763,23 @@
         "properties": {
           "id": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Id"
           },
           "label": {
-            "type": "string",
             "title": "Label"
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "money",
+              "points",
+              "percent",
+              "greek",
+              "iv",
+              "quantity",
+              "text"
+            ],
             "title": "Kind"
           },
           "is_scenario_level": {
@@ -757,7 +788,11 @@
           },
           "markers": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "CURRENT",
+                "ZERO_PNL"
+              ]
             },
             "type": "array",
             "title": "Markers"
@@ -767,6 +802,7 @@
             "title": "Visible"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -1048,6 +1084,7 @@
             "title": "Zero Pnl"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "level",
@@ -1064,10 +1101,10 @@
             "title": "State"
           },
           "reason": {
-            "type": "string",
             "title": "Reason"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "state",
@@ -1135,17 +1172,24 @@
           },
           "underlying": {
             "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
             "title": "Underlying"
           },
           "ux_level": {
             "type": "string",
+            "enum": [
+              "guided",
+              "standard",
+              "advanced"
+            ],
             "title": "Ux Level"
           },
           "status_label": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1154,9 +1198,7 @@
           },
           "reason": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1165,9 +1207,7 @@
           },
           "output_label": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1177,7 +1217,8 @@
           "valuation": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -1199,7 +1240,8 @@
           "spot_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -1272,6 +1314,7 @@
             "title": "Advanced Details"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "state",
@@ -1296,6 +1339,10 @@
         "properties": {
           "view": {
             "type": "string",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
             "title": "View"
           },
           "points": {
@@ -1306,6 +1353,7 @@
             "title": "Points"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "view",
@@ -1450,6 +1498,7 @@
             "title": "Pnl"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "level",
@@ -1603,16 +1652,20 @@
         "properties": {
           "row_id": {
             "type": "string",
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Row Id"
           },
           "cells": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/CellOut"
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "$ref": "#/components/schemas/CellOut"
+              }
             },
             "type": "object",
             "title": "Cells"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "row_id",
@@ -1624,14 +1677,21 @@
         "properties": {
           "view": {
             "type": "string",
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
             "title": "View"
           },
           "label": {
-            "type": "string",
             "title": "Label"
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "exact",
+              "estimate"
+            ],
             "title": "Kind"
           },
           "available": {
@@ -1640,9 +1700,7 @@
           },
           "unavailable_reason": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1651,9 +1709,7 @@
           },
           "output_label": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1694,6 +1750,7 @@
             "title": "End"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "view",
@@ -1885,6 +1942,10 @@
         "properties": {
           "underlying": {
             "type": "string",
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
             "title": "Underlying"
           },
           "spot_level": {
@@ -1901,7 +1962,8 @@
           "spot_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -1911,9 +1973,7 @@
           },
           "output_label": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -1935,6 +1995,7 @@
             "title": "Rows"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "underlying",
@@ -1983,7 +2044,7 @@
         "properties": {
           "instrument_id": {
             "type": "string",
-            "minLength": 1,
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id",
             "examples": [
               "NSE_FO:44624"
@@ -2034,12 +2095,14 @@
         "properties": {
           "instrument_id": {
             "type": "string",
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
             "title": "Instrument Id"
           },
           "symbol": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$"
               },
               {
                 "type": "null"
@@ -2049,12 +2112,21 @@
           },
           "action": {
             "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
             "title": "Action"
           },
           "instrument": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "CE",
+                  "PE",
+                  "FUT"
+                ]
               },
               {
                 "type": "null"
@@ -2076,7 +2148,8 @@
           "expiry": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date"
               },
               {
                 "type": "null"
@@ -2116,6 +2189,7 @@
           },
           "captured_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Captured At"
           },
           "ltp": {
@@ -2143,7 +2217,14 @@
           "health": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ]
               },
               {
                 "type": "null"
@@ -2153,9 +2234,7 @@
           },
           "label": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -2163,6 +2242,7 @@
             "title": "Label"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "instrument_id",
@@ -2186,15 +2266,12 @@
       "ofo_app__routes__outcome__SummaryOut": {
         "properties": {
           "what_can_i_lose": {
-            "type": "string",
             "title": "What Can I Lose"
           },
           "what_can_i_make": {
-            "type": "string",
             "title": "What Can I Make"
           },
           "where_do_i_start_losing": {
-            "type": "string",
             "title": "Where Do I Start Losing"
           },
           "max_profit": {
@@ -2264,6 +2341,7 @@
             "title": "Risk Boundaries"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "what_can_i_lose",
