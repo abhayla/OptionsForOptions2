@@ -257,7 +257,8 @@ def suggest_groups(
 
     unresolved: list[Unresolved] = []
     candidates: list[tuple[tuple, SuggestedPosition]] = []
-    seen: set[PositionKey] = set()
+    seen: dict[PositionKey, int] = {}  # key -> index in candidates
+    duplicated: set[PositionKey] = set()
     for raw in rows:
         symbol = str(raw.get("tradingsymbol", "?")) if isinstance(raw, Mapping) else "?"
         quantity = raw.get("quantity") if isinstance(raw, Mapping) else None
@@ -291,12 +292,16 @@ def suggest_groups(
         strike = None if kind is Instrument.FUT else contract.strike
         position = SuggestedPosition(entries[0].id, line.contract, contract.name, kind, strike, contract.expiry,
                                      line.net_quantity, average, line.product, ref.lot_size, ref.tick_size)
-        if position.key in seen:  # one row per contract and product: a second is shown, never silently dropped
+        if position.key in seen:  # one row per contract and product: both are shown; never pick one by input order
+            duplicated.add(position.key)
             unresolved.append(Unresolved(position.tradingsymbol, "duplicate_row"))
             continue
-        seen.add(position.key)
+        seen[position.key] = len(candidates)
         candidates.append((_contract_key(contract.name, kind, strike, contract.expiry), position))
 
+    for key in sorted(duplicated, key=lambda k: seen[k], reverse=True):  # the first row of each pair is listed too
+        first = candidates.pop(seen[key])[1]
+        unresolved.append(Unresolved(first.tradingsymbol, "duplicate_row"))
     broker_net: dict[tuple, int] = {}
     for ckey, position in candidates:
         broker_net[ckey] = broker_net.get(ckey, 0) + position.net_quantity
