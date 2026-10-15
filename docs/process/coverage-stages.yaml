@@ -148,6 +148,8 @@ decisions:
   ADR-068: 4a           # first screen: planned entry, push cadence, UX level per request, leg picker (W-063)
   ADR-069: 4a           # settings values are identifiers or numbers (owner 2026-10-09, W-061)
   ADR-070: all          # repository public; main requires up-to-date checks (#154)
+  ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
+  ADR-075: 4a           # saved draft keeps planned entry + capture time (owner 2026-10-15, live gate check 2)
   ADR-074: [4a, S5]     # REQ-065 open exception at the core gate; Verified before Stage 5 (owner 2026-10-15)
   ADR-073: 4a           # framework docs routes only in development/test (#148 response door; owner Q7)
   ADR-053: [4a, 4c]     # per-user feed; visible pause on session end
