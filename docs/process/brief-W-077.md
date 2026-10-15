@@ -1,4 +1,4 @@
-﻿# Builder brief: W-077 `Checked at`, names with no provider, strict IST parsing, index-only filter (Tier B)
+# Builder brief: W-077 `Checked at`, names with no provider, strict IST parsing, index-only filter (Tier B)
 
 Core: an outcome answer in each of the four non-normal states (unpriced, not connected, error, refused) carries the
 server's answer time, and the Builder page shows `Checked at 16 Oct 2026, 09:20:05 IST` for an answer stamped

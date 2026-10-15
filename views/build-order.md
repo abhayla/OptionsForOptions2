@@ -24,7 +24,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
 | REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
-| REQ-039 | Strategy state machine and exception states | foundation | normal | blocked: its own work item W-072 blocked: PARTIAL: ADR-086 merged (PR for build/W-072-display-format); REQ-039 AC-3 waits on #245 (which time each of the four states names), then a re-verify of AC-3; contract names in not-connected answers are W-073 item 5 |
+| REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
 | REQ-055 | Margin checks | foundation | normal | next |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |

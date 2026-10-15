@@ -230,16 +230,13 @@ issues:
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
-  "#249": 4a           # deferred: draft-link legs unnamed with no live provider (ADR-086 item 1 remainder after W-073)
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#259": 4a           # deferred: W-077 review MINORs (socket no-provider names, read timeout, fragile test, OpenAPI order)
+  "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
-  "#245": 4a           # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
-  "#244": 4a           # deferred: W-072 review MINORs (istTime rollover, microsecond parsing, three untested renderings)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
-  "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 
@@ -250,11 +247,9 @@ work_items:
   W-011: S8
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
-  W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
   W-075: 4b           # charges in max-loss/max-profit sentences and expiry values (ADR-082 part 2)
-  W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
-  W-077: 4a           # Builder "Checked at" (ADR-088, #245) + no-provider names #249 + #244 + #213
   W-078: 4b           # executable price: tick rounding, depth limit + slippage, circuit block, NRML/product reduce-only (ADR-080)
+  W-082: 4a           # one-breakeven Lower/Upper BE label from loss regions (ADR-089, #171)
   W-080: 4b           # read-only Kite basket, tags, InstrumentId, no-placement guard (REQ-073, #115)
   W-081: 4b           # margin gate before the basket, final.total vs available (REQ-055)
 

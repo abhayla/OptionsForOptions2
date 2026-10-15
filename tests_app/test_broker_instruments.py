@@ -253,7 +253,7 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
             contracts = await _scalar(conn, f"SELECT count(*) FROM {TABLE}")
             broker_rows = await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'")
             load_day = as_of.astimezone(IST).date()
-            live_rows = [r for r in scoped if r.contract.expiry is None or r.contract.expiry >= load_day]  # ADR-059: stale rows are skipped; an index never expires
+            live_rows = [r for r in scoped if _is_live_row(r, load_day)]  # ADR-059: stale rows are skipped; an index never expires
             assert len(live_rows) == contracts == broker_rows
 
             # W-057 fix: the named contracts are chosen relative to the load date (the live file changes daily): the
@@ -390,3 +390,29 @@ async def test_m2_a_revised_broker_symbol_writes_one_dated_history_row(app_engin
                 "NIFTY26OCTFUTX"
         finally:
             await trans.rollback()
+
+
+def _is_live_row(row, load_day) -> bool:
+    """#213: a row with no expiry is live only when it is an index (an index never expires, ADR-059); a derivative with an
+    empty expiry is never kept silently (the product refuses it: catalogue_store.apply_update)."""
+    if row.contract.expiry is None:
+        return row.contract.is_index()
+    return row.contract.expiry >= load_day
+
+
+def test_a_row_with_no_expiry_is_live_only_when_it_is_an_index():
+    """#213: a non-index row with no expiry fails the filter."""
+    import datetime
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from ofo.instruments.models import Contract
+
+    def row(segment, kind):
+        return SimpleNamespace(contract=Contract(exchange_segment=segment, exchange_token=1, name="NIFTY", expiry=None,
+                                                 strike=Decimal("0"), tick_size=Decimal("0.05"), lot_size=1,
+                                                 instrument_type=kind))
+
+    day = datetime.date(2026, 10, 16)
+    assert _is_live_row(row("NSE_INDEX", "EQ"), day) is True
+    assert _is_live_row(row("NSE_FO", "FUT"), day) is False
