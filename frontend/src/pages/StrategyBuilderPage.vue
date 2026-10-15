@@ -23,6 +23,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
+import { matchesLegs } from '@/lib/liveMatch'
 import { nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
@@ -96,15 +97,6 @@ async function load() {
       slow.value = false
     }
   }
-}
-
-// True when a pushed answer belongs to the strategy on screen: same legs (instrument, action, lots, planned entry), in
-// order. Plain string equality, as the server echoes the request's values untouched (no number is parsed here).
-function matchesLegs(body, draft) {
-  const got = body?.legs
-  if (!draft || !Array.isArray(got) || got.length !== draft.legs.length) return false
-  return draft.legs.every((l, i) => got[i].instrument_id === l.instrument_id && got[i].action === l.action
-    && got[i].lots === l.lots && got[i].planned_entry === l.planned_entry)
 }
 
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
