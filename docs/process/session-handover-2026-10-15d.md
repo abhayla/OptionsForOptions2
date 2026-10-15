@@ -8,7 +8,7 @@ Plan: `docs/process/goal-contract-2026-10-15.md`; master plan `master-plan-2026-
 |---|---|
 | #246 | **W-072** (Tier B, #232 items 2-4, owner decision **ADR-086**): legs by contract (`NIFTY 19 Oct 23200 CE`), times as `15 Oct 2026, 11:59:59 IST` in any browser zone, every catalogue error with four labelled parts (leg picker and Save Draft bar too). Verifier: vitest 115/115, Playwright 40/40. **PARTIAL**: REQ-039 AC-3 FAILED as written (unpriced / not-connected / error / refused show no "when", pre-existing) -> no AC-3 evidence, W-072 `blocked` on #245 |
 | #248 | **#242 mechanism** (Tier B, partial): `atool.py --no-tests` runs the tests_app files a changed route/store/ofo_app module reaches (file-level; #241's diff -> 6 of 42 incl. both red files; cap 12, fail-closed). Two review rounds; remainder parked **#247** (two-hop imports and backend/ofo domain modules select 0 - seen on its first real use, W-073) |
-| W-073 PR | **W-073** (Tier A): #234 items 1-3 + #221 + ADR-086 item 1 in not-live answers. See the row filled in at merge |
+| #250 | **W-073** (Tier A): #234 items 1-3 + #221 + ADR-086 item 1 in not-live answers. Draft link canonicalized once or refused (0 requests); socket refuses `fallback`; label `Draft — Live data not connected`. Review r1 REVISE (2 MAJORs) -> r2 PASS; verifier (Opus) PASS REQ-035 AC-4 (pushes off by one lot/strike/paisa never shown over 115-119 pushes). #234 stays open (deferred MINORs); #221 to close after merge |
 
 ## Decided tonight (spec)
 - ADR-086 (owner instruction + orchestrator-by-role formats): contract names, IST times, four-part errors.
