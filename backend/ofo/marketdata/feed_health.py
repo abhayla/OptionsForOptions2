@@ -24,6 +24,9 @@ from ofo.rules.inputs import DataHealth
 FEED_STALE = datetime.timedelta(seconds=3)
 #: how long a dropped connection may be trying to reconnect before its quotes are unavailable (backoff caps at 30 s).
 RECONNECT_WINDOW = datetime.timedelta(seconds=30)
+#: most instruments whose last quote TIME is kept after unsubscribe (oldest removal evicted first). A time is a few
+#: dozen bytes; one day's NIFTY+SENSEX chains are about 1-2 thousand contracts, so 20,000 covers many days of churn.
+MAX_KEPT_TIMES = 20_000
 
 
 class FeedState:
@@ -103,12 +106,26 @@ class QuoteBook:
     def __init__(self, feed: FeedState) -> None:
         self.feed = feed
         self._entries: dict[str, BookEntry] = {}
+        self._ended_times: dict[str, datetime.datetime] = {}  # times only, never a price
 
     def remove(self, instrument_id: str) -> None:
-        self._entries.pop(instrument_id, None)
+        """Drop the quote (no stale price outlives its subscription, REQ-049 AC-4) but keep its TIME only (ADR-077:
+        "The platform keeps each contract's last price TIME (never the price) after its subscription ends")."""
+        entry = self._entries.pop(instrument_id, None)
+        if entry is None:
+            return
+        self._ended_times.pop(instrument_id, None)
+        self._ended_times[instrument_id] = entry.quote.timestamp  # newest removal last
+        while len(self._ended_times) > MAX_KEPT_TIMES:  # bounded: oldest removal evicted first
+            del self._ended_times[next(iter(self._ended_times))]
+
+    def ended_time(self, instrument_id: str) -> datetime.datetime | None:
+        """The time of the last quote held for an instrument whose subscription ended; None if none was kept."""
+        return self._ended_times.get(instrument_id)
 
     def update(self, quote: NormalizedQuote) -> None:
-        self._entries[quote.instrument_id] = BookEntry(quote, quote.timestamp)
+        self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
+        self._entries[instrument_id] = BookEntry(quote, quote.timestamp)
 
     def __len__(self) -> int:
         return len(self._entries)
