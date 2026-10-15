@@ -1258,5 +1258,13 @@
   "gate_price_not_known": {
     "sha256": "17a1306d1ac0ebe2b80c8b90a9a59478a66303ba510dcb674eefdad73f3baaf5",
     "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_entry": {
+    "sha256": "65514b473b328583caf613340f258b3836af4c903564080a41bddb1e537e5777",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_short": {
+    "sha256": "98cfc78f93ad535a7567cfe595cb6c874f5510fe15566369693032691a87a203",
+    "reviewed": "pending owner read"
   }
 }

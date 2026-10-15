@@ -803,6 +803,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("flag_stale_on_exit", "values_seen", "Prices shown may be stale — confirm to continue."),
     ExplanationTemplate("flag_price_band_unknown_on_exit", "values_seen",
                         "We could not check this exit's price against today's price band — confirm to continue."),
+    ExplanationTemplate("flag_expiry_day_entry", "values_seen",
+                        "{symbol} expires today. Entering it on its expiry day carries extra expiry-day margin (an "
+                        "extra 2% on short options) and no calendar-spread margin benefit.", {"symbol": LegRef}),
+    ExplanationTemplate("flag_expiry_day_short", "values_seen",
+                        "{symbol} is a short leg that expires today. Selling it on its expiry day carries extra "
+                        "expiry-day margin (an extra 2% on short options) and no calendar-spread margin benefit. "
+                        "Confirm to continue.", {"symbol": LegRef}),
     # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
     ExplanationTemplate("client_id_not_valid", "values_seen",
