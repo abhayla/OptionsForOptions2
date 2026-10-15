@@ -41,6 +41,7 @@ def _fixture_counts(name: str) -> dict[str, int]:
 
 @pytest.fixture
 def pinned(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")  # the seed's own guard; set here, never by the app
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv(pinned_clock.ENV_NAME, PIN.isoformat())
 
@@ -88,7 +89,7 @@ async def test_the_seam_refuses_to_answer_outside_test(monkeypatch, env):
         await database_today(None)
 
 
-@pytest.mark.parametrize("bad", ["2026-13-01", "tomorrow", "08/10/2026", "2026-10-08T00:00:00", "20261008x"])
+@pytest.mark.parametrize("bad", ["20261008", "2026-W41-4", "2026-1-8", "2026-10-08\n", "2026-13-01", "tomorrow", "08/10/2026", "2026-10-08T00:00:00", "20261008x"])
 def test_a_malformed_pin_is_refused(monkeypatch, bad):
     """Kills: strict parse in pin_requested/parse_pin (a bad value never silently means 'no pin')."""
     monkeypatch.setenv("APP_ENV", "test")
@@ -182,6 +183,7 @@ async def test_a_fixture_contract_picked_under_the_pin_can_be_saved(app_engine: 
 @pytest.mark.parametrize("env", OUTSIDE_TEST)
 def test_seed_refused_outside_test(monkeypatch, env):
     """Kills: require_test_env in seed_as_of."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("APP_ENV", "test")  # the process says test, so only the caller's stated environment can refuse
     monkeypatch.setenv(pinned_clock.ENV_NAME, "2026-10-08")
     with pytest.raises(PinRefused):
@@ -190,6 +192,7 @@ def test_seed_refused_outside_test(monkeypatch, env):
 
 def test_seed_refused_without_a_pin(monkeypatch):
     """Kills: the 'pin must be set' check in seed_as_of."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.delenv(pinned_clock.ENV_NAME, raising=False)
     with pytest.raises(seed_test_catalogue.SeedRefused, match="must be set"):
@@ -211,3 +214,33 @@ async def test_seed_refused_on_a_catalogue_that_already_holds_rows(app_engine: A
                 await seed_test_catalogue.seed(conn, SETTINGS, "test")
         finally:
             await trans.rollback()
+
+
+# ---- #237 round 2: the seed runs only on a CI runner -------------------------------------------------------------------
+
+
+def test_seed_refused_outside_github_actions(monkeypatch):
+    """Kills: the GITHUB_ACTIONS guard in seed_as_of (a developer PC / the shared VPS database is never seeded)."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(pinned_clock.ENV_NAME, "2026-10-08")
+    for value in (None, "", "false", "True", "1"):
+        if value is None:
+            monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+        else:
+            monkeypatch.setenv("GITHUB_ACTIONS", value)
+        with pytest.raises(seed_test_catalogue.SeedRefused, match="CI runner"):
+            seed_test_catalogue.seed_as_of("test")
+
+
+async def test_seed_refused_on_ofo_dev(app_engine: AsyncEngine, pinned, monkeypatch):
+    """Kills: the ofo_dev refusal in seed (the owner's live-run database)."""
+    dev = Settings(DATABASE_URL="postgresql+asyncpg://u:p@127.0.0.1:5432/ofo_dev?x=1", _env_file=None)
+    async with app_engine.connect() as conn:
+        with pytest.raises(seed_test_catalogue.SeedRefused, match="ofo_dev"):
+            await seed_test_catalogue.seed(conn, dev, "test")
+
+
+def test_seed_allowed_on_a_runner_named_ofo_test(pinned):
+    """CI's database is itself called ofo_test, so the environment check (not the name) is the guard."""
+    assert seed_test_catalogue.seed_as_of("test").isoformat() == "2026-10-08T10:00:00+05:30"
+    seed_test_catalogue.check_database(Settings(DATABASE_URL="postgresql+asyncpg://u:p@localhost:5432/ofo_test", _env_file=None))

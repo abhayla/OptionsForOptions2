@@ -258,6 +258,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           APP_ENV: test
           TEST_CATALOGUE_DATE: '2026-10-08'
+          PYTHONPATH: backend  # python -m ofo_app... runs from the repo root (uvicorn below uses --app-dir instead)
         run: |
           python -m ofo_app.seed_test_catalogue
           nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --host 127.0.0.1 --port 8002 > "${RUNNER_TEMP}/uvicorn-pinned.log" 2>&1 &
@@ -275,9 +276,11 @@ jobs:
           OFO_API_TARGET=http://127.0.0.1:8000 nohup npx vite preview --port 4173 --strictPort > "${RUNNER_TEMP}/preview.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:9 nohup npx vite preview --port 4174 --strictPort > "${RUNNER_TEMP}/preview-down.log" 2>&1 &
           for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:4173/ > /dev/null && curl -sf http://127.0.0.1:4174/ > /dev/null && break
+            curl -sf http://127.0.0.1:4173/ > /dev/null && curl -sf http://127.0.0.1:4174/ > /dev/null \
+              && curl -sf http://127.0.0.1:4175/ > /dev/null && curl -sf http://127.0.0.1:4176/api/health > /dev/null && break
             sleep 1
           done
+          curl -sf http://127.0.0.1:4176/api/health
           # the proxy reaches the real database through the real API
           curl -sf http://127.0.0.1:4173/api/health
 

@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 
 ENV_NAME = "TEST_CATALOGUE_DATE"
+_PLAIN_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class PinRefused(RuntimeError):
@@ -22,7 +24,9 @@ class PinRefused(RuntimeError):
 
 def parse_pin(value: str) -> datetime.date:
     try:
-        return datetime.date.fromisoformat(value.strip())
+        if not _PLAIN_DATE.fullmatch(value):  # fromisoformat alone also takes 20261008 and 2026-W41-4
+            raise ValueError(value)
+        return datetime.date.fromisoformat(value)
     except ValueError:
         raise PinRefused(f"{ENV_NAME} must be a plain YYYY-MM-DD date") from None
 
