@@ -272,6 +272,18 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "only close or reduce positions this strategy holds.",
           "Sending it would add risk instead of removing it.", "This exit.",
           "Remove the order that opens or adds to a position, then try the exit again."),
+    _gate("gate_exit_product_mismatch", _SV, 109,
+          "{leg} is an exit whose product differs from the product of the position it closes, or the position's "
+          "product could not be read. Execution is blocked and no order has been submitted.",
+          "Zerodha would treat an order in another product as a new position, not as closing this one.",
+          "This exit.",
+          "Refresh the strategy's positions from Zerodha, then try the exit again.", {"leg": LegRef}),
+    _gate("gate_price_outside_circuit", _MD, 120,
+          "The price {limit} for {leg} is outside today's price band for this contract ({lower} to {upper}). The "
+          "price has not been changed.",
+          "Zerodha would reject an order priced outside the band.", "This leg.",
+          "Choose a price inside the band, or remove the leg, then try again.",
+          {"leg": LegRef, "limit": Money, "lower": Money, "upper": Money}),
     _gate("gate_market_unconfirmed", _MD, 101,
           "We could not confirm that the market is open. Execution is paused until it is confirmed.",
           "No order can be placed while the market's status is unknown.", _EXEC,

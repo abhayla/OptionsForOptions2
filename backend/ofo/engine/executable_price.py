@@ -76,7 +76,7 @@ def _levels(rows: object, name: str) -> tuple[DepthLevel, ...]:
     for row in rows:
         if not isinstance(row, Mapping):
             raise ValueError(f"depth {name} level must be a mapping, got {row!r}")
-        price = _decimal(row.get("price"), f"depth {name} price")
+        price = _decimal(row.get("price"), "depth_price")
         quantity = row.get("quantity")
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 0:
             raise ValueError(f"depth {name} quantity must be a whole number >= 0, got {quantity!r}")

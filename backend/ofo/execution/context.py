@@ -74,6 +74,7 @@ from typing import Mapping, Protocol
 
 from ofo.engine import Leg, Strategy
 from ofo.engine.legs import require_decimal
+from ofo.engine.product import Product
 
 
 class ExecutionAction(Enum):
@@ -164,6 +165,11 @@ class ExecutionContext:
     # False/None: at least one futures leg of the active version has no known entry price (a stored definition
     # carries none); a Limited user's adjustment then needs Pro. Exits are unaffected.
     active_futures_entry_known: bool | None = None
+    # ADR-080 product rule. ``active_products``: the product of each held position as Zerodha reports it, keyed by
+    # ``product_key(leg)``. ``exit_products``: the product an exit's order will carry (default NRML for a leg not
+    # named). An exit is refused when a leg's product differs from its position's. None = not supplied (not checked).
+    active_products: Mapping[tuple, Product] | None = None
+    exit_products: Mapping[tuple, Product] | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -200,10 +206,21 @@ class ExecutionContext:
                 raise ValueError("reconciliation_blocked_strategy_ids must be a collection of strategy id strings")
             object.__setattr__(self, "reconciliation_blocked_strategy_ids", frozenset(blocked))
         _tristate(self.active_futures_entry_known, "active_futures_entry_known")
+        for name in ("active_products", "exit_products"):
+            mapping = getattr(self, name)
+            if mapping is not None:
+                if not isinstance(mapping, Mapping) or not all(isinstance(v, Product) for v in mapping.values()):
+                    raise ValueError(f"{name} must be a mapping of position key to Product or None")
+                object.__setattr__(self, name, MappingProxyType(dict(mapping)))
         for name in ("active_version_id", "active_legs_hash"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} must be a non-empty string or None, got {value!r}")
+
+
+def product_key(leg: Leg) -> tuple:
+    """The key ``active_products`` / ``exit_products`` use for a leg: (expiry, instrument, strike; None for FUT)."""
+    return (leg.expiry, leg.instrument.value, None if leg.strike is None else leg.strike)
 
 
 def _canonical_decimal(value: Decimal) -> str:

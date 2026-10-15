@@ -19,6 +19,7 @@ from enum import Enum
 from fractions import Fraction
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
@@ -27,6 +28,7 @@ from ofo.execution.context import (
     ExecutionAction,
     ExecutionContext,
     active_legs_hash,
+    product_key,
 )
 from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
@@ -468,6 +470,20 @@ def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | N
     for (key, side), units in _positions(strategy.legs).items():
         if held.get((key, opposite[side]), 0) < units:
             return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_adds_position")
+    return _exit_product_failure(strategy, ctx)
+
+
+def _exit_product_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
+    """ADR-080: an exit takes the product of the position it reduces. A leg whose exit product (default NRML) differs
+    from the held position's product, or whose position product is unknown, blocks. Not supplied = not checked."""
+    if ctx.active_products is None or ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        return None  # (an unsupported underlying is already blocked)
+    exit_products = ctx.exit_products or {}
+    for number, leg in enumerate(strategy.legs, start=1):
+        key = product_key(leg)
+        if ctx.active_products.get(key) is not exit_products.get(key, Product.NRML):
+            return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_product_mismatch", leg_number=number,
+                         leg=LegValue(number, leg, ctx.underlying))
     return None
 
 

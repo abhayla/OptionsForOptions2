@@ -1230,5 +1230,13 @@
   "labels:level_region": {
     "sha256": "20de76b36deaaf2ca6f19bde3b6a4866af72bfe9f2284576daa993133b3013bd",
     "reviewed": "pending owner read"
+  },
+  "gate_exit_product_mismatch": {
+    "sha256": "14108c32107ed38f6263f9e0888c1bc25f37c317b855dbc01544e29cdba33405",
+    "reviewed": "pending owner read"
+  },
+  "gate_price_outside_circuit": {
+    "sha256": "90f65da533ced3c8cd3891f84ec74b63443158f806d702bfb5f710b5684d2160",
+    "reviewed": "pending owner read"
   }
 }
