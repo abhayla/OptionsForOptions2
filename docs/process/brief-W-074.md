@@ -1,4 +1,4 @@
-# Builder brief: W-074 charges rate table and calculator (Tier A)
+﻿# Builder brief: W-074 charges rate table and calculator (Tier A)
 
 Core: the rate table, applied to the real orders in Kite's 2026-10-15 `/charges/orders` replies, reproduces every
 component Kite returned to 4 decimals (stamp duty excepted, see rule 5).
@@ -6,7 +6,7 @@ Proof: step 1 is `tests/charges/test_rates_reproduce_kite.py` on the REAL replie
 `docs/research/kite-proof-2026-10-07/rest-2026-10-15/charges_orders.json`, `rest-2026-10-15-order/charges_CE.json`
 and `charges_PE.json`. Write it FIRST, red, then build until it is green.
 
-Tier: A (charges enter every max-loss/max-profit number next, W-075; money). Model: opus.
+Tier: A (charges enter every max-loss/max-profit number next, W-075; money). Model: sonnet (builder routing, deliver skill).
 Budget: 60 min wall-clock, 70 tool calls. HARD limit: at call 65 commit, push, report done / not done / next command.
 Report: evidence-table (`| Claim | Evidence (command run this turn) |`), under ~300 words.
 Copy from: none - spec/technical-design/legacy-reuse.md has no charges row (searched: charges, brokerage); algochanakya has no charges model in the map.
@@ -15,7 +15,7 @@ Read first: `docs/process/builder-brief.md` (common rules, quality bar), `work/W
 `spec/findings.md` F-35 (line ~510), `spec/requirements/REQ-032.md`, `CLAUDE.md`.
 
 ## Spec basis
-- REQ-032 AC-6: "The engine exposes margin-planning and charges interfaces (IC §5)."
+- REQ-032 AC-6: "The engine exposes margin-planning and charges interfaces (IC Â§5)."
 - REQ-032 AC-4: "All money is computed in exact decimal or integer paise, never binary floating point"
 - ADR-082: "The rates are admin settings with the date they were read; every amount is exact Decimal; STT and stamp duty are not
   rounded at order level"

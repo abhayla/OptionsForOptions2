@@ -1,11 +1,11 @@
-# Builder brief: W-076 freeze limit from NSE's contract file, block at review (Tier A)
+﻿# Builder brief: W-076 freeze limit from NSE's contract file, block at review (Tier A)
 
 Core: parsing the real NSE contract-file sample gives NIFTY26O1923550CE (token 47185) freeze limit 3511 with file date
 2026-10-15; a 55-lot NIFTY leg (3,575 units) is blocked at review, a 54-lot leg (3,510 units) passes.
 Proof: step 1 is `tests/instruments/test_nse_freeze_file.py` on `tests/fixtures/exchange/NSE_FO_contract_15102026_sample.csv`
 (real rows, cut unmodified by the orchestrator - never edit or hand-add rows). Write it FIRST, red.
 
-Tier: A (an execution safety check; a wrong limit lets a basket half-fill). Model: opus.
+Tier: A (an execution safety check; a wrong limit lets a basket half-fill). Model: sonnet (builder routing, deliver skill).
 Budget: 60 min wall-clock, 70 tool calls. HARD limit: at call 65 commit, push, report done / not done / next command.
 Report: evidence-table (`| Claim | Evidence (command run this turn) |`), under ~300 words.
 Copy from: none - spec/technical-design/legacy-reuse.md has no freeze-file row (searched: freeze, tick); the legacy map's instrument rows load Zerodha's list, which carries no freeze limit.
