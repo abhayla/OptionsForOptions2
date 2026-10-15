@@ -1,9 +1,14 @@
 // W-071 / REQ-038 AC-5 (core proof): a draft built in the real Builder screen is saved through Save Draft against the
 // real API, and reopened from the saved list with identical legs, planned entries and capture times.
 //
-// Needs a CURRENT real public instrument list in the database the API runs on (#237: a recorded fixture ages past its
-// expiry and the save route refuses an expired contract). It therefore runs only against `ofo_dev` (ADR-078), with
-// E2E_DEV_CATALOGUE=1 and the API on 127.0.0.1:8000 behind the preview server (PREVIEW_URL, default :4173). Real here:
+// Needs live contracts in the database the API runs on. Two ways to have them (#237):
+//  - CI (E2E_PINNED_CATALOGUE=1): the throwaway database is seeded with the recorded fixture
+//    tests/fixtures/kite_ws/instruments-2026-10-08-subscribed.csv (`python -m ofo_app.seed_test_catalogue`), and the API
+//    runs with APP_ENV=test + TEST_CATALOGUE_DATE=2026-10-08, so the catalogue routes see the recording date as today
+//    (ofo_app.pinned_clock; refused outside APP_ENV=test). SAVE_DRAFT_URL is the preview whose proxy reaches that API;
+//    E2E_MIN_EXPIRY=2026-10-08 (the pinned day).
+//  - a developer PC (E2E_DEV_CATALOGUE=1): `ofo_dev` (ADR-078) holds today's real public instrument list, API on
+//    127.0.0.1:8000 behind the preview server (PREVIEW_URL, default :4173), E2E_MIN_EXPIRY default 2026-10-19. Real here:
 // the catalogue routes, POST /strategies, GET /strategies, GET /strategies/{id}, the stored rows. Stubbed here: only the
 // planned-entry capture (no live provider in this run), with two fixed past prices and capture times, because the
 // proof is that THE SAVED ENTRY comes back unchanged, not that a live price exists. Drafts saved by this spec carry
@@ -11,11 +16,13 @@
 import { test, expect, type Page } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
 
-test.skip(process.env.E2E_DEV_CATALOGUE !== '1', 'needs a current real catalogue (#237): set E2E_DEV_CATALOGUE=1 against ofo_dev')
+test.skip(process.env.E2E_DEV_CATALOGUE !== '1' && process.env.E2E_PINNED_CATALOGUE !== '1',
+  'needs live contracts (#237): E2E_PINNED_CATALOGUE=1 in CI (seeded fixture + pinned date) or E2E_DEV_CATALOGUE=1 against ofo_dev')
 
 useQuietLiveSocket()
 
-const URL = process.env.PREVIEW_URL || 'http://127.0.0.1:4173'
+const URL = process.env.SAVE_DRAFT_URL || process.env.PREVIEW_URL || 'http://127.0.0.1:4173'
+const MIN_EXPIRY = process.env.E2E_MIN_EXPIRY || '2026-10-19'
 const TAG = 'e2e_w071_save_draft'
 const ENTRIES = [
   { price: '101.25', at: '2026-10-14T15:25:00+05:30' },
@@ -67,7 +74,7 @@ test('a saved draft reopens from the saved list with identical legs, planned ent
   await expect(page.getByTestId('pick-expiry')).toBeVisible()
   await expect(page.getByTestId('pick-expiry').locator('option')).not.toHaveCount(1) // the API's expiries have arrived
   const expiry = await page.getByTestId('pick-expiry').locator('option').evaluateAll(
-    (os) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= '2026-10-19')[0])
+    (os, min) => (os as HTMLOptionElement[]).map((o) => o.value).filter((v) => v >= min)[0], MIN_EXPIRY)
   expect(expiry).toBeTruthy()
   await page.getByTestId('pick-expiry').selectOption(expiry)
   await addLeg(page, 'CE', 'SELL')

@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import text
 
 from ofo.instruments.models import ZERODHA
+from ofo_app.pinned_clock import pinned_today
 
 CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
@@ -52,7 +53,11 @@ class PickableContract:
 
 
 async def database_today(conn: Any) -> datetime.date:
-    """Today's date in India on the DATABASE clock (the one clock every expiry judgement uses)."""
+    """Today's date in India on the DATABASE clock (the one clock every expiry judgement uses). The single exception is the
+    TEST-ONLY pin (``TEST_CATALOGUE_DATE`` under APP_ENV=test, ofo_app.pinned_clock, issue #237)."""
+    pinned = pinned_today()
+    if pinned is not None:
+        return pinned
     return (await conn.execute(_TODAY)).scalar_one()
 
 
