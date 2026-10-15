@@ -1322,5 +1322,9 @@
   "grouping_not_available": {
     "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
     "reviewed": "pending owner read"
+  },
+  "partial_mismatch_other_product_only": {
+    "sha256": "654888e7201d9afff10e41b75b12e722cec8f52ac37e0880d34406ccf295e44a",
+    "reviewed": "pending owner read"
   }
 }

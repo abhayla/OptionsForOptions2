@@ -167,7 +167,7 @@ def test_round2_flat_nrml_row_and_an_unrelated_mis_row_is_refused_not_exited(cat
     book, broker = _one_short_row([(0, Product.NRML), (-LOT, Product.MIS)])
     a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
-    assert any(SHORT in m and "more than one product" in m for m in a.mismatches)
+    assert any(SHORT in m and "did not place" in m for m in a.mismatches)
     prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert not prep.ready and prep.orders == ()
 
@@ -177,7 +177,17 @@ def test_round2_a_single_row_in_another_product_than_the_fills_is_refused() -> N
     book, broker = _one_short_row([(-LOT, Product.MIS)])
     a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
-    assert any(SHORT in m and "more than one product" in m for m in a.mismatches)
+    assert any(SHORT in m and "did not place" in m for m in a.mismatches)
+
+
+def test_round3_unread_product_row_is_refused_when_the_own_product_row_exists_but_is_flat() -> None:
+    book, broker = _one_short_row([(0, Product.NRML), (-LOT, None)])
+    rows = [dataclasses.replace(r, product=None) if (r.contract == SHORT and r.net_quantity) else r
+            for r in broker.positions]
+    a = assess(big_plan(LOT), rows, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
+    assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
+    assert any(SHORT in m and "did not place" in m and "will not close the other position" in m
+               for m in a.mismatches)
 
 
 def test_round2_all_zero_rows_outside_the_plan_are_listed_once() -> None:

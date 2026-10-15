@@ -104,6 +104,7 @@ def test_sequence_labels_and_margin_notes_come_from_the_explanation_catalogue() 
     ("partial_mismatch_unresolved", {}),
     ("partial_mismatch_product_ambiguous", {"contract": "NIFTY2693024000PE"}),
     ("send_entry_product_not_nrml", {}),
+    ("partial_mismatch_other_product_only", {"contract": "NIFTY2693024000PE"}),
 ])
 def test_every_part4_template_renders_all_four_parts(template_id: str, slots: dict) -> None:
     from ofo.errors import render

@@ -278,7 +278,7 @@ def _position_mismatches(plan: ExecutionPlan, positions: Sequence[BrokerPosition
 
 def _strategy_position_lines(
     plan: ExecutionPlan, positions: Sequence[BrokerPositionLine], book: OrderBook,
-) -> tuple[tuple[BrokerPositionLine, ...], list[str]]:
+) -> tuple[tuple[BrokerPositionLine, ...], list[str], list[str]]:
     """One line per contract. A contract held in several products is narrowed to the product the strategy's own
     filled orders carry; when the ledger cannot name exactly one held product the contract is AMBIGUOUS: its rows are
     merged into one product-less line (so an exit of it is blocked) and listed, never guessed (class: broker rows keyed
@@ -288,6 +288,7 @@ def _strategy_position_lines(
         rows.setdefault(line.contract, []).append(line)
     out: list[BrokerPositionLine] = []
     ambiguous: list[str] = []
+    foreign: list[str] = []  # the strategy's own product row is not open; another product's position is
     own_orders = book.views_for(plan.strategy_id)
     for contract, group in rows.items():
         held = [r for r in group if r.net_quantity]
@@ -303,15 +304,18 @@ def _strategy_position_lines(
             if len(mine) == 1:
                 out.append(mine[0])
                 continue
-            if len(held) == 1 and held[0].product is None:  # product unread: the exit gate blocks it
-                out.append(held[0])
+            own_row_exists = any(r.product in products for r in group)
+            if len(held) == 1 and held[0].product is None and not own_row_exists:
+                out.append(held[0])  # product unread and no row in the fills' product at all: the exit gate blocks it
                 continue
+            (foreign if len(held) == 1 else ambiguous).append(contract)
         elif len(held) == 1:  # the fills name no product (or several) but only one row is held: as before
             out.append(held[0])
             continue
-        ambiguous.append(contract)
+        else:
+            ambiguous.append(contract)
         out.append(dataclasses.replace(held[0], net_quantity=sum(r.net_quantity for r in held), product=None))
-    return tuple(out), ambiguous
+    return tuple(out), ambiguous, foreign
 
 
 def assess(
@@ -340,7 +344,8 @@ def assess(
 
     mismatches, reasons = _sync_book(plan, statuses, book, read_at, grace)
     # Zerodha keys a position by (contract, product): pick the row this strategy's own fills belong to (ADR-080).
-    positions, ambiguous = _strategy_position_lines(plan, positions, book)
+    positions, ambiguous, foreign = _strategy_position_lines(plan, positions, book)
+    mismatches += [_mismatch("partial_mismatch_other_product_only", contract=c) for c in foreign]
     mismatches += [_mismatch("partial_mismatch_product_ambiguous", contract=c) for c in ambiguous]
     mismatches += _position_mismatches(plan, positions, book)
     if book.is_submit_blocked(plan.strategy_id):

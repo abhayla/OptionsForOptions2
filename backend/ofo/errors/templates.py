@@ -698,6 +698,12 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The platform cannot tell which position this strategy would reduce.", _MISMATCH_BLOCKED,
           "Exit the position in Zerodha yourself, then refresh this strategy from Zerodha and choose again.",
           _PCONTRACT),
+    _gate("partial_mismatch_other_product_only", _RM, 310,
+          "{contract}: the strategy's own position (the product its fills carry) is not open at Zerodha; Zerodha "
+          "shows a position in another product on this contract that the platform did not place.",
+          "The platform cannot treat that other position as this strategy's.", _MISMATCH_BLOCKED,
+          "Check the position in Zerodha; the platform will not close the other position for this strategy.",
+          _PCONTRACT),
 )
 
 # --- Round 9 part 6: the API boundary (backend/ofo_app/errors.py). Any exception that is not `UserFacing` shows the
