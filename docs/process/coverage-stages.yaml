@@ -231,12 +231,11 @@ issues:
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
-  "#259": 4a           # deferred: W-077 review MINORs (socket no-provider names, read timeout, fragile test, OpenAPI order)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
-  "#171": 4a           # Lower/Upper BE labels from loss regions - fixed by W-082 (PR #268); drop once closed
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
   "#275": 4b           # deferred: W-083 duplicate row + hidden-position audit; W-086 futures wording + repeated ack
+  "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
@@ -252,7 +251,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-083: 4b           # PARTIAL: AC-1/AC-4 verified; AC-2 add-to-existing waits on owner OQ-7 (REQ-061, ADR-084)
-  W-085: 4b           # expiry settlement, expired leg not a mismatch, Exited (ADR-083 part 1, REQ-060 AC-2)
   W-075: 4b           # PARKED #269 on OQ-4: charges in sentences + expiry values (ADR-082 part 2), branch verified except D5
   W-080: 4b           # PARKED #271: basket verified AC-1/AC-2; AC-4 urllib door misses Unicode-dot host
   W-081: 4b           # BLOCKED: margin gate merged as a component; needs basket (#271), live funds read, #273

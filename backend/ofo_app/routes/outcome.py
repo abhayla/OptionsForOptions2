@@ -10,6 +10,7 @@ guards (W-066, issue #151).
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 from dataclasses import dataclass
@@ -31,6 +32,10 @@ from ofo_app.errors import ClosedRoute
 
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger("ofo_app.outcome")
+
+#: The longest the no-provider answer waits for the stored catalogue (#259): a hanging database host must not delay the
+#: "not connected" answer up to the driver's connect timeout. On timeout the legs stay unnamed, like any unreadable read.
+CATALOGUE_READ_TIMEOUT_SECONDS = 2.0
 
 AnswerClock = Callable[[], datetime.datetime]
 ContractLookup = Callable[[list[str]], Awaitable[Mapping[str, ListedContract]]]
@@ -113,10 +118,23 @@ class OutcomeRequest(BaseModel):
                     "is then the not-live state whoever else subscribes to the same contracts")
 
 
+async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
+                          lookup: ContractLookup) -> Optional[Mapping[str, ListedContract]]:
+    """The stored catalogue entries for the legs, read ONLY when there is no provider (the no-provider answer, #249).
+    The ONE helper behind both delivery paths (REST and the live socket, #259), so a field filled on one is filled on the
+    other. The read is bounded by CATALOGUE_READ_TIMEOUT_SECONDS; a timeout gives no names (unnamed legs), never a hang."""
+    if ctx is not None:
+        return None
+    try:
+        return await asyncio.wait_for(lookup([leg.instrument_id for leg in req.legs]), CATALOGUE_READ_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        log.warning("no-provider leg names: the catalogue read timed out after %ss", CATALOGUE_READ_TIMEOUT_SECONDS)
+        return {}
+
+
 async def get_stored_legs(req: OutcomeRequest, ctx: Optional[MarketContext] = Depends(get_market_context),
                           lookup: ContractLookup = Depends(get_contract_lookup)) -> Optional[Mapping[str, ListedContract]]:
-    """The stored catalogue entries for the legs, read ONLY when there is no provider (the no-provider answer, #249)."""
-    return await lookup([leg.instrument_id for leg in req.legs]) if ctx is None else None
+    return await stored_legs_for(req, ctx, lookup)
 
 
 # ---- response (typed, W-066): text is catalogue text, numbers are Money strings, codes are closed ----------------------

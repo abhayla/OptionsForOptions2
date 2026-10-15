@@ -598,6 +598,18 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Adding a position to an existing strategy is not available yet.",
           "The position stays where it was and is still shown.", "This move only.",
           "Create a new strategy from the position, or leave it standalone."),
+    # W-085 (ADR-083 part 1): expiry settlement notes (renumbered after W-083's 210-218).
+    _gate("recon_awaiting_settlement", _RM, 219,
+          "{contracts} expired contract(s) held here are not at Zerodha and have no settlement price yet.",
+          "The strategy's P&L for the expired leg is not final until its settlement price arrives.",
+          _REC_NONE_BLOCKED,
+          "Wait for the exchange settlement price; the leg is then closed in the platform. No strategy is blocked.",
+          _REC_SLOT),
+    _gate("recon_expired_still_at_broker", _RM, 220,
+          "Zerodha still lists {contracts} expired contract(s) that the platform has already settled.",
+          "None: the platform closed the expired leg at its settlement price.", _REC_NONE_BLOCKED,
+          "Zerodha may remove the expired position the next morning; check again then. No strategy is blocked.",
+          _REC_SLOT),
 )
 
 

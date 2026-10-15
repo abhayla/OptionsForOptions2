@@ -23,7 +23,8 @@ from pydantic import ValidationError
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
 from ofo_app.errors import SocketClosed
-from ofo_app.routes.outcome import MarketContext, OutcomeRequest, outcome_response
+from ofo_app.routes.outcome import (ContractLookup, MarketContext, OutcomeRequest, get_contract_lookup, outcome_response,
+                                    stored_legs_for)
 
 MIN_PUSH_INTERVAL = 1.0  # ADR-068: at most once a second per strategy
 POLL_SECONDS = 0.05
@@ -50,11 +51,12 @@ def _input_state(quote) -> tuple:
 
 class StrategyPush:
     def __init__(self, channel: Channel, feed: Optional[LiveFeed], *, monotonic: Callable[[], float],
-                 poll: float = POLL_SECONDS) -> None:
+                 poll: float = POLL_SECONDS, lookup: Optional[ContractLookup] = None) -> None:
         self._channel = channel
         self._feed = feed
         self._monotonic = monotonic
         self._poll = poll
+        self._lookup = lookup or get_contract_lookup()  # the stored catalogue, for the no-provider answer (#259)
         self._req: Optional[OutcomeRequest] = None
         self._handle: Optional[int] = None
         self._seen: dict[str, tuple] = {}
@@ -109,7 +111,9 @@ class StrategyPush:
     async def _push(self) -> None:
         self._dirty = False
         try:
-            body = outcome_response(self._req, None if self._feed is None else self._feed.ctx)
+            ctx = None if self._feed is None else self._feed.ctx
+            stored = await stored_legs_for(self._req, ctx, self._lookup)  # same helper as the REST route
+            body = outcome_response(self._req, ctx, stored=stored)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return

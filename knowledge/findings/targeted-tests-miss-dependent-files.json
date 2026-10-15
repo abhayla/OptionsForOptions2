@@ -41,6 +41,11 @@
    "date": "2026-10-15",
    "where": "W-071 (PR #241): two additive response fields on GET /strategies/{id}",
    "evidence": "CI app job '2 failed, 1563 passed': tests_app/test_response_door.py:180 500 (the fake DB had no execute; the new segment/token lookup queries the DB) and tests_app/test_strategy_planned_entry.py:209 (response leg keys == stored LEG_KEYS); the builder and both verifiers ran only the W-071 route test files"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "W-081 margin gate (PR #274)",
+   "evidence": "CI app job 1 failed, 1687 passed: tests_app/test_identifier_and_slots.py:68 pins the closed set of message slot types; W-081 added DisplayRupees in backend/ofo/errors/gate_slots.py and ran only tests/execution, tests/errors and tests_app/test_kite_margin_client.py; one CI round lost, fixed by adding the slot to PINNED_SLOT_TYPES (164bdb2). select_app_tests.py did not select it because gate_slots.py is a domain module (#247 two-hop / backend/ofo gap)."
   }
  ]
 }

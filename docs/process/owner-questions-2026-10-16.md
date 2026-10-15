@@ -51,6 +51,43 @@ Parked under run-discipline A2 while the owner sleeps; each has a recommendation
   exercise STT (it then grows with the level, so it is no longer a fixed number for spreads); (c) leave as is.
 - **Recommendation: (a)** - the sentence stays a fixed, honest number for the normal squared-off case, and the trap is
   named in plain words (decision-support wording, ADR-003); the table already shows the held-to-expiry numbers.
+- **Applied tonight (reversible):** the scenario table gets a "Charges and taxes (estimate)" row between the legs and
+  TOTAL, so the legs plus that row equal TOTAL in every column (the W-075 verifier found TOTAL included charges while
+  the legs did not, with no explanation: at 21,500 the legs summed to −₹8,245.25 and TOTAL showed −₹8,528.60).
+- **Held:** W-075 is verified but NOT merged; I merge it after this morning's 4a gate run, so the gate's screenshots
+  and D8 checks run on a stable screen and you see this question first. Say "merge W-075" (or pick (b)/(c) above).
 - **Also corrected tonight (no decision needed):** ADR-082's own example said "about Rs 221" round trip; that is 2 x the
   entry charges and puts STT on the exit buys. The correct round trip is Rs 214.96 (STT falls on the exits of the
   bought legs, which are sells). The example is corrected with W-075.
+
+## OQ-5 (information, already applied - reverse if you disagree): breakeven labels for the four single-breakeven shapes ADR-089 did not name
+- **What changed:** the W-082 reviewer found four real strategies with one breakeven that ADR-089's text did not cover,
+  which would have shown no Lower/Upper label at all. Added to ADR-089 and scenario-calculations §4: loss on both sides
+  (credit-0 iron fly, sell 23000 CE+PE @50, buy 25000 CE / 21000 PE @50) -> 23,000 shows as both Lower and Upper BE; no
+  loss region at all (zero-cost bull call spread, buy 22200 CE @100 / sell 22400 CE @100) -> the old profit-side rule
+  (profit above 22,200 -> Lower BE).
+
+## OQ-6 (information, applied - reverse if you disagree): a Zerodha average price finer than paise when adopting a position
+- **Spec basis:** ADR-084 "An adopted leg's entry price is Zerodha's average price for that position ... editable"; the
+  spec says nothing about averages with more than 2 decimals (searched: average, decimals, paise, multi-fill).
+- **Real case:** a position built in several fills shows an average like 91.525.
+- **Applied (W-083, decided with the reviewer):** the row stays adoptable and shows Zerodha's exact 91.525; if the
+  strategy model cannot hold more than 2 decimals, confirming that group asks you to set the entry first (e.g. 91.53),
+  and no leg of the group is adopted until every row can be (no half-adopted groups). It is never rounded silently to
+  the tick (the average is a cost, not an order price).
+
+## OQ-7: "Add a held position to an existing strategy" - build it order-free now, or defer it in the spec? (REQ-061 AC-2)
+- **Spec basis:** REQ-061 AC-2 "the user can add it to an existing strategy, create a new strategy, or leave it
+  standalone"; ADR-084 "The user can move any position ... into an existing strategy"; ADR-002 (every order belongs to a
+  strategy).
+- **Found tonight:** every existing path that adds legs to a strategy (W-027 proposals, `StrategyRecord.edit`,
+  `propose_execution`) PREPARES ORDERS for the added legs. Using it for a position you already hold would buy/sell it
+  a second time (double exposure). So W-083 refuses "add to existing" with "not available yet"; create-new and
+  standalone work and are verified (AC-1, AC-4 pass; AC-2 fails on this one choice).
+- **Options:** (a) build an order-free "adopt into existing strategy" that records the held legs as a new strategy
+  version with no order (a new small item, Tier A); (b) defer it - write into REQ-061 that adding to an existing
+  strategy comes later, and close AC-2 on the other two choices.
+- **Recommendation: (a)** - it is the only choice that lets a calendar's far leg join the near one you already track,
+  and the order-free version path is needed anyway for reconciliation fixes; until it lands, the refusal is honest and
+  safe.
+
