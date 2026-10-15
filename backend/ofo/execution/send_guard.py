@@ -31,6 +31,7 @@ from decimal import Decimal
 from typing import Final, Protocol
 
 from ofo.engine import Action
+from ofo.engine.product import Product
 from ofo.errors import UserFacingError, display_text, render
 from ofo.instruments import ZERODHA, Catalogue, MissingBrokerRef
 from ofo.orders import TERMINAL_STATES, Order, OrderBook
@@ -78,6 +79,7 @@ class _BrokerRequest:
     quantity: int
     price: Decimal
     client_tag: str
+    product: Product = Product.NRML  # ADR-080: copied from the order, which is NRML or its position's product
     _mint: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -195,7 +197,8 @@ class _BrokerSink:
                 if not isinstance(order.client_tag, str):
                     raise _refuse("send_client_tag_missing")
                 requests.append(_BrokerRequest(strategy_id, f"v{version.number}", order.leg_ref, symbol, side,
-                                               one.quantity, order.price, order.client_tag, _mint=_MINT))
+                                               one.quantity, order.price, order.client_tag, product=order.product,
+                                               _mint=_MINT))
             by_contract: dict[str, list[Order]] = {}
             for one in derived:
                 by_contract.setdefault(one.contract, []).append(one)

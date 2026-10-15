@@ -116,6 +116,7 @@ _missing = {d: DataHealth.HEALTHY for d in DataInput if d is not DataInput.UNDER
 
 # (case id, mutation, expected code, expected reason — exact string or a regex fragment)
 MUTATIONS = [
+    ("price-band-unread", _ctx(price_bands=None), CheckCode.PRICE_OUTSIDE_BAND, None),
     ("market-closed", _ctx(market_open=False), CheckCode.MARKET_CLOSED,
      "The market is closed. Orders can be placed once it opens."),
     ("market-unknown", _ctx(market_open=None), CheckCode.MARKET_CLOSED,

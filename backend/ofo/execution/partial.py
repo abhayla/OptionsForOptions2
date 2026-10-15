@@ -61,8 +61,8 @@ import dataclasses
 import logging
 import datetime
 from ofo.safe_compare import equal_secret
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 from typing import Final, Protocol
@@ -71,7 +71,10 @@ from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
-from ofo.execution.context import ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash
+from ofo.engine.product import Product
+from ofo.execution.context import (
+    ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash, product_key,
+)
 from ofo.execution.planned import MAX_PLAN_LEGS, ExecutionPlan, PlannedLeg, ident
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
@@ -138,13 +141,40 @@ class BrokerPositionLine:
     net_quantity: int
     average_price: Decimal
     ltp: Decimal | None = None
+    product: Product | None = None  # as Zerodha reports it; None = not read (an exit of it then BLOCKS)
 
     def __post_init__(self) -> None:
         _ident(self.contract, "contract")
+        if self.product is not None and not isinstance(self.product, Product):
+            raise ValueError(f"product must be a Product or None, got {self.product!r}")
         _int(self.net_quantity, "net_quantity", signed=True)
         require_price(self.average_price, "average_price", allow_zero=False)
         if self.ltp is not None:
             require_price(self.ltp, "ltp")
+
+
+def _kite_price(value: object, name: str) -> Decimal:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Decimal(value)
+    if not isinstance(value, Decimal):
+        raise ValueError(f"{name} must be a Decimal or int (floats are refused), got {value!r}")
+    return value
+
+
+def position_line_from_kite_row(row: Mapping[str, object]) -> BrokerPositionLine:
+    if not isinstance(row, Mapping):
+        raise ValueError(f"a position row must be a mapping, got {row!r}")
+    raw_product = row.get("product")
+    product = next((p for p in Product if p.value == raw_product), None) if isinstance(raw_product, str) else None
+    last = row.get("last_price")
+    quantity = row.get("quantity")
+    if isinstance(quantity, bool) or not isinstance(quantity, int):
+        raise ValueError(f"quantity must be a whole number, got {quantity!r}")
+    contract = row.get("tradingsymbol")
+    if not isinstance(contract, str):
+        raise ValueError(f"tradingsymbol must be a string, got {contract!r}")
+    return BrokerPositionLine(contract, quantity, _kite_price(row.get("average_price"), "average_price"),
+                              None if last is None else _kite_price(last, "last_price"), product)
 
 
 @dataclass(frozen=True)
@@ -218,6 +248,9 @@ class Assessment:
     choices: tuple[PartialChoice, ...]  # CHOICE_ORDER only in PARTIAL_EXCEPTION
     read_at: datetime.datetime  # the older of the two broker reads this assessment rests on
     open_orders: tuple[OrderView, ...]  # non-terminal in the reconciled book: the ONLY meaning of "in flight"
+    # product of each held position as the broker read reports it, keyed by ``product_key(leg)``; a position whose
+    # product was not read is absent (ADR-080: an exit of it is then blocked, never assumed NRML)
+    active_products: Mapping[tuple, Product] = field(default_factory=dict)
 
 
 def _sync_book(
@@ -317,6 +350,7 @@ def assess(
 
     held = {p.contract: p for p in positions if p.net_quantity}
     actual: list[Leg] = []
+    products: dict[tuple, Product] = {}
     remaining: list[RemainingLeg] = []
     for planned in plan.legs:
         line = held.get(planned.contract)
@@ -324,6 +358,8 @@ def assess(
         if line is not None and not mismatches:
             actual.append(dataclasses.replace(planned.leg, quantity=units, entry_price=line.average_price,
                                               ltp=line.ltp))
+            if line.product is not None:
+                products[product_key(planned.leg)] = line.product
         if units < planned.leg.quantity:
             remaining.append(RemainingLeg(planned, planned.leg.quantity - units))
 
@@ -363,6 +399,7 @@ def assess(
         strategy_id=plan.strategy_id, status=status, actual_legs=tuple(actual), remaining=tuple(remaining),
         failures=failures, mismatches=tuple(mismatches), metrics=metrics, live_pnl=live, margin_required=margin,
         choices=CHOICE_ORDER if status is ExecutionStatus.PARTIAL_EXCEPTION else (), read_at=read_at,
+        active_products=products,
         open_orders=open_orders,
     )
 
@@ -571,6 +608,20 @@ def _margin_or_unknown(planner: MarginPlanner, legs: tuple[Leg, ...]) -> Decimal
         return None
 
 
+def _exit_product(a: Assessment, plan: ExecutionPlan, leg_ref: str) -> Product:
+    """The ONE place an exit order's product is set: the product of the position it reduces (ADR-080). A position
+    whose product was not read gets NRML as a placeholder only; the gate blocks it (no read product to match)."""
+    return a.active_products.get(product_key(plan.by_ref(leg_ref).leg), Product.NRML)
+
+
+def _order_products(orders: tuple[Order, ...], plan: ExecutionPlan) -> dict[tuple, Product]:
+    """Product per leg taken from the orders themselves; a leg whose orders disagree is left out (so it blocks)."""
+    seen: dict[tuple, set[Product]] = {}
+    for order in orders:
+        seen.setdefault(product_key(plan.by_ref(order.leg_ref).leg), set()).add(order.product)
+    return {key: next(iter(found)) for key, found in seen.items() if len(found) == 1}
+
+
 def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContext, book: OrderBook,
           plan: ExecutionPlan, catalogue: Catalogue, eligibility: EligibilityRegistry, choice: PartialChoice,
           a: Assessment, record: StrategyRecord, planner: MarginPlanner,
@@ -578,6 +629,8 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     blocked = ctx.reconciliation_blocked_strategy_ids
     if blocked is not None and book.is_submit_blocked(plan.strategy_id):
         ctx = dataclasses.replace(ctx, reconciliation_blocked_strategy_ids=blocked | {plan.strategy_id})
+    if ctx.action is ExecutionAction.EXIT:  # the gate compares the products ON THE ORDERS, never a declared list
+        ctx = dataclasses.replace(ctx, exit_products=_order_products(orders, plan))
     result = check_pre_execution(Strategy(legs), ctx, catalogue, eligibility, strategy_id=plan.strategy_id)
     if result.blocked:
         return _prep(choice, a, (), result, render("partial_gate_blocked"))
@@ -763,12 +816,14 @@ def close_partial_strategy(
         return _not_prepared(choice, a, _refusal_message(exc))
     exits = {p.leg_ref: e for p, e in pairs}
     orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
-                         s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id) for s in slices)
+                         s.quantity, exits[s.leg_ref].entry_price, version_id=context.version_id,
+                         product=_exit_product(a, plan, s.leg_ref)) for s in slices)
     legs = tuple(e for _, e in pairs)
     # The held legs come from THIS call's fresh broker read (the authority, ADR-016), not from a caller.
     ctx = dataclasses.replace(
         context, action=ExecutionAction.EXIT, active_legs=a.actual_legs, active_version_id=context.version_id,
         active_legs_hash=active_legs_hash(plan.strategy_id, context.version_id, a.actual_legs),
+        active_products=dict(a.active_products),
     )
     prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels),
                  slices)
