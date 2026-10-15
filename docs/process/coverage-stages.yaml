@@ -160,6 +160,7 @@ decisions:
   ADR-087: 4b           # 4b built ahead of the 4a gate; gate still closes 4b + real order; core first (owner 2026-10-16)
   ADR-088: 4a           # "Checked at" server answer time on 4 non-normal Builder states (owner 2026-10-16, #245)
   ADR-089: 4a           # one-breakeven Lower/Upper BE label from loss regions (owner 2026-10-16, #171)
+  ADR-090: 4b           # REQ-073 approved for build; AC-5 follows ADR-060 (owner delegation 2026-10-16)
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
@@ -251,6 +252,8 @@ work_items:
   W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
   W-077: 4a           # Builder "Checked at" (ADR-088, #245) + no-provider names #249 + #244 + #213
   W-078: 4b           # executable price: tick rounding, depth limit + slippage, circuit block, NRML/product reduce-only (ADR-080)
+  W-080: 4b           # read-only Kite basket, tags, InstrumentId, no-placement guard (REQ-073, #115)
+  W-081: 4b           # margin gate before the basket, final.total vs available (REQ-055)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

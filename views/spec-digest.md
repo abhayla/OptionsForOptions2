@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (89)
+## Decisions (90)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -95,6 +95,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be built, reviewed, verified and merged before the Stage 4a gate has passed, using fakes and the real K… [none — changes the master plan's gate rule (a pro…]
 - ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - each show "Checked at <time>", where <time> is the… [none — fills the time REQ-039 AC-3 left open and…]
 - ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE when the loss region lies above it, taken from the… [none — uses the ADR-072 loss regions for the tabl…]
+- ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
 
 ## Requirements (74)
 
@@ -170,7 +171,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-070 [Verified]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
 - REQ-072 [Verified]: Index spot prices for NIFTY 50 and SENSEX
-- REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
+- REQ-073 [Approved]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
 ## Spec sections (194)

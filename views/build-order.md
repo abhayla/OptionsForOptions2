@@ -16,6 +16,7 @@ Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-06
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
+| REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | normal | next |
 | REQ-001 | V1 scope: underlyings, leg types, broker | foundation | normal | next |
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
@@ -75,5 +76,4 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-050 (Specified): Shared computation and scale
 - REQ-066 (Specified): Compliance gates
 - REQ-067 (Specified): Delivery controls
-- REQ-073 (Specified): Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 (Specified): Security incident reporting and log retention
