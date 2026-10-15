@@ -1,0 +1,28 @@
+{
+ "id": "prefilter-narrower-than-parser",
+ "scope": "generic",
+ "class": "A cheap pre-filter placed in front of a parser (skip rows whose exchange, type or kind is not in a short list) silently drops rows the parser itself was later taught to accept. The parser's tests pass, the caller's tests pass on data without those rows, and the loss shows only when the dropped rows are needed downstream. The accept rule must live in one place: the pre-filter asks the parser's own accept test, or there is no pre-filter.",
+ "mechanism": "parse_rows_naming_the_row (backend/ofo_app/catalogue_store.py:263) skips every Zerodha row whose exchange is not NFO/BFO before calling parse_instruments_rows; W-060 later taught the parser to accept the NIFTY 50 and SENSEX index rows (exchange NSE/BSE, segment INDICES, parser.py:96), so the load command never stored them and the W-065 live push stopped with 'no NIFTY index in the catalogue'.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "python -m ofo_app.catalogue_load on the test database (issue #204), found by the W-065 live proof",
+  "evidence": "loader on the real 2026-10-15 list printed `catalogue updated: added=7395 ...` with segments NSE_FO 4064 and BSE_FO 3331 only; parse_instruments_csv on the same file yielded [('NSE_INDEX', 1001), ('BSE_INDEX', 1)]; loading the full parsed list through the same apply_update printed `added=2 seen=7395`, after which the live push ran (59 pushes)."
+ },
+ "fix": "Let the pre-filter pass exactly what the parser accepts (reuse the parser's accept test), keep everything else skipped and counted; a test feeds the real rows of every kind the parser accepts through the caller's whole path.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The fix for #204 adds a test on parse_rows_naming_the_row with the real index rows; this entry becomes guarded when that test is merged."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-072.md",
+  "spec/requirements/REQ-053.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-15",
+   "where": "backend/ofo_app/catalogue_store.py parse_rows_naming_the_row (issue #204)",
+   "evidence": "W-065 live proof exit 3 'no NIFTY index in the catalogue' at 11:41 IST, then 59 pushes after the index rows were loaded"
+  }
+ ]
+}
