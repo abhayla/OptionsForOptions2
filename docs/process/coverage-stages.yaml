@@ -249,6 +249,7 @@ work_items:
   W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
   W-074: 4b           # charges rate table + calculator (ADR-082 part 1, #240)
   W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
+  W-077: 4a           # Builder "Checked at" (ADR-088, #245) + no-provider names #249 + #244 + #213
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
