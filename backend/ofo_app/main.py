@@ -14,8 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo.marketdata.fanout import FanOut
-from ofo_app import errors, live_market, live_push, replay_mode
+from ofo_app import errors, live_market, replay_mode
 from ofo_app.config import Settings, app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
@@ -65,7 +64,9 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         replay_mode.require_test_env(app_env() or "")
         ctx = replay_mode.build_replay_context()
         app.dependency_overrides[outcome.get_market_context] = lambda: ctx
-        live.set_replay_feed(live_push.LiveFeed(ctx, FanOut(ctx.provider)))  # the socket replays the same frames
+        feeds = replay_mode.ReplayFeeds(ctx)  # W-065: one replay feed per socket connection (reconnects get prices)
+        live.set_replay_feed(feeds)
+        app.dependency_overrides[outcome.get_streaming] = lambda: feeds.streaming  # REST not live after a socket drop
     app.include_router(health.router)
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket

@@ -615,3 +615,138 @@ async def test_206_the_streaming_check_applies_only_to_the_live_markets_own_cont
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         out = (await ac.post("/api/strategies/outcome", json=request(provider))).json()
     assert out["state"] == "COMPUTED"
+
+
+
+# ---- phase 3: the replay serves every connection, and REST is not live after a socket drop (W-065 frontend) ----------
+
+LIVE_SELL, LIVE_BUY = "NSE_FO:44626", "NSE_FO:44630"  # NIFTY 13-Oct 22850 CE / 22950 CE: used by no other replay test
+#: REQ-049 AC-5's text; 09:20:09 is the last recorded frame (09:20:09.879 IST, frames-2026-10-08-092000-10s.bin.gz)
+AC5_AFTER_DROP = "Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused."
+
+
+def _spread_request() -> dict:
+    return {"underlying": "NIFTY", "legs": [
+        {"instrument_id": i, "action": a, "lots": 1, "planned_entry": "100.00", "captured_at": VALUATION.isoformat()}
+        for i, a in ((LIVE_SELL, "SELL"), (LIVE_BUY, "BUY"))]}
+
+
+def _pnl_cell(push: dict, row_id: str) -> str:
+    row = next(r for r in push["table"]["rows"] if r["row_id"] == row_id)
+    return row["cells"]["unrealized_pnl"]["display"]
+
+
+def test_ac4_the_replay_serves_every_connection_and_its_pushes_change(monkeypatch):
+    """AC-4 (W-065 phase 3): on the replay, a second connection after the first closed gets prices again (the frames
+    used to be spent by the first release), and on each connection the recording plays on, so LTP and Unrealized P&L
+    change across pushes, at most one push a second (ADR-068 (2)). The SELL leg's P&L is checked by hand:
+    (planned entry 100.00 - LTP) x 65 units (one NIFTY lot)."""
+    import time
+
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    for _ in range(2):
+        pushes, times = [], []
+        with client.websocket_connect(live.PATH) as ws:
+            ws.send_json(_spread_request())
+            for _ in range(4):
+                pushes.append(json.loads(ws.receive_text()))
+                times.append(time.monotonic())
+        assert all(p["state"] == "COMPUTED" and p["output_label"] is None for p in pushes)
+        ltps = [p["legs"][0]["ltp"] for p in pushes]
+        assert len(set(ltps)) >= 3, ltps  # the recording moves this leg 14 times in 10 s
+        assert len({_pnl_cell(p, "1") for p in pushes}) >= 3
+        assert all(b - a >= 0.9 for a, b in zip(times, times[1:]))  # receive-side gap; the server gate is 1.0 s
+        for p in pushes:
+            expected = (Decimal("100.00") - Decimal(p["legs"][0]["ltp"])) * 65
+            assert _pnl_cell(p, "1") == f"₹{expected:,.2f}"
+
+
+def test_ac4_replay_rest_is_not_live_after_the_socket_drops_and_live_again_while_held(monkeypatch):
+    """AC-4 / ADR-077 / REQ-049 AC-5 on the replay: before any socket the REST answer has numbers (REST-only screens keep
+    working); after the socket that held the legs closes, REST answers NOT_CONNECTED with AC-5's message and the newest
+    price time the replay held (the last recorded frame, 09:20:09), and no numbers; while a socket holds the legs again,
+    REST computes. A strategy whose legs no socket ever held is unaffected by another strategy's drop."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    body = _spread_request()
+    before = client.post("/api/strategies/outcome", json=body).json()
+    assert before["state"] == "COMPUTED" and before["status_label"] is None
+    with client.websocket_connect(live.PATH) as ws:
+        ws.send_json(body)
+        ws.receive_text()
+    after = client.post("/api/strategies/outcome", json=body).json()
+    assert after["state"] == "NOT_CONNECTED"
+    assert after["status_label"] == AC5_AFTER_DROP
+    assert after.get("table") is None and after.get("summary") is None
+    assert all(leg["ltp"] is None for leg in after["legs"])
+    other = client.post("/api/strategies/outcome", json=_replay_request()).json()  # the condor: never held
+    assert other["state"] == "COMPUTED"
+    with client.websocket_connect(live.PATH) as ws:
+        ws.send_json(body)
+        ws.receive_text()
+        held = client.post("/api/strategies/outcome", json=body).json()
+    assert held["state"] == "COMPUTED"
+
+
+def test_ac4_replay_streaming_counts_holders_and_never_drops_the_index():
+    """AC-4 (replay rule, unit): a leg is not streaming only when a socket held it, released it, and none holds it now;
+    two holders need two releases; the index always reads as streaming."""
+    from ofo_app.replay_mode import ReplayStreaming
+
+    s = ReplayStreaming(ctx=None, index_ids=frozenset({"NSE_INDEX:1001"}))
+    assert s("NSE_FO:1") is True  # never held
+    s.hold(["NSE_FO:1", "NSE_INDEX:1001"])
+    s.hold(["NSE_FO:1"])
+    s.release(["NSE_FO:1", "NSE_INDEX:1001"])
+    assert s("NSE_FO:1") is True  # one holder left
+    s.release(["NSE_FO:1"])
+    assert s("NSE_FO:1") is False
+    assert s("NSE_INDEX:1001") is True
+    s.hold(["NSE_FO:1"])
+    assert s("NSE_FO:1") is True
+
+
+def test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live(monkeypatch):
+    """REQ-049 AC-5 / ADR-077 (W-065 p3 r2): a second socket (another tab, another user) holds the same legs while THIS
+    page's socket drops. The REST refresh the page sends as its fallback (fallback=true) is the not-live answer: AC-5's
+    exact text with the newest price time kept (09:20:09), no table, no summary, no leg numbers. The same request without
+    the flag (or false) is unchanged (COMPUTED)."""
+    from starlette.testclient import TestClient
+
+    from ofo_app.routes import live
+
+    client = TestClient(_replay_app(monkeypatch))
+    body = _spread_request()
+    with client.websocket_connect(live.PATH) as other:
+        other.send_json(body)
+        other.receive_text()
+        with client.websocket_connect(live.PATH) as mine:
+            mine.send_json(body)
+            mine.receive_text()
+        fallback = client.post("/api/strategies/outcome", json={**body, "fallback": True}).json()
+        assert fallback["state"] == "NOT_CONNECTED"
+        assert fallback["status_label"] == AC5_AFTER_DROP
+        assert fallback.get("table") is None and fallback.get("summary") is None
+        assert all(leg["ltp"] is None and leg["label"] == AC5_AFTER_DROP for leg in fallback["legs"])
+        plain = client.post("/api/strategies/outcome", json=body).json()
+        assert plain["state"] == "COMPUTED" and plain["table"] is not None
+        assert client.post("/api/strategies/outcome", json={**body, "fallback": False}).json()["state"] == "COMPUTED"
+    refused = client.post("/api/strategies/outcome", json={**body, "fallback": "maybe"}).json()
+    assert refused.get("state") != "COMPUTED"  # a non-boolean flag never yields numbers (fail closed)
+
+
+def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers():
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
+    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None).model_dump(
+        mode="json", exclude_unset=True)
+    flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None).model_dump(
+        mode="json", exclude_unset=True)
+    assert flagged == plain and flagged["state"] != "COMPUTED"

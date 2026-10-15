@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Callable, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 
 from ofo.engine.legs import Action
 from ofo.marketdata.provider import MarketDataProvider
@@ -64,6 +64,10 @@ class OutcomeRequest(BaseModel):
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
+    fallback: StrictBool = Field(
+        default=False,
+        description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
+                    "is then the not-live state whoever else subscribes to the same contracts")
 
 
 # ---- response (typed, W-066): text is catalogue text, numbers are Money strings, codes are closed ----------------------
@@ -239,7 +243,10 @@ def get_streaming() -> Optional[Callable[[str], bool]]:
 
 
 def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
-    if streaming is None or ctx is not live_context():
+    if streaming is None:
+        return False
+    owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
+    if ctx is not (owner if owner is not None else live_context()):
         return False
     index_id = getattr(ctx.provider, "index_id", lambda _u: None)(req.underlying)
     ids = [leg.instrument_id for leg in req.legs] + ([index_id] if index_id else [])
@@ -266,7 +273,9 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
         valuation = ctx.clock()
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  valuation, ctx.rate)
-        live_blocked = _not_streaming(req, ctx, streaming) and not snapshot.status.session_ended
+        # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
+        # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
+        live_blocked = (req.fallback or _not_streaming(req, ctx, streaming)) and not snapshot.status.session_ended
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:

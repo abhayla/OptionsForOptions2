@@ -10,9 +10,12 @@
  },
  "fix": "W-065 phase 3 round 2 (brief docs/process/brief-W-065-p3-r2.md): the fallback request carries a flag set by the page when its own socket is down, and the server answers the not-live state (REQ-049 AC-5 with the newest price time, ADR-077) whenever the flag is set, whoever else subscribes.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Round 2 adds a two-holder case to tests_app/test_strategy_live_push.py and frontend/e2e/strategy-live.spec.ts; status becomes guarded when that merges."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_strategy_live_push.py::test_ac5_two_holders_this_pages_socket_dropped_the_fallback_is_not_live",
+   "frontend/e2e/strategy-live.spec.ts (two-holder case, 1280 and 390)"
+  ],
+  "note": "Discriminates: the round-2 verifier's mutant ignoring the flag turned the app test red ('COMPUTED' == 'NOT_CONNECTED'); the builder's rebuild with the flag always false turned the e2e red. Not covered: the first REST load before the page's own socket connects (#234 item 4)."
  },
  "spec_ref": [
   "spec/decisions/ADR-077.md"

@@ -1,5 +1,5 @@
 // Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/tests/setup.js (ADR-047)
-// Changed: the WebSocket and import.meta.env stubs are dropped (no WS client, no env-based API URL yet).
+// Changed: the import.meta.env stub is dropped (no env-based API URL); the WebSocket stub is an inert socket (W-065).
 import { vi, beforeEach } from 'vitest'
 import { config } from '@vue/test-utils'
 
@@ -30,3 +30,18 @@ beforeEach(() => {
 config.global.mocks = {
   $t: (msg) => msg,
 }
+
+// W-065: the Builder page opens the live socket. Unit tests never reach a network socket: this one never opens, never
+// pushes and never closes, so a page left mounted by one test cannot fall back to REST during another. The socket's own
+// lifecycle is tested with a scripted fake in tests/strategy-live.test.js.
+class InertWebSocket {
+  constructor(url) {
+    this.url = url
+    this.readyState = 0
+  }
+  send() {}
+  close() {
+    this.readyState = 3
+  }
+}
+global.WebSocket = InertWebSocket

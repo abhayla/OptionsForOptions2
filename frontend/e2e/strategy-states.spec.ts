@@ -4,6 +4,9 @@
 // Stale and refused answers are the REAL replay response with one field changed in the route, since the recorded frames
 // are all healthy; the not-connected state is the real plain API; the error state is a real closed port.
 import { test, expect, type Page } from '@playwright/test'
+import { useQuietLiveSocket } from './support/quiet-live'
+
+useQuietLiveSocket() // W-065: these tests prove the REST path; the live socket is held silent
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
 const PLAIN_URL = process.env.PREVIEW_URL || 'http://127.0.0.1:4173'

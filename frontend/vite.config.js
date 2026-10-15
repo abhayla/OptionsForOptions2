@@ -10,6 +10,9 @@ import { loadOpenApiPaths, makeRewrite } from './proxy-rewrite.js'
 const apiTarget = process.env.OFO_API_TARGET || 'http://127.0.0.1:8000'
 
 const proxy = {
+  // W-065: the strategy live socket (a WebSocket route, so not in the OpenAPI paths the /api rewrite reads). Listed first:
+  // the first matching key wins. Same origin for the browser; the path is passed through unchanged.
+  '/api/strategies/live': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
   // /api/health -> <apiTarget>/health; a route the API serves under /api (per docs/api/openapi.json) keeps its prefix
   '/api': { target: apiTarget, changeOrigin: true, rewrite: makeRewrite(loadOpenApiPaths()) },
   '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },

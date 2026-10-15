@@ -10,7 +10,7 @@ session value travels on this socket or in its URL.
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from ofo_app.errors import ClosedSocket, ClosedWebSocketRoute
 from ofo_app.live_push import LiveFeed, StrategyPush
@@ -18,19 +18,21 @@ from ofo_app.routes.outcome import OutcomeResponse
 
 PATH = "/api/strategies/live"
 
-#: The replay feed (W-064 test mode, APP_ENV=test only), set by create_app; None otherwise.
-_replay_feed: Optional[LiveFeed] = None
+#: The replay feed builder (W-064 test mode, APP_ENV=test only; ofo_app.replay_mode.ReplayFeeds), set by create_app;
+#: None otherwise. It builds one feed per connection, so a reconnecting browser gets prices again (W-065 phase 3).
+_replay_feed: Optional[Callable[[], LiveFeed]] = None
 
 
-def set_replay_feed(feed: Optional[LiveFeed]) -> None:
+def set_replay_feed(builder: Optional[Callable[[], LiveFeed]]) -> None:
     global _replay_feed
-    _replay_feed = feed
+    _replay_feed = builder
 
 
 def current_feed() -> Optional[LiveFeed]:
-    """The running app's shared live feed (LIVE_MARKET with a session), the test replay feed, or None (not connected)."""
+    """The running app's shared live feed (LIVE_MARKET with a session), a new test replay feed for this connection, or
+    None (not connected)."""
     if _replay_feed is not None:
-        return _replay_feed
+        return _replay_feed()
     from ofo_app import live_market  # late: live_market imports this package's outcome module
     return live_market.current_feed()
 
