@@ -13,9 +13,10 @@
   "status": "guarded",
   "checks": [
    "scripts/orchestrator/atool.py (migration step)",
-   "tests_app/_migration_replay.py"
+   "tests_app/_migration_replay.py",
+   "scripts/orchestrator/select_app_tests.py + atool.py route step (#242)"
   ],
-  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally. 2026-10-10 (3rd occurrence, frontend test ids): caught by CI's Playwright job before merge, as designed; cost one extra CI round. Locally, a new component should grep frontend/e2e and frontend/tests for every data-testid it renders. 2026-10-15 (4th occurrence, response fields): proposed local mechanism - before push, run every tests_app file that references a changed route path or response model name (grep), issue #242."
+  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally. 2026-10-10 (3rd occurrence, frontend test ids): caught by CI's Playwright job before merge, as designed; cost one extra CI round. Locally, a new component should grep frontend/e2e and frontend/tests for every data-testid it renders. 2026-10-15 (4th occurrence, response fields): proposed local mechanism - before push, run every tests_app file that references a changed route path or response model name (grep), issue #242. 2026-10-15 evening: #242 merged as a file-level selector in atool --no-tests (a changed route file selects every tests_app file that calls any of its paths, names any class it defines or imports it; a changed non-route ofo_app module adds the routes that import it, one hop). Discrimination measured: PR #241's diff selects 6 of 42 files incl. both red ones; synthetic edits select 7 (RowOut in outcome.py), 7 (outcome_response helper), 6 (strategy_store), 7 (MARKER_CODES); no single-route edit exceeds the 12-file cap (largest routes/outcome.py, 7). NOT covered: two-hop imports (closed_namespace.py, models.py select 0 and exit 0) - parked #247; shared modules api_models.py / errors.py / main.py exceed the cap (18/18/16) and are left to CI by a non-zero exit."
  },
  "spec_ref": [
   "spec/requirements/REQ-065.md"

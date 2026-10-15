@@ -1,0 +1,161 @@
+diff --git a/backend/ofo/errors/explanations.py b/backend/ofo/errors/explanations.py
+index b01a826..da8c291 100644
+--- a/backend/ofo/errors/explanations.py
++++ b/backend/ofo/errors/explanations.py
+@@ -893,6 +893,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
+                         {"days": Days, "time": ClockHm}),
+     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
+     ExplanationTemplate("outcome_not_connected", "values_seen", "Draft - Live data not connected"),
++    # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
++    ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
+     ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),
+     ExplanationTemplate("outcome_reason_no_provider", "values_seen", "no live market data provider is connected"),
+     ExplanationTemplate("outcome_margin_pending", "values_seen",
+diff --git a/backend/ofo_app/catalogue_picker.py b/backend/ofo_app/catalogue_picker.py
+index c452600..92b2e62 100644
+--- a/backend/ofo_app/catalogue_picker.py
++++ b/backend/ofo_app/catalogue_picker.py
+@@ -32,7 +32,7 @@ _PICKABLE = (
+ )
+ _EXPIRIES = text(f"SELECT DISTINCT c.expiry {_PICKABLE} ORDER BY c.expiry")
+ _CONTRACTS = text(
+-    f"SELECT c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.strike, b.lot_size, b.broker_symbol "
++    f"SELECT c.id AS contract_id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.strike, b.lot_size, b.broker_symbol "
+     f"{_PICKABLE} AND (CAST(:expiry AS DATE) IS NULL OR c.expiry = CAST(:expiry AS DATE)) "
+     f"ORDER BY c.expiry, c.strike, c.instrument_type, c.exchange_token"
+ )
+@@ -40,6 +40,7 @@ _CONTRACTS = text(
+ 
+ @dataclass(frozen=True)
+ class PickableContract:
++    contract_id: int  # the catalogue's internal id (ADR-057: what a saved strategy leg links to)
+     instrument_id: str  # "<exchange_segment>:<exchange_token>", the id the outcome route takes
+     exchange_segment: str
+     exchange_token: int
+@@ -71,7 +72,7 @@ async def pickable_contracts(conn: Any, underlying: str, today: datetime.date,
+     for r in rows.all():
+         is_future = r.instrument_type == "FUT"
+         out.append(PickableContract(
+-            instrument_id=f"{r.exchange_segment}:{r.exchange_token}", exchange_segment=r.exchange_segment,
++            contract_id=int(r.contract_id), instrument_id=f"{r.exchange_segment}:{r.exchange_token}", exchange_segment=r.exchange_segment,
+             exchange_token=int(r.exchange_token), instrument_type=r.instrument_type, expiry=r.expiry,
+             strike=None if is_future else r.strike, lot_size=int(r.lot_size), symbol=r.broker_symbol))
+     return out
+diff --git a/backend/ofo_app/routes/catalogue.py b/backend/ofo_app/routes/catalogue.py
+index 4e57a49..69efda3 100644
+--- a/backend/ofo_app/routes/catalogue.py
++++ b/backend/ofo_app/routes/catalogue.py
+@@ -44,6 +44,7 @@ class ExpiriesOut(ApiModel):
+ 
+ 
+ class ContractOut(ApiModel):
++    contract_id: int  # the catalogue's internal id; a saved strategy leg links to it (ADR-057)
+     exchange_segment: Identifier
+     exchange_token: int
+     instrument_type: Literal["CE", "PE", "FUT"]
+@@ -85,6 +86,6 @@ async def contracts(underlying: str, expiry: datetime.date = Query(), db: Any =
+     check_underlying(underlying)
+     rows = await picker.pickable_contracts(db, underlying, today, expiry)
+     return ContractsOut.model_validate({"underlying": underlying, "contracts": [
+-        {"exchange_segment": r.exchange_segment, "exchange_token": r.exchange_token,
++        {"contract_id": r.contract_id, "exchange_segment": r.exchange_segment, "exchange_token": r.exchange_token,
+          "instrument_type": r.instrument_type, "expiry": r.expiry, "strike": r.strike, "lot_size": r.lot_size,
+          "symbol": r.symbol} for r in rows]})
+diff --git a/backend/ofo_app/routes/strategies.py b/backend/ofo_app/routes/strategies.py
+index 5f45812..e6ae3de 100644
+--- a/backend/ofo_app/routes/strategies.py
++++ b/backend/ofo_app/routes/strategies.py
+@@ -33,6 +33,7 @@ from types import MappingProxyType
+ from typing import Any, Literal, Optional
+ 
+ from fastapi import APIRouter, Depends, Query
++from sqlalchemy import text
+ from pydantic import BaseModel, ConfigDict, Field, model_validator
+ 
+ from ofo.engine.legs import Action
+@@ -92,6 +93,8 @@ class StrategyUpdateIn(StrategyIn):
+ class LegOut(ApiModel):
+     contract_id: int
+     action: Literal["BUY", "SELL"]
++    exchange_segment: Identifier  # of the leg's stored contract: with the token, the id the outcome API prices by
++    exchange_token: int
+     instrument: Identifier
+     strike: Optional[Identifier]
+     expiry: Identifier
+@@ -210,11 +213,28 @@ def _definition_out(saved: sf.SavedDefinition) -> dict:
+     return doc
+ 
+ 
+-def _strategy_out(stored: store.StoredStrategy) -> StrategyOut:
++_TOKENS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
++               "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
++
++
++async def _with_tokens(db: Any, *docs: dict) -> None:
++    """Adds each leg's exchange segment and token (read from its stored catalogue contract) to the documents in place.
++    The stored form keeps only the contract id (ADR-057); a leg whose contract is gone cannot reach here (the load
++    already refused it as 409)."""
++    ids = sorted({leg["contract_id"] for doc in docs for leg in doc["legs"]})
++    found = {int(r.id): (r.exchange_segment, int(r.exchange_token))
++             for r in (await db.execute(_TOKENS, {"ids": ids})).all()} if ids else {}
++    for doc in docs:
++        for leg in doc["legs"]:
++            leg["exchange_segment"], leg["exchange_token"] = found[leg["contract_id"]]
++
++
++async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
++    doc = _definition_out(stored.saved)
++    await _with_tokens(db, doc)
+     return StrategyOut.model_validate({
+         "id": stored.id, "status": stored.status, "revision": stored.revision,
+-        "created_at": stored.created_at, "updated_at": stored.updated_at,
+-        "definition": _definition_out(stored.saved)})
++        "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc})
+ 
+ 
+ async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
+@@ -249,7 +269,7 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
+ async def save_draft(body: StrategyIn, db: Any = Depends(get_db),
+                      user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+     async def work():
+-        return _strategy_out(await store.save_draft(db, user_ref, await _definition(db, body)))
++        return await _strategy_out(db, await store.save_draft(db, user_ref, await _definition(db, body)))
+     return await _run(db, work, form_status=422)
+ 
+ 
+@@ -267,7 +287,7 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
+ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
+                        user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+     async def work():
+-        return _strategy_out(await store.load(db, user_ref, strategy_id))
++        return await _strategy_out(db, await store.load(db, user_ref, strategy_id))
+     return await _run(db, work, form_status=409)
+ 
+ 
+@@ -276,8 +296,8 @@ async def update_strategy(strategy_id: int, body: StrategyUpdateIn, db: Any = De
+                           user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+     async def work():
+         store.check_strategy_id(strategy_id)  # before the catalogue is read
+-        return _strategy_out(await store.update(db, user_ref, strategy_id, await _definition(db, body),
+-                                                expected_revision=body.expected_revision))
++        return await _strategy_out(db, await store.update(db, user_ref, strategy_id, await _definition(db, body),
++                                                          expected_revision=body.expected_revision))
+     return await _run(db, work, form_status=422)
+ 
+ 
+@@ -287,6 +307,7 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
+     async def work():
+         entries = await store.history(db, user_ref, strategy_id)
+         docs = [sf.entry_to_document(e) | {"definition": _definition_out(e.saved)} for e in entries]
++        await _with_tokens(db, *(d["definition"] for d in docs))
+         return HistoryOut.model_validate({"entries": [
+             doc | {"change_summary": sf.render_summary(doc["change_summary"])} for doc in docs]})
+     return await _run(db, work, form_status=409)
+@@ -296,5 +317,6 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
+ async def restore_strategy(strategy_id: int, seq: int, expected_revision: int = Query(gt=0),
+                            db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+     async def work():
+-        return _strategy_out(await store.restore(db, user_ref, strategy_id, seq, expected_revision=expected_revision))
++        return await _strategy_out(db, await store.restore(db, user_ref, strategy_id, seq,
++                                                           expected_revision=expected_revision))
+     return await _run(db, work, form_status=409)

@@ -229,7 +229,8 @@ issues:
   "#242": 4a            # mechanism: atool runs tests_app files that reference a changed route/response model (4th occurrence)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
-  "#245": 4a            # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
+  "#247": 4a            # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
+  "#245": 4a           # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
   "#244": 4a           # deferred: W-072 review MINORs (istTime rollover, microsecond parsing, three untested renderings)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
