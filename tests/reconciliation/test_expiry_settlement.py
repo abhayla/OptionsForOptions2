@@ -256,3 +256,30 @@ def test_an_exited_strategy_is_left_alone_and_a_second_run_settles_nothing():
     settle(record)
     again = settle(record)
     assert again.settled == () and again.awaiting == () and not again.exited
+
+
+def test_a_second_holder_of_the_expired_contract_keeps_the_mismatch_blocking():
+    """Awaiting is only for contracts held by strategies that await it: with another holder the broker's single
+    net number cannot be explained, so both strategies stay blocked (ordinary AC-7 rule)."""
+    waiting, other = calendar(), straddle()  # both hold the short 72600 CE of 2026-10-15
+    settle(waiting, prices={})
+    assert waiting.awaiting_settlement == frozenset({SHORT_CE}) and other.awaiting_settlement == frozenset()
+    report = recon({FAR_FUT: 20, SHORT_PE: -20}, WAIT=waiting, OTHER=other)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.MISSING_PLATFORM_POSITION and m.strategy_ids == ("OTHER", "WAIT")
+    assert report.blocked_strategy_ids == frozenset({"OTHER", "WAIT"})
+
+
+def test_a_settled_contract_a_proposal_wants_again_is_not_treated_as_a_stale_listing():
+    settled_one = calendar()
+    settle(settled_one)
+    proposer = _active((DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),))
+    proposer.edit(
+        StrategyDefinition("SENSEX", (
+            DefinitionLeg(Action.BUY, Instrument.FUT, None, FAR_EXPIRY, 20),
+            DefinitionLeg(Action.SELL, Instrument.CE, D("72600"), EXPIRY_DAY, 20),
+        )), at=ENTERED + datetime.timedelta(hours=2))
+    report = recon({FAR_FUT: 40, SHORT_CE: -20}, DONE=settled_one, PROP=proposer)
+    ce = [m for m in report.mismatches if m.difference and m.difference[0][0] == SHORT_CE]
+    assert ce and all(m.kind is not MismatchKind.EXPIRED_STILL_AT_BROKER for m in ce)
+    assert ce[0].strategy_ids == ("PROP",)
