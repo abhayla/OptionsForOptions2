@@ -1284,7 +1284,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:flag_expiry_day_short": {
-    "sha256": "975a26d419b2fabfb40e3ccd864f1e86a6248fd5eb72171d2aac836f2722292c",
+    "sha256": "4f67ac167820e47f3a411480003b28e1eb882f7c8fec933f7d12d070a080648d",
     "reviewed": "pending owner read"
   },
   "send_entry_product_not_nrml": {
@@ -1333,6 +1333,30 @@
   },
   "partial_mismatch_other_product_only": {
     "sha256": "654888e7201d9afff10e41b75b12e722cec8f52ac37e0880d34406ccf295e44a",
+    "reviewed": "pending owner read"
+  },
+  "grouping_duplicate_row": {
+    "sha256": "0e9a56cfcead8167aa5f2e7a874b96809b1b22f24413f7c83d7c5627992a388e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_future": {
+    "sha256": "50b02314af7b495ae06ac56a3aed8706a1f38d1a7211220c2fde95ab5fca6bdf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:confirm_expiry_day_short": {
+    "sha256": "7d7701d54e4dbd79b92cec726015da45fa205c7e6dae4c651cdc64969b4ca499",
+    "reviewed": "pending owner read"
+  },
+  "explanation:flag_expiry_day_future_short": {
+    "sha256": "c2945be41bddf265e39a71bae6b63d4de795947eb78f53c3b79beebc2e36d86a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:confirm_expiry_day_short_future": {
+    "sha256": "21bf49b397bf2d09b3fba2292a7df58304058cd08ccbf8f9ab3bab1f447e8b52",
+    "reviewed": "pending owner read"
+  },
+  "explanation:confirm_to_continue": {
+    "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
   }
 }

@@ -598,6 +598,11 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Adding a position to an existing strategy is not available yet.",
           "The position stays where it was and is still shown.", "This move only.",
           "Create a new strategy from the position, or leave it standalone."),
+    _gate("grouping_duplicate_row", _RM, 223,
+          "Zerodha sent a second row for {contracts} contract(s) and product that it already showed.",
+          "The second row is shown but not grouped, because Zerodha lists each contract and product once.",
+          "Adding this position to a strategy.",
+          "It stays visible here. Check the position in Zerodha, then connect again.", _REC_SLOT),
     # W-085 (ADR-083 part 1): expiry settlement notes (renumbered after W-083's 210-218).
     _gate("recon_awaiting_settlement", _RM, 219,
           "{contracts} expired contract(s) held here are not at Zerodha and have no settlement price yet.",

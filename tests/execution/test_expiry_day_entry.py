@@ -188,3 +188,18 @@ def test_adjustment_with_no_held_legs_flags_every_expiring_leg(cat, elig):
 def test_adjustment_that_flips_a_held_expiring_short_to_long_warns(cat, elig):
     r = _adjust([_leg(Action.BUY)], (_short(20),), cat, elig)  # same contract and units, other side: a new long
     assert _codes(r) == {FlagCode.EXPIRY_DAY_ENTRY}
+
+
+def test_several_expiring_short_legs_get_one_acknowledgement_naming_each_contract(cat, elig):
+    """Issue #275 item 5: a short strangle shows ONE sentence and ONE "Confirm to continue.", not one per leg."""
+    r = _run([_leg(Action.SELL, Instrument.CE), _leg(Action.SELL, Instrument.PE)], cat, elig)
+    assert r.requires_confirmation is True
+    assert r.confirmation_text.count("Confirm to continue.") == 1
+    assert r.confirmation_text.count("extra expiry-day margin") == 1
+    assert _symbol(cat, "CE") in r.confirmation_text and _symbol(cat, "PE") in r.confirmation_text
+
+
+def test_the_flag_messages_stay_per_leg_and_carry_no_confirm_sentence(cat, elig):
+    r = _run([_leg(Action.SELL, Instrument.CE), _leg(Action.SELL, Instrument.PE)], cat, elig)
+    shorts = [f for f in r.flags if f.code is FlagCode.EXPIRY_DAY_SHORT]
+    assert len(shorts) == 2 and all("Confirm to continue" not in f.message for f in shorts)
