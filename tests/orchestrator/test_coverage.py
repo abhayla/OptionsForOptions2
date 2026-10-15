@@ -201,12 +201,17 @@ def test_open_issue_missing_from_yaml_fails(tmp_path, monkeypatch):
     assert any("#5" in e and "no stage" in e for e in errors)
 
 
-def test_yaml_issue_not_open_fails(tmp_path, monkeypatch):
+def test_yaml_issue_closed_is_a_note_not_an_error(tmp_path, monkeypatch):
+    """Dies if the closed-issue row goes back to being an error (it broke main after every Fixes #N merge)."""
     st = make_repo(tmp_path)
     st["issues"]["#9"] = "S2"
     save_stages(tmp_path, st)
-    errors, *_ = _check(tmp_path, monkeypatch, (set(), ""))
-    assert any("#9" in e and "not open" in e for e in errors)
+    errors, _f, _c, _a, notes, _r = _check(tmp_path, monkeypatch, (set(), ""))
+    assert errors == []
+    assert any("#9" in n and "closed" in n for n in notes)
+    # an open issue with no stage must still fail
+    errors, *_ = _check(tmp_path, monkeypatch, ({"#5"}, ""))
+    assert any("#5" in e and "no stage" in e for e in errors)
 
 
 def test_gh_function_failure_modes_return_reason(tmp_path, monkeypatch):

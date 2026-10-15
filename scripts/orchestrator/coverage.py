@@ -264,7 +264,9 @@ def check(root, use_gh=True, require_gh=False):
             for i in sorted(issues - have, key=lambda s: int(s[1:])):
                 errors.append(f"issues: {i} is open on GitHub and has no stage")
             for i in sorted(have - issues, key=lambda s: int(s[1:]) if s[1:].isdigit() else 0):
-                errors.append(f"issues: {i} is in coverage-stages.yaml but is not open on GitHub")
+                # A merged "Fixes #N" closes the issue; failing here would break main and every open PR
+                # until a docs PR drops the row. Closed is housekeeping, untracked open work is the error.
+                notes.append(f"issues: {i} is closed; its row can be dropped in the next batched docs PR")
             notes.append(f"issues: {len(issues)} open, checked")
     else:
         notes.append("issues: not checked (--no-gh)")
