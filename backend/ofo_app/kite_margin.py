@@ -36,6 +36,9 @@ Transport = Callable[[str, str, dict[str, str], str | None], tuple[int, str]]
 _SIDES: Final = frozenset({"BUY", "SELL"})
 _PRODUCTS: Final = frozenset({"NRML", "MIS"})
 _ORDER_TYPES: Final = frozenset({"LIMIT", "MARKET"})
+# NFO (NIFTY) is proven on the 2026-10-15 reply; BFO (SENSEX -> BSE_FO) is unproven on real data until a BFO basket
+# reply is recorded.
+_EXCHANGES: Final = frozenset({"NFO", "BFO"})
 
 
 class KiteMarginError(Exception):
@@ -66,8 +69,8 @@ class BasketOrder:
             raise ValueError(f"product must be one of {sorted(_PRODUCTS)}")
         if self.order_type not in _ORDER_TYPES:
             raise ValueError(f"order_type must be one of {sorted(_ORDER_TYPES)}")
-        if self.exchange != "NFO" or self.variety != "regular":
-            raise ValueError("only regular NFO orders are checked")
+        if self.exchange not in _EXCHANGES or self.variety != "regular":
+            raise ValueError("only regular NFO or BFO orders are checked")
         if not isinstance(self.tradingsymbol, str) or not self.tradingsymbol.isalnum():
             raise ValueError("tradingsymbol must be a plain symbol")
         if type(self.quantity) is not int or self.quantity <= 0:
@@ -107,9 +110,9 @@ def urllib_transport(method: str, url: str, headers: dict[str, str], body: str |
     except urllib.error.HTTPError as exc:
         try:
             return exc.code, exc.read().decode("utf-8")
-        except (OSError, UnicodeDecodeError):
+        except Exception:  # noqa: BLE001 - the status alone decides
             return exc.code, ""
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except Exception:  # noqa: BLE001 - IncompleteRead, bad UTF-8, resets, timeouts: all "not confirmed"
         raise KiteMarginError("kite_margin_unavailable") from None
 
 
@@ -136,7 +139,7 @@ class KiteMargin:
         headers = {**self._headers, **(extra or {})}
         try:
             status, text = self._transport(method, self._base + path, headers, body)
-        except (OSError, TimeoutError):
+        except Exception:  # noqa: BLE001 - whatever the transport raises, the answer is "not confirmed"
             raise KiteMarginError("kite_margin_unavailable") from None
         if status != 200:
             log.warning("kite margin HTTP status %s", status)
@@ -193,9 +196,9 @@ def _error_type(text: str) -> str | None:
 
 def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginVerdict:
     """The check the basket builder runs: both figures from Zerodha, then the domain gate. Any failure to read either
-    figure blocks (the gate's "could not confirm" message); nothing is retried. Funds below zero count as zero."""
+    figure blocks (the gate's "could not confirm" message); nothing is retried. A negative balance is compared and shown as Zerodha gives it."""
     try:
-        available: Decimal | None = max(client.fetch_available_funds(), Decimal(0))
+        available: Decimal | None = client.fetch_available_funds()
         required: Decimal | None = client.fetch_basket_margin(orders).final_total
     except KiteMarginError:
         available = required = None

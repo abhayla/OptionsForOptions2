@@ -3,15 +3,17 @@
 No network, no database. The funds reply is built from the recorded SHAPE (shape_user_margins.json holds field types
 only; real values are withheld), so `equity.net` is unproven on real data until the live run of 2026-10-16.
 """
+import http.client
 import json
 import logging
 import pathlib
+import urllib.request
 from decimal import Decimal
 
 import pytest
 
 from ofo.execution.margin_gate import MarginVerdict
-from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin_verdict
+from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin_verdict, urllib_transport
 
 REPLY_FILE = (pathlib.Path(__file__).resolve().parent.parent
               / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json")
@@ -145,13 +147,73 @@ def test_ac1_equal_funds_build_and_one_paisa_short_blocks_through_the_client() -
     assert "₹68,498.85" in blocked.message.what_happened and "₹68,498.84" in blocked.message.what_happened
 
 
-def test_ac1_negative_funds_block_with_zero_available() -> None:
-    """AC-1: a negative equity.net (account in debit) blocks and shows Rs 0.00 available."""
+def test_ac1_negative_funds_block_and_show_zerodhas_signed_figure() -> None:
+    """AC-1 (round 2 item 3): a negative equity.net (account in debit) blocks and is shown as Zerodha gives it."""
     def transport(method, url, headers, body):
         return (200, REPLY_TEXT) if "basket" in url else (200, funds_text("-120.5"))
 
+    assert client(Fake(text=funds_text("-120.5"))).fetch_available_funds() == Decimal("-120.5")
     verdict = margin_verdict(client(transport), condor())
-    assert verdict.allowed is False and "₹0.00 is available" in verdict.message.what_happened
+    assert verdict.allowed is False and verdict.available == Decimal("-120.5")
+    assert "-₹120.50 is available" in verdict.message.what_happened
+
+
+def test_ac1_a_sensex_basket_on_bfo_is_checked_not_refused() -> None:
+    """AC-1 (round 2 item 2): a BFO order is accepted (SENSEX -> BSE_FO). UNPROVEN on real data until a BFO basket
+    reply is recorded: only the NFO condor reply of 2026-10-15 exists, so this test replays that reply's shape."""
+    order = BasketOrder("BFO", "SENSEX26O1682000CE", "SELL", "NRML", "LIMIT", 20, Decimal("100.5"))
+    fake = Fake(text=REPLY_TEXT)
+    result = client(fake).fetch_basket_margin([order])
+    assert result.final_total == Decimal("68498.85")
+    assert '"exchange": "BFO"' in fake.calls[0][3]
+
+
+class _Once:
+    def __init__(self, exc: Exception) -> None:
+        self.exc = exc
+
+    def __call__(self, method, url, headers, body):
+        raise self.exc
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"x"), http.client.RemoteDisconnected("x"),
+                                 ConnectionResetError("x"), TimeoutError("x"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "x"),
+                                 ValueError("x"), RuntimeError("x")])
+def test_ac1_every_transport_exception_is_the_typed_unavailable_error_and_blocks(exc: Exception) -> None:
+    """AC-1 (round 2 item 4): whatever the transport raises -> kite_margin_unavailable; the gate blocks with the
+    could-not-confirm message."""
+    with pytest.raises(KiteMarginError) as raised:
+        client(_Once(exc)).fetch_available_funds()
+    assert raised.value.code == "kite_margin_unavailable"
+    verdict = margin_verdict(client(_Once(exc)), condor())
+    assert verdict.allowed is False
+    assert verdict.message.what_happened == "We could not confirm your available margin with Zerodha. Execution is paused."
+
+
+class _Response:
+    def __init__(self, body: bytes, status: int = 200, fail_read: Exception | None = None) -> None:
+        self.body, self.status, self.fail_read = body, status, fail_read
+
+    def read(self) -> bytes:
+        if self.fail_read:
+            raise self.fail_read
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x")),
+                                      _Response(b"not json")])
+def test_ac1_the_real_transport_turns_bad_bodies_into_the_typed_error(monkeypatch, response) -> None:
+    """AC-1 (round 2 item 4): a 200 body that is not UTF-8, a read cut short, or not JSON -> typed error."""
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: response)
+    with pytest.raises(KiteMarginError) as raised:
+        KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
+    assert raised.value.code == "kite_margin_unavailable"
 
 
 @pytest.mark.parametrize("fail_funds", [True, False])
@@ -173,7 +235,7 @@ def test_ac1_either_read_failing_blocks_the_basket(fail_funds: bool) -> None:
 
 
 @pytest.mark.parametrize("change", [{"transaction_type": "HOLD"}, {"product": "CNC"}, {"order_type": "SL"},
-                                    {"exchange": "NSE"}, {"variety": "amo"}, {"quantity": 0}, {"quantity": 65.0},
+                                    {"exchange": "NSE"}, {"exchange": "nfo"},{"variety": "amo"}, {"quantity": 0}, {"quantity": 65.0},
                                     {"price": 53.3}, {"price": Decimal("NaN")}, {"price": Decimal("-1")},
                                     {"tradingsymbol": 'X","y":1'}])
 def test_ac1_basket_order_is_a_closed_shape(change: dict) -> None:
@@ -191,3 +253,11 @@ def test_ac1_an_empty_or_foreign_basket_is_refused_before_any_call() -> None:
         with pytest.raises(ValueError):
             client(fake).fetch_basket_margin(bad)
     assert fake.calls == []
+
+
+@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x"))])
+def test_ac1_urllib_transport_itself_raises_only_the_typed_error(monkeypatch, response) -> None:
+    """AC-1 (round 2 item 4): the shipped transport converts a bad UTF-8 body or a short read itself."""
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: response)
+    with pytest.raises(KiteMarginError):
+        urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)

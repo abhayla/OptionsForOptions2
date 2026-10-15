@@ -6,6 +6,7 @@ available vs required. Expected figures come from that recorded Zerodha reply, n
 """
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import json
 import pathlib
@@ -88,14 +89,31 @@ def test_ac1_sub_paisa_amounts_never_round_in_the_users_favour() -> None:
     assert "needs ₹100.01 of margin; ₹100.00 is available" in short.message.what_happened
 
 
-@pytest.mark.parametrize("bad", [68498.85, "68498.85", 68498, True, Decimal("NaN"), Decimal("Infinity"),
-                                 Decimal("-1")])
-def test_ac1_money_must_be_exact_finite_non_negative_decimal(bad: object) -> None:
-    """AC-1: a float, string, int, bool, NaN, infinity or negative amount raises; it never compares."""
+@pytest.mark.parametrize("bad", [68498.85, "68498.85", 68498, True, Decimal("NaN"), Decimal("Infinity")])
+def test_ac1_money_must_be_exact_finite_decimal(bad: object) -> None:
+    """AC-1: a float, string, int, bool, NaN or infinity amount raises; it never compares."""
     with pytest.raises((TypeError, ValueError)):
         check_margin(bad, Decimal("1"))  # type: ignore[arg-type]
     with pytest.raises((TypeError, ValueError)):
         check_margin(Decimal("1"), bad)  # type: ignore[arg-type]
+
+
+def test_ac1_required_margin_cannot_be_negative() -> None:
+    """AC-1: a negative required margin raises (Zerodha never needs less than nothing)."""
+    with pytest.raises(ValueError):
+        check_margin(Decimal("1"), Decimal("-1"))
+
+
+def test_ac4_a_negative_balance_always_blocks_and_shows_its_sign() -> None:
+    """AC-4 (round 2 item 3): Zerodha's own signed equity.net is compared and shown, never clamped to zero; even
+    a required margin of 0 is not met by a negative balance."""
+    verdict = check_margin(Decimal("-120.5"), Decimal("68498.85"))
+    assert verdict.allowed is False and verdict.available == Decimal("-120.5")
+    assert verdict.message is not None
+    assert verdict.message.what_happened == (
+        "Zerodha says this strategy needs ₹68,498.85 of margin; -₹120.50 is available in your account.")
+    assert check_margin(Decimal("-0.01"), Decimal("0")).allowed is False
+    assert check_margin(Decimal("0"), Decimal("0")).allowed is True
 
 
 @pytest.mark.parametrize("available,required", [(None, Decimal("1")), (Decimal("1"), None), (None, None)])
@@ -111,9 +129,31 @@ def test_ac1_an_unknown_amount_blocks_the_basket(available: Decimal | None, requ
 def test_ac1_a_caller_cannot_forge_an_allowed_verdict() -> None:
     """AC-1: MarginVerdict cannot be built outside check_margin (caller-supplied-verdict-trusted)."""
     with pytest.raises(TypeError):
-        MarginVerdict(True, Decimal("1"), Decimal("9"), None)  # type: ignore[call-arg]
+        MarginVerdict(Decimal("1"), Decimal("9"))  # type: ignore[call-arg]
     with pytest.raises(TypeError):
-        MarginVerdict(True, Decimal("1"), Decimal("9"), None, _mint=object())  # type: ignore[arg-type]
+        MarginVerdict(Decimal("1"), Decimal("9"), _mint=object())  # type: ignore[arg-type]
+    with pytest.raises(TypeError):  # `allowed` and `message` are not inputs
+        MarginVerdict(Decimal("1"), Decimal("9"), allowed=True, message=None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):  # even a holder of the mint cannot pass them
+        MarginVerdict(Decimal("1"), Decimal("9"), margin_gate._MINT, True)  # type: ignore[call-arg]
+
+
+def test_ac1_replace_cannot_forge_an_allowed_verdict() -> None:
+    """AC-1 (round 2 item 1): dataclasses.replace cannot set `allowed` or drop the message; copying with other
+    amounts re-derives both from available >= required."""
+    blocked = check_margin(Decimal("68498.84"), Decimal("68498.85"))
+    with pytest.raises(TypeError):
+        dataclasses.replace(blocked, allowed=True, message=None)
+    with pytest.raises(TypeError):
+        dataclasses.replace(blocked, message=None)
+    with pytest.raises(TypeError):
+        dataclasses.replace(blocked, allowed=True)
+    still_blocked = dataclasses.replace(blocked, available=Decimal("1"))
+    assert still_blocked.allowed is False and still_blocked.message is not None
+    now_allowed = dataclasses.replace(blocked, available=Decimal("68498.85"))
+    assert now_allowed.allowed is True and now_allowed.message is None  # derived from the amounts, not asserted
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        blocked.allowed = True  # type: ignore[misc]
 
 
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
