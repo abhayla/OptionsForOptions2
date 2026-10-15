@@ -34,6 +34,7 @@ from enum import Enum
 from typing import Callable, Mapping
 
 from ofo.errors import CATALOGUE, UserFacingError, display_text, render
+from ofo.reconciliation.settlement import is_expired
 from ofo.strategy.definition import MAX_TEXT, Contract, contract_sort_key, describe_contract
 from ofo.strategy.versions import MAX_FUTURE_SKEW, MAX_UNITS, Position, StrategyRecord, VersionError, check_contract
 
@@ -71,6 +72,8 @@ class MismatchKind(Enum):
     EXTERNAL_MODIFICATION = "external broker modification"  # a change no platform order/fill explains (AC-4)
     PARTIAL_EXECUTION = "partially executed strategy"
     STANDALONE_CHANGED = "standalone position changed"
+    AWAITING_SETTLEMENT = "awaiting_settlement"  # an expired leg, no settlement price yet, gone at Zerodha (ADR-083)
+    EXPIRED_STILL_AT_BROKER = "expired_still_at_broker"  # settled in the platform; Zerodha still lists it
 
 
 #: The catalogue template for each kind (ofo.errors.templates): the user's four-part text comes only from render().
@@ -84,7 +87,12 @@ _KIND_TEMPLATE = {
     MismatchKind.EXTERNAL_MODIFICATION: "recon_external_modification",
     MismatchKind.PARTIAL_EXECUTION: "recon_partial_execution",
     MismatchKind.STANDALONE_CHANGED: "recon_standalone_changed",
+    MismatchKind.AWAITING_SETTLEMENT: "recon_awaiting_settlement",
+    MismatchKind.EXPIRED_STILL_AT_BROKER: "recon_expired_still_at_broker",
 }
+
+#: ADR-083 kinds: shown, never blocking (``strategy_ids`` empty). Only a strategy with settlement state produces them.
+SETTLEMENT_KINDS = frozenset({MismatchKind.AWAITING_SETTLEMENT, MismatchKind.EXPIRED_STILL_AT_BROKER})
 #: The next-action part of each kind's template: what the audit record keeps (``Mismatch.next_action``).
 _NEXT_ACTION = {kind: CATALOGUE[template_id].next_action for kind, template_id in _KIND_TEMPLATE.items()}
 
@@ -410,6 +418,8 @@ def compare(
     )
     diff = {c: broker.get(c, 0) - expected.get(c, 0) for c in differing}
     held = holders_by_contract(differing, actives, proposals)
+    settlement_notes, differing = _settlement_notes(
+        differing, diff, held, broker, expected, alone, outside, records, actives, at)
     index = _ActiveIndex.build(differing, actives)
 
     groups = _pair_moved_contracts(differing, diff, held)
@@ -441,6 +451,7 @@ def compare(
             next_action=_NEXT_ACTION[kind],
         ))
 
+    mismatches.extend(settlement_notes)
     covered = sorted(sid for sid, record in records.items() if not record.exited)
     involved: dict[str, set[Contract]] = {}
     for m in mismatches:
@@ -449,6 +460,65 @@ def compare(
     shares = tuple((sid, broker_share(sid, broker, alone, actives, involved.get(sid, set()), index)) for sid in covered)
     broker_lines = tuple(sorted(broker.items(), key=lambda item: contract_sort_key(item[0])))
     return ReconciliationReport(at, broker_lines, tuple(mismatches), shares)
+
+
+def _settlement_notes(
+    differing: list[Contract],
+    diff: Mapping[Contract, int],
+    held: Mapping[Contract, tuple[str, ...]],
+    broker: Mapping[Contract, int],
+    expected: Mapping[Contract, int],
+    alone: Mapping[Contract, int],
+    outside: Mapping[Contract, int],
+    records: Mapping[str, StrategyRecord],
+    actives: Mapping[str, Mapping[Contract, int]],
+    at: datetime.datetime,
+) -> tuple[list[Mismatch], list[Contract]]:
+    """ADR-083: take expired-leg differences out of ``differing``, as non-blocking notes (W-085).
+
+    - AWAITING_SETTLEMENT: the broker shows none of an expired contract that only strategies flagged "awaiting
+      settlement" and/or a recorded standalone hold. The strategy keeps the leg open; nothing blocks.
+    - EXPIRED_STILL_AT_BROKER: the broker still shows a contract some strategy settled, and nobody holds it now.
+    Anything else on those contracts (another holder, a different quantity, a contract never settled) stays an
+    ordinary, blocking mismatch. Strategies with no settlement state change nothing here.
+    """
+    awaiting_by: dict[Contract, set[str]] = {}
+    settled: dict[Contract, int] = {}
+    for sid, record in records.items():
+        for contract, units in record.settled_units.items():
+            settled[contract] = settled.get(contract, 0) + units
+        for contract in record.awaiting_settlement:
+            if not record.exited:
+                awaiting_by.setdefault(contract, set()).add(sid)
+    notes: list[Mismatch] = []
+    rest: list[Contract] = []
+    for contract in differing:
+        kind = None
+        if outside.get(contract):
+            pass  # an unexplained external change (AC-4): never a settlement note, reported and blocking as before
+        elif broker.get(contract, 0) == 0 and set(held[contract]) <= awaiting_by.get(contract, set()) and (
+                held[contract] or (alone.get(contract) and is_expired(contract, at))):
+            # Once expired, EVERY holder is expected gone from Zerodha: strategy legs awaiting their price and a
+            # recorded standalone on the same contract alike (round 3). Never SIDE_MISMATCH / STANDALONE_CHANGED.
+            kind = MismatchKind.AWAITING_SETTLEMENT
+        elif (contract in settled and not expected.get(contract) and not held[contract]
+              and broker.get(contract, 0) == settled[contract]):
+            kind = MismatchKind.EXPIRED_STILL_AT_BROKER
+        if kind is None:
+            rest.append(contract)
+            continue
+        notes.append(Mismatch(
+            kind=kind,
+            strategy_ids=(),
+            at=at,
+            broker_state=((contract, broker.get(contract, 0)),),
+            platform_state=((contract, expected.get(contract, 0)),),
+            platform_breakdown=tuple(
+                (sid, contract, units[contract]) for sid, units in sorted(actives.items()) if units.get(contract)),
+            difference=((contract, diff[contract]),),
+            next_action=_NEXT_ACTION[kind],
+        ))
+    return notes, rest
 
 
 def _pair_moved_contracts(
