@@ -236,6 +236,7 @@ issues:
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
   "#275": 4b           # deferred: W-083 duplicate row + hidden-position audit; W-086 futures wording + repeated ack
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
+  "#285": 4b           # deferred: MARKET_DATA_120 shared by two templates (renumber the circuit one)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)

@@ -90,7 +90,8 @@ class FlagCode(str, Enum):
     DATA_STALE_ON_EXIT = "DATA_STALE_ON_EXIT"
     PRICE_BAND_UNKNOWN_ON_EXIT = "PRICE_BAND_UNKNOWN_ON_EXIT"
     EXPIRY_DAY_ENTRY = "EXPIRY_DAY_ENTRY"  # W-086: an entry/adjustment leg whose contract expires today (warn)
-    EXPIRY_DAY_SHORT = "EXPIRY_DAY_SHORT"  # W-086: ... and the leg is a SELL (explicit acknowledgement)
+    EXPIRY_DAY_SHORT = "EXPIRY_DAY_SHORT"  # W-086: ... and the leg is a short OPTION (explicit acknowledgement)
+    EXPIRY_DAY_SHORT_FUTURE = "EXPIRY_DAY_SHORT_FUTURE"  # ... and the leg is a short FUTURE (acknowledgement, no 2%)
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,7 @@ def _fail(code: CheckCode, template_id: str, *, leg_number: int | None = None,
 class Flag:
     code: FlagCode
     message: str
+    contracts: tuple[str, ...] = ()  # the trading symbols the flag is about (a confirmation names them all once)
 
     def __post_init__(self) -> None:
         if type(self.message) is ExplanationText:  # a render_explanation() line: keep and check its plain text
@@ -551,8 +553,15 @@ def _expiry_day_flags(
         if len(matches) != 1 or not matches[0].has_ref(ZERODHA):
             continue
         symbol = matches[0].ref(ZERODHA).broker_symbol
-        if leg.action is Action.SELL:
-            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol)))
+        if leg.instrument is Instrument.FUT:  # F-20: the extra 2% is for short OPTIONS only
+            if leg.action is Action.SELL:  # ADR-083 decision 2: any SHORT leg expiring that day needs acknowledgement
+                out.append(Flag(FlagCode.EXPIRY_DAY_SHORT_FUTURE,
+                                render_explanation("flag_expiry_day_future_short", symbol=symbol), (symbol,)))
+            else:
+                out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_future", symbol=symbol)))
+        elif leg.action is Action.SELL:
+            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol),
+                            (symbol,)))
         else:
             out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_entry", symbol=symbol)))
     return out
@@ -631,7 +640,14 @@ def _confirmation_text(flags: list[Flag]) -> str:
     stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
     band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
     texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
-    texts += [f.message for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT]
+    options = tuple(c for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT for c in f.contracts)
+    futures = tuple(c for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT_FUTURE for c in f.contracts)
+    if options:  # one sentence naming every expiring short option, one for short futures, one "Confirm to continue."
+        texts.append(str.__str__(render_explanation("confirm_expiry_day_short", symbols=options)))
+    if futures:
+        texts.append(str.__str__(render_explanation("confirm_expiry_day_short_future", symbols=futures)))
+    if options or futures:
+        texts.append(str.__str__(render_explanation("confirm_to_continue")))
     return " ".join(texts)
 
 
@@ -663,7 +679,8 @@ def check_pre_execution(
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
     needs_confirmation = not failures and any(
-        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, FlagCode.EXPIRY_DAY_SHORT)
+        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, FlagCode.EXPIRY_DAY_SHORT,
+                   FlagCode.EXPIRY_DAY_SHORT_FUTURE)
         for f in flags)
     record = None
     if failures:
