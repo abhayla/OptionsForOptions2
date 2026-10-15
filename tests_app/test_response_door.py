@@ -762,8 +762,8 @@ def test_the_framework_docs_answer_404_everywhere_else(env: str, monkeypatch: py
 @pytest.mark.parametrize("env", ["development", "production"])
 def test_every_route_of_the_real_app_goes_through_the_door(env: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-2: each route is exactly a ClosedRoute carrying the door marker, its wrapper is async exactly when the
-    original endpoint is, and its response_model is a closed ApiModel from the swept set. Exempt: the outcome route
-    (until W-066 / #172) and the framework docs routes, only in development."""
+    original endpoint is, and its response_model is a closed ApiModel from the swept set. Exempt: the framework docs
+    routes only, only in development (the outcome route joined the door in W-066 / #172)."""
     monkeypatch.setenv("APP_ENV", env)
     problems, docs_seen = _route_problems(create_app().routes)
     assert problems == []
@@ -771,23 +771,19 @@ def test_every_route_of_the_real_app_goes_through_the_door(env: str, monkeypatch
 
 
 def _route_problems(routes) -> tuple[list[str], set[str]]:
-    """The enumeration over any route list: (problems, docs paths seen). The outcome exemption is the REAL outcome
-    endpoint function (identity), not a method and path that any stand-in route can copy."""
+    """The enumeration over any route list: (problems, docs paths seen). No route is exempt (W-066 moved the outcome
+    route onto the door, issue #172)."""
     import inspect
 
     from fastapi.routing import APIRoute
 
     from ofo_app.errors import ClosedRoute
-    from ofo_app.routes import outcome
 
     models = set(_app_models())
     problems, docs_seen = [], set()
     for route in routes:
         if getattr(route, "path", "") in DOCS_PATHS + ("/docs/oauth2-redirect",) and not isinstance(route, APIRoute):
             docs_seen.add(route.path)
-            continue
-        if (type(route) is APIRoute and route.path == "/api/strategies/outcome" and route.methods == {"POST"}
-                and route.endpoint is outcome.strategy_outcome):
             continue
         if type(route) is not ClosedRoute:
             problems.append(f"{getattr(route, 'path', route)}: {type(route).__name__}")
@@ -814,11 +810,16 @@ def test_a_stand_in_route_at_the_outcome_path_is_not_exempt() -> None:
     assert any("/api/strategies/outcome" in p for p in problems), problems
 
 
-def test_the_exemptions_are_exactly_the_outcome_route_and_the_docs_paths() -> None:
-    """AC-2: the boundary exempts only (POST, outcome) and the docs GET paths, nothing wider."""
-    from ofo_app import errors
+def test_the_exemptions_are_exactly_the_docs_paths() -> None:
+    """AC-2: the outcome route is on the door (W-066, #172); the boundary exempts the docs GET paths only."""
+    import inspect
 
-    assert errors.OUTCOME_EXEMPTION == ("POST", "/api/strategies/outcome")
+    from ofo_app import errors
+    from ofo_app.routes import outcome
+
+    assert not hasattr(errors, "OUTCOME_EXEMPTION")
+    assert "outcome" not in inspect.getsource(errors.install).lower()
+    assert outcome.router.route_class is errors.ClosedRoute
 
 
 # --- W-070 (issue #197): a door response sends only what the door minted - body, header names AND values, status -------

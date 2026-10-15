@@ -18,16 +18,16 @@ from typing import Callable, Literal, Optional, Union
 from fastapi import APIRouter, Depends
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from ofo.engine.legs import Action, Instrument
+from ofo.engine.legs import Action
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.rules.inputs import DataHealth
 from ofo.scenario.views import View
-from ofo.table import CellKind, UXLevel
+from ofo.table import UXLevel
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
+from ofo_app.errors import ClosedRoute
 
-router = APIRouter()
+router = APIRouter(route_class=ClosedRoute)
 
 
 @dataclass(frozen=True)
@@ -65,11 +65,20 @@ class OutcomeRequest(BaseModel):
 
 
 # ---- response (typed, W-066): text is catalogue text, numbers are Money strings, codes are closed ----------------------
+#: Closed codes: Literals of the domain enums' values (W-069 door: an Enum is not a closed leaf). A test pins each to its
+#: enum (tests_app/test_outcome_split_loss.py), so a new enum member cannot drift away from the response.
+CellKindCode = Literal["money", "points", "percent", "greek", "iv", "quantity", "text"]
+ViewCode = Literal["at_expiry", "estimated_now"]
+HealthCode = Literal["available", "stale", "delayed", "unhealthy", "unavailable"]
+#: A scenario column's marker as a closed code (the column's own label already reads "CURRENT 23,047" / "0-P&L 22,909");
+#: an unknown marker is a KeyError, answered by the error boundary, never passed through.
+MARKER_CODES = {"CURRENT": "CURRENT", "0-P&L": "ZERO_PNL"}
+
 
 class CellOut(ApiModel):
     value: Optional[Union[Money, CatalogueText]]
     display: CatalogueText
-    kind: CellKind
+    kind: CellKindCode
     reason: Optional[CatalogueText]
     side: Optional[Literal["Cr", "Dr"]]
     per_unit: Optional[Money]
@@ -79,9 +88,9 @@ class CellOut(ApiModel):
 class ColumnOut(ApiModel):
     id: Identifier
     label: CatalogueText
-    kind: CellKind
+    kind: CellKindCode
     is_scenario_level: bool
-    markers: list[Literal["CURRENT", "0-P&L"]]
+    markers: list[Literal["CURRENT", "ZERO_PNL"]]
     visible: bool
 
 
@@ -106,7 +115,7 @@ class LevelOut(ApiModel):
 
 
 class ScenarioOut(ApiModel):
-    view: View
+    view: ViewCode
     label: CatalogueText
     kind: Literal["exact", "estimate"]
     available: bool
@@ -125,7 +134,7 @@ class PointOut(ApiModel):
 
 
 class PayoffOut(ApiModel):
-    view: View
+    view: ViewCode
     points: list[PointOut]
 
 
@@ -151,8 +160,8 @@ class MarginOut(ApiModel):
 class LegOut(ApiModel):
     instrument_id: InstrumentId
     symbol: Optional[Identifier]
-    action: Action
-    instrument: Optional[Instrument]
+    action: Literal["BUY", "SELL"]
+    instrument: Optional[Literal["CE", "PE", "FUT"]]
     strike: Optional[Money]
     expiry: Optional[datetime.date]
     lots: int
@@ -162,7 +171,7 @@ class LegOut(ApiModel):
     captured_at: datetime.datetime
     ltp: Optional[Money]
     iv: Optional[Money]
-    health: Optional[DataHealth]
+    health: Optional[HealthCode]
     label: Optional[CatalogueText]
 
 
@@ -172,13 +181,13 @@ class AdvancedLegOut(ApiModel):
     symbol: Optional[Identifier]
     bid: Optional[Money]
     ask: Optional[Money]
-    health: Optional[DataHealth]
+    health: Optional[HealthCode]
 
 
 class OutcomeResponse(ApiModel):
-    state: OutcomeState
+    state: Literal["COMPUTED", "NOT_CONNECTED", "REFUSED"]
     underlying: Literal["NIFTY", "SENSEX"]
-    ux_level: UXLevel
+    ux_level: Literal["guided", "standard", "advanced"]
     status_label: Optional[CatalogueText]
     reason: Optional[CatalogueText]
     output_label: Optional[CatalogueText]
@@ -229,6 +238,8 @@ def strategy_outcome(req: OutcomeRequest,
                                  valuation, ctx.rate)
         out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
     body = outcome_to_dict(out)
+    for column in (body.get("table") or {}).get("columns", ()):
+        column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if ctx is not None and ux is UXLevel.ADVANCED:  # the UX gate: nothing else ever carries bid/ask
         body["advanced_details"] = _advanced_details(snapshot, definition,
                                                      {l["instrument_id"]: l["symbol"] for l in body["legs"]})
