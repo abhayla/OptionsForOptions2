@@ -1,0 +1,14 @@
+{
+ "instrument_token": "12079362",
+ "exchange_token": "47185",
+ "tradingsymbol": "NIFTY26O1923550CE",
+ "name": "NIFTY",
+ "last_price": "0",
+ "expiry": "2026-10-19",
+ "strike": "23550",
+ "tick_size": "0.05",
+ "lot_size": "65",
+ "instrument_type": "CE",
+ "segment": "NFO-OPT",
+ "exchange": "NFO"
+}
