@@ -14,8 +14,18 @@ export async function findClippedElements(page: import('@playwright/test').Page)
       if (!root) return [{ element: `${main} not found`, left: 0, right: 0 }]
       const vw = document.documentElement.clientWidth
       const out: { element: string; left: number; right: number }[] = []
+      // A marker is trusted only on an element that really scrolls horizontally (computed overflow-x auto or scroll);
+      // a marked overflow:hidden/visible element hides content, so it is reported and its content is still checked.
+      const scrolls = (e: Element) => ['auto', 'scroll'].includes(getComputedStyle(e).overflowX)
+      const inValidScroller = (e: Element) => {
+        for (let p = e.parentElement; p; p = p.parentElement) if (p.hasAttribute(attr) && scrolls(p)) return true
+        return false
+      }
       for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
-        if (el.parentElement && el.parentElement.closest(`[${attr}]`)) continue // inside a deliberate scroller
+        if (el.hasAttribute(attr) && !scrolls(el)) {
+          out.push({ element: `${el.tagName.toLowerCase()}[${attr} but overflow-x is ${getComputedStyle(el).overflowX}]`, left: 0, right: 0 })
+        }
+        if (inValidScroller(el)) continue // inside a deliberate scroller
         if (getComputedStyle(el).display === 'none') continue
         const r = el.getBoundingClientRect()
         if (r.width === 0 && r.height === 0) continue // not rendered

@@ -108,9 +108,15 @@ test('clipped over-wide table is caught, naming route and width; a marked scroll
   }
 
   await page.evaluate((a) => document.querySelector('#fx')!.setAttribute(a, ''), SCROLLER_ATTR)
+  // the marker alone is not trusted: a marked overflow:hidden element hides content, it does not scroll it
+  const markedHidden = await findClippedElements(page)
+  expect(markedHidden.length, 'marked overflow:hidden element must still fail').toBeGreaterThan(0)
+  expect(describeClipped('/home', width, markedHidden)).toContain(`at ${width}px`)
+
+  // a marked element whose computed overflow-x is auto scrolls on purpose: its wide table is allowed
+  await page.evaluate(() => ((document.querySelector('#fx') as HTMLElement).style.overflowX = 'auto'))
   const still = await findClippedElements(page)
-  // the marked wrapper itself fits (it is the viewport-wide block); its wide table is allowed
-  expect(still, 'marked scroller must pass').toEqual([])
+  expect(still, 'marked overflow-x:auto scroller must pass').toEqual([])
 })
 
 test('account menu fits the viewport and does not cause horizontal scroll', async ({ page }) => {
