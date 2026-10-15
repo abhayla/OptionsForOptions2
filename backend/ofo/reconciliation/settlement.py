@@ -143,7 +143,9 @@ def settle_expired_legs(
 
     if timeline is not None and entries:
         write(Timeline.from_entries(timeline.strategy_id, timeline.entries, clock=timeline._clock))  # dry run
-    strategy.settle_legs([leg.contract for leg in settled], awaiting, at=now, reference=reference)
+    contracts = [leg.contract for leg in settled]
+    strategy.check_settlement(contracts, awaiting, at=now, reference=reference)  # every refusal, before any write
     if timeline is not None:
-        write(timeline)
+        write(timeline)  # the only step that can fail now (storage); the record is still untouched
+    strategy.settle_legs(contracts, awaiting, at=now, reference=reference)  # in-memory, cannot fail after the check
     return SettlementResult(tuple(settled), tuple(awaiting), exited)

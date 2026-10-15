@@ -328,6 +328,66 @@ def test_settlement_is_atomic_a_failing_timeline_write_changes_nothing():
     assert len(record.outcomes) == 1  # only the original activation
 
 
+class _FailingTimeline(Timeline):
+    """A timeline whose real append raises OSError (storage failure) once armed."""
+
+    __slots__ = ()
+
+    def append(self, *args, **kwargs):
+        if _FailingTimeline.armed:
+            raise OSError("disk full")
+        return super().append(*args, **kwargs)
+
+    armed = False
+
+
+def test_a_failing_real_timeline_append_leaves_the_record_unchanged():
+    record = calendar()
+    timeline = _FailingTimeline("CAL-5", clock=clock)
+    # The dry run uses a plain Timeline copy, so only the REAL append can fail here.
+    _FailingTimeline.armed = True
+    try:
+        with pytest.raises(OSError):
+            settle(record, timeline=timeline)
+    finally:
+        _FailingTimeline.armed = False
+    assert record.active_version.intended_position.as_dict() == {SHORT_CE: -20, FAR_FUT: 20}
+    assert record.settled_contracts == frozenset() and len(record.outcomes) == 1 and timeline.entries == ()
+    assert [leg.contract for leg in settle(record, timeline=timeline).settled] == [SHORT_CE]  # retry works
+
+
+def test_verifier_case_expired_leg_plus_standalone_both_gone_at_zerodha_blocks_nothing_then_settles():
+    """AC-2 round 3: SELL 72600 CE x20 in a calendar AND a recorded standalone CE x10 (short); after the close
+    Zerodha drops both and shows only the far future. ADR-083: no blocking mismatch, never SIDE_MISMATCH."""
+    record = calendar()
+    settle(record, prices={})
+    standalone = {SHORT_CE: -10}
+    report = compare({FAR_FUT: 20}, {"CAL": record}, standalone, at=AFTER_CLOSE, clock=clock)
+    (m,) = report.mismatches
+    assert m.kind is MismatchKind.AWAITING_SETTLEMENT and not m.blocks and m.difference == ((SHORT_CE, 30),)
+    assert report.blocked_strategy_ids == frozenset() and not record.reconciliation_required
+    # The price arrives: the strategy is not blocked, so settlement works, and the picture stays clean.
+    assert [leg.contract for leg in settle(record).settled] == [SHORT_CE]
+    after = compare({FAR_FUT: 20}, {"CAL": record}, standalone, at=AFTER_CLOSE, clock=clock)
+    assert all(x.kind is not MismatchKind.SIDE_MISMATCH and not x.blocks for x in after.mismatches)
+
+
+def test_a_standalone_alone_on_an_expired_contract_is_not_standalone_changed_but_a_live_one_still_is():
+    alone_expired = {SHORT_CE: -10}
+    (m,) = compare({}, {}, alone_expired, at=AFTER_CLOSE, clock=clock).mismatches
+    assert m.kind is MismatchKind.AWAITING_SETTLEMENT and not m.blocks
+    before_close = datetime.datetime(2026, 10, 15, 15, 0, tzinfo=IST)
+    (m,) = compare({}, {}, alone_expired, at=before_close, clock=clock).mismatches
+    assert m.kind is MismatchKind.STANDALONE_CHANGED  # not yet expired: as before
+
+
+def test_standalone_on_an_expired_contract_still_at_zerodha_at_another_quantity_still_mismatches():
+    record = calendar()
+    settle(record, prices={})
+    ms = compare({SHORT_CE: -5, FAR_FUT: 20}, {"CAL": record}, {SHORT_CE: -10}, at=AFTER_CLOSE, clock=clock).mismatches
+    assert any(x.blocks for x in ms)  # a quantity left at Zerodha that expiry should have removed: still blocks
+
+
 def test_expired_leg_listed_at_a_different_quantity_is_not_the_harmless_note():
     record = calendar()
     settle(record)

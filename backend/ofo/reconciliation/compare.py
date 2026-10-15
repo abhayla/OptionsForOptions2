@@ -34,6 +34,7 @@ from enum import Enum
 from typing import Callable, Mapping
 
 from ofo.errors import CATALOGUE, UserFacingError, display_text, render
+from ofo.reconciliation.settlement import is_expired
 from ofo.strategy.definition import MAX_TEXT, Contract, contract_sort_key, describe_contract
 from ofo.strategy.versions import MAX_FUTURE_SKEW, MAX_UNITS, Position, StrategyRecord, VersionError, check_contract
 
@@ -475,8 +476,8 @@ def _settlement_notes(
 ) -> tuple[list[Mismatch], list[Contract]]:
     """ADR-083: take expired-leg differences out of ``differing``, as non-blocking notes (W-085).
 
-    - AWAITING_SETTLEMENT: the broker shows none of a contract that only strategies flagged "awaiting settlement"
-      hold (no standalone on it). The strategy keeps the leg open; nothing blocks.
+    - AWAITING_SETTLEMENT: the broker shows none of an expired contract that only strategies flagged "awaiting
+      settlement" and/or a recorded standalone hold. The strategy keeps the leg open; nothing blocks.
     - EXPIRED_STILL_AT_BROKER: the broker still shows a contract some strategy settled, and nobody holds it now.
     Anything else on those contracts (another holder, a different quantity, a contract never settled) stays an
     ordinary, blocking mismatch. Strategies with no settlement state change nothing here.
@@ -489,16 +490,16 @@ def _settlement_notes(
         for contract in record.awaiting_settlement:
             if not record.exited:
                 awaiting_by.setdefault(contract, set()).add(sid)
-    if not awaiting_by and not settled:
-        return [], differing
     notes: list[Mismatch] = []
     rest: list[Contract] = []
     for contract in differing:
         kind = None
         if outside.get(contract):
             pass  # an unexplained external change (AC-4): never a settlement note, reported and blocking as before
-        elif (broker.get(contract, 0) == 0 and contract in awaiting_by and not alone.get(contract)
-                and set(held[contract]) <= awaiting_by[contract]):
+        elif broker.get(contract, 0) == 0 and set(held[contract]) <= awaiting_by.get(contract, set()) and (
+                held[contract] or (alone.get(contract) and is_expired(contract, at))):
+            # Once expired, EVERY holder is expected gone from Zerodha: strategy legs awaiting their price and a
+            # recorded standalone on the same contract alike (round 3). Never SIDE_MISMATCH / STANDALONE_CHANGED.
             kind = MismatchKind.AWAITING_SETTLEMENT
         elif (contract in settled and not expected.get(contract) and not held[contract]
               and broker.get(contract, 0) == settled[contract]):

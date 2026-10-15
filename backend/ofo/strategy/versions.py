@@ -615,6 +615,49 @@ class StrategyRecord:
         self._outcomes.append(outcome)
         return outcome
 
+    def check_settlement(
+        self,
+        settled: Collection[Contract],
+        awaiting: Collection[Contract],
+        *,
+        at: datetime.datetime,
+        reference: str,
+    ) -> tuple[frozenset, frozenset, dict, StrategyDefinition | None]:
+        """Raise exactly when ``settle_legs`` would refuse; change nothing (two-phase, W-085 round 3).
+
+        Returns (settled, awaiting, held units, the active definition without the settled legs, None when no leg
+        is left), so every step ``settle_legs`` then takes is an in-memory step that cannot fail."""
+        self._refuse_while_blocked("settle")
+        active = self.active_version
+        if active is None:
+            raise VersionError("nothing is active; there is no leg to settle")
+        settled, awaiting = frozenset(settled), frozenset(awaiting)
+        held = active.intended_position.as_dict()
+        for contract in settled | awaiting:
+            check_contract(contract)
+            if contract not in held:
+                raise VersionError(f"{describe_contract(contract)} is not a leg of the active version")
+        if settled & awaiting:
+            raise VersionError("a contract cannot be both settled and awaiting settlement")
+        _require_text(reference, "reference")
+        if not settled:
+            return settled, awaiting, held, None
+        if reference in self._references:
+            raise VersionError(f"settlement {reference!r} was already recorded")
+        if len(self._outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._check_time(at)
+        remaining = tuple(
+            leg for leg in active.definition.legs
+            if (active.definition.underlying, leg.instrument, leg.strike, leg.expiry) not in settled
+        )
+        replacement = None
+        if remaining:
+            if len(self._versions) >= MAX_VERSIONS:
+                raise VersionError(f"version list is full ({MAX_VERSIONS})")
+            replacement = dataclasses.replace(active.definition, legs=remaining)
+        return settled, awaiting, held, replacement
+
     def settle_legs(
         self,
         settled: Collection[Contract],
@@ -635,34 +678,14 @@ class StrategyRecord:
         still open for want of a price; replaces the awaiting set (a later call with the price settles them).
         Refused while the strategy is exited, blocked by reconciliation or has a proposal in flight (fail closed).
         """
-        self._refuse_while_blocked("settle")
+        settled, awaiting, held, replacement = self.check_settlement(settled, awaiting, at=at, reference=reference)
         active = self.active_version
-        if active is None:
-            raise VersionError("nothing is active; there is no leg to settle")
-        settled, awaiting = frozenset(settled), frozenset(awaiting)
-        held = active.intended_position.as_dict()
-        for contract in settled | awaiting:
-            check_contract(contract)
-            if contract not in held:
-                raise VersionError(f"{describe_contract(contract)} is not a leg of the active version")
-        if settled & awaiting:
-            raise VersionError("a contract cannot be both settled and awaiting settlement")
-        _require_text(reference, "reference")
         if not settled:
             self._set("_awaiting", awaiting)
             return None
-        if reference in self._references:
-            raise VersionError(f"settlement {reference!r} was already recorded")
-        if len(self._outcomes) >= MAX_OUTCOMES:
-            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
-        if len(self._versions) >= MAX_VERSIONS and len(settled) < len(held):
-            raise VersionError(f"version list is full ({MAX_VERSIONS})")
         self._stamp(at)
         before = self._active_intended()
-        remaining = tuple(
-            leg for leg in active.definition.legs
-            if (active.definition.underlying, leg.instrument, leg.strike, leg.expiry) not in settled
-        )
+        remaining = replacement.legs if replacement is not None else ()
         self._references.add(reference)
         actual = {c: u for c, u in self._actual.as_dict().items() if c not in settled}
         self._set("_actual", Position.of(actual))
@@ -675,10 +698,8 @@ class StrategyRecord:
             self._set("_reconcile", False)
             outcome = ExecutionOutcome(active.number, OutcomeKind.EXITED, before, self._actual, at, reference)
         else:
-            version = self._add_version(
-                dataclasses.replace(active.definition, legs=remaining), self._active, at, "system",
-                "settlement", ("settlement",), pending=False,
-            )
+            version = self._add_version(replacement, self._active, at, "system", "settlement", ("settlement",),
+                                        pending=False)
             self._set("_active", version.number)
             outcome = ExecutionOutcome(
                 version.number, OutcomeKind.SETTLED, version.intended_position, self._actual, at, reference)
