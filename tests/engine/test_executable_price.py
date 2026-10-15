@@ -2,7 +2,7 @@
 
 Spec basis: ADR-080 "BUY rounds down, SELL rounds up - so the price sent is never worse than the price the user
 accepted"; "when the 5 levels cannot fill the quantity, the review says so". Real input: the 15:10 replies
-``quote_CE.json`` / ``quote_PE.json`` (NIFTY26O1923550CE, NIFTY26O1921900PE), lot 65, tick 0.05.
+``quote_CE.json`` / ``quote_PE.json`` (NIFTY 23,550 CE and 21,900 PE, 19 Oct 2026 expiry), lot 65, tick 0.05.
 """
 from __future__ import annotations
 

@@ -35,7 +35,7 @@ LEG = Leg(Action.BUY, Instrument.CE, D("23550"), EXPIRY, 65, D("3.95"))
 # -- product on the order and the broker request -----------------------------------------------------------------
 
 def test_order_defaults_to_nrml_and_refuses_a_non_product():
-    base = dict(strategy_id="S-1", leg_ref="leg-1", contract="NIFTY26O0623550CE", side=Action.BUY, quantity=65,
+    base = dict(strategy_id="S-1", leg_ref="leg-1", contract="CONTRACT-1", side=Action.BUY, quantity=65,
                 price=D("3.95"), version_id="v1")
     assert Order(**base).product is Product.NRML
     assert Order(**base, product=Product.MIS).product is Product.MIS

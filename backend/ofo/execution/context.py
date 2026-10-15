@@ -208,10 +208,15 @@ class ExecutionContext:
         _tristate(self.active_futures_entry_known, "active_futures_entry_known")
         for name in ("active_products", "exit_products"):
             mapping = getattr(self, name)
-            if mapping is not None:
-                if not isinstance(mapping, Mapping) or not all(isinstance(v, Product) for v in mapping.values()):
-                    raise ValueError(f"{name} must be a mapping of position key to Product or None")
-                object.__setattr__(self, name, MappingProxyType(dict(mapping)))
+            if mapping is not None and (
+                not isinstance(mapping, Mapping) or not all(isinstance(v, Product) for v in mapping.values())
+            ):
+                raise ValueError(f"{name} must be a mapping of position key to Product or None")
+        # frozen copies (read-only views), so a caller's later edit cannot change what the gate decided on
+        if self.active_products is not None:
+            object.__setattr__(self, "active_products", MappingProxyType(dict(self.active_products)))
+        if self.exit_products is not None:
+            object.__setattr__(self, "exit_products", MappingProxyType(dict(self.exit_products)))
         for name in ("active_version_id", "active_legs_hash"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
