@@ -78,3 +78,21 @@ def test_cli_offline_exit_codes(tmp_path, capsys):
     assert "commit 1 line 2" in capsys.readouterr().out
     assert pcc.main(["--body-file", str(tmp_path / "missing.txt")]) == 2
     assert pcc.main([]) == 2
+
+
+@pytest.mark.parametrize("text", [
+    "Fixes https://github.com/o/r/issues/5 partly", "see: Closes https://github.com/o/r/issues/5",
+    "- Fixes https://github.com/o/r/issues/5",
+])
+def test_issue_url_in_prose_fails(text):
+    assert len(pcc.check(text, [])) == 1
+
+
+def test_issue_url_whole_line_passes():
+    assert pcc.check("x\nFixes https://github.com/o/r/issues/5\ny", []) == []
+    assert pcc.check("x\nCloses https://github.com/o/r/issues/5.\ny", []) == []
+
+
+@pytest.mark.parametrize("text", ["**Fixes** #12", "_fixes_ #12", "`Fixes` #12", "**Fixes:** #12", "__Closes__ #3"])
+def test_markdown_wrapped_keywords_fail(text):
+    assert len(pcc.check(text, [])) == 1

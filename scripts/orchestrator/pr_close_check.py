@@ -19,9 +19,11 @@ import subprocess
 import sys
 
 KEYWORD = r"(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)"
-REF = r"(?:[\w.-]+/[\w.-]+)?#\d+"
-CLOSING = re.compile(rf"(?<![\w-]){KEYWORD}\s*:?\s+{REF}", re.IGNORECASE)
-WHOLE_LINE = re.compile(r"^(?:fixes|closes|resolves) #\d+\.?$", re.IGNORECASE)
+URL = r"https?://github\.com/[\w.-]+/[\w.-]+/issues/\d+"
+REF = rf"(?:{URL}|(?:[\w.-]+/[\w.-]+)?#\d+)"
+WRAP = r"[*_`]*"
+CLOSING = re.compile(rf"(?<![\w-]){WRAP}{KEYWORD}{WRAP}\s*:?{WRAP}\s+{REF}", re.IGNORECASE)
+WHOLE_LINE = re.compile(rf"^(?:fixes|closes|resolves) (?:#\d+|{URL})\.?$", re.IGNORECASE)
 SEPARATOR = "---COMMIT---"
 HINT = ('qualified or prose closing reference; write "addresses items 1-3 of #N", '
         'or a whole line "Fixes #N" if all of it is done')
