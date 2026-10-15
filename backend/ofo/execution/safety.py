@@ -21,6 +21,7 @@ from fractions import Fraction
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
+from ofo.execution.price_check import circuit_block
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
@@ -60,6 +61,7 @@ class CheckCode(str, Enum):
     DUPLICATE_LEG = "DUPLICATE_LEG"
     MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
     EXIT_NOT_REDUCE_ONLY = "EXIT_NOT_REDUCE_ONLY"
+    PRICE_OUTSIDE_BAND = "PRICE_OUTSIDE_BAND"
     ACTIVE_LEGS_UNVERIFIED = "ACTIVE_LEGS_UNVERIFIED"
     STRATEGY_MISMATCH = "STRATEGY_MISMATCH"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -75,6 +77,7 @@ _CONTRACT_CHECKS: tuple[CheckCode, ...] = (
     CheckCode.CONTRACT_NOT_LISTED,
     CheckCode.CONTRACT_NOT_ELIGIBLE,
     CheckCode.QUANTITY_INVALID,
+    CheckCode.PRICE_OUTSIDE_BAND,
 )
 
 
@@ -476,15 +479,33 @@ def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | N
 def _exit_product_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
     """ADR-080: an exit takes the product of the position it reduces. A leg whose exit product (default NRML) differs
     from the held position's product, or whose position product is unknown, blocks. Not supplied = not checked."""
-    if ctx.active_products is None or ctx.underlying not in SUPPORTED_UNDERLYINGS:
+    if ctx.underlying not in SUPPORTED_UNDERLYINGS:
         return None  # (an unsupported underlying is already blocked)
-    exit_products = ctx.exit_products or {}
+    if ctx.active_products is None or ctx.exit_products is None:  # like missing active legs: never skip
+        return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_unverified")
     for number, leg in enumerate(strategy.legs, start=1):
         key = product_key(leg)
-        if ctx.active_products.get(key) is not exit_products.get(key, Product.NRML):
+        held = ctx.active_products.get(key)
+        if held is None or held is not ctx.exit_products.get(key):  # an unread product on either side blocks
             return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_product_mismatch", leg_number=number,
                          leg=LegValue(number, leg, ctx.underlying))
     return None
+
+
+def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> list[CheckFailure]:
+    """ADR-080: a leg priced outside the day's circuit band is blocked with the reason, never clamped; a leg whose
+    band could not be read is blocked too. Runs for every action: a missing band never passes."""
+    out: list[CheckFailure] = []
+    for number, leg in enumerate(strategy.legs, start=1):
+        value = LegValue(number, leg, ctx.underlying)
+        band = None if ctx.price_bands is None else ctx.price_bands.get(product_key(leg))
+        if band is None:
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_band_unknown", leg_number=number, leg=value))
+        elif leg.entry_price is not None:
+            blocked = circuit_block(leg.entry_price, band[0], band[1], value)
+            if blocked is not None:
+                out.append(CheckFailure(CheckCode.PRICE_OUTSIDE_BAND, blocked, leg_number=number))
+    return out
 
 
 def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailure | None:
@@ -522,6 +543,7 @@ def _run_checks(
         not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
     else:
         failures.extend(_leg_failures(strategy, ctx, catalogue, eligibility))
+        failures.extend(_price_failures(strategy, ctx))
     flags, max_loss = _risk_flags(strategy, ctx)
 
     not_applicable: frozenset[CheckCode] = frozenset()

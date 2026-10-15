@@ -1238,5 +1238,9 @@
   "gate_price_outside_circuit": {
     "sha256": "90f65da533ced3c8cd3891f84ec74b63443158f806d702bfb5f710b5684d2160",
     "reviewed": "pending owner read"
+  },
+  "gate_price_band_unknown": {
+    "sha256": "049a7f8b7ceabd2227a6fdecc73dc2a96bb42a59a39bb3d33a59ce9e422311d4",
+    "reviewed": "pending owner read"
   }
 }

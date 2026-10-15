@@ -57,6 +57,8 @@ def test_broker_request_carries_the_orders_product(catalogue):
 
 def _exit(active_products, exit_products=None, legs=None):
     legs = legs or condor_legs()
+    if exit_products is None:  # the exit orders carry NRML unless a test says otherwise
+        exit_products = {product_key(leg): Product.NRML for leg in legs}
     ctx = all_true_context(action=ExecutionAction.EXIT, active_legs=legs, active_products=active_products,
                            exit_products=exit_products)
     return ctx, Strategy(closing_orders(legs))
@@ -95,9 +97,26 @@ def test_context_refuses_a_non_product_mapping():
         all_true_context(active_products={product_key(LEG): "NRML"})
 
 
-def test_entry_and_exit_without_products_supplied_are_unchanged(catalogue, eligibility):
-    ctx = all_true_context(action=ExecutionAction.EXIT, active_legs=condor_legs())
-    assert check(Strategy(closing_orders(condor_legs())), ctx, catalogue, eligibility).failures == ()
+@pytest.mark.parametrize("missing", ["active_products", "exit_products", "both"])
+def test_exit_with_products_missing_is_blocked_like_missing_active_legs(missing, catalogue, eligibility):
+    """Round 2 MAJOR 1: missing products never skip the check; the exit is blocked as unverified."""
+    held = {product_key(leg): Product.NRML for leg in condor_legs()}
+    fields = {"active_products": held, "exit_products": held}
+    for name in fields:
+        if missing in (name, "both"):
+            fields[name] = None
+    ctx = all_true_context(action=ExecutionAction.EXIT, active_legs=condor_legs(), **fields)
+    result = check(Strategy(closing_orders(condor_legs())), ctx, catalogue, eligibility)
+    assert result.failed_codes == {CheckCode.EXIT_NOT_REDUCE_ONLY}
+    assert "could not compare this exit" in result.failures[0].reason
+
+
+def test_exit_leg_the_orders_do_not_name_is_blocked_not_assumed_nrml(catalogue, eligibility):
+    held = _held(Product.NRML)
+    unnamed = dict(held)
+    unnamed.pop(product_key(condor_legs()[1]))
+    ctx, strategy = _exit(held, exit_products=unnamed)
+    assert check(strategy, ctx, catalogue, eligibility).failed_codes == {CheckCode.EXIT_NOT_REDUCE_ONLY}
 
 
 # -- circuit band ------------------------------------------------------------------------------------------------
@@ -119,8 +138,17 @@ def test_circuit_band_blocks_one_paisa_outside_and_passes_on_the_band(band):
     for blocked in (over, under):
         assert blocked is not None
         text = display_text(blocked)
-        assert "0.05" in text and "32.60" in text or "32.6" in text
+        assert "0.05" in text and ("32.60" in text or "32.6" in text)
         assert "has not been changed" in text
+
+
+def test_circuit_block_accepts_int_bands_as_kite_prints_them_and_refuses_floats(band):
+    """Kite prints a whole-number price as a JSON integer; an int is exact, a float is not."""
+    value = LegValue(1, LEG, "NIFTY")
+    assert circuit_block(D("30"), 1, 32, value) is None
+    assert circuit_block(D("33"), 1, 32, value) is not None
+    with pytest.raises(ValueError):
+        circuit_block(D("4"), 0.05, D("32.6"), value)
 
 
 def test_circuit_block_refuses_floats_and_a_crossed_band(band):

@@ -109,11 +109,19 @@ def test_limit_is_the_worst_level_not_the_first(ce):
     assert r.limit != D("4.00")
 
 
-def test_off_tick_level_price_is_rounded_toward_the_user_not_the_walked_cost():
-    """A level at 4.07 (off the 0.05 tick) sends BUY at 4.05 (down) but the walked cost uses the level's own price."""
-    depth = {"buy": [], "sell": [{"price": D("4.07"), "quantity": 100, "orders": 1}]}
-    r = executable_limit(depth_from_quote({"depth": depth}), Action.BUY, 50, TICK, D("4.00"))
-    assert r.limit == D("4.05") and r.walked_cost == D("203.50")
+def test_off_tick_depth_level_is_not_fillable_with_a_reason_not_a_limit_that_cannot_reach_it():
+    """A level at 4.07 on a 0.05 tick is bad tick data: a BUY limit rounded down to 4.05 would never reach it, so the
+    result is not fillable with a reason, and no limit, cost or slippage is invented."""
+    depth = depth_from_quote({"depth": {"buy": [], "sell": [{"price": D("4.07"), "quantity": 100, "orders": 1}]}})
+    r = executable_limit(depth, Action.BUY, 50, TICK, D("4.00"))
+    assert (r.fillable, r.limit, r.walked_cost, r.slippage) == (False, None, None, None)
+    assert r.reason == "depth_level_off_tick"
+
+
+def test_fillable_result_has_no_reason_and_a_short_book_says_so(ce):
+    ok = executable_limit(depth_from_quote(ce), Action.BUY, LOT, TICK, ce["last_price"])
+    short = executable_limit(depth_from_quote(ce), Action.BUY, 10**6, TICK, ce["last_price"])
+    assert ok.reason is None and short.reason == "depth_too_thin"
 
 
 def test_per_leg_and_total_slippage_sum_and_unfillable_leg_has_none(ce, pe):

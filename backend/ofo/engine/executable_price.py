@@ -102,6 +102,7 @@ class ExecutablePrice:
     walked_cost: Decimal | None  # each level at its own price: the slippage base
     planned_cost: Decimal  # quantity x the planned price (LTP or the user's price)
     slippage: Decimal | None  # rupees, worse = positive; None when not fillable
+    reason: str | None = None  # why not fillable: "depth_too_thin" | "depth_level_off_tick"; None when fillable
 
 
 def executable_limit(
@@ -116,7 +117,11 @@ def executable_limit(
     planned_cost = planned_price * quantity
     levels = depth.asks if side is Action.BUY else depth.bids
     remaining, walked, worst = quantity, Decimal(0), None
+    if tick <= 0:
+        raise ValueError(f"tick must be positive, got {tick}")
     for level in levels:
+        if level.price % tick != 0:  # bad tick data: a limit rounded toward the user could never reach this level
+            return ExecutablePrice(side, quantity, False, None, None, planned_cost, None, "depth_level_off_tick")
         take = min(remaining, level.quantity)
         walked += level.price * take
         worst = level.price
@@ -124,7 +129,7 @@ def executable_limit(
         if remaining == 0:
             break
     if remaining > 0 or worst is None:
-        return ExecutablePrice(side, quantity, False, None, None, planned_cost, None)
+        return ExecutablePrice(side, quantity, False, None, None, planned_cost, None, "depth_too_thin")
     slippage = walked - planned_cost if side is Action.BUY else planned_cost - walked
     return ExecutablePrice(side, quantity, True, round_to_tick(worst, tick, side), walked, planned_cost, slippage)
 

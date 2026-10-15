@@ -12,10 +12,17 @@ from ofo.errors import UserFacingError, render
 from ofo.errors.gate_slots import LegValue
 
 
+def _exact(value: object, name: str) -> Decimal:
+    # Kite prints a whole-number price or band as a JSON integer: an int is exact and accepted; a float is refused.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Decimal(value)
+    if isinstance(value, bool) or not isinstance(value, Decimal) or not value.is_finite():
+        raise ValueError(f"{name} must be a finite Decimal or int (floats are refused), got {value!r}")
+    return value
+
+
 def circuit_block(limit: Decimal, lower: Decimal, upper: Decimal, leg: LegValue) -> UserFacingError | None:
-    for name, value in (("limit", limit), ("lower", lower), ("upper", upper)):
-        if isinstance(value, bool) or not isinstance(value, Decimal) or not value.is_finite():
-            raise ValueError(f"{name} must be a finite Decimal (floats are refused), got {value!r}")
+    limit, lower, upper = _exact(limit, "limit"), _exact(lower, "lower"), _exact(upper, "upper")
     if lower > upper:
         raise ValueError(f"lower circuit {lower} is above upper circuit {upper}")
     if lower <= limit <= upper:

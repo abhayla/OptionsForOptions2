@@ -278,6 +278,11 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Zerodha would treat an order in another product as a new position, not as closing this one.",
           "This exit.",
           "Refresh the strategy's positions from Zerodha, then try the exit again.", {"leg": LegRef}),
+    _gate("gate_price_band_unknown", _MD, 121,
+          "We could not read today's price band for {leg}, so its price cannot be checked. Execution is blocked and "
+          "no order has been submitted.",
+          "An order priced outside the band would be rejected by Zerodha.", "This leg.",
+          "Refresh market data, then try again.", {"leg": LegRef}),
     _gate("gate_price_outside_circuit", _MD, 120,
           "The price {limit} for {leg} is outside today's price band for this contract ({lower} to {upper}). The "
           "price has not been changed.",

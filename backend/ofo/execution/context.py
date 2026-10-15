@@ -170,6 +170,9 @@ class ExecutionContext:
     # named). An exit is refused when a leg's product differs from its position's. None = not supplied (not checked).
     active_products: Mapping[tuple, Product] | None = None
     exit_products: Mapping[tuple, Product] | None = None
+    # ADR-080 circuit band per leg, keyed by ``product_key(leg)``: (lower, upper) from the quote. Required: None or a
+    # leg without a band BLOCKS (the gate never assumes a price is inside a band it could not read).
+    price_bands: Mapping[tuple, tuple[Decimal | int, Decimal | int]] | None = None
 
     def __post_init__(self) -> None:
         for name in ("strategy_id", "version_id", "actor", "underlying"):
@@ -212,6 +215,14 @@ class ExecutionContext:
                 not isinstance(mapping, Mapping) or not all(isinstance(v, Product) for v in mapping.values())
             ):
                 raise ValueError(f"{name} must be a mapping of position key to Product or None")
+        if self.price_bands is not None:
+            if not isinstance(self.price_bands, Mapping) or not all(
+                isinstance(b, tuple) and len(b) == 2 and all(
+                    isinstance(x, (Decimal, int)) and not isinstance(x, bool) for x in b)
+                for b in self.price_bands.values()
+            ):
+                raise ValueError("price_bands must be a mapping of position key to (lower, upper) or None")
+            object.__setattr__(self, "price_bands", MappingProxyType(self.price_bands))  # a read-only view
         # frozen copies (read-only views), so a caller's later edit cannot change what the gate decided on
         if self.active_products is not None:
             object.__setattr__(self, "active_products", MappingProxyType(dict(self.active_products)))
