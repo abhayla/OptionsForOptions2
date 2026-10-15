@@ -1,0 +1,24 @@
+{
+ "http": 200,
+ "shape": {
+  "user_id": "str",
+  "user_type": "str",
+  "email": "str",
+  "user_name": "str",
+  "user_shortname": "str",
+  "broker": "str",
+  "exchanges": [
+   "str"
+  ],
+  "products": [
+   "str"
+  ],
+  "order_types": [
+   "str"
+  ],
+  "avatar_url": "NoneType",
+  "meta": {
+   "demat_consent": "str"
+  }
+ }
+}
