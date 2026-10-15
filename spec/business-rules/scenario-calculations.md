@@ -89,6 +89,9 @@ calculation engine.
   - Lower BE / Upper BE: with two or more breakevens, the lowest and highest; with exactly one, it is the Lower BE
     when the loss region lies below it (long call, short put) and the Upper BE when the loss region lies above it,
     read from the computed loss regions (ADR-072, ADR-089; a zero-P&L side is not a loss side); the other shows "—".
+    Loss on both sides of it (the profit zone is that one point, e.g. a credit-0 iron fly at 23,000): it shows as both
+    Lower BE and Upper BE. No loss region at all (e.g. a zero-cost bull call spread, BE 22,200): profit above it makes
+    it the Lower BE, profit below it the Upper BE.
   - Estimated Now at a breakeven with more than two decimals is taken at that level rounded half-even to 0.01; a
     strategy with an option leg lacking IV has no Estimated Now view (shown unavailable with the reason).
 
