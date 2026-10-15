@@ -23,8 +23,9 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
 }
 
 #: modules that may import an HTTP library or name the Kite API host without making an allow-listed call themselves:
-#: ``routes/broker.py`` only creates the ``httpx.AsyncClient`` handed to ``kite_client.py``; ``sources.py`` holds the
-#: instrument list's URL as data for ``downloader.py``.
-HTTP_PLUMBING_MODULES: Final = frozenset({"ofo_app/routes/broker.py", "ofo/instruments/sources.py"})
+#: the two doors every request goes through (``ofo/broker/kite_http.py`` for urllib, ``ofo_app/kite_http.py`` for the
+#: httpx client factory) and ``sources.py``, which holds the instrument list's URL as data for ``downloader.py``.
+HTTP_PLUMBING_MODULES: Final = frozenset({"ofo/broker/kite_http.py", "ofo_app/kite_http.py",
+                                          "ofo/instruments/sources.py"})
 
 __all__ = ["ALLOWED_CALLS", "HTTP_PLUMBING_MODULES"]

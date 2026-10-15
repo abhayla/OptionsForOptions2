@@ -25,6 +25,7 @@ from typing import Protocol
 import httpx
 
 from ofo.broker.kite_auth import KiteSession, checksum
+from ofo_app.kite_http import is_guarded
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ def _error_type(response: _JsonAnswer) -> str | None:
 
 class HttpKiteAuth:
     def __init__(self, api_key: str, api_secret: str, client: httpx.AsyncClient) -> None:
+        if not is_guarded(client):
+            raise TypeError("the Kite client must come from ofo_app.kite_http (it checks every request first)")
         self._api_key = api_key
         self._api_secret = api_secret
         self._client = client

@@ -1,16 +1,21 @@
 """W-080 AC-4 (REQ-073, ADR-054): no code path places an order through Kite's order-placement API; this test fails if
 one is added.
 
-Structural guarantee (run-discipline B8), not a forbidden-name list. An order can only be placed by an HTTP call to
-Kite, so:
-1. ``backend/ofo/broker/kite_endpoints.py`` declares the ONLY (method, path) pairs any module may call; none is a
-   write under ``/orders`` or ``/gtt`` (read-only ``POST /charges/orders`` and ``GET /orders`` are fine);
-2. no module outside that list (and the two plumbing modules) imports ``requests``/``httpx``/``aiohttp``/``urllib3``/
-   ``urllib.request``/``http.client``/``kiteconnect``, calls ``__import__``/``import_module``, or names ``api.kite.trade``
-   in code (docstrings and comments are not code), so a path built any way (``urljoin``, ``"/".join``, a base_url
-   client, ``getattr(kite, "place_order")``) has no client to travel on;
-3. each listed module carries no HTTP verb, request option or ``/``-path outside its own allow-list entries.
-The planted-example tests build their code in a temp directory and never commit it.
+The guarantee is STRUCTURAL and lives at runtime, not in this scan: every Kite HTTP request goes through
+``ofo.broker.kite_http.check_call`` (urllib door ``open_url``, and the httpx factory ``ofo_app.kite_http`` whose clients
+carry a request hook), which refuses BEFORE sending anything not in ``ALLOWED_CALLS`` in
+``backend/ofo/broker/kite_endpoints.py``. Those are proven by ``tests/test_kite_http_guard.py`` and
+``tests_app/test_kite_http_guard.py``. A static scan cannot see every way a client reaches a module (one passed in as a
+parameter, a path built with ``urljoin`` or ``"/".join``), so THIS file is only the second layer, and it says what it
+checks and no more:
+1. the allow-list holds no write under ``/orders`` or ``/gtt`` (read-only ``POST /charges/orders``, ``GET /orders``
+   are fine);
+2. no module outside the allow-list and the plumbing modules imports an HTTP library, calls ``__import__`` /
+   ``import_module``, names ``api.kite.trade`` or uses ``KITE_API_ROOT`` / ``KITE_API_URL``;
+3. no module carries a string that looks like an order or gtt path (``orders/..``, ``/orders``) unless it is its own
+   allow-listed path, and a listed module carries no HTTP verb or ``/``-path outside its own entries.
+It does NOT prove no client was handed in some other way; the factory's refusal is what covers that. The planted
+examples are built in memory and never committed.
 """
 from __future__ import annotations
 
@@ -86,6 +91,46 @@ def scan_network(source: str, name: str = "<source>") -> list[str]:
     return found
 
 
+ORDER_STRING = re.compile(r"(^|/)(orders|gtt)/|/(orders|gtt)$")
+ROOT_NAMES = ("KITE_API_ROOT", "KITE_API_URL")
+
+
+def _template_parts(templates) -> list[str]:
+    return [p for t in templates for p in re.split(r"\{[^}]*\}", t) if p]
+
+
+def _is_own_path(value: str, templates) -> bool:
+    """The constant IS one of this module's allow-listed paths (whole, or a literal piece of one)."""
+    whole = [re.compile(re.sub(r"\\\{[^}]*\\\}", "[^/]+", re.escape(t))) for t in templates]
+    return any(rx.fullmatch(value.split("?")[0]) for rx in whole) or value in _template_parts(templates)
+
+
+def scan_order_strings(source: str, name: str, allowed=()) -> list[str]:
+    """Any code string that looks like an order / gtt path, unless it is the module's own allow-listed path."""
+    tree, bad = _parse(source, name)
+    if tree is None:
+        return bad
+    docs = _docstrings(tree)
+    templates = [p for _, p in allowed]
+    return [f"{name}:{getattr(n, 'lineno', 0)}: order path {n.value!r}" for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs
+            and ORDER_STRING.search(n.value) and not _is_own_path(n.value, templates)]
+
+
+def scan_root_use(source: str, name: str) -> list[str]:
+    """Use of the Kite API root constant (the way an unlisted module would reach the host with a handed-in client)."""
+    tree, bad = _parse(source, name)
+    if tree is None:
+        return bad
+    found = []
+    for n in ast.walk(tree):
+        used = (n.id if isinstance(n, ast.Name) else n.attr if isinstance(n, ast.Attribute)
+                else [a.name for a in n.names if a.name in ROOT_NAMES] if isinstance(n, ast.ImportFrom) else None)
+        if used in ROOT_NAMES or (isinstance(used, list) and used):
+            found.append(f"{name}:{getattr(n, 'lineno', 0)}: uses the Kite API root")
+    return found
+
+
 def _fits(fragment: str, templates) -> bool:
     path = fragment.split("?")[0]
     for t in templates:
@@ -118,7 +163,9 @@ def scan_allowed_module(source: str, name: str, allowed) -> list[str]:
                 found.append(f"{name}:{line}: urllib Request with method/data")
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
             v = node.value
-            if "/orders" in v or "/gtt" in v:
+            if _is_own_path(v, templates):
+                continue
+            if ORDER_STRING.search(v) or "/orders" in v or "/gtt" in v:
                 found.append(f"{name}:{line}: order path {v!r}")
             elif v.startswith("/") and not _fits(v, templates):
                 found.append(f"{name}:{line}: path {v!r} is not in the allow-list")
@@ -151,12 +198,21 @@ def test_no_other_module_can_talk_to_kite_over_http() -> None:
     assert offenders == []
 
 
+def test_no_module_carries_an_order_path_or_the_api_root_outside_the_list() -> None:
+    modules = _backend_modules()
+    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)
+    paths = [f for name, src in modules.items() for f in scan_order_strings(src, name, ALLOWED_CALLS.get(name, ()))]
+    roots = [f for name, src in modules.items() if name not in permitted for f in scan_root_use(src, name)]
+    assert paths == [] and roots == []
+
+
 def test_listed_modules_exist_and_really_use_http() -> None:
     """A stale entry (module renamed or no longer calling Kite) is a finding, so the list cannot rot into a free pass."""
     modules = _backend_modules()
     for name in set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES):
         assert name in modules, f"{name} is listed but does not exist"
-        assert scan_network(modules[name], name), f"{name} is listed but no longer uses HTTP"
+        uses = scan_network(modules[name], name) or "kite_http" in modules[name]
+        assert uses, f"{name} is listed but no longer uses HTTP or the Kite door"
 
 
 def test_listed_modules_stay_inside_their_own_entries() -> None:
@@ -252,3 +308,49 @@ def test_scan_of_a_planted_tree_names_the_file(tmp_path: Path) -> None:
     (tmp_path / "bad.py").write_text("import httpx\n", encoding="utf-8")
     found = [f for p in sorted(tmp_path.glob("*.py")) for f in scan_network(p.read_text(encoding="utf-8"), p.name)]
     assert len(found) == 1 and found[0].startswith("bad.py:1")
+
+
+# -- round 3: the plants the first static layer missed, and the order-path rule --------------------------------------
+
+P1_HANDED_IN_CLIENT = (
+    "from ofo_app.kite_client import KITE_API_ROOT\n"
+    "async def place(client, body):\n"
+    "    return await client.post(KITE_API_ROOT + \"/orders/regular\", data=body)\n")
+P7_RELATIVE_URLJOIN = "from urllib.parse import urljoin\nu = urljoin(ROOT, \"orders/regular\")\n"
+P8_BASE_URL_CLIENT = "def f(c):\n    return c.post(\"orders/regular\")\n"
+
+
+def test_static_layer_catches_p1_handed_in_client_with_the_api_root() -> None:
+    assert scan_root_use(P1_HANDED_IN_CLIENT, "unlisted.py")
+    assert scan_order_strings(P1_HANDED_IN_CLIENT, "unlisted.py")
+
+
+def test_static_layer_catches_p7_relative_urljoin() -> None:
+    assert scan_order_strings(P7_RELATIVE_URLJOIN, "kite_history.py", ALLOWED_CALLS["ofo_app/kite_history.py"])
+    assert scan_allowed_module(P7_RELATIVE_URLJOIN, "kite_history.py", ALLOWED_CALLS["ofo_app/kite_history.py"])
+
+
+def test_static_layer_catches_p8_relative_path_on_a_base_url_client() -> None:
+    assert scan_order_strings(P8_BASE_URL_CLIENT, "x.py")
+    assert scan_allowed_module(P8_BASE_URL_CLIENT, "kite_client.py", ALLOWED_CALLS["ofo_app/kite_client.py"])
+
+
+@pytest.mark.parametrize("value", ["orders/regular", "/orders", "/orders/amo", "gtt/triggers", "/gtt", "a/orders/b",
+                                   "/orders/regular/{id}"])
+def test_order_string_rule_flags(value: str) -> None:
+    assert scan_order_strings(f"x = {value!r}\n", "m.py")
+
+
+@pytest.mark.parametrize("value", ["reorders", "/api/disorders", "orders_total", "border/x"])
+def test_order_string_rule_leaves_other_words_alone(value: str) -> None:
+    assert scan_order_strings(f"x = {value!r}\n", "m.py") == []
+
+
+def test_a_module_does_not_flag_its_own_allow_listed_read_only_paths() -> None:
+    allowed = frozenset({("POST", "/margins/orders"), ("POST", "/margins/basket"), ("GET", "/user/margins"),
+                         ("GET", "/orders/{id}/trades")})
+    src = ('A = "/margins/orders"\nB = "/margins/basket"\nC = "/user/margins"\n'
+           'D = f"{r}/orders/{i}/trades"\n')
+    assert scan_allowed_module(src, "kite_margin.py", allowed) == []
+    assert scan_order_strings(src, "kite_margin.py", allowed) == []
+    assert scan_allowed_module('X = "/orders/regular"\n', "kite_margin.py", allowed)  # its own list still binds it

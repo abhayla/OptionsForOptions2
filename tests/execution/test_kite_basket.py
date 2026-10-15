@@ -143,6 +143,14 @@ def test_margin_is_asked_about_exactly_the_orders_that_are_sent() -> None:
     assert len(margin.calls) == 1 and margin.calls[0] == basket.orders
 
 
+@pytest.mark.parametrize("sid", ["S-9x", "xS-9", "S-09", "S-", "s-9", "S--9"])
+def test_strategy_id_must_be_exactly_the_tag_shape(sid) -> None:
+    """kills fullmatch -> search / match: a malformed id never reaches a tag."""
+    cat = real_catalogue()
+    with pytest.raises(BasketRefused):
+        _build(real_plan(cat, strategy_id=sid), cat)
+
+
 def test_tag_strategy_comes_from_the_plan_not_the_caller() -> None:
     from ofo.execution.basket import parse_tag
 
@@ -184,6 +192,18 @@ def test_blocked_margin_refuses_the_whole_basket() -> None:
 def test_unreadable_margin_verdict_fails_closed(bad) -> None:
     with pytest.raises(BasketRefused):
         _build(margin=lambda plan: bad)
+
+
+@pytest.mark.parametrize("allowed", [1, "yes", "true", [1], 1.0])
+def test_margin_verdict_must_be_exactly_true(allowed) -> None:
+    """Truthy is not allowed: only the bool True passes (kills `is not True` -> `not`)."""
+    class Verdict:
+        pass
+
+    v = Verdict()
+    v.allowed = allowed
+    with pytest.raises(BasketRefused):
+        _build(margin=lambda plan: v)
 
 
 def test_gate_that_raises_fails_closed() -> None:

@@ -11,7 +11,8 @@ from __future__ import annotations
 import datetime
 import logging
 import urllib.error
-import urllib.request
+
+from ofo.broker.kite_http import open_url as kite_open_url
 from typing import Callable, Iterable
 
 from ofo.history.bars import MinuteBar
@@ -28,9 +29,8 @@ class CandleFetchError(RuntimeError):
 
 
 def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
-    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - fixed https host
+        with kite_open_url(url, headers=headers, timeout=20) as response:  # checked against ALLOWED_CALLS first
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         return exc.code, ""

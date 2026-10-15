@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal
 
-import httpx
+from ofo_app.kite_http import kite_async_client
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -202,7 +202,7 @@ def current_user_ref() -> str:
 
 async def get_kite_auth(request: Request) -> AsyncIterator[KiteAuthPort]:
     rt = runtime(request)
-    async with httpx.AsyncClient() as client:
+    async with kite_async_client() as client:
         yield HttpKiteAuth(rt.config.api_key, rt.config.api_secret.get_secret_value(), client)
 
 

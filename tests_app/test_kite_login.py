@@ -25,6 +25,7 @@ from ofo_app.db import get_db
 from ofo_app import errors as errors_module
 from ofo_app.errors import STATUS_BY_CLASS
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
+from ofo_app.kite_http import kite_async_client
 from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes
 
@@ -410,7 +411,7 @@ def _kite_client(handler) -> tuple[HttpKiteAuth, list[httpx.Request]]:
         seen.append(request)
         return handler(request)
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(record))
+    client = kite_async_client(transport=httpx.MockTransport(record))
     return HttpKiteAuth(API_KEY, API_SECRET, client), seen
 
 
