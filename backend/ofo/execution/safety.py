@@ -89,6 +89,8 @@ class FlagCode(str, Enum):
     CHARGES_UNAVAILABLE = "CHARGES_UNAVAILABLE"
     DATA_STALE_ON_EXIT = "DATA_STALE_ON_EXIT"
     PRICE_BAND_UNKNOWN_ON_EXIT = "PRICE_BAND_UNKNOWN_ON_EXIT"
+    EXPIRY_DAY_ENTRY = "EXPIRY_DAY_ENTRY"  # W-086: an entry/adjustment leg whose contract expires today (warn)
+    EXPIRY_DAY_SHORT = "EXPIRY_DAY_SHORT"  # W-086: ... and the leg is a SELL (explicit acknowledgement)
 
 
 @dataclass(frozen=True)
@@ -523,6 +525,39 @@ def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Che
     return out, unchecked
 
 
+def _expiry_day_flags(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, held_legs: tuple[Leg, ...] | None
+) -> list[Flag]:
+    """W-086 (ADR-083 decision 2, REQ-056 AC-6, F-20): a leg whose contract expires TODAY (IST date of the context
+    clock) is an elevated warning naming the extra expiry-day margin; a SELL such leg is exceptional and needs the
+    user's explicit acknowledgement. An EXIT is never flagged (REQ-059 exit carve-out). A leg whose contract cannot be
+    resolved to one Zerodha symbol is already blocked by its own check, so it is skipped here.
+
+    An ADJUSTMENT's strategy is the whole proposed version, so a held leg that carries over is not an entry: only a
+    contract that is NEW, GROWS on the same side or FLIPS side is flagged (compared with ``held_legs``, the VERIFIED
+    held legs). Held legs missing or unverified (None): every expiring leg is flagged (fail safe)."""
+    if ctx.action is ExecutionAction.EXIT or ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        return []
+    today = ctx.as_of.astimezone(IST).date()
+    index = _index(catalogue, ctx.underlying)
+    held = _positions(held_legs) if ctx.action is ExecutionAction.ADJUSTMENT and held_legs is not None else {}
+    out: list[Flag] = []
+    for leg in strategy.legs:
+        if leg.expiry != today:
+            continue
+        if leg.quantity <= held.get((_key(leg.expiry, leg.instrument.value, leg.strike), leg.action.value), 0):
+            continue  # a held position kept or reduced: not an entry
+        matches = index.get(_key(leg.expiry, leg.instrument.value, leg.strike), [])
+        if len(matches) != 1 or not matches[0].has_ref(ZERODHA):
+            continue
+        symbol = matches[0].ref(ZERODHA).broker_symbol
+        if leg.action is Action.SELL:
+            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol)))
+        else:
+            out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_entry", symbol=symbol)))
+    return out
+
+
 def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailure | None:
     """Round 2 MAJOR A: supplied active legs are trusted only when their canonical hash, with this strategy's id
     and the active version id, equals the hash stored with that version."""
@@ -562,6 +597,7 @@ def _run_checks(
         price_failures, band_unchecked = _price_failures(strategy, ctx)
         failures.extend(price_failures)
     flags, max_loss = _risk_flags(strategy, ctx)
+    flags.extend(_expiry_day_flags(strategy, ctx, catalogue, trusted.active_legs))
     if band_unchecked:  # an EXIT whose price could not be checked: a warning the user confirms, never a block
         flags.append(Flag(FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, BAND_UNKNOWN_ON_EXIT))
 
@@ -595,6 +631,7 @@ def _confirmation_text(flags: list[Flag]) -> str:
     stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
     band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
     texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
+    texts += [f.message for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT]
     return " ".join(texts)
 
 
@@ -626,7 +663,8 @@ def check_pre_execution(
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
     needs_confirmation = not failures and any(
-        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT) for f in flags)
+        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, FlagCode.EXPIRY_DAY_SHORT)
+        for f in flags)
     record = None
     if failures:
         record = BlockedExecution(
