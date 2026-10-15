@@ -36,6 +36,12 @@ describe('nameFromPool', () => {
   it('fills the missing fields from the page draft legs by instrument id', () => {
     expect(nameFromPool(answerLeg, [ce], 'NIFTY')).toBe('NIFTY 19 Oct 23200 CE')
   })
+  it('a draft-URL leg (no contract fields) is named from the answer leg and the answer underlying', () => {
+    const draftLeg = { instrument_id: 'NSE_FO:47171', action: 'SELL', lots: 1 }
+    const answer = { instrument_id: 'NSE_FO:47171', instrument: 'CE', strike: '23200.00', expiry: '2026-10-19' }
+    expect(nameFromPool(answer, [draftLeg], 'NIFTY')).toBe('NIFTY 19 Oct 23200 CE')
+    expect(nameFromPool({ ...answer, expiry: null }, [draftLeg], 'NIFTY')).toBe(CONTRACT_UNAVAILABLE)
+  })
   it('still missing after the lookup: the fixed wording', () => {
     expect(nameFromPool(answerLeg, [], 'NIFTY')).toBe(CONTRACT_UNAVAILABLE)
   })
