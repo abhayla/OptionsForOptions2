@@ -162,10 +162,8 @@ def _loss_regions(points: list[Decimal], values: list[Decimal], upper_slope: int
             out[-1][2].extend(d_ex)
         else:
             out.append([d_lo, d_hi, d_ex])
-    for lo, hi, excepts in out:
-        # an except level is a strike (a zero inside a loss is a kink), at least one strike gap from either edge
-        if any((lo is not None and z <= lo) or (hi is not None and z >= hi) for z in excepts):
-            raise ValueError("an exact zero point inside a loss region rounds onto the region's edge")
+    # An except level is a strike (a zero inside a loss is a kink) and each side of it is negative up to at least the
+    # next strike, so it stays strictly inside its rounded region; the LevelRegions slot refuses it otherwise.
     return tuple((lo, hi, tuple(ex)) if ex else (lo, hi) for lo, hi, ex in out)
 
 

@@ -1,14 +1,6 @@
 {
   "components": {
     "schemas": {
-      "Action": {
-        "enum": [
-          "BUY",
-          "SELL"
-        ],
-        "title": "Action",
-        "type": "string"
-      },
       "AdvancedLegOut": {
         "additionalProperties": false,
         "description": "REQ-035 AC-5: Bid/Ask appear only in Advanced Details. Taken from the same snapshot as the table (one read).",
@@ -38,12 +30,20 @@
           "health": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DataHealth"
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Health"
           },
           "instrument_id": {
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
@@ -73,19 +73,6 @@
         "title": "AdvancedLegOut",
         "type": "object"
       },
-      "CellKind": {
-        "enum": [
-          "money",
-          "points",
-          "percent",
-          "greek",
-          "iv",
-          "quantity",
-          "text"
-        ],
-        "title": "CellKind",
-        "type": "string"
-      },
       "CellOut": {
         "additionalProperties": false,
         "properties": {
@@ -93,7 +80,17 @@
             "title": "Display"
           },
           "kind": {
-            "$ref": "#/components/schemas/CellKind"
+            "enum": [
+              "money",
+              "points",
+              "percent",
+              "greek",
+              "iv",
+              "quantity",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "per_unit": {
             "anyOf": [
@@ -179,7 +176,17 @@
             "type": "boolean"
           },
           "kind": {
-            "$ref": "#/components/schemas/CellKind"
+            "enum": [
+              "money",
+              "points",
+              "percent",
+              "greek",
+              "iv",
+              "quantity",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "label": {
             "title": "Label"
@@ -188,7 +195,7 @@
             "items": {
               "enum": [
                 "CURRENT",
-                "0-P&L"
+                "ZERO_PNL"
               ],
               "type": "string"
             },
@@ -211,18 +218,6 @@
         "title": "ColumnOut",
         "type": "object"
       },
-      "DataHealth": {
-        "description": "Health of the market data behind a snapshot (domain-model §5, ADR-015).",
-        "enum": [
-          "available",
-          "stale",
-          "delayed",
-          "unhealthy",
-          "unavailable"
-        ],
-        "title": "DataHealth",
-        "type": "string"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -235,15 +230,6 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
-      },
-      "Instrument": {
-        "enum": [
-          "CE",
-          "PE",
-          "FUT"
-        ],
-        "title": "Instrument",
-        "type": "string"
       },
       "LegIn": {
         "additionalProperties": false,
@@ -300,7 +286,12 @@
         "additionalProperties": false,
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/Action"
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
           },
           "captured_at": {
             "format": "date-time",
@@ -322,22 +313,36 @@
           "health": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/DataHealth"
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Health"
           },
           "instrument": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Instrument"
+                "enum": [
+                  "CE",
+                  "PE",
+                  "FUT"
+                ],
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Instrument"
           },
           "instrument_id": {
             "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
@@ -628,7 +633,13 @@
             "title": "Spot Level"
           },
           "state": {
-            "$ref": "#/components/schemas/OutcomeState"
+            "enum": [
+              "COMPUTED",
+              "NOT_CONNECTED",
+              "REFUSED"
+            ],
+            "title": "State",
+            "type": "string"
           },
           "status_label": {
             "anyOf": [
@@ -668,7 +679,13 @@
             "type": "string"
           },
           "ux_level": {
-            "$ref": "#/components/schemas/UXLevel"
+            "enum": [
+              "guided",
+              "standard",
+              "advanced"
+            ],
+            "title": "Ux Level",
+            "type": "string"
           },
           "valuation": {
             "anyOf": [
@@ -703,15 +720,6 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
-      "OutcomeState": {
-        "enum": [
-          "COMPUTED",
-          "NOT_CONNECTED",
-          "REFUSED"
-        ],
-        "title": "OutcomeState",
-        "type": "string"
-      },
       "PayoffOut": {
         "additionalProperties": false,
         "properties": {
@@ -723,7 +731,12 @@
             "type": "array"
           },
           "view": {
-            "$ref": "#/components/schemas/View"
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
           }
         },
         "required": [
@@ -847,7 +860,12 @@
             "title": "Unavailable Reason"
           },
           "view": {
-            "$ref": "#/components/schemas/View"
+            "enum": [
+              "at_expiry",
+              "estimated_now"
+            ],
+            "title": "View",
+            "type": "string"
           }
         },
         "required": [
@@ -1030,15 +1048,6 @@
         "title": "TableOut",
         "type": "object"
       },
-      "UXLevel": {
-        "enum": [
-          "guided",
-          "standard",
-          "advanced"
-        ],
-        "title": "UXLevel",
-        "type": "string"
-      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1071,14 +1080,6 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "View": {
-        "enum": [
-          "at_expiry",
-          "estimated_now"
-        ],
-        "title": "View",
-        "type": "string"
       }
     }
   },

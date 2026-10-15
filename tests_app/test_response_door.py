@@ -212,6 +212,8 @@ def _sample(tp, required_only: bool = False):
         return "abc-1.2"
     if tp == api_models.Money:
         return Decimal("24500.50")
+    if tp == api_models.InstrumentId:
+        return "NSE_FO:44624"
     origin = typing.get_origin(tp)
     if origin is Literal:
         return typing.get_args(tp)[0]
@@ -245,11 +247,17 @@ def _build(cls, required_only: bool = False):
 
 
 def test_the_app_models_are_all_swept() -> None:
-    """AC-2: every app ApiModel subclass (recounted after W-068: 17) is in the sweep, so none can skip the door tests."""
+    """AC-2: every app ApiModel subclass (recounted after W-068: 17; W-066 adds the outcome route's 13) is in the sweep,
+    so none can skip the door tests."""
+    assert {(c.__module__.rsplit(".", 1)[-1], c.__name__) for c in _app_models()} >= {
+        ("outcome", n) for n in ("CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut", "ScenarioOut", "PointOut",
+                                 "PayoffOut", "SummaryOut", "MarginOut", "LegOut", "AdvancedLegOut", "OutcomeResponse")}
     assert {c.__name__ for c in _app_models()} == {
         "BrokerRedirectOut", "RefusalOut", "ExpiriesOut", "ContractOut", "ContractsOut", "HealthOut", "PlannedEntryOut",
         "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
-        "StrategyListOut", "EntryOut", "HistoryOut"}
+        "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
+        "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse"}
+    assert len(_app_models()) == 30
 
 
 @pytest.mark.parametrize("required_only", [False, True])

@@ -26,19 +26,23 @@ def _random_strategy(rng: random.Random) -> Strategy:
 
 
 def _inside(regions, x: D) -> bool:
-    return any((lo is None or x > lo) and (hi is None or x < hi) for lo, hi in regions)
+    return any((lo is None or x > lo) and (hi is None or x < hi) and not (ex and x in ex[0])
+               for lo, hi, *ex in regions)
 
 
 def _check(strategy: Strategy) -> None:
     regions = strategy_metrics(strategy).loss_regions
     top = max(leg.strike for leg in strategy.legs)
     # shape: ordered, disjoint, non-empty; only the first may be open below and only the last open above
-    for i, (lo, hi) in enumerate(regions):
+    # (issue #172) regions never touch: a zero point inside a loss is an except level, each one a real zero of the P&L
+    for i, (lo, hi, *ex) in enumerate(regions):
         assert lo is None or hi is None or lo < hi
         assert lo is not None or i == 0
         assert hi is not None or i == len(regions) - 1
         if i:
-            assert regions[i - 1][1] is not None and lo is not None and regions[i - 1][1] <= lo
+            assert regions[i - 1][1] is not None and lo is not None and regions[i - 1][1] < lo
+        for z in (ex[0] if ex else ()):
+            assert (lo is None or lo < z) and (hi is None or z < hi) and strategy.expiry_pnl_at(z) == 0
     x = D(0)
     while x <= top + 10000:
         assert _inside(regions, x) == (strategy.expiry_pnl_at(x) < 0), (strategy.legs, regions, x)
@@ -69,8 +73,15 @@ def test_a_zero_cost_bull_put_spread_loses_below_22400_only():
 
 
 def test_a_butterfly_costing_its_width_loses_everywhere_but_22300():
+    """Issue #172: one open region with 22,300 as its except level, not two regions touching at 22,300."""
     fly = _regions(_leg(B, CE, 22200, 200), _leg(S, CE, 22300, 100, 2 * UNIT), _leg(B, CE, 22400, 100))
-    assert fly == ((None, D(22300)), (D(22300), None))
+    assert fly == ((None, None, (D(22300),)),)
+
+
+def test_the_172_repro_is_one_bounded_region_except_22400():
+    """Issue #172 literal: P&L/unit = -|S-22400| + 2*max(|S-22400|-200, 0) -> 22,000-22,800 except 22,400 (by hand)."""
+    legs = (_leg(S, CE, 22400, 0), _leg(S, PE, 22400, 0), _leg(B, CE, 22600, 0, 2 * UNIT), _leg(B, PE, 22200, 0, 2 * UNIT))
+    assert _regions(*legs) == ((D(22000), D(22800), (D(22400),)),)
 
 
 def test_a_zero_cost_bull_call_spread_has_no_loss_region():

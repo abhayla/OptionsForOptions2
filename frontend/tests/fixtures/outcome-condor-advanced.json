@@ -302,7 +302,7 @@
     "kind": "money",
     "is_scenario_level": true,
     "markers": [
-     "0-P&L"
+     "ZERO_PNL"
     ],
     "visible": true
    },
@@ -346,7 +346,7 @@
     "kind": "money",
     "is_scenario_level": true,
     "markers": [
-     "0-P&L"
+     "ZERO_PNL"
     ],
     "visible": true
    },

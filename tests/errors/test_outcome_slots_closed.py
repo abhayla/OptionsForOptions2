@@ -23,7 +23,7 @@ OUTCOME_PREFIXES = ("outcome_", "leg_label_", "data_label_", "label_", "summary_
 CLOSED_SLOT_TYPES = frozenset({
     ex.Rupees, ex.Points, ex.SignedAmount, ex.Amount, ex.HourMinute, ex.ClockSeconds, ex.UnderlyingName,
     ex.InstrumentRef, ex.LevelRegions, ex.LegRef, ex.LegRefs, ex.HealthWord, ex.ExpiryDate, ex.CellText,
-    ex.Explained, ex.ScenarioViewLabel, ex.ColumnLabel, ex.HealthLabel,
+    ex.Explained, ex.ScenarioViewLabel, ex.ColumnLabel, ex.HealthLabel, ex.ExceptLevels,
 })
 
 
@@ -88,7 +88,9 @@ def test_negative_zero_literals() -> None:
     ("summary_start_regions", {"index": "NIFTY", "regions": ((Decimal(2), Decimal(1)),)}),
     ("summary_start_regions", {"index": "NIFTY", "regions": ((None, "22,400"),)}),
     ("summary_start_regions", {"index": "NIFTY", "regions": "below 22,400"}),
-    ("summary_start_touch", {"level": "22300"}),
+    ("summary_start_touch", {"levels": "22300"}),
+    ("summary_start_touch", {"levels": ("22300",)}),
+    ("summary_start_touch", {"levels": ()}),
     ("scenario_caption_left", {"underlying": "best-trade"}),
     ("scenario_estimated_unavailable", {"legs": "Buy now, this is the best trade"}),
     ("scenario_estimated_unavailable", {"legs": "NSE_FO:44624, buy-now"}),
@@ -169,7 +171,7 @@ def test_level_regions_read_as_a_list() -> None:
         "If NIFTY ends below 22,326.85 or above 22,873.15 at expiry.")
     assert one(((None, d("1")), (d("2"), d("3")), (d("4"), None))) == (
         "If NIFTY ends below 1, between 2 and 3 or above 4 at expiry.")
-    assert str(render_explanation("summary_start_touch", level=d("22300"))) == (
+    assert str(render_explanation("summary_start_touch", levels=(d("22300"),))) == (
         "At every level except exactly 22,300 at expiry.")
 
 
@@ -197,3 +199,63 @@ def test_level_regions_accept_a_point_part() -> None:
 def test_level_regions_refuse_a_malformed_list(regions) -> None:
     with pytest.raises((TypeError, ValueError)):
         _regions_text(regions)
+
+
+# --- W-066 round 7 (issue #172): a region may carry the exact zero points that split its loss ("except" levels) -------
+
+def test_ac7_a_region_with_except_levels_reads_except_exactly() -> None:
+    """AC-7: the except part follows its own region; one, two and three levels; touch form for a loss everywhere."""
+    d = Decimal
+    assert _regions_text(((d("22000"), d("22800"), (d("22400"),)),)) == (
+        "If NIFTY ends between 22,000 and 22,800 (except exactly 22,400) at expiry.")
+    assert _regions_text(((None, d("22800"), (d("22200"), d("22400"))),)) == (
+        "If NIFTY ends below 22,800 (except exactly 22,200 and 22,400) at expiry.")
+    assert _regions_text(((d("22000"), None, (d("22100"), d("22300"), d("22500"))),)) == (
+        "If NIFTY ends above 22,000 (except exactly 22,100, 22,300 and 22,500) at expiry.")
+    assert _regions_text(((None, d("1")), (d("2"), d("5"), (d("3"),)), (d("6"), None))) == (
+        "If NIFTY ends below 1, between 2 and 5 (except exactly 3) or above 6 at expiry.")
+    assert str(render_explanation("summary_start_touch", levels=(d("22200"), d("22600")))) == (
+        "At every level except exactly 22,200 and 22,600 at expiry.")
+
+
+_ALLOWED_REGION_SHAPES = {2, 3}
+
+
+@pytest.mark.parametrize("regions", [
+    ((Decimal(1), Decimal(5), ()),),                                   # an empty except tuple
+    ((Decimal(1), Decimal(5), (Decimal(1),)),),                        # on the lower edge
+    ((Decimal(1), Decimal(5), (Decimal(5),)),),                        # on the upper edge
+    ((Decimal(1), Decimal(5), (Decimal(7),)),),                        # outside the region
+    ((None, Decimal(5), (Decimal(6),)),),                              # outside an open-below region
+    ((Decimal(5), None, (Decimal(4),)),),                              # outside an open-above region
+    ((Decimal(1), Decimal(9), (Decimal(4), Decimal(3))),),             # not ascending
+    ((Decimal(1), Decimal(9), (Decimal(3), Decimal(3))),),             # a duplicate level
+    ((Decimal(1), Decimal(90), (Decimal("3E+1"),)),),                  # exponent notation (30 inside 1-90)
+    ((Decimal(1), Decimal(9), ("3",)),),                               # a string level
+    ((Decimal(1), Decimal(9), [Decimal(3)]),),                         # a list, not a tuple
+    ((Decimal(1), Decimal(9), Decimal(3)),),                           # a bare level, not a tuple
+    ((None, None, (Decimal(3),)),),                                    # no bound at all (that is the touch template)
+    ((Decimal(1), Decimal(3)), (Decimal(3), Decimal(5), (Decimal(4),))),  # touching regions stay refused
+    ((Decimal(1), Decimal(4), (Decimal(3),)), (Decimal(3), Decimal(5))),  # overlapping regions stay refused
+])
+def test_level_regions_refuse_a_malformed_except_part(regions) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        _regions_text(regions)
+
+
+@pytest.mark.parametrize("length", range(0, 6))
+def test_a_region_item_is_exactly_two_or_three_long(length: int) -> None:
+    """Allow-list: (lower, upper) or (lower, upper, excepts); every other length is refused (generated, 0-5)."""
+    items = (Decimal(1), Decimal(9), (Decimal(3),), Decimal(10), Decimal(11))[:length]
+    if length in _ALLOWED_REGION_SHAPES:
+        assert _regions_text((items,)).startswith("If NIFTY ends between 1 and 9")
+    else:
+        with pytest.raises((TypeError, ValueError)):
+            _regions_text((items,))
+
+
+@pytest.mark.parametrize("bad", ["22300", 22300, 22300.0, None, [Decimal(1)], (), (Decimal("NaN"),),
+                                 (Decimal(2), Decimal(1)), (Decimal("1E+3"),)])
+def test_except_levels_take_only_an_ascending_tuple_of_plain_levels(bad) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        render_explanation("summary_start_touch", levels=bad)
