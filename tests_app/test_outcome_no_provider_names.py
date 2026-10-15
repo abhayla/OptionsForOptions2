@@ -53,10 +53,16 @@ async def test_a_known_contract_is_named_and_an_unknown_one_stays_unnamed():
     assert (unknown["instrument"], unknown["strike"], unknown["expiry"], unknown["symbol"]) == (None, None, None, None)
 
 
-async def test_a_catalogue_that_cannot_be_read_still_answers_with_unnamed_legs():
-    """AC-3: the real lookup with no database configured fails soft (the state must always answer)."""
+async def test_a_catalogue_that_cannot_be_read_still_answers_with_unnamed_legs(monkeypatch):
+    """AC-3: the real lookup, with the database session maker raising (whatever DATABASE_URL is), fails soft: the state
+    must always answer (#259 item 3: the test no longer depends on the environment having no database)."""
+    from ofo_app import db
     from ofo_app.main import create_app
 
+    def broken():
+        raise RuntimeError("catalogue host unreachable")
+
+    monkeypatch.setattr(db, "get_sessionmaker", broken)
     async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as ac:
         res = await ac.post("/api/strategies/outcome", json=_body(KNOWN))
     assert res.status_code == 200, res.text
@@ -83,3 +89,52 @@ async def test_the_lookup_is_not_called_when_a_provider_exists():
 class _Req:
     def __init__(self, *ids):
         self.legs = [type("L", (), {"instrument_id": i}) for i in ids]
+
+
+async def test_the_socket_answer_names_legs_exactly_like_the_rest_answer_with_no_provider():
+    """#259 item 1: one answer, two delivery paths: the same draft with no provider carries the same leg names."""
+    import asyncio
+    import json
+
+    from ofo_app.errors import socket_body
+    from ofo_app.live_push import StrategyPush
+    from ofo_app.routes.outcome import OutcomeResponse
+
+    rest = await _answer(_from_store, KNOWN, UNKNOWN)
+
+    class Channel:
+        def __init__(self):
+            self.sent, self.inbound = [], asyncio.Queue()
+
+        async def receive(self):
+            return await self.inbound.get()
+
+        async def send(self, source):
+            self.sent.append(json.loads(bytes(socket_body(source, (OutcomeResponse,)))))
+
+    channel = Channel()
+    push = StrategyPush(channel, None, monotonic=lambda: 1000.0, poll=0.005, lookup=_from_store)
+    task = asyncio.create_task(push.run())
+    await channel.inbound.put(_body(KNOWN, UNKNOWN))
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+    task.cancel()
+    assert len(channel.sent) == 1 and channel.sent[0]["state"] == "NOT_CONNECTED"
+    assert channel.sent[0]["legs"] == rest["legs"]
+    assert channel.sent[0]["legs"][0]["instrument"] in ("CE", "PE")
+
+
+async def test_a_catalogue_read_that_never_returns_is_cut_off_and_the_answer_comes_back(monkeypatch):
+    """#259 item 2: a hanging catalogue read must not hang the not-connected answer; the legs stay unnamed."""
+    import asyncio
+
+    from ofo_app.routes import outcome
+
+    monkeypatch.setattr(outcome, "CATALOGUE_READ_TIMEOUT_SECONDS", 0.05)
+
+    async def never(_ids):
+        await asyncio.Event().wait()
+
+    out = await asyncio.wait_for(_answer(never, KNOWN), timeout=5)
+    leg = out["legs"][0]
+    assert (out["state"], leg["instrument"], leg["expiry"]) == ("NOT_CONNECTED", None, None)
