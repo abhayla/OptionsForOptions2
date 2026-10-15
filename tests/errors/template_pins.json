@@ -1287,6 +1287,14 @@
     "sha256": "975a26d419b2fabfb40e3ccd864f1e86a6248fd5eb72171d2aac836f2722292c",
     "reviewed": "pending owner read"
   },
+  "send_entry_product_not_nrml": {
+    "sha256": "00ddcaf7f6dce0f7521d081cdd69aecfefe6318c4e21c07f33fd014955b8bdb5",
+    "reviewed": "pending owner read"
+  },
+  "partial_mismatch_product_ambiguous": {
+    "sha256": "0d0189391be2c539ca420db6c2fa1c261e735ed618a7793d9d573c6736807336",
+    "reviewed": "pending owner read"
+  },
   "grouping_unknown_contract": {
     "sha256": "00d697921502c3e41611e6d3121963ebd6a6aed9472da88ef93fd115d173a03c",
     "reviewed": "pending owner read"
@@ -1321,6 +1329,10 @@
   },
   "grouping_not_available": {
     "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
+    "reviewed": "pending owner read"
+  },
+  "partial_mismatch_other_product_only": {
+    "sha256": "654888e7201d9afff10e41b75b12e722cec8f52ac37e0880d34406ccf295e44a",
     "reviewed": "pending owner read"
   }
 }

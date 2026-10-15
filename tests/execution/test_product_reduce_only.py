@@ -46,10 +46,13 @@ def test_order_defaults_to_nrml_and_refuses_a_non_product():
 def test_broker_request_carries_the_orders_product(catalogue):
     """The sink copies the order's product into the request (default NRML; an exit's MIS survives)."""
     book = book_with_three_filled()
-    for product in (Product.NRML, Product.MIS):
-        order = Order(STRATEGY_ID, "leg-4", CONTRACTS[3], Action.BUY, 65, D("44.00"), version_id="v1",
+    # #263 item 2: an entry is NRML only; MIS is carried by an EXIT (leg-2 is a held short, its exit a BUY)
+    for product, choice, ref, contract, side in (
+            (Product.NRML, "complete", "leg-4", CONTRACTS[3], Action.BUY),
+            (Product.MIS, "close", "leg-2", CONTRACTS[1], Action.BUY)):
+        order = Order(STRATEGY_ID, ref, contract, side, 65, D("44.00"), version_id="v1",
                       client_tag="OFO999999999", product=product)
-        (request,) = _sink(book, catalogue, transport=_CountingTransport()).resolve_all((order,))
+        (request,) = _sink(book, catalogue, choice=choice, transport=_CountingTransport()).resolve_all((order,))
         assert request.product is product
 
 
