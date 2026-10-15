@@ -1,6 +1,12 @@
 # Handover
 
-**2026-10-15 — START HERE: `docs/process/session-handover-2026-10-15.md`.** Work moves from the Windows VPS to
+**2026-10-15 evening — START HERE: `docs/process/session-handover-2026-10-15b.md`.** 20 PRs merged (#205-#230):
+W-066 done, W-065 backend live (WebSocket route proven on real Kite data, 3 live runs), 4a live gate checks passed,
+ADR-074..078 (owner), `ofo_dev` for live runs (never load live data into ofo_test). In flight: W-065 frontend
+(`build/W-065-frontend`). Parked: #200/#199 (REQ-065 open exception until Stage 5, ADR-074). NEXT: token-expiry probe
+before any login, finish W-065, W-071 Save Draft UI, 4a gate review, 4b questions.
+
+**2026-10-15 — earlier: `docs/process/session-handover-2026-10-15.md`.** Work moves from the Windows VPS to
 another PC; everything is pushed. The W-065 live proof did not run (no Kite login in the 2026-10-12 window) and is
 the first item on the new PC, then W-066 (#172). The note also gives the two-way GLOBAL.env sync recipe.
 

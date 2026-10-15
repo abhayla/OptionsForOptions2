@@ -1,0 +1,89 @@
+{
+ "status": "success",
+ "data": {
+  "NFO:NIFTY26O1921900PE": {
+   "instrument_token": 12059906,
+   "timestamp": "2026-10-15 15:10:06",
+   "last_trade_time": "2026-10-15 15:10:04",
+   "last_price": 4.55,
+   "last_quantity": 325,
+   "buy_quantity": 3991195,
+   "sell_quantity": 376610,
+   "volume": 36727080,
+   "average_price": 7.03,
+   "oi": 3713580,
+   "oi_day_high": 5134545,
+   "oi_day_low": 3356665,
+   "net_change": 0,
+   "lower_circuit_limit": 0.05,
+   "upper_circuit_limit": 31.45,
+   "low_limit_price_protection": 0.05,
+   "high_limit_price_protection": 24.6,
+   "reference_limit_price": 0,
+   "indicative_close_price": 0,
+   "total_imbalance_qty": 0,
+   "ohlc": {
+    "open": 7,
+    "high": 9.4,
+    "low": 4.25,
+    "close": 9.95
+   },
+   "depth": {
+    "buy": [
+     {
+      "price": 4.55,
+      "quantity": 18980,
+      "orders": 20
+     },
+     {
+      "price": 4.5,
+      "quantity": 49790,
+      "orders": 30
+     },
+     {
+      "price": 4.45,
+      "quantity": 44850,
+      "orders": 20
+     },
+     {
+      "price": 4.4,
+      "quantity": 50505,
+      "orders": 24
+     },
+     {
+      "price": 4.35,
+      "quantity": 54990,
+      "orders": 31
+     }
+    ],
+    "sell": [
+     {
+      "price": 4.6,
+      "quantity": 41145,
+      "orders": 35
+     },
+     {
+      "price": 4.65,
+      "quantity": 32565,
+      "orders": 19
+     },
+     {
+      "price": 4.7,
+      "quantity": 16770,
+      "orders": 17
+     },
+     {
+      "price": 4.75,
+      "quantity": 17745,
+      "orders": 12
+     },
+     {
+      "price": 4.8,
+      "quantity": 18915,
+      "orders": 19
+     }
+    ]
+   }
+  }
+ }
+}

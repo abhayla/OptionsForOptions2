@@ -1,0 +1,138 @@
+{
+ "request": [
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1921900PE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 65,
+   "price": 4.6
+  }
+ ],
+ "reply": {
+  "status": "success",
+  "data": {
+   "initial": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 0,
+    "exposure": 0,
+    "option_premium": 295.75,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 295.75
+   },
+   "final": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 0,
+    "exposure": 0,
+    "option_premium": 295.75,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 295.75
+   },
+   "orders": [
+    {
+     "type": "equity",
+     "tradingsymbol": "NIFTY26O1921900PE",
+     "exchange": "NFO",
+     "span": 0,
+     "exposure": 0,
+     "option_premium": 295.75,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 0,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 0.105079975,
+      "sebi_turnover_charge": 0.00029575,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 3.6189676304999994,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 3.6189676304999994
+      },
+      "total": 23.724343355499997
+     },
+     "total": 295.75
+    }
+   ],
+   "charges": {
+    "transaction_tax": 0,
+    "transaction_tax_type": "",
+    "exchange_turnover_charge": 0,
+    "sebi_turnover_charge": 0.00029575,
+    "brokerage": 20,
+    "stamp_duty": 0,
+    "gst": {
+     "igst": 0,
+     "cgst": 0,
+     "sgst": 0,
+     "total": 0
+    },
+    "total": 0
+   }
+  }
+ }
+}

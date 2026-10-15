@@ -1,0 +1,81 @@
+{
+ "request": [
+  {
+   "order_id": "t1",
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1923550CE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 65,
+   "average_price": 3.95
+  },
+  {
+   "order_id": "t2",
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1923550CE",
+   "transaction_type": "SELL",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 65,
+   "average_price": 3.95
+  }
+ ],
+ "reply": {
+  "status": "success",
+  "data": [
+   {
+    "transaction_type": "BUY",
+    "tradingsymbol": "NIFTY26O1923550CE",
+    "exchange": "NFO",
+    "variety": "regular",
+    "product": "NRML",
+    "order_type": "LIMIT",
+    "quantity": 65,
+    "price": 3.95,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "stt",
+     "exchange_turnover_charge": 0.091223275,
+     "sebi_turnover_charge": 0.00025675,
+     "brokerage": 20,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 3.6164664044999992,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 3.6164664044999992
+     },
+     "total": 23.707946429499998
+    }
+   },
+   {
+    "transaction_type": "SELL",
+    "tradingsymbol": "NIFTY26O1923550CE",
+    "exchange": "NFO",
+    "variety": "regular",
+    "product": "NRML",
+    "order_type": "LIMIT",
+    "quantity": 65,
+    "price": 3.95,
+    "charges": {
+     "transaction_tax": 0.385125,
+     "transaction_tax_type": "stt",
+     "exchange_turnover_charge": 0.091223275,
+     "sebi_turnover_charge": 0.00025675,
+     "brokerage": 20,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 3.6164664044999992,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 3.6164664044999992
+     },
+     "total": 24.093071429499997
+    }
+   }
+  ]
+ }
+}
