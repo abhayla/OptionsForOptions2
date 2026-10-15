@@ -1259,6 +1259,10 @@
     "sha256": "17a1306d1ac0ebe2b80c8b90a9a59478a66303ba510dcb674eefdad73f3baaf5",
     "reviewed": "pending owner read"
   },
+  "margin_basket_insufficient": {
+    "sha256": "322daa3cb313eae76eb7e9b41a1c6dbeebd925455b044380f98d1788d36a9773",
+    "reviewed": "pending owner read"
+  },
   "explanation:flag_expiry_day_entry": {
     "sha256": "83e694cea935a44ce5101f8bb60d6f85fc20e0495c9f2981c0f2d548f493e54b",
     "reviewed": "pending owner read"
