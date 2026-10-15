@@ -152,6 +152,12 @@ decisions:
   ADR-072: 4a           # "where do I start losing" names every loss region from the payoff (W-066, independent review)
   ADR-078: all          # live runs use ofo_dev; ofo_test stays empty for tests (owner 2026-10-15)
   ADR-077: 4a           # browser socket drop shows AC-5 with the last price time (owner 2026-10-15, #222)
+  ADR-079: 4b           # unfilled basket order: age + status shown, cancel in Kite (owner 2026-10-15, Q263)
+  ADR-080: 4b           # NRML, tick rounding, executable limit from depth (expert role 2026-10-15, Q264/Q265/Q268)
+  ADR-081: 4b           # freeze limit: block at review, exchange file source (owner 2026-10-15, Q266)
+  ADR-082: 4b           # charges from Zerodha's published rates; money sentences include charges (owner 2026-10-15, Q267)
+  ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
+  ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
   ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
   ADR-075: 4a           # saved draft keeps planned entry + capture time (owner 2026-10-15, live gate check 2)
   ADR-074: [4a, S5]     # REQ-065 open exception at the core gate; Verified before Stage 5 (owner 2026-10-15)
@@ -218,6 +224,7 @@ issues:
   "#221": 4a            # deferred: draft label hyphen vs ADR-020 long dash (W-065 round 2)
   "#222": 4a            # deferred/owner question: REST fallback label after the browser socket closes (W-065 r2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
+  "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
@@ -270,6 +277,7 @@ findings:
   F-32: done      # live checks: Greeks input (ADR-061) and staleness (W-059) decided
   F-33: 4a        # afternoon capture: intraday strikes, REST charges/history, floats, sessions, expiry close
   F-34: done      # bars from ticks vs Kite candles (decided, ADR-067)
+  F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
 
 hypotheses:
   H1: done
