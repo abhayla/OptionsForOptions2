@@ -115,12 +115,13 @@ def test_join_on_token_stores_the_limit() -> None:
     assert match.disagreements == ()
 
 
-@pytest.mark.parametrize("change", [{"lot": 75}, {"expiry": date(2026, 10, 26)}, {"strike": "23600"}, {"kind": "PE"}])
-def test_disagreeing_identity_is_reported_not_stored(change: dict) -> None:
+@pytest.mark.parametrize("change, field", [({"lot": 75}, "lot"), ({"expiry": date(2026, 10, 26)}, "expiry"),
+                                           ({"strike": "23600"}, "strike"), ({"kind": "PE"}, "type")])
+def test_disagreeing_identity_is_reported_not_stored(change: dict, field: str) -> None:
     """AC-4: lot, expiry, strike or type differing from the catalogue -> reported, not stored."""
     match = match_to_catalogue(parse_freeze_file(FIXTURE, nse_name=NSE_NAME), _catalogue(47185, **change))
     assert match.matched == ()
-    assert len(match.disagreements) == 1 and "47185" in match.disagreements[0]
+    assert [(d.exchange_token, d.fields) for d in match.disagreements] == [(47185, (field,))]
 
 
 def test_symbol_equal_but_token_different_does_not_join() -> None:
@@ -129,3 +130,18 @@ def test_symbol_equal_but_token_different_does_not_join() -> None:
     match = match_to_catalogue(parse_freeze_file(FIXTURE, nse_name=NSE_NAME), _catalogue(99999))
     assert match.matched == ()
     assert match.disagreements == ()
+
+
+def test_duplicate_token_in_one_file_is_refused() -> None:
+    """AC-4: one token twice in a file is ambiguous (two limits for one contract): refuse the whole file."""
+    row = next(r for r in _real_rows() if r["FinInstrmId"] == "47185")
+    with pytest.raises(ValueError, match="47185"):
+        parse_freeze_rows([row, dict(row)], date(2026, 10, 15))
+
+
+def test_other_underlyings_and_kinds_are_skipped_not_parsed() -> None:
+    """AC-4: a stock option row (not V1) with a junk limit does not stop the load; a V1 row with one does."""
+    row = next(r for r in _real_rows() if r["FinInstrmId"] == "47185")
+    stock = dict(row, TckrSymb="RELIANCE", MaxTradQty="junk")
+    parsed = parse_freeze_rows([row, stock], date(2026, 10, 15))
+    assert (len(parsed.rows), parsed.skipped) == (1, 1)

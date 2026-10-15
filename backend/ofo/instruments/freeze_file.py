@@ -58,9 +58,17 @@ class FreezeMatch:
 
 
 @dataclass(frozen=True)
+class Disagreement:
+    """A file row whose token is in the catalogue but whose lot, expiry, strike or type differs: not stored."""
+
+    exchange_token: int
+    fields: tuple[str, ...]  # the names of the fields that differ
+
+
+@dataclass(frozen=True)
 class FreezeJoin:
     matched: tuple[FreezeMatch, ...]
-    disagreements: tuple[str, ...]  # reported, never stored
+    disagreements: tuple[Disagreement, ...]  # reported, never stored
     not_in_catalogue: int
 
 
@@ -144,7 +152,7 @@ def match_to_catalogue(parsed: FreezeFile, catalogue: Catalogue) -> FreezeJoin:
 
     A disagreement is reported and the limit is not stored (identity data is never overwritten)."""
     matched: list[FreezeMatch] = []
-    disagreements: list[str] = []
+    disagreements: list[Disagreement] = []
     absent = 0
     for row in parsed.rows:
         iid = InstrumentId(NSE_FO, row.exchange_token)
@@ -153,15 +161,15 @@ def match_to_catalogue(parsed: FreezeFile, catalogue: Catalogue) -> FreezeJoin:
             absent += 1
             continue
         c = entry.contract
-        diffs = [f"{name} file {theirs} vs catalogue {ours}" for name, theirs, ours in (
+        diffs = tuple(name for name, theirs, ours in (
             ("lot", row.lot_size, c.lot_size), ("expiry", row.expiry, c.expiry), ("strike", row.strike, c.strike),
-            ("type", row.instrument_type, c.instrument_type)) if theirs != ours]
+            ("type", row.instrument_type, c.instrument_type)) if theirs != ours)
         if diffs:
-            disagreements.append(f"token {row.exchange_token}: " + "; ".join(diffs))
+            disagreements.append(Disagreement(row.exchange_token, diffs))
             continue
         matched.append(FreezeMatch(iid, row.freeze_limit))
     return FreezeJoin(tuple(matched), tuple(disagreements), absent)
 
 
-__all__ = ["REQUIRED_COLUMNS", "FreezeFile", "FreezeJoin", "FreezeMatch", "FreezeRow", "file_date_from_name",
+__all__ = ["REQUIRED_COLUMNS", "Disagreement", "FreezeFile", "FreezeJoin", "FreezeMatch", "FreezeRow", "file_date_from_name",
            "match_to_catalogue", "parse_freeze_file", "parse_freeze_rows"]

@@ -18,6 +18,7 @@ planner interface, Zerodha's own figure stays final. Unknown means unknown: a va
 from __future__ import annotations
 from ofo.errors.explanations import render_explanation
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
@@ -25,6 +26,7 @@ from typing import Final
 from ofo.engine import Action, Strategy, strategy_metrics
 from ofo.engine.interfaces import MarginPlanner, plan_margin
 from ofo.engine.metrics import MultiExpiryError
+from ofo.execution.freeze import FreezeFinding, StoredFreeze, freeze_check
 from ofo.execution.planned import ExecutionPlan
 from ofo.execution.sequence import BrokerConstraints, OrderSequence, sequence_plan
 
@@ -56,6 +58,12 @@ class ExecutionReview:
     margin_basis: str  # how margin impact entered the order ("margin impact unknown — not used" when it did not)
     notes: tuple[str, ...]  # undetermined protection and naked units, from the sequence builder
     unknown: tuple[tuple[str, str], ...]  # (field, reason) for every value shown as unknown
+    blocked: tuple[FreezeFinding, ...] = ()  # W-076: legs not below their freeze limit; Execute is not offered
+    warnings: tuple[FreezeFinding, ...] = ()  # W-076: legs with no stored freeze limit
+
+    @property
+    def can_execute(self) -> bool:
+        return not self.blocked
 
 
 def _lines(plan: ExecutionPlan, seq: OrderSequence) -> tuple[ReviewLine, ...]:
@@ -75,8 +83,12 @@ def _notes(seq: OrderSequence) -> tuple[str, ...]:
 
 
 def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
-                     constraints: BrokerConstraints | None = None) -> ExecutionReview:
-    """AC-5: build the review from the engine, the margin planner and the sequence builder."""
+                     constraints: BrokerConstraints | None = None,
+                     freeze_limits: Mapping[str, StoredFreeze] | None = None) -> ExecutionReview:
+    """AC-5: build the review from the engine, the margin planner and the sequence builder.
+
+    W-076 (ADR-081): ``freeze_limits`` (broker trading symbol -> stored limit) decides which legs are blocked; a leg
+    with no entry carries the warning. Omitting it means no limit is known, so every leg warns."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"execution_review needs an ExecutionPlan, got {plan!r}")
     strategy = Strategy(tuple(p.leg for p in plan.legs))
@@ -99,8 +111,9 @@ def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
     except Exception as exc:  # fail closed to "unknown": never a made-up figure
         unknown.append(("margin_required", render_explanation("review_unknown_margin")))  # the planner's own error is not shown
     seq = sequence_plan(plan, planner, constraints)
+    freeze = freeze_check(plan, freeze_limits)
     return ExecutionReview(plan.strategy_id, margin, max_loss, max_profit, current, len(plan.legs), _lines(plan, seq),
-                           BROKER, seq.margin_note, _notes(seq), tuple(unknown))
+                           BROKER, seq.margin_note, _notes(seq), tuple(unknown), freeze.blocks, freeze.warnings)
 
 
 __all__ = ["BROKER", "ExecutionReview", "ReviewLine", "execution_review"]
