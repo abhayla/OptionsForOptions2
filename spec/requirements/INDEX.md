@@ -30,7 +30,7 @@ Requirements: 74; sections: 18
 |---|---|---|---|
 | REQ-053 | Broker authority and contract eligibility | core | Approved |
 | REQ-054 | Broker adapter | core | Approved |
-| REQ-055 | Margin checks | foundation | Specified |
+| REQ-055 | Margin checks | foundation | Approved |
 | REQ-056 | Multi-leg execution plan and review | foundation | Approved |
 | REQ-057 | Order lifecycle | foundation | Verified |
 | REQ-058 | Partial execution and no automatic retry | foundation | Verified |
@@ -79,7 +79,7 @@ Requirements: 74; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-043 | Live monitoring and status colours | foundation | Specified |
+| REQ-043 | Live monitoring and status colours | foundation | Approved |
 | REQ-044 | Strategy control center and Positions screen | feature | Specified |
 
 ## Navigation and public site (4)
@@ -95,7 +95,7 @@ Requirements: 74; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-062 | Notifications | feature | Specified |
+| REQ-062 | Notifications | feature | Approved |
 
 ## Option chain (3)
 
@@ -121,14 +121,14 @@ Requirements: 74; sections: 18
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-060 | Reconciliation with Zerodha | foundation | Verified |
-| REQ-061 | Existing positions on connect | feature | Specified |
+| REQ-061 | Existing positions on connect | feature | Approved |
 
 ## Rules and automation (2)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | Approved |
-| REQ-042 | Automation: Alert + Prepare Orders | feature | Specified |
+| REQ-042 | Automation: Alert + Prepare Orders | feature | Approved |
 
 ## Security, audit and compliance (5)
 

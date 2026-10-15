@@ -271,6 +271,18 @@ orders) and then delegated the rest ("go as per the plan"); each was decided by 
 - Requirements: REQ-040-043, 062 (one channel through the Notifier), Q205 and the 4c Q259+ answers.
 - Gate: a real rule fires on live data, the alert arrives, and the prepared orders match the engine.
 
+**2026-10-15 owner inputs (plan `docs/process/goal-contract-2026-10-15.md`):**
+- 4b/4c requirement batch approved: REQ-055 (wording conformed to ADR-054), REQ-061, REQ-042 (Q259 decided by
+  ADR-054), REQ-043, REQ-062 (Stage 4 = in-app + WhatsApp through the Notifier).
+- The 4b real order: BUY 1 lot of a far out-of-the-money NIFTY option on the nearest weekly expiry, LIMIT, premium
+  about ₹5 or less, exited the same day. Entry and exit both come from a saved strategy through our tagged basket,
+  placed by the owner on Kite's page; the orchestrator sends the contract and price first.
+- 4c: the owner OKs onboarding this project to the shared Notifier (test number only, existing approved template),
+  with a release record and rollback written first and the owner's typed go at that moment.
+- #200 (orchestrator, owner delegation): one bounded round with a written end condition. If it fails, ADR-074
+  applies: the core gate may pass with REQ-065 named as an open exception, and REQ-065 must be Verified before
+  Stage 5.
+
 **Core gate:** `spec/testing/core-invariants.md` §4 (the verification gate before parallel work) passes, for
 everything that does not depend on a later-stage acceptance criterion. Each such criterion (e.g. REQ-063's payment
 adapter) is named as "not yet run", never as passed. Nothing in Stages 5-8 starts before it.
