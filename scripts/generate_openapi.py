@@ -39,7 +39,7 @@ def main() -> int:
     spec = create_app().openapi()
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"OpenAPI spec written to: {out}")
     print(f"  Paths:   {len(spec.get('paths', {}))}")
     print(f"  Schemas: {len(spec.get('components', {}).get('schemas', {}))}")
