@@ -128,3 +128,48 @@ test('AC-4: LTP and Unrealized P&L change with the pushes; a socket kill shows t
   const latest = sock.ctl.pushes.map((q) => display(q, '1', 'ltp'))
   expect(latest).toContain((await cell(page, '1', 'ltp').textContent())!.trim())
 })
+
+test('AC-4 two holders (ADR-077): another socket holds the same legs, this page\'s socket is killed - the page shows the not-live message, never live numbers', async ({ page, context, request }, testInfo) => {
+  test.setTimeout(60000)
+  const legs = LEGS[testInfo.project.name]
+  const sock = socketControl(page)
+  await sock.install()
+  const draft = await draftFor(request, legs)
+  // another browser tab / user: a second socket on the same origin subscribes to the same contracts and stays open
+  const other = await context.newPage()
+  await other.goto(`${REPLAY_URL}/health`)
+  const otherFirst = await other.evaluate((body) => new Promise<string>((resolve, reject) => {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/strategies/live`)
+    ;(window as any).__otherSocket = ws
+    ws.onopen = () => ws.send(JSON.stringify(body))
+    ws.onmessage = (ev) => resolve(String(ev.data))
+    ws.onerror = () => reject(new Error('second socket failed'))
+  }), { ...draft, ux_level: 'standard' })
+  expect(JSON.parse(otherFirst).state).toBe('COMPUTED') // the second holder is really streaming these legs
+
+  await page.goto(`${REPLAY_URL}/strategy/builder?${new URLSearchParams({ draft: JSON.stringify(draft) })}`)
+  const builder = page.getByTestId('strategy-builder')
+  await expect(builder).toHaveAttribute('data-live', 'live')
+  await expect(builder).toHaveAttribute('data-state', 'computed')
+
+  const restBodies: any[] = []
+  const restAnswers: any[] = []
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/strategies/outcome') && r.method() === 'POST') restBodies.push(r.postDataJSON())
+  })
+  page.on('response', async (r) => {
+    if (r.url().endsWith('/api/strategies/outcome') && r.request().method() === 'POST') restAnswers.push(await r.json())
+  })
+  await sock.kill()
+  await expect.poll(() => restAnswers.length, { timeout: 10000 }).toBeGreaterThan(0)
+  await expect(builder).toHaveAttribute('data-state', 'not-connected')
+  await expect(builder).toHaveAttribute('data-live', 'down')
+  await expect(page.getByTestId('status-label')).toHaveText(AC5)
+  await expect(page.getByTestId('strategy-table')).toHaveCount(0) // no number shown as live (REQ-049 AC-4)
+  // every refresh after the drop said so, and every answer was the not-live one, though the other socket still holds the legs
+  expect(restBodies.length).toBeGreaterThan(0)
+  expect(restBodies.every((b) => b.fallback === true), JSON.stringify(restBodies.map((b) => b.fallback))).toBe(true)
+  expect(restAnswers.every((a) => a.state === 'NOT_CONNECTED' && a.table == null), JSON.stringify(restAnswers.map((a) => a.state))).toBe(true)
+  expect(await findClippedElements(page), describeClipped('/strategy/builder two holders', page.viewportSize()!.width, await findClippedElements(page))).toEqual([])
+  await other.evaluate(() => (window as any).__otherSocket.close())
+})
