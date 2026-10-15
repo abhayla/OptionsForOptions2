@@ -4,6 +4,8 @@
 !.claude/
 !**/.claude/
 .claude/*.local.json
+# user-level hook miss logs written into the project's dotfolder: per-machine, never committed
+.claude/.*-misses.log
 
 # views/ is generated output — regenerate it, do not hand-edit or commit stale copies.
 # .factory/authorizations/ holds owner-only single-use records — never commit real ones.
