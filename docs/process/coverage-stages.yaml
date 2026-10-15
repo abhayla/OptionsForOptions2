@@ -248,6 +248,7 @@ work_items:
   W-011: S8
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
+  W-083: 4b           # existing positions on connect: groups per underlying+expiry, adoption, audit (REQ-061, ADR-084)
   W-075: 4b           # PARKED #269 on OQ-4: charges in sentences + expiry values (ADR-082 part 2), branch verified except D5
   W-080: 4b           # read-only Kite basket, tags, InstrumentId, no-placement guard (REQ-073, #115)
   W-081: 4b           # margin gate before the basket, final.total vs available (REQ-055)
