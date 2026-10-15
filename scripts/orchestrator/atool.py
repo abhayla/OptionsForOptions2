@@ -5,7 +5,7 @@
 import os, subprocess, sys
 show = sys.argv[sys.argv.index("--show") + 1] if "--show" in sys.argv else None  # print one step's full output
 args = [a for i, a in enumerate(sys.argv[1:], 1)
-        if a not in ("--no-tests", "--show") and not (i > 1 and sys.argv[i - 1] == "--show")]
+        if a not in ("--no-tests", "--show", "--route-tests-anyway") and not (i > 1 and sys.argv[i - 1] == "--show")]
 wt = args[0] if os.path.isdir(args[0]) else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "." + "claude", "worktrees", f"agent-{args[0]}")
 word = args[1] if len(args) > 1 else "W-"
 steps = [["tools/factory_lint.py", "."], ["tools/trace_check.py", "."], ["tools/build_findings_index.py", ".", "--check"],
@@ -60,15 +60,30 @@ if "--no-tests" in sys.argv:
     # went red in CI). select_app_tests.py picks the files naming what the diff changed; run them like the step above.
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import select_app_tests
-    diff = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/"], cwd=wt, capture_output=True,
-                          text=True, encoding="utf-8").stdout
+    gd = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/"], cwd=wt, capture_output=True,
+                        text=True, encoding="utf-8")
+    gn = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD", "--", "backend/"], cwd=wt,
+                        capture_output=True, text=True)
     unparsed = False
-    try:
-        picked = select_app_tests.select(changed, diff, os.path.join(wt, "tests_app"))
-    except select_app_tests.DiffNotParsed as e:
-        print(f"route tests: diff not parsed - run the route files by hand ({e})")
+    picked = []
+    if gd.returncode or gn.returncode:  # fail closed: a failed git diff is not "nothing changed"
+        print(f"route tests: git diff failed (rc {gn.returncode}/{gd.returncode}) - run the route files by hand")
         bad |= 1
-        picked, unparsed = [], True
+        unparsed = True
+    else:
+        try:
+            picked = select_app_tests.select(gn.stdout.splitlines(), gd.stdout, os.path.join(wt, "tests_app"))
+        except select_app_tests.DiffNotParsed as e:
+            print(f"route tests: diff not parsed - run the route files by hand ({e})")
+            bad |= 1
+            unparsed = True
+    if len(picked) > select_app_tests.MAX_FILES and "--route-tests-anyway" not in sys.argv:
+        print(f"route tests: {len(picked)} files selected - too many for the production-host DB; let CI run them "
+              f"or pass --route-tests-anyway")
+        print("  " + ", ".join(os.path.basename(p) for p in picked))
+        bad |= 1
+        picked = []
+        unparsed = True
     if picked:
         runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_run.py")
         main_checkout = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
