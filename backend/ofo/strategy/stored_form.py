@@ -23,6 +23,11 @@ The form (schema_version 1):
 - Decimals (strike, risk limits) are JSON strings written with ``str(Decimal)`` and read back only if the text is
   the same, so the stored text is exact. A JSON float anywhere is refused. Integers (schema_version, contract_id,
   quantity in units) are JSON integers, never booleans.
+- A leg may also carry its planned entry price and capture time (ADR-075: "Save Draft stores each leg's planned
+  entry price and its capture time with the strategy definition"), always as the pair ``planned_entry`` (a positive
+  price in whole paise, as exact decimal text) and ``captured_at`` (ISO 8601 with a UTC offset). A planned entry is the
+  user's own planned price, not a live market price; a leg saved before ADR-075 has neither key and loads with no
+  entry (the screen asks for a reprice; nothing re-captures it silently, ADR-068 item 1).
 - Unknown keys, missing keys and a schema version this code does not know are refused; nothing is ever dropped or
   defaulted. The form holds no live-market value: its keys are a closed set (``DOCUMENT_KEYS`` / ``LEG_KEYS``), and
   the user-named maps (risk_limits, preferences) take only ADR-064's closed lists of names (UNKNOWN_NAME otherwise).
@@ -60,6 +65,12 @@ MAX_CONTRACT_ID = 10**18 - 1
 
 DOCUMENT_KEYS = frozenset({"schema_version", "underlying", "legs", "rules_ref", "risk_limits", "preferences"})
 LEG_KEYS = frozenset({"contract_id", "action", "instrument", "strike", "expiry", "quantity"})
+#: ADR-075: the optional pair a leg carries when it has a planned entry (both or neither; nothing else is optional).
+ENTRY_LEG_KEYS = frozenset({"planned_entry", "captured_at"})
+#: The database's patterns (migration 0011): a price as plain digits, at most 12 before and 2 after the point
+#: (NUMERIC(14,2)); a capture time as Python's isoformat of an aware datetime with a whole-minute offset.
+ENTRY_PRICE_PATTERN = r"(0|[1-9][0-9]{0,11})([.][0-9]{1,2})?"
+CAPTURED_AT_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{6})?[+-][0-9]{2}:[0-9]{2}"
 ENTRY_KEYS = frozenset({"schema_version", "seq", "at", "change_summary", "definition"})
 
 #: Every live-market field name (REQ-038 AC-1's live state, read from the LiveState, LegQuote and Greeks classes) plus
@@ -67,7 +78,7 @@ ENTRY_KEYS = frozenset({"schema_version", "seq", "at", "change_summary", "defini
 LIVE_STATE_NAMES = frozenset(
     {f.name for cls in (_live_state.LiveState, _live_state.LegQuote, _live_state.Greeks)
      for f in dataclasses.fields(cls)} - {"leg_index"}) | {"price"}
-if LIVE_STATE_NAMES & (DOCUMENT_KEYS | LEG_KEYS | ENTRY_KEYS):  # pragma: no cover - a definition key is never live data
+if LIVE_STATE_NAMES & (DOCUMENT_KEYS | LEG_KEYS | ENTRY_LEG_KEYS | ENTRY_KEYS):  # pragma: no cover - a definition key is never live data
     raise RuntimeError("a stored-form key is a live-state name")
 
 # Fixed refusal codes (the API returns them as-is).
@@ -86,6 +97,7 @@ UNDERLYING_MISMATCH = "underlying_mismatch"
 LIVE_STATE_FIELD = "live_state_field"
 UNKNOWN_NAME = "unknown_name"
 VALUE_NOT_ALLOWED = "value_not_allowed"  # ADR-069: a setting value that is not an identifier or a number
+INVALID_PLANNED_ENTRY = "invalid_planned_entry"  # ADR-075: not a positive paise price with an aware capture time
 
 
 class StoredFormError(ValueError):
@@ -121,11 +133,74 @@ def _is_int(value: object) -> bool:
 
 
 @dataclass(frozen=True)
+class LegEntry:
+    """ADR-075: one leg's planned entry price and the time it was captured. The user's own planned price (captured
+    from a live price when the leg was added, ADR-068 item 1), never a live price; it changes only on a reprice."""
+
+    price: Decimal
+    captured_at: datetime.datetime
+
+    def __post_init__(self) -> None:
+        price = self.price
+        if (not isinstance(price, Decimal) or not price.is_finite() or price <= 0
+                or re.fullmatch(ENTRY_PRICE_PATTERN, str(price)) is None):
+            raise StoredFormError(INVALID_PLANNED_ENTRY, "a planned entry is a positive price in whole paise (at most "
+                                                         "12 digits before the point)")
+        at = self.captured_at
+        if (not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None
+                or re.fullmatch(CAPTURED_AT_PATTERN, at.isoformat()) is None):
+            raise StoredFormError(INVALID_PLANNED_ENTRY, "a capture time is a timezone-aware datetime with a "
+                                                         "whole-minute offset")
+
+
+def entry_from_text(price: Any, captured_at: Any, where: str) -> LegEntry:
+    """The pair as stored / sent text: the price is exact decimal text (``str(Decimal)`` of itself, no float, no
+    exponent) and the time is ISO 8601 with its offset, written exactly as ``isoformat`` writes it back."""
+    if type(price) is not str or re.fullmatch(ENTRY_PRICE_PATTERN, price) is None:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.planned_entry is not a plain decimal price text")
+    if type(captured_at) is not str or re.fullmatch(CAPTURED_AT_PATTERN, captured_at) is None:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not an ISO datetime with an offset")
+    try:
+        at = datetime.datetime.fromisoformat(captured_at)
+    except ValueError:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not a real datetime") from None
+    if at.isoformat() != captured_at:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not in its canonical form")
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at)
+
+
+#: A capture time later than the server clock by more than this is refused (a clock that runs ahead, or a forged time).
+MAX_CAPTURE_AHEAD = datetime.timedelta(minutes=5)
+
+
+def entry_from_input(price: Any, captured_at: Any, now: datetime.datetime, where: str) -> LegEntry:
+    """The pair as a Save Draft body sends it (the strings POST /api/strategies/planned-entry returned): the price is
+    exact plain decimal text in whole paise (a JSON number or float is refused); the time is any ISO 8601 text WITH an
+    offset ("Z" included), stored in its canonical ``isoformat`` form, and never later than ``now`` +
+    MAX_CAPTURE_AHEAD. Both or neither: one without the other is refused (INVALID_PLANNED_ENTRY)."""
+    if type(price) is not str or re.fullmatch(ENTRY_PRICE_PATTERN, price) is None:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.planned_entry is not a plain decimal price text")
+    if type(captured_at) is not str:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not an ISO datetime text")
+    try:
+        at = datetime.datetime.fromisoformat(captured_at)
+    except ValueError:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is not an ISO datetime") from None
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at has no UTC offset")
+    if not isinstance(now, datetime.datetime) or now.tzinfo is None or at > now + MAX_CAPTURE_AHEAD:
+        raise StoredFormError(INVALID_PLANNED_ENTRY, f"{where}.captured_at is in the future")
+    return LegEntry(_decimal_from(price, f"{where}.planned_entry", INVALID_PLANNED_ENTRY), at)
+
+
+@dataclass(frozen=True)
 class SavedDefinition:
-    """A definition plus, for each leg in order, the catalogue's internal contract id it was built from."""
+    """A definition plus, for each leg in order, the catalogue's internal contract id it was built from and its planned
+    entry (ADR-075; None for a leg without one, e.g. a draft saved before ADR-075). ``entries`` defaults to none."""
 
     definition: StrategyDefinition
     contract_ids: tuple[int, ...]
+    entries: tuple[Optional[LegEntry], ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.definition, StrategyDefinition):
@@ -144,6 +219,13 @@ class SavedDefinition:
         check_map_names(risk_limits=[n for n, _ in self.definition.risk_limits],
                         preferences=[n for n, _ in self.definition.preferences])
         object.__setattr__(self, "contract_ids", ids)
+        entries = tuple(self.entries) if isinstance(self.entries, (tuple, list)) else None
+        if entries == ():
+            entries = (None,) * len(ids)
+        if entries is None or len(entries) != len(ids) or not all(e is None or isinstance(e, LegEntry)
+                                                                   for e in entries):
+            raise StoredFormError(INVALID_PLANNED_ENTRY, "entries holds one LegEntry or None per leg")
+        object.__setattr__(self, "entries", entries)
 
 
 def check_map_names(**named: Sequence[str]) -> None:
@@ -179,7 +261,7 @@ def to_document(saved: SavedDefinition) -> dict[str, Any]:
         raise StoredFormError(INVALID_DEFINITION, f"to_document needs a SavedDefinition, got {saved!r}")
     d = saved.definition
     legs = []
-    for contract_id, leg in zip(saved.contract_ids, d.legs):
+    for contract_id, leg, entry in zip(saved.contract_ids, d.legs, saved.entries):
         legs.append({
             "contract_id": contract_id,
             "action": leg.action.value,
@@ -187,7 +269,8 @@ def to_document(saved: SavedDefinition) -> dict[str, Any]:
             "strike": None if leg.strike is None else _decimal_text(leg.strike),
             "expiry": leg.expiry.isoformat(),
             "quantity": leg.quantity,
-        })
+        } | ({} if entry is None else {"planned_entry": str(entry.price),
+                                       "captured_at": entry.captured_at.isoformat()}))
     return {
         "schema_version": SCHEMA_VERSION,
         "underlying": d.underlying,
@@ -250,15 +333,15 @@ def _exact_keys(obj: Any, keys: frozenset[str], where: str) -> dict[str, Any]:
     return obj
 
 
-def _decimal_from(value: Any, where: str) -> Decimal:
+def _decimal_from(value: Any, where: str, code: str = NOT_DECIMAL_STRING) -> Decimal:
     if isinstance(value, float) or (not isinstance(value, str)):
-        raise StoredFormError(NOT_DECIMAL_STRING, f"{where} must be a decimal string, got {value!r}")
+        raise StoredFormError(code, f"{where} must be a decimal string, got {value!r}")
     try:
         number = Decimal(value)
     except InvalidOperation:
-        raise StoredFormError(NOT_DECIMAL_STRING, f"{where} {value!r} is not a decimal") from None
+        raise StoredFormError(code, f"{where} {value!r} is not a decimal") from None
     if not number.is_finite() or str(number) != value:
-        raise StoredFormError(NOT_DECIMAL_STRING, f"{where} {value!r} is not an exact finite decimal text")
+        raise StoredFormError(code, f"{where} {value!r} is not an exact finite decimal text")
     return number
 
 
@@ -338,9 +421,12 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
         raise StoredFormError(MALFORMED, f"legs must be a JSON array, got {type(raw_legs).__name__}")
     legs: list[DefinitionLeg] = []
     ids: list[int] = []
+    entries: list[Optional[LegEntry]] = []
     for i, raw in enumerate(raw_legs):
         where = f"leg_{i + 1}"
-        raw = _exact_keys(raw, LEG_KEYS, where)
+        with_entry = isinstance(raw, dict) and bool(ENTRY_LEG_KEYS & set(raw))
+        raw = _exact_keys(raw, LEG_KEYS | ENTRY_LEG_KEYS if with_entry else LEG_KEYS, where)
+        entries.append(entry_from_text(raw["planned_entry"], raw["captured_at"], where) if with_entry else None)
         contract_id = _int_from(raw["contract_id"], f"{where}.contract_id", MISSING_CONTRACT_ID)
         if not 0 < contract_id <= MAX_CONTRACT_ID:
             raise StoredFormError(MISSING_CONTRACT_ID,
@@ -370,7 +456,7 @@ def from_document(doc: Any, resolve: Resolver) -> SavedDefinition:
                                         preferences=tuple(prefs.items()))
     except DefinitionError as exc:
         raise _definition_refused(exc) from None
-    saved = SavedDefinition(definition, tuple(ids))
+    saved = SavedDefinition(definition, tuple(ids), tuple(entries))
     check_against_catalogue(saved, resolve, require_live=False)
     return saved
 
@@ -411,6 +497,7 @@ class LegChoice:
     contract_id: int
     action: Action
     quantity: int
+    entry: Optional[LegEntry] = None  # ADR-075: the leg's planned entry, when the user has one
 
 
 def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve: Resolver, *,
@@ -420,6 +507,7 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
     """A new definition whose legs take their terms from live catalogue contracts (the Save Draft path)."""
     legs: list[DefinitionLeg] = []
     ids: list[int] = []
+    entries: list[Optional[LegEntry]] = []
     for i, choice in enumerate(choices):
         if not isinstance(choice, LegChoice):
             raise StoredFormError(INVALID_DEFINITION, f"leg {i + 1} must be a LegChoice, got {choice!r}")
@@ -441,13 +529,16 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
             legs.append(DefinitionLeg(choice.action, terms.instrument, terms.strike, terms.expiry, choice.quantity))
         except DefinitionError as exc:
             raise StoredFormError(INVALID_DEFINITION, f"leg {i + 1}: {exc}") from None
+        if choice.entry is not None and not isinstance(choice.entry, LegEntry):
+            raise StoredFormError(INVALID_PLANNED_ENTRY, f"leg {i + 1}: entry must be a LegEntry or None")
         ids.append(choice.contract_id)
+        entries.append(choice.entry)
     try:
         definition = StrategyDefinition(underlying, tuple(legs), rules_ref=rules_ref, risk_limits=risk_limits,
                                         preferences=preferences)
     except DefinitionError as exc:
         raise _definition_refused(exc) from None
-    return SavedDefinition(definition, tuple(ids))
+    return SavedDefinition(definition, tuple(ids), tuple(entries))
 
 
 def summary_text(items: Sequence[Mapping[str, Any]]) -> str:
@@ -473,8 +564,14 @@ def check_summary_text(text: str) -> str:
 
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:
     """The activity-history summary as stored data: the meaningful changes, or the cosmetic one."""
-    items = new.definition.change_items(old.definition)
+    items = list(new.definition.change_items(old.definition))
+    if _entries_by_contract(old) != _entries_by_contract(new):  # ADR-075 / ADR-068 item 1: a reprice is a change
+        items.append({"kind": "entries_repriced"})
     return summary_text(items or [{"kind": "legs_reordered"}])
+
+
+def _entries_by_contract(saved: SavedDefinition) -> dict[int, Optional[LegEntry]]:
+    return dict(zip(saved.contract_ids, saved.entries))
 
 
 def unreadable_replacement_summary() -> str:

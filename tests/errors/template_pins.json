@@ -783,6 +783,10 @@
     "sha256": "4353bc7790d8062392b7a8c1c9c276de4cfec126a3a09f3a16fda81d976d5dca",
     "reviewed": "pending owner read"
   },
+  "explanation:change_entries_repriced": {
+    "sha256": "b84c29a890bb09eac968d2fbf95ac764fc572097537afb246f4e5f3ea982a388",
+    "reviewed": "pending owner read"
+  },
   "explanation:change_legs_reordered": {
     "sha256": "b3dd87b7c5a4629854c939988cf5eef42db5d299bc93d07605903f54c8d53850",
     "reviewed": "pending owner read"
