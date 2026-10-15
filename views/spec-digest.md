@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (85)
+## Decisions (86)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -91,6 +91,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the exchange settlement price, with a timeline entry; recon… [refines ADR-006]
 - ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one group per underlying and expiry from the open positions not already in a strategy. [refines ADR-018]
 - ADR-085 2026-10-15: When a draft saved without planned entries (before ADR-075) is reopened in the Builder, each such leg shows the catalogue message "This leg was saved…
+- ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is named by its contract - underlying, expiry day and short month, strike, then CE / PE / FUT, e.g.
 
 ## Requirements (74)
 

@@ -6,6 +6,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { istTime } from '@/lib/displayFormat'
 import { buildSaveBody, canSaveLegs, expiriesOf, legsFromSaved } from '@/lib/saveDraft'
 
 const props = defineProps({ legs: { type: Array, default: () => [] }, rulesRef: { type: String, default: '' } })
@@ -73,13 +75,11 @@ type="button" data-testid="save-draft" class="rounded border border-line px-3 py
       <span v-if="savedId" data-testid="save-status" :data-saved-id="savedId">Draft {{ savedId }} saved.</span>
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>
-    <p v-if="errorParts" class="mt-2 text-sm" role="alert" data-testid="save-error">
-      {{ errorParts.what_happened }} {{ errorParts.what_is_blocked }} {{ errorParts.next_action }}
-    </p>
+    <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="save-error" data-testid="save-error" />
     <h2 class="mt-3 text-sm font-medium">Saved drafts</h2>
     <ul v-if="drafts.length" class="mt-1 text-sm" data-testid="saved-drafts">
       <li v-for="d in drafts" :key="d.id" class="flex flex-wrap items-center gap-2" data-testid="saved-draft-row">
-        <span>Draft {{ d.id }}, {{ d.underlying }}, updated {{ d.updated_at }}</span>
+        <span>Draft {{ d.id }}, {{ d.underlying }}, updated {{ istTime(d.updated_at) }}</span>
         <button type="button" :data-testid="`open-draft-${d.id}`" class="underline" :disabled="busy" @click="open(d.id)">Open</button>
       </li>
     </ul>

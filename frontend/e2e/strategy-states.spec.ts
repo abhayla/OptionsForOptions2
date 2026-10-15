@@ -63,7 +63,7 @@ test('a stale leg is labelled and the outcome is not shown as fully live', async
   await page.route(OUTCOME, (route) => route.fulfill({ json: real }))
   await page.goto(url(REPLAY_URL))
   await expect(state(page)).toHaveAttribute('data-state', 'stale')
-  await expect(page.getByTestId('stale-leg')).toHaveText(`${real.legs[0].symbol}: stale since 09:15 IST`)
+  await expect(page.getByTestId('stale-leg')).toHaveText(/^NIFTY \d{1,2} [A-Z][a-z]{2} \d+(\.\d+)? (CE|PE): stale since 09:15 IST$/)
   await expect(page.getByTestId('data-health')).toBeVisible()
   await page.screenshot({ path: `screenshots/strategy-stale-${info.project.name}.png`, fullPage: true })
 })

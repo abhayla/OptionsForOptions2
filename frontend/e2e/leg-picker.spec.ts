@@ -75,7 +75,7 @@ test('edit changes a leg and remove drops it', async ({ page }) => {
   await page.getByTestId('pick-strike').selectOption('23000.00')
   await page.getByTestId('add-leg').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(1)
-  await expect(page.getByTestId('leg-row')).toContainText('NIFTY26O1323000CE')
+  await expect(page.getByTestId('leg-row')).toContainText('NIFTY 13 Oct 23000 CE')
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', /computed|stale/)
   await page.getByTestId('remove-leg').click()
   await expect(page.getByTestId('leg-row')).toHaveCount(0)

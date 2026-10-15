@@ -55,12 +55,13 @@
         <span class="text-xs font-medium text-yellow-700 uppercase">{{ underlying }} level</span>
       </div>
       <div class="text-2xl font-bold text-yellow-700" data-testid="spot-level">{{ currentSpot }}</div>
-      <div class="text-xs text-yellow-600 mt-1">{{ lastUpdated }}</div>
+      <div class="text-xs text-yellow-600 mt-1">{{ istTime(lastUpdated) }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { istTime } from '@/lib/displayFormat'
 defineProps({
   maxProfit: { type: String, default: '-' },
   maxLoss: { type: String, default: '-' },

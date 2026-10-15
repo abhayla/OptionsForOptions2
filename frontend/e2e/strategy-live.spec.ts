@@ -114,7 +114,9 @@ test('AC-4: LTP and Unrealized P&L change with the pushes; a socket kill shows t
   await expect(page.getByTestId('status-label')).toHaveText(rest.status_label)
   await expect(builder).toHaveAttribute('data-live', 'down')
   await expect(page.getByTestId('strategy-table')).toHaveCount(0) // no number shown as live (REQ-049 AC-4)
-  await expect(page.getByTestId('draft-legs')).toContainText(draft.legs[0].instrument_id)
+  // ADR-086: a leg from a `draft` query has no contract fields, so it shows the fixed wording, never its instrument id
+  await expect(page.getByTestId('draft-legs')).toContainText('Contract details not available')
+  await expect(page.getByTestId('draft-legs')).not.toContainText(draft.legs[0].instrument_id)
   expect(await findClippedElements(page), describeClipped('/strategy/builder not-live', page.viewportSize()!.width, await findClippedElements(page))).toEqual([])
 
   // 3. allow the socket back: the next backoff attempt reconnects, the strategy is sent again, pushes resume
