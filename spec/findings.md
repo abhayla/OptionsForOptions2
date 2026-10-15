@@ -506,3 +506,22 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Meaning: bars from the live feed are good enough for intraday use (REQ-051 AC-4 "where practical") but not an exact
   record; Kite's own candles are exact and available after the close.
 - Bears on: REQ-051 (AC-3, AC-4), REQ-047 AC-1, ADR-066. Status: **decided** (ADR-067).
+
+## F-35 - Zerodha's published F&O options rates reproduce its own charges reply exactly, except rounding: the brokerage calculator rounds STT and stamp duty to whole rupees, the order-level reply does not round STT
+- Measured 2026-10-15 ~18:00 IST by the orchestrator. Sources: zerodha.com/charges (F&O options column, read
+  2026-10-15; no date on the page), the brokerage calculator's script `zerodha.com/static/js/brokerage.js`
+  (`cal_options`, read 2026-10-15), and Kite's `/charges/orders` reply captured 15:10 IST
+  (`docs/research/kite-proof-2026-10-07/rest-2026-10-15-order/charges_CE.json`). Level P1.
+- Published rates (charges page): brokerage "Flat Rs. 20 per executed order"; STT "0.15% on sell side (on premium)" and
+  "0.15% of the intrinsic value on options that are bought and exercised"; NSE transaction "0.03553% (on premium)", BSE
+  "0.0325% (on premium)"; GST "18% on (brokerage + SEBI charges + transaction charges)"; SEBI "Rs 10 / crore"; stamp
+  "0.003% or Rs 300 / crore on buy side". The calculator splits NSE as 0.03503% transaction + 0.0005% IPFT (= 0.03553%).
+- Check on 1 lot NIFTY26O1923550CE at 3.95 (premium Rs 256.75): rates give brokerage 20, NSE 0.0912, SEBI 0.0003, GST
+  3.6165, STT on the sell 0.3851 - each equal to Kite's reply to 4 decimals; stamp on the buy gives 0.0077 where Kite's
+  reply says 0.
+- Rounding differs by source: the calculator applies `Math.round` (whole rupees) to STT and stamp, so it shows STT 0 on
+  this sell; the order-level reply keeps STT 0.3851 and stamp 0. Which rounding the contract note applies per day or
+  per scrip is **unmeasured** until a real fill (the Stage 4b order).
+- Meaning: a rate table from the published page is accurate to the paisa on brokerage, exchange, SEBI and GST; STT and
+  stamp need a stated rounding rule, and an estimate can differ from the contract note by under Rs 1 per order.
+- Bears on: Q267 / ADR-082, ADR-071, REQ-032 (charges interface), REQ-059 AC-3. Status: **decided** (ADR-082).
