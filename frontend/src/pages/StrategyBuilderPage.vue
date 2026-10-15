@@ -25,7 +25,7 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
-import { nameFromPool } from '@/lib/displayFormat'
+import { istTime, nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -33,6 +33,7 @@ const router = useRouter()
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
+const errorAnsweredAt = ref(null) // the failed request's server answer time (its Date header), ADR-088
 const slow = ref(false)
 let slowTimer = null
 
@@ -99,6 +100,7 @@ async function load() {
   } catch (e) {
     if (mine !== loadSeq) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
+    errorAnsweredAt.value = e?.answered_at ?? null
     state.value = 'error'
   } finally {
     if (mine === loadSeq) {
@@ -166,6 +168,15 @@ const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlim
 const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
+// ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
+// newest planned-entry answer that left a leg without a price; error: the failed answer's Date header; none -> unavailable.
+const checkedAt = computed(() => {
+  if (state.value === 'unpriced') {
+    const times = legs.value.map((l) => l.checked_at).filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b))
+    return istTime(times.length ? times[times.length - 1] : null)
+  }
+  return istTime(state.value === 'error' ? errorAnsweredAt.value : data.value?.answered_at)
+})
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
 </script>
 
@@ -188,13 +199,18 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
       <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown because none of the legs has a planned entry from live market data.</p>
+      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
     </div>
 
-    <ErrorMessage v-else-if="state === 'error'" class="mt-4" :parts="errorParts" data-testid="state-error" />
+    <div v-else-if="state === 'error'" class="mt-4">
+      <ErrorMessage :parts="errorParts" data-testid="state-error" />
+      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+    </div>
 
     <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
       <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
+      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
       <ul class="mt-2 text-sm" data-testid="draft-legs">
         <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry }}</li>
       </ul>
@@ -204,6 +220,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
       <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
       <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
+      <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
     </div>
 
     <template v-if="showNumbers">

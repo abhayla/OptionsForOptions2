@@ -128,11 +128,13 @@ async function capture(id, und) {
     const res = await api.post('/strategies/planned-entry', { underlying: und, instrument_ids: [id] })
     const found = res.data.entries.find((e) => instrumentId(e.exchange_segment, e.exchange_token) === id)
     if (found && found.planned_entry != null && found.captured_at != null) {
-      return { planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source, reason_code: null }
+      return { planned_entry: found.planned_entry, captured_at: found.captured_at, source: found.source, reason_code: null,
+               checked_at: res.data.answered_at ?? null }
     }
-    return { planned_entry: null, captured_at: null, source: null, reason_code: found?.reason_code ?? 'no_live_price' }
+    return { planned_entry: null, captured_at: null, source: null, reason_code: found?.reason_code ?? 'no_live_price',
+             checked_at: res.data.answered_at ?? null }
   } catch {
-    return { planned_entry: null, captured_at: null, source: null, reason_code: 'capture_failed' }
+    return { planned_entry: null, captured_at: null, source: null, reason_code: 'capture_failed', checked_at: null }
   }
 }
 
