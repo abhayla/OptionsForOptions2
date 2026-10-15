@@ -554,6 +554,27 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A recorded standalone position changed on {contracts} contract(s).",
           "The recorded standalone quantity no longer matches Zerodha.", _REC_NONE_BLOCKED,
           "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
+    # W-083 (REQ-061, ADR-084): grouping the positions already open at Zerodha. All pending owner read.
+    _gate("grouping_unknown_contract", _RM, 210,
+          "Zerodha shows a position on {contracts} contract(s) that are not in this platform's contract list.",
+          "This position cannot be grouped or added to a strategy.", "Adding this position to a strategy.",
+          "Leave it standalone, or refresh the contract list and connect again.", _REC_SLOT),
+    _gate("grouping_not_lot_multiple", _RM, 211,
+          "Zerodha shows a quantity on {contracts} contract(s) that is not a whole number of lots.",
+          "This position cannot be added to a strategy, because a strategy leg is a whole number of lots.",
+          "Adding this position to a strategy.", "Leave it standalone and check the quantity in Zerodha.", _REC_SLOT),
+    _gate("grouping_move_refused", _RM, 212,
+          "This position cannot be moved there: the group or strategy is on a different underlying.",
+          "The position stays where it was.", "This move only.",
+          "Choose a group or strategy on the same underlying, or leave the position standalone."),
+    _gate("grouping_choice_unavailable", _RM, 213,
+          "That choice is not available: the position, group or strategy is not in the list of open positions, "
+          "or the group was already adopted.",
+          "Nothing was changed.", "This choice only.", "Reload your open positions and choose again."),
+    _gate("grouping_entry_price_invalid", _RM, 214,
+          "The entry price is not valid: it must be above zero and a multiple of the contract's tick size.",
+          "The leg keeps its previous entry price.", "Adopting this leg with that price.",
+          "Enter a price above zero that is a multiple of the tick size."),
 )
 
 

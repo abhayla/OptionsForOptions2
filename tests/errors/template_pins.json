@@ -1258,5 +1258,25 @@
   "gate_price_not_known": {
     "sha256": "17a1306d1ac0ebe2b80c8b90a9a59478a66303ba510dcb674eefdad73f3baaf5",
     "reviewed": "pending owner read"
+  },
+  "grouping_unknown_contract": {
+    "sha256": "f375f7f765c425510af99868027af515e5a2a2e1a012ec328e3543fe2e37c867",
+    "reviewed": "pending owner read"
+  },
+  "grouping_not_lot_multiple": {
+    "sha256": "dfeb075a21340b65966dfe78a9cc3e863aff8aacef436dca27c2c6debcc1b897",
+    "reviewed": "pending owner read"
+  },
+  "grouping_move_refused": {
+    "sha256": "c79457a222093f711a9b76a5d697add68a6899bef2a54a7b705d7748a2b1b9d4",
+    "reviewed": "pending owner read"
+  },
+  "grouping_choice_unavailable": {
+    "sha256": "aaf969b9e23caae38a2a117508f4ff58e51c86aa0f160b220268591397c69b2a",
+    "reviewed": "pending owner read"
+  },
+  "grouping_entry_price_invalid": {
+    "sha256": "3e24d430679ec72622935eb0438142713e10a85ad7857ec09776b0d619b07fa2",
+    "reviewed": "pending owner read"
   }
 }
