@@ -18,7 +18,8 @@ Orchestration: briefs in `docs/process/`, helpers in `scripts/orchestrator/`. Bu
 `.claude` folder, a path the kit guard blocks in Bash, so reach them through the helpers: `agit.py <agent-id> <git
 args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|release`, `ev_agent.py` /
 `record_evidence.py` (verifier JSON → evidence files), `gh_issue.py kit|app` (issues, incl. `harvest`),
-`aregen.py <agent-id>` (regenerate the findings index in a worktree and continue a paused rebase). Run
+`aregen.py <agent-id>` (regenerate the findings index in a worktree and continue a paused rebase), `dev_run.py <cwd>
+<command>` (run with DATABASE_URL = ofo_dev for live runs and dev e2e; refuses any other database, ADR-078). Run
 `check_brief.py <brief>` on every builder brief before dispatch: it fails when a spec quote in the brief is not verbatim
 in the ADR/REQ/Q it cites (finding brief-rule-from-memory).
 

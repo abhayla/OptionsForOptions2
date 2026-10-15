@@ -15,7 +15,7 @@
    "scripts/orchestrator/atool.py (migration step)",
    "tests_app/_migration_replay.py"
   ],
-  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally. 2026-10-10 (3rd occurrence, frontend test ids): caught by CI's Playwright job before merge, as designed; cost one extra CI round. Locally, a new component should grep frontend/e2e and frontend/tests for every data-testid it renders."
+  "note": "The general case (any changed behaviour pinned by a test in an unrelated file) is still caught only by CI's full suite, by design on the VPS; the migration case is now caught locally. 2026-10-10 (3rd occurrence, frontend test ids): caught by CI's Playwright job before merge, as designed; cost one extra CI round. Locally, a new component should grep frontend/e2e and frontend/tests for every data-testid it renders. 2026-10-15 (4th occurrence, response fields): proposed local mechanism - before push, run every tests_app file that references a changed route path or response model name (grep), issue #242."
  },
  "spec_ref": [
   "spec/requirements/REQ-065.md"
@@ -35,6 +35,11 @@
    "date": "2026-10-10",
    "where": "W-068 leg picker (PR #194)",
    "evidence": "the new LegPicker reused the page's four-part error test ids (error-what); e2e/strategy-states.spec.ts:79 and :87 failed in CI (strict mode: 2 elements) though the builder's targeted Vitest and the reviewer's grep (state-no-draft only) were green; fixed with a distinct picker-error test id"
+  },
+  {
+   "date": "2026-10-15",
+   "where": "W-071 (PR #241): two additive response fields on GET /strategies/{id}",
+   "evidence": "CI app job '2 failed, 1563 passed': tests_app/test_response_door.py:180 500 (the fake DB had no execute; the new segment/token lookup queries the DB) and tests_app/test_strategy_planned_entry.py:209 (response leg keys == stored LEG_KEYS); the builder and both verifiers ran only the W-071 route test files"
   }
  ]
 }

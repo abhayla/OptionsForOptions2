@@ -1,6 +1,11 @@
 # Handover
 
-**2026-10-15 evening — START HERE: `docs/process/session-handover-2026-10-15b.md`.** 20 PRs merged (#205-#230):
+**2026-10-15 night — START HERE: `docs/process/session-handover-2026-10-15c.md`.** W-065 done (#235, after a round-1
+FAIL on a second tab), W-071 done (#241), all Stage 4b questions Q263-Q270 decided (ADR-079..085, F-35). ofo_dev now
+holds today's real catalogue. Token-expiry watcher running overnight. NEXT: read the watcher -> F-id; 4a gate re-run
+with one owner login (the 11:55 run predates #212/#211/#216); then 4b build items.
+
+**2026-10-15 evening — `docs/process/session-handover-2026-10-15b.md`.** 20 PRs merged (#205-#230):
 W-066 done, W-065 backend live (WebSocket route proven on real Kite data, 3 live runs), 4a live gate checks passed,
 ADR-074..078 (owner), `ofo_dev` for live runs (never load live data into ofo_test). In flight: W-065 frontend
 (`build/W-065-frontend`). Parked: #200/#199 (REQ-065 open exception until Stage 5, ADR-074). NEXT: token-expiry probe
