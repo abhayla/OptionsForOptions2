@@ -112,6 +112,12 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("scenario/test_modes.py", "NIFTY26OCT22800PE"):
         "same golden Iron Condor fixture: the unavailable-IV message names the same leg used by "
         "engine/conftest.py, for which no catalogue row exists at 2026-10-27.",
+    ("execution/test_freeze_review_block.py", "NIFTY26O1923550CE"):
+        "W-076 / F-36: Zerodha's real tradingsymbol for NSE token 47185 (NIFTY 23550 CE of 2026-10-19, lot 65, freeze "
+        "limit 3511 on NSE's 15 Oct 2026 contract file); this catalogue slice (2026-09 list) predates that expiry.",
+    ("instruments/test_nse_freeze_file.py", "NIFTY26O1923550CE"):
+        "W-076 / F-36: the same real Zerodha tradingsymbol (token 47185), named in a docstring only; the test joins on "
+        "the exchange token, never on this symbol.",
     ("audit/test_log.py", "NIFTY24JAN25000CE"):
         "REQ-064: the audit log stores a raw Kite-style broker-response payload EXACTLY as passed, "
         "with no secret filtering and no catalogue lookup; the payload's tradingsymbol is "

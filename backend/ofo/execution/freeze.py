@@ -27,10 +27,10 @@ class StoredFreeze:
     file_date: date
 
     def __post_init__(self) -> None:
-        for name in ("limit", "lot"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-                raise ValueError(f"{name} must be a positive integer, got {value!r}")
+        if isinstance(self.limit, bool) or not isinstance(self.limit, int) or self.limit <= 0:
+            raise ValueError(f"limit must be a positive integer, got {self.limit!r}")
+        if isinstance(self.lot, bool) or not isinstance(self.lot, int) or self.lot <= 0:
+            raise ValueError(f"lot must be a positive integer, got {self.lot!r}")
 
 
 @dataclass(frozen=True)

@@ -63,7 +63,7 @@ def test_boundary_units_equal_to_limit_is_blocked_synthetic() -> None:
 
 def test_missing_limit_warns_and_never_blocks_or_passes_silently() -> None:
     """AC-4: no stored limit (none given, an empty map, or only another contract's limit) -> the warning, no block."""
-    for limits in (None, {}, {"NIFTY26O1923600CE": REAL}):
+    for limits in (None, {}, {"OTHERCONTRACT": REAL}):
         r = review(55 * 65, limits)
         assert r.can_execute is True and r.blocked == ()
         [w] = r.warnings
@@ -73,7 +73,7 @@ def test_missing_limit_warns_and_never_blocks_or_passes_silently() -> None:
 
 def test_limits_are_matched_by_the_plan_contract_symbol_not_by_position() -> None:
     """AC-4: a limit stored for another symbol never applies to this leg."""
-    other = {"NIFTY26O1923600CE": StoredFreeze(100, 1, datetime.date(2026, 10, 15))}
+    other = {"OTHERCONTRACT": StoredFreeze(100, 1, datetime.date(2026, 10, 15))}
     assert freeze_check(plan_of(5000), other).blocks == ()
 
 
