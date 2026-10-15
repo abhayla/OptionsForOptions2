@@ -203,7 +203,8 @@ def _definition_out(saved: sf.SavedDefinition) -> dict:
     """The stored form for a response; a leg's planned entry goes out as its Decimal and aware datetime (the door
     writes them as a plain-digit string and ISO text), so no text from the row reaches the body unparsed."""
     doc = sf.to_document(saved)
-    for leg, entry in zip(doc["legs"], saved.entries):
+    entries = saved.entries if isinstance(saved, sf.SavedDefinition) else ()  # to_document already refused others
+    for leg, entry in zip(doc["legs"], entries):
         if entry is not None:
             leg["planned_entry"], leg["captured_at"] = entry.price, entry.captured_at
     return doc
