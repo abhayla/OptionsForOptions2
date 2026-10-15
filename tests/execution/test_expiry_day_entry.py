@@ -71,14 +71,15 @@ def test_sell_leg_on_its_expiry_day_requires_the_acknowledgement(cat, elig):
     assert _symbol(cat, "CE") in r.confirmation_text
 
 
-def test_buy_leg_on_its_expiry_day_only_warns_and_names_the_extra_margin(cat, elig):
+def test_buy_leg_on_its_expiry_day_only_warns_without_claiming_extra_margin(cat, elig):
     r = _run([_leg(Action.BUY)], cat, elig)
     assert not r.blocked
     assert r.requires_confirmation is False
     assert r.confirmation_text is None
     assert _codes(r) == {FlagCode.EXPIRY_DAY_ENTRY}
     (flag,) = [f for f in r.flags if f.code is FlagCode.EXPIRY_DAY_ENTRY]
-    assert "expiry-day margin" in flag.message and "2%" in flag.message
+    assert "expires today" in flag.message and "calendar-spread" in flag.message
+    assert "2%" not in flag.message and "extra expiry-day margin" not in flag.message  # a long pays its premium only
 
 
 @pytest.mark.parametrize("action", [Action.SELL, Action.BUY])
@@ -133,3 +134,57 @@ def test_an_already_expired_contract_is_blocked_and_carries_no_expiry_day_flag(c
     r = _run([past], cat, elig)
     assert r.blocked
     assert _codes(r) == set()
+
+
+def _adjust(proposed, held, cat, elig, **kw):
+    return _run(proposed, cat, elig, action=ExecutionAction.ADJUSTMENT, active_legs=held,
+                version_state=VersionState.PROPOSED, **kw)
+
+
+def _short(units: int) -> Leg:
+    return Leg(Action.SELL, Instrument.CE, D("72600"), EXPIRY, units, D("50.00"))
+
+
+def test_adjustment_that_reduces_a_held_expiring_short_is_not_flagged(cat, elig):
+    r = _adjust([_short(20)], (_short(40),), cat, elig)  # the proposed version carries the held leg over, smaller
+    assert _codes(r) == set()
+    assert r.requires_confirmation is False
+
+
+def test_adjustment_that_keeps_a_held_expiring_short_unchanged_is_not_flagged(cat, elig):
+    r = _adjust([_short(40)], (_short(40),), cat, elig)
+    assert _codes(r) == set()
+
+
+def test_adjustment_that_grows_a_held_expiring_short_needs_the_acknowledgement(cat, elig):
+    r = _adjust([_short(60)], (_short(40),), cat, elig)
+    assert FlagCode.EXPIRY_DAY_SHORT in _codes(r)
+    assert r.requires_confirmation is True
+
+
+def test_adjustment_that_flips_a_held_expiring_long_to_short_needs_the_acknowledgement(cat, elig):
+    held = (Leg(Action.BUY, Instrument.CE, D("72600"), EXPIRY, 20, D("50.00")),)
+    r = _adjust([_short(20)], held, cat, elig)
+    assert FlagCode.EXPIRY_DAY_SHORT in _codes(r)
+
+
+def test_adjustment_adding_a_new_expiring_long_warns_only(cat, elig):
+    r = _adjust([_short(40), _leg(Action.BUY, Instrument.PE)], (_short(40),), cat, elig)
+    assert _codes(r) == {FlagCode.EXPIRY_DAY_ENTRY}
+    assert r.requires_confirmation is False
+
+
+def test_adjustment_with_unverified_held_legs_flags_every_expiring_leg(cat, elig):
+    r = _adjust([_short(20)], (_short(40),), cat, elig, active_legs_hash="not-the-stored-hash")
+    assert FlagCode.EXPIRY_DAY_SHORT in _codes(r)
+    assert r.requires_confirmation is False or r.blocked  # unverified legs also block; the flag is the fail-safe
+
+
+def test_adjustment_with_no_held_legs_flags_every_expiring_leg(cat, elig):
+    r = _run([_short(20)], cat, elig, action=ExecutionAction.ADJUSTMENT, version_state=VersionState.PROPOSED)
+    assert FlagCode.EXPIRY_DAY_SHORT in _codes(r)
+
+
+def test_adjustment_that_flips_a_held_expiring_short_to_long_warns(cat, elig):
+    r = _adjust([_leg(Action.BUY)], (_short(20),), cat, elig)  # same contract and units, other side: a new long
+    assert _codes(r) == {FlagCode.EXPIRY_DAY_ENTRY}

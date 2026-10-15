@@ -525,19 +525,28 @@ def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[Che
     return out, unchecked
 
 
-def _expiry_day_flags(strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue) -> list[Flag]:
+def _expiry_day_flags(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, held_legs: tuple[Leg, ...] | None
+) -> list[Flag]:
     """W-086 (ADR-083 decision 2, REQ-056 AC-6, F-20): a leg whose contract expires TODAY (IST date of the context
     clock) is an elevated warning naming the extra expiry-day margin; a SELL such leg is exceptional and needs the
     user's explicit acknowledgement. An EXIT is never flagged (REQ-059 exit carve-out). A leg whose contract cannot be
-    resolved to one Zerodha symbol is already blocked by its own check, so it is skipped here."""
+    resolved to one Zerodha symbol is already blocked by its own check, so it is skipped here.
+
+    An ADJUSTMENT's strategy is the whole proposed version, so a held leg that carries over is not an entry: only a
+    contract that is NEW, GROWS on the same side or FLIPS side is flagged (compared with ``held_legs``, the VERIFIED
+    held legs). Held legs missing or unverified (None): every expiring leg is flagged (fail safe)."""
     if ctx.action is ExecutionAction.EXIT or ctx.underlying not in SUPPORTED_UNDERLYINGS:
         return []
     today = ctx.as_of.astimezone(IST).date()
     index = _index(catalogue, ctx.underlying)
+    held = _positions(held_legs) if ctx.action is ExecutionAction.ADJUSTMENT and held_legs is not None else {}
     out: list[Flag] = []
     for leg in strategy.legs:
         if leg.expiry != today:
             continue
+        if leg.quantity <= held.get((_key(leg.expiry, leg.instrument.value, leg.strike), leg.action.value), 0):
+            continue  # a held position kept or reduced: not an entry
         matches = index.get(_key(leg.expiry, leg.instrument.value, leg.strike), [])
         if len(matches) != 1 or not matches[0].has_ref(ZERODHA):
             continue
@@ -588,7 +597,7 @@ def _run_checks(
         price_failures, band_unchecked = _price_failures(strategy, ctx)
         failures.extend(price_failures)
     flags, max_loss = _risk_flags(strategy, ctx)
-    flags.extend(_expiry_day_flags(strategy, ctx, catalogue))
+    flags.extend(_expiry_day_flags(strategy, ctx, catalogue, trusted.active_legs))
     if band_unchecked:  # an EXIT whose price could not be checked: a warning the user confirms, never a block
         flags.append(Flag(FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, BAND_UNKNOWN_ON_EXIT))
 

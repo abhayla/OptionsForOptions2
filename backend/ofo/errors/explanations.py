@@ -804,8 +804,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("flag_price_band_unknown_on_exit", "values_seen",
                         "We could not check this exit's price against today's price band — confirm to continue."),
     ExplanationTemplate("flag_expiry_day_entry", "values_seen",
-                        "{symbol} expires today. Entering it on its expiry day carries extra expiry-day margin (an "
-                        "extra 2% on short options) and no calendar-spread margin benefit.", {"symbol": LegRef}),
+                        "{symbol} expires today. Bought on its expiry day it gives no calendar-spread margin "
+                        "offset to a short leg that expires later.", {"symbol": LegRef}),
     ExplanationTemplate("flag_expiry_day_short", "values_seen",
                         "{symbol} is a short leg that expires today. Selling it on its expiry day carries extra "
                         "expiry-day margin (an extra 2% on short options) and no calendar-spread margin benefit. "
