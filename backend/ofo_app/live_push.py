@@ -83,6 +83,9 @@ class StrategyPush:
         await self._channel.send(render("user_input_request_invalid"))
 
     async def _replace(self, raw: Any) -> None:
+        if isinstance(raw, dict) and "fallback" in raw:  # the REST refresh's flag; it means nothing on the socket (#234)
+            await self._error()
+            return
         try:
             req = OutcomeRequest.model_validate(raw)
         except ValidationError:
