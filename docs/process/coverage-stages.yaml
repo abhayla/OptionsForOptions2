@@ -223,11 +223,11 @@ issues:
   "#126": 4a            # wire the delist limit and refusal alert into the daily load job (ADR-058)
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
-  "#221": 4a            # deferred: draft label hyphen vs ADR-020 long dash (W-065 round 2)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
-  "#249": 4a            # deferred: draft-link legs unnamed with no live provider (ADR-086 item 1 remainder after W-073)
+  "#221": 4a            # draft label hyphen vs ADR-020 long dash; fixed by W-073 - drop the row once closed
+  "#249": 4a           # deferred: draft-link legs unnamed with no live provider (ADR-086 item 1 remainder after W-073)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#245": 4a           # REQ-039 AC-3 gap: four Builder states show no "when" (W-072 verifier); decide which time each names
   "#244": 4a           # deferred: W-072 review MINORs (istTime rollover, microsecond parsing, three untested renderings)
@@ -245,7 +245,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
-  W-073: 4a         # #234 + #221 + ADR-086 item 1 in not-connected answers (Tier A); after W-072
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
