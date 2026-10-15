@@ -1278,5 +1278,41 @@
   "partial_mismatch_product_ambiguous": {
     "sha256": "0d0189391be2c539ca420db6c2fa1c261e735ed618a7793d9d573c6736807336",
     "reviewed": "pending owner read"
+  },
+  "grouping_unknown_contract": {
+    "sha256": "00d697921502c3e41611e6d3121963ebd6a6aed9472da88ef93fd115d173a03c",
+    "reviewed": "pending owner read"
+  },
+  "grouping_not_lot_multiple": {
+    "sha256": "b47f40f9ee7023e982b0a8322fa7054d500e7d09016e20e2dcdd80eeb306cbd5",
+    "reviewed": "pending owner read"
+  },
+  "grouping_move_refused": {
+    "sha256": "c79457a222093f711a9b76a5d697add68a6899bef2a54a7b705d7748a2b1b9d4",
+    "reviewed": "pending owner read"
+  },
+  "grouping_choice_unavailable": {
+    "sha256": "aaf969b9e23caae38a2a117508f4ff58e51c86aa0f160b220268591397c69b2a",
+    "reviewed": "pending owner read"
+  },
+  "grouping_entry_price_invalid": {
+    "sha256": "081d3639ca609325502803a9b5466814256c8e420a3d415b21f666c0af65d6cf",
+    "reviewed": "pending owner read"
+  },
+  "grouping_differs_from_strategy": {
+    "sha256": "25c8b53c6d5bd49cc51bc0528be8094d86b4c446cc1b210d4aeecd60ee27fb8a",
+    "reviewed": "pending owner read"
+  },
+  "grouping_entry_needed": {
+    "sha256": "0a0dc17a6d489e583650882daf17393bd912c813e50ba7a69907ddb1ba9fe72d",
+    "reviewed": "pending owner read"
+  },
+  "grouping_unknown_product": {
+    "sha256": "11dedfe0f8d0e9ab25ada1c0ecd57d28e3f32524c0da22c3fad861ec16ed0164",
+    "reviewed": "pending owner read"
+  },
+  "grouping_not_available": {
+    "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
+    "reviewed": "pending owner read"
   }
 }
