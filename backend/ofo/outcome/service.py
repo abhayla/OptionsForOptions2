@@ -165,15 +165,21 @@ def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot,
     """The live market is connected but this strategy's inputs are not streaming (no subscriber on the shared feed, e.g.
     the REST fallback while the socket is down; ADR-068 (2) "labelled as not live"). No number is shown as live
     (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too."""
-    label = render_explanation("outcome_feed_disconnected", time=_last_update(snapshot))
+    label = _not_live_label(snapshot)
     legs = tuple(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None, p.planned_entry,
                             p.captured_at, None, None, None, label) for p in definition.legs)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, ux_level, label, None, legs, MARGIN)
 
 
-def _last_update(snapshot: MarketSnapshot) -> datetime.datetime:
+def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
+    """REQ-049 AC-5's message ("When live data drops ... Last updated: <time>") ONLY when a quote was held and then
+    lost, stamped with the newest quote time held. When no quote was ever held for any input, nothing "dropped" and
+    there is no last update to name: ADR-020 Q185's draft label ("Draft - Live data not connected", the catalogue's
+    ``outcome_not_connected``), never the request time."""
     times = [q.timestamp for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
-    return max(times) if times else snapshot.valuation
+    if not times:
+        return NOT_CONNECTED_LABEL
+    return render_explanation("outcome_feed_disconnected", time=max(times))
 
 
 def _quote_label(q: NormalizedQuote) -> ExplanationText | None:
@@ -185,7 +191,7 @@ def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
     """REQ-049 AC-5's message when the feed is not live; the last update is the newest input time we hold."""
     if snapshot.status.health is DataHealth.AVAILABLE:
         return None
-    return render_explanation("outcome_feed_disconnected", time=_last_update(snapshot))
+    return _not_live_label(snapshot)
 
 
 def _start_losing(regions, idx) -> ExplanationText:

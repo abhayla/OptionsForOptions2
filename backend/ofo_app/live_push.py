@@ -4,7 +4,8 @@ One :class:`StrategyPush` serves one browser connection. The client sends an ``O
 the push subscribes the legs' instruments and the underlying index on the shared fan-out, then at most once every
 ``MIN_PUSH_INTERVAL`` seconds, and only if a quote of an input instrument changed since the last push, it sends the
 outcome from :func:`ofo_app.routes.outcome.outcome_response` (the same function the REST route returns). A new client
-message replaces the strategy. When the connection ends, everything it subscribed is released.
+message with a CHANGED strategy replaces it (still at most one push a second);
+an identical one changes nothing. When the connection ends, everything it subscribed is released.
 
 The channel is a two-method adapter (``receive`` / ``send``) so this logic is tested without a socket; in the app it is
 the door's ``ClosedSocket`` (ofo_app.errors), which mints every message from the model with ``emit``. Bad input is
@@ -87,6 +88,8 @@ class StrategyPush:
         except ValidationError:
             await self._error()
             return
+        if req == self._req:  # an identical strategy changes nothing: no reset, no re-subscribe, no push (ADR-068 (2))
+            return
         new_handle = None
         if self._feed is not None:
             try:
@@ -96,7 +99,9 @@ class StrategyPush:
                 return
         self._release()  # after the new subscription, so a shared instrument is never dropped and re-added
         self._handle, self._req, self._seen = new_handle, req, {}
-        self._dirty, self._last_push = True, None  # the first answer is sent at once: it is the baseline
+        # A changed strategy is an input change: it recomputes, but the 1 s gate since the LAST push still holds (only the
+        # first push after the socket opens goes at once), so client messages cannot drive pushes or engine work faster.
+        self._dirty = True
 
     async def _push(self) -> None:
         self._dirty = False

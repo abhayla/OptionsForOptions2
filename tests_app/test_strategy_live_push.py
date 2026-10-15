@@ -159,8 +159,55 @@ async def test_a_new_client_message_replaces_the_strategy(rig):
     assert feed.fanout.subscriber_count(BUY_PE) == 1
     await channel.inbound.put(request(provider, ids=((SELL_CE, "SELL"),)))
     await settle()
-    assert len(channel.sent) == 2 and len(channel.sent[1]["legs"]) == 1  # answered at once, not after a second
     assert feed.fanout.subscriber_count(BUY_PE) == 0 and feed.fanout.subscriber_count(SELL_CE) == 1
+    assert len(channel.sent) == 1  # round 2: the 1 s gate since the last push holds for a changed strategy too
+    mono.now += 1.0
+    await settle()
+    assert len(channel.sent) == 2 and len(channel.sent[1]["legs"]) == 1  # the new strategy, one second later
+    await channel.inbound.put(ChannelClosed)
+    await task
+
+
+async def test_ac4_an_identical_strategy_resent_10_times_pushes_nothing_more(rig):
+    """AC-4 / ADR-068 (2) "at most once a second per strategy, and only when an input changed": the same strategy sent
+    10 more times with a frozen clock and no tick yields no push beyond the first, and no re-subscription; even after
+    the clock moves on, with no input changed, nothing more is pushed."""
+    provider, feed, channel, mono, push = rig
+    task = asyncio.create_task(push.run())
+    body = request(provider)
+    await channel.inbound.put(body)
+    await settle()
+    handle = push._handle
+    for _ in range(10):
+        await channel.inbound.put(dict(body))
+    await settle(12)
+    assert len(channel.sent) == 1 and push._handle == handle and feed.fanout.subscriber_count(SELL_CE) == 1
+    mono.now += 5
+    await settle()
+    assert len(channel.sent) == 1
+    await channel.inbound.put(ChannelClosed)
+    await task
+
+
+async def test_ac4_a_burst_of_10_changed_strategies_within_a_second_pushes_at_most_twice(rig):
+    """AC-4 / ADR-068 (2): 10 DIFFERENT strategies within one second (frozen clock, then +1 s) -> the first push at once,
+    at most one more after the second has passed, and that one is the LAST strategy sent; nothing else."""
+    provider, feed, channel, mono, push = rig
+    legs = ((SELL_CE, "SELL"), (BUY_CE, "BUY"), (SELL_PE, "SELL"), (BUY_PE, "BUY"))
+    bodies = [request(provider, ids=legs[:1 + n % 4]) | {"ux_level": ("guided", "standard", "advanced")[n % 3]}
+              for n in range(10)]  # built first: a released instrument leaves the provider's book
+    task = asyncio.create_task(push.run())
+    for body in bodies:
+        await channel.inbound.put(body)
+        await settle(2)
+    await settle(6)
+    assert len(channel.sent) == 1
+    mono.now += 1.0
+    await settle()
+    mono.now += 10
+    await settle()
+    assert len(channel.sent) == 2
+    assert len(channel.sent[1]["legs"]) == 1 + 9 % 4 and channel.sent[1]["ux_level"] == "guided"  # n=9
     await channel.inbound.put(ChannelClosed)
     await task
 

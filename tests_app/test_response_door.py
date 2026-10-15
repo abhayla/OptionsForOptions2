@@ -854,6 +854,34 @@ def test_a_socket_route_off_the_door_is_a_problem() -> None:
     assert _route_problems(create_app().routes)[0] == []  # the real live route passes
 
 
+def test_add_socket_route_takes_only_the_door_socket_class() -> None:
+    """W-065 round 2: `errors.add_socket_route` appends exactly a ClosedWebSocketRoute; a plain APIWebSocketRoute, a
+    Starlette WebSocketRoute and a ClosedRoute are refused and the app's route table is left unchanged."""
+    from fastapi.routing import APIWebSocketRoute
+    from starlette.routing import WebSocketRoute
+
+    from ofo_app.api_models import DoorRefused
+    from ofo_app.errors import ClosedWebSocketRoute, add_socket_route
+    from ofo_app.routes.outcome import OutcomeResponse
+
+    async def raw(websocket) -> None:
+        await websocket.accept()
+
+    async def endpoint(socket) -> None:
+        return None
+
+    app = create_app()
+    before = list(app.router.routes)
+    for bad in (APIWebSocketRoute("/api/x", raw), WebSocketRoute("/api/x", raw),
+                _closed("/api/x", lambda: None)):
+        with pytest.raises(DoorRefused):
+            add_socket_route(app, bad)
+    assert app.router.routes == before
+    good = ClosedWebSocketRoute("/api/x", endpoint, message_models=(OutcomeResponse,))
+    add_socket_route(app, good)
+    assert app.router.routes == [*before, good]
+
+
 def test_the_exemptions_are_exactly_the_docs_paths() -> None:
     """AC-2: the outcome route is on the door (W-066, #172); the boundary exempts the docs GET paths only."""
     import inspect
