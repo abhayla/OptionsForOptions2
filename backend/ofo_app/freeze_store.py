@@ -39,6 +39,11 @@ _SAME_DAY = text(
     "WHERE exchange_segment = 'NSE_FO' AND file_date = :file_date")
 
 
+_STORED_ONE = text(
+    "SELECT freeze_limit FROM public.exchange_freeze_limits "
+    "WHERE exchange_segment = 'NSE_FO' AND exchange_token = :token AND file_date = :file_date")
+
+
 class StoredLimit(NamedTuple):
     freeze_limit: int
     file_date: date
@@ -80,7 +85,16 @@ async def load_freeze_file(conn: Any, path: str | pathlib.Path, *, nse_name: str
             result = await conn.execute(_INSERT, {
                 "segment": NSE_FO, "token": m.instrument_id.exchange_token, "file_date": parsed.file_date,
                 "limit": m.freeze_limit, "file_name": file_name})
-            inserted += result.rowcount
+            if result.rowcount:
+                inserted += result.rowcount
+                continue
+            # Conflict: a concurrent load (or an earlier one) stored this row after the pre-check. Compare, never
+            # silently keep the wrong value; the raise rolls back this savepoint (nothing of this file is written).
+            stored = (await conn.execute(_STORED_ONE, {
+                "token": m.instrument_id.exchange_token, "file_date": parsed.file_date})).scalar_one_or_none()
+            if stored is not None and stored != m.freeze_limit:
+                raise ValueError(f"token {m.instrument_id.exchange_token}: this file (dated {parsed.file_date}) shows "
+                                 f"{m.freeze_limit} but {stored} was stored for that date meanwhile; nothing written")
     return FreezeLoadResult(parsed.file_date, inserted, len(join.matched) - inserted, join.not_in_catalogue,
                             join.disagreements)
 
