@@ -610,6 +610,15 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "None: the platform closed the expired leg at its settlement price.", _REC_NONE_BLOCKED,
           "Zerodha may remove the expired position the next morning; check again then. No strategy is blocked.",
           _REC_SLOT),
+    # Issue #279 items 2 and 3 (numbers follow W-085's 219-220).
+    _gate("recon_expired_standalone_retired", _RM, 221,
+          "{contracts} expired contract(s) recorded as standalone positions are no longer at Zerodha.",
+          "None: no strategy holds them and no leg will close; the standalone record is retired.",
+          _REC_NONE_BLOCKED,
+          "Nothing to do. This note is shown once, then the standalone record is removed.", _REC_SLOT),
+    _gate("recon_expired_quantity_differs", _RM, 222,
+          "Zerodha still shows a quantity on {contracts} expired contract(s) that differs from the platform's record.",
+          _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
 )
 
 

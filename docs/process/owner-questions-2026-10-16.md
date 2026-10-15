@@ -91,3 +91,14 @@ Parked under run-discipline A2 while the owner sleeps; each has a recommendation
   and the order-free version path is needed anyway for reconciliation fixes; until it lands, the refusal is honest and
   safe.
 
+## OQ-8 (information, applied - reverse if you disagree): expired standalone records and expired contracts still at Zerodha (#279)
+- **Spec basis:** REQ-060 owner decision (Q269, ADR-083): an expired leg "is closed in the platform at the settlement
+  price ... reconciliation expects it gone"; REQ-060 AC-7: standalone quantity is part of the compare. Nothing said
+  what happens to a standalone record when its contract expires (searched: standalone, expired, expiry, retire).
+- **Real case:** none on a live account yet (no standalone recorded). In a 4,000-case fuzz, 309 expired standalones
+  would have shown "awaiting" forever and 878 expired contracts were labelled "missing" or "side" wrongly.
+- **Applied (ADR-083's "expected gone" applied to standalones):** a one-time non-blocking note, then the standalone
+  record is retired; an expired contract Zerodha still shows with a different quantity is labelled as that. Blocking
+  is unchanged (0 differences in blocked strategies over the fuzz). Written into REQ-060 as a clarification.
+- **Alternative if you disagree:** keep the standalone record and keep showing the note until you clear it.
+
