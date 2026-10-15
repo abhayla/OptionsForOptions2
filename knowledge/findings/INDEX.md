@@ -2,7 +2,7 @@
 
 # Findings index
 
-52 finding(s), generated from `knowledge/findings/*.json`.
+53 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -11,6 +11,7 @@
 | agent-worktree-from-stale-local-main | Any isolated agent worktree created from the orchestrator's LOCAL main starts from whatever that checkout last pulled; if merges landed on origin since, the agent builds on a stale base, misses files the work depends on (its own work item) and invents substitutes that conflict later. | unguarded | occurrences, scope, spec_ref |
 | aggregate-across-mixed-instrument-kinds | Any catalogue method that derives one value per underlying + expiry from per-contract attributes (tick size, lot size, strike gap) fails or returns a wrong value when that expiry mixes instrument kinds (options and futures) whose attribute differs. | guarded | scope, spec_ref |
 | brief-rule-from-memory | Any product rule an orchestrator writes into a builder brief from memory or paraphrase, instead of quoting the spec text it rests on, can be wrong, and the builder then implements the wrong rule faithfully and its tests lock it in, costing a full fix round when a verifier catches it. | unguarded | occurrences, scope, spec_ref |
+| builder-budget-is-prose | A builder brief's 'Budget: N min, M tool calls' line is text the agent may ignore; the only hard stop is the agent type's maxTurns (builder: 100), so a 40-call budget does not stop a builder before 100 calls, and fix rounds cost 2-3x what the brief allowed. | unguarded | occurrences, scope, spec_ref |
 | caller-supplied-verdict-trusted | Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing. | unguarded | occurrences, scope, spec_ref |
 | ci-path-filter-misses-dependency-change | A CI workflow limited by a path filter to the files of one layer never runs when a change lands only in a layer that layer imports; the dependency change breaks its tests on main with no red check anywhere, and every later PR that does touch the filtered paths inherits failures it did not cause. | unguarded | occurrences, scope, spec_ref |
 | client-message-resets-rate-limit | A per-stream rate limit that is reset whenever the client sends a message lets any client bypass it by re-sending, turning a server-paced push into client-driven work. | unguarded | occurrences, scope, spec_ref |

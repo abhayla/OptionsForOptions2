@@ -1,0 +1,25 @@
+{
+ "id": "builder-budget-is-prose",
+ "scope": "generic",
+ "class": "A builder brief's 'Budget: N min, M tool calls' line is text the agent may ignore; the only hard stop is the agent type's maxTurns (builder: 100), so a 40-call budget does not stop a builder before 100 calls, and fix rounds cost 2-3x what the brief allowed.",
+ "mechanism": "The agent_budget_required hook only checks that a Budget line exists and is below 80% of maxTurns; nothing counts the agent's calls against the Budget line during the run. Builders keep working past the budget when tests or e2e runs need more iterations.",
+ "first_seen": {
+  "date": "2026-10-15",
+  "where": "W-066 round 7 (ran to its turn limit without pushing), a second builder the same day (handover 2026-10-15b 'Misses'), and W-065 phase 3 round 2",
+  "evidence": "W-065 p3 r2 builder: brief docs/process/brief-W-065-p3-r2.md 'Budget: 30 min wall-clock, 40 tool calls'; the agent's completion record: 74 tool uses, 549 s."
+ },
+ "fix": "Not built; filed upstream as Startup-Factory#98 (harvest). Structural options: a builder variant per budget tier with maxTurns set to the tier's call budget, or a PostToolUse counter that stops the agent at its Budget line. Meanwhile the orchestrator records each overrun here.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Overruns are seen only in the completion record's tool-use count."
+ },
+ "spec_ref": [
+  "docs/process/goal-contract-2026-10-15.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-15", "where": "W-066 round 7", "evidence": "handover 2026-10-15b, Misses"},
+  {"date": "2026-10-15", "where": "a second builder (handover 2026-10-15b, Misses: 'twice')", "evidence": "handover 2026-10-15b"},
+  {"date": "2026-10-15", "where": "W-065 phase 3 round 2", "evidence": "74 tool uses against a 40-call budget"}
+ ]
+}
