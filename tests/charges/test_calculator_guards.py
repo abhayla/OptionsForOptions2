@@ -158,7 +158,8 @@ def test_a_percentage_typed_as_a_fraction_is_refused(name):
     premium). A percentage-type rate must be a fraction below 1%."""
     with pytest.raises(ValueError, match="fraction"):
         rates(**{name: D("0.15")})
-    assert rates(**{name: D("0.0099")})  # just under the cap is accepted
+    # just under the cap is accepted; stamp and SEBI have tighter caps (W-075, tests/charges/test_rate_caps.py)
+    assert rates(**{name: {"sebi_rate": D("0.000009"), "stamp_buy_rate": D("0.00009")}.get(name, D("0.0099"))})
 
 
 def test_a_percentage_exchange_rate_is_refused_and_gst_keeps_its_own_cap():

@@ -29,6 +29,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import Final
 
+from ofo.charges import ChargeRates
+from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
@@ -120,6 +122,10 @@ class Summary:
     lower_be: Decimal | None
     upper_be: Decimal | None
     risk_boundaries: tuple[Decimal, ...]
+    # W-075 / ADR-082 (2): the round-trip charges inside max_profit / max_loss (None = not included: no rate set or
+    # a leg the rate table cannot price - the sentences then keep ADR-071's "before charges and taxes" wording)
+    charges: Decimal | None = None
+    charges_unavailable: bool = False
 
 
 @dataclass(frozen=True)
@@ -228,24 +234,30 @@ def _start_losing(regions, idx) -> ExplanationText:
     return render_explanation("summary_start_regions", index=idx, regions=regions)
 
 
-def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs) -> Summary:
+def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
+             charges: Decimal | None = None, charges_unavailable: bool = False) -> Summary:
     idx = inputs.underlying
     profit_unl, loss_unl = metrics.max_profit is UNLIMITED, metrics.max_loss is UNLIMITED
+    max_loss = metrics.max_loss if loss_unl or charges is None else metrics.max_loss + charges  # ADR-082 (2)
+    max_profit = metrics.max_profit if profit_unl or charges is None else metrics.max_profit - charges
     if loss_unl:
         lose = render_explanation("summary_lose_unlimited", index=idx)
     else:  # a zero maximum loss reads "At most ₹0.00 at expiry." - "cannot lose" is a banned phrase (ADR-003)
-        lose = render_explanation("summary_lose_at_most", amount=metrics.max_loss)
+        lose = (render_explanation("summary_lose_at_most", amount=max_loss) if charges is None else
+                render_explanation("summary_lose_at_most_with_charges", amount=max_loss, charges=charges))
     if profit_unl:
         make = render_explanation("summary_make_unlimited", index=idx)
-    elif metrics.max_profit <= 0:
+    elif max_profit <= 0:
         make = render_explanation("summary_make_none")
+    elif charges is None:
+        make = render_explanation("summary_make_at_most", amount=max_profit)
     else:
-        make = render_explanation("summary_make_at_most", amount=metrics.max_profit)
+        make = render_explanation("summary_make_at_most_with_charges", amount=max_profit, charges=charges)
     lo, up = level_set.lower_be, level_set.upper_be
     start = _start_losing(metrics.loss_regions, idx)
-    return Summary(lose, make, start, None if profit_unl else metrics.max_profit,
-                   None if loss_unl else metrics.max_loss, profit_unl, loss_unl, level_set.breakevens,
-                   lo, up, level_set.risk_boundaries)
+    return Summary(lose, make, start, None if profit_unl else max_profit,
+                   None if loss_unl else max_loss, profit_unl, loss_unl, level_set.breakevens,
+                   lo, up, level_set.risk_boundaries, charges, charges_unavailable)
 
 
 def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) -> Outcome:
@@ -255,8 +267,14 @@ def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
-                  view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None) -> Outcome:
-    """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time."""
+                  view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
+                  rates: ChargeRates | None = None) -> Outcome:
+    """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
+
+    ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
+    Expiry values include the round-trip charges at the planned prices; None, or a leg the rate table cannot price,
+    keeps the values before charges, ADR-071's phrase, and ``Summary.charges_unavailable``. Breakevens, risk
+    boundaries and the zero-P&L columns are the locked ADR-008 values and never move with charges."""
     if not isinstance(definition, StrategyDefinition):
         raise ValueError(f"definition must be a StrategyDefinition, got {definition!r}")
     if not isinstance(ux_level, UXLevel):
@@ -335,7 +353,13 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
 
     config = config or ScenarioSettings().for_index(definition.underlying)
     level_set = build_level_set(model, config)
-    values = scenario_values(level_set, model, view)  # the ONE scenario computation (AC-8)
+    charges = None
+    if rates is not None:
+        try:
+            charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
+        except ChargesNotComputable:
+            charges = None
+    values = scenario_values(level_set, model, view, rates=None if charges is None else rates)  # the ONE computation (AC-8)
     table = build_table(model, level_set=level_set, scenario=values)
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
     leg_labels = [render_explanation("leg_label_symbol", symbol=leg.symbol or leg.instrument_id, label=leg.label)
@@ -345,4 +369,4 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
         output_label=join_labels(model.label, *leg_labels), spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table, ux_level),
-        payoff_points=points, summary=_summary(strategy_metrics(model.strategy), level_set, model))
+        payoff_points=points, summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))

@@ -11,6 +11,8 @@ guards (W-066, issue #151).
 from __future__ import annotations
 
 import datetime
+import logging
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable, Literal, Optional, Union
@@ -18,6 +20,7 @@ from typing import Callable, Literal, Optional, Union
 from fastapi import APIRouter, Depends
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_live, read_snapshot
@@ -28,6 +31,30 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId
 from ofo_app.errors import ClosedRoute
 
 router = APIRouter(route_class=ClosedRoute)
+log = logging.getLogger(__name__)
+
+_RATES_TTL, _RATES_RETRY = 300.0, 30.0  # seconds a loaded set / a failed load is reused (the live push asks every second)
+_rates_cache: dict = {"until": 0.0, "value": None}
+
+
+async def load_charge_rates() -> Optional[ChargeRates]:
+    """The charge rates in force (ADR-082: the database clock picks the set), or None when none can be read. None is
+    never an error here: the outcome then keeps ADR-071's "before charges and taxes" sentence (W-075 decision (b)).
+    Works with or without a Zerodha session: the rates do not depend on one."""
+    now = time.monotonic()
+    if now < _rates_cache["until"]:
+        return _rates_cache["value"]
+    from ofo_app.charge_rates_store import rates_in_force  # late: the store imports the database layer
+    from ofo_app.db import get_sessionmaker
+    try:
+        async with get_sessionmaker()() as session:
+            value = await rates_in_force(session)
+        _rates_cache.update(until=now + _RATES_TTL, value=value)
+    except Exception:  # no database, no table yet, no complete set: the exception is logged, never shown
+        log.warning("charge rates unavailable: outcome sentences stay before charges", exc_info=True)
+        _rates_cache.update(until=now + _RATES_RETRY, value=None)
+        value = None
+    return value
 
 
 @dataclass(frozen=True)
@@ -156,6 +183,8 @@ class SummaryOut(ApiModel):
     lower_be: Optional[Money]
     upper_be: Optional[Money]
     risk_boundaries: list[Money]
+    charges: Optional[Money] = None  # W-075: the round-trip charges inside max_profit / max_loss
+    charges_unavailable: bool = False
 
 
 class MarginOut(ApiModel):
@@ -259,7 +288,8 @@ def live_context() -> Optional[MarketContext]:
 
 
 def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
-                     streaming: Optional[Callable[[str], bool]] = None) -> OutcomeResponse:
+                     streaming: Optional[Callable[[str], bool]] = None,
+                     rates: Optional[ChargeRates] = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -279,7 +309,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:
-            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
+            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates)
     body = outcome_to_dict(out)
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
@@ -292,5 +322,6 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
 def strategy_outcome(req: OutcomeRequest,
                      ctx: Optional[MarketContext] = Depends(get_market_context),
-                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming)) -> OutcomeResponse:
-    return outcome_response(req, ctx, streaming)
+                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
+                     rates: Optional[ChargeRates] = Depends(load_charge_rates)) -> OutcomeResponse:
+    return outcome_response(req, ctx, streaming, rates)

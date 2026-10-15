@@ -1051,6 +1051,10 @@
     "sha256": "5e62246388132c7b1182dc5bdbf4d29b3c2c3a83190cfac5eda1caa658b850f4",
     "reviewed": "pending owner read"
   },
+  "explanation:summary_lose_at_most_with_charges": {
+    "sha256": "5ed3bb3629ca8026ac29878499559d7fec6dcf38cbe26c08e4ccd8559735e732",
+    "reviewed": "pending owner read"
+  },
   "explanation:summary_lose_at_most": {
     "sha256": "73d0ac30b935c10cbaf1ce343aa5ec59a887c15e43c2d5346b720625d54d6ef7",
     "reviewed": "pending owner read"
@@ -1061,6 +1065,10 @@
   },
   "explanation:summary_make_none": {
     "sha256": "936d1a9931857ebc1eaee2db7ec9a2af9610015417c73dca44eca673e6032791",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_make_at_most_with_charges": {
+    "sha256": "5ed3bb3629ca8026ac29878499559d7fec6dcf38cbe26c08e4ccd8559735e732",
     "reviewed": "pending owner read"
   },
   "explanation:summary_make_at_most": {

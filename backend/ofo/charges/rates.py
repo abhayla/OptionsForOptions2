@@ -24,6 +24,11 @@ SEGMENTS = ("NSE_FO", "BSE_FO")
 #: GST (18%) is a fraction below 1. Brokerage is rupees and has no fraction cap. The DB CHECK carries the same caps.
 FRACTION_CAP = Decimal("0.01")
 GST_CAP = Decimal("1")
+#: Tighter per-component caps (W-074 verifier MINOR D1): about 3x the real rate, so a percentage typed as a number
+#: (0.003 for stamp's 0.003%, 0.0001 for SEBI) is refused although it is under the 1% cap. The DB CHECK
+#: ``charge_rates_unit_caps`` (migration 0014) carries the same numbers.
+STAMP_CAP = Decimal("0.0001")  # real 0.00003
+SEBI_CAP = Decimal("0.00001")  # real 0.000001
 
 
 def _rate(name: str, value: object, cap: Decimal | None = None) -> Decimal:
@@ -50,9 +55,11 @@ class ChargeRates:
 
     def __post_init__(self) -> None:
         _rate("brokerage_per_order", self.brokerage_per_order)
-        for name, value in (("stt_sell_rate", self.stt_sell_rate), ("stt_exercise_rate", self.stt_exercise_rate),
-                            ("sebi_rate", self.sebi_rate), ("stamp_buy_rate", self.stamp_buy_rate)):
-            _rate(name, value, FRACTION_CAP)
+        for name, value, cap in (("stt_sell_rate", self.stt_sell_rate, FRACTION_CAP),
+                                 ("stt_exercise_rate", self.stt_exercise_rate, FRACTION_CAP),
+                                 ("sebi_rate", self.sebi_rate, SEBI_CAP),
+                                 ("stamp_buy_rate", self.stamp_buy_rate, STAMP_CAP)):
+            _rate(name, value, cap)
         _rate("gst_rate", self.gst_rate, GST_CAP)
         if not isinstance(self.transaction_rates, Mapping) or set(self.transaction_rates) != set(SEGMENTS):
             raise ValueError(f"transaction_rates must have exactly the segments {SEGMENTS}")
