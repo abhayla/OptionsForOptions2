@@ -11,16 +11,18 @@ guards (W-066, issue #151).
 from __future__ import annotations
 
 import datetime
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Callable, Literal, Optional, Union
+from typing import Awaitable, Callable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 
 from ofo.engine.legs import Action
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_live, read_snapshot
+from ofo.instruments.models import InstrumentId as ContractKey, ListedContract
+from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
 from ofo.table import UXLevel
@@ -28,6 +30,47 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId
 from ofo_app.errors import ClosedRoute
 
 router = APIRouter(route_class=ClosedRoute)
+log = logging.getLogger("ofo_app.outcome")
+
+AnswerClock = Callable[[], datetime.datetime]
+ContractLookup = Callable[[list[str]], Awaitable[Mapping[str, ListedContract]]]
+
+
+def server_now() -> datetime.datetime:
+    """The moment the server produces an answer (ADR-088): UTC, timezone-aware. The browser's clock is never used."""
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def get_answer_clock() -> AnswerClock:
+    """The answer-time seam: tests override this dependency with a fixed clock."""
+    return server_now
+
+
+async def stored_contracts(instrument_ids: list[str]) -> Mapping[str, ListedContract]:
+    """#249: the stored catalogue's entry for each leg's contract identity (one lookup per leg), for the no-provider
+    answer. An unknown contract is simply absent; a catalogue that cannot be read gives nothing (the legs stay unnamed,
+    the page's fixed wording), never an error: this state must always answer. Only the exception class is logged."""
+    from ofo_app import catalogue_store
+    from ofo_app.db import get_sessionmaker
+
+    found: dict[str, ListedContract] = {}
+    try:
+        async with get_sessionmaker()() as session:
+            conn = await session.connection()
+            for iid in dict.fromkeys(instrument_ids):
+                segment, _, token = iid.partition(":")
+                contract_id = await catalogue_store.live_contract_id(conn, ContractKey(segment, int(token)))
+                if contract_id is not None:
+                    found[iid] = (await catalogue_store.load_contract(conn, contract_id)).listed
+    except Exception as exc:
+        log.warning("no-provider leg names: the catalogue could not be read: %s", type(exc).__name__)
+        return {}
+    return found
+
+
+def get_contract_lookup() -> ContractLookup:
+    return stored_contracts
+
 
 
 @dataclass(frozen=True)
@@ -68,6 +111,12 @@ class OutcomeRequest(BaseModel):
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
+
+
+async def get_stored_legs(req: OutcomeRequest, ctx: Optional[MarketContext] = Depends(get_market_context),
+                          lookup: ContractLookup = Depends(get_contract_lookup)) -> Optional[Mapping[str, ListedContract]]:
+    """The stored catalogue entries for the legs, read ONLY when there is no provider (the no-provider answer, #249)."""
+    return await lookup([leg.instrument_id for leg in req.legs]) if ctx is None else None
 
 
 # ---- response (typed, W-066): text is catalogue text, numbers are Money strings, codes are closed ----------------------
@@ -198,6 +247,8 @@ class OutcomeResponse(ApiModel):
     reason: Optional[CatalogueText]
     output_label: Optional[CatalogueText]
     valuation: Optional[datetime.datetime]
+    #: ADR-088: when the server produced THIS answer (aware, UTC) in every state; the page shows it as "Checked at"
+    answered_at: datetime.datetime
     spot_level: Optional[Money]
     spot_at: Optional[datetime.datetime]
     legs: list[LegOut]
@@ -259,18 +310,20 @@ def live_context() -> Optional[MarketContext]:
 
 
 def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
-                     streaming: Optional[Callable[[str], bool]] = None) -> OutcomeResponse:
+                     streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
+                     stored: Optional[Mapping[str, ListedContract]] = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
-    frozen quotes."""
+    frozen quotes. ``now`` stamps the answer time (ADR-088); ``stored`` names the legs when there is no provider (#249)."""
     definition = _definition(req)
     ux = UXLevel(req.ux_level)
     live_blocked = False
     if ctx is None:
-        out = build_outcome(definition, None, ux)
+        answered_at = now()
+        out = not_connected(definition, ux, None, stored)
     else:
-        valuation = ctx.clock()
+        valuation = answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
                                  valuation, ctx.rate)
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
@@ -281,6 +334,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
         else:
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
     body = outcome_to_dict(out)
+    body["answered_at"] = answered_at
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if ctx is not None and ux is UXLevel.ADVANCED and not live_blocked:  # not live: no frozen bid/ask either  # the UX gate: nothing else ever carries bid/ask
@@ -292,5 +346,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
 def strategy_outcome(req: OutcomeRequest,
                      ctx: Optional[MarketContext] = Depends(get_market_context),
-                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming)) -> OutcomeResponse:
-    return outcome_response(req, ctx, streaming)
+                     streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
+                     now: AnswerClock = Depends(get_answer_clock),
+                     stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs)) -> OutcomeResponse:
+    return outcome_response(req, ctx, streaming, now=now, stored=stored)

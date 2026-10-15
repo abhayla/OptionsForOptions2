@@ -22,7 +22,7 @@ from ofo.outcome import read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
-from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -48,6 +48,7 @@ class PlannedEntryOut(ApiModel):
 
 class PlannedEntriesOut(ApiModel):
     entries: list[PlannedEntryOut]
+    answered_at: datetime.datetime  # ADR-088: when the server produced this answer (the unpriced state's "Checked at")
 
 
 def _entry(instrument_id: str, **fields: Any) -> dict[str, Any]:
@@ -58,10 +59,13 @@ def _entry(instrument_id: str, **fields: Any) -> dict[str, Any]:
 
 @router.post("/api/strategies/planned-entry", response_model=PlannedEntriesOut)
 def planned_entry(body: PlannedEntryIn,
-                  ctx: Optional[MarketContext] = Depends(get_market_context)) -> PlannedEntriesOut:
+                  ctx: Optional[MarketContext] = Depends(get_market_context),
+                  now: AnswerClock = Depends(get_answer_clock)) -> PlannedEntriesOut:
+    answered_at = now()
     ids = list(dict.fromkeys(body.instrument_ids))
     if ctx is None or not ctx.provider.status().connected:
-        return PlannedEntriesOut.model_validate({"entries": [_entry(i, reason_code="not_connected") for i in ids]})
+        return PlannedEntriesOut.model_validate({"entries": [_entry(i, reason_code="not_connected") for i in ids],
+                                               "answered_at": answered_at})
     valuation = ctx.clock()
     snapshot = read_snapshot(ctx.provider, body.underlying, ids, valuation, ctx.rate)
     entries = []
@@ -77,4 +81,4 @@ def planned_entry(body: PlannedEntryIn,
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
             entries.append(_entry(iid, planned_entry=priced.price, captured_at=valuation, source=priced.source))
-    return PlannedEntriesOut.model_validate({"entries": entries})
+    return PlannedEntriesOut.model_validate({"entries": entries, "answered_at": answered_at})
