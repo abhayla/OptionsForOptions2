@@ -155,6 +155,9 @@ decisions:
   ADR-079: 4b           # unfilled basket order: age + status shown, cancel in Kite (owner 2026-10-15, Q263)
   ADR-080: 4b           # NRML, tick rounding, executable limit from depth (expert role 2026-10-15, Q264/Q265/Q268)
   ADR-081: 4b           # freeze limit: block at review, exchange file source (owner 2026-10-15, Q266)
+  ADR-082: 4b           # charges from Zerodha's published rates; money sentences include charges (owner 2026-10-15, Q267)
+  ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
+  ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
   ADR-076: 4a           # TOTAL Current Value net with Cr/Dr (owner 2026-10-15, live gate check 1)
   ADR-075: 4a           # saved draft keeps planned entry + capture time (owner 2026-10-15, live gate check 2)
   ADR-074: [4a, S5]     # REQ-065 open exception at the core gate; Verified before Stage 5 (owner 2026-10-15)
@@ -172,9 +175,6 @@ questions:
   Q259: 4b              # external: Zerodha confirms basket orders are non-algo (owner action)
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
-  Q267: 4b              # owner: charges model (ADR-071 phrase)
-  Q269: 4b              # owner: expiry and expiry-day entry
-  Q270: 4b              # owner: existing-position grouping (REQ-061)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -277,6 +277,7 @@ findings:
   F-32: done      # live checks: Greeks input (ADR-061) and staleness (W-059) decided
   F-33: 4a        # afternoon capture: intraday strikes, REST charges/history, floats, sessions, expiry close
   F-34: done      # bars from ticks vs Kite candles (decided, ADR-067)
+  F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
 
 hypotheses:
   H1: done

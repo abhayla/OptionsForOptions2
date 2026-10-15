@@ -419,18 +419,16 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
 ## Q266 — DECIDED → ADR-081 (owner, 2026-10-15) — Quantity edge cases: how is a leg above the exchange freeze limit handled, and where does the freeze limit come from?
 - Answer: blocked at review, never split; the limit is loaded daily from the exchange's freeze-quantity file.
 
-## Q267 — OPEN (owner) — Charges model: where do the charges on the review, in P&L and in the money sentences come from?
-- Gap: ADR-071's phrase "before charges and taxes" holds "until the charges model is decided"; its consequence expects
-  a new decision to replace the phrase with numbers that include charges.
-- Real case: 1 lot NIFTY 19-Oct-2026 23550 CE at 3.95, Zerodha's charges Rs 23.71 buy + Rs 24.09 sell = Rs 47.80, 18.6%
-  of the Rs 256.75 premium; the 1-lot iron condor entry Rs 110.59.
+## Q267 — DECIDED → ADR-082 (owner, 2026-10-15) — Charges model: where do the charges on the review, in P&L and in the money sentences come from?
+- Answer: Zerodha's published F&O rates (zerodha.com/charges) as an engine rate table (F-35); max-loss and max-profit
+  sentences and expiry scenarios include round-trip charges, replacing ADR-071's phrase.
 
 ## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT does "Execute at current market conditions" send, and how is slippage shown?
 - Answer: the depth level that fills the whole quantity; planned vs executable and the slippage in rupees on the review.
 
-## Q269 — OPEN (owner) — Expiry and multi-expiry execution: what happens when a leg expires, and is expiry-day entry allowed?
-- Gap: an expired leg leaves Zerodha's positions and would read as a mismatch (REQ-060 AC-2); expiry-day entry carries
-  extra margin (F-20).
+## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expiry execution: what happens when a leg expires, and is expiry-day entry allowed?
+- Answer: an expired leg is closed at the settlement price as a recorded event, not a mismatch; expiry-day entry is
+  allowed with a warning; a short leg expiring that day needs an explicit acknowledgement.
 
-## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
-- Gap: no suggestion rule and no entry-price source for an adopted leg; no real position on the owner's account yet.
+## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
+- Answer: one suggested group per underlying and expiry, confirmed by the user; entry = Zerodha's average, editable.

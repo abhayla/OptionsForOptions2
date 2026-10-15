@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (81)
+## Decisions (84)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -87,6 +87,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-079 2026-10-15: The platform sets no timer on an open order and never cancels or modifies one (ADR-054). [refines ADR-054]
 - ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRML (carry forward), with no product choice on screen; every exit carries the product of the Zerodha p… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
+- ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha.com/charges, cross-checked against the brokerage… [amends ADR-071]
+- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the exchange settlement price, with a timeline entry; recon… [refines ADR-006]
+- ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one group per underlying and expiry from the open positions not already in a strategy. [refines ADR-018]
 
 ## Requirements (74)
 
@@ -165,7 +168,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Specified]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (192)
+## Spec sections (193)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -260,6 +263,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-32 - Live market-hours checks on the owner's account: one Kite WebS…
 - ## F-33 - Afternoon market-hours capture: strikes are added during the d…
 - ## F-34 - One-minute bars built from our own Kite ticks match Kite's min…
+- ## F-35 - Zerodha's published F&O options rates reproduce its own charge…
 
 ### spec/open-questions.md
 
@@ -331,10 +335,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q264 — DECIDED → ADR-080 (expert role, owner delegation 2026-10-08) —…
 - ## Q265 — DECIDED → ADR-080 (expert role) — Tick rounding: which way is…
 - ## Q266 — DECIDED → ADR-081 (owner, 2026-10-15) — Quantity edge cases: h…
-- ## Q267 — OPEN (owner) — Charges model: where do the charges on the revi…
+- ## Q267 — DECIDED → ADR-082 (owner, 2026-10-15) — Charges model: where d…
 - ## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT…
-- ## Q269 — OPEN (owner) — Expiry and multi-expiry execution: what happens…
-- ## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which pos…
+- ## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expir…
+- ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grou…
 
 ### spec/operations/README.md
 
