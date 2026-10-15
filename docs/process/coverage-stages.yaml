@@ -251,7 +251,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-072: 4a           # PARTIAL: ADR-086 merged; REQ-039 AC-3 "when" waits on #245
-  W-074: 4b           # charges rate table + calculator (ADR-082 part 1, #240)
   W-075: 4b           # charges in max-loss/max-profit sentences and expiry values (ADR-082 part 2)
   W-076: 4b           # freeze limit from NSE contract file, block at review (ADR-081, F-36)
   W-077: 4a           # Builder "Checked at" (ADR-088, #245) + no-provider names #249 + #244 + #213
