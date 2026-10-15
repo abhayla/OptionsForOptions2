@@ -426,9 +426,9 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
 ## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT does "Execute at current market conditions" send, and how is slippage shown?
 - Answer: the depth level that fills the whole quantity; planned vs executable and the slippage in rupees on the review.
 
-## Q269 — OPEN (owner) — Expiry and multi-expiry execution: what happens when a leg expires, and is expiry-day entry allowed?
-- Gap: an expired leg leaves Zerodha's positions and would read as a mismatch (REQ-060 AC-2); expiry-day entry carries
-  extra margin (F-20).
+## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expiry execution: what happens when a leg expires, and is expiry-day entry allowed?
+- Answer: an expired leg is closed at the settlement price as a recorded event, not a mismatch; expiry-day entry is
+  allowed with a warning; a short leg expiring that day needs an explicit acknowledgement.
 
 ## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
 - Gap: no suggestion rule and no entry-price source for an adopted leg; no real position on the owner's account yet.

@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (82)
+## Decisions (83)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -88,6 +88,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRML (carry forward), with no product choice on screen; every exit carries the product of the Zerodha p… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
 - ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha.com/charges, cross-checked against the brokerage… [amends ADR-071]
+- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the exchange settlement price, with a timeline entry; recon… [refines ADR-006]
 
 ## Requirements (74)
 
@@ -335,7 +336,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q266 — DECIDED → ADR-081 (owner, 2026-10-15) — Quantity edge cases: h…
 - ## Q267 — DECIDED → ADR-082 (owner, 2026-10-15) — Charges model: where d…
 - ## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT…
-- ## Q269 — OPEN (owner) — Expiry and multi-expiry execution: what happens…
+- ## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expir…
 - ## Q270 — OPEN (owner) — Existing-position grouping (REQ-061): which pos…
 
 ### spec/operations/README.md
