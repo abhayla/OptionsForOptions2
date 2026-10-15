@@ -10,9 +10,11 @@
  },
  "fix": "Let the pre-filter pass exactly what the parser accepts (reuse the parser's accept test), keep everything else skipped and counted; a test feeds the real rows of every kind the parser accepts through the caller's whole path.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "The fix for #204 adds a test on parse_rows_naming_the_row with the real index rows; this entry becomes guarded when that test is merged."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_catalogue_store.py::test_the_loader_takes_exactly_the_two_index_rows_outside_nfo_bfo"
+  ],
+  "note": "Merged in #210 (2026-10-15): the loader's pre-filter reuses the parser's own accept tests (_domain_takes); the test feeds the real index, INDIA VIX and token-1001 cash rows through parse_rows_naming_the_row."
  },
  "spec_ref": [
   "spec/requirements/REQ-072.md",
