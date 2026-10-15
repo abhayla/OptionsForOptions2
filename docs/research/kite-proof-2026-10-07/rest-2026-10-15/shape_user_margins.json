@@ -1,0 +1,61 @@
+{
+ "http": 200,
+ "shape": {
+  "equity": {
+   "enabled": "bool",
+   "net": "float",
+   "available": {
+    "adhoc_margin": "int",
+    "cash": "float",
+    "opening_balance": "float",
+    "live_balance": "float",
+    "collateral": "int",
+    "intraday_payin": "int"
+   },
+   "utilised": {
+    "debits": "int",
+    "exposure": "int",
+    "m2m_realised": "int",
+    "m2m_unrealised": "int",
+    "option_premium": "int",
+    "payout": "int",
+    "span": "int",
+    "holding_sales": "int",
+    "turnover": "int",
+    "liquid_collateral": "int",
+    "stock_collateral": "int",
+    "equity": "int",
+    "delivery": "int",
+    "spread_benefit_nfo": "int"
+   }
+  },
+  "commodity": {
+   "enabled": "bool",
+   "net": "int",
+   "available": {
+    "adhoc_margin": "int",
+    "cash": "int",
+    "opening_balance": "int",
+    "live_balance": "int",
+    "collateral": "int",
+    "intraday_payin": "int"
+   },
+   "utilised": {
+    "debits": "int",
+    "exposure": "int",
+    "m2m_realised": "int",
+    "m2m_unrealised": "int",
+    "option_premium": "int",
+    "payout": "int",
+    "span": "int",
+    "holding_sales": "int",
+    "turnover": "int",
+    "liquid_collateral": "int",
+    "stock_collateral": "int",
+    "equity": "int",
+    "delivery": "int",
+    "spread_benefit_nfo": "int"
+   }
+  }
+ }
+}

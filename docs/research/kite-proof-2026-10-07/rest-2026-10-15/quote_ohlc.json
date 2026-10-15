@@ -1,0 +1,125 @@
+{
+ "status": "success",
+ "data": {
+  "BSE:SENSEX": {
+   "instrument_token": 265,
+   "last_price": 73978.93,
+   "ohlc": {
+    "open": 72965.8,
+    "high": 74003.1,
+    "low": 72896.38,
+    "close": 72781.89
+   }
+  },
+  "NFO:NIFTY26O1922750CE": {
+   "instrument_token": 12070146,
+   "last_price": 275.25,
+   "ohlc": {
+    "open": 81.1,
+    "high": 287.4,
+    "low": 78.95,
+    "close": 78.1
+   }
+  },
+  "NFO:NIFTY26O1922750PE": {
+   "instrument_token": 12070914,
+   "last_price": 65.15,
+   "ohlc": {
+    "open": 173.4,
+    "high": 201.7,
+    "low": 62.75,
+    "close": 214.95
+   }
+  },
+  "NFO:NIFTY26O1922850CE": {
+   "instrument_token": 12071682,
+   "last_price": 201.55,
+   "ohlc": {
+    "open": 56.75,
+    "high": 212.6,
+    "low": 51.1,
+    "close": 49.1
+   }
+  },
+  "NFO:NIFTY26O1922850PE": {
+   "instrument_token": 12071938,
+   "last_price": 91.5,
+   "ohlc": {
+    "open": 283.4,
+    "high": 283.4,
+    "low": 88,
+    "close": 285.4
+   }
+  },
+  "NFO:NIFTY26O1922950CE": {
+   "instrument_token": 12072706,
+   "last_price": 138.85,
+   "ohlc": {
+    "open": 30.7,
+    "high": 148,
+    "low": 30,
+    "close": 30
+   }
+  },
+  "NFO:NIFTY26O1922950PE": {
+   "instrument_token": 12072962,
+   "last_price": 128.85,
+   "ohlc": {
+    "open": 335.55,
+    "high": 345.6,
+    "low": 123.65,
+    "close": 366.8
+   }
+  },
+  "NFO:NIFTY26O1923050CE": {
+   "instrument_token": 12073986,
+   "last_price": 89.2,
+   "ohlc": {
+    "open": 20.2,
+    "high": 95.85,
+    "low": 19,
+    "close": 18.55
+   }
+  },
+  "NFO:NIFTY26O1923050PE": {
+   "instrument_token": 12074498,
+   "last_price": 178.95,
+   "ohlc": {
+    "open": 424.6,
+    "high": 424.7,
+    "low": 171.75,
+    "close": 456.5
+   }
+  },
+  "NFO:NIFTY26O1923150CE": {
+   "instrument_token": 12075266,
+   "last_price": 53.55,
+   "ohlc": {
+    "open": 11,
+    "high": 57.75,
+    "low": 11,
+    "close": 11.75
+   }
+  },
+  "NFO:NIFTY26O1923150PE": {
+   "instrument_token": 12075522,
+   "last_price": 245,
+   "ohlc": {
+    "open": 514.45,
+    "high": 514.45,
+    "low": 234,
+    "close": 548.7
+   }
+  },
+  "NSE:NIFTY 50": {
+   "instrument_token": 256265,
+   "last_price": 22966.65,
+   "ohlc": {
+    "open": 22671.3,
+    "high": 22973.55,
+    "low": 22637.4,
+    "close": 22622.7
+   }
+  }
+ }
+}

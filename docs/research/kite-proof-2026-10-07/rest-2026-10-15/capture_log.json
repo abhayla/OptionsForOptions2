@@ -1,0 +1,31 @@
+{
+ "at": "2026-10-15T11:48:15",
+ "http": {
+  "quote": 200,
+  "quote/ltp": 200,
+  "quote/ohlc": 200,
+  "margins/basket": 200,
+  "margins/orders": 200,
+  "charges/orders": 200,
+  "historical nifty50_minute": [
+   200,
+   153
+  ],
+  "historical nifty50_day": [
+   200,
+   22
+  ],
+  "historical option_minute": [
+   200,
+   153
+  ],
+  "user/profile": 200,
+  "user/margins": 200,
+  "portfolio/positions": 200,
+  "portfolio/holdings": 200,
+  "orders": 200,
+  "trades": 200
+ },
+ "atm": 22950,
+ "expiry": "2026-10-19"
+}

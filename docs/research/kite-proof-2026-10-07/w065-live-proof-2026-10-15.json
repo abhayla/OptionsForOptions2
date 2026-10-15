@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-15",
+  "pushes": 10,
+  "min_gap_s": 1.02,
+  "distinct_ltp_per_leg": [
+    5,
+    5,
+    4,
+    4
+  ],
+  "distinct_unrealized_pnl": 7,
+  "health_states": [
+    "None",
+    "available"
+  ],
+  "diag_push0": {
+    "output_label": "estimated from spot; NIFTY26O1923150CE: no live quote; NIFTY26O1923350CE: no live quote; NIFTY26O1922750PE: no live quote; NIFTY26O1922550PE: no live quote",
+    "leg_labels": [
+      "no live quote",
+      "no live quote",
+      "no live quote",
+      "no live quote"
+    ],
+    "leg_keys": [
+      "action",
+      "captured_at",
+      "expiry",
+      "health",
+      "instrument",
+      "instrument_id",
+      "iv",
+      "label",
+      "lot_size",
+      "lots",
+      "ltp",
+      "planned_entry",
+      "quantity",
+      "strike",
+      "symbol"
+    ]
+  },
+  "diag_push1": {
+    "output_label": "estimated from spot",
+    "leg_labels": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "checks": {
+    "pushes>=30": false,
+    "min_gap>=1.0": true,
+    "ltp_changed": true,
+    "pnl_changed": true,
+    "health_live": false
+  },
+  "passed": false,
+  "spot_known": true,
+  "expiry": "2026-10-19",
+  "strikes": [
+    "SELL CE 23150.00",
+    "BUY CE 23350.00",
+    "SELL PE 22750.00",
+    "BUY PE 22550.00"
+  ],
+  "connections": 1,
+  "session_state": "live",
+  "feed_session_ended": false
+}
