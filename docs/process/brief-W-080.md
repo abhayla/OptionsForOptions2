@@ -48,6 +48,11 @@ Read first: `docs/process/builder-brief.md`, `work/W-080.md`, `spec/requirements
    Keep `send_guard.py` as is; note in the report that `_Transport.submit -> broker order id` has no place in the basket
    path (the orchestrator files it).
 5. #115 for this path only: the basket and its tags carry the InstrumentId; nothing new keys on the trading symbol.
+6. The basket build CALLS the gates itself, never trusting a caller's verdict (W-076 Tier A review MAJOR 2): the
+   freeze check (W-076's `freeze.py` via its store->review adapter, limits from the store, lot from the catalogue) and
+   the margin gate (W-081's `margin_gate.check_margin`). If those modules are not on `main` when you start, define the
+   two gate calls behind small protocol parameters (`freeze_check`, `margin_check`) that `build_basket` must receive
+   (required, no default) and test with fakes that a blocked freeze or margin result refuses the whole basket.
 
 ## Reviewer checklist (write first; each red when mutated)
 - Order of orders != plan order -> red. A MARKET order or missing `readonly` -> red.
