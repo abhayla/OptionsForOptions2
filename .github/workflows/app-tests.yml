@@ -249,9 +249,28 @@ jobs:
           done
           curl -sf http://127.0.0.1:8001/health
 
+      # #237: the Save Draft browser e2e. CI's database is throwaway: seed it with the recorded 2026-10-08 instrument list
+      # through the normal guarded loader (as ofo_app, nothing loosened, nothing deleted), then start an API whose
+      # catalogue routes read 2026-10-08 as today. TEST_CATALOGUE_DATE is refused unless APP_ENV=test
+      # (ofo_app.pinned_clock). Only this API (port 8002) sees the pin; the others judge expiry on the database clock.
+      - name: Seed the throwaway catalogue and start the API with the test-only catalogue date (port 8002)
+        env:
+          DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
+          APP_ENV: test
+          TEST_CATALOGUE_DATE: '2026-10-08'
+        run: |
+          python -m ofo_app.seed_test_catalogue
+          nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --host 127.0.0.1 --port 8002 > "${RUNNER_TEMP}/uvicorn-pinned.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8002/health && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8002/health
+
       - name: Start the built frontend (preview) with the proxy on the real API, and one on a closed port
         working-directory: frontend
         run: |
+          OFO_API_TARGET=http://127.0.0.1:8002 nohup npx vite preview --port 4176 --strictPort > "${RUNNER_TEMP}/preview-pinned.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:8001 nohup npx vite preview --port 4175 --strictPort > "${RUNNER_TEMP}/preview-replay.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:8000 nohup npx vite preview --port 4173 --strictPort > "${RUNNER_TEMP}/preview.log" 2>&1 &
           OFO_API_TARGET=http://127.0.0.1:9 nohup npx vite preview --port 4174 --strictPort > "${RUNNER_TEMP}/preview-down.log" 2>&1 &
@@ -268,6 +287,9 @@ jobs:
           PREVIEW_URL: http://127.0.0.1:4173
           PREVIEW_DOWN_URL: http://127.0.0.1:4174
           REPLAY_URL: http://127.0.0.1:4175
+          E2E_PINNED_CATALOGUE: '1'  # #237: un-skips strategy-save-draft.spec.ts against the seeded fixture
+          SAVE_DRAFT_URL: http://127.0.0.1:4176
+          E2E_MIN_EXPIRY: '2026-10-08'
         run: npx playwright test
 
       - name: Upload screenshots
@@ -282,4 +304,4 @@ jobs:
 
       - name: Server logs on failure
         if: failure()
-        run: tail -n 50 "${RUNNER_TEMP}"/uvicorn.log "${RUNNER_TEMP}"/preview.log "${RUNNER_TEMP}"/preview-down.log || true
+        run: tail -n 50 "${RUNNER_TEMP}"/uvicorn.log "${RUNNER_TEMP}"/uvicorn-pinned.log "${RUNNER_TEMP}"/preview-pinned.log "${RUNNER_TEMP}"/preview.log "${RUNNER_TEMP}"/preview-down.log || true

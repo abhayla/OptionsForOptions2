@@ -37,9 +37,14 @@ class Settings(BaseSettings):
     #: owner's stored session. Refused under APP_ENV=test unless KITE_WS_URL is a local fake (tests never reach Kite).
     LIVE_MARKET: bool = False
     KITE_WS_URL: str = "wss://ws.kite.trade"
+    #: #237: TEST-ONLY. Pins the catalogue routes' "today" (ofo_app.pinned_clock) so a recorded fixture stays live in CI.
+    #: Refused unless APP_ENV is exactly "test".
+    TEST_CATALOGUE_DATE: str | None = None
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":
+        if self.TEST_CATALOGUE_DATE and self.APP_ENV != "test":
+            raise ValueError("TEST_CATALOGUE_DATE is a test-only setting: it needs APP_ENV=test")
         if self.OUTCOME_REPLAY and self.APP_ENV != "test":
             raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")
         if self.LIVE_MARKET and self.APP_ENV == "test" and self.KITE_WS_URL.startswith("wss://ws.kite.trade"):
