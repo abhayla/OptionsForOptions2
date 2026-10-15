@@ -565,8 +565,9 @@ def check_summary_text(text: str) -> str:
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:
     """The activity-history summary as stored data: the meaningful changes, or the cosmetic one."""
     items = list(new.definition.change_items(old.definition))
-    if _entries_by_contract(old) != _entries_by_contract(new):  # ADR-075 / ADR-068 item 1: a reprice is a change
-        items.append({"kind": "entries_repriced"})
+    before, after = _entries_by_contract(old), _entries_by_contract(new)
+    if any(before[c] != after[c] for c in before.keys() & after.keys()):  # ADR-068 item 1: a reprice is a change
+        items.append({"kind": "entries_repriced"})  # (an added or removed leg is already its own item)
     return summary_text(items or [{"kind": "legs_reordered"}])
 
 

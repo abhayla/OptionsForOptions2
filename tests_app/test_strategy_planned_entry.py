@@ -37,11 +37,11 @@ from ofo_app.routes import strategies as strategy_routes
 from test_strategy_store import AS_OF, IRON_CONDOR, LOT, _fixture_rows, _ids  # the same real rows
 
 IST = timezone(timedelta(hours=5, minutes=30))
-CAPTURED = "2026-10-15T11:02:17+05:30"
-CAPTURED_AT = datetime(2026, 10, 15, 11, 2, 17, tzinfo=IST)
+CAPTURED = "2026-10-15T09:20:05+05:30"
+CAPTURED_AT = datetime(2026, 10, 15, 9, 20, 5, tzinfo=IST)
 ENTRIES = ("44.90", "11.75", "79.05", "37.15")  # ADR-075's source line, in Iron Condor leg order
 REPRICED = ("46.10", "12.05", "77.80", "36.40")
-REPRICED_AT = "2026-10-15T13:45:00+05:30"
+REPRICED_AT = "2026-10-15T09:41:30+05:30"
 CHECK_VIOLATION = "23514"
 INSERT = ("INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
           "VALUES (:u, 'NIFTY', CAST(:d AS JSONB), 1)")
@@ -151,5 +151,239 @@ async def test_ac5_a_saved_draft_reloads_with_its_planned_entries_and_capture_ti
             stored_text = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
                                               {"id": strategy_id})).scalar_one()
             assert [(leg["planned_entry"], leg["captured_at"]) for leg in json.loads(stored_text)["legs"]] == expected
+        finally:
+            await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Class: every history version (update = reprice, restore)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+async def test_ac5_a_reprice_is_a_history_entry_and_restore_brings_the_old_entries_back(app_engine):
+    """AC-5 + AC-2 (ADR-068 item 1: entries change only on a reprice): a save with new entries writes one history
+    entry holding the previous entries ("planned entry prices repriced"); restore of entry 1 returns those entries."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            async with _client(conn, user) as ac:
+                strategy_id = (await ac.post("/strategies", json=_body(ids))).json()["id"]
+                same = await ac.put(f"/strategies/{strategy_id}", json=_body(ids, expected_revision=1))
+                assert same.status_code == 200 and same.json()["revision"] == 1  # same entries: not a change
+                repriced = await ac.put(f"/strategies/{strategy_id}",
+                                        json=_body(ids, entries=REPRICED, captured=REPRICED_AT, expected_revision=1))
+                assert repriced.status_code == 200, repriced.text
+                assert repriced.json()["revision"] == 2
+                assert _entry_pairs(repriced.json()["definition"]) == [(e, REPRICED_AT) for e in REPRICED]
+                history = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
+                assert [e["seq"] for e in history] == [1]
+                assert _entry_pairs(history[0]["definition"]) == [(e, CAPTURED) for e in ENTRIES]
+                assert history[0]["change_summary"] == "planned entry prices repriced"
+                restored = await ac.post(f"/strategies/{strategy_id}/restore/1", params={"expected_revision": 2})
+                assert restored.status_code == 200, restored.text
+                assert _entry_pairs(restored.json()["definition"]) == [(e, CAPTURED) for e in ENTRIES]
+                history = (await ac.get(f"/strategies/{strategy_id}/history")).json()["entries"]
+                assert [e["seq"] for e in history] == [1, 2]
+                assert _entry_pairs(history[1]["definition"]) == [(e, REPRICED_AT) for e in REPRICED]
+            loaded = await store.load(conn, user, strategy_id)
+            assert loaded.saved.entries == tuple(sf.LegEntry(Decimal(e), CAPTURED_AT) for e in ENTRIES)
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_a_draft_saved_without_entries_loads_without_them_and_is_never_recaptured(app_engine):
+    """ADR-075 / ADR-068 item 1: a draft with no stored entry (saved before ADR-075, or a leg with no live price) loads
+    with the two keys absent; the API invents none. A later save that adds entries is a reprice."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            async with _client(conn, user) as ac:
+                saved = await ac.post("/strategies", json=_body(ids, entries=(None, None, None, None)))
+                assert saved.status_code == 201, saved.text
+                strategy_id = saved.json()["id"]
+                got = (await ac.get(f"/strategies/{strategy_id}")).json()["definition"]
+                assert all(set(leg) == set(sf.LEG_KEYS) for leg in got["legs"])
+                mixed = await ac.put(f"/strategies/{strategy_id}",
+                                     json=_body(ids, entries=("44.90", None, "79.05", None), expected_revision=1))
+                assert mixed.status_code == 200, mixed.text
+                assert _entry_pairs(mixed.json()["definition"]) == [("44.90", CAPTURED), (None, None),
+                                                                    ("79.05", CAPTURED), (None, None)]
+            assert (await store.load(conn, user, strategy_id)).saved.entries[1] is None
+        finally:
+            await trans.rollback()
+
+
+BAD_ENTRY_LEGS = {
+    "price without time": {"planned_entry": "44.90"},
+    "time without price": {"captured_at": CAPTURED},
+    "price as a JSON number": {"planned_entry": 44.9, "captured_at": CAPTURED},
+    "price with 3 decimals": {"planned_entry": "44.901", "captured_at": CAPTURED},
+    "zero price": {"planned_entry": "0", "captured_at": CAPTURED},
+    "negative price": {"planned_entry": "-44.90", "captured_at": CAPTURED},
+    "exponent price": {"planned_entry": "4.49E+1", "captured_at": CAPTURED},
+    "time without offset": {"planned_entry": "44.90", "captured_at": "2026-10-15T11:02:17"},
+    "time not a time": {"planned_entry": "44.90", "captured_at": "yesterday"},
+    "time in the future": {"planned_entry": "44.90", "captured_at": "2099-01-01T00:00:00+05:30"},
+    "live price next to the pair": {"planned_entry": "44.90", "captured_at": CAPTURED, "ltp": "45.10"},
+}
+
+
+@pytest.mark.parametrize("extra", list(BAD_ENTRY_LEGS.values()), ids=list(BAD_ENTRY_LEGS))
+async def test_ac5_a_malformed_planned_entry_is_refused_and_nothing_is_stored(app_engine, extra):
+    """AC-5: a one-sided, malformed, future or live-price-carrying entry is refused with 422; no strategy row."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            body = _body(ids, entries=(None, None, None, None))
+            body["legs"][0] |= extra
+            async with _client(conn, user) as ac:
+                response = await ac.post("/strategies", json=body)
+            assert response.status_code == 422, response.text
+            assert await store.list_strategies(conn, user) == []
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_a_utc_capture_time_is_stored_canonically_and_reloads_as_the_same_instant(app_engine):
+    """The planned-entry route can return "Z" times; the store keeps the canonical isoformat and the same instant."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            async with _client(conn, user) as ac:
+                saved = await ac.post("/strategies", json=_body(ids, captured="2026-10-15T03:50:05Z"))
+            assert saved.status_code == 201, saved.text
+            loaded = await store.load(conn, user, saved.json()["id"])
+            assert {e.captured_at for e in loaded.saved.entries} == {CAPTURED_AT}
+            assert sf.to_document(loaded.saved)["legs"][0]["captured_at"] == "2026-10-15T03:50:05+00:00"
+        finally:
+            await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The database: the leg key set is an allow-list (finding guard-as-forbidden-list)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+async def _stored_document(conn, ids) -> dict:
+    user = _user()
+    async with _client(conn, user) as ac:
+        strategy_id = (await ac.post("/strategies", json=_body(ids))).json()["id"]
+    text_ = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
+                                {"id": strategy_id})).scalar_one()
+    return json.loads(text_)
+
+
+def _leg_variants(good_leg: dict) -> dict[str, tuple[dict, bool]]:
+    """Generated, not hand-picked: every leg key set built from the 8 allowed keys plus each live-state name and a
+    stranger, and every value type in each entry slot. -> name: (leg, allowed)."""
+    base = {k: v for k, v in good_leg.items() if k in sf.LEG_KEYS}
+    out: dict[str, tuple[dict, bool]] = {"base six keys": (base, True), "with the pair": (good_leg, True)}
+    for key in sorted(sf.ENTRY_LEG_KEYS):
+        out[f"only {key}"] = (base | {key: good_leg[key]}, False)
+    for name in sorted(sf.LIVE_STATE_NAMES | {"note", "source", "planned_entry_2"}):
+        out[f"pair + {name}"] = (good_leg | {name: "1"}, False)
+        out[f"{name} instead of the pair"] = (base | {name: "1", "captured_at": good_leg["captured_at"]}, False)
+    values = {"a JSON number": 44.9, "an integer": 44, "null": None, "true": True, "an array": ["44.90"],
+              "an object": {"v": "44.90"}, "empty text": "", "text": "abc"}
+    for slot in sorted(sf.ENTRY_LEG_KEYS):
+        for label, value in values.items():
+            out[f"{slot} as {label}"] = (good_leg | {slot: value}, False)
+    for label, value, ok in (("2 decimals", "44.90", True), ("1 decimal", "44.9", True), ("integer text", "45", True),
+                             ("3 decimals", "44.901", False), ("zero", "0", False), ("0.00", "0.00", False),
+                             ("negative", "-1", False), ("exponent", "1E+2", False), ("13 digits", "1" * 13, False),
+                             ("leading zero", "044.90", False), ("space", " 44.90", False)):
+        out[f"price {label}"] = (good_leg | {"planned_entry": value}, ok)
+    for label, value, ok in (("IST", CAPTURED, True), ("UTC +00:00", "2026-10-15T03:50:05+00:00", True),
+                             ("microseconds", "2026-10-15T11:02:17.123456+05:30", True),
+                             ("no offset", "2026-10-15T11:02:17", False), ("Z", "2026-10-15T03:50:05Z", False),
+                             ("date only", "2026-10-15", False), ("bad month", "2026-13-15T11:02:17+05:30", False)):
+        out[f"time {label}"] = (good_leg | {"captured_at": value}, ok)
+    return out
+
+
+async def test_ac5_the_database_allows_exactly_the_two_leg_shapes(app_engine):
+    """The guard's validator is an allow-list: six keys, or six plus BOTH planned_entry and captured_at with a positive
+    paise string and an offset ISO time. Every other generated shape is refused with 23514."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            good = await _stored_document(conn, ids)
+            wrong = []
+            variants = _leg_variants(good["legs"][0])
+            for name, (leg, allowed) in variants.items():
+                doc = good | {"legs": [leg] + good["legs"][1:]}
+                state = await _expect_refused(conn, INSERT, {"u": _user(), "d": json.dumps(doc)})
+                if (state is None) != allowed or (state is not None and state != CHECK_VIOLATION):
+                    wrong.append((name, allowed, state))
+            assert wrong == []
+            assert len(variants) >= 60
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_the_database_takes_the_repriced_summary_kind_and_no_extra_key(app_engine):
+    """The history summary kind ``entries_repriced`` is exactly {"kind"}; an extra key is refused (23514)."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            user = _user()
+            async with _client(conn, user) as ac:
+                strategy_id = (await ac.post("/strategies", json=_body(ids))).json()["id"]
+            current = (await conn.execute(text("SELECT definition::text FROM public.strategies WHERE id = :id"),
+                                          {"id": strategy_id})).scalar_one()
+            sql = ("INSERT INTO public.strategy_history (strategy_id, change_summary, definition, "
+                   "definition_schema_version) VALUES (:id, CAST(:s AS JSONB), CAST(:d AS JSONB), 1)")
+            bad = await _expect_refused(conn, sql, {"id": strategy_id, "d": current,
+                                                    "s": json.dumps([{"kind": "entries_repriced", "x": 1}])})
+            assert bad == CHECK_VIOLATION
+            good = await _expect_refused(conn, sql, {"id": strategy_id, "d": current,
+                                                     "s": json.dumps([{"kind": "entries_repriced"}])})
+            assert good is None
+        finally:
+            await trans.rollback()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Migration 0011: down and up on the real database; the downgrade refuses while an entry is stored
+# ---------------------------------------------------------------------------------------------------------------
+
+
+async def test_0011_downgrade_refuses_with_an_entry_then_round_trips_without_one(admin_engine):
+    """Down (0010's validators): refused while a stored leg holds a planned entry; with none, the pair is refused
+    after the downgrade and accepted again after the upgrade; the allowlist 'post' check passes both ways."""
+    from _migration_replay import round_trip_sql
+    own_down, own_up, down, up = round_trip_sql("0011_strategy_planned_entry.py")
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            good = await _stored_document(conn, ids)  # a row WITH entries now exists in this transaction
+            savepoint = await conn.begin_nested()
+            with pytest.raises(DBAPIError, match="holds a planned entry"):
+                for sql in down:
+                    await conn.execute(text(sql))
+            await savepoint.rollback()
+            await conn.execute(text("SET LOCAL session_replication_role = replica"))  # this test's rows only
+            await conn.execute(text("DELETE FROM public.strategy_history WHERE strategy_id IN (SELECT id FROM "
+                                    "public.strategies WHERE definition -> 'legs' -> 0 ? 'planned_entry')"))
+            await conn.execute(text("DELETE FROM public.strategies WHERE definition -> 'legs' -> 0 ? 'planned_entry'"))
+            await conn.execute(text("SET LOCAL session_replication_role = origin"))
+            for sql in down:
+                await conn.execute(text(sql))
+            assert await _expect_refused(conn, INSERT, {"u": _user(), "d": json.dumps(good)}) == CHECK_VIOLATION
+            for sql in up:
+                await conn.execute(text(sql))
+            assert await _expect_refused(conn, INSERT, {"u": _user(), "d": json.dumps(good)}) is None
         finally:
             await trans.rollback()
