@@ -23,7 +23,7 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
     RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
@@ -736,8 +736,21 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"contract": ContractSymbol}),
 )
 
+# --- W-081 (REQ-055 AC-1/AC-4): the margin check before the Kite basket is built (ofo.execution.margin_gate). Both
+# figures are Zerodha's (`available` from the funds read, `required` from the basket margin's final total); amounts
+# print with the engine's rupee formatter. New: awaiting the owner's read.
+_MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("margin_basket_insufficient", _MG, 201,
+          "Zerodha says this strategy needs {required} of margin; {available} is available in your account.",
+          "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
+          "Building the Zerodha basket for this strategy.",
+          "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again.",
+          {"available": DisplayRupees, "required": DisplayRupees}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
-              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES)
+              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
+              + _MARGIN_GATE_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

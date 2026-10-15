@@ -130,6 +130,20 @@ class Rupees(SlotType):
         return f"₹{value:,}"
 
 
+class DisplayRupees(SlotType):
+    """A rupee amount in the engine's money formatter (ADR-008, lakh grouping: "₹2,96,332.80"), whole paise only."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _validate_money(value, "DisplayRupees", signed=False)
+
+    @staticmethod
+    def format(value: Decimal) -> str:
+        from ofo.engine.display import format_rupees  # lazy: ofo.engine.display imports ofo.errors
+
+        return format_rupees(value)
+
+
 class WorstCase(SlotType):
     """A premium-free worst case at expiry: a Decimal P&L or the engine's UNLIMITED marker."""
 
