@@ -220,11 +220,10 @@ issues:
   "#129": S5            # anonymous Kite-login lockout via the state cap; fix with platform login (W-058 review)
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
   "#151": 4a            # outcome route exempt from the W-024 ApiModel/error-boundary tests until its Tier A fix
+  "#213": 4a            # deferred: real-file test filter keeps expiry-None rows of any kind (from the #210 re-check)
   "#206": 4a            # REST outcome route never subscribes legs (W-065 phase 2)
-  "#207": 4a            # frontend proxy strips /api only for /api/strategies (leg picker 404)
   "#208": 4a            # Save Draft drops planned entry + capture time (ADR-075)
   "#209": 4a            # TOTAL Current Value net with Cr/Dr (ADR-076)
-  "#204": 4a            # catalogue load command drops the NIFTY 50 / SENSEX index rows (found in the W-065 live proof)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 

@@ -140,13 +140,35 @@ def test_database_scope_equals_the_domain_scope() -> None:
     assert set(migration.BROKER_CODES) == BROKER_CODES
 
 
+_INDEX_HEADER = ("instrument_token,exchange_token,tradingsymbol,name,last_price,expiry,strike,tick_size,lot_size,"
+                 "instrument_type,segment,exchange\n")
+#: Real lines from https://api.kite.trade/instruments (2026-10-15): the two index rows the platform takes, INDIA VIX
+#: (another index, stays out), and a NSE cash row that shares exchange token 1001 (F-10, stays out).
+_INDEX_LINES = (
+    '256265,1001,NIFTY 50,"NIFTY 50",0,,0,0,0,EQ,INDICES,NSE\n'
+    '265,1,SENSEX,"SENSEX",0,,0,0,0,EQ,INDICES,BSE\n'
+)
+_OUTSIDE_LINES = (
+    '264969,1035,INDIA VIX,"INDIA VIX",0,,0,0,0,EQ,INDICES,NSE\n'
+    '256257,1001,94SFL28-YL,,0,,0,0.01,1,EQ,NSE,NSE\n'
+)
+
+
+def test_the_loader_takes_exactly_the_two_index_rows_outside_nfo_bfo() -> None:
+    """REQ-072 AC-1 (issue #204): the command's parser keeps NIFTY 50 and SENSEX and still skips the rest."""
+    parsed = parse_rows_naming_the_row(io.StringIO(_INDEX_HEADER + _INDEX_LINES + _OUTSIDE_LINES))
+    assert sorted((c.contract.exchange_segment, c.contract.exchange_token, c.contract.name) for c in parsed) == [
+        ("BSE_INDEX", 1, "SENSEX"), ("NSE_INDEX", 1001, "NIFTY 50")]
+    assert parsed.skipped_outside_v1 == 2
+
+
 def test_fixture_holds_real_nifty_and_sensex_rows() -> None:
     contracts = _fixture()
     scoped = _in_scope(contracts)
-    # 24 rows: the NIFTY 50 index row (NSE) is outside V1 and skipped by the parser; BANKNIFTY (NFO) is outside scope
-    assert len(contracts) == 23 and contracts.skipped_outside_v1 == 1 and len(scoped) == 22
+    # 24 rows: the NIFTY 50 index row (NSE_INDEX) is taken by the loader (#204); BANKNIFTY (NFO) is outside scope
+    assert len(contracts) == 24 and contracts.skipped_outside_v1 == 0 and len(scoped) == 23
     assert Counter((c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped) == {
-        ("NIFTY", "NSE_FO", "FUT"): 3, ("NIFTY", "NSE_FO", "CE"): 4, ("NIFTY", "NSE_FO", "PE"): 4,
+        ("NIFTY 50", "NSE_INDEX", "INDEX"): 1, ("NIFTY", "NSE_FO", "FUT"): 3, ("NIFTY", "NSE_FO", "CE"): 4, ("NIFTY", "NSE_FO", "PE"): 4,
         ("SENSEX", "BSE_FO", "FUT"): 3, ("SENSEX", "BSE_FO", "CE"): 4, ("SENSEX", "BSE_FO", "PE"): 4,
     }
     assert {c.ref("zerodha").lot_size for c in scoped if c.contract.name == "NIFTY"} == {65}
@@ -278,10 +300,10 @@ class _FakeConn:
 
 
 async def test_planning_into_an_empty_catalogue_writes_every_in_scope_contract_without_a_database() -> None:
-    """Reproduces CI run 36979206662 without PostgreSQL: the first write into an empty table must plan 22 inserts."""
+    """Reproduces CI run 36979206662 without PostgreSQL: the first write into an empty table must plan 23 inserts."""
     conn = _FakeConn()
     result = await apply_update(conn, _fixture(), as_of=AS_OF)
-    assert (result.added, result.seen, result.newly_unlisted) == (22, 0, 0)
+    assert (result.added, result.seen, result.newly_unlisted) == (23, 0, 0)
     assert [kind for kind, _ in conn.writes] == ["INSERT", "INSERT"]  # contracts, then their zerodha rows
     assert sorted(p["exchange_token"] for p in conn.writes[0][1]) == sorted(
         c.contract.exchange_token for c in _in_scope(_fixture()))
@@ -303,12 +325,12 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
     conn = _FakeConn(stored)
     next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]
     result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
-    assert (result.added, result.seen, result.newly_unlisted, result.retired) == (0, 18, 4, 4)
+    assert (result.added, result.seen, result.newly_unlisted, result.retired) == (0, 19, 4, 4)
     assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # retired (W-057), seen, listed
     expired_ids = sorted(r.id for r in stored if r.expiry == date(2026, 10, 6))
     assert len(expired_ids) == 4 and conn.writes[0][1] == {"ids": expired_ids}  # the 4 expired: retired, ADR-057
-    assert len(conn.writes[1][1]) == 18
-    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[2:]] == [(True, 18)]
+    assert len(conn.writes[1][1]) == 19
+    assert [(p["listed"], len(p["tokens"])) for _, p in conn.writes[2:]] == [(True, 19)]
     assert conn.writes[2][1]["segments"] == sorted(
         c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
@@ -337,15 +359,15 @@ async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database(
     conn = _FakeConn(_stored_rows())
     revised = [with_terms(c, lot_size=75) if _sym(c) == "NIFTY26OCTFUT" else c for c in _fixture()]
     result = await apply_update(conn, revised, as_of=AS_OF)
-    assert (result.added, result.revised, result.seen, result.newly_unlisted) == (0, 1, 22, 0)
+    assert (result.added, result.revised, result.seen, result.newly_unlisted) == (0, 1, 23, 0)
     assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE"]  # no expiry changed: no contract revise
     seen = conn.writes[0][1]
-    assert len(seen) == 22
+    assert len(seen) == 23
     # fixture row: 12468226,48704,NIFTY26OCTFUT,NIFTY,0,2026-10-27,0,0.1,65,FUT,NFO-FUT,NFO
     assert [p for p in seen if p["exchange_token"] == 48704] == [{
         "exchange_segment": "NSE_FO", "exchange_token": 48704, "broker": "zerodha", "broker_symbol": "NIFTY26OCTFUT",
         "lot_size": 75, "tick_size": Decimal("0.1"), "freeze_limit": None}]
-    assert len(conn.writes[1][1]["tokens"]) == 22  # every present contract listed
+    assert len(conn.writes[1][1]["tokens"]) == 23  # every present contract listed
 
 
 # W-057: a strike change is a revision (ADR-057); another instrument_type is a token reuse, i.e. a new contract
@@ -439,8 +461,8 @@ async def test_fixture_round_trips_unchanged_with_exact_decimals(app_engine: Asy
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             result = await apply_update(conn, _fixture(), as_of=AS_OF)
-            assert (result.added, result.seen, result.newly_unlisted) == (22, 0, 0)
-            assert await _count(conn) == 22  # the two out-of-scope rows are not stored
+            assert (result.added, result.seen, result.newly_unlisted) == (23, 0, 0)
+            assert await _count(conn) == 23  # the out-of-scope rows are not stored
             catalogue = await load_catalogue(conn)
             stored = {e.id: e for e in catalogue.all_entries()}
             assert set(stored) == {c.id for c in scoped}
@@ -498,9 +520,9 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
             before = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
             next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]  # the 4 NIFTY 6-Oct options expired
             result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
-            assert (result.added, result.seen, result.newly_unlisted) == (0, 18, 4)
+            assert (result.added, result.seen, result.newly_unlisted) == (0, 19, 4)
             after = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
-            assert set(after) == set(before) and len(after) == 22
+            assert set(after) == set(before) and len(after) == 23
             gone = {s for s, r in after.items() if not r.currently_listed}
             assert gone == {"NIFTY26O0625050CE", "NIFTY26O0625000CE", "NIFTY26O0625050PE", "NIFTY26O0625000PE"}
             for symbol, row in after.items():
@@ -514,7 +536,7 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
                 f"WHERE c.retired AND b.retired"))).scalars().all()
             assert set(retired) == gone  # W-057: expired before the load date -> retired, still stored (ADR-057)
             catalogue = await load_catalogue(conn)  # live contracts only
-            assert len(catalogue.all_entries()) == 18 and all(e.currently_listed for e in catalogue.all_entries())
+            assert len(catalogue.all_entries()) == 19 and all(e.currently_listed for e in catalogue.all_entries())
         finally:
             await trans.rollback()
 
@@ -664,7 +686,7 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
             await _expect_refused(conn, f"UPDATE {BROKER} SET seen_on = '2000-01-01'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = 'x'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"DELETE FROM {HISTORY}", INSUFFICIENT_PRIVILEGE)
-            assert await _count(conn) == 22
+            assert await _count(conn) == 23
         finally:
             await trans.rollback()
 

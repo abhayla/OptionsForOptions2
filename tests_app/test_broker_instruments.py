@@ -89,9 +89,9 @@ async def test_ac3_every_stored_contract_has_exactly_one_zerodha_row_keyed_to_it
         trans = await conn.begin()
         try:
             result = await apply_update(conn, _fixture(), as_of=AS_OF)
-            assert result.added == 22
-            assert await _scalar(conn, f"SELECT count(*) FROM {TABLE}") == 22
-            assert await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'") == 22
+            assert result.added == 23
+            assert await _scalar(conn, f"SELECT count(*) FROM {TABLE}") == 23
+            assert await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'") == 23
             row = (await conn.execute(text(
                 f"SELECT c.exchange_segment, c.exchange_token, b.broker, b.broker_token, b.broker_symbol, "
                 f"b.broker_segment, b.lot_size, b.tick_size::text FROM {TABLE} AS c JOIN {BROKER} AS b "
@@ -156,7 +156,7 @@ async def test_ac3_app_role_cannot_delete_or_rewrite_broker_rows(app_engine: Asy
             await _expect_refused(conn, f"DELETE FROM {BROKER}", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {BROKER} SET broker_token = '1'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {BROKER} SET contract_id = contract_id", INSUFFICIENT_PRIVILEGE)
-            assert await _scalar(conn, f"SELECT count(*) FROM {BROKER}") == 22
+            assert await _scalar(conn, f"SELECT count(*) FROM {BROKER}") == 23
         finally:
             await trans.rollback()
 
@@ -253,7 +253,7 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
             contracts = await _scalar(conn, f"SELECT count(*) FROM {TABLE}")
             broker_rows = await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'")
             load_day = as_of.astimezone(IST).date()
-            live_rows = [r for r in scoped if r.contract.expiry >= load_day]  # ADR-059: stale rows are skipped
+            live_rows = [r for r in scoped if r.contract.expiry is None or r.contract.expiry >= load_day]  # ADR-059: stale rows are skipped; an index never expires
             assert len(live_rows) == contracts == broker_rows
 
             # W-057 fix: the named contracts are chosen relative to the load date (the live file changes daily): the
@@ -275,8 +275,8 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
                 f"SELECT exchange_segment, exchange_token FROM {TABLE} WHERE exchange_segment = 'BSE_FO' "
                 f"AND exchange_token = :t"), {"t": want_sensex.contract.exchange_token})).one()
             assert tuple(sensex) == ("BSE_FO", want_sensex.contract.exchange_token)
-            stray = await _scalar(conn, f"SELECT count(*) FROM {TABLE} WHERE exchange_token = 1001")
-            assert stray == 0
+            stray = await _scalar(conn, f"SELECT count(*) FROM {TABLE} WHERE exchange_token = 1001 AND exchange_segment <> 'NSE_INDEX'")
+            assert stray == 0  # only the NIFTY 50 index row (NSE_INDEX) may hold token 1001, REQ-072 AC-1
             entry = (await load_catalogue(conn)).get(want_nifty.id)
             with pytest.raises(MissingBrokerRef):
                 entry.ref("upstox")

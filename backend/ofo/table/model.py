@@ -42,6 +42,9 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   debit) and ``display`` is e.g. "₹6,825.00 Cr". A net of exactly zero has ``side`` None and displays "₹0.00"
   (neither a credit nor a debit). A strategy with any futures leg shows "—", because a premium and a futures
   notional cannot be added. Leg rows keep their unsigned ``entry_price x quantity``.
+- **TOTAL Current Value is the same NET shape** (ADR-076): sells minus buys at LTP x quantity, magnitude plus
+  Cr/Dr side, "—" for a futures leg or a leg without an LTP; so TOTAL Entry Value minus TOTAL Current Value
+  (signed, Cr positive) equals the TOTAL Unrealized P&L for an options-only strategy.
 - **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
   at every UX level, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
   is the section caption (:func:`scenario_caption`), not a per-column label.
@@ -361,14 +364,17 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
                scenario: ScenarioValues | None, health: "StrategyHealth | None") -> Row:
     legs = inputs.legs
     has_futures = any(leg.instrument is Instrument.FUT for leg in legs)
+    futures_reason = _r("futures_notional")
+    ltp_reason = _r("not_all_ltp")
     net_entry = None if has_futures else sum(
         ((leg.premium if leg.action is Action.SELL else -leg.premium) * leg.quantity for leg in legs), Decimal(0))
     have_all_ltp = all(leg.ltp is not None for leg in legs)
     if have_all_ltp:
-        current_value = sum((leg.ltp * leg.quantity for leg in legs), Decimal(0))
+        net_current = None if has_futures else sum(
+            ((leg.ltp if leg.action is Action.SELL else -leg.ltp) * leg.quantity for leg in legs), Decimal(0))
         unrealized = sum((live_pnl(leg.leg) for leg in legs), Decimal(0))
     else:
-        current_value = None
+        net_current = None
         unrealized = None
 
     # Round-3 fix: sum the UNROUNDED position Greeks across legs, round ONCE at the end (no round-then-scale).
@@ -399,9 +405,9 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, level_columns: S
         ColumnId.QUANTITY: _text(None),
         ColumnId.ENTRY_PRICE: _text(None),
         ColumnId.LTP: _text(None),
-        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, _r("futures_notional")),
-        ColumnId.CURRENT_VALUE: _money(current_value, _r("not_all_ltp")),
-        ColumnId.UNREALIZED_PNL: _money(unrealized, _r("not_all_ltp")),
+        ColumnId.ENTRY_VALUE: _net_premium_cell(net_entry, futures_reason),
+        ColumnId.CURRENT_VALUE: _net_premium_cell(net_current, futures_reason if has_futures else ltp_reason),
+        ColumnId.UNREALIZED_PNL: _money(unrealized, ltp_reason),
         ColumnId.PNL_PERCENT: _total_pnl_percent_cell(inputs, unrealized),
         ColumnId.IV: _text(None),
         ColumnId.DELTA: _greek_cell(greek_values["delta"], None, None, greek_reason),
