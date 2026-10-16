@@ -34,6 +34,7 @@ REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"
 ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"
 CALLBACK = "/kite/callback"
 USER_ID = "AB1234"
+FRONTEND = "http://127.0.0.1:4173"  # the vite preview origin (frontend/README.md); the API's own host differs
 CREDENTIAL_WORDS = ("password", "pin", "otp", "totp", "twofa", "2fa")
 
 
@@ -44,6 +45,7 @@ def _key() -> str:
 def _config() -> BrokerConfig:
     return load_broker_config(BrokerSettings(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
                                              KITE_REDIRECT_URL="http://127.0.0.1:8000" + CALLBACK,
+                                             FRONTEND_ORIGIN=FRONTEND,
                                              KITE_EXPECTED_USER_ID=USER_ID, BROKER_TOKEN_KEY=_key()))
 
 
@@ -124,7 +126,7 @@ def _redirected(response, code: str) -> None:
     carries only the closed code (no body, no token, no Kite text), the no-leak headers and the cleared state cookie."""
     assert code in broker_routes.REFUSAL_CODES
     assert response.status_code == 302, (response.status_code, code)
-    assert response.headers["location"] == f"/broker/refused?code={code}"
+    assert response.headers["location"] == f"{FRONTEND}/broker/refused?code={code}"
     assert response.content == b""
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
@@ -468,8 +470,8 @@ async def test_timeouts_and_network_errors_are_unavailable_without_retry(error):
 
 def _settings(**over) -> BrokerSettings:
     base = dict(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
-                KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", KITE_EXPECTED_USER_ID=USER_ID,
-                BROKER_TOKEN_KEY=_key())
+                KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", FRONTEND_ORIGIN=FRONTEND,
+                KITE_EXPECTED_USER_ID=USER_ID, BROKER_TOKEN_KEY=_key())
     return BrokerSettings(**{**base, **over})
 
 
@@ -783,3 +785,138 @@ async def test_a_generic_exchange_exception_redirects_as_kite_unavailable():
                                                   "state": state})
     _redirected(response, "kite_unavailable")
     assert "hunter2" not in response.headers["location"]
+
+
+# ---- #159: after the callback the browser's next URL is on the FRONTEND origin, never the API's host ----
+
+API_HOST = "http://127.0.0.1:8765"  # the owner's KITE_REDIRECT_URL host: the API, which serves no pages
+BAD_ORIGINS = ["http://127.0.0.1:4173/app", "javascript:alert(1)", "http://user:pw@host", "//evil.example",
+               "http://host?x=1", "http://host#f", "", "ftp://host", "http://host/a/", "http://ho st", "host:4173",
+               "http://host:99999x", "https://host//"]
+
+
+class _Begin:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+class _CommitDB:
+    """A session whose transaction commits: lets the success path run without PostgreSQL."""
+
+    def begin(self) -> _Begin:
+        return _Begin()
+
+
+def _owner_config() -> BrokerConfig:
+    """The shapes in the owner's .env and frontend/README.md: the API on :8765, the frontend on :4173."""
+    return load_broker_config(BrokerSettings(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
+                                             KITE_REDIRECT_URL=API_HOST + CALLBACK, FRONTEND_ORIGIN=FRONTEND,
+                                             KITE_EXPECTED_USER_ID=USER_ID, BROKER_TOKEN_KEY=_key()))
+
+
+def _browser_next_url(response) -> str:
+    """Resolve the Location against the page Kite called back on, exactly as a browser does."""
+    from urllib.parse import urljoin
+
+    assert response.status_code == 302
+    return urljoin(API_HOST + CALLBACK, response.headers["location"])
+
+
+async def _callback(kite: FakeKite, db: object, monkeypatch, state: str | None = None, **params) -> httpx.Response:
+    async def _stored(*args, **kwargs) -> None:
+        return None
+
+    async def _picked_up(config) -> None:
+        return None
+
+    monkeypatch.setattr(broker_routes, "store_session", _stored)
+    monkeypatch.setattr(broker_routes.live_market, "pick_up_login", _picked_up)
+    app = _app(kite, db, _owner_config())  # type: ignore[arg-type]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        issued = await _state(ac)
+        return await ac.get(CALLBACK, params={"state": state or issued, **params})
+
+
+async def test_a_good_login_lands_on_the_frontend_origin_not_the_api_host(monkeypatch):
+    response = await _callback(FakeKite(), _CommitDB(), monkeypatch, status="success", request_token=REQUEST_TOKEN)
+    assert _browser_next_url(response) == FRONTEND + broker_routes.CONNECTED_FRONTEND_PATH
+    assert not _browser_next_url(response).startswith(API_HOST)
+
+
+def _callback_cases() -> list[tuple[str, FakeKite, object, dict[str, str]]]:
+    """One case per refusal code the callback can produce, keyed by the code; the test below proves the set is
+    complete by comparing against REFUSAL_CODES (the login route's own `broker_login_busy` answers an error body)."""
+    good = {"status": "success", "request_token": REQUEST_TOKEN}
+    special = {
+        "broker_state_invalid": (FakeKite(), _CommitDB(), {**good, "state": "never-issued"}),
+        "broker_login_not_completed": (FakeKite(), _CommitDB(), {"status": "cancelled"}),
+        "broker_user_mismatch": (FakeKite(KiteSession(ACCESS_TOKEN, "ZZ9999")), _CommitDB(), good),
+        "broker_store_failed": (FakeKite(), RecordingDB(), good),
+        "kite_unavailable": (FakeKite(RuntimeError("boom")), _CommitDB(), good),
+    }
+    cases = dict(special)
+    for code in sorted(broker_routes.REFUSAL_CODES - set(special) - {"broker_login_busy"}):
+        cases[code] = (FakeKite(KiteExchangeError(code)), _CommitDB(), good)
+    return [(code, *case) for code, case in sorted(cases.items())]
+
+
+@pytest.mark.parametrize("code, kite, db, params", _callback_cases(), ids=lambda v: v if isinstance(v, str) else "")
+async def test_every_refusal_the_callback_can_produce_lands_on_the_frontend_origin(code, kite, db, params, monkeypatch):
+    response = await _callback(kite, db, monkeypatch, **params)
+    assert _browser_next_url(response) == f"{FRONTEND}{broker_routes.REFUSED_FRONTEND_PATH}?code={code}"
+    assert not _browser_next_url(response).startswith(API_HOST)
+
+
+def test_the_callback_cases_cover_every_refusal_code_but_the_login_routes_busy_answer():
+    assert {c[0] for c in _callback_cases()} == broker_routes.REFUSAL_CODES - {"broker_login_busy"}
+
+
+async def test_the_login_route_busy_refusal_still_answers_an_error_body_not_a_redirect():
+    app = _app(FakeKite(), RecordingDB(), _owner_config())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        for _ in range(20):
+            await ac.get(broker_routes.LOGIN_PATH)
+        last = await ac.get(broker_routes.LOGIN_PATH)
+    assert last.status_code == 429 and last.json() == render("broker_login_busy").as_dict()
+
+
+async def test_the_redirect_never_carries_the_token_state_or_access_token(monkeypatch):
+    response = await _callback(FakeKite(), _CommitDB(), monkeypatch, status="success", request_token=REQUEST_TOKEN)
+    location = response.headers["location"]
+    assert REQUEST_TOKEN not in location and ACCESS_TOKEN not in location and "state" not in location
+
+
+@pytest.mark.parametrize("bad", BAD_ORIGINS)
+def test_a_frontend_origin_that_is_not_just_scheme_host_port_is_refused(bad):
+    with pytest.raises(BrokerConfigError) as raised:
+        load_broker_config(_settings(FRONTEND_ORIGIN=bad))
+    assert "FRONTEND_ORIGIN" in str(raised.value)
+
+
+@pytest.mark.parametrize("good, kept", [("http://127.0.0.1:4173", "http://127.0.0.1:4173"),
+                                        ("https://app.example.com/", "https://app.example.com"),
+                                        ("http://localhost:5173", "http://localhost:5173"),
+                                        ("http://[::1]:4173", "http://[::1]:4173")])
+def test_a_plain_origin_is_accepted_and_one_trailing_slash_is_dropped(good, kept):
+    assert load_broker_config(_settings(FRONTEND_ORIGIN=good)).frontend_origin == kept
+
+
+def test_a_missing_frontend_origin_stops_the_broker_routes_and_names_the_setting(monkeypatch):
+    monkeypatch.delenv("FRONTEND_ORIGIN", raising=False)  # BrokerSettings falls back to the environment
+    with pytest.raises(BrokerConfigError) as raised:
+        load_broker_config(_settings(FRONTEND_ORIGIN=""))
+    assert "FRONTEND_ORIGIN" in str(raised.value) and "missing" in str(raised.value)
+
+
+def test_the_door_lets_a_location_name_only_the_configured_frontend_origin():
+    create_app(_owner_config())
+    out = broker_routes.BrokerRedirectOut(redirect="connected")
+    ok = errors_module.typed_redirect(out, FRONTEND + "/broker/connected")
+    assert ok.headers["location"] == FRONTEND + "/broker/connected"
+    for bad in (FRONTEND + "0/x", FRONTEND + ".evil.example/x", FRONTEND + "@evil.example/x", FRONTEND + "//evil.example",
+                FRONTEND, "http://127.0.0.1:4174/x", "https://127.0.0.1:4173/x", API_HOST + "/broker/connected"):
+        with pytest.raises(ValueError):
+            errors_module.typed_redirect(out, bad)

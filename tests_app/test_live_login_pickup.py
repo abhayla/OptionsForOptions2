@@ -23,7 +23,7 @@ from ofo_app import broker_token_store, catalogue_store, db, kite_ws, live_marke
 from ofo_app.config import get_settings
 from ofo_app.routes import broker as broker_routes
 
-CONNECTED = broker_routes.CONNECTED_FRONTEND_PATH
+CONNECTED = "http://127.0.0.1:4173" + broker_routes.CONNECTED_FRONTEND_PATH  # tests_app/conftest.py FRONTEND_ORIGIN
 
 
 class _Conn:
