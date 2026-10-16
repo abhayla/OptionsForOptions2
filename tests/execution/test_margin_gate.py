@@ -19,6 +19,7 @@ from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_mar
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REPLY_FILE = ROOT / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json"
+EXIT_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-exit-sell-held.json"
 STRANGLE_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-long-strangle-bump5.json"
 
 
@@ -207,7 +208,7 @@ def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
 
 @pytest.mark.parametrize("data", [
     {}, {"final": {}}, {"final": None}, {"final": {"total": None}}, {"final": {"total": 68498.85}},
-    {"final": {"total": "68498.85"}}, {"final": {"total": Decimal("NaN")}}, {"final": {"total": Decimal("-5")}},
+    {"final": {"total": "68498.85"}}, {"final": {"total": Decimal("NaN")}},
     {"final": {"total": True}}, {"initial": {"total": Decimal("5")}},
 ])
 def test_ac1_a_reply_without_a_decimal_final_total_is_an_error(data: object) -> None:
@@ -320,6 +321,42 @@ def test_adr094_a_buy_leg_with_a_bad_quantity_or_price_blocks(quantity: object, 
         required_from_basket_reply(data, [Leg("NFO", CE, "BUY", quantity, Decimal(price))])  # type: ignore[arg-type]
     with pytest.raises(MarginReplyError):
         required_from_basket_reply(data, [Leg("NFO", CE, "BUY", 65, 10.5)])  # type: ignore[arg-type]
+
+
+# --- #321: a basket that closes held positions (Kite's final.total is negative) ------------------------------------
+
+def test_321_core_real_exit_reply_needs_zero_margin_and_is_allowed() -> None:
+    """Core: the real 2026-10-16 15:06 SELL 65 of a held NIFTY CE reply has final.total -214.5 -> required 0."""
+    with EXIT_FILE.open(encoding="utf-8") as handle:
+        recorded = json.load(handle, parse_float=Decimal)
+    data = recorded["reply"]["data"]
+    assert data["final"]["total"] == Decimal("-214.5")
+    required = required_from_basket_reply(data, _legs(recorded["request"]))
+    assert required == Decimal(0)
+    assert check_margin(Decimal(0), required).allowed is True
+    assert check_margin(Decimal("1000"), required).allowed is True
+
+
+def test_321_a_negative_total_is_never_a_credit_toward_a_buy_legs_top_up() -> None:
+    """Mixed basket: BUY new leg (top-up 650-0=650) + SELL a held one, total -214.5 -> 0 + 650, not 435.5."""
+    data = _reply((CE, "NFO", Decimal("0")), (PE, "NFO", Decimal("0")), total=Decimal("-214.5"))
+    orders = [_leg(CE, "BUY"), _leg(PE, "SELL")]
+    assert required_from_basket_reply(data, orders) == Decimal("650")
+
+
+@pytest.mark.parametrize("total", [Decimal("-0.01"), Decimal("-1E+6"), Decimal(-5), -5])
+def test_321_any_finite_negative_total_is_zero_required(total: object) -> None:
+    assert required_from_basket_reply(_reply((CE, "NFO", None), total=total), [_leg(CE, "SELL")]) == Decimal(0)
+
+
+@pytest.mark.parametrize("total", [Decimal("-Infinity"), Decimal("Infinity"), Decimal("NaN"), Decimal("-NaN"), None, -214.5])
+def test_321_a_non_finite_or_non_number_total_still_blocks(total: object) -> None:
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(_reply((CE, "NFO", None), total=total), [_leg(CE, "SELL")])
+
+
+def test_321_negative_available_funds_still_block_a_closing_basket() -> None:
+    assert check_margin(Decimal("-1"), Decimal(0)).allowed is False
 
 
 def test_adr094_the_result_is_never_below_the_final_total(strangle) -> None:

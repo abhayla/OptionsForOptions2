@@ -1,0 +1,17 @@
+{
+ "what": "margins/basket NIFTY 2026-10-19 exit SELL 65 NIFTY26O1923650CE NRML against +65 held; final.total is negative (a closing basket)",
+ "recorded": "2026-10-16 15:06 IST, Kite REST (ofo-kite-ticks real-order/fetch.json); margin_raw reply as JSON numbers",
+ "request": [
+  {
+   "exchange": "NFO",
+   "tradingsymbol": "NIFTY26O1923650CE",
+   "transaction_type": "SELL",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 65,
+   "price": 3.3
+  }
+ ],
+ "reply": {"status":"success","data":{"initial":{"type":"","tradingsymbol":"","exchange":"","span":0,"exposure":0,"option_premium":0,"additional":0,"bo":0,"cash":0,"var":0,"mtf":0,"pnl":{"realised":0,"unrealised":0},"leverage":0,"charges":{"transaction_tax":0,"transaction_tax_type":"","exchange_turnover_charge":0,"sebi_turnover_charge":0,"brokerage":0,"stamp_duty":0,"gst":{"igst":0,"cgst":0,"sgst":0,"total":0},"total":0},"total":0},"final":{"type":"","tradingsymbol":"","exchange":"","span":0,"exposure":0,"option_premium":-214.5,"additional":0,"bo":0,"cash":0,"var":0,"mtf":0,"pnl":{"realised":0,"unrealised":0},"leverage":0,"charges":{"transaction_tax":0,"transaction_tax_type":"","exchange_turnover_charge":0,"sebi_turnover_charge":0,"brokerage":0,"stamp_duty":0,"gst":{"igst":0,"cgst":0,"sgst":0,"total":0},"total":0},"total":-214.5},"orders":[{"type":"equity","tradingsymbol":"NIFTY26O1923650CE","exchange":"NFO","span":0,"exposure":0,"option_premium":0,"additional":0,"bo":0,"cash":0,"var":0,"mtf":0,"pnl":{"realised":0,"unrealised":0},"leverage":1,"charges":{"transaction_tax":0.32175,"transaction_tax_type":"stt","exchange_turnover_charge":0.07621185000000001,"sebi_turnover_charge":0.00021449999999999998,"brokerage":20,"stamp_duty":0,"gst":{"igst":3.6137567429999997,"cgst":0,"sgst":0,"total":3.6137567429999997},"total":24.011933093},"total":0}],"charges":{"transaction_tax":0,"transaction_tax_type":"","exchange_turnover_charge":0,"sebi_turnover_charge":0.00021449999999999998,"brokerage":20,"stamp_duty":0,"gst":{"igst":0,"cgst":0,"sgst":0,"total":0},"total":0}}}
+}
