@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (94)
+## Decisions (97)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -100,6 +100,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze limit "is blocked on the order review with the reason and the limit, never split") covers every ord… [extends ADR-081]
 - ADR-093 2026-10-16: Every coding standard of this project is either enforced by an automatic check (a linter rule, a type-check baseline, a repo test, an edit-time hook)… [none — a new subject: engineering standards for a…]
 - ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket figure (`final.total` of `POST /margins/basket`) plus, for every option BUY leg, max(0, quantity x li… [applies ADR-016]
+- ADR-095 2026-10-16: When the user gives one price tolerance (in rupees) for the whole strategy, each leg gets the share of it that its planned value (planned premium x q… [extends ADR-080]
+- ADR-096 2026-10-16: REQ-061 AC-2 "add it to an existing strategy" is built now. [extends ADR-084]
+- ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 afternoon: 1 lot of a NIFTY option BUY, from a basket built by the W-080 branch running on ofo_dev (u… [applies ADR-054, ADR-060]
 
 ## Requirements (75)
 
