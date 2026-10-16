@@ -7,7 +7,7 @@ expects ``EgressRefused``: the gate raises inside the ``socket.connect`` / spawn
 With the gate disabled each one would instead try the network (and time out or fail differently), so each is red.
 This file is standard library only (the kit CI); the httpx / websocket bypasses are in
 ``tests_app/test_egress_gate_doors.py``.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 import http.client
@@ -22,15 +22,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from ofo.broker import egress  # noqa: E402
-from ofo.broker.egress import EgressRefused  # noqa: E402
+from ofo.broker import egress
+from ofo.broker.egress import EgressRefused
 
 TEST_NET = "192.0.2.1"
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 
 
 def _fresh(code: str) -> list[str]:
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, cwd=BACKEND)
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, cwd=BACKEND)  # noqa: PLW1510, S603
     assert out.returncode == 0, out.stderr
     return out.stdout.split()
 
@@ -46,20 +46,20 @@ def test_the_gate_is_installed_by_importing_ofo_in_a_fresh_process() -> None:
 
 def test_r1_a_spelling_the_old_scan_missed() -> None:
     """``os.sys.modules[...]``: the old import scan banned ``sys.modules`` only on a name bound to ``sys``."""
-    import os
+    import os  # noqa: PLC0415
     raw = os.sys.modules["socket"]
     with pytest.raises(EgressRefused):
         raw.create_connection((TEST_NET, 443), timeout=2)
 
 
 def test_r4_percent_encoded_host_from_a_non_door_module() -> None:
-    import urllib.request as request  # a non-door module; urllib resolves the %2E host to the TEST-NET address
+    import urllib.request as request  # a non-door module; urllib resolves the %2E host to the TEST-NET address  # noqa: PLC0415, PLR0402
     with pytest.raises(EgressRefused):
         request.urlopen("https://192%2E0%2E2%2E1/orders/regular", data=b"x", timeout=2)
 
 
 def test_r5_bare_urllib_then_request_urlopen() -> None:
-    import urllib.request  # noqa: F401 - make sure the submodule is loaded; the call below uses the bare package name
+    import urllib.request  # noqa: PLC0415
     with pytest.raises(EgressRefused):
         urllib.request.urlopen(f"https://{TEST_NET}/orders/regular", data=b"x", timeout=2)
 
@@ -101,19 +101,19 @@ def test_udp_sendto_is_refused() -> None:
 def test_a_process_spawn_is_refused() -> None:
     """A child process does not inherit the hook, so spawning is refused, even here in test mode (only this Python
     and git are allowed, for the suite's own script tests)."""
-    import os
+    import os  # noqa: PLC0415
     with pytest.raises(EgressRefused):
-        subprocess.run(["curl", "-X", "POST", f"https://{TEST_NET}/orders/regular"], timeout=5)
+        subprocess.run(["curl", "-X", "POST", f"https://{TEST_NET}/orders/regular"], timeout=5)  # noqa: PLW1510, S603, S607
     with pytest.raises(EgressRefused):
-        subprocess.run(f"curl https://{TEST_NET}/orders/regular", shell=True, timeout=5)
+        subprocess.run(f"curl https://{TEST_NET}/orders/regular", shell=True, timeout=5)  # noqa: PLW1510, S602
     with pytest.raises(EgressRefused):
-        os.system(f"curl https://{TEST_NET}/orders/regular")
+        os.system(f"curl https://{TEST_NET}/orders/regular")  # noqa: S605
 
 
 def test_outside_test_mode_even_this_python_cannot_be_spawned(monkeypatch) -> None:
     monkeypatch.setitem(egress._state, "programs", frozenset())
     with pytest.raises(EgressRefused):
-        subprocess.run([sys.executable, "-c", "pass"], timeout=30)
+        subprocess.run([sys.executable, "-c", "pass"], timeout=30)  # noqa: PLW1510
 
 
 # -- what the gate allows, and the shapes it cannot classify ---------------------------------------------------------

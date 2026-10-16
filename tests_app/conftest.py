@@ -21,10 +21,9 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.broker import egress as _egress
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-
-from ofo.broker import egress as _egress
 
 # W-080 round 7 (REQ-073 AC-4): the egress gate's TEST mode (this suite only): the doors accept their test seams (a
 # mock transport, an injected websocket connect) and this Python may run as a child process. Production never enters it.
@@ -91,8 +90,8 @@ async def db_session(app_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    from ofo_app.db import get_db
-    from ofo_app.main import create_app
+    from ofo_app.db import get_db  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
 
     app = create_app()
 

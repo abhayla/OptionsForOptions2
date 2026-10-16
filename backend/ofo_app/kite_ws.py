@@ -31,13 +31,13 @@ from collections.abc import AsyncIterator as _AsyncIterator
 from collections.abc import Awaitable as _Awaitable
 from collections.abc import Callable as _Callable
 
-from websockets.asyncio.client import connect as _ws_connect
-from websockets.exceptions import InvalidStatus as _InvalidStatus
-
 from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
+from websockets.asyncio.client import connect as _ws_connect
+from websockets.exceptions import InvalidStatus as _InvalidStatus
+
 from ofo_app.redaction import register_secret as _register_secret
 
 _log = logging.getLogger("ofo_app.kite_ws")
@@ -56,7 +56,7 @@ _POLL_SECONDS = 0.5  # how often to look for subscription changes while the sock
 
 
 class KiteSocket:
-    def __init__(self, provider: _KiteProvider, *, api_key: str, access_token: str,
+    def __init__(self, provider: _KiteProvider, *, api_key: str, access_token: str,  # noqa: PLR0913
                  clock: _Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
                  connect: _Callable | None = None,
                  sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep) -> None:
@@ -92,12 +92,12 @@ class KiteSocket:
                     await self._subscribe_all(ws)
                     await self._pump(ws)
             except _InvalidStatus as exc:
-                if exc.response.status_code == 403:
+                if exc.response.status_code == 403:  # noqa: PLR2004
                     self._provider.on_session_ended(self._clock())
                     _log.warning("kite socket refused with 403: session ended")
                     return SESSION_ENDED
                 self._dropped(type(exc).__name__)
-            except Exception as exc:  # network error, close, timeout: all handled the same way
+            except Exception as exc:  # network error, close, timeout: all handled the same way  # noqa: BLE001
                 self._dropped(type(exc).__name__)
             else:
                 self._dropped("closed")
@@ -110,7 +110,7 @@ class KiteSocket:
     @contextlib.asynccontextmanager
     async def _opened(self) -> _AsyncIterator[object]:
         """Open the socket; the egress gate's door context covers ONLY the opening handshake of the real connect,
-        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs outside."""
+        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs outside."""  # noqa: E501
         cm = self._connect(self._url, logger=_silent, open_timeout=10)
         if self._real_connect:
             with _egress._door():
@@ -151,7 +151,7 @@ class KiteSocket:
         while not self._stop:
             try:
                 message = await asyncio.wait_for(ws.recv(), timeout=_POLL_SECONDS)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError:  # noqa: UP041
                 await self._send_changes(ws)
                 continue
             if isinstance(message, bytes):
@@ -163,4 +163,4 @@ class KiteSocket:
             await self._send_changes(ws)
 
 
-__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "KiteSocket", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED"]
+__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED", "KiteSocket"]  # noqa: E501

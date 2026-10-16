@@ -12,13 +12,12 @@ import pathlib
 from http import HTTPStatus
 
 import pytest
-from websockets.asyncio.server import serve
-
 from ofo.instruments.parser import parse_instruments_csv
 from ofo.marketdata.kite_frames import iter_recording
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
 from ofo_app.kite_ws import SESSION_ENDED, STOPPED, KiteSocket
+from websockets.asyncio.server import serve
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
 API_KEY, TOKEN = "KEY-abc123", "TOK-xyz789"
@@ -28,7 +27,7 @@ NOW = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)
 def _provider():
     listed = list(parse_instruments_csv(FIXTURES / "instruments-2026-10-08-subscribed.csv"))
     provider = KiteProvider(listed, clock=lambda: NOW)
-    ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed[:5]] + ["NSE_INDEX:1001"]  # NIFTY 50: (segment, exchange token), REQ-072 AC-1
+    ids = [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed[:5]] + ["NSE_INDEX:1001"]  # NIFTY 50: (segment, exchange token), REQ-072 AC-1  # noqa: E501
     provider.subscribe(ids)
     return provider
 
@@ -58,7 +57,7 @@ async def test_resubscribes_after_a_drop_and_handles_frames_heartbeats_and_text(
         received = []
         per_connection.append(received)
         for _ in range(2):
-            received.append(json.loads(await ws.recv()))
+            received.append(json.loads(await ws.recv()))  # noqa: PERF401
         if len(per_connection) == 1:
             for frame in frames:
                 await ws.send(frame)
@@ -81,8 +80,8 @@ async def test_resubscribes_after_a_drop_and_handles_frames_heartbeats_and_text(
 
     expected = [{"a": "subscribe", "v": wanted}, {"a": "mode", "v": ["full", wanted]}]
     assert per_connection == [expected, expected]  # the second connection re-subscribed the same tokens
-    assert sock.connections == 2 and rec.sleeps == [1]
-    assert provider.counters["frames"] == 4 and provider.counters["heartbeats"] == 1
+    assert sock.connections == 2 and rec.sleeps == [1]  # noqa: PLR2004
+    assert provider.counters["frames"] == 4 and provider.counters["heartbeats"] == 1  # noqa: PLR2004
     assert provider.counters["text:order"] == 1
     assert provider.counters["ticks"] > 0
 
@@ -121,7 +120,7 @@ async def test_network_errors_back_off_1_2_4_up_to_30_and_keep_trying():
 
     async def sleep(seconds):
         holder["delays"].append(seconds)
-        if len(holder["delays"]) == 7:
+        if len(holder["delays"]) == 7:  # noqa: PLR2004
             holder["sock"].stop()
 
     holder["delays"] = []
@@ -129,7 +128,7 @@ async def test_network_errors_back_off_1_2_4_up_to_30_and_keep_trying():
                                        connect=Refused, sleep=sleep)
     assert await asyncio.wait_for(sock.run(), 10) == STOPPED
     assert holder["delays"] == [1, 2, 4, 8, 16, 30, 30]
-    assert len(attempts) == 7 and provider.feed.connected is False
+    assert len(attempts) == 7 and provider.feed.connected is False  # noqa: PLR2004
 
 
 async def test_url_and_token_never_appear_in_any_log_record(caplog):
@@ -186,7 +185,7 @@ async def test_over_3000_tokens_are_cut_and_counted():
         await asyncio.wait_for(ready.wait(), 10)
         sock.stop()
         await asyncio.wait_for(task, 10)
-    assert len(got[0]["v"]) == 3000 and sock.over_limit == len(provider.subscribed_tokens()) - 3000
+    assert len(got[0]["v"]) == 3000 and sock.over_limit == len(provider.subscribed_tokens()) - 3000  # noqa: PLR2004
 
 
 async def test_accept_then_drop_server_is_not_retried_every_second():
@@ -200,7 +199,7 @@ async def test_accept_then_drop_server_is_not_retried_every_second():
 
     async def sleep(seconds):
         holder["delays"].append(seconds)
-        if len(holder["delays"]) == 4:
+        if len(holder["delays"]) == 4:  # noqa: PLR2004
             holder["sock"].stop()
 
     async with serve(handler, "127.0.0.1", 0) as server:
@@ -216,7 +215,7 @@ async def test_accept_then_drop_server_is_not_retried_every_second():
 
 @pytest.mark.parametrize("base_url", ["wss://api.kite.trade", "ws://ws.kite.trade", "wss://ws.kite%2Etrade"])
 def test_the_socket_refuses_a_non_kite_socket_address_before_connecting(base_url: str) -> None:
-    from ofo.broker.kite_http import KiteCallRefused
+    from ofo.broker.kite_http import KiteCallRefused  # noqa: PLC0415
 
     opened: list[str] = []
     with pytest.raises(KiteCallRefused):
@@ -226,7 +225,7 @@ def test_the_socket_refuses_a_non_kite_socket_address_before_connecting(base_url
 
 
 def test_the_socket_rechecks_its_address_before_every_connect() -> None:
-    from ofo.broker.kite_http import KiteCallRefused
+    from ofo.broker.kite_http import KiteCallRefused  # noqa: PLC0415
 
     opened: list[str] = []
 

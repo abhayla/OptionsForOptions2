@@ -18,7 +18,7 @@ This file is the second layer, three source checks over every backend module:
 Dynamic constructs (``exec``, ``setattr``, ``sys.modules``, ``importlib``, ``ctypes``, ``gc``) are held to their own
 per-file allow-lists by ``tests/test_door_names_private.py``. Planted examples are written to a temp folder and never
 committed.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 import ast
@@ -46,17 +46,17 @@ PRIVATE_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "ofo_app/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
                              "the httpx Kite door opens door context after check_call; its test seam asks test mode"),
     "ofo_app/kite_ws.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
-                           "the websocket Kite door opens door context after check_ws_url; its test seam asks test mode"),
+                           "the websocket Kite door opens door context after check_ws_url; its test seam asks test mode"),  # noqa: E501
     "ofo_app/__init__.py": (frozenset({"ofo.broker.egress._allow_endpoints"}),
                             "sets the database endpoints once, at app import"),
     "ofo/errors/explanations.py": (frozenset({"ofo.errors.slots._require_exact", "sys._getframe"}),
-                                   "same package's slot validator; user_words() reads its caller's module (door guard)"),
+                                   "same package's slot validator; user_words() reads its caller's module (door guard)"),  # noqa: E501
     "ofo/errors/gate_slots.py": (frozenset({"ofo.errors.slots._IST", "ofo.errors.slots._MONTHS",
                                             "ofo.errors.slots._require_exact", "ofo.errors.slots._validate_money"}),
                                  "same package's slot formatting helpers"),
     "ofo/errors/templates.py": (frozenset({"ofo.errors.model._build", "ofo.errors.model._claim_render_token"}),
                                 "same package's error-object builder and render token"),
-    "ofo/execution/partial.py": (frozenset({"ofo.execution.send_guard._BrokerSink", "ofo.execution.send_guard._Transport",
+    "ofo/execution/partial.py": (frozenset({"ofo.execution.send_guard._BrokerSink", "ofo.execution.send_guard._Transport",  # noqa: E501
                                             "ofo.strategy.guard._decision"}),
                                  "type protocols of the send guard and the guard's decision helper"),
     "ofo/execution/safety.py": (frozenset({"ofo.engine.metrics._Unlimited", "ofo.engine.metrics._upper_tail_slope"}),
@@ -88,7 +88,7 @@ def _door_may(name: str, module: str) -> bool:
     return any(module == r or module.startswith(r + ".") for r in NETWORK_DOORS.get(name, ()))
 
 
-def scan_module(source: str, name: str) -> list[str]:
+def scan_module(source: str, name: str) -> list[str]:  # noqa: C901, PLR0912
     """Network imports outside their door, and other modules' private names, in one module (``name`` is the path
     relative to ``backend/``). A file that does not parse fails: it cannot be shown clean."""
     try:
@@ -172,7 +172,7 @@ def test_allow_list_holds_no_placement_modify_or_cancel_path() -> None:
 
 
 def test_every_backend_module_passes_the_scan() -> None:
-    assert len(_modules_under(BACKEND)) > 50, "the scan must actually see the backend"
+    assert len(_modules_under(BACKEND)) > 50, "the scan must actually see the backend"  # noqa: PLR2004
     assert scan_tree(BACKEND) == []
 
 

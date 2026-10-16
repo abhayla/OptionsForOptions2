@@ -15,8 +15,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ofo_app import errors, event_loop, live_market, pinned_clock, replay_mode
-from ofo_app.config import Settings, app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
+from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db
 from ofo_app.routes import broker, catalogue, health, live, outcome, planned_entry, strategies
 
@@ -35,7 +35,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         live_market.set_current(market)
         try:
             await market.start(app.state.broker.config)
-        except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.
+        except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.  # noqa: BLE001
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
     yield

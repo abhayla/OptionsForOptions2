@@ -10,7 +10,7 @@ open the runtime egress gate's door context (``ofo.broker.egress``), around the 
 non-loopback connect is refused. ``check_ws_url`` is the same rule
 for the websocket door ``ofo_app.kite_ws``. This module is standard library only (the domain layer imports no HTTP
 package); the hosts come from ``kite_endpoints`` (one constant per host).
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 import re
@@ -105,7 +105,7 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
     check_call(method, url)
     if not isinstance(data, (bytes, type(None))):
         raise KiteCallRefused(f"{method}: the body must be bytes; nothing was sent")
-    request = _urllib_request.Request(url, data=data, headers=dict(headers or {}), method=method)
+    request = _urllib_request.Request(url, data=data, headers=dict(headers or {}), method=method)  # noqa: S310
     with _egress._door():
         return _OPENER.open(request, timeout=timeout)  # host and path checked above; no redirect is followed
 

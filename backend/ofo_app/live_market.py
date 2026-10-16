@@ -17,12 +17,13 @@ import datetime
 import logging
 import os
 from decimal import Decimal
-from typing import Callable, Optional
+from typing import Callable, Optional  # noqa: UP035
 
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
+
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
 
@@ -57,11 +58,11 @@ def listed_for_kite(entries) -> list[ListedContract]:
 class LiveMarket:
     def __init__(self) -> None:
         self.state = NOT_STARTED
-        self.feed: Optional[LiveFeed] = None
+        self.feed: Optional[LiveFeed] = None  # noqa: UP045
         self._socket = None
-        self._task: Optional[asyncio.Task] = None
+        self._task: Optional[asyncio.Task] = None  # noqa: UP045
 
-    def context(self) -> Optional[MarketContext]:
+    def context(self) -> Optional[MarketContext]:  # noqa: UP045
         return None if self.feed is None else self.feed.ctx
 
     def attach(self, provider: KiteProvider, socket, clock: Callable[[], datetime.datetime]) -> None:
@@ -76,7 +77,7 @@ class LiveMarket:
             result = await self._socket.run()
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # never the message: it could hold the socket URL
+        except Exception as exc:  # never the message: it could hold the socket URL  # noqa: BLE001
             log.error("kite socket task failed: %s", type(exc).__name__)
             self.state = SESSION_ENDED
             return
@@ -86,12 +87,12 @@ class LiveMarket:
 
     async def start(self, broker_config) -> None:
         """Real start: needs the database and the owner's stored session."""
-        from ofo_app import catalogue_store
-        from ofo_app.broker_crypto import TokenCipher
-        from ofo_app.broker_token_store import access_token_for
-        from ofo_app.config import get_settings
-        from ofo_app.db import get_engine
-        from ofo_app.kite_ws import KiteSocket
+        from ofo_app import catalogue_store  # noqa: PLC0415
+        from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+        from ofo_app.broker_token_store import access_token_for  # noqa: PLC0415
+        from ofo_app.config import get_settings  # noqa: PLC0415
+        from ofo_app.db import get_engine  # noqa: PLC0415
+        from ofo_app.kite_ws import KiteSocket  # noqa: PLC0415
 
         engine = get_engine()
         cipher = TokenCipher(broker_config.token_key)
@@ -123,17 +124,17 @@ class LiveMarket:
         self._task = None
 
 
-_current: Optional[LiveMarket] = None
+_current: Optional[LiveMarket] = None  # noqa: UP045
 
 
-def set_current(market: Optional[LiveMarket]) -> None:
-    global _current
+def set_current(market: Optional[LiveMarket]) -> None:  # noqa: UP045
+    global _current  # noqa: PLW0603
     _current = market
 
 
-def current_context() -> Optional[MarketContext]:
+def current_context() -> Optional[MarketContext]:  # noqa: UP045
     return None if _current is None else _current.context()
 
 
-def current_feed() -> Optional[LiveFeed]:
+def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
     return None if _current is None else _current.feed

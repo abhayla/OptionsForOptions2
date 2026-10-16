@@ -23,7 +23,7 @@ Rules:
   exact decimal text so 3.95 stays 3.95.
 - Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
   characters, unique per leg, decoded by the pure ``parse_tag``. An id that does not fit is refused, never truncated.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 import json
@@ -206,7 +206,7 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
     orders = tuple(
         KiteOrder(instrument_id=iid, exchange=exchange, tradingsymbol=symbol, transaction_type=p.leg.action.value,
                   quantity=p.leg.quantity, price=p.leg.entry_price, tag=tag)
-        for p, (iid, exchange, symbol), tag in zip(plan.legs, resolved, tags))
+        for p, (iid, exchange, symbol), tag in zip(plan.legs, resolved, tags, strict=False))
     for o in orders:
         _number(o.price)  # refuse a non-positive price before anything is handed out
     freeze = _ask(freeze_check, plan, "freeze-limit")

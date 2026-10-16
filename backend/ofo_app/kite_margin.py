@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 import logging
-from urllib.error import HTTPError
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
+from urllib.error import HTTPError
 
 from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
@@ -138,20 +138,20 @@ class KiteMargin:
     def __repr__(self) -> str:
         return "KiteMargin()"
 
-    def _data(self, method: str, path: str, body: str | None, extra: dict[str, str] | None = None) -> Mapping[str, object]:
+    def _data(self, method: str, path: str, body: str | None, extra: dict[str, str] | None = None) -> Mapping[str, object]:  # noqa: E501
         headers = {**self._headers, **(extra or {})}
         try:
             status, text = self._call(method, self._base + path, headers, body)
         except Exception:  # noqa: BLE001 - whatever the transport raises, the answer is "not confirmed"
             raise KiteMarginError("kite_margin_unavailable") from None
-        if status != 200:
+        if status != 200:  # noqa: PLR2004
             log.warning("kite margin HTTP status %s", status)
             error_type = _error_type(text)
-            if status == 403 or error_type == "TokenException":
+            if status == 403 or error_type == "TokenException":  # noqa: PLR2004
                 raise KiteMarginError("kite_margin_token")
-            if status == 429:
+            if status == 429:  # noqa: PLR2004
                 raise KiteMarginError("kite_margin_busy")
-            raise KiteMarginError("kite_margin_unavailable" if status >= 500 else "kite_margin_refused")
+            raise KiteMarginError("kite_margin_unavailable" if status >= 500 else "kite_margin_refused")  # noqa: PLR2004
         try:
             reply = json.loads(text, parse_float=Decimal)
         except (ValueError, RecursionError):  # deeply nested JSON raises RecursionError, not ValueError
@@ -199,7 +199,7 @@ def _error_type(text: str) -> str | None:
 
 def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginVerdict:
     """The check the basket builder runs: both figures from Zerodha, then the domain gate. Any failure to read either
-    figure blocks (the gate's "could not confirm" message); nothing is retried. A negative balance is compared and shown as Zerodha gives it."""
+    figure blocks (the gate's "could not confirm" message); nothing is retried. A negative balance is compared and shown as Zerodha gives it."""  # noqa: E501
     try:
         available: Decimal | None = client.fetch_available_funds()
         required: Decimal | None = client.fetch_basket_margin(orders).final_total

@@ -39,16 +39,14 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal
-
-from ofo_app.kite_http import kite_async_client
-from fastapi import APIRouter, Depends, FastAPI, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from urllib.parse import parse_qsl
 
+from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from ofo.broker.kite_auth import KiteAuthPort, login_url
 from ofo.errors import UserFacing, UserFacingError, render
 from ofo.safe_compare import equal_secret
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
@@ -56,6 +54,7 @@ from ofo_app.broker_token_store import store_session
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, RedirectCookie, typed_redirect
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
+from ofo_app.kite_http import kite_async_client
 
 log = logging.getLogger(__name__)
 
@@ -216,7 +215,7 @@ async def refusal_message(code: RefusalCode) -> RefusalOut:
 
 
 @router.get(LOGIN_PATH, response_model=BrokerRedirectOut, status_code=302)
-async def zerodha_login(request: Request, user_ref: str = Depends(current_user_ref)) -> object:
+async def zerodha_login(request: Request, user_ref: str = Depends(current_user_ref)) -> object:  # noqa: FAST002
     rt = runtime(request)
     try:
         state, nonce = rt.states.issue(user_ref)
@@ -226,13 +225,13 @@ async def zerodha_login(request: Request, user_ref: str = Depends(current_user_r
     return typed_redirect(BrokerRedirectOut(redirect="zerodha_login"), login_url(rt.config.api_key, state), cookie)
 
 
-async def kite_callback(
+async def kite_callback(  # noqa: PLR0911, PLR0913
     request: Request,
     status: str | None = Query(default=None),
     request_token: str | None = Query(default=None),
     state: str | None = Query(default=None),
-    kite: KiteAuthPort = Depends(get_kite_auth),
-    db: AsyncSession = Depends(get_db),
+    kite: KiteAuthPort = Depends(get_kite_auth),  # noqa: B008
+    db: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> object:
     rt = runtime(request)
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))

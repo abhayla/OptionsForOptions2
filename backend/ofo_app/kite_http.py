@@ -11,13 +11,12 @@ Nothing caller-supplied runs inside door context: the constructor takes only ``b
 keep-alive 0 (every request is a fresh connect, so no pooled connection outlives its door), and the request body is
 read before the door opens (a caller's body generator never runs inside it). Auth flows and response hooks run in
 ``send``, outside the door. Tests pass a mock transport as ``_test_transport``, which is refused outside the test suites.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
 
 import httpx as _httpx
-
 from ofo.broker import egress as _egress
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import check_call as _check_call

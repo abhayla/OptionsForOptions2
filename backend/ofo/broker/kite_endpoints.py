@@ -10,7 +10,7 @@ No call may place, modify or cancel an order: the user places the basket on Kite
 
 ``tests/test_no_order_placement.py`` keeps network imports in their doors and fails if ``ALLOWED_CALLS`` gains a write
 under ``/orders`` or ``/gtt``. Reading orders and the read-only ``POST /charges/orders`` / ``/margins/basket`` are NOT placement.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 from typing import Final

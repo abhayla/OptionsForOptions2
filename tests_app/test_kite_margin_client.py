@@ -7,11 +7,10 @@ import http.client
 import json
 import logging
 import pathlib
-from ofo.broker import kite_http as kite_door  # round 7: the urllib door sends through its own opener
 from decimal import Decimal
 
 import pytest
-
+from ofo.broker import kite_http as kite_door  # round 7: the urllib door sends through its own opener
 from ofo.execution.margin_gate import MarginVerdict
 from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin_verdict, urllib_transport
 
@@ -19,7 +18,7 @@ REPLY_FILE = (pathlib.Path(__file__).resolve().parent.parent
               / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json")
 RECORDED = json.loads(REPLY_FILE.read_text(encoding="utf-8"), parse_float=Decimal)
 REPLY_TEXT = json.dumps(json.loads(REPLY_FILE.read_text(encoding="utf-8"))["reply"])
-SECRET = "tok-SECRET-123"
+SECRET = "tok-SECRET-123"  # noqa: S105
 
 
 def condor() -> list[BasketOrder]:
@@ -28,7 +27,7 @@ def condor() -> list[BasketOrder]:
 
 
 def funds_text(net: str) -> str:
-    return '{"status": "success", "data": {"equity": {"enabled": true, "net": %s}}}' % net
+    return '{"status": "success", "data": {"equity": {"enabled": true, "net": %s}}}' % net  # noqa: UP031
 
 
 class Fake:
@@ -107,7 +106,7 @@ def _without(path: list[str]) -> str:
     REPLY_TEXT.replace("68498.85", "true"), REPLY_TEXT.replace("68498.85", "NaN"), "not json", "[]", "",
 ])
 def test_ac1_a_reply_without_a_numeric_final_total_is_a_typed_error(text: str) -> None:
-    """AC-1: missing final/total/initial/orders, a failed status, a string/null/bool/NaN total or junk -> typed error."""
+    """AC-1: missing final/total/initial/orders, a failed status, a string/null/bool/NaN total or junk -> typed error."""  # noqa: E501
     with pytest.raises(KiteMarginError):
         client(Fake(text=text)).fetch_basket_margin(condor())
 
@@ -121,7 +120,7 @@ def test_ac1_funds_without_a_numeric_net_is_a_typed_error(text: str) -> None:
 
 
 def test_ac1_a_transport_failure_is_a_typed_error_and_the_token_never_leaks(caplog) -> None:
-    """AC-1: a transport exception from the injected transport is not swallowed into success; no secret in logs or text."""
+    """AC-1: a transport exception from the injected transport is not swallowed into success; no secret in logs or text."""  # noqa: E501
     caplog.set_level(logging.DEBUG)
     with pytest.raises(KiteMarginError) as raised:
         client(Fake(status=500, text=SECRET)).fetch_available_funds()
@@ -177,7 +176,7 @@ class _Once:
 
 
 @pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"x"), http.client.RemoteDisconnected("x"),
-                                 ConnectionResetError("x"), TimeoutError("x"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "x"),
+                                 ConnectionResetError("x"), TimeoutError("x"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "x"),  # noqa: E501
                                  ValueError("x"), RuntimeError("x")])
 def test_ac1_every_transport_exception_is_the_typed_unavailable_error_and_blocks(exc: Exception) -> None:
     """AC-1 (round 2 item 4): whatever the transport raises -> kite_margin_unavailable; the gate blocks with the
@@ -187,7 +186,7 @@ def test_ac1_every_transport_exception_is_the_typed_unavailable_error_and_blocks
     assert raised.value.code == "kite_margin_unavailable"
     verdict = margin_verdict(client(_Once(exc)), condor())
     assert verdict.allowed is False
-    assert verdict.message.what_happened == "We could not confirm your available margin with Zerodha. Execution is paused."
+    assert verdict.message.what_happened == "We could not confirm your available margin with Zerodha. Execution is paused."  # noqa: E501
 
 
 class _Response:
@@ -206,7 +205,7 @@ class _Response:
         return False
 
 
-@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x")),
+@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x")),  # noqa: E501
                                       _Response(b"not json")])
 def test_ac1_the_real_transport_turns_bad_bodies_into_the_typed_error(monkeypatch, response) -> None:
     """AC-1 (round 2 item 4): a 200 body that is not UTF-8, a read cut short, or not JSON -> typed error."""
@@ -230,18 +229,18 @@ def test_ac1_either_read_failing_blocks_the_basket(fail_funds: bool) -> None:
 
     verdict = margin_verdict(client(transport), condor())
     assert verdict.allowed is False
-    assert verdict.message.what_happened == "We could not confirm your available margin with Zerodha. Execution is paused."
+    assert verdict.message.what_happened == "We could not confirm your available margin with Zerodha. Execution is paused."  # noqa: E501
     assert len(calls) == len(set(calls))  # nothing was retried
 
 
 @pytest.mark.parametrize("change", [{"transaction_type": "HOLD"}, {"product": "CNC"}, {"order_type": "SL"},
-                                    {"exchange": "NSE"}, {"exchange": "nfo"},{"variety": "amo"}, {"quantity": 0}, {"quantity": 65.0},
+                                    {"exchange": "NSE"}, {"exchange": "nfo"},{"variety": "amo"}, {"quantity": 0}, {"quantity": 65.0},  # noqa: E501
                                     {"price": 53.3}, {"price": Decimal("NaN")}, {"price": Decimal("-1")},
                                     {"tradingsymbol": 'X","y":1'}])
 def test_ac1_basket_order_is_a_closed_shape(change: dict) -> None:
     """AC-1: anything outside the allowed order shape (side, product, type, exchange, float price...) raises."""
-    base = dict(exchange="NFO", tradingsymbol="NIFTY26O1923150CE", transaction_type="SELL", product="NRML",
-                order_type="LIMIT", quantity=65, price=Decimal("53.3"), variety="regular")
+    base = {"exchange": "NFO", "tradingsymbol": "NIFTY26O1923150CE", "transaction_type": "SELL", "product": "NRML",
+                "order_type": "LIMIT", "quantity": 65, "price": Decimal("53.3"), "variety": "regular"}
     with pytest.raises(ValueError):
         BasketOrder(**{**base, **change})
 
@@ -255,7 +254,7 @@ def test_ac1_an_empty_or_foreign_basket_is_refused_before_any_call() -> None:
     assert fake.calls == []
 
 
-@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x"))])
+@pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x"))])  # noqa: E501
 def test_ac1_urllib_transport_itself_raises_only_the_typed_error(monkeypatch, response) -> None:
     """AC-1 (round 2 item 4): the shipped transport converts a bad UTF-8 body or a short read itself."""
     monkeypatch.setattr(kite_door._OPENER, "open", lambda request, timeout: response)
@@ -289,7 +288,7 @@ class _Unreadable:
 def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypatch) -> None:
     """AC-1 (round 3 M3): the status alone decides when the error body cannot be read (IncompleteRead is not an
     OSError): 403 -> kite_margin_token, not kite_margin_unavailable."""
-    import urllib.error
+    import urllib.error  # noqa: PLC0415
 
     def refuse(request, timeout):
         raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, _Unreadable())
@@ -302,8 +301,8 @@ def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypa
 
 def test_transport_goes_through_the_kite_door_and_a_refusal_fails_closed(monkeypatch) -> None:
     """W-080 round 4: urllib_transport sends only via open_url; KiteCallRefused -> kite_margin_refused, no leak."""
-    from ofo.broker.kite_http import KiteCallRefused
-    from ofo_app import kite_margin
+    from ofo.broker.kite_http import KiteCallRefused  # noqa: PLC0415
+    from ofo_app import kite_margin  # noqa: PLC0415
 
     seen: list[tuple] = []
 

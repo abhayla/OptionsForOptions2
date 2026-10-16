@@ -107,7 +107,7 @@ def _test_mode() -> bool:
 def _address_allowed(family: object, address: object) -> bool:
     if _UNIX is not None and family == _UNIX:
         return True
-    if family not in _INET or not isinstance(address, tuple) or len(address) < 2:
+    if family not in _INET or not isinstance(address, tuple) or len(address) < 2:  # noqa: PLR2004
         return False  # fail closed: a family or address shape the gate cannot classify
     host, port = address[0], address[1]
     if not isinstance(host, str):

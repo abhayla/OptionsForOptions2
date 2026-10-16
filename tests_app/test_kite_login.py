@@ -17,12 +17,11 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from ofo.broker.kite_auth import KiteSession
 from ofo.errors import CATALOGUE, render
+from ofo_app import errors as errors_module
 from ofo_app.broker_config import BrokerConfig, BrokerConfigError, BrokerSettings, load_broker_config
 from ofo_app.db import get_db
-from ofo_app import errors as errors_module
 from ofo_app.errors import STATUS_BY_CLASS
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
 from ofo_app.kite_http import KiteAsyncClient
@@ -30,9 +29,9 @@ from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes
 
 API_KEY = "kite_fake_key"
-API_SECRET = "kite_fake_secret_value"
-REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"
-ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"
+API_SECRET = "kite_fake_secret_value"  # noqa: S105
+REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"  # noqa: S105
+ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"  # noqa: S105
 CALLBACK = "/kite/callback"
 USER_ID = "AB1234"
 CREDENTIAL_WORDS = ("password", "pin", "otp", "totp", "twofa", "2fa")
@@ -63,7 +62,7 @@ class RecordingDB:
 
 
 class FakeKite:
-    def __init__(self, answer: KiteSession | Exception = KiteSession(ACCESS_TOKEN, USER_ID)) -> None:
+    def __init__(self, answer: KiteSession | Exception = KiteSession(ACCESS_TOKEN, USER_ID)) -> None:  # noqa: B008
         self.answer = answer
         self.calls: list[str] = []
 
@@ -90,7 +89,7 @@ def _app(kite: FakeKite, db: RecordingDB, config: BrokerConfig | None = None):
 
 async def _state(ac: AsyncClient) -> str:
     response = await ac.get(broker_routes.LOGIN_PATH)
-    assert response.status_code == 302
+    assert response.status_code == 302  # noqa: PLR2004
     query = parse_qs(urlsplit(response.headers["location"]).query)
     return parse_qs(query["redirect_params"][0])["state"][0]
 
@@ -114,7 +113,7 @@ def _refused(response, code: str) -> None:
     cookie = response.headers.get("set-cookie", "").lower()
     assert cookie.startswith(broker_routes.STATE_COOKIE + "="), cookie
     assert "max-age=0" in cookie and f"path={CALLBACK}" in cookie, cookie
-    if response.status_code == 401:
+    if response.status_code == 401:  # noqa: PLR2004
         assert response.headers["www-authenticate"] == errors_module.WWW_AUTHENTICATE
     if code in ("broker_login_busy", "kite_busy"):
         assert response.headers["retry-after"] == "60"
@@ -124,7 +123,7 @@ def _redirected(response, code: str) -> None:
     """A refusal on the callback (#163): a browser coming back from Kite gets a 302 to the frontend refusal page that
     carries only the closed code (no body, no token, no Kite text), the no-leak headers and the cleared state cookie."""
     assert code in broker_routes.REFUSAL_CODES
-    assert response.status_code == 302, (response.status_code, code)
+    assert response.status_code == 302, (response.status_code, code)  # noqa: PLR2004
     assert response.headers["location"] == f"/broker/refused?code={code}"
     assert response.content == b""
     assert response.headers["cache-control"] == "no-store"
@@ -224,9 +223,9 @@ async def test_a_reused_state_is_refused_without_a_second_exchange():
 def test_state_store_expires_after_ten_minutes_and_is_single_use():
     now = [1000.0]
     store = broker_routes.StateStore(clock=lambda: now[0])
-    assert store.ttl == 600
+    assert store.ttl == 600  # noqa: PLR2004
     (a, na), (b, nb) = store.issue("u-a"), store.issue("u-b")
-    assert a != b and len(a) >= 40 and na != nb
+    assert a != b and len(a) >= 40 and na != nb  # noqa: PLR2004
     now[0] += 599
     assert store.consume(a, na) == "u-a"
     assert store.consume(a, na) is None
@@ -244,19 +243,19 @@ def test_a_state_needs_the_browser_nonce_it_was_issued_with():
 def test_live_states_are_capped_and_purging_counts_only_the_oldest():
     now = [0.0]
     store = broker_routes.StateStore(clock=lambda: now[0])
-    assert store.cap == 20
+    assert store.cap == 20  # noqa: PLR2004
     for _ in range(20):
         store.issue("u")
     before = store.ops
     for _ in range(1000):
         with pytest.raises(broker_routes.StateCapReached):
             store.issue("u")
-    assert store.ops - before == 1000  # one look at the oldest state per refused call, never a scan
-    assert len(store._states) == 20  # nothing evicted
+    assert store.ops - before == 1000  # one look at the oldest state per refused call, never a scan  # noqa: PLR2004
+    assert len(store._states) == 20  # nothing evicted  # noqa: PLR2004
     now[0] = 600.0
     before = store.ops
     store.issue("u")  # all 20 expired: purged in one pass, then the new one is held
-    assert store.ops - before == 20 and len(store._states) == 1
+    assert store.ops - before == 20 and len(store._states) == 1  # noqa: PLR2004
 
 
 async def test_the_login_route_refuses_over_the_cap():
@@ -264,7 +263,7 @@ async def test_the_login_route_refuses_over_the_cap():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         codes = [(await ac.get(broker_routes.LOGIN_PATH)).status_code for _ in range(21)]
         last = await ac.get(broker_routes.LOGIN_PATH)
-    assert codes[:20] == [302] * 20 and codes[20] == 429
+    assert codes[:20] == [302] * 20 and codes[20] == 429  # noqa: PLR2004
     _refused(last, "broker_login_busy")
     assert "max-age=0" in last.headers["set-cookie"].lower()  # no new login nonce, only the clearing cookie
 
@@ -468,9 +467,9 @@ async def test_timeouts_and_network_errors_are_unavailable_without_retry(error):
 
 
 def _settings(**over) -> BrokerSettings:
-    base = dict(KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET,
-                KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", KITE_EXPECTED_USER_ID=USER_ID,
-                BROKER_TOKEN_KEY=_key())
+    base = {"KITE_API_KEY": API_KEY, "KITE_API_SECRET": API_SECRET,
+                "KITE_REDIRECT_URL": "http://127.0.0.1:8000/kite/callback", "KITE_EXPECTED_USER_ID": USER_ID,
+                "BROKER_TOKEN_KEY": _key()}
     return BrokerSettings(**{**base, **over})
 
 
@@ -517,7 +516,7 @@ def test_create_app_fails_without_the_key(monkeypatch):
 
 
 async def test_uvicorn_access_log_drops_the_callback_query():
-    import uvicorn
+    import uvicorn  # noqa: PLC0415
 
     records: list[logging.LogRecord] = []
 
@@ -585,7 +584,7 @@ def test_the_access_log_filter_keeps_an_ordinary_query():
 
 
 def test_typed_redirect_refuses_anything_but_an_api_model():
-    from ofo_app.errors import typed_redirect
+    from ofo_app.errors import typed_redirect  # noqa: PLC0415
 
     for bad in ({"redirect": "connected"}, "connected", None):
         with pytest.raises(TypeError):
@@ -598,19 +597,19 @@ def test_typed_redirect_refuses_anything_but_an_api_model():
 
 
 def test_both_broker_routes_declare_the_typed_redirect_model():
-    from fastapi.routing import APIRoute
+    from fastapi.routing import APIRoute  # noqa: PLC0415
 
     routes = {r.path: r for r in create_app(_config()).routes if isinstance(r, APIRoute)}
     for path in (broker_routes.LOGIN_PATH, CALLBACK):
         assert routes[path].response_model is broker_routes.BrokerRedirectOut
-        assert routes[path].status_code == 302
+        assert routes[path].status_code == 302  # noqa: PLR2004
 
 
 async def test_any_boundary_error_carries_the_no_leak_headers():
     """An error the routes do not answer themselves (an unknown path) also goes out no-store / no-referrer."""
     async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
         response = await ac.get("/no-such-path", params={"request_token": REQUEST_TOKEN})
-    assert response.status_code == 404 and response.json() == render("user_input_request_not_available").as_dict()
+    assert response.status_code == 404 and response.json() == render("user_input_request_not_available").as_dict()  # noqa: PLR2004
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
 
@@ -627,7 +626,7 @@ def test_typed_redirect_refuses_an_off_site_location(location):
 
 
 def test_typed_redirect_allows_exactly_the_kite_login_url():
-    from ofo.broker.kite_auth import KITE_LOGIN_BASE, login_url
+    from ofo.broker.kite_auth import KITE_LOGIN_BASE, login_url  # noqa: PLC0415
 
     assert errors_module.KITE_LOGIN_PAGE == KITE_LOGIN_BASE
 
@@ -647,22 +646,22 @@ def test_a_cookie_with_a_separator_is_refused(field, bad):
 
 
 def test_catalogue_codes_survive_log_redaction_and_a_kite_token_does_not():
-    from ofo_app import redaction
+    from ofo_app import redaction  # noqa: PLC0415
 
     codes = {t.code for t in CATALOGUE.values()}
-    assert redaction.CATALOGUE_CODES == frozenset(codes)
-    long_codes = sorted(c for c in codes if len(c) >= 20)
+    assert redaction.CATALOGUE_CODES == frozenset(codes)  # noqa: SIM300
+    long_codes = sorted(c for c in codes if len(c) >= 20)  # noqa: PLR2004
     assert long_codes, "no catalogue code is long enough to look like a token"
     for code in long_codes:
         line = f"user-facing error {code} on GET /kite/callback"
         assert redaction.redact(line) == line
-    token = "h7Kq2Lm9Xw4Rt6Yp1Zs8Vb3Nc5Jd0Fg"  # 32 letters and digits: the shape of a Kite access token
+    token = "h7Kq2Lm9Xw4Rt6Yp1Zs8Vb3Nc5Jd0Fg"  # 32 letters and digits: the shape of a Kite access token  # noqa: S105
     assert redaction.redact(f"token {token} here") == "token [REDACTED] here"
 
 
 def test_mutant_without_the_code_set_redacts_the_codes(monkeypatch):
     """Mutation: drop the catalogue code set -> a long catalogue code is redacted as if it were a secret."""
-    from ofo_app import redaction
+    from ofo_app import redaction  # noqa: PLC0415
 
     monkeypatch.setattr(redaction, "CATALOGUE_CODES", frozenset())
     code = CATALOGUE["broker_state_invalid"].code
@@ -676,7 +675,7 @@ def test_mutant_without_the_code_set_redacts_the_codes(monkeypatch):
 async def test_the_refusal_route_returns_the_catalogue_parts_for_every_code(code):
     async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
         response = await ac.get(f"/api/broker/refusals/{code}")
-    assert response.status_code == 200
+    assert response.status_code == 200  # noqa: PLR2004
     assert response.json() == {"code": code, "message": render(code).as_dict()}
     assert {"what_happened", "impact", "what_is_blocked", "next_action"} <= set(response.json()["message"])
 
@@ -685,7 +684,7 @@ async def test_the_refusal_route_returns_the_catalogue_parts_for_every_code(code
 async def test_an_unknown_refusal_code_gets_the_fixed_input_error_and_no_echo(code):
     async with AsyncClient(transport=ASGITransport(app=_app(FakeKite(), RecordingDB())), base_url="http://t") as ac:
         response = await ac.get(f"/api/broker/refusals/{code}")
-    assert response.status_code == 422
+    assert response.status_code == 422  # noqa: PLR2004
     assert response.json() == render("user_input_request_invalid").as_dict()
     assert code not in response.text
 
@@ -700,11 +699,11 @@ async def test_the_refusal_route_never_carries_kites_own_text():
 
 def test_the_callback_has_no_json_refusal_path_left():
     """Class guard: inside kite_callback every refusal is a redirect; a `raise _refused(` would answer JSON again."""
-    import inspect
+    import inspect  # noqa: PLC0415
 
     source = inspect.getsource(broker_routes.kite_callback)
     assert "raise _refused" not in source and "BrokerLoginRefused" not in source
-    assert source.count("_refused_redirect(") >= 6
+    assert source.count("_refused_redirect(") >= 6  # noqa: PLR2004
 
 
 
@@ -739,12 +738,12 @@ def _refusal_cases():
     ]
     for code in ("kite_token_exception", "kite_input_exception", "kite_no_access_token", "kite_no_user_id",
                  "kite_unavailable", "kite_refused", "kite_busy"):
-        cases.append((code, FakeKite(KiteExchangeError(code)), ok, None))
+        cases.append((code, FakeKite(KiteExchangeError(code)), ok, None))  # noqa: PERF401
     return cases
 
 
 @pytest.mark.parametrize("code,kite,params,mode", _refusal_cases())
-async def test_every_callback_refusal_logs_exactly_one_record_with_its_code(code, kite, params, mode, monkeypatch,
+async def test_every_callback_refusal_logs_exactly_one_record_with_its_code(code, kite, params, mode, monkeypatch,  # noqa: PLR0913
                                                                          caplog):
     caplog.set_level(logging.DEBUG)
 
@@ -756,7 +755,7 @@ async def test_every_callback_refusal_logs_exactly_one_record_with_its_code(code
         state = await _state(ac)
         caplog.clear()
         response = await ac.get(CALLBACK, params={**params, "state": "wrong" if mode == "bad_state" else state})
-    assert response.status_code == 302
+    assert response.status_code == 302  # noqa: PLR2004
     mine = [r for r in caplog.records if r.name == broker_routes.__name__]
     assert len(mine) == 1, [r.getMessage() for r in mine]
     assert mine[0].getMessage() == f"user-facing error {code} on GET {CALLBACK}"

@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import datetime
 import logging
+from typing import Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
 
 from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import open_url as kite_open_url
-from typing import Callable, Iterable
-
 from ofo.history.bars import MinuteBar
 from ofo.history.candles import parse_candles
 from ofo.instruments.models import ZERODHA, ListedContract
@@ -42,7 +41,7 @@ def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
 class KiteHistory:
     def __init__(self, listed: Iterable[ListedContract], *, api_key: str, access_token: str,
                  transport: Transport = urllib_transport, base_url: str = KITE_API_URL) -> None:
-        self._token_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": str(lc.ref(ZERODHA).broker_token)
+        self._token_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": str(lc.ref(ZERODHA).broker_token)  # noqa: E501
                           for lc in listed}
         self._index_ids = {i for i, lc in ((f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}", lc)
                                            for lc in listed) if lc.contract.is_index()}
@@ -57,7 +56,7 @@ class KiteHistory:
         url = (f"{self._base}/instruments/historical/{token}/minute?from={start:%Y-%m-%d+%H:%M:%S}"
                f"&to={end:%Y-%m-%d+%H:%M:%S}&oi=1")
         status, text = self._fetch(url, self._headers)
-        if status != 200:
+        if status != 200:  # noqa: PLR2004
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")
         return parse_candles(text, instrument_id, index=instrument_id in self._index_ids)

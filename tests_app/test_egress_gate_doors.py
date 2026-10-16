@@ -4,7 +4,7 @@ Verifier END CONDITION: "A fresh module in ordinary Python, using any import rou
 
 Each planted bypass aims at TEST-NET 192.0.2.1 (never routed, never Kite) and expects ``EgressRefused`` before any
 packet leaves; with the gate disabled each would try the network instead. No database is needed.
-"""
+"""  # noqa: E501
 from __future__ import annotations
 
 import socket
@@ -13,7 +13,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
-
 from ofo.broker import egress
 from ofo.broker.egress import EgressRefused
 from ofo_app import kite_client, kite_http, kite_ws
@@ -92,7 +91,7 @@ def test_the_test_seam_is_refused_outside_test_mode(monkeypatch) -> None:
     with pytest.raises(EgressRefused):
         kite_http.KiteClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     with pytest.raises(EgressRefused):
-        kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,
+        kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
                            connect=lambda *a, **k: None)
 
 
@@ -122,7 +121,7 @@ def test_a_callback_never_runs_inside_door_context() -> None:
 
 
 class _Ok(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 - http.server's name
+    def do_GET(self) -> None:
         self.send_response(200)
         self.send_header("Content-Length", "2")
         self.end_headers()
@@ -158,7 +157,7 @@ def test_the_http_door_reaches_an_allowed_path_inside_door_context_only() -> Non
         return httpx.Response(200, json={})
 
     with kite_http.KiteClient(_test_transport=httpx.MockTransport(handler)) as client:
-        assert client.get(KITE + "/instruments").status_code == 200
+        assert client.get(KITE + "/instruments").status_code == 200  # noqa: PLR2004
         with pytest.raises(kite_http.KiteCallRefused):
             client.post(KITE + "/orders/regular", data={"x": "1"})
     assert seen == [("/instruments", True)] and not egress._in_door()
@@ -172,7 +171,7 @@ async def test_the_async_http_door_reaches_an_allowed_path_inside_door_context_o
         return httpx.Response(200, json={})
 
     async with kite_http.KiteAsyncClient(_test_transport=httpx.MockTransport(handler)) as client:
-        assert (await client.post(KITE + "/session/token", data={"a": "b"})).status_code == 200
+        assert (await client.post(KITE + "/session/token", data={"a": "b"})).status_code == 200  # noqa: PLR2004
     assert seen == [True] and not egress._in_door()
 
 
@@ -197,14 +196,14 @@ async def test_the_socket_door_opens_door_context_only_for_the_real_connect(monk
             return False
 
     monkeypatch.setattr(kite_ws, "_ws_connect", lambda url, **k: _Cm())  # stands in for the real websockets connect
-    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None)
+    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None)  # noqa: S106
 
     async def stop_after_first(_seconds: float) -> None:
         sock.stop()
 
     sock._sleep = stop_after_first
     await sock.run()
-    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,
-                              connect=lambda url, **k: _Cm(), sleep=stop_after_first)  # an injected connect (tests only)
+    sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
+                              connect=lambda url, **k: _Cm(), sleep=stop_after_first)  # an injected connect (tests only)  # noqa: E501
     await sock.run()
     assert seen == [True, False] and not egress._in_door()

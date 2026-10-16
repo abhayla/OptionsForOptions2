@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from ofo.broker import egress, kite_http  # noqa: E402
-from ofo.broker.kite_endpoints import ALLOWED_CALLS  # noqa: E402
+from ofo.broker import egress, kite_http
+from ofo.broker.kite_endpoints import ALLOWED_CALLS
 
 ROOT = "https://api.kite.trade"
 
@@ -85,7 +85,7 @@ def test_open_url_sends_an_allowed_get(monkeypatch) -> None:
     assert kite_http.open_url(ROOT + "/instruments", headers={"X-Kite-Version": "3"}, timeout=7) == "RESP"
     assert in_door == [True] and not egress._in_door()  # door context only around the send, reset after
     (req, timeout), = seen
-    assert req.get_method() == "GET" and req.full_url == ROOT + "/instruments" and timeout == 7
+    assert req.get_method() == "GET" and req.full_url == ROOT + "/instruments" and timeout == 7  # noqa: PLR2004
     assert req.get_header("X-kite-version") == "3"
 
 
@@ -178,6 +178,6 @@ def test_ws_door_refuses_anything_else(url: str) -> None:
 
 
 def test_the_kite_hosts_come_from_one_place() -> None:
-    from ofo.broker import kite_endpoints
+    from ofo.broker import kite_endpoints  # noqa: PLC0415
     assert kite_http.KITE_API_HOST is kite_endpoints.KITE_API_HOST
     assert kite_http.KITE_WS_HOST is kite_endpoints.KITE_WS_HOST

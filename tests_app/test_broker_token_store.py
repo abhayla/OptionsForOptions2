@@ -21,24 +21,23 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from ofo.broker.session import EndReason, expected_expiry
 from ofo_app import broker_token_store as store
-from ofo_app.kite_http import KiteAsyncClient
 from ofo_app.broker_config import BrokerSettings, load_broker_config
 from ofo_app.broker_crypto import NONCE_BYTES, TokenCipher, TokenDecryptError, associated_data
 from ofo_app.db import get_db
 from ofo_app.kite_client import HttpKiteAuth, KiteTokenException
+from ofo_app.kite_http import KiteAsyncClient
 from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 API_KEY = "kite_fake_key"
-API_SECRET = "kite_fake_secret_value"
-REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"
-ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"
+API_SECRET = "kite_fake_secret_value"  # noqa: S105
+REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"  # noqa: S105
+ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"  # noqa: S105
 CHECKSUM = hashlib.sha256((API_KEY + REQUEST_TOKEN + API_SECRET).encode()).hexdigest()
 SECRETS = (ACCESS_TOKEN, REQUEST_TOKEN, CHECKSUM)
 
@@ -118,7 +117,7 @@ class FakeConn:
 
 async def test_store_writes_only_ciphertext_bound_to_user_broker_and_id():
     conn, cipher = FakeConn(), _cipher()
-    assert await store.store_session(conn, "u-1", ACCESS_TOKEN, cipher) == 41
+    assert await store.store_session(conn, "u-1", ACCESS_TOKEN, cipher) == 41  # noqa: PLR2004
     written = repr(conn.calls).encode()
     assert ACCESS_TOKEN.encode() not in written
     (blob,) = [p["ciphertext"] for _, p in conn.calls if "ciphertext" in p]
@@ -201,7 +200,7 @@ async def test_a_kite_token_exception_marks_the_session_expired():
     assert engine.begun == 1
     ((sql, params),) = engine.conn.calls
     assert sql.startswith("UPDATE") and params["reason"] == "expired" and "token_ciphertext = NULL" in sql
-    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read
+    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read  # noqa: PLR2004
 
 
 async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
@@ -212,7 +211,7 @@ async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
     ((sql, params),) = engine.conn.calls
     assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
-    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read
+    assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read  # noqa: PLR2004
 
 
 def test_cipher_repr_and_key_id_never_show_the_key():
@@ -283,7 +282,7 @@ async def _other_tables(admin_engine) -> dict[str, str]:
         out = {}
         for name in names:
             out[name] = (await conn.execute(text(
-                f'SELECT md5(coalesce(string_agg(x::text, \'|\' ORDER BY x::text), \'\')) FROM public."{name}" x'
+                f'SELECT md5(coalesce(string_agg(x::text, \'|\' ORDER BY x::text), \'\')) FROM public."{name}" x'  # noqa: S608
             ))).scalar_one()
         return out
 
@@ -301,7 +300,7 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         response = await _login(ac)
     # the browser: a fixed path, no query, no cookie, no token anywhere
-    assert response.status_code == 302 and response.headers["location"] == broker_routes.CONNECTED_FRONTEND_PATH
+    assert response.status_code == 302 and response.headers["location"] == broker_routes.CONNECTED_FRONTEND_PATH  # noqa: PLR2004
     assert response.headers["referrer-policy"] == "no-referrer"
     # the only cookie sent is the login cookie being cleared (empty value, Max-Age=0), never a session or token
     cookies = response.headers.get_list("set-cookie")
@@ -339,8 +338,8 @@ async def test_a_second_login_replaces_the_first_and_destroys_its_token(app_engi
     app = _app(maker, user, _kite_ok)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         before = await _other_tables(admin_engine)
-        assert (await _login(ac)).status_code == 302
-        assert (await _login(ac)).status_code == 302
+        assert (await _login(ac)).status_code == 302  # noqa: PLR2004
+        assert (await _login(ac)).status_code == 302  # noqa: PLR2004
     first, second = await _rows(admin_engine, user)
     assert (first["end_reason"], first["token_ciphertext"]) == ("replaced", None) and first["ended_at"] is not None
     assert second["ended_at"] is None and second["token_ciphertext"] is not None
@@ -452,7 +451,7 @@ async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(
                                                                        "access_token": "ACtok_fake_other"}})
 
     async with AsyncClient(transport=ASGITransport(app=_app(maker, user, _kite_ok)), base_url="http://t") as ac:
-        assert (await _login(ac)).status_code == 302
+        assert (await _login(ac)).status_code == 302  # noqa: PLR2004
     async with AsyncClient(transport=ASGITransport(app=_app(maker, user, other_account)), base_url="http://t") as ac:
         refused = await _login(ac)
     # #163: a refusal on the callback is a 302 to the refusal page carrying only its closed code, with no body

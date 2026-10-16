@@ -11,7 +11,6 @@ from decimal import Decimal as D
 
 import pytest
 from basket_inputs import FakeFreeze, OkMargin, real_catalogue, real_plan, request_legs
-
 from ofo.execution.basket import KITE_BASKET_URL, BasketRefused, build_basket
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments.models import ZERODHA, MissingBrokerRef
@@ -26,16 +25,16 @@ def _build(plan=None, cat=None, freeze=None, margin=None):
 def test_core_real_condor_makes_four_read_only_limit_orders() -> None:
     basket = _build()
     req = request_legs()
-    assert len(basket.orders) == 4 == len(req)
-    for order, r in zip(basket.orders, req):  # plan order, not sorted
+    assert len(basket.orders) == 4 == len(req)  # noqa: PLR2004
+    for order, r in zip(basket.orders, req, strict=False):  # plan order, not sorted
         assert (order.exchange, order.tradingsymbol, order.transaction_type, order.quantity) == (
             r["exchange"], r["tradingsymbol"], r["transaction_type"], r["quantity"])
-        assert order.quantity == 65
+        assert order.quantity == 65  # noqa: PLR2004
         assert order.order_type == "LIMIT" and order.readonly is True
         assert order.variety == "regular" and order.product == "NRML"
         assert order.price == D(str(r["price"]))
-    assert len({o.tag for o in basket.orders}) == 4
-    assert all(len(o.tag) <= 20 and o.tag.isascii() and o.tag.isalnum() for o in basket.orders)
+    assert len({o.tag for o in basket.orders}) == 4  # noqa: PLR2004
+    assert all(len(o.tag) <= 20 and o.tag.isascii() and o.tag.isalnum() for o in basket.orders)  # noqa: PLR2004
 
 
 def test_every_order_carries_the_instrument_id_of_its_catalogue_row() -> None:
@@ -64,7 +63,7 @@ def test_price_3_95_serialises_as_3_95() -> None:
     plan = real_plan(cat)
     first = plan.legs[0]
     leg = dataclasses.replace(first.leg, entry_price=D("3.95"))
-    plan = ExecutionPlan(plan.strategy_id, (PlannedLeg(first.leg_ref, first.contract, leg),) + plan.legs[1:])
+    plan = ExecutionPlan(plan.strategy_id, (PlannedLeg(first.leg_ref, first.contract, leg), *plan.legs[1:]))
     assert '"price": 3.95,' in _build(plan, cat).orders_json()
 
 
@@ -98,14 +97,14 @@ def test_missing_broker_row_for_one_leg_refuses_the_whole_basket() -> None:
 def test_unknown_contract_refuses_and_nothing_is_guessed() -> None:
     cat = real_catalogue()
     plan = real_plan(cat)
-    bad = ExecutionPlan("S-9", plan.legs[:1] + (PlannedLeg("L9", "NOSUCHSYMBOL", plan.legs[1].leg),))
+    bad = ExecutionPlan("S-9", (*plan.legs[:1], PlannedLeg("L9", "NOSUCHSYMBOL", plan.legs[1].leg)))
     with pytest.raises(MissingBrokerRef):
         _build(bad, cat)
 
 
 def _twin_entry(cat, symbol):
     """A second catalogue entry (other exchange token) carrying the same Zerodha symbol, as F-03 allows."""
-    from ofo.instruments.catalogue import CatalogueEntry
+    from ofo.instruments.catalogue import CatalogueEntry  # noqa: PLC0415
 
     (e,) = cat.entries_for_broker_symbol(ZERODHA, symbol)
     contract = dataclasses.replace(e.contract, exchange_token=e.contract.exchange_token + 7_000_000)
@@ -114,11 +113,11 @@ def _twin_entry(cat, symbol):
 
 
 def test_symbol_carried_by_two_entries_refuses_the_whole_basket() -> None:
-    """Leg 0's symbol twice, every other leg intact: no way to pick, so no basket (kills `len != 1` -> `not entries`)."""
+    """Leg 0's symbol twice, every other leg intact: no way to pick, so no basket (kills `len != 1` -> `not entries`)."""  # noqa: E501
     cat = real_catalogue()
     plan = real_plan(cat)
     _twin_entry(cat, plan.legs[0].contract)
-    assert len(cat.entries_for_broker_symbol(ZERODHA, plan.legs[0].contract)) == 2
+    assert len(cat.entries_for_broker_symbol(ZERODHA, plan.legs[0].contract)) == 2  # noqa: PLR2004
     assert all(len(cat.entries_for_broker_symbol(ZERODHA, p.contract)) >= 1 for p in plan.legs)
     with pytest.raises(MissingBrokerRef):
         _build(plan, cat)
@@ -130,8 +129,8 @@ def test_row_that_disagrees_with_the_plan_leg_refuses(field) -> None:
     plan = real_plan(cat)
     (e,) = cat.entries_for_broker_symbol(ZERODHA, plan.legs[1].contract)
     c = e.contract
-    changed = {"strike": dict(strike=c.strike + 50), "expiry": dict(expiry=c.expiry + datetime.timedelta(days=7)),
-               "type": dict(instrument_type="PE" if c.instrument_type == "CE" else "CE")}[field]
+    changed = {"strike": {"strike": c.strike + 50}, "expiry": {"expiry": c.expiry + datetime.timedelta(days=7)},
+               "type": {"instrument_type": "PE" if c.instrument_type == "CE" else "CE"}}[field]
     e.contract = dataclasses.replace(c, **changed)
     with pytest.raises(BasketRefused):
         _build(plan, cat)
@@ -152,7 +151,7 @@ def test_strategy_id_must_be_exactly_the_tag_shape(sid) -> None:
 
 
 def test_tag_strategy_comes_from_the_plan_not_the_caller() -> None:
-    from ofo.execution.basket import parse_tag
+    from ofo.execution.basket import parse_tag  # noqa: PLC0415
 
     assert {parse_tag(o.tag).strategy_id for o in _build().orders} == {9}  # the plan is "S-9"
     cat = real_catalogue()
@@ -171,8 +170,8 @@ def test_delisted_contract_refuses() -> None:
 
 
 def test_blocked_freeze_refuses_the_whole_basket() -> None:
-    from ofo.errors import render
-    from ofo.execution.freeze import FreezeFinding
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo.execution.freeze import FreezeFinding  # noqa: PLC0415
 
     block = FreezeFinding("L1", "X", render("freeze_limit_unknown", contract="X"))
     freeze = FakeFreeze((block,))

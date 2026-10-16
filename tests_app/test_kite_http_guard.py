@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from ofo_app import kite_http
 from ofo_app.kite_client import HttpKiteAuth
 
@@ -75,9 +74,9 @@ async def test_async_base_url_client_refuses_relative_path() -> None:
 def test_allowed_calls_pass_and_are_sent() -> None:
     seen: list[httpx.Request] = []
     with _client(seen, base_url=ROOT) as client:
-        assert client.get("instruments").status_code == 200
-        assert client.post("/session/token", data={"a": "b"}).status_code == 200
-        assert client.get("/instruments/historical/9/minute", params={"from": "x"}).status_code == 200
+        assert client.get("instruments").status_code == 200  # noqa: PLR2004
+        assert client.post("/session/token", data={"a": "b"}).status_code == 200  # noqa: PLR2004
+        assert client.get("/instruments/historical/9/minute", params={"from": "x"}).status_code == 200  # noqa: PLR2004
     assert [(r.method, r.url.path) for r in seen] == [
         ("GET", "/instruments"), ("POST", "/session/token"), ("GET", "/instruments/historical/9/minute")]
 
@@ -142,7 +141,7 @@ async def test_the_login_exchange_works_with_a_door_client() -> None:
     seen: list[httpx.Request] = []
     async with _async_client(seen) as client:
         auth = HttpKiteAuth("k", "s", client)
-        with pytest.raises(Exception):  # the mock answer has no access_token: the exchange fails, but it was SENT
+        with pytest.raises(Exception):  # the mock answer has no access_token: the exchange fails, but it was SENT  # noqa: B017
             await auth.exchange("rt")
     assert [(r.method, r.url.path) for r in seen] == [("POST", "/session/token")]
 

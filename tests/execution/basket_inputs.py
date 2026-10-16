@@ -28,7 +28,7 @@ def real_catalogue() -> Catalogue:
     wanted = {r["tradingsymbol"] for r in request_legs()}
     with LIST_CSV.open(newline="", encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f) if r["tradingsymbol"] in wanted]
-    assert len(rows) == 4, f"the recorded list must hold the four proof contracts, found {len(rows)}"
+    assert len(rows) == 4, f"the recorded list must hold the four proof contracts, found {len(rows)}"  # noqa: PLR2004
     cat = Catalogue()
     cat.load(parse_instruments_rows(rows))
     return cat
