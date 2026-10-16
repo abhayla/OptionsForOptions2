@@ -88,6 +88,21 @@ def _diag_dump(tag):  # DIAG-W080 (temporary)
     print(chr(10) + chr(10).join(out), flush=True)
 
 
+_SLOW: list = []  # DIAG-W080 (temporary): DB sessions seen busy > 2 s during the finalize
+_STOP = threading.Event()
+
+
+def _watch_db():  # DIAG-W080 (temporary)
+    q = ("SELECT pid, usename, state, wait_event_type, wait_event, round(extract(epoch FROM now() - query_start)), "
+         "left(query, 70) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state <> 'idle' "
+         "AND now() - query_start > interval '2 seconds'")
+    while not _STOP.wait(1.0):
+        try:
+            _SLOW.extend((round(time.perf_counter(), 1), *r) for r in admin_sql(q, fetch=True))
+        except Exception as exc:  # noqa: BLE001
+            _SLOW.append(("watch error", type(exc).__name__))
+
+
 def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(committed_day, capsys):
     with capsys.disabled():
         _diag_dump("before")
@@ -96,9 +111,19 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
     ids = [iid(i) for i in range(1, N + 1)]
     pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
     try:
+        watcher = threading.Thread(target=_watch_db, daemon=True)
+        watcher.start()
         started = time.perf_counter()
         result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
         elapsed = time.perf_counter() - started
+        _STOP.set()
+        watcher.join(timeout=10)
+        stats = admin_sql("SELECT last_autoanalyze, last_autovacuum, n_live_tup, n_dead_tup, autoanalyze_count "
+                          "FROM pg_stat_user_tables WHERE relname = 'history_minute_bars'", fetch=True)
+        with capsys.disabled():
+            print(f"\nDIAG started_at={started:.1f} stats={stats}", flush=True)
+            for row in _SLOW[:40]:
+                print(f"DIAG slow {row}", flush=True)
         batches = result.batch_seconds
         line = (f"SCALE instruments={N} bars={N * MINUTES} total={elapsed:.1f}s batches={len(batches)} "
                 f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s")
