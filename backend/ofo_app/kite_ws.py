@@ -110,7 +110,8 @@ class KiteSocket:
     @contextlib.asynccontextmanager
     async def _opened(self) -> _AsyncIterator[object]:
         """Open the socket; the egress gate's door context covers ONLY the opening handshake of the real connect,
-        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs outside."""  # noqa: E501
+        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs
+        outside."""
         cm = self._connect(self._url, logger=_silent, open_timeout=10)
         if self._real_connect:
             with _egress._door():
@@ -151,7 +152,7 @@ class KiteSocket:
         while not self._stop:
             try:
                 message = await asyncio.wait_for(ws.recv(), timeout=_POLL_SECONDS)
-            except asyncio.TimeoutError:  # noqa: UP041
+            except TimeoutError:  # asyncio.TimeoutError is this builtin on Python 3.11+
                 await self._send_changes(ws)
                 continue
             if isinstance(message, bytes):
@@ -163,4 +164,5 @@ class KiteSocket:
             await self._send_changes(ws)
 
 
-__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED", "KiteSocket"]  # noqa: E501
+__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED",
+           "KiteSocket"]

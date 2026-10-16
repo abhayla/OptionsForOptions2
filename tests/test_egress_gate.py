@@ -175,3 +175,56 @@ def test_public_names_equal_all(module: str) -> None:
     mod = __import__(module, fromlist=["_"])
     public = {n for n, v in vars(mod).items() if not n.startswith("_") and type(v).__name__ != "module"}
     assert public - {"annotations"} == set(mod.__all__)
+
+
+# -- W-080 round 8: a door refuses every host that is not Kite's, before door context ----------------------------------
+
+_NON_KITE = "192.0.2.1"  # TEST-NET, never routed
+
+
+@pytest.fixture
+def door_entries(monkeypatch) -> list[int]:
+    """Counts every entry into door context; a refusal must leave it empty (zero connect attempts)."""
+    import contextlib
+    entries: list[int] = []
+
+    @contextlib.contextmanager
+    def counting():
+        entries.append(1)
+        yield
+
+    monkeypatch.setattr(egress, "_door", counting)
+    return entries
+
+
+@pytest.mark.parametrize(("method", "url"), [("POST", f"http://{_NON_KITE}/orders/regular"),
+                                             ("GET", f"http://{_NON_KITE}/"),
+                                             ("GET", "https://example.com/instruments")])
+def test_r8_check_call_refuses_every_non_kite_host(method: str, url: str) -> None:
+    from ofo.broker.kite_http import KiteCallRefused, check_call
+    with pytest.raises(KiteCallRefused):
+        check_call(method, url)
+
+
+def test_r8_check_ws_url_refuses_a_non_kite_host() -> None:
+    from ofo.broker.kite_http import KiteCallRefused, check_ws_url
+    with pytest.raises(KiteCallRefused):
+        check_ws_url(f"ws://{_NON_KITE}:80")
+
+
+def test_r8_open_url_refuses_with_zero_door_entries(door_entries: list[int]) -> None:
+    from ofo.broker.kite_http import KiteCallRefused, open_url
+    with pytest.raises(KiteCallRefused):
+        open_url(f"http://{_NON_KITE}/")
+    assert door_entries == []
+
+
+def test_r8_loopback_is_allowed_only_in_test_mode(monkeypatch) -> None:
+    from ofo.broker.kite_http import KiteCallRefused, check_call, check_ws_url
+    check_call("GET", "http://127.0.0.1/x")  # test mode is on in this suite
+    check_ws_url("ws://127.0.0.1:8080")
+    monkeypatch.setitem(egress._state, "test", False)
+    with pytest.raises(KiteCallRefused):
+        check_call("GET", "http://127.0.0.1/x")
+    with pytest.raises(KiteCallRefused):
+        check_ws_url("ws://127.0.0.1:8080")

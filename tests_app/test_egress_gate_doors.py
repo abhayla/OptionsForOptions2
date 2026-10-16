@@ -204,6 +204,45 @@ async def test_the_socket_door_opens_door_context_only_for_the_real_connect(monk
     sock._sleep = stop_after_first
     await sock.run()
     sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
-                              connect=lambda url, **k: _Cm(), sleep=stop_after_first)  # an injected connect (tests only)  # noqa: E501
+                              connect=lambda url, **k: _Cm(), sleep=stop_after_first)  # injected connect, tests only
     await sock.run()
     assert seen == [True, False] and not egress._in_door()
+
+
+# -- W-080 round 8: the public door APIs refuse a non-Kite host with zero door entries ----------------------------------
+
+@pytest.fixture
+def door_entries(monkeypatch) -> list[int]:
+    import contextlib
+    entries: list[int] = []
+
+    @contextlib.contextmanager
+    def counting():
+        entries.append(1)
+        yield
+
+    monkeypatch.setattr(egress, "_door", counting)
+    return entries
+
+
+def test_r8_kite_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
+    from ofo.broker.kite_http import KiteCallRefused
+    with kite_http.kite_client(base_url=f"http://{TEST_NET}", timeout=2) as client, pytest.raises(KiteCallRefused):
+        client.post("/x")
+    assert door_entries == []
+
+
+async def test_r8_kite_async_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
+    from ofo.broker.kite_http import KiteCallRefused
+    async with kite_http.kite_async_client(base_url=f"http://{TEST_NET}", timeout=2) as client:
+        with pytest.raises(KiteCallRefused):
+            await client.get("/x")
+    assert door_entries == []
+
+
+def test_r8_kite_socket_refuses_a_non_kite_ws_url(door_entries: list[int]) -> None:
+    from ofo.broker.kite_http import KiteCallRefused
+    with pytest.raises(KiteCallRefused):
+        kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
+                           base_url=f"ws://{TEST_NET}:80")
+    assert door_entries == []

@@ -50,7 +50,6 @@ def test_check_call_refuses(method: str, url: str) -> None:
     ("post", ROOT + "/session/token"),
     ("GET", ROOT + "/instruments"),
     ("GET", ROOT + "/instruments/historical/12345/minute?from=2026-10-15+09:15:00&to=2026-10-15+15:30:00"),
-    ("GET", "https://example.com/orders/regular"),  # not a Kite host: not this guard's business
 ])
 def test_check_call_allows(method: str, url: str) -> None:
     kite_http.check_call(method, url)
@@ -144,9 +143,11 @@ def test_check_call_refuses_other_schemes_and_empty_hosts(url: str) -> None:
         kite_http.check_call("POST", url)
 
 
-def test_plain_hosts_still_pass_through_and_uppercase_kite_still_hits_the_path_rule() -> None:
-    kite_http.check_call("POST", "https://1.2.3.4/orders/regular")  # a plain IP is not a Kite host: not our door's call
-    kite_http.check_call("GET", "https://example.com/x")
+def test_plain_non_kite_hosts_are_refused_and_uppercase_kite_still_hits_the_path_rule() -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("POST", "https://1.2.3.4/orders/regular")  # round 8: only Kite's own host is called
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("GET", "https://example.com/x")
     kite_http.check_call("GET", "https://api.kite.trade:443/instruments")
     kite_http.check_call("GET", "http://api.kite.trade/instruments")
     with pytest.raises(kite_http.KiteCallRefused):

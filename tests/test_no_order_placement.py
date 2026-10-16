@@ -41,22 +41,25 @@ NETWORK_MODULES = RAW_NETWORK | frozenset(r for roots in NETWORK_DOORS.values() 
 #: Backend file -> (the other modules' private names it may use, reason). Frozen from the real uses on 2026-10-16;
 #: adding a use means adding it here with its reason (and a reviewer reading why).
 PRIVATE_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
-    "ofo/broker/kite_http.py": (frozenset({"ofo.broker.egress._door"}),
-                                "the urllib Kite door opens door context after check_call"),
+    "ofo/broker/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
+                                "the urllib Kite door opens door context after check_call; loopback passes only in "
+                                "the one egress test mode"),
     "ofo_app/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
                              "the httpx Kite door opens door context after check_call; its test seam asks test mode"),
     "ofo_app/kite_ws.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
-                           "the websocket Kite door opens door context after check_ws_url; its test seam asks test mode"),  # noqa: E501
+                           "the websocket Kite door opens door context after check_ws_url; "
+                           "its test seam asks test mode"),
     "ofo_app/__init__.py": (frozenset({"ofo.broker.egress._allow_endpoints"}),
                             "sets the database endpoints once, at app import"),
     "ofo/errors/explanations.py": (frozenset({"ofo.errors.slots._require_exact", "sys._getframe"}),
-                                   "same package's slot validator; user_words() reads its caller's module (door guard)"),  # noqa: E501
+                                   "same package's slot validator; user_words() reads its caller's module "
+                                   "(door guard)"),
     "ofo/errors/gate_slots.py": (frozenset({"ofo.errors.slots._IST", "ofo.errors.slots._MONTHS",
                                             "ofo.errors.slots._require_exact", "ofo.errors.slots._validate_money"}),
                                  "same package's slot formatting helpers"),
     "ofo/errors/templates.py": (frozenset({"ofo.errors.model._build", "ofo.errors.model._claim_render_token"}),
                                 "same package's error-object builder and render token"),
-    "ofo/execution/partial.py": (frozenset({"ofo.execution.send_guard._BrokerSink", "ofo.execution.send_guard._Transport",  # noqa: E501
+    "ofo/execution/partial.py": (frozenset({"ofo.execution.send_guard._BrokerSink", "ofo.execution.send_guard._Transport",
                                             "ofo.strategy.guard._decision"}),
                                  "type protocols of the send guard and the guard's decision helper"),
     "ofo/execution/safety.py": (frozenset({"ofo.engine.metrics._Unlimited", "ofo.engine.metrics._upper_tail_slope"}),
