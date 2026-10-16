@@ -20,7 +20,7 @@ other PC needs.
 2. W-065 live proof, market hours (09:15-15:30 IST), worktree on `build/W-065-live-push`:
    - start the API with the project `.env` loaded, `DATABASE_URL` set to the `TEST_DATABASE_URL` value,
      `APP_ENV=development`, `LIVE_MARKET` unset, `PYTHONPATH=backend`:
-     `python -m uvicorn ofo_app.main:create_app --factory --host 127.0.0.1 --port 8765`
+     `python -m uvicorn ofo_app.main:create_app --factory --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765` (W-080 r7: the API refuses any other loop)
      (the Kite redirect URL is `http://127.0.0.1:8765/kite/callback`, so the browser must run on the same PC);
    - owner logs in at `http://127.0.0.1:8765/broker/zerodha/login` (account per `KITE_EXPECTED_USER_ID`);
    - `python scripts/orchestrator/db_run.py <wt> python docs/research/kite-proof-2026-10-07/w065_live_push_proof.py --seconds 60`

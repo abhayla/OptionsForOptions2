@@ -10,6 +10,7 @@ import dataclasses
 import inspect
 import json
 import pathlib
+import re
 from decimal import Decimal
 
 import pytest
@@ -20,6 +21,7 @@ from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_mar
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REPLY_FILE = ROOT / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json"
 EXIT_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-exit-sell-held.json"
+BUY_CE_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-buy-ce-otm-bump0.json"
 STRANGLE_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-long-strangle-bump5.json"
 
 
@@ -369,3 +371,51 @@ def test_module_has_no_float_money() -> None:
     """AC-1: the gate module never converts money through float."""
     source = inspect.getsource(margin_gate)
     assert "float(" not in source
+
+
+# --- ADR-099 / ADR-101: Kite money is rounded half-up to the paisa where it is parsed -----------------------------
+
+def _recorded_decimals(node: object) -> object:
+    """Rebuild a recorded reply (the recorder stored numbers as strings) the way `parse_float=Decimal` gives them."""
+    if isinstance(node, dict):
+        return {k: _recorded_decimals(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_recorded_decimals(v) for v in node]
+    if isinstance(node, str) and re.fullmatch(r"-?\d+(\.\d+)?", node):
+        return Decimal(node)
+    return node
+
+
+def test_099_core_real_rest_basket_reply_is_exact_to_the_paisa() -> None:
+    """Real reply ofo-kite-ticks/2026-10-16/rest/rest-122852.json (one NIFTY call BUY, 65 @ 31.9): final.total
+    "2073.5", option_premium "2073.5"; 65 x 31.9 = 2073.50, so the top-up is 0 and the figure is 2073.50."""
+    recorded = json.loads(BUY_CE_FILE.read_text(encoding="utf-8"))
+    assert recorded["reply"]["data"]["final"]["total"] == "2073.5"  # the raw recorded value
+    data = _recorded_decimals(recorded["reply"]["data"])
+    required = required_from_basket_reply(data, _legs(recorded["request"]))  # type: ignore[arg-type]
+    assert required == Decimal("2073.50") and required.as_tuple() == Decimal("2073.50").as_tuple()  # to the paisa
+
+
+def test_099_float_tail_above_the_available_figure_is_not_a_shortfall() -> None:
+    """The live case (issue 297): Zerodha needs 68498.85000000001, 68498.85 is available -> allowed."""
+    required = required_from_basket_reply(_reply(total=Decimal("68498.85000000001")), [])
+    assert required == Decimal("68498.85")
+    verdict = check_margin(Decimal("68498.85"), required)
+    assert verdict.allowed is True and verdict.message is None
+
+
+def test_099_the_attack_one_paisa_short_stays_blocked() -> None:
+    required = required_from_basket_reply(_reply(total=Decimal("68498.86")), [])
+    verdict = check_margin(Decimal("68498.85"), required)
+    assert verdict.allowed is False and verdict.message is not None
+    assert "needs ₹68,498.86 of margin; ₹68,498.85 is available" in verdict.message.what_happened
+
+
+def test_099_a_float_tail_on_a_buy_legs_premium_uses_the_paisa() -> None:
+    """option_premium 1124.2499999999998 reads 1124.25; 65 x 20 = 1300 -> top-up 175.75 on a total of 100 = 275.75."""
+    data = _reply((CE, "NFO", Decimal("1124.2499999999998")), total=Decimal("100"))
+    assert required_from_basket_reply(data, [_leg(CE, "BUY", price="20")]) == Decimal("275.75")
+
+
+def test_099_a_negative_total_is_still_zero_after_rounding() -> None:
+    assert required_from_basket_reply(_reply(total=Decimal("-214.5")), []) == Decimal("0")

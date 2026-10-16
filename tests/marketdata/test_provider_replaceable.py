@@ -82,6 +82,15 @@ BROKER_ADAPTER_PATHS = {
                               "stored session (W-065; the live twin of replay_mode.py) - REQ-063 AC-1",
     "ofo_app/history_finalize.py": "composition root of the after-close job: wires Kite's historical candle client to "
                                    "the history store (W-067, ADR-066/067) - REQ-063 AC-1",
+    # W-080 round 6: the Kite network doors and the modules that make an allow-listed Kite call through them
+    # (ofo/broker/kite_endpoints.py, ALLOWED_CALLS / NETWORK_DOORS), all Kite adapter code.
+    "ofo/broker/kite_http.py": "the urllib Kite door: checks every call against ALLOWED_CALLS - REQ-073 AC-4",
+    "ofo_app/kite_http.py": "the httpx Kite door: its client classes check every request - REQ-073 AC-4",
+    "ofo_app/kite_history.py": "Kite's minute-candle client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/kite_margin.py": "Kite's margin client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/outcome_margin.py": "composition point of the outcome screen's Zerodha margin read (ADR-099): calls the "
+                                 "Kite margin client for the planned basket, like live_market.py - REQ-063 AC-1",
+    "ofo/instruments/downloader.py": "fetches Kite's instrument list through the urllib door - REQ-073 AC-4",
 }
 
 
@@ -109,7 +118,7 @@ def test_nothing_outside_the_kite_adapter_imports_the_kite_modules():
 def test_every_allowlisted_broker_adapter_file_exists_and_cites_req_063():
     for rel, reason in BROKER_ADAPTER_PATHS.items():
         assert (BACKEND / rel).is_file(), rel
-        assert "REQ-063 AC-1" in reason
+        assert "REQ-063 AC-1" in reason or "REQ-073 AC-4" in reason
 
 
 def test_the_import_scan_would_catch_a_leak(tmp_path):
