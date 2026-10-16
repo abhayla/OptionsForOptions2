@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 API_KEY = "kite_fake_key"
 API_SECRET = "kite_fake_secret_value"  # noqa: S105
+FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest: every app in a run shares one origin
 REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"  # noqa: S105
 ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"  # noqa: S105
 CHECKSUM = hashlib.sha256((API_KEY + REQUEST_TOKEN + API_SECRET).encode()).hexdigest()
@@ -233,7 +234,7 @@ def _user() -> str:
 def _app(maker, user_ref: str, kite_handler):
     config = load_broker_config(BrokerSettings(
         KITE_API_KEY=API_KEY, KITE_API_SECRET=API_SECRET, KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback",
-        KITE_EXPECTED_USER_ID="AB1234",
+        FRONTEND_ORIGIN=FRONTEND, KITE_EXPECTED_USER_ID="AB1234",
         BROKER_TOKEN_KEY=base64.urlsafe_b64encode(os.urandom(32)).decode()))
     app = create_app(config)
 
@@ -300,7 +301,8 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         response = await _login(ac)
     # the browser: a fixed path, no query, no cookie, no token anywhere
-    assert response.status_code == 302 and response.headers["location"] == broker_routes.CONNECTED_FRONTEND_PATH  # noqa: PLR2004
+    assert response.status_code == 302  # noqa: PLR2004
+    assert response.headers["location"] == FRONTEND + broker_routes.CONNECTED_FRONTEND_PATH
     assert response.headers["referrer-policy"] == "no-referrer"
     # the only cookie sent is the login cookie being cleared (empty value, Max-Age=0), never a session or token
     cookies = response.headers.get_list("set-cookie")
@@ -456,7 +458,7 @@ async def test_a_login_by_another_zerodha_account_never_ends_the_owners_session(
         refused = await _login(ac)
     # #163: a refusal on the callback is a 302 to the refusal page carrying only its closed code, with no body
     assert (refused.status_code, refused.headers["location"], refused.content) == (
-        302, "/broker/refused?code=broker_user_mismatch", b"")
+        302, FRONTEND + "/broker/refused?code=broker_user_mismatch", b"")
     (row,) = await _rows(admin_engine, user)
     assert row["ended_at"] is None and row["token_ciphertext"] is not None
 

@@ -1064,3 +1064,102 @@ def test_round10_a_frame_allowance_is_only_for_the_listed_files() -> None:
     assert reflection_violations(plant, "ofo/errors/explanations.py") == []
     assert reflection_violations(plant, "ofo_app/routes/plant.py")
     assert forbidden_module_uses(plant, "ofo_app/routes/plant.py")
+
+
+# --- W-088 round 2 (issue #159): the door's frontend origin is write-once and named by no file but main.py ----
+# `set_frontend_origin` is the one function that stores the origin (validates, stores once, raises on a different one).
+# Allow-list by file: main.py may name the setter; errors.py defines it; nothing else may name the setter or the private
+# store in ANY form (attribute, import, subscript, call, keyword, string, a name built from literal parts). A reflection
+# route to it (`getattr(errors, name)`) is already refused by the scans above.
+
+ORIGIN_SETTER = "set_frontend_origin"
+ORIGIN_PRIVATE = frozenset({"_frontend_origin", "_FRONTEND_ORIGIN"})
+ORIGIN_NAMES = ORIGIN_PRIVATE | {ORIGIN_SETTER}
+#: Backend file -> the origin names it may use.
+ORIGIN_ALLOWED: dict[str, frozenset[str]] = {
+    "ofo_app/errors.py": ORIGIN_NAMES,
+    "ofo_app/main.py": frozenset({ORIGIN_SETTER}),
+}
+
+ORIGIN_PLANTS = [
+    "from ofo_app import errors\nerrors.set_frontend_origin('https://evil.example')",
+    "from ofo_app import errors\nerrors._FRONTEND_ORIGIN[0] = 'https://evil.example'",
+    "from ofo_app.errors import _FRONTEND_ORIGIN\n_FRONTEND_ORIGIN[0] = 'https://evil.example'",
+    "from ofo_app.errors import _FRONTEND_ORIGIN\n_FRONTEND_ORIGIN.insert(0, 'https://evil.example')",
+]
+ORIGIN_EXTRA_SHAPES = [
+    "from ofo_app.errors import set_frontend_origin as s\ns('https://evil.example')",
+    "import ofo_app.errors as e\ne._frontend_origin = 'https://evil.example'",
+    "f = errors.set_frontend_origin",
+    "x = getattr(errors, 'set_frontend_origin')",
+    "x = 'set_frontend_' + 'origin'",
+    "x = f'_{\"frontend\"}_origin'",
+    "def set_frontend_origin(o):\n    pass",
+    "g(set_frontend_origin=1)",
+]
+
+
+def _node_names(node: ast.AST) -> list[str]:
+    """Every name a node spells: identifiers, attributes, import names, keywords, definitions, and a string (also one
+    built from literal parts)."""
+    names: list[str] = []
+    if isinstance(node, ast.Name):
+        names = [node.id]
+    elif isinstance(node, ast.Attribute):
+        names = [node.attr]
+    elif isinstance(node, ast.alias):
+        names = [node.name.split(".")[-1], node.asname or ""]
+    elif isinstance(node, ast.keyword):
+        names = [node.arg or ""]
+    elif isinstance(node, (ast.arg, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names = [getattr(node, "arg", None) or getattr(node, "name", "")]
+    elif isinstance(node, (ast.Constant, ast.JoinedStr, ast.BinOp, ast.Call)):
+        names = [_fold(node) or ""]
+    return names
+
+
+def origin_name_uses(source: str, where: str) -> list[str]:
+    """`file:line names X` for every use of the origin setter or its private store that `where` is not allowed."""
+    permitted = ORIGIN_ALLOWED.get(where, frozenset())
+    return [f"{where}:{getattr(node, 'lineno', 0)} names {name}" for node in ast.walk(ast.parse(source))
+            for name in _node_names(node) if name in ORIGIN_NAMES and name not in permitted]
+
+
+@pytest.mark.parametrize("source", ORIGIN_PLANTS + ORIGIN_EXTRA_SHAPES)
+@pytest.mark.parametrize("where", ["ofo_app/routes/broker.py", "ofo_app/routes/evil.py", "ofo_app/live_market.py",
+                                   "ofo/engine/x.py"])
+def test_every_way_to_name_the_origin_setter_or_store_is_flagged_outside_allowed_files(source: str, where: str) -> None:
+    assert origin_name_uses(source, where), (where, source)
+
+
+def test_a_plant_is_clean_only_in_the_files_allowed_to_name_it() -> None:
+    call = "from ofo_app import errors\nerrors.set_frontend_origin(x)"
+    assert origin_name_uses(call, "ofo_app/main.py") == []
+    assert origin_name_uses(call, "ofo_app/errors.py") == []
+    store = "errors._FRONTEND_ORIGIN[0] = 1"
+    assert origin_name_uses(store, "ofo_app/main.py")  # main.py may call the setter, never touch the store
+    assert origin_name_uses("x = 1", "ofo_app/routes/ok.py") == []
+
+
+def test_no_backend_file_but_main_and_errors_names_the_origin_setter_or_store() -> None:
+    files = _product_files()
+    assert files
+    bad = [v for p in files for v in origin_name_uses(p.read_text(encoding="utf-8"), p.relative_to(BACKEND).as_posix())]
+    assert bad == []
+
+
+def test_the_origin_allowances_are_real() -> None:
+    """The scan is not vacuous: errors.py defines every name and main.py really calls the setter."""
+    used_by = {w: {v.rsplit(" ", 1)[1] for v in origin_name_uses((BACKEND / w).read_text(encoding="utf-8"), "none")}
+               for w in ORIGIN_ALLOWED}
+    assert used_by["ofo_app/errors.py"] >= {ORIGIN_SETTER, "_frontend_origin"}
+    assert used_by["ofo_app/main.py"] == {ORIGIN_SETTER}
+
+
+def test_the_origin_setter_is_the_only_writer_of_the_private_store_in_errors_py() -> None:
+    tree = ast.parse(DOOR_MODULE.read_text(encoding="utf-8"))
+    writers = {fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef)
+               for n in ast.walk(fn) if isinstance(n, ast.Global) and "_frontend_origin" in n.names}
+    assert writers == {ORIGIN_SETTER}
+    stores = [n for n in ast.walk(tree) if isinstance(n, ast.Subscript) and _dotted(n.value) in ORIGIN_PRIVATE]
+    assert stores == []  # a str, never a container

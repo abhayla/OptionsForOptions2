@@ -244,19 +244,15 @@ issues:
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
-  "#296": 4a           # deferred: live market reads the Kite session only at API start (gate 4a D-4)
   "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
-  "#294": 4b           # deferred: edit-lint hook minors (Windows timeout, silent no-op without a linter; REQ-075 AC-8)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
-  "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
   "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
-  "#321": 4b  # Margin gate blocks every exit: Kite returns a negative basket margin for a closing basket
 
 # Work items whose status is not done.
 work_items:
@@ -266,8 +262,12 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-083: 4b           # PARTIAL: AC-1/AC-4 verified; AC-2 add-to-existing waits on owner OQ-7 (REQ-061, ADR-084)
-  W-075: 4b           # PARKED #269 on OQ-4: charges in sentences + expiry values (ADR-082 part 2), branch verified except D5
+  W-080: 4b           # PARKED #271: basket verified AC-1/AC-2; AC-4 urllib door misses Unicode-dot host
   W-081: 4b           # BLOCKED: margin gate merged as a component; needs basket (#271), live funds read, #273
+  W-089: 4a           # GC-2d: Settings -> Broker & Market Data page (REQ-015 AC-4, AC-8; REQ-051 AC-1 line)
+  W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
+  W-091: 4b           # GC-2b: Kite orders/trades/positions -> domain types (F-40)
+  W-092: 4b           # GC-2b: eligibility registry filled from Zerodha data (REQ-053 AC-3)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -310,6 +310,7 @@ findings:
   F-37: 4b        # Kite token stopped 04:29:48-04:30:48 IST next morning (one night, owner app); not ~6 AM
   F-39: 4b        # Kite basket margin for an option BUY = qty x min(limit, live price) (REQ-055, open technical decision)
   F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
+  F-40: 4b        # 4b domain chain right on the real order; no Kite reply -> domain adapter (GC-1 core proof)
 
 hypotheses:
   H1: done

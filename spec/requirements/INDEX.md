@@ -44,7 +44,7 @@ Requirements: 75; sections: 18
 | REQ-032 | Calculation engine | core | Verified |
 | REQ-033 | Expiry scenario and live P&L formulas | core | Verified |
 | REQ-034 | Outcome view and scenario levels | foundation | Approved |
-| REQ-035 | Single strategy table | foundation | Approved |
+| REQ-035 | Single strategy table | foundation | Verified |
 
 ## Delivery (2)
 
@@ -110,7 +110,7 @@ Requirements: 75; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Approved |
+| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | Verified |
 | REQ-003 | Public multi-user SaaS | foundation | Approved |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | Approved |
 | REQ-005 | Product language and positioning | foundation | Specified |
@@ -160,7 +160,7 @@ Requirements: 75; sections: 18
 |---|---|---|---|
 | REQ-036 | Strategy-only execution | foundation | Approved |
 | REQ-037 | Strategy modification | feature | Approved |
-| REQ-038 | Strategy definition, live state and versions | core | Approved |
+| REQ-038 | Strategy definition, live state and versions | core | Verified |
 | REQ-039 | Strategy state machine and exception states | foundation | Approved |
 | REQ-040 | Activity timeline and rule-trigger audit | foundation | Verified |
 

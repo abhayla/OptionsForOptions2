@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -35,6 +36,9 @@ class BrokerSettings(BaseSettings):
     KITE_API_KEY: str = ""
     KITE_API_SECRET: SecretStr = SecretStr("")
     KITE_REDIRECT_URL: str = ""
+    #: The frontend's origin (scheme, host, optional port; nothing else): where the callback sends the browser after a
+    #: login. Kite calls back on the API's host, which serves no pages, so a bare path would 404 (#159).
+    FRONTEND_ORIGIN: str = ""
     #: The one Zerodha user id whose login may connect (V1 single user, ADR-051); a login by anyone else is refused.
     KITE_EXPECTED_USER_ID: str = ""
     BROKER_TOKEN_KEY: SecretStr = SecretStr("")
@@ -48,6 +52,7 @@ class BrokerConfig:
     callback_path: str
     expected_user_id: str
     token_key: bytes
+    frontend_origin: str  # validated, no trailing slash
 
     def __repr__(self) -> str:  # never print the key bytes
         return f"BrokerConfig(api_key={self.api_key!r}, callback_path={self.callback_path!r})"
@@ -70,11 +75,34 @@ def _derived_from(key: bytes, secret: str) -> bool:
     return key == hashlib.sha256(s).digest() or key in s
 
 
+#: scheme://host[:port] and nothing else: no userinfo, path, query or fragment. One trailing "/" is dropped first.
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+_HOST = rf"(?P<netloc_name>{_LABEL}(?:\.{_LABEL})*|\[(?=[0-9A-Fa-f:]*[0-9A-Fa-f])[0-9A-Fa-f:]+\])"
+_ORIGIN = re.compile(rf"https?://{_HOST}(?::(?P<port>[0-9]{{1,5}}))?")
+_DOTTED_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)*")
+MAX_PORT = 65535
+MAX_IPV4_PARTS = 4
+
+
+def validate_frontend_origin(value: str) -> str:
+    """The origin without a trailing slash, or ``BrokerConfigError`` (fail closed): a port is 1-65535 and an all-number
+    host is a dotted quad of exactly four parts."""
+    origin = value[:-1] if value.endswith("/") else value
+    match = _ORIGIN.fullmatch(origin)
+    bad_port = match is not None and match["port"] is not None and not 0 < int(match["port"]) <= MAX_PORT
+    bad_quad = match is not None and _DOTTED_NUMBER.fullmatch(match["netloc_name"]) is not None \
+        and len(match["netloc_name"].split(".")) != MAX_IPV4_PARTS
+    if match is None or bad_port or bad_quad:
+        raise BrokerConfigError("FRONTEND_ORIGIN must be http(s)://host[:port] with no path, query, fragment or login")
+    return origin
+
+
 def load_broker_config(settings: BrokerSettings | None = None) -> BrokerConfig:
     s = settings if settings is not None else BrokerSettings()
     missing = [name for name, value in (("KITE_API_KEY", s.KITE_API_KEY),
                                         ("KITE_API_SECRET", s.KITE_API_SECRET.get_secret_value()),
                                         ("KITE_REDIRECT_URL", s.KITE_REDIRECT_URL),
+                                        ("FRONTEND_ORIGIN", s.FRONTEND_ORIGIN),
                                         ("KITE_EXPECTED_USER_ID", s.KITE_EXPECTED_USER_ID),
                                         ("BROKER_TOKEN_KEY", s.BROKER_TOKEN_KEY.get_secret_value())) if not value]
     if missing:
@@ -86,4 +114,5 @@ def load_broker_config(settings: BrokerSettings | None = None) -> BrokerConfig:
     if parts.scheme not in ("http", "https") or not parts.netloc or not parts.path.startswith("/") or parts.query:
         raise BrokerConfigError("KITE_REDIRECT_URL must be an absolute http(s) URL with a path and no query")
     return BrokerConfig(api_key=s.KITE_API_KEY, api_secret=s.KITE_API_SECRET, redirect_url=s.KITE_REDIRECT_URL,
-                        callback_path=parts.path, expected_user_id=s.KITE_EXPECTED_USER_ID, token_key=key)
+                        callback_path=parts.path, expected_user_id=s.KITE_EXPECTED_USER_ID, token_key=key,
+                        frontend_origin=validate_frontend_origin(s.FRONTEND_ORIGIN))

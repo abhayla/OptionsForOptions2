@@ -51,6 +51,7 @@ def _no_charge_rates_by_default(monkeypatch):
 os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")
 os.environ.setdefault("KITE_API_SECRET", "test_placeholder_secret")
 os.environ.setdefault("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback")
+os.environ.setdefault("FRONTEND_ORIGIN", "http://127.0.0.1:4173")
 os.environ.setdefault("KITE_EXPECTED_USER_ID", "ZZ0000")
 os.environ.setdefault("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(os.urandom(32)).decode("ascii"))
 

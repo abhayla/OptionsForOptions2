@@ -109,7 +109,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 
 ## Requirements (75)
 
-- REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
+- REQ-001 [Verified]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
 - REQ-003 [Approved]: Public multi-user SaaS
 - REQ-004 [Approved]: Responsive web, desktop and mobile priorities
@@ -143,10 +143,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-032 [Verified]: Calculation engine
 - REQ-033 [Verified]: Expiry scenario and live P&L formulas
 - REQ-034 [Approved]: Outcome view and scenario levels
-- REQ-035 [Approved]: Single strategy table
+- REQ-035 [Verified]: Single strategy table
 - REQ-036 [Approved]: Strategy-only execution
 - REQ-037 [Approved]: Strategy modification
-- REQ-038 [Approved]: Strategy definition, live state and versions
+- REQ-038 [Verified]: Strategy definition, live state and versions
 - REQ-039 [Approved]: Strategy state machine and exception states
 - REQ-040 [Verified]: Activity timeline and rule-trigger audit
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults
@@ -185,7 +185,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (197)
+## Spec sections (198)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -285,6 +285,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-37 - The owner's Kite access token stopped working between 04:29:48…
 - ## F-38 - Index freeze limits are revised several times a year, not once…
 - ## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER…
+- ## F-40 - The 4b domain chain (fill ledger, reconcile, P&L) is right on…
 
 ### spec/open-questions.md
 
