@@ -188,7 +188,7 @@ def test_sendmsg_with_an_address_to_a_foreign_host_is_refused() -> None:
 
 def test_a_subclass_faking_getpeername_is_refused() -> None:
     class Liar(socket.socket):
-        def getpeername(self):  # noqa: ANN202
+        def getpeername(self):
             return ("127.0.0.1", 5432)
 
     s = Liar(socket.AF_INET, socket.SOCK_DGRAM)
