@@ -17,9 +17,10 @@ from decimal import Decimal
 from ofo.charges.calculator import ChargeOrder, charges_for_orders, exercise_stt
 from ofo.charges.rates import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
+from ofo.instruments.models import BSE_FO, NSE_FO
 
 #: The index -> exchange segment map (NIFTY options trade on NSE, SENSEX options on BSE).
-SEGMENT_BY_UNDERLYING = {"NIFTY": "NSE_FO", "SENSEX": "BSE_FO"}
+SEGMENT_BY_UNDERLYING = {"NIFTY": NSE_FO, "SENSEX": BSE_FO}
 
 
 class ChargesNotComputable(ValueError):
