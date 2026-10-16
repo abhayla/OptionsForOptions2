@@ -34,7 +34,8 @@ from ofo.execution import (
     active_legs_hash,
 )
 from ofo.instruments.parser import zerodha_listed
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus
+from execution.execution_inputs import zerodha_eligibility
+from ofo.instruments import Catalogue, ZerodhaEligibility
 from ofo.instruments.models import Contract
 from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.modification import (
@@ -159,11 +160,8 @@ def _make_catalogue(*, missing: frozenset[tuple[Instrument, str]] = frozenset())
     return cat
 
 
-def _make_eligibility(catalogue: Catalogue) -> EligibilityRegistry:
-    registry = EligibilityRegistry()
-    for entry in catalogue.all_entries():
-        registry.record(EligibilityStatus(entry.contract.id, True, T0))
-    return registry
+def _make_eligibility(catalogue: Catalogue) -> ZerodhaEligibility:
+    return zerodha_eligibility(catalogue, at=T0)
 
 
 class _AnyBand(Mapping):

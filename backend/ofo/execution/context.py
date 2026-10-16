@@ -52,7 +52,7 @@ Decisions (orchestrator decisions under ADR-045, W-014 fix round 1; spec basis i
 - **An internal error never passes (review P10).** Any exception inside the checks blocks with ``INTERNAL_ERROR``
   and still carries the blocked-execution record.
 - **Unknown eligibility blocks.** A contract with no recorded Zerodha eligibility read is not executable (fail closed,
-  matching ``EligibilityRegistry.is_tradable``).
+  matching ``ZerodhaEligibility.is_tradable``).
 - **Duplicate legs block, never merged.** The same contract twice is reported; the user edits the strategy.
 - **A reconciliation mismatch blocks exits too.** ADR-019 Q200 (Reconciliation Required: execute no): acting on a
   wrong position picture could open an unintended naked position; the user can still act in Kite. REQ-060 AC-7: a

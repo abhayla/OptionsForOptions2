@@ -31,8 +31,9 @@ from ofo.execution.context import (
     active_legs_hash,
     product_key,
 )
-from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
+from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, ZerodhaEligibility
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.instruments.eligibility import NO_ELIGIBILITY
 from ofo.instruments.models import is_lot_aligned
 from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
@@ -201,7 +202,7 @@ def _index(catalogue: Catalogue, underlying: str) -> dict[_Key, list[CatalogueEn
 
 
 def _alternatives(
-    leg: Leg, underlying: str, catalogue: Catalogue, eligibility: EligibilityRegistry
+    leg: Leg, underlying: str, catalogue: Catalogue, eligibility: ZerodhaEligibility
 ) -> tuple[Decimal, ...]:
     """Nearest listed + eligible strikes of the same underlying, expiry and option type. Offered, never applied."""
     if leg.strike is None:
@@ -386,7 +387,7 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
 
 
 def _leg_failures(
-    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility
 ) -> list[CheckFailure]:
     out: list[CheckFailure] = []
     underlying = ctx.underlying
@@ -581,7 +582,7 @@ def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailur
 
 
 def _run_checks(
-    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility,
     strategy_id: str,
 ) -> tuple[
     list[CheckFailure], tuple[CheckCode, ...], tuple[CheckCode, ...], frozenset[CheckCode], list[Flag],
@@ -653,7 +654,7 @@ def _confirmation_text(flags: list[Flag]) -> str:
 
 
 def check_pre_execution(
-    strategy: Strategy, context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    strategy: Strategy, context: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility,
     *, strategy_id: str,
 ) -> SafetyResult:
     """Run every pre-execution check (REQ-059 AC-1, AC-3); block if any fails; never change ``strategy``.
@@ -665,8 +666,15 @@ def check_pre_execution(
         raise ValueError(f"strategy must be a Strategy, got {strategy!r}")
     if not isinstance(context, ExecutionContext):
         raise ValueError(f"context must be an ExecutionContext, got {context!r}")
-    if not isinstance(catalogue, Catalogue) or not isinstance(eligibility, EligibilityRegistry):
-        raise ValueError("catalogue and eligibility must be a Catalogue and an EligibilityRegistry")
+    if not isinstance(catalogue, Catalogue):
+        raise ValueError(f"catalogue must be a Catalogue, got {catalogue!r}")
+    if type(eligibility) is not ZerodhaEligibility:
+        # W-092 round 2 (finding caller-supplied-verdict-trusted): only the sealed object minted from Zerodha's list
+        # is trusted. Anything else (a hand-made registry, a duck, a subclass) counts as no eligibility read at all,
+        # so every leg is refused with the existing "could not confirm" message (fail closed, never a pass).
+        logger.warning("pre-execution eligibility is not a ZerodhaEligibility (%s); every leg is unconfirmed",
+                       type(eligibility).__name__)
+        eligibility = NO_ELIGIBILITY
     if not isinstance(strategy_id, str) or not strategy_id.strip():
         raise ValueError(f"strategy_id must be a non-empty string, got {strategy_id!r}")
 

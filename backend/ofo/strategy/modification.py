@@ -47,7 +47,7 @@ from ofo.engine.strategy import Strategy
 from ofo.execution.alternatives import gate_inputs_from_record
 from ofo.execution.context import ExecutionAction, ExecutionContext
 from ofo.execution.safety import SafetyResult, check_pre_execution
-from ofo.instruments import Catalogue, EligibilityRegistry
+from ofo.instruments import Catalogue, ZerodhaEligibility
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.guard import GuardBinding, GuardDecision, proposal_hash
 from ofo.strategy.versions import ExecutionOutcome, ExecutionResult, StrategyRecord, Version
@@ -334,7 +334,7 @@ def prepare_confirmed_modification(
     strategy_id: str,
     context: ExecutionContext,
     catalogue: Catalogue,
-    eligibility: EligibilityRegistry,
+    eligibility: ZerodhaEligibility,
     acknowledgement: str | None = None,
 ) -> SafetyResult:
     """Run the REQ-059 gate on THIS record's own pending proposal (AC-4). The ONLY way to learn whether an
@@ -374,7 +374,7 @@ def execute_confirmed_modification(
     strategy_id: str,
     context: ExecutionContext,
     catalogue: Catalogue,
-    eligibility: EligibilityRegistry,
+    eligibility: ZerodhaEligibility,
     result: ExecutionResult,
     acknowledgement: str | None = None,
 ) -> ExecutionOutcome:

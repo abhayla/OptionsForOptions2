@@ -20,7 +20,7 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-from execution_inputs import AnyBand as _AnyBand, AnyPrice as _AnyPrice
+from execution_inputs import AnyBand as _AnyBand, AnyPrice as _AnyPrice, zerodha_eligibility
 from partial_inputs import (
     CONTRACTS,
     LOT,
@@ -39,7 +39,7 @@ from ofo.engine.interfaces import ChargesBreakdown, MarginRequirement
 from ofo.execution import DataHealth, DataInput, ExecutionAction, ExecutionContext, VersionState
 from ofo.execution.partial import PartialChoice, close_partial_strategy, complete_strategy, submit_confirmed
 from ofo.instruments.parser import zerodha_listed
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus
+from ofo.instruments import Catalogue, ZerodhaEligibility
 from ofo.instruments.models import Contract
 from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.guard import (
@@ -137,11 +137,8 @@ def _catalogue() -> Catalogue:
     return cat
 
 
-def _eligibility(cat: Catalogue) -> EligibilityRegistry:
-    reg = EligibilityRegistry()
-    for entry in cat.all_entries():
-        reg.record(EligibilityStatus(entry.contract.id, True, T0))
-    return reg
+def _eligibility(cat: Catalogue) -> ZerodhaEligibility:
+    return zerodha_eligibility(cat, at=T0)
 
 
 def _context(version_number: int) -> ExecutionContext:
