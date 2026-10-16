@@ -52,7 +52,8 @@ def _input_state(quote) -> tuple:
 
 
 class StrategyPush:
-    def __init__(self, channel: Channel, feed: Optional[LiveFeed], *, monotonic: Callable[[], float],
+    def __init__(self, channel: Channel, feed: Optional[LiveFeed], *,  # noqa: PLR0913 - one seam per collaborator
+                 monotonic: Callable[[], float],
                  poll: float = POLL_SECONDS, lookup: Optional[ContractLookup] = None,
                  margin_source: Optional[OutcomeMargin] = None) -> None:
         self._channel = channel

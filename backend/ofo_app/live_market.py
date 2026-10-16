@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import functools
 import hashlib
 import logging
 import os
@@ -27,8 +28,10 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app.config import app_env, get_settings
+from ofo_app.kite_margin import KiteMargin
 from ofo_app.live_push import LiveFeed
-from ofo_app.routes.outcome import MarketContext
+from ofo_app.outcome_margin import OutcomeMargin
+from ofo_app.routes.outcome import MarketContext, server_now
 
 log = logging.getLogger("ofo_app.live_market")
 
@@ -231,13 +234,31 @@ def current_feed() -> Optional[LiveFeed]:
     return None if _current is None else _current.feed
 
 
-def current_session() -> Optional[bytes]:
-    """ADR-099: the running socket's session (its token fingerprint, never the token), or None when no Kite session is
-    live (not started, not connected, ended, or the test replay). The outcome margin reads Zerodha only with one."""
+def current_session() -> tuple[str, bytes] | None:
+    """ADR-099: the live Kite session as (user, the running socket's token fingerprint - never the token), or None
+    when none is live (not started, not connected, ended, or the test replay). The outcome margin reads Zerodha only
+    with one, and keys its cache by it, so a new login never shows the old session's figures."""
     if _current is None or not _current.running():
         return None
-    fingerprint = _current._fingerprint  # noqa: SLF001 - the module's own market object
-    return b"" if fingerprint is None else fingerprint  # running on a session whose fingerprint was not given
+    fingerprint = _current._fingerprint  # the module's own market object
+    return OWNER_REF, (b"" if fingerprint is None else fingerprint)  # b"": a session whose fingerprint was not given
+
+
+async def owner_margin_client() -> KiteMargin | None:
+    """ADR-099: the owner's margin client from the stored session (the same read the socket start uses), or None."""
+    market = _current
+    if market is None or market._config is None:
+        return None
+    token = await market._stored_token(market._config)
+    if token is None:
+        return None
+    return KiteMargin(api_key=market._config.api_key, access_token=token)
+
+
+@functools.cache
+def margin_source() -> OutcomeMargin:
+    """The running app's one margin reader: one plan-keyed cache for the REST route and every live push."""
+    return OutcomeMargin(current_session, owner_margin_client, clock=server_now)
 
 
 async def pick_up_login(broker_config) -> None:

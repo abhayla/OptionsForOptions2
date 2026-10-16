@@ -35,7 +35,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
-from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn
+from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger("ofo_app.outcome")
@@ -263,9 +263,9 @@ class MarginOut(ApiModel):
     """ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."""
     state: Literal["NOT_AVAILABLE_YET", "CHECKED", "UNREADABLE", "NO_BASKET"]
     reason: CatalogueText
-    needed: Optional[Money] = None  # Zerodha's basket figure + the ADR-094 top-up, to the paisa
-    available: Optional[Money] = None  # Zerodha's available funds, to the paisa
-    checked_at: Optional[datetime.datetime] = None  # when Zerodha was read (ADR-088)
+    needed: Money | None = None  # Zerodha's basket figure + the ADR-094 top-up, to the paisa
+    available: Money | None = None  # Zerodha's available funds, to the paisa
+    checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
 
 
 class LegOut(ApiModel):
@@ -360,15 +360,20 @@ def _not_streaming(req: OutcomeRequest, ctx: MarketContext, streaming: Optional[
     return not all(streaming(i) for i in ids)
 
 
-def live_context() -> Optional[MarketContext]:
+def _live_market():
+    """The live market module, imported late: it imports MarketContext from this module."""
     from ofo_app import live_market
-    return live_market.current_context()
+    return live_market
+
+
+def live_context() -> Optional[MarketContext]:
+    return _live_market().current_context()
 
 
 def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
                      stored: Optional[Mapping[str, ListedContract]] = None,
-                     rates: Optional[ChargeRates] = None, margin: Optional[Margin] = None) -> OutcomeResponse:
+                     rates: Optional[ChargeRates] = None, margin: Margin | None = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -402,10 +407,9 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     return OutcomeResponse.model_validate(body)
 
 
-def get_margin_source() -> Optional[OutcomeMargin]:
+def get_margin_source() -> OutcomeMargin | None:
     """ADR-099: the running app's margin reader (one plan-keyed cache). Tests override it with a fake transport."""
-    from ofo_app.outcome_margin import app_source
-    return app_source()
+    return _live_market().margin_source()
 
 
 def margin_legs(req: OutcomeRequest) -> list[PlannedOrderIn]:
@@ -413,17 +417,15 @@ def margin_legs(req: OutcomeRequest) -> list[PlannedOrderIn]:
     return [PlannedOrderIn(leg.instrument_id, leg.action, leg.lots, Decimal(leg.planned_entry)) for leg in req.legs]
 
 
-async def margin_for_request(req: OutcomeRequest, ctx: Optional[MarketContext],
-                             source: Optional[OutcomeMargin]) -> Margin:
+async def margin_for_request(req: OutcomeRequest, ctx: MarketContext | None,
+                             source: OutcomeMargin | None) -> Margin:
     """The ONE margin step of both delivery paths (REST and the live push), so both show the same block."""
-    from ofo_app.live_market import OWNER_REF  # ADR-051 V1 single user
-    from ofo_app.outcome_margin import margin_answer
-    return await margin_answer(source, ctx, OWNER_REF, margin_legs(req))
+    return await margin_answer(source, ctx, margin_legs(req))
 
 
 async def get_outcome_margin(req: OutcomeRequest,
-                             ctx: Annotated[Optional[MarketContext], Depends(get_market_context)],
-                             source: Annotated[Optional[OutcomeMargin], Depends(get_margin_source)]) -> Margin:
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                             source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> Margin:
     return await margin_for_request(req, ctx, source)
 
 
@@ -434,7 +436,7 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
                      now: AnswerClock = Depends(get_answer_clock),
                      stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs),
                      rates: Optional[ChargeRates] = Depends(load_charge_rates), *,
-                     margin: Annotated[Optional[Margin], Depends(get_outcome_margin)] = None) -> OutcomeResponse:
+                     margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,

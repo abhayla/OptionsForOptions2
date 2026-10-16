@@ -33,7 +33,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final, Optional
+from typing import Final
 
 from ofo.engine.product import Product
 from ofo.instruments.models import ZERODHA
@@ -41,6 +41,7 @@ from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome.service import MARGIN, Margin, margin_checked, margin_no_basket, margin_unreadable
 from ofo.outcome.snapshot import contract_id
+
 from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
 
 log = logging.getLogger("ofo_app.outcome_margin")
@@ -52,7 +53,7 @@ CACHE_SIZE: Final = 256  # plans kept per process (all users together); the olde
 EXCHANGE_OF_SEGMENT: Final = {segment: exchange for exchange, segment in ZERODHA_EXCHANGE_TO_SEGMENT.items()}
 _ORDER_TYPE: Final = "LIMIT"  # a planned price is a limit price (ADR-094: the user may pay up to it)
 
-OpenClient = Callable[[], Awaitable[Optional[KiteMargin]]]
+OpenClient = Callable[[], Awaitable[KiteMargin | None]]
 Clock = Callable[[], datetime.datetime]
 
 
@@ -66,7 +67,7 @@ class PlannedOrderIn:
     planned_entry: Decimal
 
 
-def basket_orders(provider: MarketDataProvider, legs: Sequence[PlannedOrderIn]) -> Optional[tuple[BasketOrder, ...]]:
+def basket_orders(provider: MarketDataProvider, legs: Sequence[PlannedOrderIn]) -> tuple[BasketOrder, ...] | None:
     """The planned orders as Zerodha's basket call takes them, or None when a leg is not a listed Zerodha contract
     (unknown instrument, no Zerodha row, an exchange outside V1, a shape BasketOrder refuses). Product NRML (ADR-080),
     a LIMIT at the planned entry, quantity = lots x the contract's lot size."""
@@ -96,23 +97,30 @@ def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal,
 @dataclass(frozen=True)
 class _Entry:
     margin: Margin
-    until: Optional[float]  # None = kept until the plan changes (a success); else the monotonic retry time
+    until: float | None  # None = kept until the plan changes (a success); else the monotonic retry time
+
+
+@dataclass(frozen=True)
+class MarginLimits:
+    """The read's bounds: its timeout, the wait before a failed read is tried again, and the cache size."""
+
+    timeout: float = READ_TIMEOUT_SECONDS
+    retry: float = RETRY_SECONDS
+    size: int = CACHE_SIZE
 
 
 class OutcomeMargin:
-    """The margin reader with its plan-keyed cache. ``session`` says whether a Kite session is live (and which one);
-    ``open_client`` builds the margin client for it (reads the stored token) and is called only on a cache miss."""
+    """The margin reader with its plan-keyed cache. ``session`` gives the live Kite session as ``(user, session id)``,
+    or None when there is none; ``open_client`` builds that user's margin client (reads the stored token) and is
+    called only on a cache miss."""
 
-    def __init__(self, session: Callable[[], Optional[Hashable]], open_client: OpenClient, *, clock: Clock,
-                 monotonic: Callable[[], float] = time.monotonic, timeout: float = READ_TIMEOUT_SECONDS,
-                 retry: float = RETRY_SECONDS, size: int = CACHE_SIZE) -> None:
+    def __init__(self, session: Callable[[], Hashable | None], open_client: OpenClient, *, clock: Clock,
+                 monotonic: Callable[[], float] = time.monotonic, limits: MarginLimits | None = None) -> None:
         self._session = session
         self._open = open_client
         self._clock = clock
         self._monotonic = monotonic
-        self._timeout = timeout
-        self._retry = retry
-        self._size = size
+        self._limits = limits or MarginLimits()
         self._cache: OrderedDict[Hashable, _Entry] = OrderedDict()
         self._lock = asyncio.Lock()
         self.reads = 0  # Kite reads started (a test counter; one read = funds + basket)
@@ -120,31 +128,33 @@ class OutcomeMargin:
     def __repr__(self) -> str:
         return "OutcomeMargin()"
 
-    def session(self) -> Optional[Hashable]:
+    def session(self) -> Hashable | None:
         return self._session()
 
-    async def margin_for(self, user: str, session: Hashable, orders: tuple[BasketOrder, ...]) -> Margin:
-        key = (user, session, orders)
+    async def margin_for(self, session: Hashable, orders: tuple[BasketOrder, ...]) -> Margin:
+        """The cached margin of ``orders`` for ``session`` (its user and session id), read from Zerodha on a miss."""
+        key = (session, orders)
         async with self._lock:  # one read per plan even when the REST route and a push ask at once
             entry = self._cache.get(key)
             if entry is not None and (entry.until is None or self._monotonic() < entry.until):
                 self._cache.move_to_end(key)
                 return entry.margin
             margin, kept = await self._fetch(orders)
-            self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._retry)
+            self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._limits.retry)
             self._cache.move_to_end(key)
-            while len(self._cache) > self._size:
+            while len(self._cache) > self._limits.size:
                 self._cache.popitem(last=False)
             return margin
 
     async def _fetch(self, orders: tuple[BasketOrder, ...]) -> tuple[Margin, bool]:
         """(the margin, whether it is kept until the plan changes)."""
         self.reads += 1
+        timeout = self._limits.timeout
         try:
-            client = await asyncio.wait_for(self._open(), self._timeout)
+            client = await asyncio.wait_for(self._open(), timeout)
             if client is None:  # no stored session after all
                 return MARGIN, False
-            available, needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders), self._timeout)
+            available, needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders), timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
             return (MARGIN if exc.code == "kite_margin_token" else margin_unreadable()), False
@@ -157,8 +167,7 @@ class OutcomeMargin:
             return margin_unreadable(), False
 
 
-async def margin_answer(source: Optional[OutcomeMargin], ctx, user: str,
-                        legs: Sequence[PlannedOrderIn]) -> Margin:
+async def margin_answer(source: OutcomeMargin | None, ctx, legs: Sequence[PlannedOrderIn]) -> Margin:
     """The margin block for one outcome answer. ``ctx`` is the market context (None = not connected)."""
     if source is None or ctx is None:
         return MARGIN
@@ -168,42 +177,4 @@ async def margin_answer(source: Optional[OutcomeMargin], ctx, user: str,
     orders = basket_orders(ctx.provider, legs)
     if orders is None:
         return margin_no_basket()
-    return await source.margin_for(user, session, orders)
-
-
-# ---- the running app's reader ------------------------------------------------------------------------------------
-
-async def _owner_client() -> Optional[KiteMargin]:
-    """The owner's margin client from the stored session (W-058), or None when none is stored."""
-    from ofo_app.broker_config import load_broker_config
-    from ofo_app.broker_crypto import TokenCipher
-    from ofo_app.broker_token_store import access_token_for
-    from ofo_app.db import get_engine
-    from ofo_app.live_market import OWNER_REF
-
-    config = load_broker_config()
-    engine = get_engine()
-    async with engine.connect() as conn:
-        token = await access_token_for(conn, OWNER_REF, TokenCipher(config.token_key), engine=engine)
-    return None if token is None else KiteMargin(api_key=config.api_key, access_token=token)
-
-
-def _live_session() -> Optional[Hashable]:
-    from ofo_app import live_market
-    return live_market.current_session()
-
-
-def _server_now() -> datetime.datetime:
-    from ofo_app.routes.outcome import server_now  # late: the route imports this module
-    return server_now()
-
-
-_app_source: Optional[OutcomeMargin] = None
-
-
-def app_source() -> OutcomeMargin:
-    """The one reader of the running app (one cache for the REST route and every live push)."""
-    global _app_source
-    if _app_source is None:
-        _app_source = OutcomeMargin(_live_session, _owner_client, clock=_server_now)
-    return _app_source
+    return await source.margin_for(session, orders)

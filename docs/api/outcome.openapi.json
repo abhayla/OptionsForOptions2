@@ -527,11 +527,50 @@
         "properties": {
           "state": {
             "type": "string",
-            "const": "NOT_AVAILABLE_YET",
+            "enum": [
+              "NOT_AVAILABLE_YET",
+              "CHECKED",
+              "UNREADABLE",
+              "NO_BASKET"
+            ],
             "title": "State"
           },
           "reason": {
             "title": "Reason"
+          },
+          "needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needed"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
           }
         },
         "additionalProperties": false,
@@ -540,7 +579,8 @@
           "state",
           "reason"
         ],
-        "title": "MarginOut"
+        "title": "MarginOut",
+        "description": "ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."
       },
       "OutcomeRequest": {
         "properties": {
