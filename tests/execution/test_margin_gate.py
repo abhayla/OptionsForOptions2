@@ -17,8 +17,33 @@ import pytest
 from ofo.execution import margin_gate
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 
-REPLY_FILE = (pathlib.Path(__file__).resolve().parents[2]
-              / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json")
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPLY_FILE = ROOT / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json"
+STRANGLE_FILE = ROOT / "tests/fixtures/kite_margins/basket-2026-10-16-long-strangle-bump5.json"
+
+
+@dataclasses.dataclass(frozen=True)
+class Leg:
+    """One request order, the fields the gate reads (what ofo_app's BasketOrder carries)."""
+
+    exchange: str
+    tradingsymbol: str
+    transaction_type: str
+    quantity: int
+    price: Decimal
+
+
+CE, PE = "NIFTY26SEP23150CE", "NIFTY26SEP23150PE"  # catalogue symbols (the synthetic replies below name them)
+FUT, BFO_PE = "NIFTY26SEPFUT", "SENSEX26O0173900PE"
+
+
+def _legs(request: list[dict]) -> list[Leg]:
+    return [Leg(r["exchange"], r["tradingsymbol"], r["transaction_type"], r["quantity"], Decimal(str(r["price"])))
+            for r in request]
+
+
+with REPLY_FILE.open(encoding="utf-8") as _handle:
+    CONDOR = _legs(json.load(_handle, parse_float=Decimal)["request"])  # the 4 legs sent on 2026-10-15
 
 
 @pytest.fixture(scope="module")
@@ -37,7 +62,7 @@ def test_fixture_is_the_real_condor_reply(reply_data: dict) -> None:
 
 def test_ac1_available_equal_to_final_total_builds_the_basket(reply_data: dict) -> None:
     """AC-1 (core): available Rs 68,498.85 equals the required final.total, so the basket is built."""
-    required = required_from_basket_reply(reply_data)
+    required = required_from_basket_reply(reply_data, CONDOR)
     assert required == Decimal("68498.85")
     verdict = check_margin(Decimal("68498.85"), required)
     assert verdict.allowed is True
@@ -47,7 +72,7 @@ def test_ac1_available_equal_to_final_total_builds_the_basket(reply_data: dict) 
 
 def test_ac4_one_paisa_short_blocks_with_both_amounts(reply_data: dict) -> None:
     """AC-4 (core): available Rs 68,498.84 is one paisa short, so no basket; the message shows both amounts."""
-    verdict = check_margin(Decimal("68498.84"), required_from_basket_reply(reply_data))
+    verdict = check_margin(Decimal("68498.84"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.allowed is False
     assert verdict.message is not None
     assert verdict.message.what_happened == (
@@ -58,7 +83,7 @@ def test_ac4_one_paisa_short_blocks_with_both_amounts(reply_data: dict) -> None:
 
 def test_ac4_the_message_offers_quantity_review_and_add_funds(reply_data: dict) -> None:
     """AC-4: the next step offers a quantity change, a review, or adding funds."""
-    verdict = check_margin(Decimal("1000"), required_from_basket_reply(reply_data))
+    verdict = check_margin(Decimal("1000"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.message is not None
     assert verdict.message.next_action == (
         "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again.")
@@ -74,8 +99,8 @@ def test_ac4_indian_grouping_for_large_amounts(reply_data: dict) -> None:
 
 def test_ac1_final_total_is_required_not_initial_total(reply_data: dict) -> None:
     """AC-1 (decision by role): the hedged basket needs final.total (68498.85), not initial.total (296332.8)."""
-    assert required_from_basket_reply(reply_data) != Decimal("296332.8")
-    assert check_margin(Decimal("68498.85"), required_from_basket_reply(reply_data)).allowed is True
+    assert required_from_basket_reply(reply_data, CONDOR) != Decimal("296332.8")
+    assert check_margin(Decimal("68498.85"), required_from_basket_reply(reply_data, CONDOR)).allowed is True
 
 
 def test_ac1_sub_paisa_amounts_never_round_in_the_users_favour() -> None:
@@ -176,7 +201,7 @@ def test_ac1_replace_cannot_forge_an_allowed_verdict() -> None:
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
     """AC-3: the gate takes only Zerodha's two figures (no platform estimate parameter) and says Zerodha's figure."""
     assert list(inspect.signature(check_margin).parameters) == ["available", "required"]
-    verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data))
+    verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.message is not None and verdict.message.what_happened.startswith("Zerodha says")
 
 
@@ -188,7 +213,118 @@ def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
 def test_ac1_a_reply_without_a_decimal_final_total_is_an_error(data: object) -> None:
     """AC-1: missing final, missing total, a float/str/bool/NaN/negative total -> MarginReplyError (fail closed)."""
     with pytest.raises(MarginReplyError):
-        required_from_basket_reply(data)  # type: ignore[arg-type]
+        required_from_basket_reply(data, CONDOR)  # type: ignore[arg-type]
+
+
+# --- ADR-094: the BUY premium above Kite's own figure, up to the limit price --------------------------------------
+
+@pytest.fixture(scope="module")
+def strangle() -> tuple[dict, list[Leg]]:
+    """The real 2026-10-16 long-strangle reply (bump=5: both BUY limits 5.00 above live) and its request."""
+    with STRANGLE_FILE.open(encoding="utf-8") as handle:
+        recorded = json.load(handle, parse_float=Decimal)
+    return recorded["reply"]["data"], _legs(recorded["request"])
+
+
+def _reply(*legs: tuple[str, str, object], total: object = Decimal("100")) -> dict:
+    """A minimal reply: (tradingsymbol, exchange, option_premium) per order; a None premium leaves the key out."""
+    rows = [{"tradingsymbol": s, "exchange": e, **({} if p is None else {"option_premium": p})} for s, e, p in legs]
+    return {"final": {"total": total}, "orders": rows}
+
+
+def _leg(symbol: str, side: str, quantity: int = 65, price: str = "10", exchange: str = "NFO") -> Leg:
+    return Leg(exchange, symbol, side, quantity, Decimal(price))
+
+
+def test_adr094_core_real_long_strangle_reply_adds_the_premium_above_kites_figure(strangle) -> None:
+    """Core (ADR-094): final.total 6409; CE 65 x 45.55 = 2960.75 vs option_premium 2697.5 (+263.25); PE 65 x 63.15 =
+    4104.75 vs 3711.5 (+393.25) -> 6409 + 263.25 + 393.25 = 7065.50. Figures read from the recorded file."""
+    data, orders = strangle
+    assert data["final"]["total"] == Decimal("6409")
+    assert [o["option_premium"] for o in data["orders"]] == [Decimal("2697.5"), Decimal("3711.5")]
+    assert [(o.quantity, o.price) for o in orders] == [(65, Decimal("45.55")), (65, Decimal("63.15"))]
+    assert required_from_basket_reply(data, orders) == Decimal("7065.50")
+
+
+def test_adr094_the_1033_case_two_buy_legs_5_above_live() -> None:
+    """ADR-094 real case: Kite 2,073.50, two BUY legs each Rs 325.00 above Kite's premium -> 2,723.50."""
+    data = _reply((CE, "NFO", Decimal("975")), (PE, "NFO", Decimal("975")),
+                  total=Decimal("2073.50"))
+    orders = [_leg(CE, "BUY", price="20"), _leg(PE, "BUY", price="20")]  # 65 x 20
+    assert required_from_basket_reply(data, orders) == Decimal("2723.50")
+
+
+def test_adr094_sell_legs_add_nothing_even_with_odd_premiums() -> None:
+    """Checklist 1: a SELL leg whose option_premium is negative, or larger than qty x price, adds 0."""
+    data = _reply((CE, "NFO", Decimal("-5")), (PE, "NFO", Decimal("99999")))
+    orders = [_leg(CE, "SELL"), _leg(PE, "SELL")]
+    assert required_from_basket_reply(data, orders) == Decimal("100")
+
+
+def test_adr094_a_buy_leg_with_premium_above_qty_x_price_adds_zero_never_a_credit() -> None:
+    """Checklist 2: qty x price (650) < option_premium (900) -> +0, so the result is not below final.total."""
+    data = _reply((CE, "NFO", Decimal("900")))
+    assert required_from_basket_reply(data, [_leg(CE, "BUY")]) == Decimal("100")
+    equal = _reply((CE, "NFO", Decimal("650")))
+    assert required_from_basket_reply(equal, [_leg(CE, "BUY")]) == Decimal("100")
+
+
+@pytest.mark.parametrize("premium", [None, 12.5, "650", True, Decimal("-1"), Decimal("NaN"), Decimal("Infinity")])
+def test_adr094_a_buy_leg_with_an_unusable_option_premium_blocks(premium: object) -> None:
+    """Checklist 3: missing / float / str / bool / negative / NaN / infinite option_premium -> MarginReplyError."""
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(_reply((CE, "NFO", premium)), [_leg(CE, "BUY")])
+
+
+def test_adr094_an_int_option_premium_is_exact() -> None:
+    """Kite prints whole numbers without a point: 650 x 1 vs premium int 600 -> +50."""
+    data = _reply((CE, "NFO", 600))
+    assert required_from_basket_reply(data, [_leg(CE, "BUY", quantity=1, price="650")]) == Decimal("150")
+
+
+def test_adr094_a_sell_legs_bad_premium_is_not_read() -> None:
+    """A SELL leg adds nothing, so its premium is not looked at (Kite sends 0 there)."""
+    data = _reply((CE, "NFO", None))
+    assert required_from_basket_reply(data, [_leg(CE, "SELL")]) == Decimal("100")
+
+
+def test_adr094_count_or_identity_mismatch_between_request_and_reply_blocks() -> None:
+    """Checklist 4: fewer / more reply orders, swapped orders, a different exchange -> MarginReplyError."""
+    two = _reply((CE, "NFO", Decimal("0")), (PE, "NFO", Decimal("0")))
+    ce, pe = _leg(CE, "BUY"), _leg(PE, "BUY")
+    assert required_from_basket_reply(two, [ce, pe]) == Decimal("100") + 2 * Decimal("650")
+    for orders in ([ce], [ce, pe, ce], [pe, ce], [_leg(CE, "BUY", exchange="BFO"), pe]):
+        with pytest.raises(MarginReplyError):
+            required_from_basket_reply(two, orders)
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply({"final": {"total": Decimal("1")}}, [ce])  # no orders list at all
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply({"final": {"total": Decimal("1")}, "orders": ["x"]}, [ce])  # a row that is no object
+
+
+def test_adr094_futures_buy_adds_nothing_and_a_bfo_option_is_counted() -> None:
+    """Checklist 5: a NIFTY future BUY adds 0 (even with no option_premium); a SENSEX (BFO) option BUY is counted."""
+    fut = _reply((FUT, "NFO", None))
+    assert required_from_basket_reply(fut, [_leg(FUT, "BUY")]) == Decimal("100")
+    sensex = _reply((BFO_PE, "BFO", Decimal("100")))
+    order = _leg(BFO_PE, "BUY", quantity=20, price="12.5", exchange="BFO")
+    assert required_from_basket_reply(sensex, [order]) == Decimal("100") + Decimal("150")
+
+
+@pytest.mark.parametrize("quantity,price", [(0, "10"), (-65, "10"), (True, "10"), (65, "0"), (65, "-1"), (65, "NaN"),
+                                            (65, "Infinity")])
+def test_adr094_a_buy_leg_with_a_bad_quantity_or_price_blocks(quantity: object, price: str) -> None:
+    """Quantity must be an int > 0 and the limit price an exact Decimal > 0, else the reply cannot be used."""
+    data = _reply((CE, "NFO", Decimal("0")))
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(data, [Leg("NFO", CE, "BUY", quantity, Decimal(price))])  # type: ignore[arg-type]
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(data, [Leg("NFO", CE, "BUY", 65, 10.5)])  # type: ignore[arg-type]
+
+
+def test_adr094_the_result_is_never_below_the_final_total(strangle) -> None:
+    data, orders = strangle
+    assert required_from_basket_reply(data, orders) >= data["final"]["total"]
 
 
 def test_module_has_no_float_money() -> None:
