@@ -6,25 +6,22 @@ spread/hedge benefit Zerodha gives a basket), not ``initial.total``: for the 15 
 Rs 68,498.85 against Rs 2,96,332.80, and ``initial`` would block hedged strategies Zerodha accepts. No platform
 estimate takes part in the decision (AC-3).
 
-The basket builder CALLS `check_margin`; a `MarginVerdict` cannot be built anywhere else, so a caller cannot hand over
-a passing verdict of its own. An amount that is unknown (None) blocks. Money is exact `Decimal`; a float, string, int,
-NaN, infinity or negative amount raises.
+The basket builder reads both figures from its margin source and CALLS `check_margin` itself; no verdict object
+crosses the basket builder's boundary, so a verdict made, copied or edited elsewhere cannot produce a basket. An
+amount that is unknown (None) blocks. Money is exact `Decimal`; a float, string, int, NaN, infinity or negative amount
+raises.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
-from typing import Final, Protocol
+from typing import Protocol
 
 from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
 from ofo.money import PAISE as _PAISE
 from ofo.money import zerodha_paise
-
-_MINT: Final = object()  # module-private: only check_margin mints a verdict
-
 
 class MarginReplyError(ValueError):
     """Zerodha's basket-margin reply has no usable ``final.total``: the basket must not be built."""
@@ -38,48 +35,82 @@ def _amount(value: object, name: str, *, signed: bool = False) -> Decimal:
     return value
 
 
-@dataclass(frozen=True)
-class MarginVerdict:
+class MarginVerdict(tuple):
     """The gate's answer. Only the two amounts (None when unknown) are inputs: `allowed` and the four-part `message`
-    are derived from them inside the class, so no copy (`dataclasses.replace`) can make them disagree with
-    available >= required. `available` is Zerodha's signed ``equity.net`` (a negative balance always blocks)."""
+    are derived from them by `check_margin`. `available` is Zerodha's signed ``equity.net`` (a negative balance always
+    blocks).
 
-    available: Decimal | None
-    required: Decimal | None
-    _mint: object = None
-    allowed: bool = field(init=False, default=False)
-    message: UserFacingError | None = field(init=False, default=None)
+    Sealed (finding sealed-object-mutable-after-seal): an immutable tuple with no attribute storage, so even
+    ``object.__setattr__`` has nothing to write; calling the class raises and there is no mint token to borrow;
+    subclasses are refused; `copy`/`deepcopy`/`pickle`/`dataclasses.replace` raise. A verdict is information only:
+    the basket builder takes no verdict, it reads Zerodha's two figures and calls `check_margin` itself."""
 
-    def __post_init__(self) -> None:
-        if self._mint is not _MINT:
-            raise TypeError("a MarginVerdict comes only from check_margin")
-        if self.available is not None:
-            _amount(self.available, "available", signed=True)
-        if self.required is not None:
-            _amount(self.required, "required")
-        if self.available is None or self.required is None:
-            allowed, message = False, render("gate_margin_unconfirmed")
-        elif self.available >= self.required:
-            allowed, message = True, None
-        else:
-            # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
-            allowed = False
-            try:
-                message = render("margin_basket_insufficient",
-                                 available=self.available.quantize(_PAISE, rounding=ROUND_FLOOR),
-                                 required=self.required.quantize(_PAISE, rounding=ROUND_CEILING))
-            except (InvalidOperation, ValueError):
-                # An amount too large to round to the paisa or to show (cap 1e12): still blocked, never raises.
-                message = render("gate_margin_unconfirmed")
-        object.__setattr__(self, "allowed", allowed)
-        object.__setattr__(self, "message", message)
+    __slots__ = ()
+
+    def __new__(cls, *_args: object, **_kwargs: object) -> MarginVerdict:
+        raise TypeError("a MarginVerdict comes only from check_margin")
+
+    def __init_subclass__(cls, **_kwargs: object) -> None:
+        raise TypeError("MarginVerdict cannot be subclassed")
+
+    @property
+    def available(self) -> Decimal | None:
+        return self[0]
+
+    @property
+    def required(self) -> Decimal | None:
+        return self[1]
+
+    @property
+    def allowed(self) -> bool:
+        return self[2]
+
+    @property
+    def message(self) -> UserFacingError | None:
+        return self[3]
+
+    def __copy__(self) -> MarginVerdict:
+        raise TypeError("a MarginVerdict cannot be copied; call check_margin again")
+
+    def __deepcopy__(self, _memo: object) -> MarginVerdict:
+        raise TypeError("a MarginVerdict cannot be copied; call check_margin again")
+
+    def __reduce_ex__(self, _protocol: object) -> object:
+        raise TypeError("a MarginVerdict cannot be pickled; call check_margin again")
+
+    def __reduce__(self) -> object:
+        raise TypeError("a MarginVerdict cannot be pickled; call check_margin again")
+
+    def __repr__(self) -> str:
+        return f"MarginVerdict(available={self.available!r}, required={self.required!r}, allowed={self.allowed!r})"
+
+
+def _derive(available: Decimal | None, required: Decimal | None) -> tuple[bool, UserFacingError | None]:
+    if available is None or required is None:
+        return False, render("gate_margin_unconfirmed")
+    if available >= required:
+        return True, None
+    # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
+    try:
+        return False, render("margin_basket_insufficient", available=available.quantize(_PAISE, rounding=ROUND_FLOOR),
+                             required=required.quantize(_PAISE, rounding=ROUND_CEILING))
+    except (InvalidOperation, ValueError):
+        # An amount too large to round to the paisa or to show (cap 1e12): still blocked, never raises.
+        return False, render("gate_margin_unconfirmed")
 
 
 def check_margin(available: Decimal | None, required: Decimal | None) -> MarginVerdict:
     """Allowed when `available` >= `required` (equal is allowed); otherwise blocked with both amounts shown.
 
-    Both are Zerodha's figures. None (not confirmed with Zerodha) blocks with the "could not confirm" message."""
-    return MarginVerdict(available, required, _mint=_MINT)
+    Both are Zerodha's figures. None (not confirmed with Zerodha) blocks with the "could not confirm" message. Public
+    because it is pure: its result cannot be turned into a basket (the basket builder takes a margin source, reads
+    Zerodha's two figures and calls this itself), so a self-made verdict proves nothing to anyone."""
+    if available is not None:
+        _amount(available, "available", signed=True)
+    if required is not None:
+        _amount(required, "required")
+    allowed, message = _derive(available, required)
+    return tuple.__new__(MarginVerdict, (available, required, allowed, message))
 
 
 class PlannedOrder(Protocol):

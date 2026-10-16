@@ -90,6 +90,8 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/kite_margin.py": "Kite's margin client, through the urllib door - REQ-073 AC-4",
     "ofo_app/outcome_margin.py": "composition point of the outcome screen's Zerodha margin read (ADR-099): calls the "
                                  "Kite margin client for the planned basket, like live_market.py - REQ-063 AC-1",
+    "ofo_app/checked_basket.py": "the one production path to a Kite basket (W-081): wires build_basket to the Kite "
+                                 "margin client's verdict (REQ-055 AC-1) - REQ-063 AC-1",
     "ofo/instruments/downloader.py": "fetches Kite's instrument list through the urllib door - REQ-073 AC-4",
 }
 

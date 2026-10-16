@@ -4,14 +4,21 @@ Expected exchange / symbol / side / quantity come from the request legs of margi
 accepted on 2026-10-15), never from literals typed here."""
 from __future__ import annotations
 
+import copy
 import dataclasses
 import datetime
+import inspect
 import json
+import pickle
 from decimal import Decimal as D
 
 import pytest
 from basket_inputs import FakeFreeze, OkMargin, real_catalogue, real_plan, request_legs
-from ofo.execution.basket import KITE_BASKET_URL, BasketRefused, build_basket
+from ofo.errors import display_text
+from ofo.execution import basket as basket_module
+from ofo.execution import margin_gate
+from ofo.execution.basket import KITE_BASKET_URL, BasketRefused, KiteBasket, build_basket
+from ofo.execution.margin_gate import MarginVerdict, check_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments.models import ZERODHA, MissingBrokerRef
 
@@ -19,7 +26,7 @@ from ofo.instruments.models import ZERODHA, MissingBrokerRef
 def _build(plan=None, cat=None, freeze=None, margin=None):
     cat = cat or real_catalogue()
     plan = plan or real_plan(cat)
-    return build_basket(plan, cat, 3, freeze_check=freeze or FakeFreeze(), margin_check=margin or OkMargin())
+    return build_basket(plan, cat, 3, freeze_check=freeze or FakeFreeze(), margin_source=margin or OkMargin())
 
 
 def test_core_real_condor_makes_four_read_only_limit_orders() -> None:
@@ -184,33 +191,147 @@ def test_blocked_margin_refuses_the_whole_basket() -> None:
     margin = OkMargin(allowed=False)
     with pytest.raises(BasketRefused):
         _build(margin=margin)
-    assert len(margin.calls) == 1
+    assert len(margin.calls) == 1 and margin.funds_calls == 1  # the basket read both figures itself
 
 
-@pytest.mark.parametrize("bad", [None, object(), True, "ok"])
-def test_unreadable_margin_verdict_fails_closed(bad) -> None:
+def test_funds_equal_to_required_build_and_one_paisa_short_refuses() -> None:
+    """The basket's own check_margin call decides on the source's two figures (kills dropping or inverting it)."""
+    assert len(_build(margin=OkMargin(available=D("68498.85"), required=D("68498.85"))).orders) == 4  # noqa: PLR2004
+    with pytest.raises(BasketRefused) as caught:
+        _build(margin=OkMargin(available=D("68498.84"), required=D("68498.85")))
+    shown = display_text(caught.value.user_message)
+    assert "68,498.85" in shown and "68,498.84" in shown and shown in str(caught.value)
+
+
+def test_a_closing_basket_needing_zero_builds_on_zero_funds() -> None:
+    assert len(_build(margin=OkMargin(available=D("0"), required=D("0"))).orders) == 4  # noqa: PLR2004
+
+
+class _Figures(OkMargin):
+    """A source returning exactly the given figures (OkMargin swaps None for a default)."""
+
+    def __init__(self, available: object, required: object) -> None:
+        super().__init__()
+        self.available, self.required = available, required
+
+
+@pytest.mark.parametrize(("available", "required"), [
+    (1e9, D("0")), (D("1e9"), 0.0), ("99999999", D("0")), (D("1e9"), "0"), (True, D("0")), (D("1e9"), None),
+    (None, D("0")), (D("NaN"), D("0")), (D("Infinity"), D("0")), (D("1e9"), D("-1")), (D("1e9"), 0),
+])
+def test_an_unusable_figure_from_the_source_fails_closed(available, required) -> None:
+    """A figure that is not an exact finite Decimal, a missing one, or a negative requirement is "not confirmed":
+    refused with a user message, never a pass (kills passing on an exception or skipping the type check)."""
+    with pytest.raises(BasketRefused) as caught:
+        _build(margin=_Figures(available, required))
+    assert caught.value.user_message is not None
+
+
+class _Raising(OkMargin):
+    def __init__(self, which: str) -> None:
+        super().__init__()
+        self.which = which
+
+    def available_funds(self):
+        if self.which == "available_funds":
+            raise ConnectionError("Zerodha unreachable")
+        return super().available_funds()
+
+    def zerodha_required(self, orders):
+        if self.which == "zerodha_required":
+            raise ConnectionError("Zerodha unreachable")
+        return super().zerodha_required(orders)
+
+
+@pytest.mark.parametrize("which", ["available_funds", "zerodha_required"])
+def test_a_source_that_raises_fails_closed(which: str) -> None:
+    with pytest.raises(BasketRefused) as caught:
+        _build(margin=_Raising(which))
+    assert caught.value.user_message is not None
+
+
+@pytest.mark.parametrize("bad", [object(), lambda orders: True, "ok"])
+def test_a_source_without_the_two_reads_fails_closed(bad) -> None:
     with pytest.raises(BasketRefused):
-        _build(margin=lambda plan: bad)
+        _build(margin=bad)
 
 
-@pytest.mark.parametrize("allowed", [1, "yes", "true", [1], 1.0])
-def test_margin_verdict_must_be_exactly_true(allowed) -> None:
-    """Truthy is not allowed: only the bool True passes (kills `is not True` -> `not`)."""
-    class Verdict:
-        pass
+def test_build_basket_takes_no_verdict() -> None:
+    """Finding caller-supplied-verdict-trusted: no verdict crosses the boundary - the old ``margin_check`` callable that
+    returned a verdict is not a parameter, and the only margin input is the source."""
+    params = inspect.signature(build_basket).parameters
+    assert "margin_check" not in params and list(params)[-1] == "margin_source"
+    cat = real_catalogue()
+    with pytest.raises(TypeError):
+        build_basket(real_plan(cat), cat, 3, freeze_check=FakeFreeze(),  # type: ignore[call-arg]
+                     margin_check=lambda orders: check_margin(D("1"), D("0")))
 
-    v = Verdict()
-    v.allowed = allowed
-    with pytest.raises(BasketRefused):
-        _build(margin=lambda plan: v)
+
+# -- forge shapes (round-2 attacks 1c/1d/1g/1h/1i): the verdict and the basket are sealed ------------------------
 
 
-def test_gate_that_raises_fails_closed() -> None:
+def test_a_basket_cannot_be_constructed_outside_build_basket() -> None:
+    orders = _build().orders
+    with pytest.raises(TypeError):
+        KiteBasket(orders)
+    with pytest.raises(TypeError):
+        KiteBasket(orders=orders)
+    assert not hasattr(basket_module, "_MINT") and not hasattr(margin_gate, "_MINT")  # no token to borrow
+    with pytest.raises(TypeError):
+        type("Sub", (KiteBasket,), {})
+
+
+_FORGES = {
+    "copy": copy.copy,
+    "deepcopy": copy.deepcopy,
+    "pickle": lambda obj: pickle.loads(pickle.dumps(obj)),  # noqa: S301 - the forge under test
+    "replace": dataclasses.replace,
+}
+
+
+@pytest.mark.parametrize("forge", list(_FORGES))
+def test_a_basket_cannot_be_copied_or_replaced(forge: str) -> None:
+    basket = _build()
+    with pytest.raises(TypeError):
+        _FORGES[forge](basket)
+
+
+def test_a_built_basket_cannot_be_edited() -> None:
+    basket = _build()
+    other = basket.orders[:1]
+    for attempt in (lambda: setattr(basket, "orders", other), lambda: object.__setattr__(basket, "orders", other),
+                    lambda: delattr(basket, "orders"), lambda: setattr(basket, "extra", 1)):
+        with pytest.raises(AttributeError):
+            attempt()
+    assert len(basket.orders) == 4  # noqa: PLR2004
+
+
+@pytest.mark.parametrize("forge", list(_FORGES))
+def test_a_verdict_cannot_be_copied_or_replaced(forge: str) -> None:
+    blocked = check_margin(D("671.50"), D("68498.85"))
+    with pytest.raises(TypeError):
+        _FORGES[forge](blocked)
+
+
+def test_a_verdict_cannot_be_edited_or_self_minted() -> None:
+    blocked = check_margin(D("671.50"), D("68498.85"))
+    for attempt in (lambda: setattr(blocked, "allowed", True), lambda: object.__setattr__(blocked, "allowed", True),
+                    lambda: object.__setattr__(blocked, "available", D("1e9")), lambda: delattr(blocked, "message")):
+        with pytest.raises(AttributeError):
+            attempt()
+    assert blocked.allowed is False and blocked.message is not None
+    with pytest.raises(TypeError):
+        MarginVerdict(D("1"), D("0"))
+    with pytest.raises(TypeError):
+        MarginVerdict(D("1"), D("0"), _mint=object())
+    with pytest.raises(TypeError):
+        type("Sub", (MarginVerdict,), {})
+
+
+def test_freeze_that_raises_fails_closed() -> None:
     def boom(plan):
-        raise ConnectionError("margin service down")
+        raise ConnectionError("freeze service down")
 
-    with pytest.raises(BasketRefused):
-        _build(margin=boom)
     with pytest.raises(BasketRefused):
         _build(freeze=boom)
 
@@ -230,4 +351,4 @@ def test_freeze_result_of_wrong_type_fails_closed() -> None:
 
 def test_non_plan_input_is_rejected() -> None:
     with pytest.raises(ValueError):
-        build_basket("plan", real_catalogue(), 3, freeze_check=FakeFreeze(), margin_check=OkMargin())  # type: ignore[arg-type]
+        build_basket("plan", real_catalogue(), 3, freeze_check=FakeFreeze(), margin_source=OkMargin())  # type: ignore[arg-type]

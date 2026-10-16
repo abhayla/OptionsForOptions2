@@ -18,7 +18,7 @@ from ofo.execution import (
     DataInput,
     FlagCode,
     SafetyResult,
-    margin_required_from,
+    margin_estimate_from,
 )
 from ofo.instruments import EligibilityStatus, parse_instruments_csv
 
@@ -140,12 +140,12 @@ class _Planner:
 
 def test_margin_estimate_comes_from_the_planner_and_is_validated(condor, catalogue, eligibility):
     """AC-3: the margin estimate is the planner's Decimal; a float or negative answer is refused (fail closed)."""
-    required = margin_required_from(_Planner(D("48210.75")), condor)
+    required = margin_estimate_from(_Planner(D("48210.75")), condor)
     result = check(condor, all_true_context(margin_required=required), catalogue, eligibility)
     assert result.margin_required == D("48210.75") and result.blocked is False
     for bad in (48210.75, D("-1"), D("Infinity"), None):
         with pytest.raises(ValueError):
-            margin_required_from(_Planner(bad), condor)
+            margin_estimate_from(_Planner(bad), condor)
     short = all_true_context(margin_required=D("150000.01"))
     assert check(condor, short, catalogue, eligibility).failed_codes == {CheckCode.MARGIN_INSUFFICIENT}
 

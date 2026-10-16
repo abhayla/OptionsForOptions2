@@ -119,8 +119,11 @@ class MarginPlanner(Protocol):
     def required_margin(self, strategy: Strategy) -> Decimal: ...
 
 
-def margin_required_from(planner: MarginPlanner, strategy: Strategy) -> Decimal:
-    """Ask ``planner`` for the strategy's margin and validate its answer (finite, non-negative Decimal)."""
+def margin_estimate_from(planner: MarginPlanner, strategy: Strategy) -> Decimal:
+    """The platform's PLANNING ESTIMATE of the strategy's margin, validated (finite, non-negative Decimal).
+
+    Shown as an estimate only (REQ-055 AC-3). It never fills ``ExecutionContext.margin_required`` and never decides a
+    margin block: that figure is Zerodha's (#273; ``tests/test_margin_from_zerodha_only.py`` scans for it)."""
     return require_decimal(planner.required_margin(strategy), "margin_required")
 
 
@@ -152,6 +155,9 @@ class ExecutionContext:
     rules_valid: bool | None
     dependencies_satisfied: bool | None
     data_health: Mapping[DataInput, DataHealth]
+    # Both are ZERODHA's figures (REQ-055 AC-1/AC-3, ADR-016, #273): ``margin_available`` from the funds read
+    # (``equity.net``), ``margin_required`` from Zerodha's basket margin for the exact orders. Never a platform
+    # estimate (``margin_estimate_from``); None (not confirmed with Zerodha) blocks.
     margin_available: Decimal | None
     margin_required: Decimal | None
     # Required, no default (round 2 MAJOR B): None means the reconciliation status is unknown and blocks.
