@@ -31,6 +31,17 @@ settle against tonight's contract note). Net about -177.73.
   (`403 No IPs configured for this app`): this app has no static IP, so no API placement is possible (ADR-054 does not
   need it; registering an IP is the owner's call). The exit went through a basket page the owner pressed.
 
+**Close (15:30-15:40):**
+- #322 merged: the margin gate allows closing baskets (#321 closed).
+- #296 CLOSED with a live proof: session ended in ofo_dev, API started from main with no session, the owner logged in
+  (private window), `live market data restarted after the new Kite login` at 15:34:45 and `COMPUTED spot 23146.15` at
+  15:36:17 on the same process. The post-login page error is #159 (`/broker/connected` 404, API-only setup).
+- Recordings verified: websocket 53,165 frames / 7,404,814 ticks read back complete (708 MB); REST 11 files, 1,012
+  calls, all 200; outcome 19 files, 190 replies, all COMPUTED.
+- The owner's Kite session in ofo_dev is the NEW login of 15:34 (valid until ~04:30 IST, F-37). The API was stopped.
+- **Monday 09:15 first:** W-080 next design (globals identity) only if the owner wants the in-app basket next; #297 item
+  3 (owner: show Zerodha's margin on the outcome screen?); F-35 stamp vs tonight's contract note (entry 0.0099).
+
 **Live proofs on main:** ADR-094 (top-up 650.00 = 2 x 65 x 5; gate blocks on real funds), ADR-095 (Rs 300 -> 292.50
 allowed, every leg fills on live depth) - `docs/research/live-proofs-2026-10-16/afternoon/`.
 
