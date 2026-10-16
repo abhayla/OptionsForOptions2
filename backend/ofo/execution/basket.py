@@ -23,9 +23,13 @@ Rules:
   this boundary, so none made, copied or edited elsewhere can produce a basket (finding caller-supplied-verdict-
   trusted). A block, a wrong-typed answer or a raised error refuses the whole basket (fail closed). In production the
   one caller is ``ofo_app.checked_basket``, whose source is the real Zerodha client (REQ-055 AC-1/AC-3).
-- A ``KiteBasket`` exists only if ``build_basket`` built it: calling the class raises (there is no token to borrow), it
-  is an immutable tuple with no attribute storage, subclasses are refused, and copy/pickle/``dataclasses.replace``
-  raise (finding sealed-object-mutable-after-seal).
+- Ordinary code cannot make a ``KiteBasket`` except through ``build_basket``: calling the class raises (there is no
+  token to borrow), it is an immutable tuple with no attribute storage, subclasses are refused, and
+  copy/pickle/``dataclasses.replace`` raise (finding sealed-object-mutable-after-seal). This is not proof against
+  deliberate tricks (``tuple.__new__``, ``copyreg``, ``__class__`` swap, a caller's own lying margin source -
+  Tier A review 2026-10-17, MINOR); those are out of scope (ADR-003 Q235), the scans catch some, and Zerodha checks
+  margin again when the user places the basket on Kite's page. A basket is not tied to a time: callers build it
+  again on every request.
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
 - Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
