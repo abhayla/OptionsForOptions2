@@ -1,0 +1,14 @@
+# Ruff lint scope and rules for the Python layers. Existing violations are counted, not fixed: CI runs
+# `python scripts/ruff_ratchet.py`, which fails when any rule's count rises above scripts/ruff_baseline.json.
+# A change that lowers counts may refresh the baseline with `python scripts/ruff_ratchet.py --update`.
+line-length = 120
+target-version = "py312"
+include = ["backend/**/*.py", "scripts/**/*.py", "tests/**/*.py", "tests_app/**/*.py"]
+
+[lint]
+select = ["E", "F", "W", "B", "I", "UP", "SIM", "C4", "PIE", "RET", "PERF", "PL", "DTZ", "S", "ASYNC", "FAST", "RUF", "C90", "BLE"]
+
+[lint.per-file-ignores]
+# assert is the test framework's own statement; S101 applies to production code only.
+"tests/**/*.py" = ["S101"]
+"tests_app/**/*.py" = ["S101"]

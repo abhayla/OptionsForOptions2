@@ -19,8 +19,12 @@ application modules that can change after it was written (Alembic practice); eac
 from __future__ import annotations
 
 import ast
+import datetime
 import pathlib
 from decimal import Decimal, InvalidOperation
+
+from ofo import money, timeutil
+from ofo.instruments.models import is_lot_aligned
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent / "backend"
 
@@ -113,15 +117,18 @@ def _docstring_ids(tree: ast.AST) -> set[int]:
         body = getattr(node, "body", None)
         if isinstance(body, list):
             for stmt in body:
-                if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-                    ids.add(id(stmt.value))
+                value = stmt.value if isinstance(stmt, ast.Expr) else None
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    ids.add(id(value))
     return ids
 
 
 def _all_entry_ids(tree: ast.AST) -> set[int]:
     ids = set()
     for node in ast.walk(tree):
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AugAssign) else []
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, ast.AugAssign):
+            targets = [node.target]
         if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
             ids.update(id(c) for c in ast.walk(node.value) if isinstance(c, ast.Constant))
     return ids
@@ -202,18 +209,14 @@ def test_every_constant_lives_in_its_one_home():
 
 
 def test_the_shared_values_are_the_real_world_ones():
-    import datetime
-
-    from ofo import money, timeutil
-    from ofo.instruments.models import is_lot_aligned
-
-    assert timeutil.IST_OFFSET == datetime.timedelta(hours=5, minutes=30)
+    assert datetime.timedelta(hours=5, minutes=30) == timeutil.IST_OFFSET
     assert timeutil.IST.tzname(None) == "IST" and timeutil.IST_UNNAMED.tzname(None) == "UTC+05:30"
     assert timeutil.IST == timeutil.IST_UNNAMED
     assert timeutil.IST_SQL_ZONE == "AT TIME ZONE 'Asia/Kolkata'"
-    assert (timeutil.SESSION_OPEN, timeutil.SESSION_CLOSE) == (datetime.time(9, 15), datetime.time(15, 30))
-    assert timeutil.EXPIRY_CLOSE == datetime.time(15, 30, tzinfo=timeutil.IST)
-    assert (timeutil.EXPIRY_DAY_SETTLE_FROM, timeutil.HISTORY_FETCH_UNTIL) == (datetime.time(15, 39), datetime.time(15, 59))
+    assert (datetime.time(9, 15), datetime.time(15, 30)) == (timeutil.SESSION_OPEN, timeutil.SESSION_CLOSE)
+    assert datetime.time(15, 30, tzinfo=timeutil.IST) == timeutil.EXPIRY_CLOSE
+    assert datetime.time(15, 39) == timeutil.EXPIRY_DAY_SETTLE_FROM
+    assert datetime.time(15, 59) == timeutil.HISTORY_FETCH_UNTIL
     assert str(money.PAISE) == "0.01" and str(money.HUNDREDTH) == "0.01"
     assert [is_lot_aligned(u, 65) for u in (65, 130, 64, 66)] == [True, True, False, False]
 
@@ -270,6 +273,7 @@ def test_a_planted_copy_in_a_domain_module_fails(tmp_path):
     target = tmp_path / "ofo" / "history" / "bars.py"
     target.parent.mkdir(parents=True)
     original = (BACKEND / "ofo" / "history" / "bars.py").read_text(encoding="utf-8")
-    target.write_text(original + "\n_PLANTED = __import__('datetime').timedelta(hours=5, minutes=30)\n", encoding="utf-8")
+    planted = "\n_PLANTED = __import__('datetime').timedelta(hours=5, minutes=30)\n"
+    target.write_text(original + planted, encoding="utf-8")
     violations, _, _ = scan_tree(tmp_path)
     assert len(violations) == 1 and "ofo/history/bars.py" in violations[0] and "ist_offset" in violations[0]

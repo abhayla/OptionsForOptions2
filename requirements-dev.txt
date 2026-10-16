@@ -1,0 +1,2 @@
+# Lint packages for developers and the app CI job (installed after requirements-app.txt; never deployed).
+ruff==0.15.12
