@@ -16,8 +16,10 @@ after entry and 151006 = after exit, `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-1
 product adapter into the fill ledger and reconcile, with no scaffolding.
 Proof: `docs/research/core-proof-4b-2026-10-16/proof.py` re-run with its four throwaway adapters replaced by the
 product adapter: 0 mismatches after entry (65 long NIFTY26O1923650CE) and after exit (flat), the position's P&L equal
-to Kite's own flat row (`positions-151006.json`: `pnl -130`, `unrealised -130`, `realised 0` - the test names which
-Kite field it compares, and the paisa quantization is the item's first decision row, written BEFORE the assertion), and the W-091 card's core (which already says \"-130.00\") is aligned to that decision in the same PR;
+to Kite's own flat row (`positions-151006.json`: `pnl -130`, `unrealised -130`, `realised 0` - the test compares
+Kite's `unrealised` (-130); `realised` is 0 on this row, so never assert realised = -130; the paisa quantization is the
+item's first decision row, written BEFORE the assertion), and the W-091 card's text (which says "-130.0") is aligned
+to that decision in the same PR;
 F-40's condition stands: quantizing realised P&L is an owner question only if it changes what a user sees -
 then it goes to the owner-questions file;
 trade ids 4484194 and 5966618 each entered once; then the same rows as JSON numbers (`parse_float=Decimal`) and as SDK
@@ -25,7 +27,9 @@ floats (`Decimal(str(v))`). The recording holds no JSON floats (RESULT.md: money
 row's `average_price 0` as ints), so the test BUILDS those two variants from the strings itself. The recordings live OUTSIDE git (`proof.py` reads `OFO_KITE_TICKS`), so step 1 first
 copies the six reply files (orders/trades/positions at 122104 and 151006) into `tests/fixtures/kite_replies/` with the
 owner's client id (`placed_by` / `account_id` "DA1707", and any user name or email) replaced by a placeholder, and a
-header note naming the source file and the redaction; CI then runs the test.
+header note naming the source file and the redaction, PLUS the row(s) of the recorder's
+`2026-10-16/instruments.json` for the contract (token 12080386; the repo's catalogue slice has 0 rows for it), with a
+header naming that source - the contract key comes from that slice; CI then runs the test.
 
 ## Why (from GC-1 and GC-2a results)
 - F-40 (GC-1, `docs/research/core-proof-4b-2026-10-16/RESULT.md`): the domain is right on the real order, but every
@@ -50,8 +54,8 @@ header note naming the source file and the redaction; CI then runs the test.
    boundary (`backend/ofo_app/`): money via `zerodha_paise` on `Decimal(str(v))` / `parse_float=Decimal` values (never
    float arithmetic); a flat-row rule shared with `grouping.py:295` (one helper, not a copy); tradingsymbol/token ->
    reconcile contract key from the catalogue (issue 115); trade rows -> `FillEvent` with IST timestamps taken from the
-   trade's own `fill_timestamp` (a full datetime, "2026-10-16 12:20:50"; `order_timestamp` is time-only and is not
-   used; never the wall clock). The card's last objective is IN scope: the strategy record's exit is driven from the
+   trade's own `fill_timestamp` (a full datetime, "2026-10-16 12:20:50"; in the TRADES reply `order_timestamp` is
+   time-only and is not used - in the ORDERS reply it is a full datetime; never the wall clock). The card's last objective is IN scope: the strategy record's exit is driven from the
    ledger reaching 0 (RESULT.md gap (e)); if it cannot fit, it is moved out BY NAME to GC-2c in the handover. Decide as architect and record (decision rows): realised P&L quantized to the paisa; out-of-order fills
    (F-40 attack A1: an exit seen before its entry must not read as a side flip - reject or hold, never flip). Tier A
    Opus review aimed at: any Kite field reaching the domain unparsed or through float; the flat row; a replayed
@@ -91,7 +95,10 @@ header note naming the source file and the redaction; CI then runs the test.
    autovacuum on `history_minute_bars`) - if it recurs on any CI run, open a `deferred` issue with the run id, do not
    retry blindly; OQ-10 (breakeven columns vs charges) waits for the owner, not this contract.
 5b. **The verifier-in-flight hook false-blocks after a verifier ends (finding `liveness-from-a-file-nobody-deletes`,
-   Tier A hook, ~45 min, before item 2 if a verifier will run in this contract).** The kit guard leaves snapshots
+   Tier A hook, ~45 min).** By default only its WORKAROUND runs (delete a named stale snapshot after confirming no
+   verifier agent is running); its FIX is optional and second in the give-way order. With items 3, 4 and 5's re-verify
+   parked, items 1 + 2 + tail = 5.0-6.0 h: at the top estimate item 2 parks after its decision row and core test, named
+   in the handover (third contract review, `gc-2b-contract-review-2026-10-17.md`). The kit guard leaves snapshots
    behind (70 in 24 h), so the hook holds guarded writes up to 15 min after every verifier. A snapshot has only a creation time, so it
    cannot give a call's length: measure the longest verifier tool call with a timing log (start/stop per call), or use
    the gaps between consecutive snapshots as an UPPER bound and say so; then pick the fix (finding's options a-c); a kit
