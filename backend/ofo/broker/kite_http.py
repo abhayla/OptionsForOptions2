@@ -38,6 +38,10 @@ _ALLOWED: Final = tuple((method, _template_regex(path))
 def check_call(method: str, url: str) -> None:
     """Raise ``KiteCallRefused`` unless ``method url`` is allow-listed (or the host is not a Kite host)."""
     parts = urlsplit(str(url))
+    # Fail closed: urllib/http.client/ssl fold non-ASCII dots and letters into an ASCII host, so a non-ASCII host is
+    # never compared, whatever it names (owner decision 2026-10-16: refuse, no idna conversion).
+    if not parts.netloc.isascii() or not (parts.hostname or "").isascii():
+        raise KiteCallRefused(f"{method} {parts.netloc!r}: non-ASCII hosts are refused; nothing was sent")
     host = (parts.hostname or "").lower().rstrip(".")
     if host != KITE_API_HOST:
         if any(host == s or host.endswith("." + s) for s in _OTHER_KITE_SUFFIXES):

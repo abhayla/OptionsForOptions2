@@ -100,3 +100,13 @@ async def test_the_login_exchange_works_with_a_factory_client() -> None:
         with pytest.raises(Exception):  # the mock answer has no access_token: the exchange fails, but it was SENT
             await auth.exchange("rt")
     assert [(r.method, r.url.path) for r in seen] == [("POST", "/session/token")]
+
+
+def test_clients_refuse_non_ascii_host_before_sending() -> None:
+    # U+3002 ideographic full stop: other layers fold it to "." and would reach api.kite.trade
+    url = "https://api\u3002kite\u3002trade/orders/regular"
+    seen: list[httpx.Request] = []
+    with kite_http.kite_client(transport=_transport(seen)) as client:
+        with pytest.raises((kite_http.KiteCallRefused, httpx.InvalidURL)):
+            client.request("POST", url)
+    assert seen == []

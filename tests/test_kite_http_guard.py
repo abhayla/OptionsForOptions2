@@ -79,3 +79,25 @@ def test_open_url_sends_an_allowed_get(monkeypatch) -> None:
     (req, timeout), = seen
     assert req.get_method() == "GET" and req.full_url == ROOT + "/instruments" and timeout == 7
     assert req.get_header("X-kite-version") == "3"
+
+
+NON_ASCII_HOSTS = [
+    "api\u3002kite\u3002trade", "api\uff0ekite\uff0etrade", "api\uff61kite\uff61trade",  # dots urllib/ssl fold to "."
+    "\uff41pi.kite.trade",  # full-width letter
+    "ex\u00e4mple.com",  # non-ASCII, not a Kite host: refused outright, never compared
+]
+
+
+@pytest.mark.parametrize("host", NON_ASCII_HOSTS)
+def test_check_call_refuses_non_ascii_hosts(host: str) -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("POST", f"https://{host}/orders/regular")
+
+
+@pytest.mark.parametrize("host", NON_ASCII_HOSTS)
+def test_open_url_refuses_non_ascii_hosts_before_urlopen(monkeypatch, host: str) -> None:
+    opened: list[object] = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.open_url(f"https://{host}/orders/regular", method="POST", data=b"x", timeout=1)
+    assert opened == []
