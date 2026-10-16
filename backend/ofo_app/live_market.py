@@ -5,6 +5,9 @@ When ``LIVE_MARKET`` is on, the lifespan reads the owner's active Kite session (
 many screens watch it) and runs ``KiteSocket`` as a background task. ``get_market_context()`` then answers with it.
 No session -> no context ("Draft — Live data not connected", unchanged). A 403 on the socket (session ended) ends the
 task; the provider's feed state then reports the session as ended, so every quote shows a not-live health.
+#296: a Kite login stored by the callback while the app runs calls ``pick_up_login``; a market that is not running
+(not_connected, session_ended) stops its old socket and starts again from the new session, under one lock, so two
+logins never make two sockets and a login while live leaves the running socket alone.
 
 The access token lives only in the socket's URL string and in the redaction registry; this module never logs, prints or
 stores it. Only generic messages and exception class names are logged.
@@ -59,6 +62,8 @@ class LiveMarket:
         self.feed: Optional[LiveFeed] = None
         self._socket = None
         self._task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()  # one start/stop at a time: never two sockets (#296)
+        self._closed = False  # set by the app shutdown; a login after it starts nothing
 
     def context(self) -> Optional[MarketContext]:
         return None if self.feed is None else self.feed.ctx
@@ -112,7 +117,38 @@ class LiveMarket:
         self.attach(provider, socket, clock)
         log.info("live market data started")
 
+    def running(self) -> bool:
+        return self.state == LIVE and self._task is not None and not self._task.done()
+
+    async def pick_up_login(self, broker_config) -> None:
+        """#296: called after a login stored a session. Restarts from the stored session unless the socket is
+        running. Never raises: a failure leaves ``not_connected`` and is logged by class name only."""
+        async with self._lock:
+            if self._closed or self.running():
+                return
+            await self._halt()
+            self.feed, self._socket = None, None
+            try:
+                from ofo_app.config import app_env, get_settings
+                require_safe(app_env() or "", get_settings().KITE_WS_URL)
+                await self.start(broker_config)
+            except Exception as exc:  # noqa: BLE001 - the login stands; never the message (token, socket URL)
+                self.state = NOT_CONNECTED
+                log.error("live market data did not start after the login: %s", type(exc).__name__)
+                return
+            if self.state == LIVE:
+                log.info("live market data picked up the new Kite login")
+
     async def stop(self) -> None:
+        async with self._lock:
+            await self._halt()
+
+    async def close(self) -> None:
+        """App shutdown: stop the socket and refuse any later pick-up."""
+        self._closed = True
+        await self.stop()
+
+    async def _halt(self) -> None:
         if self._socket is not None:
             self._socket.stop()
         if self._task is not None:
@@ -136,3 +172,11 @@ def current_context() -> Optional[MarketContext]:
 
 def current_feed() -> Optional[LiveFeed]:
     return None if _current is None else _current.feed
+
+
+async def pick_up_login(broker_config) -> None:
+    """#296: the login callback's hook. Nothing unless LIVE_MARKET is on and the lifespan registered a market."""
+    market = _current
+    if market is None or not live_requested():
+        return
+    await market.pick_up_login(broker_config)

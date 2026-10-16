@@ -257,6 +257,8 @@ async def kite_callback(
         return _refused_redirect(request, rt, "broker_store_failed")
     finally:
         del session
+    from ofo_app import live_market  # late: live_market imports this package's outcome module
+    await live_market.pick_up_login(rt.config)  # #296: never raises; the login stands whatever the market does
     return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
 
 
