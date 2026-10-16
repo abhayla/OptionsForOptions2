@@ -53,8 +53,8 @@ def lint(path: Path, root: Path) -> str:
         return ""
     cwd = root / "frontend" if cmd[0] == "node" else root
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           timeout=TIMEOUT_S)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",  # noqa: S603 - fixed argv, no shell
+                           timeout=TIMEOUT_S, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     if r.returncode == 0:
