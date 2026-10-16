@@ -563,6 +563,11 @@
           "reason": {
             "title": "Reason"
           },
+          "shortfall": {
+            "default": false,
+            "title": "Shortfall",
+            "type": "boolean"
+          },
           "state": {
             "enum": [
               "NOT_AVAILABLE_YET",

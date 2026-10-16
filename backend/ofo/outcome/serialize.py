@@ -26,7 +26,7 @@ def _t(value: datetime.datetime | None) -> str | None:
 def _margin(out: Outcome) -> dict[str, Any]:
     m = out.margin
     return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "available": _s(m.available),
-            "checked_at": _t(m.checked_at)}
+            "checked_at": _t(m.checked_at), "shortfall": m.shortfall}
 
 
 def _col_id(cid: object) -> str:

@@ -115,7 +115,7 @@ async def test_core_needed_is_the_recorded_required_total_and_available_the_fund
     assert m.state == "CHECKED"
     assert m.needed == Decimal("7065.50") and type(m.needed) is Decimal and str(m.needed) == "7065.50"
     assert m.available == Decimal("671.50") and type(m.available) is Decimal and str(m.available) == "671.50"
-    assert m.checked_at == CHECKED_AT
+    assert m.checked_at == CHECKED_AT and m.shortfall is True  # 671.50 < 7065.50
     assert str(m.reason) == ("Margin from Zerodha for these planned orders: ₹7,065.50 needed, ₹671.50 available. "
                              "Checked at 12:08:52 PM.")
     sent = json.loads(next(b for _m, url, b in t.calls if "/margins/basket" in url))
@@ -168,6 +168,12 @@ async def test_no_session_is_the_login_text_and_no_kite_call() -> None:
               await margin_answer(None, CTX, plan())):
         assert m == MARGIN and str(m.reason) == LOGIN_TEXT
     assert t.calls == []
+
+
+def test_enough_funds_is_no_shortfall() -> None:
+    m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT)
+    assert m.shortfall is False and str(m.available) == "7065.50"
+    assert outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.49"), CHECKED_AT).shortfall is True
 
 
 async def test_no_stored_token_is_the_login_text() -> None:
@@ -263,7 +269,7 @@ async def test_route_carries_the_checked_margin_as_strings_once_per_plan(replaye
     raw = responses[0].text
     out = json.loads(raw)
     assert out["state"] == "COMPUTED" and out["summary"] is not None
-    assert out["margin"]["state"] == "CHECKED"
+    assert out["margin"]["state"] == "CHECKED" and out["margin"]["shortfall"] is True
     assert out["margin"]["needed"] == "7065.50" and out["margin"]["available"] == "671.50"  # strings, 2 decimals
     assert '"needed":"7065.50"' in raw.replace(" ", "")  # a JSON string, never a JSON number
     assert datetime.datetime.fromisoformat(out["margin"]["checked_at"]) == CHECKED_AT

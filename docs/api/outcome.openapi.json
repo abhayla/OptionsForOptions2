@@ -571,6 +571,11 @@
               }
             ],
             "title": "Checked At"
+          },
+          "shortfall": {
+            "type": "boolean",
+            "title": "Shortfall",
+            "default": false
           }
         },
         "additionalProperties": false,

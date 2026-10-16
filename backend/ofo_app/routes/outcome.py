@@ -266,6 +266,7 @@ class MarginOut(ApiModel):
     needed: Money | None = None  # Zerodha's basket figure + the ADR-094 top-up, to the paisa
     available: Money | None = None  # Zerodha's available funds, to the paisa
     checked_at: datetime.datetime | None = None  # when Zerodha was read (ADR-088)
+    shortfall: bool = False  # available < needed, compared as Decimal on the server (the browser never compares money)
 
 
 class LegOut(ApiModel):

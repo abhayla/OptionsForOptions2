@@ -145,6 +145,7 @@ class Margin:
     needed: Decimal | None = None
     available: Decimal | None = None
     checked_at: datetime.datetime | None = None
+    shortfall: bool = False  # CHECKED only: Zerodha's available funds are below the amount needed (Decimal compare)
 
 
 @dataclass(frozen=True)
@@ -183,7 +184,7 @@ def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.dat
     need = needed.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
     have = available.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
     return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", needed=need, available=have,
-                                                     time=checked_at), need, have, checked_at)
+                                                     time=checked_at), need, have, checked_at, available < needed)
 
 
 def margin_unreadable() -> Margin:
