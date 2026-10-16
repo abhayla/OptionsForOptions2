@@ -252,6 +252,7 @@ issues:
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
+  "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
 
 # Work items whose status is not done.
 work_items:
