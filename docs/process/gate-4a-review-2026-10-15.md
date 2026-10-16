@@ -1,5 +1,27 @@
 # Stage 4a gate review (draft, 2026-10-15 evening)
 
+## Re-run 2026-10-16 09:16-09:45 IST (main 640a47b, live Kite, ofo_dev): **NOT PASSED**
+Evidence: `docs/research/gate4a-2026-10-16/` (verdict.md, results.json, outcome-1..3.json, repro_spot.json,
+draft-results.json, shots-report.json, 10 screenshots). Run by an independent Opus checker; the frozen-spot evidence was
+re-read by the orchestrator from the files.
+- **D8 formulas: PASS.** 3 live calls (09:20:26, 09:21:31, 09:22:36), each 27 graded cells + 144 scenario cells, 0
+  mismatches; TOTAL rows per ADR-076: Entry Rs 4,793.75 Cr; Current 4,137.25 / 4,225.00 / 4,098.25 Cr; entry minus
+  current equals P&L (656.50 / 568.75 / 695.50). The grader flags the old plain-sum Current Value (11105.25 vs 4228.25).
+- **Draft save -> reload -> reopen: equality PASS, gate PARTIAL** (draft 9; only 2 of 4 legs had a planned entry, D-2).
+- **Screenshots: taken** (8 states at 1280 and 390). #232 items 1, 2, 4 gone; item 3 partly (no `NSE_FO:` ids; links
+  show "Contract details not available"; raw symbols in the notice box).
+- **Blocks the gate - D-1:** an instrument released by one socket and acquired by another stops ticking while the reply
+  stays COMPUTED/live (spot 22982.45 at 09:23:39 for 26 s while legs ticked; D8's spot_at 09:20:15 in all three calls).
+  Finding `live-subscription-lost-on-release-reacquire`. Fix in progress (branch fix/live-resubscribe-freeze).
+- D-2 leg picker gets no price for a contract no socket holds (same path, under investigation); D-3 a last price of 0
+  valued as a price (fix in progress, branch fix/zero-ltp-not-a-price); D-4 the live market reads the Kite session
+  only at API start, so a login after start leaves it NOT_CONNECTED until a restart (seen at 09:18; issue filed).
+- Minor: stray "estimated from spot" fragment and a duplicated notice; "Margin ... needs your Kite login" shown with a
+  session; the payoff chart's Loss line drawn at 0 across the profit zone.
+- **To pass:** D-1 fixed and proven live, then D8 again with a moving spot, and the draft check with all 4 legs priced.
+
+## 2026-10-15 draft (superseded by the re-run above)
+
 Verdict: **NOT YET PASSED.** Two gate checks were run at 11:55 IST on code that three later merges the same day
 changed (#212 proxy, #211 TOTAL Cr/Dr, #216 planned entries saved), and the Save Draft screen (W-071) did not exist yet.
 Those checks must be re-run on current main; the run is ready to go as soon as W-071 merges, in the next market session
