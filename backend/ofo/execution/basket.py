@@ -19,6 +19,8 @@ Rules:
   the WHOLE basket with ``MissingBrokerRef`` / ``BasketRefused`` (REQ-054 AC-3: no symbol is guessed or derived).
 - The basket calls the freeze check and the margin check ITSELF through the required ``freeze_check`` and
   ``margin_check`` parameters (no defaults) and refuses on a block, a wrong-typed answer or a raised error (fail closed).
+  The margin answer must be W-081's ``margin_gate.MarginVerdict`` (only ``check_margin`` mints one); in production the
+  one caller is ``ofo_app.checked_basket``, whose check is Zerodha's figures (REQ-055 AC-1/AC-3).
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
 - Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
@@ -31,9 +33,11 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final, Protocol
+from typing import Final
 
+from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
+from ofo.execution.margin_gate import MarginVerdict
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
@@ -46,7 +50,14 @@ _SEGMENT_TO_EXCHANGE: Final = {segment: exchange for exchange, segment in ZERODH
 
 
 class BasketRefused(ValueError):
-    """The whole basket is refused (a gate blocked, a gate could not answer, or a contract/tag cannot be used)."""
+    """The whole basket is refused (a gate blocked, a gate could not answer, or a contract/tag cannot be used).
+
+    ``user_message`` carries the gate's own user-facing message when it has one (a margin shortfall: Zerodha's
+    available vs required, REQ-055 AC-4); None otherwise."""
+
+    def __init__(self, text: str, user_message: UserFacingError | None = None) -> None:
+        super().__init__(text)
+        self.user_message = user_message
 
 
 # -- tags ---------------------------------------------------------------------------------------------------------
@@ -136,15 +147,9 @@ def _number(price: Decimal) -> str:
     return text
 
 
-class MarginVerdict(Protocol):
-    """What the margin gate returns: ``allowed`` must be exactly ``True`` for the basket to be built. (W-081's own
-    verdict type is adapted to this at integration.)"""
-
-    allowed: bool
-
-
 FreezeGate = Callable[[ExecutionPlan], FreezeCheck]
-MarginGate = Callable[[tuple[KiteOrder, ...]], MarginVerdict]  # asked about exactly the orders that would be sent
+MarginGate = Callable[[tuple[KiteOrder, ...]], MarginVerdict]  # asked about exactly the orders that would be sent;
+# production passes only ``ofo_app.checked_basket``'s Zerodha adapter (tests/test_margin_from_zerodha_only.py)
 _STRATEGY_ID_RE: Final = re.compile(r"(?:S-)?([1-9][0-9]*)", re.ASCII)
 
 
@@ -163,6 +168,14 @@ def _strategy_number(plan: ExecutionPlan) -> int:
     return int(m.group(1))
 
 
+def zerodha_exchange(segment: str) -> str:
+    """Zerodha's exchange name (``NFO``/``BFO``) for a catalogue segment; an unknown segment refuses the basket."""
+    exchange = _SEGMENT_TO_EXCHANGE.get(segment)
+    if exchange is None:
+        raise BasketRefused(f"no Zerodha exchange for segment {segment!r}")
+    return exchange
+
+
 def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[InstrumentId, str, str]]:
     out = []
     for planned in plan.legs:
@@ -179,10 +192,7 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
                 or (leg.strike is not None and c.strike != leg.strike)):
             raise BasketRefused(f"{ref.broker_symbol} is not the contract of leg {planned.leg_ref} "
                                 "(type, expiry or strike differ); no basket built")
-        exchange = _SEGMENT_TO_EXCHANGE.get(entry.id.exchange_segment)
-        if exchange is None:
-            raise BasketRefused(f"no Zerodha exchange for segment {entry.id.exchange_segment!r}")
-        out.append((entry.id, exchange, ref.broker_symbol))
+        out.append((entry.id, zerodha_exchange(entry.id.exchange_segment), ref.broker_symbol))
     return out
 
 
@@ -215,10 +225,16 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
     if freeze.blocks:
         raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
     margin = _ask(margin_check, orders, "margin")
-    if getattr(margin, "allowed", None) is not True:
-        raise BasketRefused("the margin check did not allow this basket; no basket built")
+    # Only W-081's own verdict counts (minted solely by ``check_margin`` from Zerodha's two figures): a look-alike
+    # object with ``allowed = True`` is refused (finding caller-supplied-verdict-trusted).
+    if type(margin) is not MarginVerdict:
+        raise BasketRefused("the margin check gave no usable answer; no basket built")
+    if margin.allowed is not True:
+        shown = margin.message
+        raise BasketRefused("the margin check did not allow this basket; no basket built"
+                            + ("" if shown is None else "\n" + display_text(shown)), shown)
     return KiteBasket(orders)
 
 
 __all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginVerdict", "TagParts", "build_basket",
-           "make_tag", "parse_tag"]
+           "make_tag", "parse_tag", "zerodha_exchange"]

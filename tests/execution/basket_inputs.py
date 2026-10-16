@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ofo.engine import Action, Instrument, Leg
 from ofo.execution.freeze import FreezeCheck
+from ofo.execution.margin_gate import check_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA
@@ -45,20 +46,16 @@ def real_plan(cat: Catalogue, strategy_id: str = "S-9") -> ExecutionPlan:
     return ExecutionPlan(strategy_id, tuple(legs))
 
 
-class MarginVerdict:
-    def __init__(self, allowed: bool, reason: str) -> None:
-        self.allowed, self.reason = allowed, reason
-
-
 class OkMargin:
-    """Fake margin gate; records the plans it was asked about."""
+    """Fake margin gate returning W-081's real verdict (funds 1.00 vs required 0.00, or 0.00 vs 1.00 when blocked);
+    records the orders it was asked about."""
 
     def __init__(self, allowed: bool = True) -> None:
         self.allowed, self.calls = allowed, []
 
-    def __call__(self, plan):
-        self.calls.append(plan)
-        return MarginVerdict(self.allowed, "" if self.allowed else "not enough margin")
+    def __call__(self, orders):
+        self.calls.append(orders)
+        return check_margin(D("1.00"), D("0.00")) if self.allowed else check_margin(D("0.00"), D("1.00"))
 
 
 class FakeFreeze:

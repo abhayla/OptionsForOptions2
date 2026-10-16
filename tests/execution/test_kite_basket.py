@@ -205,6 +205,27 @@ def test_margin_verdict_must_be_exactly_true(allowed) -> None:
         _build(margin=lambda plan: v)
 
 
+def test_look_alike_passing_verdict_is_refused() -> None:
+    """Finding caller-supplied-verdict-trusted: an object that only LOOKS like a pass (``allowed = True``, even a
+    subclass-free copy of the fields) is refused; only W-081's own minted verdict counts (kills the type check)."""
+    class Forged:
+        allowed = True
+        message = None
+
+    with pytest.raises(BasketRefused, match="no usable answer"):
+        _build(margin=lambda orders: Forged())
+
+
+def test_blocked_margin_carries_available_and_required() -> None:
+    """REQ-055 AC-4: a margin block carries the gate's own message, available vs required, to the paisa."""
+    from ofo.errors import display_text
+    from ofo.execution.margin_gate import check_margin
+    with pytest.raises(BasketRefused) as caught:
+        _build(margin=lambda orders: check_margin(D("68498.84"), D("68498.85")))
+    shown = display_text(caught.value.user_message)
+    assert "68,498.85" in shown and "68,498.84" in shown and shown in str(caught.value)
+
+
 def test_gate_that_raises_fails_closed() -> None:
     def boom(plan):
         raise ConnectionError("margin service down")
