@@ -62,6 +62,8 @@ DECLARED = {
     EventType.DIRECT_CUSTOMER_ELIGIBILITY_GRANTED, EventType.DIRECT_CUSTOMER_ELIGIBILITY_REVOKED,
     EventType.REFERRAL_REWARD_GRANTED, EventType.SUBSCRIPTION_STARTED, EventType.SUBSCRIPTION_EXPIRED,
     EventType.ADMIN_CHANGE_RECORDED,
+    # W-017: the three broker-reply types (declared from the real replies of 2026-10-16)
+    EventType.BROKER_RESPONSE_RECORDED, EventType.EXECUTION_RECORDED, EventType.RECONCILIATION_RECORDED,
 }
 UNDECLARED = sorted(set(EventType) - DECLARED, key=lambda e: e.value)
 
@@ -155,9 +157,9 @@ async def _next_event(
 # ---------------------------------------------------------------------------------------------------------------
 
 
-def test_exactly_the_nine_non_broker_types_are_declared() -> None:
+def test_exactly_the_nine_non_broker_and_three_broker_reply_types_are_declared() -> None:
     assert set(ALLOWLIST) == DECLARED
-    assert len(DECLARED) == 9 and len(UNDECLARED) == 24 and len(EventType) == 33
+    assert len(DECLARED) == 12 and len(UNDECLARED) == 21 and len(EventType) == 33
 
 
 def test_database_event_type_check_equals_the_python_allowlist() -> None:
