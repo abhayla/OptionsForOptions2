@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Final
 
@@ -40,6 +40,7 @@ from ofo.instruments.models import ZERODHA
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.marketdata.forward import ForwardUnavailable, mid_price
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -50,6 +51,11 @@ from ofo.table import ColumnSpec, Table, UXLevel, build_table, visible_columns
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
 MARGIN_NOT_AVAILABLE_YET: Final = "NOT_AVAILABLE_YET"
+#: ADR-099 margin states: Zerodha's figures read for the planned orders / Zerodha could not be read / the planned orders
+#: cannot be sent to Zerodha (a leg that is not a listed Zerodha contract). No session stays NOT_AVAILABLE_YET.
+MARGIN_CHECKED: Final = "CHECKED"
+MARGIN_UNREADABLE: Final = "UNREADABLE"
+MARGIN_NO_BASKET: Final = "NO_BASKET"
 _UNUSABLE: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 
 
@@ -130,8 +136,15 @@ class Summary:
 
 @dataclass(frozen=True)
 class Margin:
+    """The margin block (ADR-099). ``needed`` / ``available`` / ``checked_at`` are set only in the CHECKED state: the
+    amount needed is Zerodha's basket figure plus the ADR-094 top-up (a closing basket counts as 0), ``available`` is
+    Zerodha's available funds, ``checked_at`` when Zerodha was read (ADR-088). Every other state carries no figure."""
+
     state: str
     reason: ExplanationText
+    needed: Decimal | None = None
+    available: Decimal | None = None
+    checked_at: datetime.datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +169,31 @@ class Outcome:
 
 
 MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_margin_pending"))
+
+
+def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime) -> Margin:
+    """ADR-099: Zerodha's two figures and the time they were read, each shown to the paisa as Zerodha shows them
+    (half up: Kite's float noise 68498.85000000001 reads 68498.85). Display only: the gate (REQ-055) compares the
+    unrounded figures."""
+    for value in (needed, available):
+        if type(value) is not Decimal or not value.is_finite():
+            raise ValueError("a margin figure must be a finite Decimal")
+    if not isinstance(checked_at, datetime.datetime) or checked_at.tzinfo is None:
+        raise ValueError("checked_at must be a timezone-aware datetime")
+    need = needed.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+    have = available.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+    return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", needed=need, available=have,
+                                                     time=checked_at), need, have, checked_at)
+
+
+def margin_unreadable() -> Margin:
+    """ADR-099: Zerodha could not be read; no figure is made up."""
+    return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_unreadable"))
+
+
+def margin_no_basket() -> Margin:
+    """A leg is not a listed Zerodha contract, so no basket can be sent: no figure, and no Kite call."""
+    return Margin(MARGIN_NO_BASKET, render_explanation("outcome_margin_no_basket"))
 
 
 def _contract_fields(snapshot: MarketSnapshot | None, instrument_id: str, stored=None):

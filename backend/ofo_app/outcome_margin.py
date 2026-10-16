@@ -1,0 +1,209 @@
+"""ADR-099: Zerodha's margin for a strategy's planned orders, on the outcome answer (REST and the live push).
+
+With a live Kite session the margin block carries the amount needed (the W-081 client's ``required_total``: Zerodha's
+basket figure plus the ADR-094 top-up, a closing basket counting as 0) and Zerodha's available funds, with the time
+they were read (ADR-088, "Checked at"). The read happens once per change of the PLAN - the legs' instruments, sides,
+quantities and planned prices - never per price tick: the cache key is the planned basket itself, per user and per
+session, and the cache is bounded. The figure is information on the planning screen; the hard gate stays the check
+before the basket (REQ-055, ``ofo_app.kite_margin.margin_verdict``), untouched here.
+
+States (run-discipline B4 (d)):
+
+- no live session (no market context, or the socket not running on a session): the existing login text
+  (``outcome_margin_pending``); no Kite call, nothing cached.
+- a leg that is not a listed Zerodha contract: ``NO_BASKET``; no Kite call.
+- both figures read: ``CHECKED`` with the figures; cached until the plan changes.
+- Kite says the token is no longer valid: the login text; cached for ``RETRY_SECONDS``.
+- Kite busy / refused / down / junk / no figure / a timeout / the token store unreadable: ``UNREADABLE``
+  ("could not be read", never a made-up figure); cached for ``RETRY_SECONDS`` so a Kite outage costs one read per
+  ``RETRY_SECONDS`` per plan, not one per push.
+
+A margin failure never changes the rest of the outcome: the P&L answer is computed as before. The Kite read runs in a
+worker thread (``asyncio.to_thread``, like every other Kite read) under ``READ_TIMEOUT_SECONDS``; the event loop never
+waits on the network. The access token is never logged, cached or put in an answer: only exception class names are
+logged.
+"""
+from __future__ import annotations
+
+import asyncio
+import datetime
+import logging
+import time
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Hashable, Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Final, Optional
+
+from ofo.engine.product import Product
+from ofo.instruments.models import ZERODHA
+from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
+from ofo.marketdata.provider import MarketDataProvider
+from ofo.outcome.service import MARGIN, Margin, margin_checked, margin_no_basket, margin_unreadable
+from ofo.outcome.snapshot import contract_id
+from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
+
+log = logging.getLogger("ofo_app.outcome_margin")
+
+READ_TIMEOUT_SECONDS: Final = 8.0  # one funds read + one basket read; urllib's own per-call timeout is 20 s
+RETRY_SECONDS: Final = 30.0  # a failed read is not retried sooner (Kite rate limits; a push asks every second)
+CACHE_SIZE: Final = 256  # plans kept per process (all users together); the oldest is dropped first
+#: The platform's exchange segment -> Zerodha's exchange code, the reverse of the parser's one map (never retyped).
+EXCHANGE_OF_SEGMENT: Final = {segment: exchange for exchange, segment in ZERODHA_EXCHANGE_TO_SEGMENT.items()}
+_ORDER_TYPE: Final = "LIMIT"  # a planned price is a limit price (ADR-094: the user may pay up to it)
+
+OpenClient = Callable[[], Awaitable[Optional[KiteMargin]]]
+Clock = Callable[[], datetime.datetime]
+
+
+@dataclass(frozen=True)
+class PlannedOrderIn:
+    """One planned leg as the margin needs it (taken from the validated outcome request)."""
+
+    instrument_id: str
+    action: str  # "BUY" / "SELL"
+    lots: int
+    planned_entry: Decimal
+
+
+def basket_orders(provider: MarketDataProvider, legs: Sequence[PlannedOrderIn]) -> Optional[tuple[BasketOrder, ...]]:
+    """The planned orders as Zerodha's basket call takes them, or None when a leg is not a listed Zerodha contract
+    (unknown instrument, no Zerodha row, an exchange outside V1, a shape BasketOrder refuses). Product NRML (ADR-080),
+    a LIMIT at the planned entry, quantity = lots x the contract's lot size."""
+    master = {contract_id(lc): lc for lc in provider.instrument_master()}
+    orders = []
+    for leg in legs:
+        listed = master.get(leg.instrument_id)
+        if listed is None or not any(r.broker == ZERODHA for r in listed.broker_refs):
+            return None
+        exchange = EXCHANGE_OF_SEGMENT.get(listed.contract.exchange_segment)
+        if exchange is None:
+            return None
+        try:
+            orders.append(BasketOrder(exchange, listed.ref(ZERODHA).broker_symbol, leg.action, Product.NRML.value,
+                                      _ORDER_TYPE, leg.lots * listed.contract.lot_size, leg.planned_entry))
+        except (ValueError, TypeError):
+            return None
+    return tuple(orders)
+
+
+def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal]:
+    """In a worker thread: Zerodha's available funds, then the basket's required total."""
+    available = client.fetch_available_funds()
+    return available, client.fetch_basket_margin(orders).required_total
+
+
+@dataclass(frozen=True)
+class _Entry:
+    margin: Margin
+    until: Optional[float]  # None = kept until the plan changes (a success); else the monotonic retry time
+
+
+class OutcomeMargin:
+    """The margin reader with its plan-keyed cache. ``session`` says whether a Kite session is live (and which one);
+    ``open_client`` builds the margin client for it (reads the stored token) and is called only on a cache miss."""
+
+    def __init__(self, session: Callable[[], Optional[Hashable]], open_client: OpenClient, *, clock: Clock,
+                 monotonic: Callable[[], float] = time.monotonic, timeout: float = READ_TIMEOUT_SECONDS,
+                 retry: float = RETRY_SECONDS, size: int = CACHE_SIZE) -> None:
+        self._session = session
+        self._open = open_client
+        self._clock = clock
+        self._monotonic = monotonic
+        self._timeout = timeout
+        self._retry = retry
+        self._size = size
+        self._cache: OrderedDict[Hashable, _Entry] = OrderedDict()
+        self._lock = asyncio.Lock()
+        self.reads = 0  # Kite reads started (a test counter; one read = funds + basket)
+
+    def __repr__(self) -> str:
+        return "OutcomeMargin()"
+
+    def session(self) -> Optional[Hashable]:
+        return self._session()
+
+    async def margin_for(self, user: str, session: Hashable, orders: tuple[BasketOrder, ...]) -> Margin:
+        key = (user, session, orders)
+        async with self._lock:  # one read per plan even when the REST route and a push ask at once
+            entry = self._cache.get(key)
+            if entry is not None and (entry.until is None or self._monotonic() < entry.until):
+                self._cache.move_to_end(key)
+                return entry.margin
+            margin, kept = await self._fetch(orders)
+            self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._retry)
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._size:
+                self._cache.popitem(last=False)
+            return margin
+
+    async def _fetch(self, orders: tuple[BasketOrder, ...]) -> tuple[Margin, bool]:
+        """(the margin, whether it is kept until the plan changes)."""
+        self.reads += 1
+        try:
+            client = await asyncio.wait_for(self._open(), self._timeout)
+            if client is None:  # no stored session after all
+                return MARGIN, False
+            available, needed = await asyncio.wait_for(asyncio.to_thread(_read, client, orders), self._timeout)
+        except KiteMarginError as exc:
+            log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
+            return (MARGIN if exc.code == "kite_margin_token" else margin_unreadable()), False
+        except Exception as exc:  # noqa: BLE001 - a timeout, the token store, anything: "could not be read"
+            log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)
+            return margin_unreadable(), False
+        try:
+            return margin_checked(needed, available, self._clock()), True
+        except ValueError:
+            return margin_unreadable(), False
+
+
+async def margin_answer(source: Optional[OutcomeMargin], ctx, user: str,
+                        legs: Sequence[PlannedOrderIn]) -> Margin:
+    """The margin block for one outcome answer. ``ctx`` is the market context (None = not connected)."""
+    if source is None or ctx is None:
+        return MARGIN
+    session = source.session()
+    if session is None:
+        return MARGIN
+    orders = basket_orders(ctx.provider, legs)
+    if orders is None:
+        return margin_no_basket()
+    return await source.margin_for(user, session, orders)
+
+
+# ---- the running app's reader ------------------------------------------------------------------------------------
+
+async def _owner_client() -> Optional[KiteMargin]:
+    """The owner's margin client from the stored session (W-058), or None when none is stored."""
+    from ofo_app.broker_config import load_broker_config
+    from ofo_app.broker_crypto import TokenCipher
+    from ofo_app.broker_token_store import access_token_for
+    from ofo_app.db import get_engine
+    from ofo_app.live_market import OWNER_REF
+
+    config = load_broker_config()
+    engine = get_engine()
+    async with engine.connect() as conn:
+        token = await access_token_for(conn, OWNER_REF, TokenCipher(config.token_key), engine=engine)
+    return None if token is None else KiteMargin(api_key=config.api_key, access_token=token)
+
+
+def _live_session() -> Optional[Hashable]:
+    from ofo_app import live_market
+    return live_market.current_session()
+
+
+def _server_now() -> datetime.datetime:
+    from ofo_app.routes.outcome import server_now  # late: the route imports this module
+    return server_now()
+
+
+_app_source: Optional[OutcomeMargin] = None
+
+
+def app_source() -> OutcomeMargin:
+    """The one reader of the running app (one cache for the REST route and every live push)."""
+    global _app_source
+    if _app_source is None:
+        _app_source = OutcomeMargin(_live_session, _owner_client, clock=_server_now)
+    return _app_source

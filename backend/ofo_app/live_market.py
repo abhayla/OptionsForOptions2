@@ -231,6 +231,15 @@ def current_feed() -> Optional[LiveFeed]:
     return None if _current is None else _current.feed
 
 
+def current_session() -> Optional[bytes]:
+    """ADR-099: the running socket's session (its token fingerprint, never the token), or None when no Kite session is
+    live (not started, not connected, ended, or the test replay). The outcome margin reads Zerodha only with one."""
+    if _current is None or not _current.running():
+        return None
+    fingerprint = _current._fingerprint  # noqa: SLF001 - the module's own market object
+    return b"" if fingerprint is None else fingerprint  # running on a session whose fingerprint was not given
+
+
 async def pick_up_login(broker_config) -> None:
     """#296: the login callback's hook. Nothing unless LIVE_MARKET is on and the lifespan registered a market."""
     market = _current

@@ -11,12 +11,13 @@ guards (W-066, issue #151).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Awaitable, Callable, Literal, Mapping, Optional, Union
+from typing import Annotated, Awaitable, Callable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -26,6 +27,7 @@ from ofo.instruments.models import ListedContract
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.outcome.service import Margin
 from ofo.scenario.views import View
 from ofo.table import UXLevel
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
@@ -33,6 +35,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
+from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn
 
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger("ofo_app.outcome")
@@ -257,8 +260,12 @@ class SummaryOut(ApiModel):
 
 
 class MarginOut(ApiModel):
-    state: Literal["NOT_AVAILABLE_YET"]
+    """ADR-099: Zerodha's margin for the planned orders. The figures are present only in the CHECKED state."""
+    state: Literal["NOT_AVAILABLE_YET", "CHECKED", "UNREADABLE", "NO_BASKET"]
     reason: CatalogueText
+    needed: Optional[Money] = None  # Zerodha's basket figure + the ADR-094 top-up, to the paisa
+    available: Optional[Money] = None  # Zerodha's available funds, to the paisa
+    checked_at: Optional[datetime.datetime] = None  # when Zerodha was read (ADR-088)
 
 
 class LegOut(ApiModel):
@@ -361,7 +368,7 @@ def live_context() -> Optional[MarketContext]:
 def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
                      stored: Optional[Mapping[str, ListedContract]] = None,
-                     rates: Optional[ChargeRates] = None) -> OutcomeResponse:
+                     rates: Optional[ChargeRates] = None, margin: Optional[Margin] = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -383,6 +390,8 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
             out = not_live(definition, snapshot, ux)
         else:
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates)
+    if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
+        out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)
     body["answered_at"] = answered_at
     for column in (body.get("table") or {}).get("columns", ()):
@@ -393,13 +402,40 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
     return OutcomeResponse.model_validate(body)
 
 
+def get_margin_source() -> Optional[OutcomeMargin]:
+    """ADR-099: the running app's margin reader (one plan-keyed cache). Tests override it with a fake transport."""
+    from ofo_app.outcome_margin import app_source
+    return app_source()
+
+
+def margin_legs(req: OutcomeRequest) -> list[PlannedOrderIn]:
+    """The plan as the margin cache keys it: instrument, side, lots, planned price (never a live price)."""
+    return [PlannedOrderIn(leg.instrument_id, leg.action, leg.lots, Decimal(leg.planned_entry)) for leg in req.legs]
+
+
+async def margin_for_request(req: OutcomeRequest, ctx: Optional[MarketContext],
+                             source: Optional[OutcomeMargin]) -> Margin:
+    """The ONE margin step of both delivery paths (REST and the live push), so both show the same block."""
+    from ofo_app.live_market import OWNER_REF  # ADR-051 V1 single user
+    from ofo_app.outcome_margin import margin_answer
+    return await margin_answer(source, ctx, OWNER_REF, margin_legs(req))
+
+
+async def get_outcome_margin(req: OutcomeRequest,
+                             ctx: Annotated[Optional[MarketContext], Depends(get_market_context)],
+                             source: Annotated[Optional[OutcomeMargin], Depends(get_margin_source)]) -> Margin:
+    return await margin_for_request(req, ctx, source)
+
+
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
 def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencies, one per input
                      ctx: Optional[MarketContext] = Depends(get_market_context),
                      streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
                      now: AnswerClock = Depends(get_answer_clock),
                      stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs),
-                     rates: Optional[ChargeRates] = Depends(load_charge_rates)) -> OutcomeResponse:
+                     rates: Optional[ChargeRates] = Depends(load_charge_rates), *,
+                     margin: Annotated[Optional[Margin], Depends(get_outcome_margin)] = None) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
-                            rates=rates if isinstance(rates, ChargeRates) else None)
+                            rates=rates if isinstance(rates, ChargeRates) else None,
+                            margin=margin if isinstance(margin, Margin) else None)
