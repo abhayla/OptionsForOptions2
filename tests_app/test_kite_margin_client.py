@@ -7,7 +7,7 @@ import http.client
 import json
 import logging
 import pathlib
-import urllib.request
+from ofo.broker import kite_http as kite_door  # round 7: the urllib door sends through its own opener
 from decimal import Decimal
 
 import pytest
@@ -210,7 +210,7 @@ class _Response:
                                       _Response(b"not json")])
 def test_ac1_the_real_transport_turns_bad_bodies_into_the_typed_error(monkeypatch, response) -> None:
     """AC-1 (round 2 item 4): a 200 body that is not UTF-8, a read cut short, or not JSON -> typed error."""
-    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: response)
+    monkeypatch.setattr(kite_door._OPENER, "open", lambda request, timeout: response)
     with pytest.raises(KiteMarginError) as raised:
         KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
     assert raised.value.code == "kite_margin_unavailable"
@@ -258,7 +258,7 @@ def test_ac1_an_empty_or_foreign_basket_is_refused_before_any_call() -> None:
 @pytest.mark.parametrize("response", [_Response(b"\xff\xfe"), _Response(b"", fail_read=http.client.IncompleteRead(b"x"))])
 def test_ac1_urllib_transport_itself_raises_only_the_typed_error(monkeypatch, response) -> None:
     """AC-1 (round 2 item 4): the shipped transport converts a bad UTF-8 body or a short read itself."""
-    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: response)
+    monkeypatch.setattr(kite_door._OPENER, "open", lambda request, timeout: response)
     with pytest.raises(KiteMarginError):
         urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)
 
@@ -294,7 +294,7 @@ def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypa
     def refuse(request, timeout):
         raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, _Unreadable())
 
-    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(kite_door._OPENER, "open", refuse)
     with pytest.raises(KiteMarginError) as raised:
         KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
     assert raised.value.code == "kite_margin_token"

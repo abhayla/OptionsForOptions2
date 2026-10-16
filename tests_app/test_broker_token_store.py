@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ofo.broker.session import EndReason, expected_expiry
 from ofo_app import broker_token_store as store
-from ofo_app.kite_http import kite_async_client
+from ofo_app.kite_http import KiteAsyncClient
 from ofo_app.broker_config import BrokerSettings, load_broker_config
 from ofo_app.broker_crypto import NONCE_BYTES, TokenCipher, TokenDecryptError, associated_data
 from ofo_app.db import get_db
@@ -243,7 +243,7 @@ def _app(maker, user_ref: str, kite_handler):
             yield session
 
     async def _kite():
-        async with kite_async_client(transport=httpx.MockTransport(kite_handler)) as client:
+        async with KiteAsyncClient(_test_transport=httpx.MockTransport(kite_handler)) as client:
             yield HttpKiteAuth(API_KEY, API_SECRET, client)
 
     app.dependency_overrides[get_db] = _db

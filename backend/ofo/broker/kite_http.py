@@ -15,16 +15,18 @@ from __future__ import annotations
 
 import re
 import urllib.request as _urllib_request
-from collections.abc import Mapping
-from typing import Final
-from urllib.parse import unquote, urlsplit
+from collections.abc import Mapping as _Mapping
+from typing import Final as _Final
+from urllib.parse import unquote as _unquote
+from urllib.parse import urlsplit as _urlsplit
 
 from ofo.broker import egress as _egress
-from ofo.broker.kite_endpoints import ALLOWED_CALLS, KITE_API_HOST, KITE_WS_HOST
+from ofo.broker.kite_endpoints import ALLOWED_CALLS as _ALLOWED_CALLS
+from ofo.broker.kite_endpoints import KITE_API_HOST, KITE_WS_HOST
 
-_OTHER_KITE_SUFFIXES: Final = ("kite.trade", "zerodha.com")
-_PLAIN_NETLOC: Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
-_PLAIN_WS_NETLOC: Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
+_OTHER_KITE_SUFFIXES: _Final = ("kite.trade", "zerodha.com")
+_PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
+_PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
 
 class KiteCallRefused(Exception):
@@ -36,13 +38,13 @@ def _template_regex(template: str) -> re.Pattern[str]:
     return re.compile("".join("[^/]+" if p.startswith("{") else re.escape(p) for p in parts))
 
 
-_ALLOWED: Final = tuple((method, _template_regex(path))
-                        for calls in ALLOWED_CALLS.values() for method, path in sorted(calls))
+_ALLOWED: _Final = tuple((method, _template_regex(path))
+                        for calls in _ALLOWED_CALLS.values() for method, path in sorted(calls))
 
 
 def check_call(method: str, url: str) -> None:
     """Raise ``KiteCallRefused`` unless ``method url`` is allow-listed (or the host is not a Kite host)."""
-    parts = urlsplit(str(url))
+    parts = _urlsplit(str(url))
     # Fail closed (B8): the address is read by this guard AND by urllib / http.client / httpx / ssl, and they differ on
     # percent-escapes (%2E), non-ASCII dots, userinfo, IPv6 brackets and backslashes. So only a plain netloc is
     # accepted: the RAW text must fully match, before any lowercasing or decoding. Nothing is converted or compared
@@ -57,7 +59,7 @@ def check_call(method: str, url: str) -> None:
         if _is_kite_family(host):
             raise KiteCallRefused(f"{method} {host}: only {KITE_API_HOST} is called, and only allow-listed paths")
         return
-    path = unquote(parts.path)
+    path = _unquote(parts.path)
     segments = path.split("/")[1:]
     if "" in segments or ".." in segments or "." in segments or not path.startswith("/"):
         raise KiteCallRefused(f"{method} {path!r}: not a plain path")
@@ -74,7 +76,7 @@ def check_ws_url(url: str) -> None:
     """Raise ``KiteCallRefused`` unless ``url`` is a plain websocket address; for any Kite or Zerodha host it must be
     exactly ``wss://ws.kite.trade`` (port absent or 443, path empty or ``/``). Same raw-netloc character rule as
     ``check_call``; a non-Kite host (a local fake in tests) is not this door's concern, as in ``check_call``."""
-    parts = urlsplit(str(url))
+    parts = _urlsplit(str(url))
     if parts.scheme not in ("wss", "ws"):
         raise KiteCallRefused("only ws(s) URLs are opened by the Kite socket; nothing was opened")
     if not _PLAIN_WS_NETLOC.fullmatch(parts.netloc):
@@ -94,11 +96,11 @@ class _NoRedirect(_urllib_request.HTTPRedirectHandler):
 
 
 #: this door's own opener (never the process-wide one, which caller code could have replaced), without redirects.
-_OPENER: Final = _urllib_request.build_opener(_NoRedirect)
+_OPENER: _Final = _urllib_request.build_opener(_NoRedirect)
 
 
 def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
-             headers: Mapping[str, str] | None = None, timeout: float = 20):
+             headers: _Mapping[str, str] | None = None, timeout: float = 20):
     """``urllib`` request through the door: checked first, then sent inside the egress gate's door context."""
     check_call(method, url)
     if not isinstance(data, (bytes, type(None))):

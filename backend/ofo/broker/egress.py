@@ -87,10 +87,8 @@ def _allow_endpoints(urls: Iterable[str]) -> None:
             continue
         port = parts.port or 5432
         allowed.add((parts.hostname, port))
-        try:  # resolved once, here; getaddrinfo opens no connection
+        with contextlib.suppress(OSError):  # resolved once, here (no connection); unresolvable: only the name
             allowed.update((info[4][0], port) for info in socket.getaddrinfo(parts.hostname, port))
-        except OSError:
-            pass  # unresolvable now: only the name itself is allowed
     _state["endpoints"] = frozenset(allowed)
     _state["sealed"] = True
 

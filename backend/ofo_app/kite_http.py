@@ -14,7 +14,7 @@ read before the door opens (a caller's body generator never runs inside it). Aut
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping as _Mapping
 
 import httpx as _httpx
 
@@ -40,7 +40,7 @@ def _transport(cls_transport, test_transport):
 
 
 class KiteClient(_httpx.Client):
-    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: Mapping[str, str] | None = None,
+    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: _Mapping[str, str] | None = None,
                  _test_transport: _httpx.BaseTransport | None = None) -> None:
         super().__init__(base_url=base_url, timeout=timeout, headers=headers, follow_redirects=False,
                          transport=_transport(_httpx.HTTPTransport, _test_transport))
@@ -53,7 +53,7 @@ class KiteClient(_httpx.Client):
 
 
 class KiteAsyncClient(_httpx.AsyncClient):
-    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: Mapping[str, str] | None = None,
+    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: _Mapping[str, str] | None = None,
                  _test_transport: _httpx.AsyncBaseTransport | None = None) -> None:
         super().__init__(base_url=base_url, timeout=timeout, headers=headers, follow_redirects=False,
                          transport=_transport(_httpx.AsyncHTTPTransport, _test_transport))
@@ -66,12 +66,12 @@ class KiteAsyncClient(_httpx.AsyncClient):
 
 
 def kite_client(*, base_url: str = "", timeout: float = _TIMEOUT,
-                headers: Mapping[str, str] | None = None) -> KiteClient:
+                headers: _Mapping[str, str] | None = None) -> KiteClient:
     return KiteClient(base_url=base_url, timeout=timeout, headers=headers)
 
 
 def kite_async_client(*, base_url: str = "", timeout: float = _TIMEOUT,
-                      headers: Mapping[str, str] | None = None) -> KiteAsyncClient:
+                      headers: _Mapping[str, str] | None = None) -> KiteAsyncClient:
     return KiteAsyncClient(base_url=base_url, timeout=timeout, headers=headers)
 
 
