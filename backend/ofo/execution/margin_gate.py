@@ -21,7 +21,7 @@ from typing import Final, Protocol
 from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
 from ofo.money import PAISE as _PAISE
-from ofo.money import kite_paise
+from ofo.money import zerodha_paise
 
 _MINT: Final = object()  # module-private: only check_margin mints a verdict
 
@@ -103,7 +103,7 @@ def _premium(value: object) -> Decimal:
     amount = Decimal(value)
     if not amount.is_finite() or amount < 0:
         raise MarginReplyError("a BUY leg's option_premium is not a finite amount of 0 or more")
-    return kite_paise(amount)  # ADR-099/ADR-101: rounded half-up to the paisa where it is parsed
+    return zerodha_paise(amount)  # ADR-099/ADR-101: rounded half-up to the paisa where it is parsed
 
 
 def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> Decimal:
@@ -146,7 +146,7 @@ def _final_total(data: Mapping[str, object]) -> Decimal:
     if not value.is_finite():
         raise MarginReplyError("the basket margin reply's final.total is not a finite amount")
     try:
-        value = kite_paise(value)
+        value = zerodha_paise(value)
     except ValueError:
         raise MarginReplyError("the basket margin reply's final.total is too large to use") from None
     # A basket that closes or reduces held positions releases margin and Kite reports a negative total (real

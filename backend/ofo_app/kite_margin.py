@@ -27,7 +27,7 @@ from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
-from ofo.money import kite_paise
+from ofo.money import zerodha_paise
 
 log = logging.getLogger("ofo_app.kite_margin")
 KITE_API_URL: Final = f"https://{KITE_API_HOST}"
@@ -131,7 +131,7 @@ def _money(value: object) -> Decimal:
     if not amount.is_finite():
         raise KiteMarginError("kite_margin_no_figure")
     try:
-        return kite_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
+        return zerodha_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
     except ValueError:  # too large to round to the paisa: not a usable figure, so "not confirmed" (fail closed)
         raise KiteMarginError("kite_margin_no_figure") from None
 

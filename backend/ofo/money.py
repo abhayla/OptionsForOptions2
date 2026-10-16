@@ -15,7 +15,7 @@ HUNDREDTH: Final = Decimal("0.01")
 PAISE: Final = HUNDREDTH
 
 
-def kite_paise(value: Decimal | int) -> Decimal:
+def zerodha_paise(value: Decimal | int) -> Decimal:
     """One Kite money figure rounded HALF-UP to the paisa (ADR-099, ADR-101), where the figure is parsed.
 
     Kite's replies carry float noise (68498.85000000001); read with `parse_float=Decimal` the tail is kept exactly, and
