@@ -55,6 +55,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan, redirect_slashes=False, **docs)
     app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
+    errors.set_frontend_origin(config.frontend_origin)  # write-once (#159)
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
                                  os.environ.get("KITE_WS_URL", live_market.REAL_KITE_WS))
