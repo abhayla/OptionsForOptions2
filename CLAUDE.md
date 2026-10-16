@@ -100,6 +100,11 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   except as a whole body line `Fixes #N` when ALL of the issue is done. For part of an issue, write "addresses item 1 of
   #N". GitHub closes the whole issue otherwise (3 wrong closes on 2026-10-16). Enforced by the `pr-close-check` workflow
   (`scripts/orchestrator/pr_close_check.py --pr N` to check before pushing).
+- Coding standards (REQ-075, ADR-093): a standard is an automatic check or marked review-only; real-world values have
+  one home module (a repo test fails on a retyped literal); reuse helpers, never copy them. Per-technology rules load
+  by path from `.claude/rules/project/`; the edit hook lints each file as it is written. Every builder brief carries:
+  "no new duplicated literal; reuse the existing helper; ruff/mypy baselines must not rise; targeted tests only; no
+  regenerated files in the PR".
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
 
