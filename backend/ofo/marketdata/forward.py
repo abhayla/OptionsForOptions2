@@ -36,7 +36,7 @@ from typing import Final, Iterable, Literal
 from ofo.engine.black_scholes import DAYS_IN_YEAR, year_fraction
 from ofo.errors.explanations import render_explanation
 from ofo.engine.legs import Instrument
-from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.rules.inputs import DataHealth
 from ofo.money import HUNDREDTH as _POINT
 
@@ -112,7 +112,7 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
     """The ADR-061 forward of one expiry from its chain snapshot, the index spot quote and the valuation time."""
     if not isinstance(rate, Decimal) or not rate.is_finite():
         raise ValueError(f"rate must be a finite decimal.Decimal, got {rate!r}")
-    if spot is None or spot.ltp is None:
+    if spot is None or not is_live_price(spot.ltp):
         raise ForwardUnavailable("index spot is missing; the forward (and every IV/Greek on it) is refused")
     if spot.health in (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE):
         raise ForwardUnavailable(f"index spot is {spot.health.value}; never used in a calculation")
