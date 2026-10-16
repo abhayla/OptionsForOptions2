@@ -1,5 +1,42 @@
 # Session handover 2026-10-16: night build (00:00-06:30 IST), Stage 4b core first
 
+## Day update (08:00-11:45 IST): night plan status - read this first
+**Night plan: complete except W-080 (PARKED) and the real 4b order (blocked on W-080, funds and the owner's yes).**
+The owner will write a new plan for the rest; nothing outside the night plan is started.
+
+- **Gate 4a: PASSED** (10:25, main 48d75a7; #304; evidence `docs/research/gate4a-2026-10-16/rerun/`). The first
+  re-run (09:20) failed on D-1 (frozen live prices). The fixes:
+  - #300 D-1: a released-then-taken instrument keeps ticking;
+  - #302 D-2: the leg picker holds unheld legs until the first quote;
+  - #299 D-3: a last price of 0 is no live price.
+- **Live proofs (morning step 3): done**, #305, `docs/research/live-proofs-2026-10-16/`:
+  - margin gate refused Rs 263.25 against funds -497;
+  - executable price 26/26, including walks through 2-3 depth levels;
+  - charges equal Kite's except stamp on buys (up to Rs 0.47, the F-35 exception);
+  - F-39: Kite's basket margin = qty x min(limit, live price), so ADR-094 was recorded. **Its code is NOT built**
+    (next plan).
+- **W-080 PARKED for the owner** (#271): 8 rounds, the last two a runtime egress gate after two independent
+  re-designs. Remaining class: caller-supplied callables (httpx `extensions={"trace": f}`) run inside door context.
+  Branch `land/W-080-r8`; worktree `scratchpad/wt-w080`. Also 160 `# noqa` comments to clean up.
+- **Owner decisions today:**
+  - W-080 refuse non-ASCII hosts;
+  - OQ-4 (a) STT line: built on branch `land/W-075`, NOT merged; W-075 was held for the gate, which has now passed;
+  - OQ-9 superseded by ADR-091 (weekly freeze refresh, 8-day warning; #291);
+  - OQ-2 ADR-092 never split (#292; code is issue 255);
+  - still open: OQ-1, OQ-7.
+- **Process now on main:**
+  - REQ-075/ADR-093 coding standards (#293), with the edit-time lint hook and 6 path rules;
+  - one home per constant + ruff ratchet (#295);
+  - fast delivery rule (#301): full suites in CI only;
+  - `land.py` one-command landing (#303).
+- **Owner setup:** the user-level hook `owner-question-business-only.py` is wired in the owner's user settings (valid
+  JSON checked 10:20); it takes effect in a new session.
+- **Account:** Kite funds -497 at 08:58; the real order needs about Rs 1,000 added and the owner's yes.
+- **Running at hand-over:** the API on 8765 (main 48d75a7, LIVE_MARKET=1, ofo_dev), started from the scratchpad
+  `run_api_dev.py`. Stop it by PID before closing the session.
+- **Issues filed today:** #294 (edit hook minors), #296 (live market reads the session only at start), #297 (gate
+  minors).
+
 Owner brief (2026-10-16 ~00:00): build everything that needs no live market, test it offline, market tests from 09:15;
 no questions while asleep (parked in `docs/process/owner-questions-2026-10-16.md`, OQ-1..OQ-9). Plan: core first
 (ADR-087). Plan file: `C:\Users\itsab\.claude\plans\confirm-you-are-in-fluffy-hinton.md`.
