@@ -13,10 +13,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from ofo.broker import egress as _egress
 
-from ofo_app import errors, live_market, pinned_clock, replay_mode
-from ofo_app.config import Settings, app_env
+from ofo_app import errors, event_loop, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
+from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db
 from ofo_app.routes import broker, catalogue, health, live, outcome, planned_entry, strategies
 
@@ -28,13 +29,16 @@ DOCS_ENVS = frozenset({"development", "test"})
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    event_loop.require_selector_loop()  # W-080 r7: refuses to start on a loop whose connects the egress gate can't see
+    if not _egress.installed():  # W-080: create_app installs it; an app built any other way does not start
+        raise _egress.EgressRefused("the egress gate is not installed; the API starts only through create_app")
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
         market = live_market.LiveMarket()
         live_market.set_current(market)
         try:
             await market.start(app.state.broker.config)
-        except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.
+        except Exception as exc:  # the app still serves; live data stays "not connected". Never the message.  # noqa: BLE001
             market.state = live_market.NOT_CONNECTED
             log.error("live market data did not start: %s", type(exc).__name__)
     yield
@@ -46,7 +50,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     """Builds the app. The broker routes refuse to start without a valid broker configuration (W-058):
-    ``load_broker_config`` raises BrokerConfigError, so the app is never built without its token key."""
+    ``load_broker_config`` raises BrokerConfigError, so the app is never built without its token key.
+
+    The FIRST thing it does is install the runtime egress gate (REQ-073 AC-4, ``ofo.broker.egress``): from here on
+    this process connects only to loopback, the database and the Kite doors, and starts no process. Unconditional:
+    no environment value or flag skips it, and an audit hook cannot be removed."""
+    _egress.install()
     config = broker_config if broker_config is not None else load_broker_config()
     # ADR-073: the framework docs page and API description exist only in development and test; in production
     # (and any other APP_ENV) they are not mounted, so they answer 404.

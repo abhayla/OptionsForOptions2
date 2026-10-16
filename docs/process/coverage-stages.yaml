@@ -168,6 +168,7 @@ decisions:
   ADR-095: 4b           # price tolerance split pro rata to each leg's planned value (owner OQ-1, 2026-10-16)
   ADR-096: 4b           # held position added to an existing strategy order-free (owner OQ-7, 2026-10-16)
   ADR-097: 4b           # real test orders: options only, owner presses Execute, holdings never sold (owner 2026-10-16)
+  ADR-098: 4b           # REQ-073 AC-4: forged code objects out of scope; W-080 merges (owner 2026-10-16)
   ADR-099: 4b           # outcome screen shows Zerodha margin when connected, refreshed on plan change (owner 2026-10-16)
   ADR-100: 4b           # no static IP for the Kite app; API order placement stays impossible (owner 2026-10-16)
   ADR-101: 4b           # Zerodha money figures rounded half-up to the paisa at parse (architect, GC-2a)
@@ -262,7 +263,6 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-083: 4b           # PARTIAL: AC-1/AC-4 verified; AC-2 add-to-existing waits on owner OQ-7 (REQ-061, ADR-084)
-  W-080: 4b           # PARKED #271: basket verified AC-1/AC-2; AC-4 urllib door misses Unicode-dot host
   W-081: 4b           # BLOCKED: margin gate merged as a component; needs basket (#271), live funds read, #273
   W-089: 4a           # GC-2d: Settings -> Broker & Market Data page (REQ-015 AC-4, AC-8; REQ-051 AC-1 line)
   W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)

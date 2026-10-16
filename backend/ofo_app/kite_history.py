@@ -10,16 +10,17 @@ from __future__ import annotations
 
 import datetime
 import logging
-import urllib.error
-import urllib.request
-from typing import Callable, Iterable
+from typing import Callable, Iterable  # noqa: UP035
+from urllib.error import HTTPError, URLError
 
+from ofo.broker.kite_endpoints import KITE_API_HOST
+from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.history.bars import MinuteBar
 from ofo.history.candles import parse_candles
 from ofo.instruments.models import ZERODHA, ListedContract
 
 log = logging.getLogger("ofo_app.kite_history")
-KITE_API_URL = "https://api.kite.trade"
+KITE_API_URL = f"https://{KITE_API_HOST}"
 Transport = Callable[[str, dict[str, str]], tuple[int, str]]
 
 
@@ -28,25 +29,24 @@ class CandleFetchError(RuntimeError):
 
 
 def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
-    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - fixed https host
+        with kite_open_url(url, headers=headers, timeout=20) as response:  # checked against ALLOWED_CALLS first
             return response.status, response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
+    except HTTPError as exc:
         return exc.code, ""
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (URLError, TimeoutError, OSError) as exc:
         raise CandleFetchError(f"transport error: {type(exc).__name__}") from None
 
 
 class KiteHistory:
     def __init__(self, listed: Iterable[ListedContract], *, api_key: str, access_token: str,
                  transport: Transport = urllib_transport, base_url: str = KITE_API_URL) -> None:
-        self._token_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": str(lc.ref(ZERODHA).broker_token)
+        self._token_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": str(lc.ref(ZERODHA).broker_token)  # noqa: E501
                           for lc in listed}
         self._index_ids = {i for i, lc in ((f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}", lc)
                                            for lc in listed) if lc.contract.is_index()}
         self._headers = {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}  # never logged
-        self._transport = transport
+        self._fetch = transport
         self._base = base_url
 
     def minute_candles(self, instrument_id: str, start: datetime.datetime, end: datetime.datetime) -> list[MinuteBar]:
@@ -55,8 +55,8 @@ class KiteHistory:
             raise CandleFetchError("unknown instrument")
         url = (f"{self._base}/instruments/historical/{token}/minute?from={start:%Y-%m-%d+%H:%M:%S}"
                f"&to={end:%Y-%m-%d+%H:%M:%S}&oi=1")
-        status, text = self._transport(url, self._headers)
-        if status != 200:
+        status, text = self._fetch(url, self._headers)
+        if status != 200:  # noqa: PLR2004
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")
         return parse_candles(text, instrument_id, index=instrument_id in self._index_ids)

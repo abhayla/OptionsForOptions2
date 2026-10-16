@@ -222,17 +222,17 @@ async def test_the_owner_client_bounds_each_call_below_the_read_timeout(monkeypa
     monkeypatch.setattr(live_market, "_current", SimpleNamespace(_config=SimpleNamespace(api_key="key"),
                                                                  _stored_token=stored))
     client = await live_market.owner_margin_client()
-    timeout = client._transport.keywords["timeout"]
+    timeout = client._call.keywords["timeout"]
     assert timeout * 2 <= outcome_margin.READ_TIMEOUT_SECONDS  # funds + basket together never outlive the read
     seen = {}
 
-    def urlopen(_request, timeout):
+    def door(_url, *, method="GET", data=None, headers=None, timeout=None):  # W-080: every send goes via the door
         seen["timeout"] = timeout
         raise OSError("no network in tests")
 
-    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    monkeypatch.setattr("ofo_app.kite_margin.kite_open_url", door)
     with pytest.raises(KiteMarginError):  # the transport's own failure; only the timeout is asserted
-        client._transport("GET", "https://example.invalid/x", {}, None)
+        client._call("GET", "https://api.kite.trade/user/margins", {}, None)
     assert seen["timeout"] == timeout
 
 

@@ -22,8 +22,9 @@ import hashlib
 import logging
 import os
 from decimal import Decimal
-from typing import Callable, Optional
+from typing import Callable, Optional  # noqa: UP035
 
+from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
@@ -37,7 +38,7 @@ log = logging.getLogger("ofo_app.live_market")
 
 OWNER_REF = "owner"  # ADR-051 V1 single user; the same ref the W-058 login stores the session under
 LIVE_RATE = Decimal("0.065")  # the risk-free rate the replay uses too; a rates source is a later item
-REAL_KITE_WS = "wss://ws.kite.trade"
+REAL_KITE_WS = f"wss://{KITE_WS_HOST}"
 
 NOT_STARTED, NOT_CONNECTED, LIVE, SESSION_ENDED = "off", "not_connected", "live", "session_ended"
 
@@ -70,7 +71,7 @@ def listed_for_kite(entries) -> list[ListedContract]:
 class LiveMarket:
     def __init__(self) -> None:
         self.state = NOT_STARTED
-        self.feed: Optional[LiveFeed] = None
+        self.feed: Optional[LiveFeed] = None  # noqa: UP045
         self._socket = None
         self._task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()  # one start/stop at a time: never two sockets (#296)
@@ -79,7 +80,7 @@ class LiveMarket:
         self._config = None  # the broker config of the last start, for the one re-read after a session ends
         self._recheck: asyncio.Task | None = None
 
-    def context(self) -> Optional[MarketContext]:
+    def context(self) -> Optional[MarketContext]:  # noqa: UP045
         return None if self.feed is None else self.feed.ctx
 
     def attach(self, provider: KiteProvider, socket, clock: Callable[[], datetime.datetime],
@@ -97,7 +98,7 @@ class LiveMarket:
             result = await self._socket.run()
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # never the message: it could hold the socket URL
+        except Exception as exc:  # never the message: it could hold the socket URL  # noqa: BLE001
             log.error("kite socket task failed: %s", type(exc).__name__)
             self._session_ended()
             return
@@ -218,19 +219,19 @@ class LiveMarket:
         self._task = None
 
 
-_current: Optional[LiveMarket] = None
+_current: Optional[LiveMarket] = None  # noqa: UP045
 
 
-def set_current(market: Optional[LiveMarket]) -> None:
-    global _current
+def set_current(market: Optional[LiveMarket]) -> None:  # noqa: UP045
+    global _current  # noqa: PLW0603
     _current = market
 
 
-def current_context() -> Optional[MarketContext]:
+def current_context() -> Optional[MarketContext]:  # noqa: UP045
     return None if _current is None else _current.context()
 
 
-def current_feed() -> Optional[LiveFeed]:
+def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
     return None if _current is None else _current.feed
 
 
