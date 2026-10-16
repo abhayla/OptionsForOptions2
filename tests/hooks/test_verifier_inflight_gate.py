@@ -3,6 +3,7 @@ cannot write work/spec/evidence of any worktree or run a tree-rewriting git comm
 
 Each test runs the hook as a subprocess with the hook-input JSON on stdin and OFO_VERIFIER_SNAP_DIR pointing at a temp
 folder. Killing tests (mutation): see the module-level MUTATIONS table, each entry is run against a patched copy."""
+import importlib.util
 import json
 import os
 import pathlib
@@ -300,7 +301,8 @@ def test_temp_repo_outside_roots_never_blocked(snap, layout, tmp_path):
     (scratch / "work").mkdir(parents=True)
     (scratch / ".git").mkdir()
     assert run(write(scratch / "work" / "x.md"), snap).returncode == OK
-    for cmd in ("git init", "git add .", "git commit -m x", "git checkout -b t", "git merge x", "git " + CLEAN + " -fdx"):
+    cmds = ("git init", "git add .", "git commit -m x", "git checkout -b t", "git merge x", "git " + CLEAN + " -fdx")
+    for cmd in cmds:
         assert run(bash(cmd, cwd=str(scratch)), snap).returncode == OK, cmd
 
 
@@ -319,7 +321,6 @@ def test_refusal_names_the_snapshot_and_how_to_clear_it(snap):
 
 
 def load_hook():
-    import importlib.util
     spec = importlib.util.spec_from_file_location("vif_under_test", HOOK)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -426,13 +427,16 @@ MUTATIONS = [
     ("variable head", '    if h.startswith(("$", "`")):\n', "    if False:\n",
      "test_non_read_only_git_refused_while_in_flight"),
     ("agit helper", '== "agit.py":', "== 'never':", "test_non_read_only_git_refused_while_in_flight"),
-    ("-c config", '                unsafe = unsafe or "git -c (config can define a command)"\n', "                pass\n",
+    ("-c config", '                unsafe = unsafe or "git -c (config can define a command)"\n',
+     "                pass\n",
      "test_non_read_only_git_refused_while_in_flight"),
     ("--output", '    if any(a == "--output" or', '    if False and any(a == "--output" or',
      "test_non_read_only_git_refused_while_in_flight"),
-    ("cd unknown", "            dir_unknown = True  # a later step runs somewhere we cannot resolve\n", "            pass\n",
+    ("cd unknown", "            dir_unknown = True  # a later step runs somewhere we cannot resolve\n",
+     "            pass\n",
      "test_cd_then_git_in_a_watched_folder_refused"),
-    ("git-dir unknown", "                workdir = None\n            i += 2\n", "                pass\n            i += 2\n",
+    ("git-dir unknown", "                workdir = None\n            i += 2\n",
+     "                pass\n            i += 2\n",
      "test_only_watched_roots_are_blocked"),
     ("-C workdir", "                workdir = os.path.join(workdir, nxt) if workdir is not None else None\n",
      "                pass\n", "test_only_watched_roots_are_blocked"),

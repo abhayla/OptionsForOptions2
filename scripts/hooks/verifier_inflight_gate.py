@@ -66,7 +66,7 @@ def _under(path: str, root: str) -> bool:
     return path == root or path.startswith(root.rstrip("/\\") + os.sep)
 
 
-def _snapshot_roots(p: Path) -> "list[str] | None":
+def _snapshot_roots(p: Path) -> list[str] | None:
     """The roots one snapshot's guard watches; None (everything) when it cannot be read or names none."""
     try:
         m = json.loads(p.read_text(encoding="utf-8"))
@@ -76,7 +76,7 @@ def _snapshot_roots(p: Path) -> "list[str] | None":
     return roots or None
 
 
-def inflight() -> "list[tuple[float, Path, list[str] | None]] | None":
+def inflight() -> list[tuple[float, Path, list[str] | None]] | None:
     """(age seconds, file, watched roots or None) of every fresh snapshot, or None when no call is in flight."""
     d = snap_dir()
     if not d.is_dir():
@@ -97,14 +97,14 @@ def inflight_age() -> float | None:
     return min(a for a, _, _ in f) if f else None
 
 
-def _hit(flight, path: str | None) -> "tuple[float, Path] | None":
+def _hit(flight, path: str | None) -> tuple[float, Path] | None:
     """The youngest snapshot that watches `path` (None path = unknown place, watched by all)."""
     hits = [(a, p) for a, p, roots in flight
             if roots is None or path is None or any(_under(path, r) for r in roots)]
     return min(hits, key=lambda h: h[0]) if hits else None
 
 
-def _refusal(what: str, hit: "tuple[float, Path]") -> str:
+def _refusal(what: str, hit: tuple[float, Path]) -> str:
     age, snap = hit
     return (f"BLOCKED by {RULE}: {what}. A verifier tool call is running (snapshot {int(age)}s old); "
             "the kit write-guard would quarantine this change. Wait for the verifier to return, then retry. "
@@ -152,7 +152,7 @@ def _branch_ok(rest: list[str]) -> bool:
 
 
 def _read_only_ok(sub: str, rest: list[str]) -> bool:
-    if any(a == "--output" or a.startswith("--output=") or a.startswith("--open-files-in-pager") for a in rest):
+    if any(a == "--output" or a.startswith(("--output=", "--open-files-in-pager")) for a in rest):
         return False
     if sub == "grep" and any(a.startswith("-O") for a in rest):
         return False
@@ -167,10 +167,8 @@ def _read_only_ok(sub: str, rest: list[str]) -> bool:
     return True
 
 
-def git_refusal(words: list[str], cwd: str, dir_unknown: bool = False) -> "tuple[str | None, str | None]":
-    """(why this git step is refused or None, the directory it runs in or None when unknown).
-    Allow-list: only READ_ONLY subcommands with read-only arguments pass."""
-    workdir: str | None = None if dir_unknown else (cwd or os.getcwd())
+def _scan_git_options(words: list[str], workdir: str | None) -> tuple[int, str | None, str | None]:
+    """Walk the options before the subcommand: (index of the subcommand, directory or None, unsafe reason)."""
     unsafe = None
     i = 1
     while i < len(words):
@@ -194,6 +192,14 @@ def git_refusal(words: list[str], cwd: str, dir_unknown: bool = False) -> "tuple
             i += 1  # --no-pager, -p, -P ...
         else:
             break
+    return i, workdir, unsafe
+
+
+def git_refusal(words: list[str], cwd: str, dir_unknown: bool = False) -> tuple[str | None, str | None]:
+    """(why this git step is refused or None, the directory it runs in or None when unknown).
+    Allow-list: only READ_ONLY subcommands with read-only arguments pass."""
+    workdir: str | None = None if dir_unknown else (cwd or os.getcwd())
+    i, workdir, unsafe = _scan_git_options(words, workdir)
     if unsafe:
         return unsafe, workdir
     if i >= len(words):
@@ -206,7 +212,7 @@ def git_refusal(words: list[str], cwd: str, dir_unknown: bool = False) -> "tuple
     return None, workdir
 
 
-def _step_verdict(step: list[str], cwd: str, dir_unknown: bool) -> "tuple[str | None, str | None] | None":
+def _step_verdict(step: list[str], cwd: str, dir_unknown: bool) -> tuple[str | None, str | None] | None:
     """(why refused, directory or None) for a step that runs git or cannot be read, else None."""
     from _route_common import head  # noqa: PLC0415
 
