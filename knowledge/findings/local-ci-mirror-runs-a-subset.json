@@ -27,6 +27,11 @@
    "date": "2026-10-16",
    "where": "GC-1 docs PR #333 (orchestrator, not a builder)",
    "evidence": "pushed after a hand-picked set of fast checks (lint, trace, coverage, findings index, spec refs, ruff); CI lint-and-test red on 3 skipped steps: build_order --check, build_spec_index --check, and tests/test_tests_required_exist.py (W-087 entries separated by ';'). scripts/orchestrator/atool.py <worktree-dir> --no-tests runs every ci.yml step plus the repo guard tests in ~1 min and would have caught all three."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-2a, PR #327 after merging main (commit e34ede1)",
+   "evidence": "CI api job refused it in 35 s: 'ruff ratchet: E501 rose 632 -> 633' (run 38937916294). atool.py --no-tests had passed every step it runs: it mirrored ci.yml and the guard tests but not the app-tests.yml api job's ruff ratchet or migration guard. Fixed structurally the same turn: atool.py now runs scripts/alembic_migration_guard.py and scripts/ruff_ratchet.py; re-run on e34ede1 -> 'scripts/ruff_ratchet.py rc 1' (red), on f8c19e8 -> OK."
   }
  ]
 }
