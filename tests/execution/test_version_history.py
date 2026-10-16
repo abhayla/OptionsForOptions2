@@ -9,11 +9,10 @@ from decimal import Decimal as D
 
 import pytest
 
-from execution_inputs import AS_OF, EXPIRY, all_true_context, check, closing_orders, find_token
+from execution_inputs import AS_OF, EXPIRY, all_true_context, check, closing_orders, find_token, refuse
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import CheckCode, ExecutionAction, VersionState, active_legs_hash
 from ofo.execution.alternatives import gate_inputs_from_record, record_alternative_choice
-from ofo.instruments import EligibilityStatus
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import (
     ExecutionResult,
@@ -59,7 +58,7 @@ def _as_engine(definition: StrategyDefinition) -> Strategy:
 
 def _unavailable_report(rec: StrategyRecord, catalogue, eligibility):
     """The gate's report when the sold 23,000 PE is not accepting fresh orders."""
-    eligibility.record(EligibilityStatus(find_token(catalogue, "PE", "23000"), False, AS_OF, "OI limit reached"))
+    eligibility = refuse(eligibility, find_token(catalogue, "PE", "23000"))
     strategy = _as_engine(rec.definition)
     result = check(strategy, all_true_context(), catalogue, eligibility)
     (failure,) = result.failures

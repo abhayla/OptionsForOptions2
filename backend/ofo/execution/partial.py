@@ -84,7 +84,7 @@ from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
 from ofo.errors.explanations import CHOICE_LABEL_TEXT
 from ofo.execution.sequence import BrokerConstraints, PlannedOrder, SliceRefused, exit_orders, sequence_plan
-from ofo.instruments import ZERODHA, Catalogue, EligibilityRegistry
+from ofo.instruments import ZERODHA, Catalogue, ZerodhaEligibility
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
 from ofo.strategy.guard import (GuardBinding, GuardDecision, GuardRefused, _decision, acknowledgement_refused,
@@ -635,7 +635,7 @@ def _order_products(orders: tuple[Order, ...], plan: ExecutionPlan) -> dict[tupl
 
 
 def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContext, book: OrderBook,
-          plan: ExecutionPlan, catalogue: Catalogue, eligibility: EligibilityRegistry, choice: PartialChoice,
+          plan: ExecutionPlan, catalogue: Catalogue, eligibility: ZerodhaEligibility, choice: PartialChoice,
           a: Assessment, record: StrategyRecord, planner: MarginPlanner,
           cancels: tuple[str, ...] = (), slices: tuple[PlannedOrder, ...] = ()) -> Preparation:
     blocked = ctx.reconciliation_blocked_strategy_ids
@@ -665,7 +665,7 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
 def _prepare_missing(
     choice: PartialChoice, remaining: Sequence[RemainingLeg], plan: ExecutionPlan, reader: BrokerReader,
     book: OrderBook, planner: MarginPlanner, context: ExecutionContext, catalogue: Catalogue,
-    eligibility: EligibilityRegistry, a: Assessment, margin_planner: PlanMarginPlanner | None,
+    eligibility: ZerodhaEligibility, a: Assessment, margin_planner: PlanMarginPlanner | None,
     constraints: BrokerConstraints | None,
 ) -> Preparation:
     if context.action is ExecutionAction.EXIT:
@@ -719,7 +719,7 @@ def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Prepar
 
 def complete_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: EligibilityRegistry, *, margin_planner: PlanMarginPlanner | None = None,
+    catalogue: Catalogue, eligibility: ZerodhaEligibility, *, margin_planner: PlanMarginPlanner | None = None,
     constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """AC-4: re-fetch, sync, recompute the remaining strategy, re-check margin, verify the missing legs, prepare only
@@ -746,7 +746,7 @@ def complete_strategy(
 
 def retry_failed_leg(
     plan: ExecutionPlan, leg_ref: str, reader: BrokerReader, book: OrderBook, planner: MarginPlanner,
-    context: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry, *,
+    context: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility, *,
     margin_planner: PlanMarginPlanner | None = None, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """Orchestrator default OD-a: new order(s) for the same contract as one FAILED leg, after the same re-reads.
@@ -779,7 +779,7 @@ def review_manually(assessment: Assessment) -> Preparation:
 
 def close_partial_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: EligibilityRegistry, *, constraints: BrokerConstraints | None = None,
+    catalogue: Catalogue, eligibility: ZerodhaEligibility, *, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """Close Partial Strategy: reduce-only exits for exactly the filled legs, through the gate as an EXIT.
 
