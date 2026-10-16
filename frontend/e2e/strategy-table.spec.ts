@@ -75,8 +75,9 @@ test('every number on the screen equals the API response text for the condor', a
   }
 
   // 3. headline numbers: the page shows the API's strings; the expected values below are the W-063 condor's own
-  expect(api.summary.max_profit).toBe('4754.75')
-  expect(api.summary.max_loss).toBe('8245.25')
+  // with the round-trip charges 215.10 (rounded up to the paisa) inside them, ADR-082 (2)
+  expect(api.summary.max_profit).toBe('4539.65')
+  expect(api.summary.max_loss).toBe('8460.35')
   expect(api.summary.breakevens).toEqual(['22326.85', '22873.15'])
   await expect(page.getByTestId('max-profit')).toHaveText(api.summary.max_profit)
   await expect(page.getByTestId('max-loss')).toHaveText(api.summary.max_loss)

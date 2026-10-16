@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges
+from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import render_explanation
 
@@ -44,6 +44,7 @@ CONDOR = (
     (Action.BUY, Instrument.PE, "22550", "34.00"),
 )
 HAND_TOTAL = D("214.959564795")
+HAND_PAISE = D("214.96")  # HAND_TOTAL rounded UP to the paisa (ADR-082 (2)): the value the API carries
 MAX_LOSS_BEFORE = D("8635.25")
 MAX_PROFIT_BEFORE = D("4364.75")
 
@@ -79,7 +80,7 @@ def test_hand_computation_equals_the_literal_total():
 
 
 def test_core_round_trip_charges_of_the_real_condor():
-    assert round_trip_charges(legs(), "NIFTY", RATES) == HAND_TOTAL
+    assert round_trip_charges(legs(), "NIFTY", RATES) == HAND_PAISE
 
 
 def test_entry_orders_match_kites_real_rows_except_stamp():
@@ -95,11 +96,11 @@ def test_entry_orders_match_kites_real_rows_except_stamp():
 
 
 def test_the_core_sentences():
-    loss = MAX_LOSS_BEFORE + HAND_TOTAL
-    profit = MAX_PROFIT_BEFORE - HAND_TOTAL
-    assert (render_explanation("summary_lose_at_most_with_charges", amount=loss, charges=HAND_TOTAL)
+    loss = MAX_LOSS_BEFORE + HAND_PAISE
+    profit = MAX_PROFIT_BEFORE - HAND_PAISE
+    assert (render_explanation("summary_lose_at_most_with_charges", amount=loss, charges=HAND_PAISE)
             == "At most ₹8,850.21 at expiry, including about ₹214.96 of charges and taxes.")
-    assert (render_explanation("summary_make_at_most_with_charges", amount=profit, charges=HAND_TOTAL)
+    assert (render_explanation("summary_make_at_most_with_charges", amount=profit, charges=HAND_PAISE)
             == "At most ₹4,149.79 at expiry, including about ₹214.96 of charges and taxes.")
 
 
@@ -107,9 +108,9 @@ def test_the_core_sentences():
 
 def test_guard_each_leg_is_entry_plus_opposite_exit_at_the_same_price():
     one_leg = round_trip_charges(legs()[:1], "NIFTY", RATES)  # mutation: exit at another price / same side -> red
-    assert one_leg == hand("SELL", D("53.30"))["total"] + hand("BUY", D("53.30"))["total"]
+    assert one_leg == to_paise_up(hand("SELL", D("53.30"))["total"] + hand("BUY", D("53.30"))["total"])
     one_buy = round_trip_charges(legs()[1:2], "NIFTY", RATES)
-    assert one_buy == hand("BUY", D("17.30"))["total"] + hand("SELL", D("17.30"))["total"]
+    assert one_buy == to_paise_up(hand("BUY", D("17.30"))["total"] + hand("SELL", D("17.30"))["total"])
 
 
 def test_guard_entries_only_is_half_a_round_trip():
@@ -118,7 +119,7 @@ def test_guard_entries_only_is_half_a_round_trip():
 
 
 def test_guard_sensex_uses_the_bse_rate_futures_zero_price_and_unknown_index_are_not_computable():
-    assert round_trip_charges(legs(), "SENSEX", RATES) < HAND_TOTAL  # 0.0325% < 0.03553% on the same premium
+    assert round_trip_charges(legs(), "SENSEX", RATES) < HAND_PAISE  # 0.0325% < 0.03553% on the same premium
     fut = Leg(Action.BUY, Instrument.FUT, None, EXPIRY, Q, D("23000"))
     with pytest.raises(ChargesNotComputable):
         round_trip_charges((fut,), "NIFTY", RATES)
@@ -173,6 +174,7 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     for side, price in rows:
         other = "SELL" if side == "BUY" else "BUY"
         charges += hand(side, price)["total"] + hand(other, price)["total"]
+    charges = to_paise_up(charges)  # ADR-082 (2): the API carries the charges rounded UP to the paisa
     s = out.summary
     assert s.charges == charges and not s.charges_unavailable
     assert s.max_loss == D("8245.25") + charges  # charges ADDED to the loss (mutation: subtracted -> red)
@@ -182,6 +184,27 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     make = render_explanation("summary_make_at_most_with_charges", amount=s.max_profit, charges=charges)
     assert s.what_can_i_make == make
     assert "including about ₹" in s.what_can_i_lose and "before charges" not in s.what_can_i_lose
+
+
+PAISE_EXPONENT = D("0.01").as_tuple().exponent  # test-local: the exponent of a two-decimal paise string
+
+
+def _is_paise(value) -> bool:
+    return value.as_tuple().exponent == PAISE_EXPONENT
+
+
+def test_every_charges_derived_decimal_has_two_places(replayed):
+    """Class: no money value derived from the unrounded charges total may leak extra decimals into the API."""
+    _, out = outcome_of(replayed, RATES)
+    s = out.summary
+    money = [s.charges, s.max_profit, s.max_loss, *out.scenario.totals, out.scenario.charges,
+             *(p[1] for p in out.payoff_points)]
+    assert len(money) > len(out.scenario.totals) and all(_is_paise(m) for m in money), money
+    for row in out.table.rows:
+        if row.row_id in ("TOTAL", "CHARGES"):
+            for cell in row.cells.values():
+                if cell.kind.value == "money" and isinstance(cell.value, D):
+                    assert _is_paise(cell.value), (row.row_id, cell.value)
 
 
 def test_guard_breakevens_and_zero_columns_do_not_move_with_charges(replayed):
@@ -296,8 +319,8 @@ def _summary_of_legs(provider, picks, rates=RATES):
 
 
 def test_the_real_15_oct_condor_sentence_then_the_line():
-    sentence = render_explanation("summary_lose_at_most_with_charges", amount=MAX_LOSS_BEFORE + HAND_TOTAL,
-                                  charges=HAND_TOTAL)
+    sentence = render_explanation("summary_lose_at_most_with_charges", amount=MAX_LOSS_BEFORE + HAND_PAISE,
+                                  charges=HAND_PAISE)
     line = exercise_stt_line(legs())
     assert line == EXERCISE_STT_LINE
     assert join_explanations([sentence, line], " ") == (

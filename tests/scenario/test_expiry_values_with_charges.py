@@ -22,7 +22,7 @@ RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
     transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
     stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=date(2026, 10, 15), source_url="https://zerodha.com/charges")
-ROUND_TRIP = D("235.7431864")
+ROUND_TRIP = D("235.75")  # 235.7431864 rounded UP to the paisa (ADR-082 (2))
 
 
 def values(golden, settings, rates=RATES, view=View.AT_EXPIRY):
