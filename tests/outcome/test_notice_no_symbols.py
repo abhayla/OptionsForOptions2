@@ -1,6 +1,6 @@
 """Issue 297 items 1-2 (REQ-067 AC-4, ADR-086): the answer-level notice (`output_label`) carries only the model label.
 A leg's own notice ("no live quote", "stale since ...") lives on that leg's `label`, and the page prints it once under
-the leg's contract name. The 2026-10-16 live pushes had `estimated from spot; NIFTY26O1923300CE: no live quote` in
+the leg's contract name. The 2026-10-16 live pushes had `estimated from spot; <trading symbol>: no live quote` in
 `output_label` AND the same notice on the leg, so the page showed the raw trading symbol and the notice twice.
 Real 2026-10-08 replay; the state is made by changing ONE input (a leg's quote) of the real snapshot."""
 import dataclasses
