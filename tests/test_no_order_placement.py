@@ -31,6 +31,7 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
+from ofo.broker import kite_http  # noqa: E402  (its _template_regex: the entries are judged as check_call compiles them)
 from ofo.broker.kite_endpoints import ALLOWED_CALLS, NETWORK_DOORS  # noqa: E402
 
 #: modules that open a connection or a process; besides the doors' own libraries, none may be imported anywhere.
@@ -159,9 +160,35 @@ def scan_module(source: str, name: str) -> list[str]:  # noqa: C901, PLR0912
     return sorted(set(found))
 
 
+#: Kite's write endpoints (place / modify / cancel an order or a GTT), as concrete paths: a closed probe list. An
+#: allow-list entry is judged by what ``check_call`` would ADMIT, not by its template text (verifier, 858c7b6:
+#: ``POST /{variety}/iceberg`` read as text is not under /orders, yet check_call admitted ``POST /orders/iceberg``).
+KITE_WRITE_PROBES: tuple[str, ...] = (
+    "/orders", "/orders/regular", "/orders/amo", "/orders/co", "/orders/iceberg", "/orders/auction",
+    "/orders/regular/250101000000001", "/orders/amo/1", "/orders/co/1", "/orders/iceberg/1", "/orders/auction/1",
+    "/orders/co/1/2", "/gtt", "/gtt/triggers", "/gtt/triggers/123",
+)
+#: Placeholder values tried in the generic probe: a template slot filled with these must never land on a write path.
+SLOT_PROBES: tuple[str, ...] = ("orders", "gtt")
+
+
+def _admits_a_write(path: str) -> bool:
+    """True when the entry's pattern, compiled by the SAME function check_call uses, admits a Kite write path: any
+    probe in the closed list, or the template with every slot filled by "orders" / "gtt" landing under /orders|/gtt."""
+    rx = kite_http._template_regex(path)
+    if any(rx.fullmatch(probe) for probe in KITE_WRITE_PROBES):
+        return True
+    for value in SLOT_PROBES:
+        filled = re.sub(r"\{[^}]*\}", value, path)
+        if rx.fullmatch(filled) and PLACEMENT_PATH.match(filled):
+            return True
+    return bool(PLACEMENT_PATH.match(path))  # the text itself (a literal write path)
+
+
 def placement_in(calls) -> list[str]:
-    """Allow-list entries that would place, modify or cancel: any non-GET under /orders or /gtt."""
-    return [f"{m} {p}" for m, p in calls if m != "GET" and PLACEMENT_PATH.match(p)]
+    """Allow-list entries that would place, modify or cancel: any non-GET entry whose compiled pattern admits a Kite
+    write path (the read-only POSTs we use, /margins/basket and /charges/orders, admit none)."""
+    return [f"{m} {p}" for m, p in calls if m.upper() != "GET" and _admits_a_write(p)]
 
 
 def _modules_under(root: Path) -> dict[str, str]:
@@ -277,6 +304,10 @@ def test_the_doors_may_import_their_own_network_module() -> None:
 @pytest.mark.parametrize("calls", [
     {("POST", "/orders/regular")}, {("PUT", "/orders/regular/1")}, {("DELETE", "/orders/amo/1")},
     {("POST", "/gtt/triggers")}, {("PATCH", "/orders")}, {("POST", "/orders")},
+    # verifier 858c7b6: templated entries whose compiled pattern admits a write path
+    {("POST", "/{variety}/iceberg")}, {("POST", "/{a}/{b}")}, {("POST", "/{any}")}, {("DELETE", "/{x}/regular/{id}")},
+    {("PUT", "/orders/{variety}/{id}")}, {("POST", "/gtt/{t}")}, {("POST", "/orders/co")},
+    {("post", "/orders/auction")},
 ])
 def test_placement_checker_flags_write_entries(calls) -> None:
     assert placement_in(calls)

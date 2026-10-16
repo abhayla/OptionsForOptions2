@@ -23,6 +23,9 @@ ROOT = "https://api.kite.trade"
     ("DELETE", ROOT + "/orders/regular/123"),
     ("PATCH", ROOT + "/orders/regular/123"),
     ("POST", ROOT + "/orders/amo"),
+    ("POST", ROOT + "/orders/co"),
+    ("POST", ROOT + "/orders/iceberg"),
+    ("POST", ROOT + "/orders/auction"),
     ("POST", ROOT + "/gtt/triggers"),
     ("GET", ROOT + "/orders"),  # a read, but not allow-listed yet: nothing is allowed by default
     ("POST", ROOT + "/session/token/extra"),
