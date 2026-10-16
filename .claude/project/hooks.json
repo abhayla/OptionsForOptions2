@@ -6,6 +6,11 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/secret_scan.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] },
       { "matcher": "Bash|PowerShell",
         "hooks": [
           { "type": "command",
@@ -13,7 +18,9 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/merge_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
           { "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/issue_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/issue_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
       { "matcher": "Agent|Task",
         "hooks": [
