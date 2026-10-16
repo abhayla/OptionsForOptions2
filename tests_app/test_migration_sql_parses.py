@@ -23,7 +23,10 @@ VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembi
 MIGRATIONS = ("0001_baseline_ledger_clock", "0002_audit_store", "0003_catalogue_store", "0004_broker_instruments",
               "0005_contract_lifecycle", "0006_index_segments", "0007_broker_sessions", "0008_strategy_store",
               "0009_minute_history", "0010_strategy_schema_version", "0011_strategy_planned_entry",
-              "0012_charge_rates", "0013_exchange_freeze_limits", "0014_charge_rates_caps")
+              "0012_charge_rates", "0013_exchange_freeze_limits", "0014_charge_rates_caps",
+              "0015_audit_broker_allowlist")
+#: Migrations whose downgrade emits no SQL of its own to parse (none now: 0015 refuses only when rows exist, in SQL).
+REFUSES_DOWNGRADE: tuple[str, ...] = ()
 _DO = re.compile(r"^\s*DO\s+(\$\w*\$)(.*)\1\s*;?\s*$", re.DOTALL)
 
 
@@ -79,6 +82,7 @@ def check_parses(sql: str) -> None:
 
 
 CASES = [(name, phase, i, sql) for name in MIGRATIONS for phase in ("upgrade", "downgrade")
+         if not (phase == "downgrade" and name in REFUSES_DOWNGRADE)
          for i, sql in enumerate(_statements(name, phase))]
 
 
@@ -88,8 +92,17 @@ def test_every_migration_statement_parses(name: str, phase: str, index: int, sql
 
 
 def test_every_migration_renders_statements() -> None:
-    counts = {(n, p): sum(1 for c in CASES if c[:2] == (n, p)) for n in MIGRATIONS for p in ("upgrade", "downgrade")}
+    counts = {(n, p): sum(1 for c in CASES if c[:2] == (n, p)) for n in MIGRATIONS for p in ("upgrade", "downgrade")
+              if not (p == "downgrade" and n in REFUSES_DOWNGRADE)}
     assert all(v > 0 for v in counts.values()), counts
+
+
+def test_0015_downgrade_refuses_only_when_broker_reply_rows_exist() -> None:
+    statements = _statements("0015_audit_broker_allowlist", "downgrade")
+    assert len(statements) == 1
+    for event_type in ("broker_response_recorded", "execution_recorded"):
+        assert event_type in statements[0]
+    assert "IF has_rows THEN" in statements[0] and "refusing to downgrade" in statements[0]
 
 
 C1_DO = """
