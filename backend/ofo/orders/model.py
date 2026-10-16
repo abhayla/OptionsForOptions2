@@ -43,6 +43,7 @@ from typing import Final, Literal, NoReturn
 
 from ofo.engine.legs import Action, require_price
 from ofo.engine.product import Product
+from ofo.money import zerodha_paise
 from ofo.strategy.versions import StrategyRecord
 
 
@@ -153,6 +154,11 @@ class FillConflictError(ValueError):
     broker's reconciled cumulative quantity is LOWER than what is already recorded locally --
     both are irreconcilable, and neither moves anything.
     """
+
+
+class OutOfOrderFillError(ValueError):
+    """ADR-103: a fill that would read as a side flip (an exit fill before the entry it closes, or a fill carrying
+    the position across zero). Nothing is recorded; the strategy is blocked until the missing fill arrives."""
 
 
 @dataclass(frozen=True)
@@ -629,8 +635,41 @@ class OrderBook:
                 f"fill would take filled quantity to {current_filled + fill.quantity}, "
                 f"above ordered quantity {order.quantity}"
             )
+        self._refuse_side_flip(order, fill)
         self._ledger.append(fill)
         return self._view(order)
+
+    def _opening_side(self, strategy_id: str, contract: str) -> Action | None:
+        """The side the strategy opened ``contract`` on: its adopted holding's side, else the side of its FIRST
+        registered order on that contract (registration order is the platform's own action order)."""
+        for h in self._adopted:
+            if h.strategy_id == strategy_id and h.contract == contract:
+                return h.side
+        for o in self._orders.values():
+            if o.strategy_id == strategy_id and o.contract == contract:
+                return o.side
+        return None
+
+    def _refuse_side_flip(self, order: Order, fill: FillEvent) -> None:
+        """ADR-103 (F-40 attack A1): a fill is NEVER read as a side flip. Refused (nothing recorded), and the strategy
+        blocked as a reconciliation mismatch until the missing fill arrives, when the fill would
+        - open the contract from flat on the side opposite the strategy's opening side (an exit fill seen before the
+          entry fill it closes: SELL 65 first would read as a short 65 the strategy never held), or
+        - carry the position across zero to the other side.
+        The refused fill is applied normally once the earlier fill is in the ledger (re-sent by the broker read)."""
+        current = self.position(order.strategy_id, fill.contract)
+        signed = fill.quantity if fill.side is Action.BUY else -fill.quantity
+        after = current + signed
+        opening = self._opening_side(order.strategy_id, fill.contract)
+        flips = (current == 0 and fill.side is not opening) or (current * after < 0)
+        if not flips:
+            return
+        reason = (f"out-of-order fill: trade {fill.trade_id} ({fill.side.value} {fill.quantity} {fill.contract}) "
+                  f"would take the position from {current} to {after}; waiting for the fill it closes")
+        now = self.now()
+        self._block(order.strategy_id, now, ReconciliationEvent(
+            order.strategy_id, "blocked", fill.broker_order_id, None, current, None, reason, now))
+        raise OutOfOrderFillError(reason)
 
     # -- reads: always computed --------------------------------------------------------------
 
@@ -826,6 +865,29 @@ class OrderBook:
     def reconciliation_events(self, strategy_id: str) -> tuple[ReconciliationEvent, ...]:
         """Every block/clear event for one strategy, oldest first (append-only audit trail)."""
         return tuple(e for e in self._reconciliation_events if e.strategy_id == strategy_id)
+
+
+def realised_pnl(fills: Iterable[FillEvent]) -> Decimal:
+    """ADR-102: the realised P&L of a set of fills that leaves every contract flat, from the fills alone.
+
+    Exact Decimal (sells minus buys, price x quantity, never float), quantized to the paisa only for output
+    (``-130.00``). Exchange fill prices are tick multiples, so the quantize changes no real value. Refused: no fills,
+    a non-FillEvent, or any contract whose fills do not net to 0 (an open position has no realised P&L here)."""
+    rows = tuple(fills)
+    if not rows:
+        raise ValueError("realised_pnl needs at least one fill")
+    net: dict[str, int] = {}
+    cash = Decimal(0)
+    for f in rows:
+        if not isinstance(f, FillEvent):
+            raise ValueError(f"realised_pnl needs FillEvent rows, got {f!r}")
+        signed = f.quantity if f.side is Action.BUY else -f.quantity
+        net[f.contract] = net.get(f.contract, 0) + signed
+        cash -= f.price * signed
+    open_contracts = sorted(c for c, q in net.items() if q != 0)
+    if open_contracts:
+        raise ValueError(f"realised_pnl needs flat fills; still open: {open_contracts}")
+    return zerodha_paise(cash)
 
 
 def derive_strategy_position(book: OrderBook, strategy_id: str) -> Mapping[str, int]:

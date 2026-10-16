@@ -46,6 +46,16 @@ class BrokerPositionLine:
             require_price(self.ltp, "ltp")
 
 
+def is_flat_row(row: Mapping[str, object]) -> bool:
+    """The ONE flat-row rule (W-091, F-40 gap b): a Kite position row whose ``quantity`` is 0 is "no position".
+
+    Zerodha keeps a closed contract's row for the day with ``quantity 0`` and ``average_price 0`` (real reply
+    2026-10-16 15:10:06). It is never a 0-price holding: every reader (grouping's suggestions and the reconcile
+    path's broker net map) drops it BEFORE parsing. A boolean ``quantity`` is not 0 here (it is refused later)."""
+    quantity = row.get("quantity") if isinstance(row, Mapping) else None
+    return quantity == 0 and not isinstance(quantity, bool)
+
+
 def _kite_price(value: object, name: str) -> Decimal:
     if isinstance(value, int) and not isinstance(value, bool):
         return Decimal(value)
