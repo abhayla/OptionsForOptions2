@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (101)
+## Decisions (103)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -107,6 +107,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-099 2026-10-16: When a Kite session is active, the outcome screen shows the margin from Zerodha for the strategy's planned orders: the amount needed (Zerodha's baske… [extends REQ-055]
 - ADR-100 2026-10-16: The Kite Connect app registers no static IP. [applies ADR-054]
 - ADR-101 2026-10-16: Every money figure read from a Zerodha reply that the margin gate or a screen compares (the basket reply's final.total and each BUY leg's option_prem… [applies ADR-016, ADR-099]
+- ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact Decimal and is quantized half-up to the paisa only… [applies ADR-008, ADR-101]
+- ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it opened that contract on (its adopted holding's sid… [applies ADR-016, ADR-018, ADR-019]
 
 ## Requirements (75)
 

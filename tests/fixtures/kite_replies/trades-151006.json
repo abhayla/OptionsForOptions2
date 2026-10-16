@@ -1,0 +1,35 @@
+{
+ "status": "success",
+ "data": [
+  {
+   "average_price": "5.1",
+   "quantity": 65,
+   "trade_id": "4484194",
+   "product": "NRML",
+   "order_timestamp": "12:20:50",
+   "fill_timestamp": "2026-10-16 12:20:50",
+   "exchange_timestamp": "2026-10-16 12:20:50",
+   "exchange_order_id": "1400000134242238",
+   "order_id": "261016170576173",
+   "transaction_type": "BUY",
+   "tradingsymbol": "NIFTY26O1923650CE",
+   "exchange": "NFO",
+   "instrument_token": 12080386
+  },
+  {
+   "average_price": "3.1",
+   "quantity": 65,
+   "trade_id": "5966618",
+   "product": "NRML",
+   "order_timestamp": "15:09:52",
+   "fill_timestamp": "2026-10-16 15:09:52",
+   "exchange_timestamp": "2026-10-16 15:09:52",
+   "exchange_order_id": "1400000207680997",
+   "order_id": "261016170858845",
+   "transaction_type": "SELL",
+   "tradingsymbol": "NIFTY26O1923650CE",
+   "exchange": "NFO",
+   "instrument_token": 12080386
+  }
+ ]
+}
