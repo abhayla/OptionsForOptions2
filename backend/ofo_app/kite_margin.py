@@ -172,7 +172,7 @@ class KiteMargin:
         body = "[" + ", ".join(o.as_json() for o in orders) + "]"
         data = self._data("POST", BASKET_PATH, body, {"Content-Type": "application/json"})
         try:
-            final_total = required_from_basket_reply(data)
+            final_total = required_from_basket_reply(data, orders)
         except MarginReplyError:
             raise KiteMarginError("kite_margin_no_figure") from None
         initial = data.get("initial")

@@ -3,6 +3,7 @@
 No network, no database. The funds reply is built from the recorded SHAPE (shape_user_margins.json holds field types
 only; real values are withheld), so `equity.net` is unproven on real data until the live run of 2026-10-16.
 """
+import dataclasses
 import http.client
 import json
 import logging
@@ -17,6 +18,8 @@ from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin
 
 REPLY_FILE = (pathlib.Path(__file__).resolve().parent.parent
               / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json")
+STRANGLE_FILE = (pathlib.Path(__file__).resolve().parent.parent
+                 / "tests/fixtures/kite_margins/basket-2026-10-16-long-strangle-bump5.json")
 RECORDED = json.loads(REPLY_FILE.read_text(encoding="utf-8"), parse_float=Decimal)
 REPLY_TEXT = json.dumps(json.loads(REPLY_FILE.read_text(encoding="utf-8"))["reply"])
 SECRET = "tok-SECRET-123"
@@ -161,11 +164,20 @@ def test_ac1_negative_funds_block_and_show_zerodhas_signed_figure() -> None:
 def test_ac1_a_sensex_basket_on_bfo_is_checked_not_refused() -> None:
     """AC-1 (round 2 item 2): a BFO order is accepted (SENSEX -> BSE_FO). UNPROVEN on real data until a BFO basket
     reply is recorded: only the NFO condor reply of 2026-10-15 exists, so this test replays that reply's shape."""
-    order = BasketOrder("BFO", "SENSEX26O1682000CE", "SELL", "NRML", "LIMIT", 20, Decimal("100.5"))
-    fake = Fake(text=REPLY_TEXT)
-    result = client(fake).fetch_basket_margin([order])
-    assert result.final_total == Decimal("68498.85")
+    orders = [dataclasses.replace(o, exchange="BFO") for o in condor()]
+    fake = Fake(text=REPLY_TEXT.replace('"exchange": "NFO"', '"exchange": "BFO"'))
+    result = client(fake).fetch_basket_margin(orders)
+    assert result.final_total == Decimal("68498.85")  # the condor's BUY legs sit at/below Kite's premium: no top-up
     assert '"exchange": "BFO"' in fake.calls[0][3]
+
+
+def test_adr094_the_client_adds_the_buy_premium_above_kites_figure() -> None:
+    """ADR-094: the real 2026-10-16 long-strangle reply through the client gives 6409 + 263.25 + 393.25 = 7065.50."""
+    recorded = json.loads(STRANGLE_FILE.read_text(encoding="utf-8"), parse_float=Decimal)
+    orders = [BasketOrder(r["exchange"], r["tradingsymbol"], r["transaction_type"], r["product"], r["order_type"],
+                          r["quantity"], r["price"], r["variety"]) for r in recorded["request"]]
+    fake = Fake(text=json.dumps(json.loads(STRANGLE_FILE.read_text(encoding="utf-8"))["reply"]))
+    assert client(fake).fetch_basket_margin(orders).final_total == Decimal("7065.50")
 
 
 class _Once:
