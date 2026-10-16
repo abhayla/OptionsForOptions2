@@ -50,8 +50,12 @@ class KiteReplyError(ValueError):
     """A Kite reply field that cannot be turned into a domain value; nothing is guessed."""
 
 
-def kite_money(value: object, name: str) -> Decimal:
-    """One Kite money figure as an exact Decimal at the paisa (see the module docstring for the accepted shapes)."""
+def kite_money(value: object, name: str, *, exact: bool = False) -> Decimal:
+    """One Kite money figure as an exact Decimal at the paisa (see the module docstring for the accepted shapes).
+
+    ``exact=True`` keeps the figure as Kite sent it, not rounded: for an AVERAGE price (5.125 after two fills is a fact
+    about the fills, not a money amount to settle; ADR-101 rounds the figures a margin comparison uses). GC-2b
+    architect decision, recorded in ADR-102."""
     if isinstance(value, bool):
         raise KiteReplyError(f"{name} must be a number, got {value!r}")
     if isinstance(value, float):
@@ -64,6 +68,12 @@ def kite_money(value: object, name: str) -> Decimal:
         value = Decimal(value)
     elif type(value) is not Decimal and type(value) is not int:
         raise KiteReplyError(f"{name} must be a Decimal, int, float or decimal string, got {value!r}")
+    if exact:
+        if not value.is_finite():  # type: ignore[union-attr]
+            raise KiteReplyError(f"{name} must be finite, got {value!r}")
+        exact_value = Decimal(value)
+        at_paisa = zerodha_paise(exact_value)
+        return at_paisa if at_paisa == exact_value else exact_value  # 5.1 -> 5.10 (same value); 5.125 stays
     try:
         return zerodha_paise(value)
     except (TypeError, ValueError) as exc:
@@ -200,7 +210,7 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
     for row in rows:
         if is_flat_row(row):
             continue  # quantity 0: no position (never a 0-price holding)
-        parsed = {**row, "average_price": kite_money(_field(row, "average_price"), "average_price")}
+        parsed = {**row, "average_price": kite_money(_field(row, "average_price"), "average_price", exact=True)}
         if row.get("last_price") is not None:
             parsed["last_price"] = kite_money(row["last_price"], "last_price")
         try:
@@ -217,7 +227,7 @@ def fill_from_trade_row(row: Mapping[str, object]) -> FillEvent:
     """One trades-reply row as a `FillEvent` (timestamp from ``fill_timestamp``; ``order_timestamp`` unused)."""
     try:
         return FillEvent(_text(row, "trade_id"), _text(row, "order_id"), _text(row, "tradingsymbol"), _side(row),
-                         _whole(row, "quantity"), kite_money(_field(row, "average_price"), "average_price"),
+                         _whole(row, "quantity"), kite_money(_field(row, "average_price"), "average_price", exact=True),
                          ist_timestamp(_field(row, "fill_timestamp"), "fill_timestamp"))
     except KiteReplyError:
         raise
@@ -256,7 +266,7 @@ def order_from_row(row: Mapping[str, object]) -> BrokerOrderRow:
         raise KiteReplyError(f"order {row.get('order_id')!r}: filled {filled} of {quantity} is impossible")
     return BrokerOrderRow(_text(row, "order_id"), tag, _text(row, "tradingsymbol"), _side(row), quantity, filled,
                           kite_money(_field(row, "price"), "price"),
-                          kite_money(_field(row, "average_price"), "average_price"), _text(row, "status"))
+                          kite_money(_field(row, "average_price"), "average_price", exact=True), _text(row, "status"))
 
 
 def orders_from_reply(data: object) -> tuple[BrokerOrderRow, ...]:

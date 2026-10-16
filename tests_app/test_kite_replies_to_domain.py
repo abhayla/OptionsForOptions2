@@ -259,3 +259,14 @@ def test_fixtures_hold_no_client_id():
     assert len(files) == 8
     for path in files:
         assert client_id not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_an_average_price_finer_than_a_paisa_is_kept_exact():
+    """ADR-102: a broker average (5.125 after two fills) is kept as Zerodha sent it - not rounded, not refused."""
+    from ofo_app.kite_replies import kite_money  # noqa: PLC0415
+
+    assert kite_money("5.125", "average_price", exact=True) == Decimal("5.125")
+    assert str(kite_money(5.125, "average_price", exact=True)) == "5.125"
+    assert kite_money("5.125", "price") == Decimal("5.13")  # a money figure still rounds (ADR-101)
+    with pytest.raises(ValueError):
+        kite_money(float("nan"), "average_price", exact=True)
