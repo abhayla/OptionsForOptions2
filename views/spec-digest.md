@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (100)
+## Decisions (101)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
