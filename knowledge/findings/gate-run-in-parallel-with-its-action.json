@@ -1,0 +1,27 @@
+{
+  "id": "gate-run-in-parallel-with-its-action",
+  "scope": "generic",
+  "class": "A check and the action it is meant to gate (push, merge, deploy) issued as separate parallel tool calls: the action does not wait for the check, so a failing check gates nothing; a same-command chain guard (gate_before_commit) cannot see across calls.",
+  "mechanism": "The orchestrator sent `python scripts/ruff_ratchet.py` and `git commit && git push` as two tool calls in one message. They ran concurrently; the push landed while the ratchet printed 'ruff ratchet: FAIL, 1 rule(s) rose: C901'. The project hook gate_before_commit blocks `check; push` and `check | ... && push` inside ONE command, so it never saw the two calls.",
+  "first_seen": {
+    "date": "2026-10-17",
+    "where": "GC-2b item 1, W-091 (commit 7da1c24 pushed to PR #343)",
+    "evidence": "ratchet output 'FAIL, 1 rule(s) rose: C901' in the same message whose other call pushed 7da1c24; CI app-tests run 38961942455 then refused it ('ruff ratchet: C901 rose 80 -> 81')"
+  },
+  "fix": "Habit: a gate and its action are never parallel calls - either one command `gate && action`, or the gate's result is read before the action is sent. Structural option (open): a push wrapper that runs the local gates itself (like land.py runs the close check) so the push cannot happen without them.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "CI caught it after the push; the cost was one red CI round."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-17",
+      "where": "W-091 / PR #343",
+      "evidence": "7da1c24 pushed with C901 risen; fixed in 1daacc4"
+    }
+  ]
+}
