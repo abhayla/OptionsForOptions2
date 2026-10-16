@@ -74,7 +74,7 @@ class ListState:
 
     instrument_id: InstrumentId
     instrument_type: str
-    expiry: Optional[date]
+    expiry: date | None
     listed: bool
     retired: bool = False
     delisted: bool = False
@@ -93,23 +93,19 @@ def _check_aware(at: object, name: str) -> datetime:
     return at
 
 
-def _not_tradable_reason(state: ListState, today: date) -> Optional[str]:
+def _not_tradable_reason(state: ListState, today: date) -> str | None:
     """The first reason ``state`` is not tradable, or None. Order: lifecycle, list, Zerodha row, type, expiry."""
-    if state.retired:
-        return REASON_RETIRED
-    if state.delisted:
-        return REASON_DELISTED
-    if not state.listed:
-        return REASON_NOT_IN_LIST
-    if not state.has_zerodha_row:
-        return REASON_NO_ZERODHA_ROW
-    if state.instrument_type == INDEX_TYPE:
-        return REASON_INDEX
-    if state.expiry is None:
-        return REASON_NO_EXPIRY
-    if state.expiry < today:  # F-33: an expired row can still be in the list; the list carrying it is not enough
-        return REASON_EXPIRED
-    return None
+    checks = (
+        (state.retired, REASON_RETIRED),
+        (state.delisted, REASON_DELISTED),
+        (not state.listed, REASON_NOT_IN_LIST),
+        (not state.has_zerodha_row, REASON_NO_ZERODHA_ROW),
+        (state.instrument_type == INDEX_TYPE, REASON_INDEX),
+        (state.expiry is None, REASON_NO_EXPIRY),
+        # F-33: an expired row can still be in the list; the list carrying it is not enough
+        (state.expiry is not None and state.expiry < today, REASON_EXPIRED),
+    )
+    return next((reason for failed, reason in checks if failed), None)
 
 
 def status_from_list(state: ListState, *, today: date, loaded_at: datetime) -> EligibilityStatus:
@@ -123,7 +119,7 @@ def status_from_list(state: ListState, *, today: date, loaded_at: datetime) -> E
 
 def registry_from_list(
     states: Iterable[ListState], *, today: date, loaded_at: datetime,
-    refusals: Optional[Mapping[InstrumentId, str]] = None, refused_at: Optional[datetime] = None,
+    refusals: Mapping[InstrumentId, str] | None = None, refused_at: datetime | None = None,
 ) -> EligibilityRegistry:
     """A NEW registry from the latest list load (ADR-104 (a)) and, optionally, the basket-margin reply's per-leg
     refusals (ADR-104 (b): instrument -> Zerodha's error text). A refusal can only make a contract NOT tradable,

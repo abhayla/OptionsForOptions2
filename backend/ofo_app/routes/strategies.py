@@ -170,7 +170,8 @@ class StrategyRefused(UserFacing, Exception):
     """A refused Save Draft call: carries only its `render()` message; the error boundary shows it (422), or at the status of
     ``failure`` (404 not found; 409 for a stale revision or a saved form that no longer reads)."""
 
-    def __init__(self, template: str, failure: Failure | None = None, *, message: UserFacingError | None = None) -> None:
+    def __init__(self, template: str, failure: Failure | None = None, *,
+                 message: UserFacingError | None = None) -> None:
         self.message: UserFacingError = render(template) if message is None else message
         super().__init__(template)
         self.failure: Failure | None = failure

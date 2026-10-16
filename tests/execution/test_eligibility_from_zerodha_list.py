@@ -55,7 +55,7 @@ ABSENT_ID = InstrumentId(NSE_FO, 47185)
 
 def _catalogue() -> Catalogue:
     cat = Catalogue()
-    cat.load(LIST_ROWS + [ABSENT_ROW])  # what exists: the day's rows plus a contract stored by an earlier load
+    cat.load([*LIST_ROWS, ABSENT_ROW])  # what exists: the day's rows plus a contract stored by an earlier load
     return cat
 
 
@@ -148,7 +148,7 @@ def test_a_list_row_the_catalogue_does_not_hold_is_never_added():
 
 def test_the_clock_inputs_fail_closed():
     with pytest.raises(TypeError):
-        _registry(AS_OF)  # a datetime is not the India date
+        el.registry_from_list([], today=AS_OF, loaded_at=LOADED_AT)  # a datetime is not the India date
     with pytest.raises(TypeError):
         el.registry_from_list([], today=TODAY, loaded_at=datetime.datetime(2026, 10, 16, 12, 7))  # noqa: DTZ001 - naive on purpose
     state = el.ListState(CORE_ID, "CE", datetime.date(2026, 10, 19), True)

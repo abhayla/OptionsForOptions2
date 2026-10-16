@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import text
 
@@ -41,15 +41,15 @@ from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo_app.catalogue_picker import BROKER_ROWS, CONTRACTS, database_today
 
 _STATE_COLUMNS = (
-    f"SELECT c.id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.currently_listed, c.retired, "
-    f"c.delisted, (b.contract_id IS NOT NULL AND NOT b.retired) AS has_zerodha_row "
+    "SELECT c.id, c.exchange_segment, c.exchange_token, c.instrument_type, c.expiry, c.currently_listed, c.retired, "  # noqa: S608 constant table name
+    "c.delisted, (b.contract_id IS NOT NULL AND NOT b.retired) AS has_zerodha_row "
     f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id AND b.broker = :broker"
 )
 _BY_IDS = text(_STATE_COLUMNS + " WHERE c.id = ANY(CAST(:ids AS BIGINT[]))")
 _LIVE = text(_STATE_COLUMNS + " WHERE NOT c.retired AND NOT c.delisted "
                               "AND (CAST(:underlying AS TEXT) IS NULL OR c.name = CAST(:underlying AS TEXT))")
 #: The latest load's time: the newest moment the load saw a live Zerodha row (the database stamps last_seen_at).
-_LOADED_AT = text(f"SELECT max(last_seen_at) FROM {BROKER_ROWS} WHERE broker = :broker AND NOT retired")
+_LOADED_AT = text(f"SELECT max(last_seen_at) FROM {BROKER_ROWS} WHERE broker = :broker AND NOT retired")  # noqa: S608 constant table name
 _NOW = text("SELECT clock_timestamp()")
 
 
@@ -60,12 +60,12 @@ def _state(row: Any) -> ListState:
         retired=bool(row.retired), delisted=bool(row.delisted), has_zerodha_row=bool(row.has_zerodha_row))
 
 
-async def _loaded_at(conn: Any) -> Optional[datetime.datetime]:
+async def _loaded_at(conn: Any) -> datetime.datetime | None:
     return (await conn.execute(_LOADED_AT, {"broker": ZERODHA})).scalar_one()
 
 
 async def leg_statuses(conn: Any, contract_ids: Sequence[int],
-                       today: datetime.date) -> list[Optional[EligibilityStatus]]:
+                       today: datetime.date) -> list[EligibilityStatus | None]:
     """ADR-104 (a) for each leg, in order. ``None`` for a leg whose contract has no row or when no load ever ran (the
     caller refuses it as unconfirmed). Keyed by internal id, so a retired contract never shadows a live one that
     reuses its token."""
@@ -78,8 +78,8 @@ async def leg_statuses(conn: Any, contract_ids: Sequence[int],
     return [by_id.get(contract_id) for contract_id in contract_ids]
 
 
-async def fresh_registry(conn: Any, *, underlying: Optional[str] = None,
-                         margin_refusals: Optional[Mapping[InstrumentId, str]] = None) -> EligibilityRegistry:
+async def fresh_registry(conn: Any, *, underlying: str | None = None,
+                         margin_refusals: Mapping[InstrumentId, str] | None = None) -> EligibilityRegistry:
     """The just-before-execution registry (ADR-104 (a) + (b)), built NOW from the store. Caller: the GC-2c Execute
     route, straight into ``check_pre_execution``. ``margin_refusals`` = instrument -> Zerodha's error text for each
     leg the basket-margin reply refused; stamped with the database clock. Every live contract gets a status; with no
