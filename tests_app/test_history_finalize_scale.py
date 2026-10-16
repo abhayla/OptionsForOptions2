@@ -72,14 +72,119 @@ def seed_live(n: int) -> None:
     # no ANALYZE here on purpose: a day's rows arrive all day and the job runs before statistics catch up
 
 
+class _Diag:  # DIAG-344 (temporary, branch diag/scale-flake only)
+    def __init__(self) -> None:
+        import collections
+        import threading
+        self.threading = threading
+        self.events = collections.Counter()
+        self.ev_by_thread = collections.Counter()
+        self.on = False
+        self.stop = threading.Event()
+        self.db: list = []
+        self.stacks = collections.Counter()
+        self.t0 = time.perf_counter()
+        sys.addaudithook(self._hook)
+
+    def _hook(self, event, args):
+        if self.on:
+            self.events[event] += 1
+            self.ev_by_thread[self.threading.current_thread().name] += 1
+
+    def _db(self):
+        import asyncpg
+        url = _url("TEST_ADMIN_DATABASE_URL").replace("postgresql+asyncpg", "postgresql")
+
+        async def run():
+            conn = await asyncpg.connect(url)
+            try:
+                while not self.stop.is_set():
+                    t = round(time.perf_counter() - self.t0, 1)
+                    act = await conn.fetch(
+                        "SELECT pid, backend_type, state, wait_event_type, wait_event, "
+                        "round(extract(epoch FROM now() - query_start)::numeric, 1) AS age, left(query, 60) AS q "
+                        "FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND (state IS DISTINCT FROM 'idle')")
+                    vac = await conn.fetch("SELECT pid, relid::regclass::text, phase, heap_blks_scanned, "
+                                           "heap_blks_total FROM pg_stat_progress_vacuum")
+                    locks = await conn.fetch("SELECT pid, locktype, mode, objid FROM pg_locks WHERE NOT granted")
+                    load = open("/proc/loadavg").read().strip() if os.path.exists("/proc/loadavg") else "-"
+                    self.db.append((t, [tuple(r) for r in act], [tuple(r) for r in vac],
+                                    [tuple(r) for r in locks], load, self._threads_cpu()))
+                    await asyncio.sleep(1.0)
+            finally:
+                await conn.close()
+
+        import asyncio
+        try:
+            asyncio.run(run())
+        except Exception as exc:  # noqa: BLE001
+            self.db.append(("watch error", repr(exc)))
+
+    def _threads_cpu(self):
+        out = {}
+        for th in self.threading.enumerate():
+            try:
+                out[th.name[:28]] = round(time.clock_gettime(time.pthread_getcpuclockid(th.ident)), 2)
+            except Exception:  # noqa: BLE001
+                out[th.name[:28]] = None
+        return out
+
+    def _sampler(self):
+        main = self.threading.main_thread().ident
+        while not self.stop.wait(0.05):
+            frames = sys._current_frames()
+            for th in self.threading.enumerate():
+                if th.ident in (self.threading.get_ident(),):
+                    continue
+                f = frames.get(th.ident)
+                if f is None:
+                    continue
+                parts = []
+                while f is not None and len(parts) < 3:
+                    parts.append(f"{os.path.basename(f.f_code.co_filename)}:{f.f_code.co_name}:{f.f_lineno}")
+                    f = f.f_back
+                tag = "MAIN" if th.ident == main else th.name[:20]
+                self.stacks[(tag, " < ".join(parts))] += 1
+
+    def start(self):
+        self.on = True
+        for target in (self._db, self._sampler):
+            self.threading.Thread(target=target, daemon=True, name=f"diag-{target.__name__}").start()
+
+    def dump(self, line):
+        self.stop.set()
+        time.sleep(1.5)
+        self.on = False
+        out = [f"DIAG344 {line}", f"DIAG344 threads={[t.name for t in self.threading.enumerate()]}",
+               f"DIAG344 events_total={sum(self.events.values())} top={self.events.most_common(25)}",
+               f"DIAG344 events_by_thread={self.ev_by_thread.most_common(15)}"]
+        for row in self.db:
+            out.append(f"DIAG344 db {row}")
+        for (tag, st), n in self.stacks.most_common(60):
+            out.append(f"DIAG344 stack {n:5d} {tag} {st}")
+        print("\n" + "\n".join(out), flush=True)
+
+
 def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(committed_day, capsys):
+    diag = _Diag()
+    with capsys.disabled():
+        print(f"\nDIAG344 before threads={[t.name for t in diag.threading.enumerate()]} "
+              f"load={open('/proc/loadavg').read().strip() if os.path.exists('/proc/loadavg') else '-'} "
+              f"cpu={os.times()}", flush=True)
     seed_live(N)
     ids = [iid(i) for i in range(1, N + 1)]
     pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
     try:
+        diag.start()
+        cpu0 = os.times()
         started = time.perf_counter()
         result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
         elapsed = time.perf_counter() - started
+        cpu1 = os.times()
+        with capsys.disabled():
+            diag.dump(f"elapsed={elapsed:.1f} batches={[round(s, 2) for s in result.batch_seconds]} "
+                      f"errors={result.errors} proc_user={cpu1.user - cpu0.user:.1f} "
+                      f"proc_sys={cpu1.system - cpu0.system:.1f}")
         batches = result.batch_seconds
         line = (f"SCALE instruments={N} bars={N * MINUTES} total={elapsed:.1f}s batches={len(batches)} "
                 f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s")
