@@ -18,6 +18,9 @@ if "--no-tests" in sys.argv:  # the full suite runs in CI; the repo-wide guard t
     import glob
     guards = sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "tests", "test_*.py")))
     steps = steps[:-1] + [["-m", "pytest", "-q", "-p", "no:cacheprovider", *guards]]
+# The app-tests.yml api job's no-database steps, in its order (finding local-ci-mirror-runs-a-subset: GC-2a pushed a
+# merge that only this ratchet refused, E501 632 -> 633, because the mirror lacked it).
+steps += [["scripts/alembic_migration_guard.py"], ["scripts/ruff_ratchet.py"]]
 bad = 0
 for s in steps:
     r = subprocess.run([sys.executable, *s], cwd=wt, capture_output=True, text=True)

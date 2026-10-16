@@ -50,3 +50,10 @@ def test_it_fails_closed_when_ruff_cannot_be_counted_or_there_is_no_baseline(mon
 def test_update_writes_when_nothing_rose():
     code, _, write = ratchet.decide(BASE, {"E501": 9, "F401": 3}, update=True)
     assert (code, write) == (0, True)
+
+
+def test_a_failing_ratchet_ends_on_a_fail_line_even_when_other_rules_fell():
+    """Finding gate-output-read-by-eye: the LAST line is the verdict; "fell" lines never end a failing run."""
+    code, lines, _ = ratchet.decide({"E501": 5, "I001": 9}, {"E501": 6, "I001": 2}, update=False)
+    assert code == 1
+    assert lines[-1] == "ruff ratchet: FAIL, 1 rule(s) rose: E501"

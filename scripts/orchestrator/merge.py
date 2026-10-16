@@ -45,6 +45,10 @@ def merge(pr: str, runner=run) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # gh prints a check mark; a cp1252 Windows console cannot encode it (UnicodeEncodeError, GC-1 2026-10-16)
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     if len(argv) != 1 or not argv[0].isdigit():
         print("usage: python scripts/orchestrator/merge.py <pr-number>")
         return 2

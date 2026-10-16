@@ -41,6 +41,11 @@
       "date": "2026-09-29",
       "where": "W-026 rounds 1-2 @ 85e11ba / 0b04329",
       "evidence": "direct Preparation + public guard.issue(binding, None, None, 0, 0) sent a naked SELL 325 NIFTY 23400CE and a BANKNIFTY buy; then public mint_capability sent a sell for a non-existent strategy and a forged plan reached the broker; fixed by a private sink that re-derives every broker field (PR #44)"
+    },
+    {
+      "date": "2026-10-17",
+      "where": "GC-2a item 3, W-081 wiring (PR #337, round 1)",
+      "evidence": "Tier A review: KiteBasket(orders) built a 20-order basket with no margin call; a passing MarginVerdict was forged by check_margin(1, 0), dataclasses.replace(blocked, available=big), copy.copy, pickle and object.__setattr__, because the mint was a dataclass field that replace/copy carry along; the build_basket-caller scan missed 7 of 9 shapes. Round 2 makes it structural: build_basket takes the Zerodha figure source and decides inside; KiteBasket and MarginVerdict refuse construction, copy, replace, pickle and setattr outside their minting function."
     }
   ]
 }

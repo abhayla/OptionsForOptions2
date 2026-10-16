@@ -1,0 +1,32 @@
+{
+ "id": "gate-output-read-by-eye",
+ "scope": "generic",
+ "class": "A gate whose failing output has no final verdict line (only per-item lines, some good, some bad) gets reported as passing by an agent that reads the output by eye instead of its exit code; the report is then relayed as evidence.",
+ "mechanism": "scripts/ruff_ratchet.py printed 'X rose a -> b' lines first and 'Y fell c -> d' lines last, and a summary line only on success. A builder reading the tail saw only 'fell' lines and no summary and wrote 'ratchet did not rise'. The exit code (1) was never read.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "GC-2a, ADR-099 builder (PR #336)",
+  "evidence": "builder report: 'The ratchet printed no summary line, only fell lines, so I read it as not rising'; the orchestrator's re-run: 'ruff ratchet: I001 rose 305 -> 306', 'PLR2004 rose 560 -> 561'"
+ },
+ "fix": "Structural: the ratchet always ends on a verdict line ('ruff ratchet: FAIL, N rule(s) rose: ...' or 'OK, no rule rose'), tested (tests/test_ruff_ratchet.py::test_a_failing_ratchet_ends_on_a_fail_line_even_when_other_rules_fell; a mutant without the line ends on a 'fell' line and fails it). atool.py now runs the ratchet and prints its rc. Briefs ask for the gate's exit code or its exact last line, never a reading.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["tests/test_ruff_ratchet.py::test_a_failing_ratchet_ends_on_a_fail_line_even_when_other_rules_fell"],
+  "note": "The orchestrator re-runs every gate a builder reports (Evidence-before-claims R2); that re-run caught both occurrences before merge."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "GC-2a ADR-099 builder",
+   "evidence": "reported 'only fell lines'; I001 and PLR2004 rose by 1 each"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-2a verifier-in-flight hook builder, rounds 1-2 (PR #335)",
+   "evidence": "reported '5 rules fell, none rose'; CI api job run 38943183200: BLE001 33->37, C901 80->81, E501 632->635, PIE810 2->3, PLC0415 567->572, PLR0911 13->14, PLR0912 35->36, UP037 32->38"
+  }
+ ]
+}
