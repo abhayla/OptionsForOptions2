@@ -5,18 +5,21 @@
 allowed by default). Any other Kite or Zerodha host is refused too: the backend calls only ``api.kite.trade``.
 
 Two doors apply it: ``open_url`` here (stdlib ``urllib``, used by the instrument downloader and the history reader)
-and the httpx client classes in ``ofo_app.kite_http`` (whose ``send()`` applies it). ``check_ws_url`` is the same rule
+and the httpx client classes in ``ofo_app.kite_http`` (at their last hop). Only after the check passes does a door
+open the runtime egress gate's door context (``ofo.broker.egress``), around the send alone; outside it every
+non-loopback connect is refused. ``check_ws_url`` is the same rule
 for the websocket door ``ofo_app.kite_ws``. This module is standard library only (the domain layer imports no HTTP
 package); the hosts come from ``kite_endpoints`` (one constant per host).
 """
 from __future__ import annotations
 
 import re
-import urllib.request
+import urllib.request as _urllib_request
 from collections.abc import Mapping
 from typing import Final
 from urllib.parse import unquote, urlsplit
 
+from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import ALLOWED_CALLS, KITE_API_HOST, KITE_WS_HOST
 
 _OTHER_KITE_SUFFIXES: Final = ("kite.trade", "zerodha.com")
@@ -85,12 +88,24 @@ def check_ws_url(url: str) -> None:
         raise KiteCallRefused(f"only wss://{KITE_WS_HOST} is opened for the Kite socket; nothing was opened")
 
 
+class _NoRedirect(_urllib_request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # a redirect is an HTTPError: its target was never checked
+        return None
+
+
+#: this door's own opener (never the process-wide one, which caller code could have replaced), without redirects.
+_OPENER: Final = _urllib_request.build_opener(_NoRedirect)
+
+
 def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
              headers: Mapping[str, str] | None = None, timeout: float = 20):
-    """``urllib`` request through the door: checked first, then ``urllib.request.urlopen``."""
+    """``urllib`` request through the door: checked first, then sent inside the egress gate's door context."""
     check_call(method, url)
-    request = urllib.request.Request(url, data=data, headers=dict(headers or {}), method=method)
-    return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310 - host and path checked above
+    if not isinstance(data, (bytes, type(None))):
+        raise KiteCallRefused(f"{method}: the body must be bytes; nothing was sent")
+    request = _urllib_request.Request(url, data=data, headers=dict(headers or {}), method=method)
+    with _egress._door():
+        return _OPENER.open(request, timeout=timeout)  # host and path checked above; no redirect is followed
 
 
 __all__ = ["KITE_API_HOST", "KITE_WS_HOST", "KiteCallRefused", "check_call", "check_ws_url", "open_url"]

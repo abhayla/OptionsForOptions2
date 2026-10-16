@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ofo_app import errors, live_market, pinned_clock, replay_mode
+from ofo_app import errors, event_loop, live_market, pinned_clock, replay_mode
 from ofo_app.config import Settings, app_env
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.db import close_db
@@ -28,6 +28,7 @@ DOCS_ENVS = frozenset({"development", "test"})
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    event_loop.require_selector_loop()  # W-080 r7: refuses to start on a loop whose connects the egress gate can't see
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
         market = live_market.LiveMarket()

@@ -13,14 +13,25 @@ engine and @compiles shims are deliberately not copied.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
+import sys
 from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+from ofo.broker import egress as _egress
+
+# W-080 round 7 (REQ-073 AC-4): the egress gate's TEST mode (this suite only): the doors accept their test seams (a
+# mock transport, an injected websocket connect) and this Python may run as a child process. Production never enters it.
+_egress._enter_test_mode([sys.executable])
+# The app runs only on the selector loop (ofo_app.event_loop); on Windows the default is the Proactor loop.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.

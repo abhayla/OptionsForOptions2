@@ -16,18 +16,23 @@ The URL carries the access token, so it is never logged: only generic messages a
 This module is a network door (REQ-073 AC-4, ``NETWORK_DOORS`` in ``ofo.broker.kite_endpoints``): it alone may import
 ``websockets``, and its connect URL goes through ``ofo.broker.kite_http.check_ws_url`` when the socket is built and
 again before EVERY connect (only ``wss://ws.kite.trade`` for a Kite host); a refusal propagates, it is never retried.
+Only then, and only around the real ``websockets`` connect, is the runtime egress gate's door context open
+(``ofo.broker.egress``); an injected ``connect`` (tests only) never gets it.
 """
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
-from collections.abc import Awaitable, Callable
+import sys
+from collections.abc import AsyncIterator, Awaitable, Callable
 
-from websockets.asyncio.client import connect as ws_connect
-from websockets.exceptions import InvalidStatus
+from websockets.asyncio.client import connect as _ws_connect
+from websockets.exceptions import InvalidStatus as _InvalidStatus
 
+from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url
 from ofo.marketdata.kite_provider import KiteProvider
@@ -51,7 +56,7 @@ _POLL_SECONDS = 0.5  # how often to look for subscription changes while the sock
 class KiteSocket:
     def __init__(self, provider: KiteProvider, *, api_key: str, access_token: str,
                  clock: Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
-                 connect: Callable = ws_connect,
+                 connect: Callable | None = None,
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
         self._provider = provider
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
@@ -59,7 +64,10 @@ class KiteSocket:
         register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
         register_secret(access_token)
         self._clock = clock
-        self._connect = connect
+        if connect is not None and not _egress._test_mode():  # the test seam: refused outside the test suites
+            raise _egress.EgressRefused("the Kite socket takes an injected connect only inside the test suites")
+        self._connect = connect or _ws_connect
+        self._real_connect = connect is None  # door context only around the real websockets connect
         self._sleep = sleep
         self._stop = False
         self.connections = 0
@@ -75,13 +83,13 @@ class KiteSocket:
         while not self._stop:
             check_ws_url(self._url)  # outside the try: a refusal ends the run, it is never retried
             try:
-                async with self._connect(self._url, logger=_silent, open_timeout=10) as ws:
+                async with self._opened() as ws:
                     self.connections += 1
                     self._provider.on_connected(self._clock())
                     log.info("kite socket connected")
                     await self._subscribe_all(ws)
                     await self._pump(ws)
-            except InvalidStatus as exc:
+            except _InvalidStatus as exc:
                 if exc.response.status_code == 403:
                     self._provider.on_session_ended(self._clock())
                     log.warning("kite socket refused with 403: session ended")
@@ -96,6 +104,24 @@ class KiteSocket:
             await self._sleep(self._backoff)
             self._backoff = min(self._backoff * 2, BACKOFF_MAX)
         return STOPPED
+
+    @contextlib.asynccontextmanager
+    async def _opened(self) -> AsyncIterator[object]:
+        """Open the socket; the egress gate's door context covers ONLY the opening handshake of the real connect,
+        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs outside."""
+        cm = self._connect(self._url, logger=_silent, open_timeout=10)
+        if self._real_connect:
+            with _egress._door():
+                ws = await cm.__aenter__()
+        else:
+            ws = await cm.__aenter__()
+        try:
+            yield ws
+        except BaseException:
+            if not await cm.__aexit__(*sys.exc_info()):
+                raise
+        else:
+            await cm.__aexit__(None, None, None)
 
     def _dropped(self, reason: str) -> None:
         self._provider.on_disconnected(self._clock())

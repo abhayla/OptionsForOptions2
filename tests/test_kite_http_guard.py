@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from ofo.broker import kite_http  # noqa: E402
+from ofo.broker import egress, kite_http  # noqa: E402
 from ofo.broker.kite_endpoints import ALLOWED_CALLS  # noqa: E402
 
 ROOT = "https://api.kite.trade"
@@ -64,7 +64,7 @@ def test_every_allow_list_entry_passes_its_own_template() -> None:
 
 def test_open_url_refuses_before_any_network(monkeypatch) -> None:
     opened: list[object] = []
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
         kite_http.open_url(ROOT + "/orders/regular", method="POST", data=b"x", timeout=1)
     with pytest.raises(kite_http.KiteCallRefused):
@@ -74,8 +74,16 @@ def test_open_url_refuses_before_any_network(monkeypatch) -> None:
 
 def test_open_url_sends_an_allowed_get(monkeypatch) -> None:
     seen: list[urllib.request.Request] = []
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: seen.append((req, timeout)) or "RESP")
+    in_door: list[bool] = []
+
+    def fake_open(req, timeout=None):  # the door's own opener (round 7): no real request leaves
+        in_door.append(egress._in_door())
+        seen.append((req, timeout))
+        return "RESP"
+
+    monkeypatch.setattr(kite_http._OPENER, "open", fake_open)
     assert kite_http.open_url(ROOT + "/instruments", headers={"X-Kite-Version": "3"}, timeout=7) == "RESP"
+    assert in_door == [True] and not egress._in_door()  # door context only around the send, reset after
     (req, timeout), = seen
     assert req.get_method() == "GET" and req.full_url == ROOT + "/instruments" and timeout == 7
     assert req.get_header("X-kite-version") == "3"
@@ -97,7 +105,7 @@ def test_check_call_refuses_non_ascii_hosts(host: str) -> None:
 @pytest.mark.parametrize("host", NON_ASCII_HOSTS)
 def test_open_url_refuses_non_ascii_hosts_before_urlopen(monkeypatch, host: str) -> None:
     opened: list[object] = []
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
         kite_http.open_url(f"https://{host}/orders/regular", method="POST", data=b"x", timeout=1)
     assert opened == []
@@ -123,7 +131,7 @@ def test_check_call_refuses_odd_netlocs(netloc: str) -> None:
 @pytest.mark.parametrize("netloc", ODD_NETLOCS)
 def test_open_url_refuses_odd_netlocs_before_urlopen(monkeypatch, netloc: str) -> None:
     opened: list[object] = []
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
         kite_http.open_url(f"https://{netloc}/orders/regular", method="POST", data=b"x", timeout=1)
     assert opened == []
