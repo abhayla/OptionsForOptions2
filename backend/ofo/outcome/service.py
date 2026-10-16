@@ -374,12 +374,12 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
     table = build_table(model, level_set=level_set, scenario=values)
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
-    leg_labels = [render_explanation("leg_label_symbol", symbol=leg.symbol or leg.instrument_id, label=leg.label)
-                  for leg in legs if leg.label]
+    # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
+    # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).
     return Outcome(
         state=OutcomeState.COMPUTED, underlying=definition.underlying, ux_level=ux_level, status_label=message,
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
-        output_label=join_labels(model.label, *leg_labels), spot_level=model.spot_level, spot_at=model.spot_at,
+        output_label=model.label, spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table, ux_level),
         payoff_points=points,
         summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))
