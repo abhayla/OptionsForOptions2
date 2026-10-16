@@ -178,7 +178,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (196)
+## Spec sections (197)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -277,6 +277,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-36 - NSE no longer publishes a separate freeze-quantity file; the f…
 - ## F-37 - The owner's Kite access token stopped working between 04:29:48…
 - ## F-38 - Index freeze limits are revised several times a year, not once…
+- ## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER…
 
 ### spec/open-questions.md
 

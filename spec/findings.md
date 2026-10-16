@@ -586,3 +586,19 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   a daily download is not needed.
 - Bears on: ADR-081, ADR-091, F-36, REQ-054 AC-4. Status: **researched** (NSE circular text not read; read NSE/FAOP/76693
   before relying on the non-NIFTY figures). Led to ADR-091 (owner, 2026-10-16).
+
+## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER of the limit price and the live price, not the limit
+- Measured 2026-10-16 by the orchestrator on the owner's account (`POST /margins/basket?consider_positions=true`, read
+  only; LTP from `/quote/ltp` just before and after), 1 lot (65) of NIFTY26O1923550CE, BUY, NRML, LIMIT:
+  - 09:06 IST (pre-open, LTP 4.05): limit 5.00 -> 263.25 (65 x 4.05); limit 10.00 -> 263.25; limit 0.50 -> 32.50.
+  - 09:29 IST (market open, LTP 3.95-4.00): limit 5.00 -> 256.75 (65 x 3.95); limit 10.00 -> 256.75; limit 0.50 -> 32.50.
+  - Script: the session scratchpad `live_ltp_vs_margin.py`. Level P1 for one CE buy; SELL legs, PE, futures and
+    multi-leg baskets are unmeasured.
+- Meaning: a BUY limit above the live price can fill at up to the limit (65 x 10.00 = Rs 650 debit) while Kite's margin
+  answer is Rs 256.75. REQ-055's pre-execution margin check uses Kite's answer (ADR-016: Zerodha is the authority on
+  margin), so for a buy limit above the market it can pass a basket whose real premium outflow is larger than the
+  funds. Same day, live: available funds Rs -497 against required Rs 263.25 -> the check refused (MARGIN_201), as it
+  should.
+- Bears on: REQ-055, ADR-016, ADR-080 (executable price). Status: **measured twice on one contract**; open for a
+  technical decision (use max(Kite margin, quantity x limit) for buy legs, or keep Kite's figure) - decided with an
+  independent reviewer before the first real order.

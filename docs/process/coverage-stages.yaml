@@ -237,6 +237,8 @@ issues:
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
+  "#296": 4a           # deferred: live market reads the Kite session only at API start (gate 4a D-4)
+  "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
   "#294": 4b           # deferred: edit-lint hook minors (Windows timeout, silent no-op without a linter; REQ-075 AC-8)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
@@ -297,6 +299,7 @@ findings:
   F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
   F-36: 4b        # NSE freeze limit = MaxTradQty in the daily contract file (old qtyfreeze discontinued); BSE unmeasured (ADR-081, W-076)
   F-37: 4b        # Kite token stopped 04:29:48-04:30:48 IST next morning (one night, owner app); not ~6 AM
+  F-39: 4b        # Kite basket margin for an option BUY = qty x min(limit, live price) (REQ-055, open technical decision)
   F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
 
 hypotheses:
