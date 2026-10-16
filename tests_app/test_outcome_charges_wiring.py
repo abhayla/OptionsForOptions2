@@ -14,7 +14,6 @@ import sys
 from datetime import date
 from decimal import Decimal as D
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -22,9 +21,17 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests_app"))
 
 from ofo.charges import ChargeRates  # noqa: E402
+from ofo_app import charge_rates_store as store  # noqa: E402
+from ofo_app import db  # noqa: E402
+from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import outcome  # noqa: E402
+from ofo_app.routes.outcome import get_market_context  # noqa: E402
 from test_outcome_route import _body, _post, replayed  # noqa: E402,F401
 from test_strategy_live_push import ChannelClosed, request, rig, settle  # noqa: E402,F401
+
+HTTP_OK = 200
+STORE_READS_AFTER_CACHE_EXPIRY = 2
+STORE_READS_AFTER_RETRY = 3
 
 RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -36,29 +43,26 @@ def seed(monkeypatch, value):
     monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": value})
 
 
-async def test_route_says_including_charges_when_a_rate_set_is_stored(replayed, monkeypatch):
+async def test_route_says_including_charges_when_a_rate_set_is_stored(replayed, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, RATES)
     resp = await _post(_body(replayed), replayed)
     s = resp.json()["summary"]
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == HTTP_OK, resp.text
     assert "including about ₹" in s["what_can_i_lose"] and "including about ₹" in s["what_can_i_make"]
     assert s["charges"] is not None and D(s["charges"]) > 0 and s["charges_unavailable"] is False
     assert D(s["max_loss"]) == D("8245.25") + D(s["charges"])
 
 
-async def test_route_keeps_the_old_phrase_when_no_rate_set_is_stored(replayed, monkeypatch):
+async def test_route_keeps_the_old_phrase_when_no_rate_set_is_stored(replayed, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, None)
     s = (await _post(_body(replayed), replayed)).json()["summary"]
     assert s["what_can_i_lose"] == "At most ₹8,245.25 at expiry, before charges and taxes."
     assert s["charges"] is None and s["charges_unavailable"] is True
 
 
-async def test_live_push_passes_the_rates_and_equals_the_rest_answer(rig, monkeypatch):
+async def test_live_push_passes_the_rates_and_equals_the_rest_answer(rig, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, RATES)
-    provider, feed, channel, mono, push = rig
-    from ofo_app.main import create_app
-    from ofo_app.routes.outcome import get_market_context
-
+    provider, feed, channel, _mono, push = rig
     body = request(provider)
     task = asyncio.create_task(push.run())
     await channel.inbound.put(body)
@@ -73,9 +77,9 @@ async def test_live_push_passes_the_rates_and_equals_the_rest_answer(rig, monkey
     await task
 
 
-async def test_live_push_without_a_rate_set_keeps_the_old_phrase(rig, monkeypatch):
+async def test_live_push_without_a_rate_set_keeps_the_old_phrase(rig, monkeypatch):  # noqa: F811 - pytest fixture
     seed(monkeypatch, None)
-    provider, feed, channel, mono, push = rig
+    provider, _feed, channel, _mono, push = rig
     task = asyncio.create_task(push.run())
     await channel.inbound.put(request(provider))
     await settle()
@@ -93,9 +97,6 @@ class _FakeSession:
 
 
 async def test_loader_reads_the_store_caches_300s_and_retries_a_failure_after_30s(monkeypatch):
-    import ofo_app.charge_rates_store as store
-    import ofo_app.db as db
-
     clock = {"now": 100.0}
     calls = []
     outcomes = [RATES, RuntimeError("db down"), RATES]
@@ -108,7 +109,7 @@ async def test_loader_reads_the_store_caches_300s_and_retries_a_failure_after_30
         return out
 
     monkeypatch.setattr(outcome.time, "monotonic", lambda: clock["now"])
-    monkeypatch.setattr(db, "get_sessionmaker", lambda: (lambda: _FakeSession()))
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _FakeSession)
     monkeypatch.setattr(store, "rates_in_force", fake_rates_in_force)
     monkeypatch.setattr(outcome, "_rates_cache", {"until": 0.0, "value": None})
 
@@ -116,8 +117,8 @@ async def test_loader_reads_the_store_caches_300s_and_retries_a_failure_after_30
     clock["now"] = 399.0  # inside the 300 s window: no second read
     assert await outcome.load_charge_rates() is RATES and len(calls) == 1
     clock["now"] = 401.0  # expired: a read that fails gives None, not an error
-    assert await outcome.load_charge_rates() is None and len(calls) == 2
+    assert await outcome.load_charge_rates() is None and len(calls) == STORE_READS_AFTER_CACHE_EXPIRY
     clock["now"] = 420.0  # inside the 30 s failure window: still None, no read
-    assert await outcome.load_charge_rates() is None and len(calls) == 2
+    assert await outcome.load_charge_rates() is None and len(calls) == STORE_READS_AFTER_CACHE_EXPIRY
     clock["now"] = 432.0  # failure window over: read again
-    assert await outcome.load_charge_rates() is RATES and len(calls) == 3
+    assert await outcome.load_charge_rates() is RATES and len(calls) == STORE_READS_AFTER_RETRY

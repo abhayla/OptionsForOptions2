@@ -1,7 +1,7 @@
 """Round-trip charges of a strategy at its planned prices, and STT on exercise at an expiry level (W-075, ADR-082 (2)).
 
-Round trip (W-075 decision (a)): each leg's entry order plus the OPPOSITE-side exit order of the same quantity, both at the
-leg's planned price. Exercise STT (ADR-082): a BOUGHT option that finishes in the money adds ``exercise_stt`` at that
+Round trip (W-075 decision (a)): each leg's entry order plus the OPPOSITE-side exit order of the same quantity, both at
+the leg's planned price. Exercise STT (ADR-082): a BOUGHT option that finishes in the money adds ``exercise_stt`` at that
 level's intrinsic value; a sold option or an out-of-the-money bought option adds nothing.
 
 Only options on the NSE/BSE index contracts have a published rate here. A futures leg, an index with no known exchange
@@ -59,7 +59,7 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
 
 
 def is_bought_option(leg: Leg) -> bool:
-    """A bought option leg (CE or PE): the only kind that can be exercised, so the only kind that can owe exercise STT."""
+    """A bought option leg (CE or PE): the only kind that can be exercised, so the only one owing exercise STT."""
     return leg.action is Action.BUY and leg.is_option
 
 
@@ -73,7 +73,8 @@ def exercise_stt_at(legs: Sequence[Leg], level: Decimal, rates: ChargeRates) -> 
     for leg in legs:
         if not is_bought_option(leg):
             continue
-        intrinsic = max(level - leg.strike, Decimal(0)) if leg.instrument is Instrument.CE else max(leg.strike - level, Decimal(0))
+        distance = level - leg.strike if leg.instrument is Instrument.CE else leg.strike - level
+        intrinsic = max(distance, Decimal(0))
         if intrinsic > 0:
             total += exercise_stt(intrinsic, leg.quantity, rates)
     return total

@@ -21,7 +21,6 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
-
 from ofo.charges import ChargeRates
 from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges
 from ofo.engine.legs import Action, Instrument, Leg
@@ -62,8 +61,8 @@ def hand(side: str, price: D, qty: int = Q) -> dict:
     sebi = premium * D("0.000001")
     stamp = premium * D("0.00003") if side == "BUY" else D("0")
     gst = (brokerage + sebi + txn) * D("0.18")
-    return dict(brokerage=brokerage, stt=stt, txn=txn, sebi=sebi, stamp=stamp, gst=gst,
-                total=brokerage + stt + txn + sebi + stamp + gst)
+    return {"brokerage": brokerage, "stt": stt, "txn": txn, "sebi": sebi, "stamp": stamp, "gst": gst,
+            "total": brokerage + stt + txn + sebi + stamp + gst}
 
 
 def hand_round_trip(rows) -> D:
@@ -85,7 +84,7 @@ def test_core_round_trip_charges_of_the_real_condor():
 
 def test_entry_orders_match_kites_real_rows_except_stamp():
     rows = json.loads(KITE_ORDERS.read_text(encoding="utf-8"), parse_float=D)["reply"]["data"]
-    assert len(rows) == 4
+    assert len(rows) == KITE_ENTRY_ROWS
     for r in rows:
         h = hand(r["transaction_type"], r["price"], r["quantity"])
         c = r["charges"]
@@ -129,13 +128,20 @@ def test_guard_sensex_uses_the_bse_rate_futures_zero_price_and_unknown_index_are
         round_trip_charges((Leg(Action.BUY, Instrument.CE, D("23000"), EXPIRY, Q, D("0")),), "NIFTY", RATES)
 
 
-# --- the engine's Summary on the real W-063 replay frames (a NIFTY 13-Oct condor, 65 units a leg) -------------------------
+KITE_ENTRY_ROWS = 4
+MIN_LEVELS = 10
+
+# --- the engine's Summary on the real W-063 replay frames (a NIFTY 13-Oct condor, 65 units a leg) ------------------
 import datetime  # noqa: E402
 
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo.charges import round_trip as rt  # noqa: E402
+from ofo.errors.explanations import join_explanations  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot  # noqa: E402
-from ofo.table import UXLevel  # noqa: E402
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo.outcome.service import exercise_stt_line  # noqa: E402
+from ofo.scenario.views import View  # noqa: E402
+from ofo.table import ColumnId, UXLevel  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 REPLAY_CONDOR = (
@@ -171,9 +177,10 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     assert s.charges == charges and not s.charges_unavailable
     assert s.max_loss == D("8245.25") + charges  # charges ADDED to the loss (mutation: subtracted -> red)
     assert s.max_profit == D("4754.75") - charges  # charges SUBTRACTED from the profit (mutation: added -> red)
-    assert s.what_can_i_lose == (render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss, charges=charges)
-                                 + " " + EXERCISE_STT_LINE)  # the condor holds bought options (round 4)
-    assert s.what_can_i_make == render_explanation("summary_make_at_most_with_charges", amount=s.max_profit, charges=charges)
+    lose = render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss, charges=charges)
+    assert s.what_can_i_lose == lose + " " + EXERCISE_STT_LINE  # the condor holds bought options (round 4)
+    make = render_explanation("summary_make_at_most_with_charges", amount=s.max_profit, charges=charges)
+    assert s.what_can_i_make == make
     assert "including about ₹" in s.what_can_i_lose and "before charges" not in s.what_can_i_lose
 
 
@@ -217,7 +224,6 @@ def _assert_old_phrase_and_flag(out):
 
 
 def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatch):
-    import ofo.charges.round_trip as rt
     monkeypatch.delitem(rt.SEGMENT_BY_UNDERLYING, "NIFTY")
     _, out = outcome_of(replayed, RATES)
     _assert_old_phrase_and_flag(out)
@@ -234,7 +240,7 @@ def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     assert out.scenario.charges is None
 
 
-# --- round 3: the table shows the charges as a row, so legs + charges == TOTAL in every column -----------------------------
+# --- round 3: the table shows the charges as a row, so legs + charges == TOTAL in every column --------------------
 
 CHARGES_ROW = "CHARGES"
 CHARGES_LABEL = "Charges and taxes (estimate)"
@@ -245,14 +251,13 @@ def _rows(out):
 
 
 def test_table_has_a_charges_row_and_legs_plus_charges_equal_total_in_every_column(replayed):
-    d, out = outcome_of(replayed, RATES)
+    _, out = outcome_of(replayed, RATES)
     rows = _rows(out)
     assert [r.row_id for r in out.table.rows] == ["1", "2", "3", "4", CHARGES_ROW, "TOTAL"]  # between legs and TOTAL
     row = rows[CHARGES_ROW]
-    from ofo.table import ColumnId
     assert row.cells[ColumnId.LEG].display == CHARGES_LABEL
     levels = out.level_set.levels
-    assert len(levels) >= 10
+    assert len(levels) >= MIN_LEVELS
     for level in levels:
         legs_sum = sum((rows[str(i)].cell(level).value for i in range(1, 5)), D("0"))
         assert rows[CHARGES_ROW].cell(level).value is not None
@@ -261,7 +266,8 @@ def test_table_has_a_charges_row_and_legs_plus_charges_equal_total_in_every_colu
     # at a level with no bought option in the money the cell is exactly minus the round trip
     assert out.summary.charges == -rows[CHARGES_ROW].cell(D("22533.25")).value
     # the money display string is the same one every other money cell uses
-    assert rows[CHARGES_ROW].cell(D("22533.25")).display.startswith("-₹") or "₹" in rows[CHARGES_ROW].cell(D("22533.25")).display
+    shown = rows[CHARGES_ROW].cell(D("22533.25")).display
+    assert shown.startswith("-₹") or "₹" in shown
 
 
 def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estimated_now(replayed):
@@ -270,14 +276,14 @@ def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estim
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
     snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    from ofo.scenario.views import View
     est = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
     assert CHARGES_ROW not in _rows(est)
 
 
-# --- round 4 (owner OQ-4 a): one line under the max-loss sentence when the strategy holds a bought option ------------------
+# --- round 4 (owner OQ-4 a): one line under the max-loss sentence when the strategy holds a bought option --------
 
-EXERCISE_STT_LINE = "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it."
+EXERCISE_STT_LINE = (
+    "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it.")
 
 
 def _summary_of_legs(provider, picks, rates=RATES):
@@ -290,8 +296,6 @@ def _summary_of_legs(provider, picks, rates=RATES):
 
 
 def test_the_real_15_oct_condor_sentence_then_the_line():
-    from ofo.errors.explanations import join_explanations
-    from ofo.outcome.service import exercise_stt_line
     sentence = render_explanation("summary_lose_at_most_with_charges", amount=MAX_LOSS_BEFORE + HAND_TOTAL,
                                   charges=HAND_TOTAL)
     line = exercise_stt_line(legs())

@@ -10,18 +10,19 @@ test never leaves a row). Expected values: the seed is F-35's rate text of 2026-
 from __future__ import annotations
 
 import importlib.util
+import os
+import types
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from ofo_app import charge_rates_store
+from ofo_app.charge_rates_store import ChargeRatesError, add_rate_set, rates_in_force
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
-
-from ofo_app import charge_rates_store
-from ofo_app.charge_rates_store import ChargeRatesError, add_rate_set, rates_in_force
 
 D = Decimal
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
@@ -281,17 +282,18 @@ async def test_a_set_that_mixes_dates_is_refused():
         await rates_in_force(_FakeSession(rows), SEED_DAY)
 
 
+MIGRATION_0014 = (Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
+                  / "0014_charge_rates_caps.py")
+
+
 async def test_the_database_refuses_a_stamp_or_sebi_rate_at_or_above_its_cap(admin_engine):
     """W-075 (W-074 verifier MINOR D1): 0014's CHECK ``charge_rates_unit_caps``: sebi_rate < 0.00001 and stamp_buy_rate
-    < 0.0001. A percentage typed as a number (0.0001 for SEBI, 0.003 for stamp) passes 0012's 1% cap and is refused here.
+    < 0.0001. A percentage typed as a number (0.0001 for SEBI, 0.003 for stamp)
+    passes 0012's 1% cap and is refused here.
     Where the migration is not applied (a local ofo_test; CI always applies it), its own SQL is run inside the rolled
     back transaction first, so the constraint text is still what is tested; in CI (OFO_REQUIRE_DB_TESTS=1) the
     constraint must already be there."""
-    import os
-    import types
-
-    path = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" / "0014_charge_rates_caps.py"
-    loader_spec = importlib.util.spec_from_file_location("ofo_caps_0014_for_test", path)
+    loader_spec = importlib.util.spec_from_file_location("ofo_caps_0014_for_test", MIGRATION_0014)
     mod = importlib.util.module_from_spec(loader_spec)
     loader_spec.loader.exec_module(mod)
     statements: list[str] = []

@@ -19,16 +19,18 @@ from decimal import Decimal
 from typing import Awaitable, Callable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
-
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
+from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.instruments.models import ListedContract
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.instruments.models import InstrumentId as ContractKey, ListedContract
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
 from ofo.table import UXLevel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
+
+from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 
@@ -49,13 +51,11 @@ async def load_charge_rates() -> Optional[ChargeRates]:
     now = time.monotonic()
     if now < _rates_cache["until"]:
         return _rates_cache["value"]
-    from ofo_app.charge_rates_store import rates_in_force  # late: the store imports the database layer
-    from ofo_app.db import get_sessionmaker
     try:
-        async with get_sessionmaker()() as session:
-            value = await rates_in_force(session)
+        async with db.get_sessionmaker()() as session:
+            value = await charge_rates_store.rates_in_force(session)
         _rates_cache.update(until=now + _RATES_TTL, value=value)
-    except Exception:  # no database, no table yet, no complete set: the exception is logged, never shown
+    except Exception:  # noqa: BLE001 - no database, table or set gives None (logged, never shown)
         log.warning("charge rates unavailable: outcome sentences stay before charges", exc_info=True)
         _rates_cache.update(until=now + _RATES_RETRY, value=None)
         value = None
@@ -358,7 +358,7 @@ def live_context() -> Optional[MarketContext]:
     return live_market.current_context()
 
 
-def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
+def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
                      stored: Optional[Mapping[str, ListedContract]] = None,
                      rates: Optional[ChargeRates] = None) -> OutcomeResponse:
@@ -394,7 +394,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
 
 
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
-def strategy_outcome(req: OutcomeRequest,
+def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencies, one per input
                      ctx: Optional[MarketContext] = Depends(get_market_context),
                      streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
                      now: AnswerClock = Depends(get_answer_clock),

@@ -961,7 +961,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
                         {"amount": Rupees, "charges": Rupees}),
     ExplanationTemplate("summary_lose_exercise_stt_note", "values_seen",
-                        "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it."),
+                        "Holding a bought option to expiry in the money adds STT on its value; "
+                        "squaring off before expiry avoids it."),
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),

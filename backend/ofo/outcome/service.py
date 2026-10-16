@@ -253,8 +253,9 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
         lose = render_explanation("summary_lose_unlimited", index=idx)
     else:  # a zero maximum loss reads "At most ₹0.00 at expiry." - "cannot lose" is a banned phrase (ADR-003)
         lose = (render_explanation("summary_lose_at_most", amount=max_loss) if charges is None else
-                join_explanations([render_explanation("summary_lose_at_most_with_charges", amount=max_loss, charges=charges),
-                                   *filter(None, [exercise_stt_line(inputs.strategy.legs)])], " "))
+                join_explanations([
+                    render_explanation("summary_lose_at_most_with_charges", amount=max_loss, charges=charges),
+                    *filter(None, [exercise_stt_line(inputs.strategy.legs)])], " "))
     if profit_unl:
         make = render_explanation("summary_make_unlimited", index=idx)
     elif max_profit <= 0:
@@ -369,7 +370,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             charges = round_trip_charges(model.strategy.legs, definition.underlying, rates)
         except ChargesNotComputable:
             charges = None
-    values = scenario_values(level_set, model, view, rates=None if charges is None else rates)  # the ONE computation (AC-8)
+    # the ONE computation (AC-8)
+    values = scenario_values(level_set, model, view, rates=None if charges is None else rates)
     table = build_table(model, level_set=level_set, scenario=values)
     points = tuple(zip(values.levels, values.totals)) if values.available and values.totals is not None else ()
     leg_labels = [render_explanation("leg_label_symbol", symbol=leg.symbol or leg.instrument_id, label=leg.label)
@@ -379,4 +381,5 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
         output_label=join_labels(model.label, *leg_labels), spot_level=model.spot_level, spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table, ux_level),
-        payoff_points=points, summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))
+        payoff_points=points,
+        summary=_summary(strategy_metrics(model.strategy), level_set, model, charges, charges is None))

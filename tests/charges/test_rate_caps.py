@@ -1,13 +1,16 @@
-"""W-074 verifier MINOR D1 (W-075): a percentage typed as a number is refused for stamp and SEBI too, not only above the
-1% cap. Real rates: stamp 0.00003 (0.003%), SEBI 0.000001 (Rs 10 per crore); caps about 3x each: stamp < 0.0001,
-SEBI < 0.00001. Typing the percent figure (0.003 for stamp, 0.0001 for SEBI) passed the old 1% cap and is now refused."""
+"""W-074 verifier MINOR D1 (W-075): a percentage typed as a number is refused for stamp and SEBI too, not only above
+the 1% cap. Real rates: stamp 0.00003 (0.003%), SEBI 0.000001 (Rs 10 per crore); caps about 3x each: stamp < 0.0001,
+SEBI < 0.00001. Typing the percent figure (0.003 for stamp, 0.0001 for SEBI) passed the old 1% cap and is now
+refused."""
+import re
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal as D
+from pathlib import Path
 
 import pytest
-
 from ofo.charges import ChargeRates
+from ofo.charges.rates import SEBI_CAP, STAMP_CAP
 
 REAL = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -32,10 +35,6 @@ def test_just_under_the_cap_is_accepted(field, top):
 
 
 def test_the_migration_carries_the_same_caps_as_the_code():
-    import re
-    from pathlib import Path
-
-    from ofo.charges.rates import SEBI_CAP, STAMP_CAP
     text = (Path(__file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions"
             / "0014_charge_rates_caps.py").read_text(encoding="utf-8")
     assert D(re.search(r'^SEBI_CAP = "([\d.]+)"', text, re.M).group(1)) == SEBI_CAP
@@ -44,5 +43,7 @@ def test_the_migration_carries_the_same_caps_as_the_code():
     # what a later migration chains on
     versions = Path(text and __file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions"
     assert 'down_revision = "0013_exchange_freeze_limits"' in text
-    assert 'down_revision = "0012_charge_rates"' in (versions / "0013_exchange_freeze_limits.py").read_text(encoding="utf-8")
-    assert "_load(f\"{down_revision}.py\"" in text and "_M8 = _PREVIOUS._M8" in text and "def extended_allowlist_sql" in text
+    previous = (versions / "0013_exchange_freeze_limits.py").read_text(encoding="utf-8")
+    assert 'down_revision = "0012_charge_rates"' in previous
+    assert "_load(f\"{down_revision}.py\"" in text and "_M8 = _PREVIOUS._M8" in text
+    assert "def extended_allowlist_sql" in text

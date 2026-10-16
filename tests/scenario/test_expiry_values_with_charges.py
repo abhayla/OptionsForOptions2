@@ -10,9 +10,13 @@ units): premium 19,800 each side; brokerage 160 + STT 29.7 + exchange 14.06988 +
 from datetime import date
 from decimal import Decimal as D
 
+import pytest
 from ofo.charges import ChargeRates
+from ofo.charges.round_trip import ChargesNotComputable
+from ofo.engine.legs import Action, Instrument
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
+from scenario_fixtures import nifty_input, nifty_leg
 
 RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -29,7 +33,7 @@ def values(golden, settings, rates=RATES, view=View.AT_EXPIRY):
 def test_expiry_values_are_old_minus_round_trip_and_exercise_stt(golden, settings):
     plain, v = values(golden, settings, rates=None), values(golden, settings)
     assert v.charges == ROUND_TRIP
-    old, new = dict(zip(plain.levels, plain.totals)), dict(zip(v.levels, v.totals))
+    old, new = dict(zip(plain.levels, plain.totals, strict=True)), dict(zip(v.levels, v.totals, strict=True))
     assert new[D("23047")] == D("6825") - ROUND_TRIP  # nothing bought is in the money
     assert new[D("22000")] == D("-8175") - ROUND_TRIP - D("90")  # bought 22800 PE: 800 x 75 x 0.15%
     assert new[D("24000")] == D("-8175") - ROUND_TRIP - D("45")  # bought 23600 CE: 400 x 75 x 0.15%
@@ -46,18 +50,19 @@ def test_expiry_values_are_old_minus_round_trip_and_exercise_stt(golden, setting
 def test_guard_a_sold_option_in_the_money_adds_no_exercise_stt(golden, settings):
     # at 22900 the SOLD 23000 PE is in the money by 100 and no bought option is
     plain, v = values(golden, settings, rates=None), values(golden, settings)
-    assert dict(zip(v.levels, v.totals))[D("22900")] == dict(zip(plain.levels, plain.totals))[D("22900")] - ROUND_TRIP
+    new, old = dict(zip(v.levels, v.totals, strict=True)), dict(zip(plain.levels, plain.totals, strict=True))
+    assert new[D("22900")] == old[D("22900")] - ROUND_TRIP
 
 
 def test_guard_charges_are_subtracted_never_added(golden, settings):
     plain, v = values(golden, settings, rates=None), values(golden, settings)
-    assert all(n < o for n, o in zip(v.totals, plain.totals))
+    assert all(n < o for n, o in zip(v.totals, plain.totals, strict=True))
 
 
 def test_guard_no_rates_leaves_the_values_exactly_as_before(golden, settings):
     plain = values(golden, settings, rates=None)
     assert plain.charges is None
-    assert dict(zip(plain.levels, plain.totals))[D("23047")] == D("6825")
+    assert dict(zip(plain.levels, plain.totals, strict=True))[D("23047")] == D("6825")
 
 
 def test_guard_estimated_now_is_not_changed_by_rates(golden, settings):
@@ -71,11 +76,7 @@ def test_guard_leg_rows_stay_the_legs_own_pnl(golden, settings):
     assert plain.leg_rows == v.leg_rows
 
 
-def test_guard_a_futures_leg_has_no_rate_and_scenario_values_refuses_instead_of_guessing(settings):
-    import pytest
-    from ofo.charges.round_trip import ChargesNotComputable
-    from ofo.engine.legs import Action, Instrument
-    from scenario_fixtures import nifty_input, nifty_leg
+def test_guard_a_futures_leg_has_no_rate_so_scenario_values_refuses_instead_of_guessing(settings):
     fut = nifty_input([nifty_leg(Action.BUY, Instrument.FUT, None, "23000"),
                        nifty_leg(Action.SELL, Instrument.CE, "23400", "91.50", "78.00", "0.093349")])
     ls = build_level_set(fut, settings.for_index("NIFTY"))

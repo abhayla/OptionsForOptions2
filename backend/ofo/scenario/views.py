@@ -95,7 +95,7 @@ def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAU
         if rates is not None:  # ADR-082 (2): round trip once, plus STT on exercise of each bought option in the money
             charges = round_trip_charges(inputs.strategy.legs, inputs.underlying, rates)
             totals = tuple(t - charges - exercise_stt_at(inputs.strategy.legs, level, rates)
-                           for t, level in zip(grid.totals, levels))
+                           for t, level in zip(grid.totals, levels, strict=True))
         return ScenarioValues(view, LABELS[view], "exact", levels, True, None, totals, grid.leg_rows,
                               output_label=inputs.data_label, charges=charges, **spot)
     missing = _missing_iv(inputs)
