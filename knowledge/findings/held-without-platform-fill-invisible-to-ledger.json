@@ -1,0 +1,32 @@
+{
+ "id": "held-without-platform-fill-invisible-to-ledger",
+ "scope": "project",
+ "class": "A position that enters a strategy without a platform fill (adopted from the broker, moved in, restored) is invisible to every check that derives 'what the platform holds' from its own fill ledger: the send guard sees room to buy it again, the exit sees nothing to close, and once the broker row disappears the ledger (0) agrees with the broker (0), so the gap reads as a 'missing leg' instead of a mismatch. Wider shape: two records of the same holding (strategy version vs order ledger) where only one path writes both.",
+ "mechanism": "Proven by red tests on branch build/ADR-096-adopt-existing 2026-10-16: after adopting the real 2026-10-16 position (NIFTY26O1923650CE BUY 65 NRML avg 5.10), a probe test failed 'AssertionError: ledger holds 0 / assert 0 == 65'; W-083's create-new adoption (reconciliation/grouping.py confirm) had no order-free way to open a strategy at all ('ImportError: cannot import name open_adopted' on the first red test). Found by reading backend/ofo/execution/send_guard.py (held = book.position) and partial._position_mismatches (ledger vs broker) in the Tier A review.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "ADR-096 Tier A review round 1 (PR #312)",
+  "evidence": "send_guard room for the adopted contract = 65 planned - 0 held = 65 (Complete could prepare BUY 65 CE); close room = 0 (registered class state-with-no-working-exit); fixture tests/fixtures/kite_positions/positions-2026-10-16-one-ce.json, 31 fields equal to the recording."
+ },
+ "fix": "PR #312 (998bc87/90b2fb4): the order book keeps adopted holdings (contract, side, units, product, reference; no invented order id), counted by position()/positions_for(); both adopt paths (confirm_into, new open_adopted) write them; the book refuses a contract the strategy already has units/orders/holdings on. Round 2 review PASS: Complete room 0, Close room 65, broker 0 / 30 / flipped after adopt = mismatch that blocks; raw fill rows 0, order count 0.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/reconciliation/test_adopt_ledger.py",
+   "tests/reconciliation/test_adopt_into_existing.py"
+  ],
+  "note": "Discriminates: dropping the ledger write in open_adopted or confirm_into fails 3 tests each; counting holdings as 0 fails 4. NOT covered: the book is in memory only (no app store), so a restart loses fills and holdings - issue #313 (deferred). Sweep: the two adopt paths are the only places a leg enters a strategy without a fill today (reviewer grep of StrategyRecord writers)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-096.md",
+  "spec/decisions/ADR-084.md",
+  "spec/decisions/ADR-019.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "ADR-096 review round 1",
+   "evidence": "add-to-existing and W-083 create-new both left the ledger at 0"
+  }
+ ]
+}
