@@ -46,6 +46,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_message_of
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
+from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
 
 keep_public_codes(frozenset(t.code for t in CATALOGUE.values()))  # codes are public: never redacted as a token shape
@@ -562,13 +563,32 @@ def _kite_login_parts(location: str) -> tuple[str, str]:
     return api_key, state
 
 
+_frontend_origin = ""  # a plain str, rebound only by `set_frontend_origin`, and only once to a value
+
+
+def set_frontend_origin(origin: str) -> None:
+    """Called by `create_app` with the `FRONTEND_ORIGIN` (scheme://host[:port], no path): the one other site a Location
+    may name, followed by a path from the same allow-list (#159). WRITE-ONCE: the value is validated here (so a bad one
+    cannot be stored even by a direct call); the first call stores it, a repeat of the same value is a no-op, a
+    different value raises. A repo scan (tests/test_door_names_private.py) allows only main.py to name this function."""
+    global _frontend_origin  # noqa: PLW0603 - the single write point of the door's origin
+    value = validate_frontend_origin(origin)
+    if _frontend_origin and _frontend_origin != value:
+        raise ValueError("the frontend origin is set once per process")
+    _frontend_origin = value
+
+
 def _check_location(location: str) -> None:
     """THE rule for a Location, shared by the mint (`typed_redirect`, `_mint_headers`) and the re-check, so they cannot
-    drift: a path from the allow-list above, or exactly the Zerodha login URL. Raises ValueError."""
+    drift: a path from the allow-list above, that path on the configured frontend origin, or exactly the Zerodha login
+    URL. Raises ValueError."""
     if type(location) is not str:
         raise ValueError("a redirect location is text")
     if _PATH_LOCATION.fullmatch(location):
         return  # a path on this site
+    origin = _frontend_origin
+    if origin and location.startswith(origin) and _PATH_LOCATION.fullmatch(location[len(origin):]):
+        return  # a path on the frontend: the remainder starts with exactly one "/", so the host cannot be extended
     if not _is_kite_login_url(location):
         raise ValueError("a redirect leaves this site only for the Zerodha login URL")
 

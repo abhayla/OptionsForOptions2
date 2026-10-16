@@ -193,8 +193,8 @@ def _refused_redirect(request: Request, rt: BrokerRuntime, code: str) -> object:
         raise ValueError("not a broker login refusal code")
     # The record, shape and level the error boundary wrote for a refusal before #163: the closed code only.
     log.info("user-facing error %s on %s %s", code, request.method, request.url.path)
-    return typed_redirect(BrokerRedirectOut(redirect="refused"), f"{REFUSED_FRONTEND_PATH}?code={code}",
-                          _state_cookie(rt))
+    return typed_redirect(BrokerRedirectOut(redirect="refused"),
+                          f"{rt.config.frontend_origin}{REFUSED_FRONTEND_PATH}?code={code}", _state_cookie(rt))
 
 
 def current_user_ref() -> str:
@@ -259,7 +259,8 @@ async def kite_callback(
     finally:
         del session
     await live_market.pick_up_login(rt.config)  # #296: never raises; the login stands whatever the market does
-    return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
+    return typed_redirect(BrokerRedirectOut(redirect="connected"),
+                          f"{rt.config.frontend_origin}{CONNECTED_FRONTEND_PATH}", _state_cookie(rt))
 
 
 class CallbackQueryFilter(logging.Filter):
