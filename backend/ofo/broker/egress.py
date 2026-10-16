@@ -23,7 +23,14 @@ inside a Kite door, after its URL check     allowed only for the door's own call
                                             library (W-080 round 9), so caller code run inside it (a callback, a log
                                             handler, a trace function, a copied context, a task or thread started
                                             inside) gets nothing
-anything else (any other host, any         refused with ``EgressRefused`` BEFORE the packet leaves
+sendmsg/sendto with NO address on a        allowed: asyncio's selector transport writes with ``sock.sendmsg(buffers)`` on
+socket that already has a peer             Linux, and the audit event then carries ``None``. The peer was set by a
+                                           ``socket.connect`` this gate already decided, and ``sock.send()`` on the same
+                                           socket raises no event and is allowed, so this reaches nothing ``send()``
+                                           cannot. The peer is read with the C method (``_socket.socket.getpeername``),
+                                           never a method the socket object could override; any error = refused. A socket
+                                           connected before ``install()`` is the same as ``send()`` today: out of scope
+anything else (any other host, any        refused with ``EgressRefused`` BEFORE the packet leaves
 library, raw socket, sendto/sendmsg)
 an address family the gate cannot classify  refused (fail closed)
 a process spawn (subprocess, os.system,     refused everywhere, door or not: a child process does not inherit the
@@ -40,6 +47,7 @@ Standard library only (the domain layer imports no HTTP package and no app confi
 """
 from __future__ import annotations
 
+import _socket
 import asyncio
 import contextlib
 import contextvars
@@ -74,6 +82,7 @@ _LIVE: Final[set[object]] = set()  # the nonces of the doors open right now; a n
 _MAX_DEPTH: Final = 400
 
 _CONNECT_EVENTS: Final = frozenset({"socket.connect", "socket.sendto", "socket.sendmsg"})
+_SEND_EVENTS: Final = frozenset({"socket.sendto", "socket.sendmsg"})
 _SPAWN_EVENTS: Final = frozenset({"subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn",
                                   "os.fork", "os.forkpty", "os.startfile", "_winapi.CreateProcess"})
 _INET: Final = frozenset({socket.AF_INET, socket.AF_INET6})
@@ -246,9 +255,21 @@ def _spawn_allowed(event: str, args: tuple) -> bool:
     return allowed
 
 
+def _connected_peer(sock: object) -> bool:
+    """True only for a real socket that already has a peer. Reads it with the C-level method, so no caller code runs
+    here and a socket subclass cannot answer for itself; any error (not connected, not a socket) is False."""
+    try:
+        _socket.socket.getpeername(sock)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001  (fail closed: ENOTCONN, TypeError, anything)
+        return False
+    return True
+
+
 def _hook(event: str, args: tuple) -> None:
     if event in _CONNECT_EVENTS:
         sock, address = args[0], args[1]
+        if address is None and event in _SEND_EVENTS and _connected_peer(sock):
+            return
         if _address_allowed(getattr(sock, "family", None), address) or _door_permits(inspect.currentframe().f_back):
             return
         raise EgressRefused(f"{event} to {address!r} refused: only loopback, the database, or a Kite door after its "

@@ -124,6 +124,106 @@ def test_udp_sendto_is_refused() -> None:
         s.close()
 
 
+_NEEDS_SENDMSG = pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no socket.sendmsg on this OS (Windows)")
+
+
+def _loopback_pair():
+    server = socket.create_server(("127.0.0.1", 0))
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    conn, _ = server.accept()
+    conn.settimeout(2)
+    return server, client, conn
+
+
+@_NEEDS_SENDMSG
+def test_sendmsg_without_address_on_a_connected_loopback_socket_is_allowed() -> None:
+    server, client, conn = _loopback_pair()
+    try:
+        client.sendmsg([b"hello"])  # the Linux asyncio write shape; raised EgressRefused before the fix
+        assert conn.recv(10) == b"hello"
+    finally:
+        client.close()
+        conn.close()
+        server.close()
+
+
+def test_hook_allows_sendmsg_and_sendto_none_on_a_connected_socket() -> None:
+    server, client, conn = _loopback_pair()
+    try:
+        egress._hook("socket.sendmsg", (client, None))
+        egress._hook("socket.sendto", (client, None))
+    finally:
+        client.close()
+        conn.close()
+        server.close()
+
+
+@_NEEDS_SENDMSG
+def test_sendmsg_without_address_on_an_unconnected_udp_socket_sends_nothing() -> None:
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.settimeout(0.3)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises((EgressRefused, OSError)):
+            s.sendmsg([b"x"])
+        with pytest.raises(socket.timeout):
+            listener.recv(10)
+        with pytest.raises(EgressRefused):
+            egress._hook("socket.sendmsg", (s, None))
+    finally:
+        s.close()
+        listener.close()
+
+
+@_NEEDS_SENDMSG
+def test_sendmsg_with_an_address_to_a_foreign_host_is_refused() -> None:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises(EgressRefused):
+            s.sendmsg([b"x"], [], 0, (TEST_NET, 53))
+    finally:
+        s.close()
+
+
+def test_a_subclass_faking_getpeername_is_refused() -> None:
+    class Liar(socket.socket):
+        def getpeername(self):  # noqa: ANN202
+            return ("127.0.0.1", 5432)
+
+    s = Liar(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises(EgressRefused):
+            egress._hook("socket.sendmsg", (s, None))
+    finally:
+        s.close()
+
+
+def test_a_non_socket_object_with_no_address_is_refused() -> None:
+    with pytest.raises(EgressRefused):
+        egress._hook("socket.sendmsg", (_Sock(socket.AF_INET), None))
+
+
+def test_connect_with_no_address_is_still_refused() -> None:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(EgressRefused):
+            egress._hook("socket.connect", (s, None))
+    finally:
+        s.close()
+
+
+def test_a_foreign_connect_is_refused_and_leaves_no_peer() -> None:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(EgressRefused):
+            s.connect((TEST_NET, 443))
+        with pytest.raises(OSError):
+            s.getpeername()
+    finally:
+        s.close()
+
+
 def test_a_process_spawn_is_refused() -> None:
     """A child process does not inherit the hook, so spawning is refused, even here in test mode (only this Python
     and git are allowed, for the suite's own script tests)."""
