@@ -96,8 +96,7 @@ def _leg_inputs(leg: object) -> tuple[Action, int, Decimal, Depth]:
 
 def _protected_price(planned: Decimal, allowance: Decimal, tick: Decimal, side: Action) -> Decimal:
     toward_user = ROUND_FLOOR if side is Action.BUY else ROUND_CEILING
-    with localcontext() as ctx:
-        ctx.prec, ctx.rounding = _PRECISION, toward_user
+    with localcontext(prec=_PRECISION, rounding=toward_user):
         candidate = planned + allowance if side is Action.BUY else planned - allowance
         # quantize keeps only the argument's exponent: the tick's exponent minus _SUB_TICK_PLACES
         candidate = candidate.quantize(tick.scaleb(-_SUB_TICK_PLACES), rounding=toward_user)
@@ -125,8 +124,7 @@ def protected_limits(legs: Sequence[PlannedLeg], tolerance: Decimal, tick: Decim
         raise ValueError("total planned value must be positive")
     out: list[ProtectedLeg] = []
     for side, quantity, price, depth in inputs:
-        with localcontext() as ctx:
-            ctx.prec, ctx.rounding = _PRECISION, ROUND_FLOOR
+        with localcontext(prec=_PRECISION, rounding=ROUND_FLOOR):
             share = (tolerance * (price * quantity) / total_value).quantize(PAISE, rounding=ROUND_FLOOR)
             allowance = share / quantity
         limit = _protected_price(price, allowance, tick, side)
