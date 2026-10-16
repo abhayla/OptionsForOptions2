@@ -28,6 +28,11 @@
    "date": "2026-10-09",
    "where": "W-066 slot detection test",
    "evidence": "mutation M17 (slot switched to Quoted) survived"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-2a, verifier-in-flight hook brief (PR #335, round 1)",
+   "evidence": "The orchestrator's own brief listed the git subcommands to refuse (merge, pull, checkout, ...). The Tier A review found git apply, rm, mv, checkout-index, read-tree, submodule, sparse-checkout, bisect, an -c alias and xargs git merge all passed with a verifier in flight. Round 2 inverts it: only a closed read-only set passes. The brief cited this finding and still wrote the list: citing a finding is not reading its fix."
   }
  ]
 }
