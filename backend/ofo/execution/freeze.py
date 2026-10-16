@@ -13,11 +13,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
+from typing import Final
 
 from ofo.errors import UserFacingError, render
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
+
+STALE_AFTER_DAYS: Final = 8  # issue 257, ADR-091: the review warns when the file date is MORE than 8 days before it
 
 
 @dataclass(frozen=True)
@@ -70,8 +73,10 @@ def largest_allowed_units(stored: StoredFreeze) -> int:
     return (stored.limit - 1) // stored.lot * stored.lot
 
 
-def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None) -> FreezeCheck:
-    """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit."""
+def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:
+    """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit, and for a
+    stored limit whose file date is more than ``STALE_AFTER_DAYS`` before ``today`` (the stale limit still blocks).
+    ``today`` is required (no default, so the age check cannot be skipped by omission)."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"freeze_check needs an ExecutionPlan, got {plan!r}")
     stored_limits = {} if limits is None else limits
@@ -83,14 +88,19 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None)
         if stored is None:
             warnings.append(FreezeFinding(planned.leg_ref, planned.contract,
                                           render("freeze_limit_unknown", contract=planned.contract)))
-        elif units % stored.lot != 0:
+            continue
+        if units % stored.lot != 0:
             raise ValueError(f"{planned.contract}: {units} units is not a whole number of lots of {stored.lot}")
-        elif not units < stored.limit:
+        if not units < stored.limit:
             top = largest_allowed_units(stored)
             blocks.append(FreezeFinding(planned.leg_ref, planned.contract, render(
                 "freeze_limit_exceeded", contract=planned.contract, units=units, lots=units // stored.lot,
                 max_units=top, max_lots=top // stored.lot, limit=stored.limit)))
+        age = (today - stored.file_date).days
+        if age > STALE_AFTER_DAYS:
+            warnings.append(FreezeFinding(planned.leg_ref, planned.contract, render(
+                "freeze_limit_stale", contract=planned.contract, file_date=stored.file_date, days=age)))
     return FreezeCheck(tuple(blocks), tuple(warnings))
 
 
-__all__ = ["FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]
+__all__ = ["STALE_AFTER_DAYS", "FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]
