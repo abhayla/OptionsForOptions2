@@ -25,13 +25,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
-from ofo_app.live_push import LiveFeed
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
 from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
 
 router = APIRouter(route_class=ClosedRoute)
 
 PLANNED_ENTRY_WAIT_S = 3.0  # gate 4a D-2: the longest the route holds an unheld contract for its first live quote
-PLANNED_ENTRY_POLL_S = 0.05  # how often the held contract's quote is looked at inside that wait
 
 InstrumentIdIn = Annotated[str, StringConstraints(pattern=r"^[A-Z_]{1,20}:[0-9]{1,12}$")]
 
@@ -95,7 +94,7 @@ async def _hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str
         loop = asyncio.get_running_loop()
         deadline = loop.time() + PLANNED_ENTRY_WAIT_S
         while True:
-            await asyncio.sleep(PLANNED_ENTRY_POLL_S)
+            await asyncio.sleep(POLL_SECONDS)
             result = _read(ctx, underlying, ids)
             if all(result[2].get(i) is not None for i in unpriced):
                 return result
