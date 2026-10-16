@@ -11,7 +11,9 @@ from decimal import Decimal as D
 
 import pytest
 from basket_inputs import FakeFreeze, OkMargin, real_catalogue, real_plan, request_legs
+from ofo.errors import display_text
 from ofo.execution.basket import KITE_BASKET_URL, BasketRefused, build_basket
+from ofo.execution.margin_gate import check_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments.models import ZERODHA, MissingBrokerRef
 
@@ -218,8 +220,6 @@ def test_look_alike_passing_verdict_is_refused() -> None:
 
 def test_blocked_margin_carries_available_and_required() -> None:
     """REQ-055 AC-4: a margin block carries the gate's own message, available vs required, to the paisa."""
-    from ofo.errors import display_text
-    from ofo.execution.margin_gate import check_margin
     with pytest.raises(BasketRefused) as caught:
         _build(margin=lambda orders: check_margin(D("68498.84"), D("68498.85")))
     shown = display_text(caught.value.user_message)

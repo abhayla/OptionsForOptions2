@@ -45,7 +45,7 @@ class Replay:
     def __init__(self, funds: str, basket: str = CONDOR_REPLY, fail: str | None = None) -> None:
         self.funds, self.basket, self.fail, self.calls = funds, basket, fail, []
 
-    def __call__(self, method, url, headers, body):  # noqa: ANN001, ANN204
+    def __call__(self, method, url, headers, body):
         self.calls.append((method, url, body))
         if self.fail and self.fail in url:
             raise ConnectionError("Zerodha unreachable")
@@ -79,7 +79,7 @@ def no_freeze(_plan: ExecutionPlan) -> FreezeCheck:
     return FreezeCheck((), ())
 
 
-def build(transport: Replay):  # noqa: ANN201
+def build(transport: Replay):
     cat = catalogue()
     return checked_basket(plan(cat), cat, 3, margin_client=client(transport), freeze_check=no_freeze)
 
@@ -124,7 +124,7 @@ def test_a_margin_client_that_is_not_zerodhas_is_refused() -> None:
         def fetch_available_funds(self) -> D:
             return D("99999999")
 
-        def fetch_basket_margin(self, orders):  # noqa: ANN001, ANN202
+        def fetch_basket_margin(self, orders):
             raise AssertionError("never asked")
 
     cat = catalogue()
@@ -139,5 +139,5 @@ def test_partial_recheck_figure_is_zerodhas_required_for_the_orders() -> None:
     orders = [Order("S-9", f"L{i}", r["tradingsymbol"], Action(r["transaction_type"]), r["quantity"],
                     D(str(r["price"])), version_id="V-1") for i, r in enumerate(CONDOR["request"], start=1)]
     assert zerodha_required_margin(client(Replay(funds_reply("0"))), cat, orders) == D("68498.85")
-    with pytest.raises(Exception):  # noqa: B017, PT011 - any failure is "not confirmed"
+    with pytest.raises(Exception):  # noqa: B017 - any failure is "not confirmed"
         zerodha_required_margin(client(Replay(funds_reply("0"), fail="/margins/basket")), cat, orders)

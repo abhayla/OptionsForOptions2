@@ -96,7 +96,7 @@ def test_ac4_margin_rechecked_with_fresh_broker_figure(catalogue, eligibility) -
     assert [(o.contract, o.side, o.quantity) for o in asked] == [(CONTRACTS[3], Action.BUY, LOT)]
 
 
-def test_273_planner_below_funds_but_zerodha_above_blocks(catalogue, eligibility) -> None:  # noqa: ANN001
+def test_273_planner_below_funds_but_zerodha_above_blocks(catalogue, eligibility) -> None:
     """#273 / REQ-055 AC-3: the planner says 1,000.00 (fits in 1,200.00) but Zerodha says 1,200.01 for the same order:
     Zerodha's figure decides, so the gate blocks by one paisa and nothing is prepared."""
     broker = FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.01"))
@@ -105,7 +105,7 @@ def test_273_planner_below_funds_but_zerodha_above_blocks(catalogue, eligibility
     assert CheckCode.MARGIN_INSUFFICIENT in prep.gate.failed_codes
 
 
-def test_273_planner_above_funds_but_zerodha_below_is_not_blocked(catalogue, eligibility) -> None:  # noqa: ANN001
+def test_273_planner_above_funds_but_zerodha_below_is_not_blocked(catalogue, eligibility) -> None:
     """#273: the planner's 999,999.00 estimate is far above the 1,200.00 available, Zerodha says 1,200.00 (equal is
     enough): the estimate never decides, so the margin check passes and the missing order is prepared."""
     broker = FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.00"))
@@ -115,7 +115,7 @@ def test_273_planner_above_funds_but_zerodha_below_is_not_blocked(catalogue, eli
 
 
 @pytest.mark.parametrize("bad", [ValueError("no figure"), D("NaN"), -D("1"), 4400.0, "4400.00", None])
-def test_273_unusable_zerodha_figure_blocks(bad, catalogue, eligibility) -> None:  # noqa: ANN001
+def test_273_unusable_zerodha_figure_blocks(bad, catalogue, eligibility) -> None:
     """#273 fail closed: Zerodha's required figure raising, NaN, negative, a float, a string or None prepares nothing;
     the planner's estimate is never used in its place."""
     broker = FakeBroker(three_positions(), statuses(), margin=D("150000.00"))
@@ -128,7 +128,7 @@ def test_273_unusable_zerodha_figure_blocks(bad, catalogue, eligibility) -> None
     assert "could not re-read" in prep.reason
 
 
-def test_273_zerodha_required_is_rounded_to_the_paisa(catalogue, eligibility) -> None:  # noqa: ANN001
+def test_273_zerodha_required_is_rounded_to_the_paisa(catalogue, eligibility) -> None:
     """ADR-101: Zerodha's 1,200.004999 is rounded half-up to 1,200.00 where it is read, so it fits 1,200.00; and
     1,200.005 rounds to 1,200.01, which does not."""
     ok = _complete(FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.004999")),

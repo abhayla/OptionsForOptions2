@@ -137,7 +137,7 @@ class FakeBroker:
         self._read("margin")
         return self.margin
 
-    def fetch_required_margin(self, orders) -> D:  # noqa: ANN001
+    def fetch_required_margin(self, orders) -> D:
         self._read("required_margin")
         self.required_asked.append(tuple(orders))
         return self.required

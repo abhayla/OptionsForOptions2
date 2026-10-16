@@ -22,12 +22,14 @@ from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, MissingBrokerRef
 from ofo.orders import Order
+
 from ofo_app.kite_margin import BasketOrder, KiteMargin, margin_verdict
 
 
 def basket_orders(orders: Sequence[KiteOrder]) -> list[BasketOrder]:
     """The resolved basket orders as Zerodha's basket-margin call takes them (same exchange, symbol, side, product,
-    order type, quantity and limit price as the orders the user will see). Raises ValueError on a shape it cannot send."""
+    order type, quantity and limit price as the orders the user will see). Raises ValueError on a shape it cannot
+    send."""
     return [BasketOrder(o.exchange, o.tradingsymbol, o.transaction_type, o.product, o.order_type, o.quantity, o.price,
                         o.variety) for o in orders]
 
