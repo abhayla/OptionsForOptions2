@@ -60,8 +60,10 @@ Proof: one CI run of #327 on Linux after the fix: the `api` job green, plus a te
 5. **W-075 AC-7 re-verify (Tier B verifier only, ~30 min)** on main: charges in the money sentences, the OQ-4 (a)
    line, and the round-up to the paisa (`to_paise_up`); record the evidence; then read issue 269's D5 and close or
    narrow it.
-6. **W-088 (#159) if GC-1 did not merge it**: finish its Tier A round, merge; the live check (a real login lands on
-   `/broker/connected`) is GC-3's first step.
+6. **(was W-088)** - merged by GC-1 (PR #332); its live check (a real login lands on `/broker/connected`, then close
+   #159) is GC-3's first step. Small fix in its place: `scripts/orchestrator/merge.py` crashes printing `gh`'s check
+   mark to a cp1252 console (`UnicodeEncodeError: '✓'`, GC-1 2026-10-16; workaround `PYTHONIOENCODING=utf-8`) -
+   make it write UTF-8 itself (`sys.stdout.reconfigure(encoding="utf-8")`), Tier C, in the docs batch.
 7. **Docs batch (one PR):** close #30 (superseded by #200) and #154 (the BEHIND refusals recorded 2026-10-16 are the
    red-then-green proof) with a comment each; evidence files; card statuses; regenerated digest / findings index /
    coverage register; this contract's row DONE or PARTIAL.
@@ -73,7 +75,9 @@ Proof: one CI run of #327 on Linux after the fix: the `api` job green, plus a te
 ## Process rules (checkable lines; `goal-chain.md` process rules 1-8 apply in full)
 - Chain rule 2: `git pull` main, refuse if a row is RUNNING, set this row RUNNING in the first commit.
 - Before every merge gate: `gh pr update-branch N`; after every merge: `python scripts/orchestrator/merge_audit.py`.
-- Local before push: the fast spec checks, `scripts/ruff_ratchet.py`, `scripts/orchestrator/pr_close_check.py`, the
+- Local before push: `python scripts/orchestrator/atool.py <worktree-dir or agent-id> --no-tests` (every ci.yml step +
+  the repo guard tests, ~1 min - a hand-picked subset missed two steps on GC-1's PR #333, finding
+  `local-ci-mirror-runs-a-subset`), `scripts/ruff_ratchet.py`, `scripts/orchestrator/pr_close_check.py`, the
   changed files' tests. No local full suite (target 0). Item 1's Linux proof is CI's.
 - Every brief: `check_brief.py`, the reviewer checklist + attack cases, `Findings checked:` ids (at least
   `money-parsed-through-float`, `sealed-object-mutable-after-seal`, `broker-reply-shape-unproven-at-domain-boundary`

@@ -1,6 +1,6 @@
 # Session handover 2026-10-16 night: goal contract GC-1 (4a close-out + 4b core proof)
 
-Ran 19:50 IST -> __END__ IST under `/goal` (chain rule: one contract at a time). Contract:
+Ran 19:50 IST -> 21:00 IST under `/goal` (chain rule: one contract at a time). Contract:
 `goal-contract-GC-1-2026-10-16.md`. Next: **GC-2a** (`goal-contract-GC-2a-2026-10-17.md`, marked NEXT in
 `goal-chain.md`).
 
@@ -12,7 +12,7 @@ Ran 19:50 IST -> __END__ IST under `/goal` (chain rule: one contract at a time).
   trace chain is complete: the audit found unbuilt behaviour (REQ-034 AC-4/AC-6 UI; REQ-064 emitters and timeline).
 - **Item 3, gaps:** each gap placed (audit, "Disposition"): built tonight = W-088; new cards W-089..W-092 placed in
   GC-2b / GC-2d; the rest named with their contract.
-- **Item 4, #159 (W-088):** __W088__
+- **Item 4, #159 (W-088):** merged as **PR #332** (W-088). The Tier A review of the existing pages found the real defect: Kite calls back on the API host (`:8765`), so the bare-path redirect landed on the API's 404 every time. The fix redirects to a start-up-validated `FRONTEND_ORIGIN`. Round 1 review REVISE: a public setter over a mutable list let any file widen the door to an open redirect, and CI could not see it. Round 2 (a second fresh Opus) PASS: the origin is write-once, a repo scan allows only `main.py` to set it, and 10 plants each fail CI alone. CI 5/5 green, including the DB-backed broker files. Pre-existing `_check_location` / `_PATH_LOCATION` rebinding added to #200. #159 stays open until GC-3's live login lands on `/broker/connected`.
 - **Item 5, #126:** disposition comment on the issue - the setting is read; the alert + daily scheduler need the
   Notifier (GC-5); the audit record is NOT built because ADR-058 asks only for an alert and REQ-064 AC-1's closed event
   list has no such type; delisted-held -> reconciliation moves to GC-2b.
@@ -48,7 +48,7 @@ Ran 19:50 IST -> __END__ IST under `/goal` (chain rule: one contract at a time).
   moves to the next market day.**
 
 ## PARKED / BLOCKED
-- __PARKED__
+- None parked. Deferred by placement (each named in the audit's disposition table): W-089..W-092, W-017, #126's alert/scheduler (GC-5), REQ-064 emitters and timeline, REQ-063 AC-1/AC-3.
 
 ## Owner items (unchanged, named by the audit)
 - `rotate-algochanakya-secrets` - still open, now overdue (a live Kite login has happened).
@@ -68,4 +68,17 @@ Ran 19:50 IST -> __END__ IST under `/goal` (chain rule: one contract at a time).
   bumped (8 occurrences); GC-2a now routes read-only work to capped agent types.
 
 ## Scorecard
-__SCORECARD__
+| Item | Review rounds | CI runs | Local full-suite runs | check_brief before dispatch | Idle gaps > 10 min | Budget overruns (tool calls used / budget) |
+|---|---|---|---|---|---|---|
+| 1 4a audit (3 Sonnet agents) | 0 (orchestrator re-checked 8 rows) | 0 | 0 | y | 0 | **3**: 104/40, 66/40, 57/40 (time 4.5-6.4 of 20 min) |
+| 2 W-087 verify (REQ-001) | verifier 1 | in #333 | 0 | n (verifier template brief, not run through check_brief) | 0 | **1**: 40/30 |
+| 4 #159 / W-088 | Tier A 3 (1 on the existing pages, 2 on the fix) | #332: 2 (1st: coverage red - no stage line) | 0 | y (all 4 briefs) | 0 | **1**: builder round 1 91/75; round 2 56/60; reviews 19/60, 18/50, 12/30 |
+| 5 #126 | 0 | 0 | 0 | - | 0 | 0 |
+| 6 #232 | 0 | 0 | 0 | - | 0 | 0 |
+| 7 bookkeeping | 0 | in #333 | 0 | - | 0 | 0 |
+| 8 4b core proof (Opus) | 0 (orchestrator re-ran it) | 0 | 0 | y | 0 | 0: 23/80 |
+| 9 GC-2a + handover | contract review 1 (8 findings accepted) | #331: 1, #333: 3 (1st red: build order, spec index, W-087 tests_required format) | 0 | y | 0 | 0: 30/40 |
+
+Broken rules recorded the same turn: budget overruns (`builder-budget-is-prose`, now 8 occurrences); a push without the
+CI mirror (`local-ci-mirror-runs-a-subset`, 2 occurrences; GC-2a carries the `atool.py` line); cards written while a
+verifier ran (`verifier-guard-watches-every-worktree`, new, kit issue 110).

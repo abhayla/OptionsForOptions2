@@ -31,7 +31,7 @@ file where one exists. The orchestrator re-checked the rows below against the so
 
 | Gap | Size | Where it goes |
 |---|---|---|
-| #159 post-login 404 (Tier A review found the pages exist but a real login never reaches them) | ~1.5 h | **built tonight: W-088** |
+| #159 post-login 404 (Tier A review found the pages exist but a real login never reaches them) | ~1.5 h | **built tonight: W-088, merged PR #332** (2 Tier A rounds); live check = GC-3 step 1 |
 | REQ-015 AC-4, AC-8 (Settings broker page, Disconnect) + REQ-051 AC-1 statement | 6-8 h | W-089, **GC-2d** |
 | REQ-034 AC-4, AC-6 (user range/step, At Expiry / Estimated Now switch) | 4-6 h | W-090, **GC-2d** |
 | F-40: Kite orders/trades/positions -> domain (REQ-054 AC-1 fetch positions/orders) | 6-8 h | W-091, **GC-2b** |

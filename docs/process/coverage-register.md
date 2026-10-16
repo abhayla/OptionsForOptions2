@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit b643356
+Generated from commit 42c9450
 
 ## Stage S0
 
@@ -147,7 +147,6 @@ Generated from commit b643356
 | 4a | requirement | REQ-065 | - | Error classification and messages |
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-070 | - | Response door, part 2 - every header, the status and the send path of a door response are minted at construction and sent as frozen |
-| 4a | work item | W-087 | - | Verify REQ-001 (V1 scope - NIFTY/SENSEX, six leg types, Zerodha only) against the code and tests already on main |
 | 4a | work item | W-089 | - | Settings -> Broker & Market Data page - four connection statuses, last sync, Reconnect / Disconnect, and the V1 "no historical data" statement |
 | 4a | work item | W-090 | - | Strategy Builder - the user customises the scenario range and step, and switches columns between At Expiry and Estimated Now |
 
@@ -502,7 +501,7 @@ Generated from commit b643356
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 42 | 5 | 0 | 12 | 0 | 1 | 31 | 0 | 4 | 102 |
+| 4a | 7 | 0 | 42 | 5 | 0 | 12 | 0 | 1 | 31 | 0 | 3 | 101 |
 | 4b | 1 | 0 | 23 | 9 | 0 | 14 | 9 | 2 | 13 | 0 | 6 | 77 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 7 | 0 | 0 | 13 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 19 |
