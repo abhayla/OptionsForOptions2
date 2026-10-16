@@ -26,9 +26,11 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
 #: modules that may import an HTTP library or name the Kite API host without making an allow-listed call themselves:
 #: the two doors every request goes through (``ofo/broker/kite_http.py`` for urllib, ``ofo_app/kite_http.py`` for the
 #: httpx client factory) and ``sources.py``, which holds the instrument list's URL as data for ``downloader.py``.
-#: ``routes/broker.py`` is listed because it builds its client with ``kite_async_client`` for the token exchange; it
-#: makes no call of its own, and that client's request hook refuses anything outside ``ALLOWED_CALLS``.
 HTTP_PLUMBING_MODULES: Final = frozenset({"ofo/broker/kite_http.py", "ofo_app/kite_http.py",
-                                          "ofo/instruments/sources.py", "ofo_app/routes/broker.py"})
+                                          "ofo/instruments/sources.py"})
 
-__all__ = ["ALLOWED_CALLS", "HTTP_PLUMBING_MODULES"]
+#: modules that may import a door (build a client through it) but make no direct Kite call and import no HTTP library
+#: themselves; every HTTP-library and Kite-root scan still applies to them.
+DOOR_CONSUMERS: Final = frozenset({"ofo_app/routes/broker.py"})
+
+__all__ = ["ALLOWED_CALLS", "DOOR_CONSUMERS", "HTTP_PLUMBING_MODULES"]

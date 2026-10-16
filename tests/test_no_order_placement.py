@@ -29,7 +29,7 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from ofo.broker.kite_endpoints import ALLOWED_CALLS, HTTP_PLUMBING_MODULES  # noqa: E402
+from ofo.broker.kite_endpoints import ALLOWED_CALLS, DOOR_CONSUMERS, HTTP_PLUMBING_MODULES  # noqa: E402
 
 BANNED_IMPORTS = ("requests", "httpx", "aiohttp", "urllib3", "urllib.request", "http.client", "kiteconnect")
 DYNAMIC_IMPORTS = ("__import__", "import_module")
@@ -394,7 +394,7 @@ def test_a_module_does_not_flag_its_own_allow_listed_read_only_paths() -> None:
 
 def test_only_listed_modules_import_a_kite_door() -> None:
     modules = _backend_modules()
-    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)
+    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES) | set(DOOR_CONSUMERS)
     offenders = [f for name, src in modules.items() if name not in permitted for f in scan_door_imports(src, name)]
     assert offenders == []
 
@@ -434,3 +434,14 @@ def test_planted_verifier_module_in_a_tree_is_named(tmp_path: Path) -> None:
     (tmp_path / "sneaky.py").write_text(VERIFIER_MODULE, encoding="utf-8")
     found = [f for p in sorted(tmp_path.glob("*.py")) for f in scan_door_imports(p.read_text(encoding="utf-8"), p.name)]
     assert len(found) == 1 and found[0].startswith("sneaky.py:1")
+
+
+def test_a_door_consumer_is_not_exempt_from_the_http_library_scans() -> None:
+    """DOOR_CONSUMERS only skips the door-import scan: a listed consumer that imports urllib is still flagged."""
+    planted = "from ofo_app.kite_http import kite_async_client\nimport urllib.request\n"
+    assert scan_door_imports(planted, "ofo_app/routes/broker.py")  # the door import itself is what the list allows
+    modules = {"ofo_app/routes/broker.py": planted}
+    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)  # consumers are NOT in the network-scan exemption
+    assert "ofo_app/routes/broker.py" in DOOR_CONSUMERS
+    flagged = [f for n, src in modules.items() if n not in permitted for f in scan_network(src, n)]
+    assert flagged, "urllib import in a door consumer must still be flagged"
