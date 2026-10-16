@@ -216,12 +216,13 @@ def test_out_of_order_exit_fill_is_refused_and_blocks_never_a_short():
     book = _book(record, _recorded)
     _now[0] = ist("2026-10-16 15:10:10")
     buy, sell = fills_from_reply(_recorded("trades-151006"))
-    with pytest.raises(OutOfOrderFillError, match="out-of-order"):
+    with pytest.raises(OutOfOrderFillError) as refused:
         book.apply_fill(sell)
+    assert refused.value.args == ("out_of_order_fill", "5966618", "SELL", 65, 0, -65)
     assert book.position("S1", SYMBOL) == 0  # never -65
     assert book.raw_fills() == ()
     assert book.is_submit_blocked("S1")
-    assert book.reconciliation_events("S1")[-1].reason.startswith("out-of-order fill: trade 5966618")
+    assert book.reconciliation_events("S1")[-1].reason == "out_of_order_fill"
     sell_order = sell.broker_order_id
     assert book.reconcile_cumulative(sell_order, 65, read_at=ist("2026-10-16 15:10:06")) == "missing_trades"
     book.apply_fill(buy)  # the missing fill arrives; the exit fill is then accepted

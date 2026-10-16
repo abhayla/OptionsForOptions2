@@ -156,9 +156,14 @@ class FillConflictError(ValueError):
     """
 
 
+#: ADR-103 reason code on the blocking reconciliation event (the event's broker/local quantities carry the numbers).
+OUT_OF_ORDER_FILL = "out_of_order_fill"
+
+
 class OutOfOrderFillError(ValueError):
     """ADR-103: a fill that would read as a side flip (an exit fill before the entry it closes, or a fill carrying
-    the position across zero). Nothing is recorded; the strategy is blocked until the missing fill arrives."""
+    the position across zero). Nothing is recorded; the strategy is blocked until the missing fill arrives.
+    Args: (OUT_OF_ORDER_FILL, trade_id, side, quantity, position_before, position_after) - data, not a sentence."""
 
 
 @dataclass(frozen=True)
@@ -664,12 +669,11 @@ class OrderBook:
         flips = (current == 0 and fill.side is not opening) or (current * after < 0)
         if not flips:
             return
-        reason = (f"out-of-order fill: trade {fill.trade_id} ({fill.side.value} {fill.quantity} {fill.contract}) "
-                  f"would take the position from {current} to {after}; waiting for the fill it closes")
+        # structured, not a sentence: user wording comes only from the message catalogue (REQ-065 AC-2)
         now = self.now()
         self._block(order.strategy_id, now, ReconciliationEvent(
-            order.strategy_id, "blocked", fill.broker_order_id, None, current, None, reason, now))
-        raise OutOfOrderFillError(reason)
+            order.strategy_id, "blocked", fill.broker_order_id, after, current, None, OUT_OF_ORDER_FILL, now))
+        raise OutOfOrderFillError(OUT_OF_ORDER_FILL, fill.trade_id, fill.side.value, fill.quantity, current, after)
 
     # -- reads: always computed --------------------------------------------------------------
 
