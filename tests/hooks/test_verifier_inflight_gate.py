@@ -221,15 +221,225 @@ def test_other_tools_untouched(snap):
     assert run({"tool_name": "Read", "tool_input": {"file_path": "work/W-1.md"}}, snap).returncode == OK
 
 
+# ---- round 2: closed read-only allow-list, watched roots, writer scripts, path normalisation ----
+CLEAN = "cl" + "ean"  # spelled in pieces so this file never carries the command text
+NOT_READ_ONLY = [
+    "git apply p.patch", "git rm work/W-1.md", "git mv work/a work/b", "git " + CLEAN + " -fdx",
+    "git checkout-index -a -f", "git read-tree -u -m HEAD", "git submodule update", "git sparse-checkout set x",
+    "git bisect start", "git commit -am x", "git add .", "git tag v1", "git gc", "git notes add", "git frobnicate",
+    "git -c alias.m=merge m x", "git -c alias.status=!rm status", "git --exec-path=/x status",
+    "git diff --output=work/out.txt", "git log --output work/out.txt", "git grep -Ocmd x",
+    "git branch newname", "git branch -D x", "git branch -m a b", "git remote add o url", "git remote set-url o u",
+    "git worktree remove w", "git worktree prune", "git stash drop", "git stash pop", "git config user.name x",
+    "git config --unset x", "git --no-pager -c x=y MERGE x",
+    "xargs git merge", "echo x | xargs git merge", "find . -exec git rm {} +", "eval 'git merge x'",
+    "$g merge x", "python scripts/orchestrator/agit.py abc12345 merge x",
+    "python scripts/orchestrator/agit.py abc12345 -C d reset --hard",
+]
+READ_ONLY_MORE = [
+    "git ls-tree HEAD", "git cat-file -p HEAD", "git describe --tags", "git blame f.py", "git shortlog -sn",
+    "git grep -n foo", "git merge-base a b", "git for-each-ref", "git remote", "git remote -v", "git branch",
+    "git branch --list", "git branch -a", "git branch -r", "git branch --show-current", "git branch -v",
+    "git branch --contains abc123", "git branch --list 'feat/*'", "git worktree list", "git worktree list --porcelain",
+    "git stash list", "git config --get user.name", "git config --list", "git --version", "git -C d status",
+    "git --no-pager log -3", "git -P diff", "git log --grep=merge", "git diff --stat", "git show HEAD:work/W-1.md",
+    "python scripts/orchestrator/agit.py abc12345 status", "echo xargs git merge", "ls | xargs wc -l",
+]
+
+
+@pytest.mark.parametrize("cmd", NOT_READ_ONLY)
+def test_non_read_only_git_refused_while_in_flight(snap, cmd):
+    fresh(snap)
+    r = run(bash(cmd), snap)
+    assert r.returncode == REFUSED, (cmd, r.stderr)
+
+
+@pytest.mark.parametrize("cmd", READ_ONLY_MORE)
+def test_whole_allow_list_passes_while_in_flight(snap, cmd):
+    fresh(snap)
+    r = run(bash(cmd), snap)
+    assert r.returncode == OK, (cmd, r.stderr)
+
+
+@pytest.mark.parametrize("cmd", NOT_READ_ONLY + READ_ONLY_MORE + GIT_REWRITES)
+def test_nothing_refused_when_no_verifier_runs(snap, cmd):
+    assert run(bash(cmd), snap).returncode == OK
+
+
+def snapshot_with_roots(snap_dir, roots):
+    f = snap_dir / "aaaabbbbccccdddd.json"
+    f.write_text(json.dumps({"roots": [{"root": str(r), "files": {}, "dirs": []} for r in roots]}))
+    return f
+
+
+def test_cd_then_git_in_a_watched_folder_refused(snap, layout):
+    snapshot_with_roots(snap, [layout["main"]])
+    cmd = f'cd "{layout["main"].as_posix()}" && git merge x'
+    assert run(bash(cmd, cwd=str(layout["linked"])), snap).returncode == REFUSED
+
+
+def test_only_watched_roots_are_blocked(snap, layout):
+    snapshot_with_roots(snap, [layout["main"]])
+    main, other = layout["main"], layout["linked"]
+    # a write under the other worktree passes; under the watched one it is refused
+    assert run(write(other / "work" / "W-1.md"), snap).returncode == OK
+    assert run(write(main / "work" / "W-1.md"), snap).returncode == REFUSED
+    # git: a step whose cwd is outside the roots passes; cwd or -C inside is refused
+    assert run(bash("git merge x", cwd=str(other)), snap).returncode == OK
+    assert run(bash("git merge x", cwd=str(main)), snap).returncode == REFUSED
+    assert run(bash("git merge x", cwd=str(main / "backend")), snap).returncode == REFUSED
+    assert run(bash(f'git -C "{main.as_posix()}" merge x', cwd=str(other)), snap).returncode == REFUSED
+    assert run(bash(f'git -C "{other.as_posix()}" merge x', cwd=str(main)), snap).returncode == OK
+    assert run(bash("git --git-dir=.git merge x", cwd=str(other)), snap).returncode == REFUSED  # place unknown
+    assert run(bash("git --work-tree .. merge x", cwd=str(other)), snap).returncode == REFUSED
+
+
+def test_temp_repo_outside_roots_never_blocked(snap, layout, tmp_path):
+    snapshot_with_roots(snap, [layout["main"]])
+    scratch = tmp_path / "scratch"
+    (scratch / "work").mkdir(parents=True)
+    (scratch / ".git").mkdir()
+    assert run(write(scratch / "work" / "x.md"), snap).returncode == OK
+    for cmd in ("git init", "git add .", "git commit -m x", "git checkout -b t", "git merge x", "git " + CLEAN + " -fdx"):
+        assert run(bash(cmd, cwd=str(scratch)), snap).returncode == OK, cmd
+
+
+@pytest.mark.parametrize("content", ["{not json", "{}", '{"roots": []}', '{"roots": [{"nope": 1}]}', "[1]", ""])
+def test_unreadable_or_rootless_snapshot_watches_everything(snap, layout, content):
+    (snap / "0000111122223333.json").write_text(content)
+    assert run(write(layout["main"] / "work" / "W-1.md"), snap).returncode == REFUSED
+    assert run(bash("git merge x", cwd=str(layout["linked"])), snap).returncode == REFUSED
+
+
+def test_refusal_names_the_snapshot_and_how_to_clear_it(snap):
+    f = fresh(snap)
+    r = run(bash("git merge x"), snap)
+    assert r.returncode == REFUSED
+    assert str(f) in r.stderr and "delete" in r.stderr and "15 minutes" in r.stderr
+
+
+def load_hook():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("vif_under_test", HOOK)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_directory_name_is_case_folded(tmp_path, monkeypatch):
+    """`Work/` must count as work/ on a case-insensitive disk. realpath is neutralised so the test does not depend
+    on the disk resolving the case for us."""
+    root = tmp_path / "r"
+    (root / ".git").mkdir(parents=True)
+    mod = load_hook()
+    monkeypatch.setattr(os.path, "realpath", os.path.abspath)
+    for name in ("Work", "WORK", "Spec", "EVIDENCE"):
+        assert mod.guarded_holder(str(root / name / "x.md"), "") is not None, name
+
+
+def test_dotdot_is_normalised_before_judging(tmp_path):
+    root = tmp_path / "r"
+    for d in ("work", "backend"):
+        (root / d).mkdir(parents=True)
+    (root / ".git").mkdir()
+    mod = load_hook()
+    # resolves OUT of work/, so it is not a guarded write ...
+    assert mod.guarded_holder(str(root / "work" / ".." / "backend" / "x.py"), "") is None
+    # ... and a relative path that resolves INTO work/ only after normalisation is
+    assert mod.guarded_holder("../work/x.md", str(root / "backend")) is not None
+
+
+SCRIPTS = REPO / "scripts" / "orchestrator"
+
+
+def run_script(name, args, snap_dir):
+    env = dict(os.environ, OFO_VERIFIER_SNAP_DIR=str(snap_dir), PYTHONUTF8="1")
+    return subprocess.run([sys.executable, str(SCRIPTS / name), *args], capture_output=True, text=True,  # noqa: S603
+                          env=env, cwd=REPO, timeout=120, check=False)
+
+
+@pytest.fixture
+def evidence_args(tmp_path):
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    blocks = [{"ac": "AC-1", "result": "pass", "commands": "c", "observed": "o", "attack": "a",
+               "requirement": "REQ-1", "ac_fp": "x"}]
+    jf = tmp_path / "blocks.json"
+    jf.write_text(json.dumps(blocks))
+    return wt, [str(wt), "W-001", "builder", "verifier", str(jf)]
+
+
+@pytest.mark.parametrize("script", ["record_evidence.py", "record_evidence_fp.py"])
+def test_evidence_writers_refuse_in_flight_and_write_otherwise(snap, evidence_args, script):
+    wt, args = evidence_args
+    f = fresh(snap)
+    r = run_script(script, args, snap)
+    assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
+    assert not (wt / "evidence").exists()
+    f.unlink()
+    r = run_script(script, args, snap)
+    assert r.returncode == OK, r.stderr
+    assert (wt / "evidence" / "W-001" / "AC-1.md").is_file()
+
+
+def test_ev_agent_refuses_in_flight(snap, evidence_args):
+    _, args = evidence_args
+    fresh(snap)
+    r = run_script("ev_agent.py", ["zzzzzzzz", *args[1:]], snap)
+    assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
+
+
+def test_gh_issue_stage_refuses_in_flight_before_creating_anything(snap, tmp_path):
+    body = tmp_path / "b.md"
+    body.write_text("x")
+    fresh(snap)
+    r = run_script("gh_issue.py", ["app", "label", "title", str(body), "--stage", "S1"], snap)
+    assert r.returncode == REFUSED and "verifier_inflight_gate" in r.stderr, r.stderr
+    assert "issues/" not in r.stdout
+
+
+def test_writer_scripts_use_the_shared_function_not_a_copy():
+    for name in ("record_evidence.py", "record_evidence_fp.py", "ev_agent.py", "gh_issue.py"):
+        text = (SCRIPTS / name).read_text(encoding="utf-8")
+        assert "inflight_block_reason" in text and "INFLIGHT_SECONDS" not in text, name
+
+
 # ---- killing tests: each guard removed in turn must turn at least the named test red ----
 MUTATIONS = [
     ("writes branch", "    if tool in WRITE_TOOLS:\n", "    if False:\n",
      "test_guarded_writes_refused_in_any_worktree"),
-    ("git rewrite set", "    if sub in REWRITES:\n", "    if False:\n",
+    ("allow-list (rewrites)", "    if sub not in READ_ONLY or", "    if False and sub not in READ_ONLY or",
      "test_rewriting_git_refused_while_in_flight"),
-    ("15 minute window", "    fresh = [a for a in ages if a < INFLIGHT_SECONDS]\n",
+    ("15 minute window", "    fresh = [(a, p) for a, p in ages if a < INFLIGHT_SECONDS]\n",
      "    fresh = list(ages)\n", "test_stale_snapshot_ignored"),
     ("verifier pass-through", '    if agent == "verifier" or', "    if False or", "test_verifier_calls_pass_through"),
+    ("allow-list", "    if sub not in READ_ONLY or not _read_only_ok(sub, words[i + 1:]):\n", "    if False:\n",
+     "test_non_read_only_git_refused_while_in_flight"),
+    ("roots filter", "            if roots is None or path is None or any(_under(path, r) for r in roots)]\n",
+     "            if True]\n", "test_only_watched_roots_are_blocked"),
+    ("no roots = everything", "    return roots or None\n", "    return roots\n",
+     "test_unreadable_or_rootless_snapshot_watches_everything"),
+    ("unparseable = everything", "unreadable = watch everything\n        return None",
+     "unreadable = watch everything\n        return []", "test_unreadable_or_rootless_snapshot_watches_everything"),
+    ("opaque wrapper", "    if h in OPAQUE_HEADS and GIT_WORD.search(joined):\n", "    if False:\n",
+     "test_non_read_only_git_refused_while_in_flight"),
+    ("variable head", '    if h.startswith(("$", "`")):\n', "    if False:\n",
+     "test_non_read_only_git_refused_while_in_flight"),
+    ("agit helper", '== "agit.py":', "== 'never':", "test_non_read_only_git_refused_while_in_flight"),
+    ("-c config", '                unsafe = unsafe or "git -c (config can define a command)"\n', "                pass\n",
+     "test_non_read_only_git_refused_while_in_flight"),
+    ("--output", '    if any(a == "--output" or', '    if False and any(a == "--output" or',
+     "test_non_read_only_git_refused_while_in_flight"),
+    ("cd unknown", "            dir_unknown = True  # a later step runs somewhere we cannot resolve\n", "            pass\n",
+     "test_cd_then_git_in_a_watched_folder_refused"),
+    ("git-dir unknown", "                workdir = None\n            i += 2\n", "                pass\n            i += 2\n",
+     "test_only_watched_roots_are_blocked"),
+    ("-C workdir", "                workdir = os.path.join(workdir, nxt) if workdir is not None else None\n",
+     "                pass\n", "test_only_watched_roots_are_blocked"),
+    ("case fold", "parts[i].lower() in GUARDED_DIRS", "parts[i] in GUARDED_DIRS", "test_directory_name_is_case_folded"),
+    ("realpath", "os.path.realpath(os.path.join(", "(os.path.join(", "test_dotdot_is_normalised_before_judging"),
+    ("holder .git check", ' and os.path.exists(os.path.join(*parts[:i], ".git"))', "",
+     "test_unguarded_writes_pass"),
 ]
 
 
