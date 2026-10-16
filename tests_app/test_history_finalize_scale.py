@@ -22,7 +22,9 @@ from __future__ import annotations
 import datetime
 import os
 import sys
+import threading  # DIAG-W080 (temporary)
 import time
+import traceback  # DIAG-W080 (temporary)
 from decimal import Decimal
 from pathlib import Path
 
@@ -72,7 +74,24 @@ def seed_live(n: int) -> None:
     # no ANALYZE here on purpose: a day's rows arrive all day and the job runs before statistics catch up
 
 
+def _diag_dump(tag):  # DIAG-W080 (temporary)
+    egress = sys.modules["ofo.broker.egress"]
+    frames = sys._current_frames()
+    out = [f"DIAG {tag} threads={threading.active_count()}"]
+    for t in threading.enumerate():
+        f = frames.get(t.ident)
+        top = traceback.format_stack(f)[-3:] if f is not None else []
+        where = " | ".join(x.strip().replace(chr(10), " ") for x in top)
+        out.append(f"DIAG thread {t.name} daemon={t.daemon} :: {where}")
+    for (ev, th), (n, sec, ref) in sorted(egress._DIAG.items(), key=lambda kv: -kv[1][1])[:30]:
+        out.append(f"DIAG hook {ev} thread={th} n={n} sec={sec:.4f} refused={ref}")
+    print(chr(10) + chr(10).join(out), flush=True)
+
+
 def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(committed_day, capsys):
+    with capsys.disabled():
+        _diag_dump("before")
+    sys.modules["ofo.broker.egress"]._DIAG.clear()
     seed_live(N)
     ids = [iid(i) for i in range(1, N + 1)]
     pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
@@ -85,6 +104,7 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
                 f"per_batch_max={max(batches):.2f}s per_batch_mean={sum(batches) / len(batches):.2f}s")
         with capsys.disabled():  # real stdout: the CI log shows it on a pass too, with or without -s
             print(f"\n{line}", flush=True)
+            _diag_dump("after")
         assert result.status.value == "final" and result.errors == {}
         assert result.counts.replaced == N * MINUTES and result.counts.kept_live == 0
         assert max(batches) < BATCH_BOUND_S, f"{line} - one batch exceeded {BATCH_BOUND_S} s"
