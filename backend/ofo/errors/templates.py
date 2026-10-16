@@ -288,7 +288,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "blocked and no order has been submitted.",
           "An order priced outside the band would be rejected by Zerodha.", "This leg.",
           "Set the order price for this leg, then try again.", {"leg": LegRef}),
-    _gate("gate_price_outside_circuit", _MD, 120,
+    _gate("gate_price_outside_circuit", _MD, 123,
           "The price {limit} for {leg} is outside today's price band for this contract ({lower} to {upper}). The "
           "price has not been changed.",
           "Zerodha would reject an order priced outside the band.", "This leg.",
