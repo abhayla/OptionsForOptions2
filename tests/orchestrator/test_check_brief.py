@@ -10,10 +10,12 @@ check_brief = importlib.util.module_from_spec(_spec)
 sys.modules["check_brief"] = check_brief
 _spec.loader.exec_module(check_brief)
 
+GUARD_LINE = "Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.py`\n"
+
 
 def run(tmp_path, text, *extra):
     brief = tmp_path / "brief.md"
-    brief.write_text(text, encoding="utf-8")
+    brief.write_text(text + "\n" + GUARD_LINE, encoding="utf-8")
     return check_brief.main([str(brief), "--root", str(ROOT), *extra])
 
 
@@ -111,3 +113,52 @@ def test_w040_ellipsis_fragments_must_be_in_order(tmp_path):
     """AC-1: '"the user chooses the next action ... V1 never resubmits"' has both fragments but reversed -> FAIL."""
     assert run(tmp_path, 'REQ-058 AC-6 "the user chooses the next action ... V1 never resubmits"') == 1
     assert run(tmp_path, 'REQ-058 AC-6 "V1 never resubmits ... the user chooses the next action"') == 0
+
+
+def _brief_out(path, capsys):
+    code = check_brief.main([str(path), "--root", str(ROOT)])
+    return code, capsys.readouterr().out
+
+
+def test_guard_set_real_w080_r9_fails_on_guard_tests_and_findings(capsys):
+    """Real brief on main: names no guard tests and greps findings instead of listing ids -> both misses."""
+    code, out = _brief_out(ROOT / "docs" / "process" / "brief-W-080-r9.md", capsys)
+    assert code == 1
+    assert "MISSING guard tests" in out and "MISSING `Findings checked:`" in out
+
+
+def test_guard_set_real_brief_285_fails_on_guard_tests_only(capsys):
+    """Real Tier B brief: only the guard-tests miss."""
+    code, out = _brief_out(ROOT / "docs" / "process" / "brief-285.md", capsys)
+    assert code == 1
+    assert "MISSING guard tests" in out and "Findings checked" not in out
+
+
+def test_guard_set_fixed_w080_copy_passes(tmp_path):
+    """W-080 r9 plus the guard line and two real finding ids passes (quotes unchanged)."""
+    text = (ROOT / "docs" / "process" / "brief-W-080-r9.md").read_text(encoding="utf-8")
+    text += "\nFindings checked: guard-by-banned-shapes, targeted-tests-miss-dependent-files\n" + GUARD_LINE
+    brief = tmp_path / "b.md"
+    brief.write_text(text, encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
+
+
+def test_guard_set_unknown_finding_id_fails(tmp_path, capsys):
+    """A Findings checked id with no knowledge/findings/<id>.json fails and is named."""
+    text = "# Brief (Tier A)\nA new guard.\nFindings checked: no-such-finding-xyz\n"
+    assert run(tmp_path, text) == 1
+    assert "UNKNOWN finding id `no-such-finding-xyz`" in capsys.readouterr().out
+
+
+def test_guard_set_tier_b_or_non_guard_needs_no_findings(tmp_path):
+    """Tier A without guard words, and a Tier B guard brief, need no Findings line; only the guard tests."""
+    assert run(tmp_path, "# Brief (Tier A)\nA parser change.\n") == 0
+    assert run(tmp_path, "# Brief (Tier B)\nA new guard.\n") == 0
+
+
+def test_guard_set_missing_guard_tests_line_fails(tmp_path, capsys):
+    """Only one of the two guard literals on the line is not enough."""
+    brief = tmp_path / "b.md"
+    brief.write_text("Tests: tests/test_*.py only\n", encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(ROOT)]) == 1
+    assert "MISSING guard tests" in capsys.readouterr().out

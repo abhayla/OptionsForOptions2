@@ -7,6 +7,9 @@ a quote has no citation (UNCITED).  Exit 2: bad usage.
 Citation = the nearest REQ-### [AC-n] / ADR-### / Q### id in front of the quote, within the same paragraph;
 when a REQ+AC cite and another id both precede the quote, the REQ+AC cite wins.
 A Q### quote passes if the id's open-questions section or any spec/ file mentioning the id contains it.
+Also (guard-set checks, exit 1): (a) some line must name both literals `tests/test_*.py` and
+`tests/errors/test_write_allowlist.py` (the repo-wide guard tests); (b) a Tier A brief whose first 10 lines mention a
+guard/door/gate/scan needs a `Findings checked:` line whose ids each exist as knowledge/findings/<id>.json.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
@@ -149,6 +152,28 @@ def check_text(brief: str, root: Path) -> list[Result]:
     return results
 
 
+GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py")
+GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
+FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
+
+
+def check_guard_set(brief: str, root: Path) -> list[str]:
+    """One-line reasons a brief misses the repo-wide guard tests or (Tier A guard work) the findings ids."""
+    misses: list[str] = []
+    if not any(all(g in line for g in GUARD_TESTS) for line in brief.splitlines()):
+        misses.append("MISSING guard tests: no line names both `tests/test_*.py` and "
+                      "`tests/errors/test_write_allowlist.py` in its test commands")
+    lines = brief.splitlines()
+    if any("Tier A" in line for line in lines) and any(GUARD_WORD_RE.search(x) for x in lines[:10]):
+        m = FINDINGS_RE.search(brief)
+        ids = re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]*", m.group(1)) if m else []
+        if not ids:
+            misses.append("MISSING `Findings checked:` line with finding ids (Tier A guard/door/gate/scan brief)")
+        misses.extend(f"UNKNOWN finding id `{fid}`: no knowledge/findings/{fid}.json" for fid in ids
+                      if not (root / "knowledge" / "findings" / f"{fid}.json").is_file())
+    return misses
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("brief")
@@ -159,7 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     if not path.is_file():
         sys.stderr.write(f"brief not found: {path}\n")
         return 2
-    results = check_text(path.read_text(encoding="utf-8"), Path(args.root))
+    text = path.read_text(encoding="utf-8")
+    results = check_text(text, Path(args.root))
+    misses = check_guard_set(text, Path(args.root))
     out = []
     for r in results:
         short = r.quote if len(r.quote) <= 80 else r.quote[:77] + "..."
@@ -171,8 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     short = sum(r.status == "TOO-SHORT" for r in results)
     ok = len(results) - fails - uncited - short
     out.append(f"{len(results)} quotes: {ok} OK, {fails} FAIL, {uncited} UNCITED, {short} TOO-SHORT")
+    out.extend(misses)
     sys.stdout.write("\n".join(out) + "\n")
-    return 1 if fails or (args.strict and (uncited or short)) else 0
+    return 1 if fails or misses or (args.strict and (uncited or short)) else 0
 
 
 if __name__ == "__main__":
