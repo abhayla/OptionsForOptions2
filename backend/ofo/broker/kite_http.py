@@ -20,6 +20,7 @@ from ofo.broker.kite_endpoints import ALLOWED_CALLS
 
 KITE_API_HOST: Final = "api.kite.trade"
 _OTHER_KITE_SUFFIXES: Final = ("kite.trade", "zerodha.com")
+_PLAIN_NETLOC: Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 
 
 class KiteCallRefused(Exception):
@@ -38,10 +39,15 @@ _ALLOWED: Final = tuple((method, _template_regex(path))
 def check_call(method: str, url: str) -> None:
     """Raise ``KiteCallRefused`` unless ``method url`` is allow-listed (or the host is not a Kite host)."""
     parts = urlsplit(str(url))
-    # Fail closed: urllib/http.client/ssl fold non-ASCII dots and letters into an ASCII host, so a non-ASCII host is
-    # never compared, whatever it names (owner decision 2026-10-16: refuse, no idna conversion).
-    if not parts.netloc.isascii() or not (parts.hostname or "").isascii():
-        raise KiteCallRefused(f"{method} {parts.netloc!r}: non-ASCII hosts are refused; nothing was sent")
+    # Fail closed (B8): the address is read by this guard AND by urllib / http.client / httpx / ssl, and they differ on
+    # percent-escapes (%2E), non-ASCII dots, userinfo, IPv6 brackets and backslashes. So only a plain netloc is
+    # accepted: the RAW text must fully match, before any lowercasing or decoding. Nothing is converted or compared
+    # otherwise (owner decisions 2026-10-16: refuse non-ASCII outright, then refuse everything but a-z 0-9 . -).
+    if parts.scheme not in ("https", "http"):
+        raise KiteCallRefused(f"{method}: only http(s) URLs are allowed; nothing was sent")
+    if not _PLAIN_NETLOC.fullmatch(parts.netloc):
+        raise KiteCallRefused(f"{method} {parts.netloc!r}: host has characters outside a-z 0-9 . - (or is empty); "
+                              "nothing was sent")
     host = (parts.hostname or "").lower().rstrip(".")
     if host != KITE_API_HOST:
         if any(host == s or host.endswith("." + s) for s in _OTHER_KITE_SUFFIXES):

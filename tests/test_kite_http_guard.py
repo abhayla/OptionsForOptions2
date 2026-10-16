@@ -101,3 +101,45 @@ def test_open_url_refuses_non_ascii_hosts_before_urlopen(monkeypatch, host: str)
     with pytest.raises(kite_http.KiteCallRefused):
         kite_http.open_url(f"https://{host}/orders/regular", method="POST", data=b"x", timeout=1)
     assert opened == []
+
+
+
+# -- round 5: only a plain netloc (a-z 0-9 . - and an optional :443) is read; two parsers can never disagree ----------
+
+ODD_NETLOCS = [
+    "api.kite%2Etrade", "api%2ekite%2etrade", "api%2Ekite.trade", "api.kite.trad%65", "%61pi.kite.trade",
+    "user@api.kite.trade", "api.kite.trade@evil.com", "evil.com\\@api.kite.trade", "api.kite.trade\\.evil.com",
+    "api.kite.trade ", "api kite.trade", "[::1]", "[::ffff:1.2.3.4]", "api.kite.trade:80", "api.kite.trade:", "",
+    "api.kite.trade:443:443", "api_kite.trade",
+]
+
+
+@pytest.mark.parametrize("netloc", ODD_NETLOCS)
+def test_check_call_refuses_odd_netlocs(netloc: str) -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("POST", f"https://{netloc}/orders/regular")
+
+
+@pytest.mark.parametrize("netloc", ODD_NETLOCS)
+def test_open_url_refuses_odd_netlocs_before_urlopen(monkeypatch, netloc: str) -> None:
+    opened: list[object] = []
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: opened.append(a))
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.open_url(f"https://{netloc}/orders/regular", method="POST", data=b"x", timeout=1)
+    assert opened == []
+
+
+@pytest.mark.parametrize("url", ["ftp://api.kite.trade/orders/regular", "file:///orders/regular", "//api.kite.trade/x",
+                                 "api.kite.trade/orders/regular", "https:///orders/regular", "javascript:1"])
+def test_check_call_refuses_other_schemes_and_empty_hosts(url: str) -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("POST", url)
+
+
+def test_plain_hosts_still_pass_through_and_uppercase_kite_still_hits_the_path_rule() -> None:
+    kite_http.check_call("POST", "https://1.2.3.4/orders/regular")  # a plain IP is not a Kite host: not our door's call
+    kite_http.check_call("GET", "https://example.com/x")
+    kite_http.check_call("GET", "https://api.kite.trade:443/instruments")
+    kite_http.check_call("GET", "http://api.kite.trade/instruments")
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("POST", "https://API.KITE.TRADE/orders/regular")

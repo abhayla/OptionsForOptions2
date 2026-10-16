@@ -176,6 +176,38 @@ def _is_call_target(tree: ast.AST, attr: ast.Attribute) -> bool:
     return any(isinstance(n, ast.Call) and n.func is attr for n in ast.walk(tree))
 
 
+DOOR_MODULES = frozenset({"ofo.broker.kite_http", "ofo_app.kite_http"})
+_DOOR_PARENTS = frozenset({"ofo.broker", "ofo_app"})
+
+
+def scan_door_imports(source: str, name: str) -> list[str]:
+    """Any import of a Kite door module (every import form). Relative imports and dynamic imports that cannot be
+    resolved to a plain module name are flagged too: fail closed."""
+    tree, bad = _parse(source, name)
+    if tree is None:
+        return bad
+    found: list[str] = []
+    for n in ast.walk(tree):
+        line = getattr(n, "lineno", 0)
+        hit = False
+        if isinstance(n, ast.Import):
+            hit = any(a.name in DOOR_MODULES or a.name.endswith("kite_http") for a in n.names)
+        elif isinstance(n, ast.ImportFrom):
+            mod = n.module or ""
+            names = [a.name for a in n.names]
+            hit = (mod in DOOR_MODULES or mod.endswith("kite_http") or "kite_http" in names
+                   or (n.level > 0 and ("*" in names or mod == "")) or (mod in _DOOR_PARENTS and "*" in names))
+        elif isinstance(n, ast.Call):
+            fn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+            if fn in DYNAMIC_IMPORTS:
+                arg = n.args[0] if n.args else None
+                literal = isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                hit = not literal or "kite_http" in arg.value
+        if hit:
+            found.append(f"{name}:{line}: imports a Kite door (or an import that cannot be resolved)")
+    return found
+
+
 def _backend_modules() -> dict[str, str]:
     return {p.relative_to(BACKEND).as_posix(): p.read_text(encoding="utf-8") for p in sorted(BACKEND.rglob("*.py"))}
 
@@ -354,3 +386,51 @@ def test_a_module_does_not_flag_its_own_allow_listed_read_only_paths() -> None:
     assert scan_allowed_module(src, "kite_margin.py", allowed) == []
     assert scan_order_strings(src, "kite_margin.py", allowed) == []
     assert scan_allowed_module('X = "/orders/regular"\n', "kite_margin.py", allowed)  # its own list still binds it
+
+
+
+# -- round 5: only listed modules may import a Kite door ---------------------------------------------------------------
+
+
+def test_only_listed_modules_import_a_kite_door() -> None:
+    modules = _backend_modules()
+    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)
+    offenders = [f for name, src in modules.items() if name not in permitted for f in scan_door_imports(src, name)]
+    assert offenders == []
+
+
+VERIFIER_MODULE = (
+    "from ofo.broker.kite_http import open_url\n"
+    'H = "https://api.kite%2Etrade/"\n'
+    'open_url(H + "orde" + "rs/regular", method="POST")\n')
+
+
+@pytest.mark.parametrize("planted", [
+    VERIFIER_MODULE,
+    "import ofo.broker.kite_http\n",
+    "import ofo.broker.kite_http as k\n",
+    "from ofo.broker import kite_http\n",
+    "from ofo_app import kite_http as kh\n",
+    "from ofo_app.kite_http import kite_client\n",
+    "from .kite_http import open_url\n",
+    "from . import kite_http\n",
+    "from .. import *\n",
+    "from ofo_app import *\n",
+    'import importlib\nimportlib.import_module("ofo.broker.kite_http")\n',
+    'x = __import__("ofo_app.kite_http")\n',
+    'import importlib\nimportlib.import_module(name)\n',
+    "def (:\n",
+])
+def test_door_import_scan_catches_planted_shapes(planted: str) -> None:
+    assert scan_door_imports(planted, "planted.py"), planted
+
+
+def test_door_import_scan_does_not_flag_clean_code() -> None:
+    assert scan_door_imports("import json\nfrom ofo.broker import kite_endpoints\n", "clean.py") == []
+
+
+def test_planted_verifier_module_in_a_tree_is_named(tmp_path: Path) -> None:
+    (tmp_path / "ok.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "sneaky.py").write_text(VERIFIER_MODULE, encoding="utf-8")
+    found = [f for p in sorted(tmp_path.glob("*.py")) for f in scan_door_imports(p.read_text(encoding="utf-8"), p.name)]
+    assert len(found) == 1 and found[0].startswith("sneaky.py:1")

@@ -110,3 +110,12 @@ def test_clients_refuse_non_ascii_host_before_sending() -> None:
         with pytest.raises((kite_http.KiteCallRefused, httpx.InvalidURL)):
             client.request("POST", url)
     assert seen == []
+
+
+@pytest.mark.parametrize("host", ["api.kite%2Etrade", "api%2ekite%2etrade", "user@api.kite.trade"])
+def test_clients_refuse_percent_escaped_or_userinfo_hosts(host: str) -> None:
+    seen: list[httpx.Request] = []
+    with kite_http.kite_client(transport=_transport(seen)) as client:
+        with pytest.raises(kite_http.KiteCallRefused):
+            client.request("POST", f"https://{host}/orders/regular")
+    assert seen == []
