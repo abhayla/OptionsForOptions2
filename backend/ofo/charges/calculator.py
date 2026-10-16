@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from ofo.charges.rates import ChargeRates
+from ofo.engine.legs import Action
 
 SIDES = ("BUY", "SELL")
 MAX_QUANTITY = 10_000_000  # absurd-size cap (a lot is 65 units; this is ~150,000 lots)
@@ -73,10 +74,10 @@ def charges_for_order(order: ChargeOrder, rates: ChargeRates) -> OrderCharges:
         raise ValueError(f"unknown exchange segment {order.segment!r}: no rate, none is assumed")
     premium = order.price * order.quantity
     brokerage = rates.brokerage_per_order
-    stt = premium * rates.stt_sell_rate if order.side == "SELL" else Decimal("0")
+    stt = premium * rates.stt_sell_rate if order.side == Action.SELL.value else Decimal("0")
     transaction = premium * rates.transaction_rates[order.segment]
     sebi = premium * rates.sebi_rate
-    stamp = premium * rates.stamp_buy_rate if order.side == "BUY" else Decimal("0")
+    stamp = premium * rates.stamp_buy_rate if order.side == Action.BUY.value else Decimal("0")
     gst = (brokerage + sebi + transaction) * rates.gst_rate
     total = brokerage + stt + transaction + sebi + stamp + gst
     return OrderCharges(brokerage, stt, transaction, sebi, stamp, gst, total)

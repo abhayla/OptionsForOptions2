@@ -81,12 +81,13 @@ from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, L
 from ofo.instruments.parser import (
     ParsedInstruments, parse_instruments_rows, zerodha_index_row, zerodha_segment)
 from ofo_app import audit_store
+from ofo.money import HUNDREDTH
 
 #: Fixed key for the update lock (any constant; only the catalogue store uses it).
 CATALOGUE_UPDATE_LOCK_KEY = 5_300_053_001
 
 #: Column scales (strike NUMERIC(12,2) in 0003; tick_size NUMERIC(10,4) on broker_instruments in 0004).
-STRIKE_SCALE = Decimal("0.01")
+STRIKE_SCALE = HUNDREDTH
 STRIKE_LIMIT = Decimal(10) ** 10
 TICK_SCALE = Decimal("0.0001")
 TICK_LIMIT = Decimal(10) ** 6

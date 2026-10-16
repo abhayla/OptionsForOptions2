@@ -32,13 +32,13 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final
 
 from ofo.engine.legs import Instrument, require_price
+from ofo.money import PAISE as PRICE_STEP
+from ofo.timeutil import EXPIRY_CLOSE
+from ofo.timeutil import IST as IST  # re-exported: tests and callers import IST from here
 
-PRICE_STEP: Final = Decimal("0.01")
 IV_STEP: Final = Decimal("0.000001")
 GREEK_STEP: Final = Decimal("0.0001")
 DAYS_IN_YEAR: Final = 365
-IST: Final = datetime.timezone(datetime.timedelta(hours=5, minutes=30), "IST")
-EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)
 IV_LOWER: Final = 0.0001
 IV_UPPER: Final = 5.0
 _IV_TOLERANCE: Final = 1e-12

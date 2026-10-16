@@ -23,8 +23,8 @@ from ofo.marketdata.kite_frames import RawTick, parse_frame
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus, QuoteListener
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST_UNNAMED as IST
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 SOURCE = SourceMetadata(provider="zerodha-kite", feed_id="kite-ws-full")
 
 # Index identity (REQ-072 AC-1, W-060): the NIFTY 50 and SENSEX rows come from the catalogue's NSE_INDEX / BSE_INDEX

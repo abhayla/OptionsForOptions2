@@ -43,6 +43,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ofo.engine.legs import Action, Instrument
+from ofo.instruments.models import is_lot_aligned
 from ofo.errors.explanations import join_explanations, render_explanation
 from ofo.strategy import live_state as _live_state
 from ofo.strategy.definition import (
@@ -522,7 +523,7 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
         if terms.underlying != underlying:
             raise StoredFormError(UNDERLYING_MISMATCH, f"leg {i + 1}: contract {choice.contract_id} is "
                                                        f"{terms.underlying}, the strategy is {underlying}")
-        if _is_int(choice.quantity) and (choice.quantity <= 0 or choice.quantity % terms.lot_size != 0):
+        if _is_int(choice.quantity) and (choice.quantity <= 0 or not is_lot_aligned(choice.quantity, terms.lot_size)):
             raise StoredFormError(QUANTITY_NOT_LOT_MULTIPLE, f"leg {i + 1}: quantity {choice.quantity} is not a whole "
                                                              f"number of lots of {terms.lot_size}")
         try:

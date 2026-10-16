@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Iterable, Union
@@ -30,6 +30,7 @@ from ofo.instruments.models import (
     check_broker_code,
     find_ref,
 )
+from ofo.timeutil import IST
 
 # A row given to load()/update(): a listed contract with its broker rows, or a bare contract (no broker row, so it
 # cannot be traded at any broker; REQ-054 AC-3).
@@ -50,7 +51,6 @@ SUPPORTED_UNDERLYINGS: dict[str, str] = {
 }
 
 # The update date is the calendar date in India (the exchanges' timezone), ADR-007.
-IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 
 #: ADR-058: an update is refused if MORE than this percentage of one index's live contracts would disappear at once
 #: (an admin setting; ofo_app.config.Settings.CATALOGUE_MAX_DELIST_PERCENT holds the same default).

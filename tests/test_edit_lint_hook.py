@@ -83,11 +83,11 @@ def test_truncation_to_20_lines(monkeypatch, tmp_path):
     monkeypatch.setattr(edit_lint, "command_for", lambda p, r: ["tool"])
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1, out, ""))
     lines = edit_lint.lint(f, tmp_path).splitlines()
-    assert len(lines) == 21 and lines[-1] == "... 5 more"
+    assert len(lines) == edit_lint.MAX_LINES + 1 and lines[-1] == "... 5 more"
 
 
 def test_real_ruff_run_names_rules():
-    if subprocess.run([sys.executable, "-m", "ruff", "--version"], capture_output=True).returncode != 0:
+    if subprocess.run([sys.executable, "-m", "ruff", "--version"], capture_output=True, check=False).returncode != 0:
         pytest.skip("ruff not installed")
     d = ROOT / "backend" / "_edit_lint_tmp"
     d.mkdir(exist_ok=True)

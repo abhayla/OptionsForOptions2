@@ -126,7 +126,9 @@ def test_only_zerodha_and_a_user_ref():
 
 FORBIDDEN = ("ofo.strategy", "ofo.entitlements", "ofo.admin", "ofo.audit", "ofo.orders", "ofo.execution",
              "ofo.reconciliation", "ofo.timeline", "ofo_app")
-STANDARD = {"__future__", "dataclasses", "datetime", "enum", "hashlib", "typing", "urllib.parse"}
+STANDARD = {"__future__", "dataclasses", "datetime", "enum", "hashlib", "typing", "urllib.parse",
+            # the one home of the IST offset: itself standard library only (tests/test_one_home_constants.py)
+            "ofo.timeutil"}
 
 
 @pytest.mark.parametrize("module", [session, kite_auth])

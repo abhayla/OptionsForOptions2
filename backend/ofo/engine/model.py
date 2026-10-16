@@ -34,8 +34,8 @@ from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Instrument
 from ofo.marketdata.forward import FALLBACK_LABEL, ExpiryForward, ForwardUnavailable
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST as IST  # re-exported: ofo.scenario.spot imports IST from here
 
-IST: Final = datetime.timezone(datetime.timedelta(hours=5, minutes=30), "IST")
 _REFUSED: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 _TOKEN: Final = object()  # only model_inputs() can build a ModelInputs
 
