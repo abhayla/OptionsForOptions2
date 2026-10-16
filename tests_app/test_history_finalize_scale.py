@@ -286,7 +286,7 @@ def _seed_with_analyze_during_insert(n: int):
            "oi, source, removed) SELECT 'NSE_FO:' || (100000 + i), t.ts, '2026-10-08', 100 + (i % 50), 101 + (i % 50), "
            "99 + (i % 50), 100.50 + (i % 50), 5, 3, 'live', FALSE FROM generate_series(1, %d) AS i, "
            "generate_series(0, %d) AS m, LATERAL (SELECT timestamptz '2026-10-08 09:15+05:30' + m * interval '1 minute' "
-           "AS ts) AS t" % (n, MINUTES - 1))
+           "AS ts) AS t").replace("%d", str(n), 1).replace("%d", str(MINUTES - 1), 1)
 
     async def run():
         a, b = await asyncpg.connect(url), await asyncpg.connect(url)
