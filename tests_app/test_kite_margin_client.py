@@ -298,3 +298,41 @@ def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypa
     with pytest.raises(KiteMarginError) as raised:
         KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
     assert raised.value.code == "kite_margin_token"
+
+
+def test_transport_goes_through_the_kite_door_and_a_refusal_fails_closed(monkeypatch) -> None:
+    """W-080 round 4: urllib_transport sends only via open_url; KiteCallRefused -> kite_margin_refused, no leak."""
+    from ofo.broker.kite_http import KiteCallRefused
+    from ofo_app import kite_margin
+
+    seen: list[tuple] = []
+
+    class _Ok:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_open(url, *, method="GET", data=None, headers=None, timeout=20):
+        seen.append((method, url, data, timeout))
+        return _Ok()
+
+    monkeypatch.setattr(kite_margin, "kite_open_url", fake_open)
+    assert urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None) == (200, "{}")
+    urllib_transport("POST", "https://api.kite.trade/margins/basket?consider_positions=true", {}, "[]")
+    assert seen == [("GET", "https://api.kite.trade/user/margins", None, 20),
+                    ("POST", "https://api.kite.trade/margins/basket?consider_positions=true", b"[]", 20)]
+
+    def refuse(*a, **k):
+        raise KiteCallRefused(f"secret {SECRET}")
+
+    monkeypatch.setattr(kite_margin, "kite_open_url", refuse)
+    with pytest.raises(KiteMarginError) as raised:
+        urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)
+    assert raised.value.code == "kite_margin_refused" and SECRET not in repr(raised.value.args)

@@ -18,12 +18,13 @@ from __future__ import annotations
 import json
 import logging
 import urllib.error
-import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from ofo.broker.kite_http import KiteCallRefused
+from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 
 log = logging.getLogger("ofo_app.kite_margin")
@@ -102,16 +103,17 @@ class BasketMargin:
 
 
 def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, str]:
-    request = urllib.request.Request(url, data=None if body is None else body.encode("utf-8"), headers=headers,
-                                     method=method)
+    data = None if body is None else body.encode("utf-8")
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - fixed https host
+        with kite_open_url(url, method=method, data=data, headers=headers, timeout=20) as response:  # door checks first
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         try:
             return exc.code, exc.read().decode("utf-8")
         except Exception:  # noqa: BLE001 - the status alone decides
             return exc.code, ""
+    except KiteCallRefused:
+        raise KiteMarginError("kite_margin_refused") from None
     except Exception:  # noqa: BLE001 - IncompleteRead, bad UTF-8, resets, timeouts: all "not confirmed"
         raise KiteMarginError("kite_margin_unavailable") from None
 

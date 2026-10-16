@@ -9,7 +9,7 @@ call is added here first, with the module that makes it; ``tests/test_no_order_p
 - a module named here carries a path, an HTTP verb or a request option this list does not allow.
 
 Reading orders (``GET /orders``, ``GET /orders/{id}/trades``) and the read-only ``POST /charges/orders`` and
-``POST /margins/orders`` / ``/margins/basket`` are NOT placement; W-081 adds its margin entries with its own module.
+``POST /margins/orders`` / ``/margins/basket`` are NOT placement; W-081's margin entries are present under its own module.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
     "ofo_app/kite_client.py": frozenset({("POST", "/session/token")}),
     "ofo_app/kite_history.py": frozenset({("GET", "/instruments/historical/{token}/minute")}),
     "ofo/instruments/downloader.py": frozenset({("GET", "/instruments")}),
+    "ofo_app/kite_margin.py": frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
 }
 
 #: modules that may import an HTTP library or name the Kite API host without making an allow-listed call themselves:
