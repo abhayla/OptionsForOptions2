@@ -8,18 +8,34 @@
   "where": "W-028 PR, '(it closes #43 items 1 to 3)'",
   "evidence": "memory pr-body-close-keywords: #43 auto-closed with item 4 open, reopened by hand"
  },
- "fix": "Instance: #263, #275 and #279 were reopened with comments on 2026-10-16. Class: scripts/orchestrator/pr_close_check.py plus a PR CI job that fails on any closing reference that is not a whole line 'Fixes #N' in the body, and on any in a commit message (branch fix/pr-close-check, being built).",
+ "fix": "Instance: #263, #275 and #279 were reopened with comments on 2026-10-16. Class: scripts/orchestrator/pr_close_check.py plus .github/workflows/pr-close-check.yml (PR #289, merged 2026-10-16), which fails a PR on any closing reference that is not a whole body line 'Fixes #N', and on any closing reference in a commit message; a CLAUDE.md hard rule.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Becomes guarded when the pr-close-check job merges and runs on PRs. Measured on 2026-10-16: 3 wrong closes in 2 PRs, found by scripts/orchestrator/coverage.py --check listing '#263/#275/#279 is closed'. That check is a late, accidental detector, not a guard."
+  "status": "guarded",
+  "checks": [
+   "scripts/orchestrator/pr_close_check.py",
+   "tests/test_pr_close_check.py",
+   ".github/workflows/pr-close-check.yml (job close-keywords)"
+  ],
+  "note": "Guarded since PR #289: the job ran on its own PR and passed. Real PR bodies #283 and #284 are fixtures and fail on the lines that closed issues. Does not cover issues closed by hand, or text edited after merge. Before #289 the only detector was coverage.py listing closed issues, which was late and accidental."
  },
  "spec_ref": [
   "spec/decisions/ADR-070.md"
  ],
  "occurrences": [
-  {"date": "2026-09-29", "where": "W-028 PR", "evidence": "#43 closed with item 4 open"},
-  {"date": "2026-10-16", "where": "PR #283", "evidence": "#263 closed with item 4 open; gh issue view 263 closedByPullRequestsReferences = 283"},
-  {"date": "2026-10-16", "where": "PR #284", "evidence": "#279 (items 1, 4 open) and #275 (fix unmerged) closed; closedByPullRequestsReferences = 284"}
+  {
+   "date": "2026-09-29",
+   "where": "W-028 PR",
+   "evidence": "#43 closed with item 4 open"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "PR #283",
+   "evidence": "#263 closed with item 4 open; gh issue view 263 closedByPullRequestsReferences = 283"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "PR #284",
+   "evidence": "#279 (items 1, 4 open) and #275 (fix unmerged) closed; closedByPullRequestsReferences = 284"
+  }
  ]
 }
