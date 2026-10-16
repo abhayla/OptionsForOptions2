@@ -168,7 +168,8 @@ def _seed_with_analyze_during_insert(n: int):
 def test_finalize_finishes_when_statistics_say_zero_rows_because_analyze_ran_during_the_seed():
     """#344: with the table's statistics at zero rows the 6th execution of a prepared statement switched to a generic
     plan that timed out (batch 6). The store forces custom plans, so every batch is planned on its own values."""
-    _seed_with_analyze_during_insert(N)
+    reltuples, _relpages, _stats_rows = _seed_with_analyze_during_insert(N)
+    assert reltuples == 0, f"repro left reltuples={reltuples}, not 0: the zero-row statistics bug is not exercised"
     ids = [iid(i) for i in range(1, N + 1)]
     pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
     try:
