@@ -124,7 +124,8 @@ def test_udp_sendto_is_refused() -> None:
         s.close()
 
 
-_NEEDS_SENDMSG = pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"), reason="no socket.sendmsg on this OS (Windows)")
+_NEEDS_SENDMSG = pytest.mark.skipif(not hasattr(socket.socket, "sendmsg"),
+                                    reason="no socket.sendmsg on this OS (Windows)")
 
 
 def _loopback_pair():
