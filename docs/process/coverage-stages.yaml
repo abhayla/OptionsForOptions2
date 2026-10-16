@@ -225,10 +225,8 @@ vendor_enquiries:
 
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
-  "#154": 4a            # mechanism: test every PR on current main (green-alone-red-together, 2nd occurrence)
   "#191": 4a            # gate_before_commit follow-up: 3 MAJOR bypasses + 2 minors (#155 merged partial, owner Q6)
   "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
-  "#30": 4a
   "#43": 4b
   "#45": 4b
   "#63": 4b
@@ -244,16 +242,17 @@ issues:
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
-  "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
+  "#273": 4b           # partial re-check fixed (PR #337); open until the Execute route fills ExecutionContext from Zerodha (GC-2c)
   "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
-  "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
+  "#269": 4b           # W-075 AC-7 verified (GC-2a); D5 narrowed: breakeven columns vs charges = OQ-10 (owner)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
   "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
   "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
+  "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
 
 # Work items whose status is not done.
 work_items:
@@ -263,7 +262,7 @@ work_items:
   W-017: 4b
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-083: 4b           # PARTIAL: AC-1/AC-4 verified; AC-2 add-to-existing waits on owner OQ-7 (REQ-061, ADR-084)
-  W-081: 4b           # BLOCKED: margin gate merged as a component; needs basket (#271), live funds read, #273
+  W-081: 4b           # in review: wired (PR #337); AC-1/3/4 verifier pass on main = GC-2b item 5
   W-089: 4a           # GC-2d: Settings -> Broker & Market Data page (REQ-015 AC-4, AC-8; REQ-051 AC-1 line)
   W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
   W-091: 4b           # GC-2b: Kite orders/trades/positions -> domain types (F-40)

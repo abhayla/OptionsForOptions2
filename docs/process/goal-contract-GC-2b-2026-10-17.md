@@ -31,7 +31,10 @@ header note naming the source file and the redaction; CI then runs the test.
   every leg as unconfirmed; GC-3 (the live 1-lot order) cannot pass without it.
 - GC-2a landed the W-080 basket and the Linux egress fix (PR #327), Zerodha money rounded to the paisa at parse
   (ADR-101, PR #336, helper `ofo.money.zerodha_paise` - the adapter reuses it for every Kite money figure), and the
-  verifier-in-flight hook (PR #335). <ITEM-3 RESULT: W-081 wiring + #273 merged as PR #N | parked as #N>.
+  verifier-in-flight hook (PR #335). W-081 is wired (PR #337): `ofo_app/checked_basket.py` is the one production path
+  to a basket, `build_basket` takes a Zerodha figure source and decides inside, `KiteBasket`/`MarginVerdict` are
+  sealed; the partial-fill re-check uses Zerodha's required margin (#273's instance; #273 stays open until the Execute
+  route fills `ExecutionContext` from the same figure, GC-2c).
 
 ## Done list (order 1 -> 2; 3 and 4 only if their time gate holds; 5-8 always)
 
@@ -67,7 +70,10 @@ header note naming the source file and the redaction; CI then runs the test.
    tail remain; else parked to GC-2c with a note (expected: it parks).** Declare the payload allowlist from the TWO real samples each
    (122104 and 151006); the session (login) type stays `unproven for type session` until GC-3 captures a login reply
    (zero hits for access_token / enctoken / public_token in the recordings).
-5. **Carry-overs from GC-2a** (each a line in the handover): <ITEM-3 carry-over if parked>; the history-finalize
+5. **Carry-overs from GC-2a** (each a line in the handover): W-081 AC-1/AC-3/AC-4 have no evidence file yet - one
+   fresh verifier pass on main (Tier B verifier only, ~30 min, after item 1; its round 1 review blocks were on the
+   pre-fix code); for GC-2c, written into it: the Execute route type-checks the basket and builds it again on every
+   request (#337 round 2 MINORs), and deferred issue #338 (a negative Zerodha balance blocks a closing basket); the history-finalize
    scale-test hang (two unexplained CI failures, runs 38897947228 and 38938587984; two later runs green; lead:
    autovacuum on `history_minute_bars`) - if it recurs on any CI run, open a `deferred` issue with the run id, do not
    retry blindly; OQ-10 (breakeven columns vs charges) waits for the owner, not this contract.
