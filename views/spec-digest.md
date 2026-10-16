@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (99)
+## Decisions (100)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -105,6 +105,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 afternoon: 1 lot of a NIFTY option BUY, from a basket built by the W-080 branch running on ofo_dev (u… [applies ADR-054, ADR-060]
 - ADR-099 2026-10-16: When a Kite session is active, the outcome screen shows the margin from Zerodha for the strategy's planned orders: the amount needed (Zerodha's baske… [extends REQ-055]
 - ADR-100 2026-10-16: The Kite Connect app registers no static IP. [applies ADR-054]
+- ADR-101 2026-10-16: Every money figure read from a Zerodha reply that the margin gate or a screen compares (the basket reply's final.total and each BUY leg's option_prem… [applies ADR-016, ADR-099]
 
 ## Requirements (75)
 

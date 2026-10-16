@@ -393,7 +393,7 @@ def test_099_core_real_rest_basket_reply_is_exact_to_the_paisa() -> None:
     assert recorded["reply"]["data"]["final"]["total"] == "2073.5"  # the raw recorded value
     data = _recorded_decimals(recorded["reply"]["data"])
     required = required_from_basket_reply(data, _legs(recorded["request"]))  # type: ignore[arg-type]
-    assert required == Decimal("2073.50") and required.as_tuple().exponent == -2
+    assert required == Decimal("2073.50") and required.as_tuple() == Decimal("2073.50").as_tuple()  # to the paisa
 
 
 def test_099_float_tail_above_the_available_figure_is_not_a_shortfall() -> None:

@@ -5,7 +5,6 @@ Expected values are worked by hand (a paisa is 0.01; half-up sends a tie away fr
 from decimal import Decimal
 
 import pytest
-
 from ofo.money import kite_paise
 
 
