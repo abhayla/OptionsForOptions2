@@ -252,7 +252,8 @@ def test_the_object_new_allowances_are_real_and_only_those_files_use_it() -> Non
 
 def test_the_tuple_new_allowances_are_real_and_only_those_files_use_it() -> None:
     """Same for `tuple.__new__` (the two sealed tuples): a stale allowance fails, and so does a new user."""
-    users = {p.relative_to(BACKEND).as_posix() for p in _product_files() if "tuple.__new__" in p.read_text(encoding="utf-8")}
+    users = {p.relative_to(BACKEND).as_posix() for p in _product_files()
+             if "tuple.__new__" in p.read_text(encoding="utf-8")}
     assert users == set(TUPLE_NEW_ALLOWED)
 
 

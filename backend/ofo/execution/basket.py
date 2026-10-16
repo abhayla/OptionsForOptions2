@@ -183,8 +183,8 @@ FreezeGate = Callable[[ExecutionPlan], FreezeCheck]
 
 
 class MarginSource(Protocol):
-    """Zerodha's two margin figures, read by ``build_basket`` itself. Production passes only ``ofo_app.checked_basket``'s
-    adapter over the real Zerodha client (tests/test_margin_from_zerodha_only.py)."""
+    """Zerodha's two margin figures, read by ``build_basket`` itself. Production passes only
+    ``ofo_app.checked_basket``'s adapter over the real Zerodha client (tests/test_margin_from_zerodha_only.py)."""
 
     def available_funds(self) -> Decimal:
         """Zerodha's available funds (``equity.net``, signed), exact Decimal."""
