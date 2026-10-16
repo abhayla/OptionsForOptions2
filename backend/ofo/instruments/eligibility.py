@@ -6,11 +6,12 @@ never merges eligibility into a contract record, and this registry never deletes
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from ofo.instruments.models import InstrumentId
+from ofo.instruments.models import INDEX_TYPE, ZERODHA, Contract, InstrumentId, ListedContract
 
 
 @dataclass(frozen=True)
@@ -45,3 +46,115 @@ class EligibilityRegistry:
         """Fail closed: an instrument with no recorded eligibility check is not tradable."""
         status = self._status.get(instrument_id)
         return status is not None and status.tradable
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# ADR-104 (W-092, REQ-053 AC-3): eligibility filled from Zerodha's own data, and nothing else (AC-4: no platform rule).
+# (a) the contract is in Zerodha's CURRENT instrument list as the latest load left it, and its expiry is on or after
+#     today's India date -> tradable; (b) just before execution, a leg Zerodha's basket-margin reply refuses -> not
+#     tradable with Zerodha's text. The reasons below are internal (audit/log); the user sees the gate's catalogue text.
+# ---------------------------------------------------------------------------------------------------------------
+
+REASON_NOT_IN_LIST = "not in Zerodha's current instrument list"
+REASON_EXPIRED = "its expiry has passed"
+REASON_DELISTED = "delisted: Zerodha's list stopped carrying it before its expiry"
+REASON_RETIRED = "retired after its expiry"
+REASON_NO_ZERODHA_ROW = "no live Zerodha row for this contract"
+REASON_INDEX = "an index row is not a tradable contract"
+REASON_NO_EXPIRY = "no expiry date in the list"
+
+
+@dataclass(frozen=True)
+class ListState:
+    """One catalogue contract as Zerodha's latest instrument-list load left it (ADR-104 (a)).
+
+    ``listed`` = the latest load carried it; ``has_zerodha_row`` = a live Zerodha row exists for it. The values come
+    from the catalogue store (the product's own download), never from a caller's verdict.
+    """
+
+    instrument_id: InstrumentId
+    instrument_type: str
+    expiry: Optional[date]
+    listed: bool
+    retired: bool = False
+    delisted: bool = False
+    has_zerodha_row: bool = True
+
+
+def _check_today(today: object) -> date:
+    if type(today) is not date:  # a datetime is a date subclass: refuse it, the India DATE is what is compared
+        raise TypeError(f"today must be a datetime.date (the India date on the database clock), got {today!r}")
+    return today
+
+
+def _check_aware(at: object, name: str) -> datetime:
+    if not isinstance(at, datetime) or at.tzinfo is None or at.utcoffset() is None:
+        raise TypeError(f"{name} must be a timezone-aware datetime, got {at!r}")
+    return at
+
+
+def _not_tradable_reason(state: ListState, today: date) -> Optional[str]:
+    """The first reason ``state`` is not tradable, or None. Order: lifecycle, list, Zerodha row, type, expiry."""
+    if state.retired:
+        return REASON_RETIRED
+    if state.delisted:
+        return REASON_DELISTED
+    if not state.listed:
+        return REASON_NOT_IN_LIST
+    if not state.has_zerodha_row:
+        return REASON_NO_ZERODHA_ROW
+    if state.instrument_type == INDEX_TYPE:
+        return REASON_INDEX
+    if state.expiry is None:
+        return REASON_NO_EXPIRY
+    if state.expiry < today:  # F-33: an expired row can still be in the list; the list carrying it is not enough
+        return REASON_EXPIRED
+    return None
+
+
+def status_from_list(state: ListState, *, today: date, loaded_at: datetime) -> EligibilityStatus:
+    """ADR-104 (a): one contract's eligibility from the latest list load. ``checked_at`` is that load's time."""
+    if not isinstance(state, ListState):
+        raise TypeError(f"expected a ListState, got {state!r}")
+    reason = _not_tradable_reason(state, _check_today(today))
+    return EligibilityStatus(instrument_id=state.instrument_id, tradable=reason is None,
+                             checked_at=_check_aware(loaded_at, "loaded_at"), reason=reason)
+
+
+def registry_from_list(
+    states: Iterable[ListState], *, today: date, loaded_at: datetime,
+    refusals: Optional[Mapping[InstrumentId, str]] = None, refused_at: Optional[datetime] = None,
+) -> EligibilityRegistry:
+    """A NEW registry from the latest list load (ADR-104 (a)) and, optionally, the basket-margin reply's per-leg
+    refusals (ADR-104 (b): instrument -> Zerodha's error text). A refusal can only make a contract NOT tradable,
+    never tradable; a contract with no state stays unrecorded (the gate then refuses it as unconfirmed).
+
+    Two states for one identity are refused (a live identity is unique; two answers for one contract is not data
+    this function may choose between).
+    """
+    _check_today(today)
+    _check_aware(loaded_at, "loaded_at")
+    registry = EligibilityRegistry()
+    seen: set[InstrumentId] = set()
+    for state in states:
+        status = status_from_list(state, today=today, loaded_at=loaded_at)
+        if status.instrument_id in seen:
+            raise ValueError(f"two list states for {status.instrument_id!r}")
+        seen.add(status.instrument_id)
+        registry.record(status)
+    for instrument_id, text in (refusals or {}).items():
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"a margin refusal needs Zerodha's text, got {text!r} for {instrument_id!r}")
+        registry.record(EligibilityStatus(instrument_id=instrument_id, tradable=False,
+                                          checked_at=_check_aware(refused_at, "refused_at"), reason=text.strip()))
+    return registry
+
+
+def states_from_parsed_list(catalogue_contracts: Iterable[Contract],
+                            current_list: Iterable[ListedContract]) -> list[ListState]:
+    """The pure path (no database): every catalogue contract, marked listed when Zerodha's parsed list carries it with
+    a Zerodha row. A list row the catalogue does not hold is not added: eligibility never adds a contract (AC-2)."""
+    zerodha_ids = {row.id for row in current_list if any(ref.broker == ZERODHA for ref in row.broker_refs)}
+    return [ListState(instrument_id=c.id, instrument_type=c.instrument_type, expiry=c.expiry,
+                      listed=c.id in zerodha_ids, has_zerodha_row=c.id in zerodha_ids)
+            for c in catalogue_contracts]
