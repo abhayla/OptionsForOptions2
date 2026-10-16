@@ -24,7 +24,6 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 from ofo.engine.executable_price import (
     Depth,
     _action,
-    _decimal,
     _positive_int,
     executable_limit,
     round_to_tick,
@@ -64,12 +63,20 @@ class ProtectedLeg:
 class ProtectedLimits:
     tolerance: Decimal
     legs: tuple[ProtectedLeg, ...]
-    total_adverse: Decimal  # sum of the legs' ``adverse``; never above ``tolerance``
+    # Sum of the legs' ``adverse`` rupees; never above ``tolerance``. It can be below 0 when rounding tightens a leg
+    # past its planned price, so it is NOT "remaining room" and must not be used as such.
+    total_adverse: Decimal
+
+
+def _strict_decimal(value: object, name: str) -> Decimal:
+    # Stricter than executable_price._decimal: an int (or bool) is refused too, so every caller converts on purpose.
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise ValueError(f"{name} must be a finite Decimal (int, bool and float are refused), got {value!r}")
+    return value
 
 
 def _tolerance(value: object) -> Decimal:
-    if not isinstance(value, Decimal) or not value.is_finite():
-        raise ValueError(f"tolerance must be a finite Decimal, got {value!r}")
+    value = _strict_decimal(value, "tolerance")
     if value < 0:
         raise ValueError(f"tolerance must be >= 0, got {value}")
     return value
@@ -79,7 +86,7 @@ def _leg_inputs(leg: object) -> tuple[Action, int, Decimal, Depth]:
     if not isinstance(leg, PlannedLeg):
         raise ValueError(f"each leg must be a PlannedLeg, got {leg!r}")
     side, quantity = _action(leg.side), _positive_int(leg.quantity, "quantity")
-    price = _decimal(leg.planned_price, "planned_price")
+    price = _strict_decimal(leg.planned_price, "planned_price")
     if price <= 0:
         raise ValueError(f"planned_price must be positive, got {price}")
     if not isinstance(leg.depth, Depth):
@@ -107,7 +114,7 @@ def _protected_price(planned: Decimal, allowance: Decimal, tick: Decimal, side: 
 def protected_limits(legs: Sequence[PlannedLeg], tolerance: Decimal, tick: Decimal) -> ProtectedLimits:
     """Split ``tolerance`` (rupees, whole strategy) across ``legs`` pro rata to planned value (ADR-095)."""
     tolerance = _tolerance(tolerance)
-    tick = _decimal(tick, "tick")
+    tick = _strict_decimal(tick, "tick")
     if tick <= 0:
         raise ValueError(f"tick must be positive, got {tick}")
     if isinstance(legs, (str, bytes)) or not isinstance(legs, Sequence) or not legs:

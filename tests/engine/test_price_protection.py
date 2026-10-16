@@ -148,6 +148,26 @@ def test_refuses_bad_input(legs, tolerance, match):
         protected_limits(legs, tolerance, TICK)
 
 
+def test_raw_limit_within_a_sub_tick_step_of_the_tick_still_rounds_toward_the_user():
+    """The raw BUY limit lands within 1e-8 of the 1.05 tick and must still give 1.00. BUY 3,000,001 at 1.00 plus a SELL
+    of 1 at 0.05: total value 3,000,001.05; share 150000.04 x 3000001 / 3000001.05 = 150000.0375 -> 150000.03;
+    allowance 0.0499999933... -> raw 1.0499999933 (6.7e-9 under 1.05) -> floor 1.00. Cutting that raw price away
+    from the user at the sub-tick step (ceil to 1.05000000) would hand the leg a tick it has no share for."""
+    legs = [_leg(Action.BUY, 3_000_001, "1.00"), _leg(Action.SELL, 1, "0.05")]
+    result = protected_limits(legs, D("150000.04"), TICK)
+    assert result.legs[0].share == D("150000.03")
+    assert result.legs[0].limit == D("1.00") and result.legs[0].adverse == 0
+    assert result.legs[1].limit == TICK  # the SELL's share 0.00 leaves it at its planned 0.05
+
+
+@pytest.mark.parametrize("planned, tick", [
+    (10, D("0.05")), (True, D("0.05")), (D("10"), 1), (D("10"), True),
+])
+def test_price_and_tick_must_be_decimal_not_int_or_bool(planned, tick):
+    with pytest.raises(ValueError, match="int, bool and float are refused"):
+        protected_limits([PlannedLeg(Action.BUY, 65, planned, NO_DEPTH)], D("300"), tick)
+
+
 def test_buy_below_one_tick_is_refused_not_loosened():
     """A BUY planned at 0.03 cannot have a limit of at least one tick inside a 0.01-rupee share: refused."""
     with pytest.raises(ValueError, match="one tick"):
