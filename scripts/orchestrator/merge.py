@@ -11,13 +11,14 @@ Exit code: that of the first failing step, else 0.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-UP_TO_DATE = ("up to date", "up-to-date")
+UP_TO_DATE = re.compile(r"\balready up[ -]to[ -]date\b", re.IGNORECASE)
 GATE = ROOT / "tools" / "merge_when_green.py"
 
 
@@ -35,7 +36,7 @@ def merge(pr: str, runner=run) -> int:
         return rc
     rc, out = runner(["gh", "pr", "update-branch", pr])
     print(out, end="")
-    if rc != 0 and not any(s in out.lower() for s in UP_TO_DATE):
+    if rc != 0 and not UP_TO_DATE.search(out):
         print(f"merge.py: gh pr update-branch failed (exit {rc}); not merging")
         return rc
     rc, out = runner([sys.executable, str(GATE), pr])

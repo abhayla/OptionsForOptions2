@@ -1,5 +1,8 @@
 """PreToolUse hook (Agent): refuse a dispatch whose prompt names a docs/process/brief-*.md file that fails check_brief.
 
+Only the DESIGNATED brief is checked: a line `Your full brief: <path>` or `Brief: <path>` (any other mention of a
+brief file, e.g. "for history see ...", passes). check_brief runs with UTF-8 output; the dispatch is refused
+only when it exits non-zero AND printed a MISSING/FAIL line; a crash of the checker allows (one stderr line).
 Finding brief-rule-from-memory + 2026-10-16: unchecked briefs cost 3 CI rounds. The brief path may be absolute
 or relative (tried against CLAUDE_PROJECT_DIR, this repo, then the current directory).
 A prompt naming no brief file passes.
@@ -14,10 +17,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _route_common import run_hook
 
 REPO = Path(__file__).resolve().parents[2]
-BRIEF_RE = re.compile(r"[\w:./\\~-]*docs[/\\]process[/\\]brief-[\w.\-]+?\.md", re.IGNORECASE)
+BRIEF_RE = re.compile(r"^\s*(?:your full brief|brief)\s*:\s*(\S*?docs[/\\]process[/\\]brief-[\w.\-]+?\.md)",
+                      re.IGNORECASE | re.MULTILINE)
 LINE_RE = re.compile(r"^(MISSING|FAIL)\b")
 TIMEOUT = 60
 
@@ -42,14 +45,18 @@ def decide(tool_name: str, tool_input: dict) -> str | None:
         brief = _resolve(ref)
         if brief is None:
             continue
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
         try:
             r = subprocess.run([sys.executable, str(checker), str(brief)], capture_output=True, text=True,  # noqa: S603
-                               encoding="utf-8", errors="replace", timeout=TIMEOUT, cwd=REPO, check=False)
+                               encoding="utf-8", errors="replace", timeout=TIMEOUT, cwd=REPO, env=env, check=False)
         except Exception:  # noqa: BLE001, S112 - timeout or spawn failure: fail open
             continue
-        if r.returncode == 1:
-            lines = [ln for ln in r.stdout.splitlines() if LINE_RE.match(ln)]
-            problems.append(f"{brief.name}: " + ("; ".join(lines) or "check_brief exited 1"))
+        lines = [ln for ln in r.stdout.splitlines() if LINE_RE.match(ln)]
+        if r.returncode != 0 and lines:
+            problems.append(f"{brief.name}: " + "; ".join(lines))
+        elif r.returncode != 0:
+            sys.stderr.write(f"agent_brief_gate: check_brief exited {r.returncode} with no MISSING/FAIL line "
+                             f"for {brief.name}; allowing (fail open)\n")
     if not problems:
         return None
     banner = "BLOCKED by agent_brief_gate: the brief fails scripts/orchestrator/check_brief.py. Fix it, dispatch again."
@@ -57,6 +64,10 @@ def decide(tool_name: str, tool_input: dict) -> str | None:
 
 
 def main() -> int:
+    try:
+        from _route_common import run_hook  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - a missing helper module fails open, silently
+        return 0
     return run_hook(decide)
 
 

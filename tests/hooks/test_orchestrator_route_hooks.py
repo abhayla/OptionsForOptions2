@@ -52,6 +52,12 @@ MERGE_REFUSED = [
     "bash -c 'python " + MWG + " 308'",
     "git status && python " + MWG + " 308",
     "FOO=1 python " + MWG + " 308",
+    "python -X utf8 " + MWG + " 308",
+    "python -W ignore " + MWG + " 308",
+    "python3.12 " + MWG + " 308",
+    "timeout 900 python " + MWG + " 308",
+    "python -m merge_when_green 308",
+    "./merge_when_green.py 308",
 ]
 MERGE_ALLOWED = [
     "python scripts/orchestrator/merge.py 308",
@@ -61,6 +67,8 @@ MERGE_ALLOWED = [
     "python -m pytest -q tests/orchestrator/test_land.py",
     "gh pr view 308",
     "grep -n merge_when_green scripts/orchestrator/land.py",
+    "python -c \"print('merge_when_green')\"",
+    "python -X utf8 scripts/orchestrator/merge.py 308",
 ]
 
 
@@ -86,6 +94,7 @@ def test_merge_gate_real_json_cases():
 ISSUE_REFUSED = [
     "gh issue create --title x --body-file y",
     "gh  issue create --title x",
+    "gh issue new --title x",
     "gh.exe issue create --title x",
     "gh -R abhayla/OptionsForOptions2 issue create --title x",
     "cd /x && gh issue create --title x",
@@ -130,7 +139,44 @@ def test_agent_gate_refuses_the_w080_r9_brief():
 
 
 def test_agent_gate_refuses_a_relative_brief_path():
-    assert run_hook("agent_brief_gate.py", agent(f"Read {BAD_BRIEF} and follow it")).returncode == TWO
+    assert run_hook("agent_brief_gate.py", agent(f"Brief: {BAD_BRIEF}\nGo.")).returncode == TWO
+    assert run_hook("agent_brief_gate.py", agent(f"  your FULL brief : {BAD_BRIEF}")).returncode == TWO
+
+
+def test_agent_gate_ignores_a_history_mention():
+    prompt = f"Verify PR 9. For history see {BAD_BRIEF} and {REPO / BAD_BRIEF}.\nBrief-style note: none"
+    r = run_hook("agent_brief_gate.py", agent(prompt))
+    assert r.returncode == 0 and r.stderr == ""
+
+
+def _stub_checker(tmp_path, body: str):
+    orch = tmp_path / "scripts" / "orchestrator"
+    orch.mkdir(parents=True)
+    (orch / "check_brief.py").write_text(body, encoding="utf-8")
+    copy = tmp_path / "scripts" / "hooks"
+    shutil.copytree(HOOKS, copy)
+    brief = tmp_path / "docs" / "process" / "brief-x.md"
+    brief.parent.mkdir(parents=True)
+    brief.write_text("x", encoding="utf-8")
+    return copy, brief
+
+
+def test_agent_gate_allows_when_the_checker_crashes(tmp_path):
+    copy, brief = _stub_checker(tmp_path, "import sys\nsys.stderr.write('Traceback')\nsys.exit(1)\n")
+    r = run_hook("agent_brief_gate.py", agent(f"Your full brief: {brief}"), copy)
+    assert r.returncode == 0 and "allowing" in r.stderr
+
+
+def test_agent_gate_runs_the_checker_with_utf8_output(tmp_path):
+    copy, brief = _stub_checker(tmp_path, "print('a \\u2192 b')\n")  # crashes under a cp1252 stdout
+    r = run_hook("agent_brief_gate.py", agent(f"Brief: {brief}"), copy)
+    assert r.returncode == 0 and r.stderr == ""
+
+
+def test_agent_gate_refuses_on_missing_line_from_the_checker(tmp_path):
+    copy, brief = _stub_checker(tmp_path, "print('MISSING guard tests')\nraise SystemExit(1)\n")
+    r = run_hook("agent_brief_gate.py", agent(f"Brief: {brief}"), copy)
+    assert r.returncode == TWO and "MISSING guard tests" in r.stderr
 
 
 def test_agent_gate_allows_a_good_brief_and_a_prompt_without_one(tmp_path):
@@ -175,8 +221,27 @@ def test_mutation_merge_gate(tmp_path):
     assert run_hook("merge_route_gate.py", bash("python " + MWG + " 308"), copy).returncode == 0
 
 
+def test_mutation_merge_gate_direct_run_check(tmp_path):
+    cmd = "./merge_when_green.py 308"
+    assert run_hook("merge_route_gate.py", bash(cmd)).returncode == TWO
+    old = "if NAME in h:\n        return True"
+    copy = _mutated(tmp_path, "merge_route_gate.py", old, "if False:\n        return True")
+    assert run_hook("merge_route_gate.py", bash(cmd), copy).returncode == 0
+
+
+def test_missing_helper_module_fails_open(tmp_path):
+    copy = tmp_path / "scripts" / "hooks"
+    shutil.copytree(HOOKS, copy)
+    (copy / "_route_common.py").unlink()
+    for script, payload in (("merge_route_gate.py", bash("python " + MWG + " 1")),
+                            ("issue_route_gate.py", bash("gh issue create -t x")),
+                            ("agent_brief_gate.py", agent("Brief: " + BAD_BRIEF))):
+        r = run_hook(script, payload, copy)
+        assert r.returncode == 0 and r.stderr == "", script
+
+
 def test_mutation_issue_gate(tmp_path):
-    copy = _mutated(tmp_path, "issue_route_gate.py", 'rest[i + 1] == "create"', 'rest[i + 1] == "zzz"')
+    copy = _mutated(tmp_path, "issue_route_gate.py", 'rest[i + 1] in ("create", "new")', 'rest[i + 1] in ("zzz",)')
     assert run_hook("issue_route_gate.py", bash("gh issue create --title x"), copy).returncode == 0
 
 
@@ -221,6 +286,11 @@ def test_merge_ignores_already_up_to_date_but_stops_on_other_update_failure():
     assert merge.merge("308", ok) == 0 and len(ok.calls) == THREE
     bad = Runner([(0, ""), (1, "merge conflict\n")])
     assert merge.merge("308", bad) == 1 and len(bad.calls) == TWO
+
+
+def test_merge_not_up_to_date_is_a_failure():
+    r = Runner([(0, ""), (1, "Pull request branch is not up to date with base\n")])
+    assert merge.merge("308", r) == 1 and len(r.calls) == TWO
 
 
 def test_merge_returns_the_gate_failure_and_validates_usage():

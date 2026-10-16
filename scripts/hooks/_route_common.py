@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gate_before_commit as g
 
 MAX_LEN = 100_000
 MAX_DEPTH = 3
@@ -23,12 +22,14 @@ def read_input() -> dict:
 
 def core_steps(command: str, ps: bool = False, depth: int = 0) -> list[list[str]]:
     """Each step's words with wrappers (env, time, uv run, ...) stripped, including steps inside `bash -c`."""
+    import gate_before_commit as g  # inside the caller's try: a missing module fails open  # noqa: PLC0415
+
     steps, unterm = g._scan(command, ps)
     if unterm and not ps:
         steps, _ = g._scan(command, True)
     out: list[list[str]] = []
     for words, _ in steps:
-        core = g._core(words)
+        core = unwrap(g._core(words))
         if core:
             out.append(core)
         if depth < MAX_DEPTH:
@@ -38,7 +39,23 @@ def core_steps(command: str, ps: bool = False, depth: int = 0) -> list[list[str]
     return out
 
 
+def unwrap(words: list[str]) -> list[str]:
+    """Strip `timeout [opts] <duration>` (not covered by the scanner's wrapper list)."""
+    import gate_before_commit as g  # noqa: PLC0415
+
+    w = list(words)
+    while w and g._base(w[0]) == "timeout":
+        w = w[1:]
+        while w and w[0].startswith("-"):
+            w = w[1:]
+        w = w[1:]  # the duration
+        w = g._core(w)
+    return w
+
+
 def head(words: list[str]) -> str:
+    import gate_before_commit as g  # noqa: PLC0415
+
     return g._base(words[0])
 
 

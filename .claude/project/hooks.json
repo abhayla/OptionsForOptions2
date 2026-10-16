@@ -15,7 +15,7 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/issue_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
-      { "matcher": "Agent",
+      { "matcher": "Agent|Task",
         "hooks": [
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/agent_brief_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
