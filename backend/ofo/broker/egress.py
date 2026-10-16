@@ -1,7 +1,11 @@
 """The runtime egress gate (REQ-073 AC-4, W-080 round 7; run-discipline B8: a structural guarantee, not a scan).
 
-One ``sys.addaudithook`` hook, installed once when the ``ofo`` package is imported, sees every socket connect and
-every process spawn that Python code makes, whatever library or spelling made it. It decides on the CALLER, not the
+One ``sys.addaudithook`` hook, installed once by the API process's entry point (``ofo_app.main.create_app``, before
+the app is built and so before the first request; the lifespan refuses to start without it) and by the test suites'
+conftest the same way, sees every socket connect and every process spawn that Python code makes, whatever library or
+spelling made it. Importing ``ofo`` does NOT install it: migrations, scripts and dev programs that import the package
+are not gated (W-080 integration; REQ-073 AC-4 is about the app). The API has no switch to skip it: ``create_app``
+calls ``install()`` unconditionally, and an audit hook cannot be removed. It decides on the CALLER, not the
 host (a ``socket.connect`` event carries only the resolved IP; measured on Python 3.13):
 
 ==========================================  ==========================================================================
@@ -73,7 +77,7 @@ _SPAWN_EVENTS: Final = frozenset({"subprocess.Popen", "os.system", "os.exec", "o
                                   "os.fork", "os.forkpty", "os.startfile", "_winapi.CreateProcess"})
 _INET: Final = frozenset({socket.AF_INET, socket.AF_INET6})
 _UNIX: Final = getattr(socket, "AF_UNIX", None)
-_PENDING: Final = threading.local()  # test mode only: one allowed Popen -> its one CreateProcess
+_PENDING: Final[dict[int, bool]] = {}  # test mode only, per thread id: one allowed Popen -> its one CreateProcess
 
 _state: dict[str, object] = {"installed": False, "endpoints": frozenset(), "sealed": False, "programs": frozenset(),
                              "test": False}
@@ -226,17 +230,17 @@ def _spawn_allowed(event: str, args: tuple) -> bool:
     ``_winapi.CreateProcess`` (whose command line the audit event does not show): it is allowed once, right after an
     allowed Popen in the same thread, and refused otherwise."""
     programs = _state["programs"]
+    thread = threading.get_ident()
     if event == "_winapi.CreateProcess":
-        pending, _PENDING.ok = getattr(_PENDING, "ok", False), False
+        pending = _PENDING.pop(thread, False)  # consumed: a second CreateProcess needs a new allowed Popen
         return bool(programs) and pending
     if not programs or event != "subprocess.Popen":
         return False
     program = _program(args)
-    if program is None:
-        return False
-    name = os.path.normcase(program)
-    _PENDING.ok = name in programs or os.path.basename(name) in programs
-    return _PENDING.ok
+    name = os.path.normcase(program) if program is not None else None
+    allowed = name is not None and (name in programs or os.path.basename(name) in programs)
+    _PENDING[thread] = allowed
+    return allowed
 
 
 def _hook(event: str, args: tuple) -> None:
@@ -251,7 +255,8 @@ def _hook(event: str, args: tuple) -> None:
 
 
 def install() -> None:
-    """Install the hook once (idempotent). An audit hook cannot be removed."""
+    """Install the hook once (idempotent). An audit hook cannot be removed. Called by ``ofo_app.main.create_app`` (the
+    API process) and by the test suites' conftest; importing ``ofo`` does not call it."""
     if not _state["installed"]:
         _trust_modules(asyncio, contextlib, selectors, socket, __file__)  # the doors add their libraries
         sys.addaudithook(_hook)

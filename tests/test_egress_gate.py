@@ -35,11 +35,25 @@ def _fresh(code: str) -> list[str]:
     return out.stdout.split()
 
 
-def test_the_gate_is_installed_by_importing_ofo_in_a_fresh_process() -> None:
-    code = ("import socket, ofo\nfrom ofo.broker import egress\nprint(egress.installed())\n"
+def test_importing_ofo_alone_does_not_gate_a_tool_process() -> None:
+    """W-080 integration: migrations, scripts and dev programs import ``ofo`` and must be free to run git or ruff; only
+    the API process (``create_app``, proven in tests_app/test_egress_gate_api_install.py) and the test suites install
+    the gate. No connect is attempted here: ``installed()`` is read and a spawn of this Python is made."""
+    code = ("import subprocess, sys, ofo\nfrom ofo.broker import egress\nprint(egress.installed())\n"
+            "out = subprocess.run([sys.executable, '-c', 'print(1)'], capture_output=True, text=True)\n"
+            "print(out.stdout.strip())\n")
+    assert _fresh(code) == ["False", "1"]
+
+
+def test_install_the_way_the_app_does_gates_a_fresh_process() -> None:
+    """The same ``install()`` call ``create_app`` makes: a connect to TEST-NET and a process start are both refused."""
+    code = ("import socket, subprocess, sys\nfrom ofo.broker import egress\n"
+            "egress.install()\nprint(egress.installed())\n"
             f"try:\n    socket.create_connection(('{TEST_NET}', 443), timeout=2)\n"
-            "except egress.EgressRefused:\n    print('refused')\n")
-    assert _fresh(code) == ["True", "refused"]
+            "except egress.EgressRefused:\n    print('connect-refused')\n"
+            "try:\n    subprocess.run([sys.executable, '-c', 'pass'])\n"
+            "except egress.EgressRefused:\n    print('spawn-refused')\n")
+    assert _fresh(code) == ["True", "connect-refused", "spawn-refused"]
 
 
 # -- planted bypasses (stdlib routes) --------------------------------------------------------------------------------

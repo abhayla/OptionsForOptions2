@@ -28,6 +28,8 @@ from sqlalchemy.pool import NullPool
 
 # W-080 round 7 (REQ-073 AC-4): the egress gate's TEST mode (this suite only): the doors accept their test seams (a
 # mock transport, an injected websocket connect) and this Python may run as a child process. Production never enters it.
+# The gate itself is installed here with the call the API's create_app makes (importing ofo does not install it).
+_egress.install()
 _egress._enter_test_mode([sys.executable])
 # The app runs only on the selector loop (ofo_app.event_loop); on Windows the default is the Proactor loop.
 if sys.platform == "win32":
