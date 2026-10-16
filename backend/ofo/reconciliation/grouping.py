@@ -50,7 +50,7 @@ from ofo.errors import render
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, is_lot_aligned
 from ofo.reconciliation.compare import ReconciliationError
-from ofo.reconciliation.positions import position_line_from_kite_row
+from ofo.reconciliation.positions import is_flat_row, position_line_from_kite_row
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import Position, StrategyRecord, VersionError
 from ofo.strategy.matching import MatchResult, match
@@ -291,8 +291,7 @@ def suggest_groups(
     duplicated: set[PositionKey] = set()
     for raw in rows:
         symbol = str(raw.get("tradingsymbol", "?")) if isinstance(raw, Mapping) else "?"
-        quantity = raw.get("quantity") if isinstance(raw, Mapping) else None
-        if quantity == 0 and not isinstance(quantity, bool):
+        if is_flat_row(raw):
             continue  # a closed row is not an open position; dropped before parsing (its average is 0)
         average = _exact_average(raw.get("average_price")) if isinstance(raw, Mapping) else None
         try:
