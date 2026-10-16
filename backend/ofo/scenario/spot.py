@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from ofo.engine.inputs import SpotReading
 from ofo.engine.model import IST, SpotRefused, data_label
-from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.quote import NormalizedQuote, is_live_price
 
 __all__ = ["IST", "SpotRefused", "data_label", "spot_reading"]
 
 
 def spot_reading(quote: NormalizedQuote | None) -> SpotReading:
     """The reading of a live index quote (its last price, exchange time and health); refuses a missing quote."""
-    if quote is None or quote.ltp is None:
+    if quote is None or not is_live_price(quote.ltp):
         raise SpotRefused("the index value is missing; the scenario is refused")
     return SpotReading(level=quote.ltp, at=quote.timestamp, health=quote.health)

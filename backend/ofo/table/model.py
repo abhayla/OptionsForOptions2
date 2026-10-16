@@ -75,8 +75,8 @@ from ofo.table.columns import (
     UXLevel,
     is_visible,
 )
+from ofo.money import HUNDREDTH as _PERCENT_STEP
 
-_PERCENT_STEP = Decimal("0.01")
 _TOTAL_PERCENT_STEP = Decimal("0.1")
 TOTAL_ROW_ID = "TOTAL"
 CHARGES_ROW_ID = "CHARGES"  # W-075 round 3: between the legs and TOTAL, only when the At Expiry values include charges

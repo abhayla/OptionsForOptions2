@@ -16,9 +16,9 @@ from types import MappingProxyType
 from typing import Mapping
 
 from ofo.engine import UNLIMITED, Action, MultiExpiryError, PriceBasis, Strategy, net_premium, strategy_metrics
+from ofo.timeutil import IST
 
 # India has no daylight saving; market hours and time windows are in IST.
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30), "IST")
 
 
 class InputName(Enum):

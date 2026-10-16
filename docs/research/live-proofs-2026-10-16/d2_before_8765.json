@@ -1,0 +1,39 @@
+{
+ "entries": [
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47169,
+   "planned_entry": "36.10",
+   "captured_at": "2026-10-16T10:03:32.722763+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47177,
+   "planned_entry": "10.15",
+   "captured_at": "2026-10-16T10:03:32.722763+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47152,
+   "planned_entry": null,
+   "captured_at": null,
+   "source": null,
+   "reason_code": "no_live_price"
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47138,
+   "planned_entry": null,
+   "captured_at": null,
+   "source": null,
+   "reason_code": "no_live_price"
+  }
+ ],
+ "answered_at": "2026-10-16T04:33:32.722737Z",
+ "_elapsed_s": 0.06,
+ "_called_at": "2026-10-16T10:03:32"
+}

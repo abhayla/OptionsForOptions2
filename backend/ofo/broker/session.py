@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import replace as _copy
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta
 from enum import Enum
+from ofo.timeutil import IST
 
 #: India Standard Time: a fixed +05:30 offset, no daylight saving.
-IST = timezone(timedelta(hours=5, minutes=30), "IST")
 #: The time of day Kite's access tokens are expected to stop working (Kite docs: valid "till 6 AM on the next day").
 KITE_EXPIRY_TIME_IST = time(6, 0)
 BROKER_ZERODHA = "zerodha"

@@ -22,10 +22,10 @@ from sqlalchemy import text
 
 from ofo_app import pinned_clock
 from ofo_app.catalogue_load import run
+from ofo.timeutil import IST_UNNAMED as IST
 
 FIXTURE = (pathlib.Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "kite_ws"
            / "instruments-2026-10-08-subscribed.csv")
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 
 class SeedRefused(RuntimeError):

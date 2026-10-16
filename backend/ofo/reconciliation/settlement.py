@@ -23,14 +23,14 @@ from ofo.strategy.definition import Contract, describe_contract
 from ofo.strategy.versions import StrategyRecord
 from ofo.timeline.catalogue import EntryType
 from ofo.timeline.log import Timeline
+from ofo.timeutil import IST_UNNAMED as IST
+from ofo.timeutil import EXPIRY_DAY_SETTLE_FROM
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 #: Earliest time of day, on the expiry day itself, at which the platform treats a leg as expired. SENSEX options
 #: traded until 15:39 on an expiry day (finding F-33, whose exact close is still an open point), later than the
 #: 15:30 ``EXPIRY_CLOSE`` of the pricing model, so the later time is used: settling at 15:30 would close a leg that
 #: can still trade. The days after expiry need no time of day.
-EXPIRY_DAY_SETTLE_FROM = datetime.time(15, 39)
 
 SettlementSource = Callable[[Contract], "Decimal | None"]
 

@@ -14,15 +14,17 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
+from ofo.instruments.models import BSE_FO, NSE_FO
+from ofo.money import HUNDREDTH
 
 #: The exchange segment vocabulary (REQ-054): the closed set of keys of ``transaction_rates``.
-SEGMENTS = ("NSE_FO", "BSE_FO")
+SEGMENTS = (NSE_FO, BSE_FO)
 
 
 #: Unit guard: Zerodha prints "0.15%" and an admin may type 0.15 where the fraction 0.0015 is meant (STT 100x). Every
 #: percentage-type rate is a fraction below this cap (1%: the real ones are 0.0015, 0.0003553, 0.000001, 0.00003);
 #: GST (18%) is a fraction below 1. Brokerage is rupees and has no fraction cap. The DB CHECK carries the same caps.
-FRACTION_CAP = Decimal("0.01")
+FRACTION_CAP = HUNDREDTH
 GST_CAP = Decimal("1")
 #: Tighter per-component caps (W-074 verifier MINOR D1): stamp's cap is about 3.3x its real rate (0.00003), SEBI's is
 #: 10x its real rate (0.000001), so a percentage typed as a number (0.003 for stamp's 0.003%, 0.0001 for SEBI) is

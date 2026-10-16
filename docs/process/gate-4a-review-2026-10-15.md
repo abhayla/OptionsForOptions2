@@ -1,5 +1,60 @@
 # Stage 4a gate review (draft, 2026-10-15 evening)
 
+## Second re-run 2026-10-16 10:20-10:25 IST (main 48d75a7, live Kite, ofo_dev): **PASSED**
+Main then carried the fixes for the first re-run's defects: D-1 (PR 300), D-2 (PR 302) and D-3 (PR 299). Evidence is in
+`docs/research/gate4a-2026-10-16/rerun/`. An independent Opus checker ran it; the orchestrator re-read `d8.log`,
+`outcome-1..3.json`, `repro_spot.json` and `draft-results.json`.
+
+Strategy: an iron condor on NIFTY expiry 2026-10-19 (SELL 23350 CE, BUY 23550 CE, SELL 22950 PE, BUY 22750 PE).
+
+- **D8 (payoff equals the ADR-008 formula on live inputs): PASS.**
+  - 3 calls, 65 s apart. Each call: 27 graded cells plus 144 scenario cells, 0 mismatches (`d8.log`: "call 1/2/3
+    COMPUTED True 27 0").
+  - The spot moved every call: 23134.5 at 10:20:23, 23133.9 at 10:21:28, 23127.55 at 10:22:33.
+  - TOTAL rows graded per ADR-076: Entry Rs 4,140.50 Cr; Current 3,477.50 / 3,484.00 / 3,412.50 Cr; entry minus
+    current equals P&L (663.00 / 656.50 / 728.00).
+  - Sensibull cross-check not run (no access; ADR-056 makes it a cross-check only).
+- **Live data never frozen (D-1): PASS.** The release+acquire repro gave 59 frames in 60 s, 59 distinct spot
+  times, all COMPUTED.
+- **The saved draft reloads unchanged: PASS.** Draft 10: all 4 legs priced by the leg picker (35.60 / 11.55 / 49.00 /
+  20.45), each with its capture time. `equal_screen_before_after True`, `field_diffs []`,
+  `stored_equals_screen True`, `all_entries_present True`.
+- **Screenshots of every state: taken** (live, stale leg, API unreachable, no draft; 1280 and 390, no sideways
+  scroll). #232 items 1, 2 and 4 are gone; item 3's remainder is in issue 297.
+- **No fake prices (D-3): PASS.** The far 28700 CE with last price 0 shows "no live quote" and "—", never Rs 0.00 or
+  -100%.
+- **Phase-0 checks (section 1): all recorded**, unchanged from 2026-10-08/15.
+- **Open, not blocking** (issue 297):
+  - "Contract details not available" on legs opened from a draft link;
+  - the raw symbol in a duplicated notice;
+  - the margin note asking for a Kite login although a session exists;
+  - the Loss line drawn at 0 across the profit zone;
+  - the far leg's health reads "available" while its last price is empty.
+- **Next:** stage 4b (one real order -> confirmation -> reconcile). Open first: the W-080 guard redesign (issue 271)
+  and the F-39 margin-rule decision.
+
+## Re-run 2026-10-16 09:16-09:45 IST (main 640a47b, live Kite, ofo_dev): **NOT PASSED**
+Evidence: `docs/research/gate4a-2026-10-16/` (verdict.md, results.json, outcome-1..3.json, repro_spot.json,
+draft-results.json, shots-report.json, 10 screenshots). Run by an independent Opus checker; the frozen-spot evidence was
+re-read by the orchestrator from the files.
+- **D8 formulas: PASS.** 3 live calls (09:20:26, 09:21:31, 09:22:36), each 27 graded cells + 144 scenario cells, 0
+  mismatches; TOTAL rows per ADR-076: Entry Rs 4,793.75 Cr; Current 4,137.25 / 4,225.00 / 4,098.25 Cr; entry minus
+  current equals P&L (656.50 / 568.75 / 695.50). The grader flags the old plain-sum Current Value (11105.25 vs 4228.25).
+- **Draft save -> reload -> reopen: equality PASS, gate PARTIAL** (draft 9; only 2 of 4 legs had a planned entry, D-2).
+- **Screenshots: taken** (8 states at 1280 and 390). #232 items 1, 2, 4 gone; item 3 partly (no `NSE_FO:` ids; links
+  show "Contract details not available"; raw symbols in the notice box).
+- **Blocks the gate - D-1:** an instrument released by one socket and acquired by another stops ticking while the reply
+  stays COMPUTED/live (spot 22982.45 at 09:23:39 for 26 s while legs ticked; D8's spot_at 09:20:15 in all three calls).
+  Finding `live-subscription-lost-on-release-reacquire`. Fix in progress (branch fix/live-resubscribe-freeze).
+- D-2 leg picker gets no price for a contract no socket holds (same path, under investigation); D-3 a last price of 0
+  valued as a price (fix in progress, branch fix/zero-ltp-not-a-price); D-4 the live market reads the Kite session
+  only at API start, so a login after start leaves it NOT_CONNECTED until a restart (seen at 09:18; issue filed).
+- Minor: stray "estimated from spot" fragment and a duplicated notice; "Margin ... needs your Kite login" shown with a
+  session; the payoff chart's Loss line drawn at 0 across the profit zone.
+- **To pass:** D-1 fixed and proven live, then D8 again with a moving spot, and the draft check with all 4 legs priced.
+
+## 2026-10-15 draft (superseded by the re-run above)
+
 Verdict: **NOT YET PASSED.** Two gate checks were run at 11:55 IST on code that three later merges the same day
 changed (#212 proxy, #211 TOTAL Cr/Dr, #216 planned entries saved), and the Save Draft screen (W-071) did not exist yet.
 Those checks must be re-run on current main; the run is ready to go as soon as W-071 merges, in the next market session

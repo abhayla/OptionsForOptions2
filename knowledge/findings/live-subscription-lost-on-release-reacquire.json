@@ -1,0 +1,36 @@
+{
+ "id": "live-subscription-lost-on-release-reacquire",
+ "scope": "project",
+ "class": "A shared market-data subscription whose holder set changes from one holder to another (release then acquire inside one subscription change, or before the vendor confirms the unsubscribe) stops receiving ticks while the per-instrument health still reads live, because staleness is judged from the feed as a whole (other instruments keep ticking). Wider shape: liveness measured on a shared stream can never see one member of it going silent.",
+ "mechanism": "Proven by red tests 2026-10-16: backend/ofo/marketdata/kite_provider.py queued subscribe and unsubscribe changes in two separate lists, and backend/ofo_app/kite_ws.py sends subscribes before unsubscribes, so an instrument released and re-taken before the next send went out as `subscribe 256265` then `unsubscribe 256265` (captured by a fake Kite server); Kite stopped the token while feed health, judged on the whole feed, stayed live.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "gate 4a re-run, D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/gate4a/ (repro_spot.json, outcome-1..3.json)",
+  "evidence": "repro_spot.json: spot 22982.45 with spot_at 09:23:39 on every 1-second sample for 26 s while the three legs ticked (13.95 -> 14.2, 50.5 -> 49.15, 20.4 -> 19.85), state COMPUTED throughout; outcome-1/2/3.json (09:20:26, 09:21:31, 09:22:36): spot_at 09:20:15 in all three. Re-checked by the orchestrator from the files."
+ },
+ "fix": "Branch land/d1-live-feed (gate 4a D-1): the provider sends the NET difference between the wanted set and what Kite was last told; a released quote is hidden until the send and restored on a re-take; a tick for any token nobody holds never reaches the book or a listener (dropped and counted as unwanted_tick, or kept on the hidden entry for a re-take). Live proof: main froze the spot for 59 frames (22918.95 at 09:36:33; again at 09:51:58) while the fix moved 55 and 40 distinct spots in 60 s (09:36-09:37, 09:52-09:53). Per-instrument staleness is NOT added (finding staleness-by-last-change-age): if Kite silently stops one token while the feed stays live, that quote still reads live - remaining gap.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/marketdata/test_resubscribe_freeze.py (7 tests: release+acquire in one change, release-send-acquire, acquire-release before any send, quiet contract re-taken, tick between release and send, released before its first quote then ticked, not-wanted token dropped and counted)",
+   "tests_app/test_kite_ws_resubscribe.py::test_spot_released_by_one_socket_and_taken_by_another_keeps_ticking"
+  ],
+  "note": "Discriminates: the new tests fail on the pre-fix provider (4 failed at 1fb3629; 2 failed at 269bc82 for the round-1 ghost quote, run by the round-2 Opus reviewer) and pass on faa29de. Not covered: Kite silently stopping one token on a live feed (no per-instrument staleness, by design)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-077.md",
+  "spec/decisions/ADR-020.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "gate 4a re-run D-1",
+   "evidence": "repro_spot.json 26 s frozen spot"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "D-1 fix review round 1",
+   "evidence": "ghost quote: subscribe X, unsubscribe X, tick X -> book.get(X) ltp 123.45 with no holder; fixed in faa29de"
+  }
+ ]
+}

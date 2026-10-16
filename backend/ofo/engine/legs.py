@@ -10,9 +10,8 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import Final
+from ofo.money import PAISE as PRICE_STEP
 
-PRICE_STEP: Final = Decimal("0.01")
 
 
 class Action(Enum):

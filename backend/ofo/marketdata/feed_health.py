@@ -107,11 +107,38 @@ class QuoteBook:
         self.feed = feed
         self._entries: dict[str, BookEntry] = {}
         self._ended_times: dict[str, datetime.datetime] = {}  # times only, never a price
+        # released but the vendor not yet told: unreadable, restored if taken again before the send (gate 4a D-1)
+        self._parked: dict[str, BookEntry] = {}
 
     def remove(self, instrument_id: str) -> None:
         """Drop the quote (no stale price outlives its subscription, REQ-049 AC-4) but keep its TIME only (ADR-077:
         "The platform keeps each contract's last price TIME (never the price) after its subscription ends")."""
+        self._parked.pop(instrument_id, None)
+        self._end(instrument_id, self._entries.pop(instrument_id, None))
+
+    def park(self, instrument_id: str) -> None:
+        """Like ``remove`` (unreadable at once, time kept), but the quote can come back with ``restore`` while the
+        vendor subscription was never actually dropped: a quiet contract would otherwise read 'no price' until it
+        next changes."""
         entry = self._entries.pop(instrument_id, None)
+        if entry is not None:
+            self._parked[instrument_id] = entry
+        self._end(instrument_id, entry)
+
+    def restore(self, instrument_id: str) -> None:
+        entry = self._parked.pop(instrument_id, None)
+        if entry is not None and instrument_id not in self._entries:
+            self._entries[instrument_id] = entry
+            self._ended_times.pop(instrument_id, None)
+
+    def parked_ids(self) -> list[str]:
+        return list(self._parked)
+
+    def forget_parked(self, instrument_id: str) -> None:
+        """The vendor was told to drop it: the parked quote can never come back (its time stays kept)."""
+        self._parked.pop(instrument_id, None)
+
+    def _end(self, instrument_id: str, entry: BookEntry | None) -> None:
         if entry is None:
             return
         self._ended_times.pop(instrument_id, None)
@@ -123,7 +150,16 @@ class QuoteBook:
         """The time of the last quote held for an instrument whose subscription ended; None if none was kept."""
         return self._ended_times.get(instrument_id)
 
+    def update_parked(self, quote: NormalizedQuote) -> bool:
+        """A tick for a released instrument whose unsubscribe is not out yet: kept for ``restore``, never readable.
+        False when the instrument is not parked."""
+        if quote.instrument_id not in self._parked:
+            return False
+        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp)
+        return True
+
     def update(self, quote: NormalizedQuote) -> None:
+        self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
         self._entries[instrument_id] = BookEntry(quote, quote.timestamp)
 

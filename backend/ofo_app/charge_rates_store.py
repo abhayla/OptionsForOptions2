@@ -17,14 +17,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from ofo.charges import ChargeRates
+from ofo.instruments.models import BSE_FO, NSE_FO
+from ofo_app.sql_time import IST_SQL_ZONE
 
 #: Stored component names (migration 0012 COMPONENTS; a test pins them equal).
 COMPONENTS = ("brokerage_per_order", "stt_sell_rate", "stt_exercise_rate", "transaction_rate_nse_fo",
               "transaction_rate_bse_fo", "sebi_rate", "stamp_buy_rate", "gst_rate")
 MAX_NOTE = 500
-IST = "Asia/Kolkata"
 
-_TODAY = text(f"SELECT (clock_timestamp() AT TIME ZONE '{IST}')::date")
+_TODAY = text(f"SELECT (clock_timestamp() {IST_SQL_ZONE})::date")
 _IN_FORCE = text(
     """
     WITH day AS (
@@ -54,8 +55,8 @@ def _values(rates: ChargeRates) -> dict[str, Decimal]:
         "brokerage_per_order": rates.brokerage_per_order,
         "stt_sell_rate": rates.stt_sell_rate,
         "stt_exercise_rate": rates.stt_exercise_rate,
-        "transaction_rate_nse_fo": rates.transaction_rates["NSE_FO"],
-        "transaction_rate_bse_fo": rates.transaction_rates["BSE_FO"],
+        "transaction_rate_nse_fo": rates.transaction_rates[NSE_FO],
+        "transaction_rate_bse_fo": rates.transaction_rates[BSE_FO],
         "sebi_rate": rates.sebi_rate,
         "stamp_buy_rate": rates.stamp_buy_rate,
         "gst_rate": rates.gst_rate,
@@ -84,7 +85,7 @@ async def rates_in_force(session: AsyncSession | AsyncConnection, on: date | Non
         brokerage_per_order=values["brokerage_per_order"],
         stt_sell_rate=values["stt_sell_rate"],
         stt_exercise_rate=values["stt_exercise_rate"],
-        transaction_rates={"NSE_FO": values["transaction_rate_nse_fo"], "BSE_FO": values["transaction_rate_bse_fo"]},
+        transaction_rates={NSE_FO: values["transaction_rate_nse_fo"], BSE_FO: values["transaction_rate_bse_fo"]},
         sebi_rate=values["sebi_rate"],
         stamp_buy_rate=values["stamp_buy_rate"],
         gst_rate=values["gst_rate"],

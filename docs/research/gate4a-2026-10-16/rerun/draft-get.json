@@ -1,0 +1,64 @@
+{
+ "id": 10,
+ "status": "draft",
+ "revision": 1,
+ "created_at": "2026-10-16T04:54:17.268990Z",
+ "updated_at": "2026-10-16T04:54:17.268990Z",
+ "definition": {
+  "schema_version": 1,
+  "underlying": "NIFTY",
+  "legs": [
+   {
+    "contract_id": 4697,
+    "action": "SELL",
+    "exchange_segment": "NSE_FO",
+    "exchange_token": 47177,
+    "instrument": "CE",
+    "strike": "23350.00",
+    "expiry": "2026-10-19",
+    "quantity": 65,
+    "planned_entry": "35.60",
+    "captured_at": "2026-10-16T10:24:11.100199+05:30"
+   },
+   {
+    "contract_id": 4705,
+    "action": "BUY",
+    "exchange_segment": "NSE_FO",
+    "exchange_token": 47185,
+    "instrument": "CE",
+    "strike": "23550.00",
+    "expiry": "2026-10-19",
+    "quantity": 65,
+    "planned_entry": "11.55",
+    "captured_at": "2026-10-16T10:24:11.815448+05:30"
+   },
+   {
+    "contract_id": 4682,
+    "action": "SELL",
+    "exchange_segment": "NSE_FO",
+    "exchange_token": 47160,
+    "instrument": "PE",
+    "strike": "22950.00",
+    "expiry": "2026-10-19",
+    "quantity": 65,
+    "planned_entry": "49.00",
+    "captured_at": "2026-10-16T10:24:12.326415+05:30"
+   },
+   {
+    "contract_id": 4674,
+    "action": "BUY",
+    "exchange_segment": "NSE_FO",
+    "exchange_token": 47152,
+    "instrument": "PE",
+    "strike": "22750.00",
+    "expiry": "2026-10-19",
+    "quantity": 65,
+    "planned_entry": "20.45",
+    "captured_at": "2026-10-16T10:24:12.863136+05:30"
+   }
+  ],
+  "rules_ref": "gate4a_2026_10_16",
+  "risk_limits": {},
+  "preferences": {}
+ }
+}

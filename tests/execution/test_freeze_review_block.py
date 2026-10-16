@@ -13,12 +13,13 @@ import pytest
 from plan_inputs import CE, SELL, FakeMargin, leg
 
 from ofo.errors.templates import display_text
-from ofo.execution.freeze import StoredFreeze, freeze_check, largest_allowed_units
+from ofo.execution.freeze import STALE_AFTER_DAYS, StoredFreeze, freeze_check, largest_allowed_units
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.review import execution_review
 
 SYMBOL = "NIFTY26O1923550CE"
 EXPIRY = datetime.date(2026, 10, 19)
+TODAY = datetime.date(2026, 10, 16)
 REAL = StoredFreeze(limit=3511, lot=65, file_date=datetime.date(2026, 10, 15))
 
 
@@ -28,7 +29,7 @@ def plan_of(units: int, symbol: str = SYMBOL) -> ExecutionPlan:
 
 
 def review(units: int, limits):
-    return execution_review(plan_of(units), FakeMargin({}), freeze_limits=limits)
+    return execution_review(plan_of(units), FakeMargin({}), freeze_limits=limits, today=TODAY)
 
 
 def test_core_55_lots_blocked_54_lots_passes() -> None:
@@ -57,9 +58,9 @@ def test_largest_allowed_is_limit_minus_one_rounded_to_lots() -> None:
 def test_boundary_units_equal_to_limit_is_blocked_synthetic() -> None:
     """AC-4 (synthetic, lot 1): limit 100 -> 99 passes, 100 blocks, 101 blocks. Kills `<` mutated to `<=`."""
     stored = StoredFreeze(limit=100, lot=1, file_date=datetime.date(2026, 10, 15))
-    assert freeze_check(plan_of(99), {SYMBOL: stored}).blocks == ()
-    assert len(freeze_check(plan_of(100), {SYMBOL: stored}).blocks) == 1
-    assert len(freeze_check(plan_of(101), {SYMBOL: stored}).blocks) == 1
+    assert freeze_check(plan_of(99), {SYMBOL: stored}, today=TODAY).blocks == ()
+    assert len(freeze_check(plan_of(100), {SYMBOL: stored}, today=TODAY).blocks) == 1
+    assert len(freeze_check(plan_of(101), {SYMBOL: stored}, today=TODAY).blocks) == 1
 
 
 def test_missing_limit_warns_and_never_blocks_or_passes_silently() -> None:
@@ -75,7 +76,7 @@ def test_missing_limit_warns_and_never_blocks_or_passes_silently() -> None:
 def test_limits_are_matched_by_the_plan_contract_symbol_not_by_position() -> None:
     """AC-4: a limit stored for another symbol never applies to this leg."""
     other = {"OTHERCONTRACT": StoredFreeze(100, 1, datetime.date(2026, 10, 15))}
-    assert freeze_check(plan_of(5000), other).blocks == ()
+    assert freeze_check(plan_of(5000), other, today=TODAY).blocks == ()
 
 
 def test_four_part_messages_and_codes() -> None:
@@ -107,7 +108,7 @@ def test_stored_freeze_refuses_non_positive_and_bool() -> None:
 def test_review_still_needs_an_execution_plan() -> None:
     """AC-4: freeze_check never accepts a hand-built plan substitute."""
     with pytest.raises(ValueError):
-        freeze_check("plan", {})  # type: ignore[arg-type]
+        freeze_check("plan", {}, today=TODAY)  # type: ignore[arg-type]
 
 
 def test_freeze_limits_is_a_required_argument() -> None:
@@ -115,13 +116,13 @@ def test_freeze_limits_is_a_required_argument() -> None:
     silent pass. None is the explicit 'no limits known' and warns."""
     with pytest.raises(TypeError):
         execution_review(plan_of(54 * 65), FakeMargin({}))  # type: ignore[call-arg]
-    assert execution_review(plan_of(54 * 65), FakeMargin({}), freeze_limits=None).warnings
+    assert execution_review(plan_of(54 * 65), FakeMargin({}), freeze_limits=None, today=TODAY).warnings
 
 
 def test_units_that_are_not_a_lot_multiple_are_refused() -> None:
     """AC-4: 3,576 units against lot 65 is not a whole number of lots: refused, never floored to 55 lots."""
     with pytest.raises(ValueError, match="whole number of lots"):
-        freeze_check(plan_of(3576), {SYMBOL: REAL})
+        freeze_check(plan_of(3576), {SYMBOL: REAL}, today=TODAY)
 
 
 def _adapter_inputs():
@@ -155,7 +156,7 @@ def test_store_to_adapter_to_review_on_real_rows() -> None:
         plan = plan_of(units)
         limits = freeze_limits_for_plan(plan, catalogue, stored)
         assert limits == {SYMBOL: StoredFreeze(3511, 65, datetime.date(2026, 10, 15))}
-        assert execution_review(plan, FakeMargin({}), freeze_limits=limits).can_execute is allowed
+        assert execution_review(plan, FakeMargin({}), freeze_limits=limits, today=TODAY).can_execute is allowed
 
 
 def test_adapter_gives_no_entry_for_an_unknown_or_unstored_symbol() -> None:
@@ -166,7 +167,7 @@ def test_adapter_gives_no_entry_for_an_unknown_or_unstored_symbol() -> None:
     assert freeze_limits_for_plan(plan_of(65, "OTHERCONTRACT"), catalogue, stored) == {}
     assert freeze_limits_for_plan(plan_of(65), catalogue, {}) == {}
     r = execution_review(plan_of(55 * 65, "OTHERCONTRACT"), FakeMargin({}),
-                         freeze_limits=freeze_limits_for_plan(plan_of(65, "OTHERCONTRACT"), catalogue, stored))
+                         freeze_limits=freeze_limits_for_plan(plan_of(65, "OTHERCONTRACT"), catalogue, stored), today=TODAY)
     assert r.can_execute and len(r.warnings) == 1
 
 
@@ -201,5 +202,54 @@ def test_two_catalogue_entries_for_one_symbol_give_no_entry_so_the_review_warns(
     stored = {e.id: (3511, datetime.date(2026, 10, 15)) for e in catalogue.all_entries()}
     limits = freeze_limits_for_plan(plan_of(55 * 65), catalogue, stored)
     assert limits == {}
-    r = execution_review(plan_of(55 * 65), FakeMargin({}), freeze_limits=limits)
+    r = execution_review(plan_of(55 * 65), FakeMargin({}), freeze_limits=limits, today=TODAY)
     assert r.can_execute and len(r.warnings) == 1 and dataclasses.is_dataclass(r)
+
+
+FILE_DATE = datetime.date(2026, 10, 15)
+STALE_TEXT = ("The freeze limit for NIFTY26O1923550CE was last read from the exchange file of 15 Oct 2026, "
+              "9 days ago. It may have changed; Zerodha may reject a large order.")
+
+
+def test_core_8_days_old_no_warning_9_days_old_warns_real_limit() -> None:
+    """Issue 257 core: NIFTY 3511 / lot 65 / file 2026-10-15: review on 2026-10-23 (8 days) no warning, 2026-10-24
+    (9 days) warns; the 55-lot leg is blocked in both (the stale limit is still applied). Kills `>` to `>=`."""
+    assert STALE_AFTER_DAYS == 8
+    for day, stale in ((datetime.date(2026, 10, 23), False), (datetime.date(2026, 10, 24), True)):
+        r = execution_review(plan_of(55 * 65), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=day)
+        assert r.can_execute is False and len(r.blocked) == 1
+        assert len(r.warnings) == (1 if stale else 0)
+        fresh = execution_review(plan_of(54 * 65), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=day)
+        assert fresh.can_execute is True and len(fresh.warnings) == (1 if stale else 0)
+        if stale:
+            [w] = r.warnings
+            assert (w.leg_ref, w.contract) == ("leg-1", SYMBOL)
+            assert display_text(w.message).startswith(STALE_TEXT)
+            assert w.message.what_happened == STALE_TEXT
+
+
+def test_stale_message_has_four_parts_and_its_own_code() -> None:
+    day = datetime.date(2026, 10, 24)
+    m = freeze_check(plan_of(54 * 65), {SYMBOL: REAL}, today=day).warnings[0].message
+    assert m.what_happened and m.impact and m.what_is_blocked and m.next_action
+    assert m.code == "STRATEGY_VALIDATION_503"
+    assert "should" not in display_text(m).lower()
+
+
+def test_no_stored_limit_gives_only_the_unknown_warning_no_stale_warning() -> None:
+    for limits in (None, {}):
+        [w] = freeze_check(plan_of(54 * 65), limits, today=datetime.date(2027, 1, 1)).warnings
+        assert w.message.code == "STRATEGY_VALIDATION_502"
+
+
+def test_future_file_date_gives_no_stale_warning_and_no_crash() -> None:
+    future = StoredFreeze(3511, 65, datetime.date(2026, 10, 20))
+    r = freeze_check(plan_of(55 * 65), {SYMBOL: future}, today=TODAY)
+    assert r.warnings == () and len(r.blocks) == 1
+
+
+def test_today_is_a_required_keyword() -> None:
+    with pytest.raises(TypeError):
+        freeze_check(plan_of(54 * 65), {SYMBOL: REAL})  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        execution_review(plan_of(54 * 65), FakeMargin({}), freeze_limits=None)  # type: ignore[call-arg]

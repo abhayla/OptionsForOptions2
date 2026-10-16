@@ -150,6 +150,7 @@ def test_poison_packet_is_counted_and_skipped_not_raised():
     bad = KiteProvider([dataclasses.replace(items[0], contract=poisoned)] + items[1:], clock=clock)
     token = int(items[0].ref("zerodha").broker_token)
     good = int(items[1].ref("zerodha").broker_token)
+    bad.subscribe(all_instrument_ids(items[:2]))  # ticks count only for held tokens (gate 4a D-1)
     bad.on_connected(T0)
     out = bad.on_frame(_ltp_packet(token), T0)  # must not raise
     assert out == [] and bad.counters["unmappable"] == 1

@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from marketdata._kite_fixture import new_provider, replay  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 
 from ofo.errors import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
@@ -75,10 +75,28 @@ def request(provider, ids=((SELL_CE, "SELL"), (BUY_CE, "BUY"), (SELL_PE, "SELL")
          "captured_at": VALUATION.isoformat()} for i, a in ids]}
 
 
+def held_replay(provider, clock, items):
+    """Replay the recording into a provider that holds every recorded instrument: since gate 4a D-1 a tick for a token
+    nobody holds never reaches the book, so the rig holds them the way the app's replay provider does."""
+    provider.subscribe(all_instrument_ids(items))
+    provider.drain_subscription_changes()
+    return replay(provider, clock)
+
+
+def none_held(provider, ids) -> bool:
+    """No vendor subscription is left for any of ``ids`` (the rig's other recorded instruments stay held)."""
+    wanted = set(provider.subscribed_tokens())
+    return all(provider._token_of[i] not in wanted for i in ids)
+
+
+def strategy_ids(provider) -> list:
+    return [SELL_CE, BUY_CE, SELL_PE, BUY_PE, provider.index_id("NIFTY")]
+
+
 @pytest.fixture
 def rig():
-    provider, clock, _items = new_provider()
-    replay(provider, clock)  # the recorded 2026-10-08 frames; nothing subscribed yet
+    provider, clock, items = new_provider()
+    held_replay(provider, clock, items)  # the recorded 2026-10-08 frames; no strategy subscribed yet
     ctx = MarketContext(provider, lambda: VALUATION, RATE)
     feed = LiveFeed(ctx, FanOut(provider))
     channel, mono = FakeChannel(), Mono()
@@ -219,11 +237,11 @@ async def test_everything_is_unsubscribed_when_the_connection_closes(rig):
     await settle()
     index_id = provider.index_id("NIFTY")
     ids = [SELL_CE, BUY_CE, SELL_PE, BUY_PE, index_id]
-    assert all(feed.fanout.subscriber_count(i) == 1 for i in ids) and len(provider.subscribed_tokens()) == 5
+    assert all(feed.fanout.subscriber_count(i) == 1 for i in ids) and not none_held(provider, ids)
     await channel.inbound.put(ChannelClosed)
     await task
     assert all(feed.fanout.subscriber_count(i) == 0 for i in ids)
-    assert provider.subscribed_tokens() == []  # the vendor subscription is released with the last watcher
+    assert none_held(provider, ids)  # the vendor subscription is released with the last watcher
 
 
 async def test_a_task_cancelled_mid_run_also_unsubscribes(rig):
@@ -234,7 +252,7 @@ async def test_a_task_cancelled_mid_run_also_unsubscribes(rig):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert provider.subscribed_tokens() == []
+    assert none_held(provider, strategy_ids(provider))
 
 
 async def test_bad_input_gets_the_one_catalogue_message_and_the_connection_goes_on(rig):
@@ -245,7 +263,7 @@ async def test_bad_input_gets_the_one_catalogue_message_and_the_connection_goes_
     unknown = {**good, "legs": [{**good["legs"][0], "instrument_id": "NSE_FO:1"}] + good["legs"][1:]}  # not in the catalogue
     await channel.inbound.put(unknown)
     await settle()
-    assert channel.sent == [ERROR, ERROR] and provider.subscribed_tokens() == []
+    assert channel.sent == [ERROR, ERROR] and all(feed.fanout.subscriber_count(i) == 0 for i in strategy_ids(provider))
     await channel.inbound.put(good)
     await settle()
     assert len(channel.sent) == 3 and channel.sent[2] != ERROR and "state" in channel.sent[2]  # answered normally
@@ -286,8 +304,8 @@ class FakeSocket:
 
 
 async def test_session_ended_makes_the_context_not_live():
-    provider, clock, _ = new_provider()
-    replay(provider, clock)
+    provider, clock, items = new_provider()
+    held_replay(provider, clock, items)
     market = live_market.LiveMarket()
     market.attach(provider, FakeSocket(provider), lambda: VALUATION)
     await settle()
@@ -451,7 +469,7 @@ async def test_the_in_process_proof_code_path_passes_on_the_replay_provider(rig)
     assert summary["min_gap_s"] >= 1.0, summary  # the 1 s gate holds with a changed tick every 0.25 s
     assert max(summary["distinct_ltp_per_leg"]) > 1 and summary["distinct_unrealized_pnl"] > 1, summary
     assert summary["passed"] is True, summary
-    assert provider.subscribed_tokens() == []  # the proof releases everything it subscribed
+    assert none_held(provider, strategy_ids(provider))  # the proof releases everything it subscribed
 
 
 # ---- phase 2: the door socket route and issue #206 (REST not live when the live inputs are not streaming) ---------------
@@ -535,8 +553,8 @@ def test_ac4_the_door_socket_mints_only_its_models_or_a_catalogue_message():
 @pytest.fixture
 def live_rig():
     """A running-app live market whose feed is the replay provider (no Kite, no database)."""
-    provider, clock, _items = new_provider()
-    replay(provider, clock)
+    provider, clock, items = new_provider()
+    held_replay(provider, clock, items)
     market = live_market.LiveMarket()
     market.feed = LiveFeed(MarketContext(provider, lambda: VALUATION, RATE), FanOut(provider))
     live_market.set_current(market)
