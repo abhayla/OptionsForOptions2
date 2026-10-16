@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import sys
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "backend" / "ofo_app"
 DOOR = "errors.py"
@@ -34,6 +35,12 @@ ROUTE_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "opt
 WEBSOCKET = frozenset({"websocket", "websocket_route", "add_websocket_route", "send_text", "send_json", "send_bytes"})
 REGISTRATIONS = frozenset({"middleware", "add_middleware", "add_exception_handler", "exception_handler"})
 _WORD = re.compile(r"[A-Za-z]")
+#: The one allowed naming of a banned name (W-080): the Kite door's OUTBOUND client annotates the reply Kite sends us
+#: as ``httpx.Response``; that is the type of a reply we RECEIVE, never a body we build. Allowed only in this file,
+#: only as the attribute ``Response`` of a name bound once, by ``import httpx [as alias]``, and only inside a type
+#: annotation (a parameter, a return type, an annotated assignment). A construction ``_httpx.Response(...)``, an import
+#: of ``Response`` from any module, any other attribute, or the same annotation in any other file is still refused.
+OUTBOUND_ANNOTATIONS = {"kite_http.py": ("httpx", "Response")}
 
 
 def _name(node: ast.AST) -> str:
@@ -70,12 +77,61 @@ def _is_route(fn: ast.AST) -> bool:
         isinstance(d, ast.Call) and _name(d.func) in ROUTE_METHODS | {"websocket"} for d in fn.decorator_list)
 
 
+def _bindings(tree: ast.AST) -> dict[str, list[ast.AST]]:
+    """Every node that binds a name anywhere in the file (imports, assignments, defs, arguments, ``except as``)."""
+    out: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(tree):
+        names: list[str] = []
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = [a.asname or a.name.split(".")[0] for a in node.names]
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            names = [node.id]
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names = [node.name]
+        elif isinstance(node, ast.arg):
+            names = [node.arg]
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names = [node.name]
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            names = list(node.names)
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            names = [node.name]
+        for name in names:
+            out.setdefault(name, []).append(node)
+    return out
+
+
+def _allowed_outbound(tree: ast.AST, rel: str) -> set[int]:
+    """The ids of the annotation nodes ``<httpx alias>.Response`` that OUTBOUND_ANNOTATIONS allows in ``rel``."""
+    if rel not in OUTBOUND_ANNOTATIONS:
+        return set()
+    module, attr = OUTBOUND_ANNOTATIONS[rel]
+    bindings = _bindings(tree)
+    aliases = {name for name, nodes in bindings.items() if len(nodes) == 1 and isinstance(nodes[0], ast.Import)
+               and any(a.name == module and (a.asname or a.name) == name for a in nodes[0].names)}
+    annotations: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arg) and node.annotation is not None:
+            annotations.append(node.annotation)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
+            annotations.append(node.returns)
+        elif isinstance(node, ast.AnnAssign):
+            annotations.append(node.annotation)
+    # An annotation that runs code (a call, a walrus, a lambda) is not a plain type name: nothing inside it is allowed.
+    plain = [ann for ann in annotations
+             if not any(isinstance(sub, (ast.Call, ast.NamedExpr, ast.Lambda)) for sub in ast.walk(ann))]
+    return {id(sub) for ann in plain for sub in ast.walk(ann)
+            if isinstance(sub, ast.Attribute) and sub.attr == attr and isinstance(sub.value, ast.Name)
+            and sub.value.id in aliases}
+
+
 def structural(source: str, rel: str) -> list[str]:
     """Layer 1."""
     if rel == DOOR:
         return []
     found: list[str] = []
     tree = ast.parse(source)
+    outbound = _allowed_outbound(tree, rel)
     decorators = {id(d) for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                   for d in n.decorator_list}
     for node in ast.walk(tree):
@@ -92,7 +148,7 @@ def structural(source: str, rel: str) -> list[str]:
                     found.append(f"{rel}:{line} imports {alias.name}")
         elif isinstance(node, ast.Import):
             found.extend(f"{rel}:{line} imports {a.name}" for a in node.names if a.name in BANNED_MODULES)
-        elif isinstance(node, (ast.Name, ast.Attribute)) and _name(node) in BANNED_NAMES:
+        elif isinstance(node, (ast.Name, ast.Attribute)) and _name(node) in BANNED_NAMES and id(node) not in outbound:
             found.append(f"{rel}:{line} uses {_name(node)}")
         elif isinstance(node, ast.Call):
             callee = _name(node.func)
@@ -214,3 +270,52 @@ def test_mutant_without_the_response_model_rule_lets_the_route_shapes_through(mo
 
     monkeypatch.setattr(sys.modules[__name__], "ROUTE_METHODS", frozenset())
     assert structural(REVIEWER_SHAPES["concat"], "routes/sample.py") == []
+
+
+# --- the outbound-client allowance (W-080): the reply Kite sends us, annotated in kite_http.py only ---------------
+
+KITE_HTTP = APP / "kite_http.py"
+_ANNOTATED = 'import httpx as _httpx\ndef get(url: str) -> _httpx.Response:\n    ...\n'
+
+
+def test_the_real_kite_door_passes_only_because_of_the_outbound_allowance(monkeypatch) -> None:
+    """The live file passes; with the allowance removed (mutation) its httpx.Response annotations are flagged, so the
+    allowance is what lets them through and nothing else is."""
+    source = KITE_HTTP.read_text(encoding="utf-8")
+    assert structural(source, "kite_http.py") == []
+    monkeypatch.setattr(sys.modules[__name__], "OUTBOUND_ANNOTATIONS", {})
+    flagged = structural(source, "kite_http.py")
+    assert flagged and all(row.endswith("uses Response") for row in flagged), flagged
+
+
+def test_a_planted_starlette_response_in_the_kite_door_is_still_flagged() -> None:
+    planted = KITE_HTTP.read_text(encoding="utf-8") + "\nfrom starlette.responses import Response\n"
+    rows = structural(planted, "kite_http.py")
+    assert any("imports starlette.responses" in r for r in rows) and any("imports Response" in r for r in rows), rows
+
+
+OUTBOUND_STILL_REFUSED = {
+    "construction": 'import httpx as _httpx\ndef f():\n    return _httpx.Response(200)\n',
+    "value_not_annotation": 'import httpx as _httpx\nREPLY = _httpx.Response\n',
+    "from_httpx_import": 'from httpx import Response\ndef get(url: str) -> Response:\n    ...\n',
+    "alias_rebound": 'import httpx as _httpx\nimport starlette.responses as _httpx\ndef g() -> _httpx.Response:\n'
+                     '    ...\n',
+    "alias_assigned": 'import httpx as _httpx\n_httpx = fastapi.responses\ndef g() -> _httpx.Response:\n    ...\n',
+    "other_module": 'import starlette.responses as _httpx\ndef g() -> _httpx.Response:\n    ...\n',
+    "other_banned_attr": 'import httpx as _httpx\ndef g() -> _httpx.JSONResponse:\n    ...\n',
+    "bare_name_annotation": 'def g() -> Response:\n    ...\n',
+    # Tier A review (GC-2a): the module check (``a.name == module``) needs its own killing plant - fastapi's Response
+    # IS starlette's, and no import rule names fastapi
+    "fastapi_alias": 'import fastapi as _httpx\ndef g() -> _httpx.Response:\n    ...\n',
+    "construct_in_return_annotation": 'import httpx as _httpx\ndef g() -> _httpx.Response(200):\n    ...\n',
+    "construct_in_annassign": 'import httpx as _httpx\nx: _httpx.Response(200, text="e") = None\n',
+    "walrus_in_annotation": 'import httpx as _httpx\ndef g() -> (R := _httpx.Response):\n    ...\n',
+    "lambda_in_annotation": 'import httpx as _httpx\ndef g() -> (lambda: _httpx.Response)():\n    ...\n',
+}
+
+
+def test_the_outbound_allowance_is_narrow() -> None:
+    assert structural(_ANNOTATED, "kite_http.py") == []
+    assert structural(_ANNOTATED, "routes/sample.py"), "the allowance is for kite_http.py only"
+    missed = [name for name, src in OUTBOUND_STILL_REFUSED.items() if not structural(src, "kite_http.py")]
+    assert missed == []
