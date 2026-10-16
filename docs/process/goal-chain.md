@@ -5,15 +5,23 @@ Owner-approved 2026-10-16 19:30 IST (plan rev 2 after an independent Opus review
 
 ## The one prompt (paste into every new session)
 
-> Run the goal chain: `git pull` main, read `docs/process/goal-chain.md`, and run the contract marked NEXT to
-> completion under its rules (refuse if a row is RUNNING). Do not stop for status reports; stop only at the
-> contract's named stops.
+> Run the goal chain for this repo: git pull main, read docs/process/goal-chain.md, and run the contract marked NEXT
+> to completion under its rules. Refuse to start if any row is RUNNING. In your first commit set the row RUNNING and
+> replace the prompt in goal-chain.md with this /goal text. The goal is MET only when the transcript shows all of:
+> (1) a merged PR number on main whose goal-chain.md marks this contract DONE or PARTIAL (parked items named) and the
+> next contract NEXT; (2) the next contract file reviewed by an independent reviewer, with its findings accepted or
+> rejected; (3) a final message with the 5-line summary, the scorecard and the evidence table. The goal is IMPOSSIBLE
+> (stop) only when a named stop in the contract needs the owner, or another row is RUNNING. Never stop for a status
+> report. At the contract's 8-hour cap: park the unfinished items, then still do the handover step, which meets the
+> goal as PARTIAL.
+
+Use it as `/goal <the text above>`.
 
 ## Chain
 
 | Id | Status | Closes | When / size | Owner needed | Contract |
 |---|---|---|---|---|---|
-| GC-1 | NEXT | 4a close-out + 4b core proof | Fri 2026-10-16 night, cap 8 h | No | `goal-contract-GC-1-2026-10-16.md` |
+| GC-1 | RUNNING (started 2026-10-16 19:50 IST, cap 03:50 IST) | 4a close-out + 4b core proof | Fri 2026-10-16 night, cap 8 h | No | `goal-contract-GC-1-2026-10-16.md` |
 | GC-2a | planned | #327 Linux egress fix, ADR-099 paisa rounding, W-017 on real responses, W-081 wired + #273 | Sat, 4-6 h | No | written by GC-1 |
 | GC-2b | planned | App chain: Execute route -> read-only basket -> return-from-Kite read-back -> reconcile -> audit; persisted order book (#313); Execute screen (REQ-073 AC-1..3, REQ-057/058/060) | Sun, 5-6 h | No | written by GC-2a |
 | GC-3 | planned | 4b live gate: 1-lot order through the product (ADR-097 guardrails), reconcile, P&L = ADR-008 on the fill, audit chain read back | Mon 09:15, ~2 h | **Yes**: Kite login, typed go, Execute press | written by GC-2b |
