@@ -28,8 +28,8 @@ order, reads the broker or monitors anything; AC-3 (monitoring the adopted strat
   never-executed strategy; another underlying; a contract the strategy already holds or two chosen rows on one
   contract (never netted); an average finer than paise with no entry set.
 * Both adoption paths put the adopted units into the order book's ledger as adopted holdings (no order id invented):
-  ``confirm_into`` through the session's book, ``open_adopted`` for a strategy ``confirm`` created. Without that, Complete
-  saw room for a second buy and Close saw nothing to close (round 2, finding state-with-no-working-exit).
+  ``confirm_into`` through the session's book, ``open_adopted`` for a strategy ``confirm`` created. Without that,
+  Complete saw room for a second buy and Close saw nothing to close (round 2, finding state-with-no-working-exit).
 * Every action appends exactly ONE entry through the audit log's public ``append`` (``start`` = the suggestion,
   ``move`` / standalone, ``set_entry``, ``confirm``, ``add_to_strategy``). A refused action changes nothing; it
   appends nothing, except a refused add to an existing strategy, which appends one ``add_to_strategy_refused`` entry.
