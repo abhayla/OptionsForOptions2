@@ -110,9 +110,21 @@ async function load() {
   }
 }
 
+// Issue 297 item 1: a leg opened from a link carries only its instrument id; the answer carries the catalogue's contract
+// fields for it, so the picker's rows take them from the answer (display only; the draft sent to the server is unchanged).
+function nameLegsFrom(body) {
+  const known = new Map((body.legs ?? []).filter((a) => a.expiry && a.instrument).map((a) => [a.instrument_id, a]))
+  if (!legs.value.some((l) => !l.expiry && known.has(l.instrument_id))) return
+  legs.value = legs.value.map((l) => {
+    const a = known.get(l.instrument_id)
+    return l.expiry || !a ? l : { ...l, expiry: a.expiry, instrument_type: a.instrument, strike: a.strike ?? null }
+  })
+}
+
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  nameLegsFrom(body)
   if (body.state === 'COMPUTED') state.value = body.legs.some((l) => l.label) ? 'stale' : 'computed'
   else if (body.state === 'NOT_CONNECTED') state.value = 'not-connected'
   else state.value = 'refused'

@@ -29,6 +29,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
+import { payoffRegions } from '@/lib/payoffRegions'
 
 const props = defineProps({
   points: { type: Array, default: () => [] }, // [{ level: '22500', pnl: '1234.50' }] as the API sent them
@@ -38,9 +39,11 @@ const chartCanvas = ref(null)
 let chartInstance = null
 
 // Drawing only: chart.js needs numbers to place a point. Nothing here is displayed.
+// A line has a value only over its own region (issue 297 item 4); elsewhere null, so no segment is drawn at 0.
 const splitPnlData = (points) => {
   const pnl = points.map((p) => Number(p.pnl))
-  return { profitData: pnl.map((v) => (v >= 0 ? v : 0)), lossData: pnl.map((v) => (v <= 0 ? v : 0)) }
+  const { loss, profit } = payoffRegions(points)
+  return { profitData: pnl.map((v, i) => (profit[i] ? v : null)), lossData: pnl.map((v, i) => (loss[i] ? v : null)) }
 }
 
 const createChart = () => {
