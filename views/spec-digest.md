@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (90)
+## Decisions (91)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -96,6 +96,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - each show "Checked at <time>", where <time> is the… [none — fills the time REQ-039 AC-3 left open and…]
 - ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE when the loss region lies above it, taken from the… [none — uses the ADR-072 loss regions for the tabl…]
 - ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
+- ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refreshed by running the freeze-file loader once a week (Monday, next to the Kite login) and whenever NS… [extends ADR-081]
 
 ## Requirements (74)
 
@@ -174,7 +175,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-073 [Approved]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 
-## Spec sections (195)
+## Spec sections (196)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -272,6 +273,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-35 - Zerodha's published F&O options rates reproduce its own charge…
 - ## F-36 - NSE no longer publishes a separate freeze-quantity file; the f…
 - ## F-37 - The owner's Kite access token stopped working between 04:29:48…
+- ## F-38 - Index freeze limits are revised several times a year, not once…
 
 ### spec/open-questions.md
 

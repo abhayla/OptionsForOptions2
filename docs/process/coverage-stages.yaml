@@ -161,6 +161,7 @@ decisions:
   ADR-088: 4a           # "Checked at" server answer time on 4 non-normal Builder states (owner 2026-10-16, #245)
   ADR-089: 4a           # one-breakeven Lower/Upper BE label from loss regions (owner 2026-10-16, #171)
   ADR-090: 4b           # REQ-073 approved for build; AC-5 follows ADR-060 (owner delegation 2026-10-16)
+  ADR-091: 4b           # freeze limits refreshed weekly by hand; review warns after 8 days (owner 2026-10-16)
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
@@ -292,6 +293,7 @@ findings:
   F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
   F-36: 4b        # NSE freeze limit = MaxTradQty in the daily contract file (old qtyfreeze discontinued); BSE unmeasured (ADR-081, W-076)
   F-37: 4b        # Kite token stopped 04:29:48-04:30:48 IST next morning (one night, owner app); not ~6 AM
+  F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
 
 hypotheses:
   H1: done
