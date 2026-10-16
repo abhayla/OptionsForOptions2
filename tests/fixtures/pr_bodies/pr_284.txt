@@ -1,0 +1,19 @@
+**Fix #279 items 2-3 (Tier A): an expired standalone record is retired with a one-time note; an expired contract still at Zerodha gets an accurate label.**
+
+Addresses items 2 and 3 of #279. Items 1 (scheduler order) and 4 (saving the retired standalone map) stay open.
+
+- `backend/ofo/reconciliation/compare.py`: `retired_standalones` / `without_retired_standalones`. A standalone quantity on an expired contract that Zerodha no longer shows gives `RECONCILIATION_MISMATCH_221` (non-blocking). An expired contract Zerodha still shows with a different quantity gives `RECONCILIATION_MISMATCH_222` instead of "missing" or "side".
+- Spec: REQ-060 clarification (ADR-083's "expected gone" applied to AC-7 standalone records), and OQ-8 in `docs/process/owner-questions-2026-10-16.md` for the owner to confirm.
+- Known gap (reviewer finding 2): no caller in `ofo_app` applies the retirement yet. "Shown once" holds only when the caller saves the retired map, which is #279 item 4. Until then the note can repeat. It never blocks.
+- Tier A review (Opus): PASS. 7 mutations, all killed. 4,000 random expired-contract cases, main vs branch: **0 differences in blocked strategies**. Label changes only: MISSING→EXPIRED_QUANTITY_DIFFERS 142, SIDE→EXPIRED_QUANTITY_DIFFERS 736, AWAITING→EXPIRED_STANDALONE_RETIRED 309. The code clash with #275 is resolved: #275 moved to 223 and adds a code-uniqueness test.
+- Merge candidate (main merged after #283): domain suite **4247 passed**; dupes, lint, trace, refs and drift are all green.
+
+Spec deviation
+Class: none
+Spec section: spec/requirements/REQ-060.md
+Detail: clarification written into REQ-060 in this PR; blocking behaviour unchanged
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01RHDuFYJcqBvv1nRGqtm1b9
+

@@ -1,0 +1,31 @@
+name: pr-close-check
+
+# Project-owned. A PR body or commit message with a qualified or prose closing keyword closes a whole issue on merge.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  close-keywords:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read PR body and commit messages (never interpolated into the script)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.txt"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[].commit.message, "---COMMIT---"' > "$RUNNER_TEMP/commits.txt"
+      - name: Check closing references
+        run: python scripts/orchestrator/pr_close_check.py --body-file "$RUNNER_TEMP/body.txt" --commits-file "$RUNNER_TEMP/commits.txt"
