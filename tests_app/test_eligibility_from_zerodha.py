@@ -26,7 +26,8 @@ from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update
 from test_strategy_followups import _ConnMaker
-from test_strategy_store import AS_OF, IRON_CONDOR, _app, _body, _client, _fixture_rows, _ids, _user, _with_draft
+from test_strategy_store import (AS_OF, IRON_CONDOR, LOT, WING, _app, _body, _client, _fixture_rows, _ids, _user,
+                                _with_draft)
 
 LIST_DAY = AS_OF.date()  # 2026-10-08, the recorded list's day
 AFTER_EXPIRY = datetime.date(2026, 10, 14)  # the condor's contracts expired 2026-10-13
@@ -94,15 +95,69 @@ async def test_ac3_a_contract_the_latest_list_does_not_carry_is_refused_at_save(
             await trans.rollback()
 
 
-async def test_ac3_an_edit_that_keeps_an_expired_leg_is_refused_and_the_revision_stays(app_engine):
+async def test_ac3_an_edit_that_keeps_an_already_stored_expired_leg_saves(app_engine):
+    """(a) Old drafts stay editable: the stored legs have since expired, an unrelated change (quantity) still saves."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, _user())
+            body = _body(ids, expected_revision=1)
+            for leg in body["legs"]:
+                leg["quantity"] = LOT * 2
+            async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), AFTER_EXPIRY)) as ac:
+                resp = await ac.put(f"/strategies/{stored.id}", json=body)
+            assert resp.status_code == 200, resp.text
+            assert (await store.load(conn, stored.user_ref, stored.id)).revision == 2
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_an_edit_that_adds_an_expired_leg_is_refused_and_the_revision_stays(app_engine):
+    """(b) A leg new relative to the stored version is checked: refused with the gate's text."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             ids, stored = await _with_draft(conn, _user())
             async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), AFTER_EXPIRY)) as ac:
-                resp = await ac.put(f"/strategies/{stored.id}", json=_body(ids, expected_revision=1))
+                resp = await ac.put(f"/strategies/{stored.id}", json=_body(ids, wing=WING, expected_revision=1))
             assert (resp.status_code, resp.json()["code"]) == (403, "BROKER_ELIGIBILITY_103"), resp.text
+            assert UNAVAILABLE in resp.text, resp.text
             assert (await store.load(conn, stored.user_ref, stored.id)).revision == 1
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_an_edit_that_adds_an_unlisted_leg_is_refused(app_engine):
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, _user())
+            await conn.execute(text("UPDATE public.catalogue_contracts SET currently_listed = FALSE WHERE id = :id"),
+                               {"id": ids[WING]})
+            async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), LIST_DAY)) as ac:
+                resp = await ac.put(f"/strategies/{stored.id}", json=_body(ids, wing=WING, expected_revision=1))
+            assert (resp.status_code, resp.json()["code"]) == (403, "BROKER_ELIGIBILITY_103"), resp.text
+        finally:
+            await trans.rollback()
+
+
+async def test_ac3_a_restore_that_brings_back_an_expired_leg_is_refused(app_engine):
+    """(c) Restoring entry 1 re-adds the leg the edit swapped out; it is new relative to the current version."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, _user())
+            maker = _ConnMaker(conn)
+            async with _client(_on(_app(maker, stored.user_ref), LIST_DAY)) as ac:
+                edit = await ac.put(f"/strategies/{stored.id}", json=_body(ids, wing=WING, expected_revision=1))
+                assert edit.status_code == 200, edit.text
+            async with _client(_on(_app(maker, stored.user_ref), AFTER_EXPIRY)) as ac:
+                resp = await ac.post(f"/strategies/{stored.id}/restore/1?expected_revision=2")
+            assert (resp.status_code, resp.json()["code"]) == (403, "BROKER_ELIGIBILITY_103"), resp.text
+            assert (await store.load(conn, stored.user_ref, stored.id)).revision == 2
+            async with _client(_on(_app(maker, stored.user_ref), LIST_DAY)) as ac:
+                ok = await ac.post(f"/strategies/{stored.id}/restore/1?expected_revision=2")
+            assert ok.status_code == 200, ok.text  # positive control: same restore on the list's own day
         finally:
             await trans.rollback()
 

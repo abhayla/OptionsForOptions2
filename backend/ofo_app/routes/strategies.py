@@ -259,16 +259,31 @@ async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
 _NO_PRICE = Decimal("0")  # the message names the leg's contract only; no price is shown
 
 
-async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.TodayReader) -> None:
-    """W-092 / ADR-104, REQ-053 AC-3 add-time check: every leg's contract must be eligible from Zerodha's data (in the
-    current list, not expired on the database clock's India date). The first leg that is not is refused with the
-    gate's own message (gate_contract_unavailable, or gate_contract_unconfirmed when no list was ever loaded)."""
-    statuses = await elig.leg_statuses(db, saved.contract_ids, await today_of(db))
+def _leg_identity(saved: sf.SavedDefinition) -> list[tuple[int, Action]]:
+    """A leg is the same leg when its contract and side are the same (quantity and planned entry do not make it new)."""
+    legs = saved.definition.legs
+    return [(contract_id, leg.action) for contract_id, leg in zip(saved.contract_ids, legs, strict=True)]
+
+
+async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.TodayReader,
+                          stored: sf.SavedDefinition | None) -> None:
+    """W-092 / ADR-104, REQ-053 AC-3 add-time check: every ADDED leg's contract must be eligible from Zerodha's data
+    (in the current list, not expired on the database clock's India date). A leg already in the stored version
+    (``stored``, None for a new strategy) never blocks a save, so an old draft stays editable; the execution gate
+    re-checks every leg. The first added leg that is not eligible is refused with the gate's own message
+    (gate_contract_unavailable, or gate_contract_unconfirmed when no list was ever loaded)."""
+    kept = set(_leg_identity(stored)) if stored is not None else set()
+    added = [i for i, key in enumerate(_leg_identity(saved)) if key not in kept]
+    if not added:
+        return
+    statuses = await elig.leg_statuses(db, [saved.contract_ids[i] for i in added], await today_of(db))
     underlying = saved.definition.underlying
-    for number, (leg, status) in enumerate(zip(saved.definition.legs, statuses, strict=True), start=1):
+    for index, status in zip(added, statuses, strict=True):
         if status is not None and status.tradable:
             continue
-        value = LegValue(number, EngineLeg(leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, _NO_PRICE),
+        leg = saved.definition.legs[index]
+        engine_leg = EngineLeg(leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, _NO_PRICE)
+        value = LegValue(index + 1, engine_leg,
                          underlying)
         template = "gate_contract_unconfirmed" if status is None else "gate_contract_unavailable"
         raise StrategyRefused(template, message=render(template, leg=value))
@@ -293,7 +308,7 @@ async def save_draft(body: StrategyIn, today_of: Annotated[elig.TodayReader, Dep
                      db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         saved = await _definition(db, body)
-        await _check_eligible(db, saved, today_of)
+        await _check_eligible(db, saved, today_of, None)
         return await _strategy_out(db, await store.save_draft(db, user_ref, saved))
     return await _run(db, work, form_status=422)
 
@@ -323,7 +338,7 @@ async def update_strategy(strategy_id: int, body: StrategyUpdateIn,
     async def work():
         store.check_strategy_id(strategy_id)  # before the catalogue is read
         saved = await _definition(db, body)
-        await _check_eligible(db, saved, today_of)
+        await _check_eligible(db, saved, today_of, (await store.load(db, user_ref, strategy_id)).saved)
         return await _strategy_out(db, await store.update(db, user_ref, strategy_id, saved,
                                                           expected_revision=body.expected_revision))
     return await _run(db, work, form_status=422)
@@ -342,9 +357,15 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.post("/strategies/{strategy_id}/restore/{seq}", response_model=StrategyOut, response_model_exclude_unset=True)
-async def restore_strategy(strategy_id: int, seq: int, expected_revision: int = Query(gt=0),
+async def restore_strategy(strategy_id: int, seq: int,
+                           today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                           expected_revision: int = Query(gt=0),
                            db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
+        current = (await store.load(db, user_ref, strategy_id)).saved
+        for entry in await store.history(db, user_ref, strategy_id):
+            if entry.seq == seq:  # a missing entry is left to restore, which answers it as not found
+                await _check_eligible(db, entry.saved, today_of, current)
         return await _strategy_out(db, await store.restore(db, user_ref, strategy_id, seq,
                                                            expected_revision=expected_revision))
     return await _run(db, work, form_status=409)
