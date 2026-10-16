@@ -85,8 +85,9 @@ test('every number on the screen equals the API response text for the condor', a
   await expect(page.getByTestId('spot-level')).toHaveText(api.spot_level)
   await expect(page.getByTestId('sum-lose')).toHaveText(api.summary.what_can_i_lose)
   await expect(page.getByTestId('sum-make')).toHaveText(api.summary.what_can_i_make)
-  await expect(page.getByTestId('sum-make')).toContainText('4,754.75')
-  await expect(page.getByTestId('sum-lose')).toContainText('8,245.25')
+  await expect(page.getByTestId('sum-make')).toContainText('4,539.65')
+  await expect(page.getByTestId('sum-lose')).toContainText('8,460.35')
+  await expect(page.getByTestId('sum-lose')).toContainText('215.10')
   await expect(page.getByTestId('sum-start')).toContainText('22,326.85')
   await expect(page.getByTestId('sum-start')).toContainText('22,873.15')
 
