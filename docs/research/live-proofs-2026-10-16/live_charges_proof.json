@@ -1,0 +1,438 @@
+{
+ "rates_read_on": "2026-10-15",
+ "source": "https://zerodha.com/charges (F&O options), read 2026-10-15; F-35",
+ "orders": [
+  {
+   "order": [
+    "NIFTY26O1923150CE",
+    "BUY",
+    65,
+    "101.20"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "2.337163400",
+    "sebi": "0.00657800",
+    "stamp": "0.1973400",
+    "gst": "4.02187345200",
+    "total": "26.56295485200"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "2.3371634",
+    "sebi": "0.006578",
+    "stamp": "0",
+    "gst": "4.0218734519999995",
+    "total": "26.365614852"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0.1973400",
+    "gst": "5E-16",
+    "total": "0.19734000000"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150CE",
+    "SELL",
+    65,
+    "100.95"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "9.842625",
+    "exchange_transaction": "2.331389775",
+    "sebi": "0.00656175",
+    "stamp": "0",
+    "gst": "4.02083127450",
+    "total": "36.20140779950"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "9.842625",
+    "exchange_transaction": "2.331389775",
+    "sebi": "0.00656175",
+    "stamp": "0",
+    "gst": "4.0208312745",
+    "total": "36.201407799500004"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0",
+    "gst": "0E-11",
+    "total": "-4E-15"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150CE",
+    "BUY",
+    130,
+    "101.20"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "4.674326800",
+    "sebi": "0.01315600",
+    "stamp": "0.3946800",
+    "gst": "4.44374690400",
+    "total": "29.52590970400"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "4.6743268",
+    "sebi": "0.013156",
+    "stamp": "0",
+    "gst": "4.443746903999999",
+    "total": "29.131229704"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0.3946800",
+    "gst": "1E-15",
+    "total": "0.39468000000"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150CE",
+    "SELL",
+    130,
+    "100.95"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "19.685250",
+    "exchange_transaction": "4.662779550",
+    "sebi": "0.01312350",
+    "stamp": "0",
+    "gst": "4.44166254900",
+    "total": "48.80281559900"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "19.68525",
+    "exchange_transaction": "4.66277955",
+    "sebi": "0.0131235",
+    "stamp": "0",
+    "gst": "4.441662548999999",
+    "total": "48.802815599"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0",
+    "gst": "1E-15",
+    "total": "0E-11"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150PE",
+    "BUY",
+    65,
+    "120.80"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "2.789815600",
+    "sebi": "0.00785200",
+    "stamp": "0.2355600",
+    "gst": "4.10358016800",
+    "total": "27.13680776800"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "2.7898156000000003",
+    "sebi": "0.007852",
+    "stamp": "0",
+    "gst": "4.103580168",
+    "total": "26.901247768"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "-3E-16",
+    "sebi": "0E-8",
+    "stamp": "0.2355600",
+    "gst": "0E-11",
+    "total": "0.23556000000"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150PE",
+    "SELL",
+    65,
+    "120.55"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "11.753625",
+    "exchange_transaction": "2.784041975",
+    "sebi": "0.00783575",
+    "stamp": "0",
+    "gst": "4.10253799050",
+    "total": "38.64804071550"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "11.753625",
+    "exchange_transaction": "2.784041975",
+    "sebi": "0.007835749999999999",
+    "stamp": "0",
+    "gst": "4.1025379905",
+    "total": "38.6480407155"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "1E-18",
+    "stamp": "0",
+    "gst": "0E-11",
+    "total": "0E-11"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150PE",
+    "BUY",
+    130,
+    "120.80"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "5.579631200",
+    "sebi": "0.01570400",
+    "stamp": "0.4711200",
+    "gst": "4.60716033600",
+    "total": "30.67361553600"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "5.579631200000001",
+    "sebi": "0.015704",
+    "stamp": "0",
+    "gst": "4.607160336",
+    "total": "30.202495536"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "-1E-15",
+    "sebi": "0E-8",
+    "stamp": "0.4711200",
+    "gst": "0E-11",
+    "total": "0.47112000000"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923150PE",
+    "SELL",
+    130,
+    "120.55"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "23.507250",
+    "exchange_transaction": "5.568083950",
+    "sebi": "0.01567150",
+    "stamp": "0",
+    "gst": "4.60507598100",
+    "total": "53.69608143100"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "23.50725",
+    "exchange_transaction": "5.56808395",
+    "sebi": "0.015671499999999998",
+    "stamp": "0",
+    "gst": "4.605075981",
+    "total": "53.696081430999996"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "2E-18",
+    "stamp": "0",
+    "gst": "0E-11",
+    "total": "4E-15"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923350CE",
+    "BUY",
+    65,
+    "35.35"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "0.816390575",
+    "sebi": "0.00229775",
+    "stamp": "0.0689325",
+    "gst": "3.74736389850",
+    "total": "24.63498472350"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "0.816390575",
+    "sebi": "0.00229775",
+    "stamp": "0",
+    "gst": "3.7473638985000006",
+    "total": "24.5660522235"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0.0689325",
+    "gst": "-6E-16",
+    "total": "0.06893250000"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923350CE",
+    "SELL",
+    65,
+    "35.25"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "3.436875",
+    "exchange_transaction": "0.814081125",
+    "sebi": "0.00229125",
+    "stamp": "0",
+    "gst": "3.74694702750",
+    "total": "28.00019440250"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "3.436875",
+    "exchange_transaction": "0.814081125",
+    "sebi": "0.00229125",
+    "stamp": "0",
+    "gst": "3.746947027499999",
+    "total": "28.0001944025"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0",
+    "gst": "1E-15",
+    "total": "0E-11"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923350CE",
+    "BUY",
+    130,
+    "35.35"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "1.632781150",
+    "sebi": "0.00459550",
+    "stamp": "0.1378650",
+    "gst": "3.89472779700",
+    "total": "25.66996944700"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "0",
+    "exchange_transaction": "1.63278115",
+    "sebi": "0.0045955",
+    "stamp": "0",
+    "gst": "3.894727797",
+    "total": "25.532104447000002"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0.1378650",
+    "gst": "0E-11",
+    "total": "0.137864999999998"
+   },
+   "ok_4dp_except_stamp": true
+  },
+  {
+   "order": [
+    "NIFTY26O1923350CE",
+    "SELL",
+    130,
+    "35.25"
+   ],
+   "ours": {
+    "brokerage": "20",
+    "stt": "6.873750",
+    "exchange_transaction": "1.628162250",
+    "sebi": "0.00458250",
+    "stamp": "0",
+    "gst": "3.89389405500",
+    "total": "32.40038880500"
+   },
+   "kite": {
+    "brokerage": "20",
+    "stt": "6.87375",
+    "exchange_transaction": "1.62816225",
+    "sebi": "0.0045825",
+    "stamp": "0",
+    "gst": "3.893894055",
+    "total": "32.400388805"
+   },
+   "diff": {
+    "brokerage": "0",
+    "stt": "0.000000",
+    "exchange_transaction": "0E-9",
+    "sebi": "0E-8",
+    "stamp": "0",
+    "gst": "0E-11",
+    "total": "0E-11"
+   },
+   "ok_4dp_except_stamp": true
+  }
+ ]
+}
