@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from enum import Enum
 from typing import Final
 
@@ -173,18 +173,19 @@ MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_mar
 
 
 def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime) -> Margin:
-    """ADR-099: Zerodha's two figures and the time they were read, each shown to the paisa as Zerodha shows them
-    (half up: Kite's float noise 68498.85000000001 reads 68498.85). Display only: the gate (REQ-055) compares the
-    unrounded figures."""
+    """ADR-099: Zerodha's two figures and the time they were read, each to the paisa on the safe side: the amount
+    needed rounds UP and the funds DOWN (Kite's float noise 68498.85000000001 reads 68498.86), and ``shortfall``
+    compares exactly the two amounts shown, so the screen never shows equal figures with a shortfall mark, nor hides a
+    shortfall the gate would block. Display only: the gate (REQ-055) is the check before the basket."""
     for value in (needed, available):
         if type(value) is not Decimal or not value.is_finite():
             raise ValueError("a margin figure must be a finite Decimal")
     if not isinstance(checked_at, datetime.datetime) or checked_at.tzinfo is None:
         raise ValueError("checked_at must be a timezone-aware datetime")
-    need = needed.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
-    have = available.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+    need = needed.quantize(HUNDREDTH, rounding=ROUND_CEILING)
+    have = available.quantize(HUNDREDTH, rounding=ROUND_FLOOR)
     return Margin(MARGIN_CHECKED, render_explanation("outcome_margin_checked", needed=need, available=have,
-                                                     time=checked_at), need, have, checked_at, available < needed)
+                                                     time=checked_at), need, have, checked_at, have < need)
 
 
 def margin_unreadable() -> Margin:

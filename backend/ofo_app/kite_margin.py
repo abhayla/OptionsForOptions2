@@ -104,11 +104,12 @@ class BasketMargin:
     orders: tuple[OrderMargin, ...]
 
 
-def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, str]:
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
+                     timeout: float = 20) -> tuple[int, str]:
     request = urllib.request.Request(url, data=None if body is None else body.encode("utf-8"), headers=headers,
                                      method=method)
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - fixed https host
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed https host
             return response.status, response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         try:

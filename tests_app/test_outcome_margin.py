@@ -33,8 +33,8 @@ from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome.service import MARGIN  # noqa: E402
 from ofo.outcome.snapshot import contract_id  # noqa: E402
-from ofo_app import outcome_margin  # noqa: E402
-from ofo_app.kite_margin import BasketOrder, KiteMargin  # noqa: E402
+from ofo_app import live_market, outcome_margin  # noqa: E402
+from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.outcome_margin import MarginLimits, OutcomeMargin, PlannedOrderIn, margin_answer  # noqa: E402
@@ -75,13 +75,14 @@ def plan(ce_lots=1, ce_price="45.55", ce_side="BUY") -> list[PlannedOrderIn]:
 class Transport:
     """Replays the recorded replies by path; counts every call and the thread it ran on."""
 
-    def __init__(self, status: int = HTTPStatus.OK, delay: float = 0.0) -> None:
+    def __init__(self, status: int = HTTPStatus.OK, delay: float = 0.0, slow_when: str | None = None) -> None:
         self.status, self.delay, self.calls, self.threads = status, delay, [], []
+        self.slow_when = slow_when  # only a request body holding this text is delayed
 
     def __call__(self, method, url, headers, body):
         self.calls.append((method, url, body))
         self.threads.append(threading.get_ident())
-        if self.delay:
+        if self.delay and (self.slow_when is None or (body is not None and self.slow_when in body)):
             time.sleep(self.delay)
         if self.status != HTTPStatus.OK:
             return self.status, '{"status": "error", "error_type": "NetworkException"}'
@@ -168,6 +169,71 @@ async def test_no_session_is_the_login_text_and_no_kite_call() -> None:
               await margin_answer(None, CTX, plan())):
         assert m == MARGIN and str(m.reason) == LOGIN_TEXT
     assert t.calls == []
+
+
+async def test_a_cached_plan_never_waits_behind_another_plans_slow_read() -> None:
+    """Tier A review (MAJOR): plan A's basket read sleeps 3 s; cached plan B must answer in under 100 ms meanwhile."""
+    t = Transport(delay=3.0, slow_when='"quantity": 130')  # only plan A's basket (2 lots = 130) is slow
+    s = source(t)
+    cached = await margin_answer(s, CTX, plan())  # plan B, read once and cached
+    slow = asyncio.create_task(margin_answer(s, CTX, plan(ce_lots=2)))
+    await asyncio.sleep(0.05)  # plan A is now inside its 3 s read
+    started = time.perf_counter()
+    assert await margin_answer(s, CTX, plan()) == cached
+    elapsed = time.perf_counter() - started
+    hundred_ms = 0.1
+    assert elapsed < hundred_ms, elapsed
+    assert not slow.done()
+    assert (await slow).state == "CHECKED"
+
+
+async def test_two_concurrent_requests_for_one_uncached_plan_make_one_read() -> None:
+    t = Transport(delay=0.2)
+    s = source(t)
+    first, second = await asyncio.gather(margin_answer(s, CTX, plan()), margin_answer(s, CTX, plan()))
+    assert first == second and first.state == "CHECKED"
+    assert s.reads == 1 and t.baskets() == 1
+
+
+async def test_an_unknown_session_is_read_but_never_cached() -> None:
+    t = Transport()
+    s = source(t, session=("owner", None))
+    await margin_answer(s, CTX, plan())
+    await margin_answer(s, CTX, plan())
+    two_reads = 2
+    assert t.baskets() == two_reads and len(s._cache) == 0
+
+
+@pytest.mark.parametrize(("needed", "available", "shown", "short"), [
+    ("100.004", "100.00", ("100.01", "100.00"), True),  # never "100.00 needed, 100.00 available" with a red line
+    ("100.00", "100.009", ("100.00", "100.00"), False),
+    ("100.001", "100.005", ("100.01", "100.00"), True),  # the shown figures decide, not the unrounded ones
+    ("68498.85000000001", "68498.85", ("68498.86", "68498.85"), True),  # Kite's float noise errs on the safe side
+])
+def test_shortfall_compares_the_figures_shown(needed, available, shown, short) -> None:
+    m = outcome_margin.margin_checked(Decimal(needed), Decimal(available), CHECKED_AT)
+    assert (str(m.needed), str(m.available)) == shown and m.shortfall is short
+
+
+async def test_the_owner_client_bounds_each_call_below_the_read_timeout(monkeypatch) -> None:
+    async def stored(_config):
+        return FAKE_ACCESS
+
+    monkeypatch.setattr(live_market, "_current", SimpleNamespace(_config=SimpleNamespace(api_key="key"),
+                                                                 _stored_token=stored))
+    client = await live_market.owner_margin_client()
+    timeout = client._transport.keywords["timeout"]
+    assert timeout * 2 <= outcome_margin.READ_TIMEOUT_SECONDS  # funds + basket together never outlive the read
+    seen = {}
+
+    def urlopen(_request, timeout):
+        seen["timeout"] = timeout
+        raise OSError("no network in tests")
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    with pytest.raises(KiteMarginError):  # the transport's own failure; only the timeout is asserted
+        client._transport("GET", "https://example.invalid/x", {}, None)
+    assert seen["timeout"] == timeout
 
 
 def test_enough_funds_is_no_shortfall() -> None:

@@ -18,6 +18,11 @@ States (run-discipline B4 (d)):
   ("could not be read", never a made-up figure); cached for ``RETRY_SECONDS`` so a Kite outage costs one read per
   ``RETRY_SECONDS`` per plan, not one per push.
 
+Concurrency: the cache is read without any lock (one event loop thread). Only a miss reads Zerodha, through ONE
+in-flight task per key (single flight): concurrent requests for the same uncached plan share one read, and a cached plan
+or another plan never waits on that network read. A session whose id is None (unknown) is read every time and never
+stored, so two unknown sessions can never share figures.
+
 A margin failure never changes the rest of the outcome: the P&L answer is computed as before. The Kite read runs in a
 worker thread (``asyncio.to_thread``, like every other Kite read) under ``READ_TIMEOUT_SECONDS``; the event loop never
 waits on the network. The access token is never logged, cached or put in an answer: only exception class names are
@@ -46,7 +51,9 @@ from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
 
 log = logging.getLogger("ofo_app.outcome_margin")
 
-READ_TIMEOUT_SECONDS: Final = 8.0  # one funds read + one basket read; urllib's own per-call timeout is 20 s
+READ_TIMEOUT_SECONDS: Final = 8.0  # one funds read + one basket read, together
+#: Each of the two HTTP calls gets half the read timeout, so a worker thread never outlives READ_TIMEOUT_SECONDS.
+CALL_TIMEOUT_SECONDS: Final = READ_TIMEOUT_SECONDS / 2
 RETRY_SECONDS: Final = 30.0  # a failed read is not retried sooner (Kite rate limits; a push asks every second)
 CACHE_SIZE: Final = 256  # plans kept per process (all users together); the oldest is dropped first
 #: The platform's exchange segment -> Zerodha's exchange code, the reverse of the parser's one map (never retyped).
@@ -122,7 +129,7 @@ class OutcomeMargin:
         self._monotonic = monotonic
         self._limits = limits or MarginLimits()
         self._cache: OrderedDict[Hashable, _Entry] = OrderedDict()
-        self._lock = asyncio.Lock()
+        self._inflight: dict[Hashable, asyncio.Future] = {}
         self.reads = 0  # Kite reads started (a test counter; one read = funds + basket)
 
     def __repr__(self) -> str:
@@ -131,20 +138,37 @@ class OutcomeMargin:
     def session(self) -> Hashable | None:
         return self._session()
 
+    def _cached(self, key: Hashable) -> Margin | None:
+        entry = self._cache.get(key)
+        if entry is None or (entry.until is not None and self._monotonic() >= entry.until):
+            return None
+        self._cache.move_to_end(key)
+        return entry.margin
+
     async def margin_for(self, session: Hashable, orders: tuple[BasketOrder, ...]) -> Margin:
-        """The cached margin of ``orders`` for ``session`` (its user and session id), read from Zerodha on a miss."""
+        """The cached margin of ``orders`` for ``session`` (its user and session id), read from Zerodha on a miss.
+        No lock is held across the network read: a hit answers at once whatever another key is waiting for."""
         key = (session, orders)
-        async with self._lock:  # one read per plan even when the REST route and a push ask at once
-            entry = self._cache.get(key)
-            if entry is not None and (entry.until is None or self._monotonic() < entry.until):
-                self._cache.move_to_end(key)
-                return entry.margin
+        hit = self._cached(key)
+        if hit is not None:
+            return hit
+        flight = self._inflight.get(key)
+        if flight is None:
+            flight = asyncio.ensure_future(self._read_and_store(key, orders, store=_known(session)))
+            self._inflight[key] = flight
+        return await asyncio.shield(flight)  # a waiter that goes away never cancels the shared read
+
+    async def _read_and_store(self, key: Hashable, orders: tuple[BasketOrder, ...], *, store: bool) -> Margin:
+        try:
             margin, kept = await self._fetch(orders)
-            self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._limits.retry)
-            self._cache.move_to_end(key)
-            while len(self._cache) > self._limits.size:
-                self._cache.popitem(last=False)
+            if store:
+                self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._limits.retry)
+                self._cache.move_to_end(key)
+                while len(self._cache) > self._limits.size:
+                    self._cache.popitem(last=False)
             return margin
+        finally:
+            self._inflight.pop(key, None)
 
     async def _fetch(self, orders: tuple[BasketOrder, ...]) -> tuple[Margin, bool]:
         """(the margin, whether it is kept until the plan changes)."""
@@ -165,6 +189,11 @@ class OutcomeMargin:
             return margin_checked(needed, available, self._clock()), True
         except ValueError:
             return margin_unreadable(), False
+
+
+def _known(session: Hashable) -> bool:
+    """A session ``(user, id)`` with id None is unknown: its figures are never stored."""
+    return not (isinstance(session, tuple) and session and session[-1] is None)
 
 
 async def margin_answer(source: OutcomeMargin | None, ctx, legs: Sequence[PlannedOrderIn]) -> Margin:

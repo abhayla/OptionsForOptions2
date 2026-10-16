@@ -28,9 +28,9 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app.config import app_env, get_settings
-from ofo_app.kite_margin import KiteMargin
+from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.live_push import LiveFeed
-from ofo_app.outcome_margin import OutcomeMargin
+from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
 from ofo_app.routes.outcome import MarketContext, server_now
 
 log = logging.getLogger("ofo_app.live_market")
@@ -234,14 +234,15 @@ def current_feed() -> Optional[LiveFeed]:
     return None if _current is None else _current.feed
 
 
-def current_session() -> tuple[str, bytes] | None:
+def current_session() -> tuple[str, bytes | None] | None:
     """ADR-099: the live Kite session as (user, the running socket's token fingerprint - never the token), or None
     when none is live (not started, not connected, ended, or the test replay). The outcome margin reads Zerodha only
-    with one, and keys its cache by it, so a new login never shows the old session's figures."""
+    with one, and keys its cache by it, so a new login never shows the old session's figures. An unknown fingerprint
+    is None: the margin is then read but never cached (two unknown sessions never share figures)."""
     if _current is None or not _current.running():
         return None
     fingerprint = _current._fingerprint  # the module's own market object
-    return OWNER_REF, (b"" if fingerprint is None else fingerprint)  # b"": a session whose fingerprint was not given
+    return OWNER_REF, fingerprint
 
 
 async def owner_margin_client() -> KiteMargin | None:
@@ -252,7 +253,9 @@ async def owner_margin_client() -> KiteMargin | None:
     token = await market._stored_token(market._config)
     if token is None:
         return None
-    return KiteMargin(api_key=market._config.api_key, access_token=token)
+    # each call bounded so the worker thread never outlives the outcome read timeout
+    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
 
 
 @functools.cache
