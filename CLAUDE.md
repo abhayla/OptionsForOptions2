@@ -123,7 +123,9 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
      the `knowledge/findings/` classes it was checked against (grep the registry before designing any guard).
   5. Two failed rounds of one class = stop patching: an independent re-design first; a third failure parks the item.
   6. Batch: fixes in the same area go in one PR; docs, findings and decision rows go in one batched docs PR.
-  7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI.
+  7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
+     `python scripts/orchestrator/land.py <worktree> --title T --body-file F` (close check, push, PR, merge gate, updates
+     a BEHIND branch; `--dry-run` shows the commands); `gh_issue.py app ... --stage <stage>` also stages the new issue.
 
 ## Commands (fast checks before a push; full suites run in CI)
 CI installs `pyyaml jsonschema pytest` on Python 3.12.
