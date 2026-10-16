@@ -250,6 +250,7 @@ issues:
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
+  "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 
 # Work items whose status is not done.
