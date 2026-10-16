@@ -1,10 +1,12 @@
 """edit_lint PostToolUse hook (REQ-075 AC-8): routing, fail-open, output shape, truncation, one real ruff run."""
+import importlib.util
 import io
 import json
 import pathlib
 import shutil
 import subprocess
 import sys
+import types
 
 import pytest
 
@@ -72,6 +74,7 @@ def _run_main(monkeypatch, capsys, payload):
 
 
 def test_main_prints_context_when_findings(monkeypatch, capsys):
+    monkeypatch.setattr(edit_lint, "ruff_argv", lambda: ["ruff"])  # the kit CI job has no ruff installed
     monkeypatch.setattr(edit_lint, "_lint", lambda p, r: ("a.py:1:1: F401 unused", False))
     out = _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(ROOT / "backend" / "a.py")}})
     spec = json.loads(out)["hookSpecificOutput"]
@@ -80,6 +83,7 @@ def test_main_prints_context_when_findings(monkeypatch, capsys):
 
 
 def test_main_silent_when_clean_or_bad_input(monkeypatch, capsys):
+    monkeypatch.setattr(edit_lint, "ruff_argv", lambda: ["ruff"])
     monkeypatch.setattr(edit_lint, "_lint", lambda p, r: ("", False))
     assert _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(ROOT / "backend" / "a.py")}}) == ""
     assert _run_main(monkeypatch, capsys, "{not json") == ""
@@ -97,7 +101,7 @@ def test_truncation_to_20_lines(monkeypatch, tmp_path):
 
 
 def test_real_ruff_run_names_rules():
-    if subprocess.run([sys.executable, "-m", "ruff", "--version"], capture_output=True, check=False).returncode != 0:
+    if edit_lint.ruff_argv() is None:
         pytest.skip("ruff not installed")
     d = ROOT / "backend" / "_edit_lint_tmp"
     d.mkdir(exist_ok=True)
@@ -223,3 +227,18 @@ def test_foreign_repo_file_is_not_linted(monkeypatch, capsys, tmp_path):
     assert edit_lint.lint(f, tmp_path) == ""
     assert _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(f)}}) == ""
     assert called == []
+
+
+def test_ruff_argv_falls_back_to_python_dash_m(monkeypatch):
+    """No packaged binary and none on PATH, but the module imports: `python -m ruff`, as the hook did before."""
+    edit_lint.ruff_argv.cache_clear()
+    monkeypatch.setitem(sys.modules, "ruff.__main__", types.SimpleNamespace(find_ruff_bin=lambda: "/nonexistent/ruff"))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    try:
+        assert edit_lint.ruff_argv() == [sys.executable, "-m", "ruff"]
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+        edit_lint.ruff_argv.cache_clear()
+        assert edit_lint.ruff_argv() is None
+    finally:
+        edit_lint.ruff_argv.cache_clear()

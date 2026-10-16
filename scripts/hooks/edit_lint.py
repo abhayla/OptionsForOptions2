@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import importlib.util
 import json
 import os
 import shutil
@@ -56,7 +57,11 @@ def ruff_argv() -> list[str] | None:
         if found.is_file():
             return [str(found)]
     which = shutil.which("ruff")
-    return [which] if which else None
+    if which:
+        return [which]
+    if importlib.util.find_spec("ruff") is not None:  # module importable, binary not found: what `python -m ruff` did
+        return [sys.executable, "-m", "ruff"]
+    return None
 
 
 def _is_python(rel: str) -> bool:
