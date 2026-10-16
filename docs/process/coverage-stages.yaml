@@ -164,6 +164,7 @@ decisions:
   ADR-090: 4b           # REQ-073 approved for build; AC-5 follows ADR-060 (owner delegation 2026-10-16)
   ADR-091: 4b           # freeze limits refreshed weekly by hand; review warns after 8 days (owner 2026-10-16)
   ADR-092: 4b           # never split for the freeze limit, incl. Complete/Retry/exit (owner 2026-10-16, issue 255)
+  ADR-094: 4b           # margin check adds BUY premium up to the limit (F-39; technical call + reviewer)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
