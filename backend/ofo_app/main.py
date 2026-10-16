@@ -39,8 +39,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.error("live market data did not start: %s", type(exc).__name__)
     yield
     if market is not None:
-        await market.stop()
-        live_market.set_current(None)
+        live_market.set_current(None)  # a login arriving now finds no market (#296)
+        await market.close()
     await close_db()
 
 

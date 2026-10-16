@@ -1,0 +1,184 @@
+{
+ "what": "margins/basket SENSEX 2026-10-22 long_strangle bump=5 cp=true",
+ "recorded": "2026-10-16 12:08:52 IST, Kite REST (ofo-kite-ticks rest-120852.json); the recorder wrote Kite floats as strings, here written back as JSON numbers",
+ "request": [
+  {
+   "exchange": "BFO",
+   "tradingsymbol": "SENSEX26O2274900CE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 20,
+   "price": 355.0
+  },
+  {
+   "exchange": "BFO",
+   "tradingsymbol": "SENSEX26O2274300PE",
+   "transaction_type": "BUY",
+   "variety": "regular",
+   "product": "NRML",
+   "order_type": "LIMIT",
+   "quantity": 20,
+   "price": 401.0
+  }
+ ],
+ "reply": {
+  "status": "success",
+  "data": {
+   "initial": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 0,
+    "exposure": 0,
+    "option_premium": 14915,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 14915
+   },
+   "final": {
+    "type": "",
+    "tradingsymbol": "",
+    "exchange": "",
+    "span": 0,
+    "exposure": 0,
+    "option_premium": 14915,
+    "additional": 0,
+    "bo": 0,
+    "cash": 0,
+    "var": 0,
+    "mtf": 0,
+    "pnl": {
+     "realised": 0,
+     "unrealised": 0
+    },
+    "leverage": 0,
+    "charges": {
+     "transaction_tax": 0,
+     "transaction_tax_type": "",
+     "exchange_turnover_charge": 0,
+     "sebi_turnover_charge": 0,
+     "brokerage": 0,
+     "stamp_duty": 0,
+     "gst": {
+      "igst": 0,
+      "cgst": 0,
+      "sgst": 0,
+      "total": 0
+     },
+     "total": 0
+    },
+    "total": 14915
+   },
+   "orders": [
+    {
+     "type": "equity",
+     "tradingsymbol": "SENSEX26O2274900CE",
+     "exchange": "BFO",
+     "span": 0,
+     "exposure": 0,
+     "option_premium": 7041,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 0,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 2.288325,
+      "sebi_turnover_charge": 0.0070409999999999995,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 4.01316588,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 4.01316588
+      },
+      "total": 26.30853188
+     },
+     "total": 7041
+    },
+    {
+     "type": "equity",
+     "tradingsymbol": "SENSEX26O2274300PE",
+     "exchange": "BFO",
+     "span": 0,
+     "exposure": 0,
+     "option_premium": 7874,
+     "additional": 0,
+     "bo": 0,
+     "cash": 0,
+     "var": 0,
+     "mtf": 0,
+     "pnl": {
+      "realised": 0,
+      "unrealised": 0
+     },
+     "leverage": 1,
+     "charges": {
+      "transaction_tax": 0,
+      "transaction_tax_type": "stt",
+      "exchange_turnover_charge": 2.55905,
+      "sebi_turnover_charge": 0.007873999999999999,
+      "brokerage": 20,
+      "stamp_duty": 0,
+      "gst": {
+       "igst": 4.06204632,
+       "cgst": 0,
+       "sgst": 0,
+       "total": 4.06204632
+      },
+      "total": 26.62897032
+     },
+     "total": 7874
+    }
+   ],
+   "charges": {
+    "transaction_tax": 0,
+    "transaction_tax_type": "",
+    "exchange_turnover_charge": 0,
+    "sebi_turnover_charge": 0.014914999999999998,
+    "brokerage": 40,
+    "stamp_duty": 0,
+    "gst": {
+     "igst": 0,
+     "cgst": 0,
+     "sgst": 0,
+     "total": 0
+    },
+    "total": 0
+   }
+  }
+ }
+}
