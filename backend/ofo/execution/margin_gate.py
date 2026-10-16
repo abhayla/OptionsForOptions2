@@ -7,8 +7,9 @@ Rs 68,498.85 against Rs 2,96,332.80, and ``initial`` would block hedged strategi
 estimate takes part in the decision (AC-3).
 
 The basket builder reads both figures from its margin source and CALLS `check_margin` itself; no verdict object
-crosses the `build_basket` boundary, so a verdict made, copied or edited elsewhere cannot produce a basket. An amount that is unknown (None) blocks. Money is exact `Decimal`; a float, string, int,
-NaN, infinity or negative amount raises.
+crosses the basket builder's boundary, so a verdict made, copied or edited elsewhere cannot produce a basket. An
+amount that is unknown (None) blocks. Money is exact `Decimal`; a float, string, int, NaN, infinity or negative amount
+raises.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class MarginVerdict(tuple):
     Sealed (finding sealed-object-mutable-after-seal): an immutable tuple with no attribute storage, so even
     ``object.__setattr__`` has nothing to write; calling the class raises and there is no mint token to borrow;
     subclasses are refused; `copy`/`deepcopy`/`pickle`/`dataclasses.replace` raise. A verdict is information only:
-    `build_basket` takes no verdict, it reads Zerodha's two figures and calls `check_margin` itself."""
+    the basket builder takes no verdict, it reads Zerodha's two figures and calls `check_margin` itself."""
 
     __slots__ = ()
 
@@ -102,7 +103,7 @@ def check_margin(available: Decimal | None, required: Decimal | None) -> MarginV
     """Allowed when `available` >= `required` (equal is allowed); otherwise blocked with both amounts shown.
 
     Both are Zerodha's figures. None (not confirmed with Zerodha) blocks with the "could not confirm" message. Public
-    because it is pure: its result cannot be turned into a basket (``build_basket`` takes a margin source, reads
+    because it is pure: its result cannot be turned into a basket (the basket builder takes a margin source, reads
     Zerodha's two figures and calls this itself), so a self-made verdict proves nothing to anyone."""
     if available is not None:
         _amount(available, "available", signed=True)

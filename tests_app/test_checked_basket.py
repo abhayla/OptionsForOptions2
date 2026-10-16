@@ -141,3 +141,55 @@ def test_partial_recheck_figure_is_zerodhas_required_for_the_orders() -> None:
     assert zerodha_required_margin(client(Replay(funds_reply("0"))), cat, orders) == D("68498.85")
     with pytest.raises(Exception):  # noqa: B017 - any failure is "not confirmed"
         zerodha_required_margin(client(Replay(funds_reply("0"), fail="/margins/basket")), cat, orders)
+
+
+class _Lying(KiteMargin):
+    def fetch_available_funds(self) -> D:
+        return D("99999999")
+
+
+def _lying() -> _Lying:
+    return _Lying(api_key="key", access_token="tok", transport=Replay(REAL_FUNDS_REPLY))  # noqa: S106
+
+
+def test_the_partial_recheck_needs_exactly_a_kitemargin_client() -> None:
+    """MINOR-1 (round 2): kills dropping the ``type(client) is KiteMargin`` check in zerodha_required_margin - a duck
+    or a subclass is refused before anything is asked."""
+    class Duck:
+        def fetch_basket_margin(self, orders):
+            raise AssertionError("never asked")
+
+    cat = catalogue()
+    first = CONDOR["request"][0]
+    order = Order("S-9", "L1", first["tradingsymbol"], Action(first["transaction_type"]), first["quantity"],
+                  D(str(first["price"])), version_id="V-1")
+    for bad in (Duck(), _lying()):
+        with pytest.raises(TypeError):
+            zerodha_required_margin(bad, cat, [order])  # type: ignore[arg-type]
+
+
+def test_a_lying_subclass_or_an_instance_patched_client_cannot_answer() -> None:
+    """Attack 2a/2c: a KiteMargin subclass is refused, and a method patched onto the real client's instance is never
+    called - the source calls KiteMargin's own methods, so Zerodha's real 671.50 still refuses the condor."""
+    cat = catalogue()
+    with pytest.raises(TypeError):
+        checked_basket(plan(cat), cat, 3, margin_client=_lying(), freeze_check=no_freeze)
+    patched = client(Replay(REAL_FUNDS_REPLY))
+    patched.fetch_available_funds = lambda: D("99999999")  # type: ignore[method-assign]
+    with pytest.raises(BasketRefused) as caught:
+        checked_basket(plan(cat), cat, 3, margin_client=patched, freeze_check=no_freeze)
+    assert "671.50" in display_text(caught.value.user_message)
+
+
+def test_a_closing_basket_needs_zero_and_builds_on_zero_funds() -> None:
+    """ADR-094/#321: a closing basket's negative final.total (real exit -214.5) needs 0, so funds 0 build it."""
+    reply = json.loads(CONDOR_REPLY)
+    reply["data"]["final"]["total"] = -214.5
+    assert len(build(Replay(funds_reply("0"), basket=json.dumps(reply))).orders) == 4  # noqa: PLR2004
+
+
+@pytest.mark.parametrize("fail", ["/user/margins", "/margins/basket"])
+def test_zerodha_unreadable_shows_could_not_confirm(fail: str) -> None:
+    with pytest.raises(BasketRefused) as caught:
+        build(Replay(funds_reply("99999999.00"), fail=fail))
+    assert caught.value.user_message is not None

@@ -37,6 +37,12 @@ OBJECT_NEW_ALLOWED = {
     "ofo/errors/model.py": "UserFacingError keeps no text on the instance; built here only",
     "ofo/orders/model.py": "Order.replace clones a frozen dataclass",
 }
+#: Backend files allowed to call `tuple.__new__`, each with its reason: a sealed tuple whose class refuses to be called,
+#: built only by its one maker in the same file (W-081 round 2, finding sealed-object-mutable-after-seal).
+TUPLE_NEW_ALLOWED = {
+    "ofo/execution/basket.py": "build_basket makes the sealed KiteBasket; nothing else can",
+    "ofo/execution/margin_gate.py": "check_margin makes the sealed MarginVerdict; nothing else can",
+}
 ALL_CHECKS = frozenset({"names", "apinames", "indirect", "forgery"})
 
 
@@ -162,7 +168,8 @@ def _forgery(tree: ast.AST, where: str, source_path: str) -> list[str]:
             inner = node.value
             via_super = isinstance(inner, ast.Call) and _dotted(inner.func) == "super"
             via_object = isinstance(inner, ast.Name) and inner.id == "object" and source_path in OBJECT_NEW_ALLOWED
-            if not (via_super or via_object):
+            via_tuple = isinstance(inner, ast.Name) and inner.id == "tuple" and source_path in TUPLE_NEW_ALLOWED
+            if not (via_super or via_object or via_tuple):
                 found.append(f"{where}:{line} calls __new__ on {_dotted(inner) or 'an expression'}")
         elif isinstance(node, ast.Constant) and node.value == "__new__" and id(node) not in docs:
             found.append(f"{where}:{line} names __new__ as a string")
@@ -241,6 +248,12 @@ def test_the_object_new_allowances_are_real_and_only_those_files_use_it() -> Non
     other backend file calls it."""
     users = {p.relative_to(BACKEND).as_posix() for p in _product_files() if "object.__new__" in p.read_text(encoding="utf-8")}
     assert users == set(OBJECT_NEW_ALLOWED)
+
+
+def test_the_tuple_new_allowances_are_real_and_only_those_files_use_it() -> None:
+    """Same for `tuple.__new__` (the two sealed tuples): a stale allowance fails, and so does a new user."""
+    users = {p.relative_to(BACKEND).as_posix() for p in _product_files() if "tuple.__new__" in p.read_text(encoding="utf-8")}
+    assert users == set(TUPLE_NEW_ALLOWED)
 
 
 def test_api_models_is_the_only_file_that_builds_an_emitted() -> None:

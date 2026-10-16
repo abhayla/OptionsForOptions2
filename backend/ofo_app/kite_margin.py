@@ -209,7 +209,7 @@ def _error_type(text: str) -> str | None:
 
 def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginVerdict:
     """Both figures from Zerodha, then the domain gate, as a verdict to show. The basket does NOT take this verdict:
-    ``build_basket`` reads the same two figures through ``checked_basket``'s source and calls the gate itself. Any
+    the basket builder reads the same two figures through ``checked_basket``'s source and calls the gate itself. Any
     failure to read either figure blocks (the gate's "could not confirm" message); nothing is retried. A negative
     balance is compared and shown as Zerodha gives it."""
     try:

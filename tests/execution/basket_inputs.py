@@ -58,7 +58,7 @@ class OkMargin:
         self.funds_calls += 1
         return self.available
 
-    def required_margin(self, orders):
+    def zerodha_required(self, orders):
         self.calls.append(orders)
         return self.required
 

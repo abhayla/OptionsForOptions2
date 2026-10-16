@@ -1,10 +1,16 @@
 """W-081 wiring + #273: no platform estimate decides a margin block, and the basket has one production door.
 
-Scan 1 (D1): the text ``build_basket`` appears in no backend file except its definition (``ofo/execution/basket.py``)
-and the one production caller (``ofo_app/checked_basket.py``, whose margin check is Zerodha's figures). A plain text
-match is deliberately strict: an import, an attribute, a string for ``getattr`` and a comment all count. Importing the
-basket MODULE itself (``import ofo.execution.basket``, ``from ofo.execution import basket``) is refused too, since
-it reaches the function without naming it.
+Scan 1 (D1): the texts ``build_basket`` and ``KiteBasket`` appear in no backend file except their definition
+(``ofo/execution/basket.py``) and the one production caller (``ofo_app/checked_basket.py``, whose margin source is
+Zerodha's figures). A plain text match is deliberately strict: an import, an attribute, a string for ``getattr`` and a
+comment all count. Shapes that reach them without the name are refused too: importing the basket MODULE (one line or
+bracketed over several), the ``ofo.execution`` package as a namespace, ``import_module``/``__import__``, and the
+``checked_basket`` module as a namespace.
+
+This scan is the SECOND layer and cannot be complete (finding guard-by-banned-shapes: Python offers unbounded ways to
+reach a name). The real guard is structural: ``build_basket`` reads Zerodha's two figures and calls ``check_margin``
+itself (no verdict crosses its boundary), and a ``KiteBasket`` cannot be constructed, copied, pickled, replaced or
+edited outside ``build_basket`` (tests/execution/test_kite_basket.py).
 
 Scan 2 (D3): the platform's estimate never fills ``margin_required``. ``margin_estimate_from`` (and its old name
 ``margin_required_from``) is named only where it is defined and exported; a ``margin_required=`` keyword or a
@@ -23,11 +29,19 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 
 BASKET_ALLOWED = {
-    "ofo/execution/basket.py": "defines build_basket",
-    "ofo_app/checked_basket.py": "the one production caller; its margin check is kite_margin.margin_verdict",
+    "ofo/execution/basket.py": "defines build_basket and KiteBasket",
+    "ofo_app/checked_basket.py": "the one production caller; its margin source is the real KiteMargin client",
 }
+#: Shapes that reach the basket module, ``build_basket`` or ``KiteBasket`` without the plain name: the module itself
+#: (one-line or bracketed multi-line import, a module-path string), the ``ofo.execution`` package as a namespace, a
+#: dynamic import, and the ``checked_basket`` module as a namespace (``vars(cb)[...]``).
 _BASKET_MODULE_IMPORT = re.compile(
-    r"import\s+ofo\.execution\.basket\b|from\s+ofo\.execution\s+import\s+[^\n]*\bbasket\b|['\"]ofo\.execution\.basket['\"]")
+    r"import\s+ofo\.execution\.basket\b|from\s+ofo\.execution\s+import\s+[^\n]*\bbasket\b"
+    r"|from\s+ofo\.execution\s+import\s*\([^)]*\bbasket\b|['\"]ofo\.execution\.basket['\"]"
+    r"|^\s*import\s+ofo\.execution\s*(?:$|as\b|,)|from\s+ofo\s+import\s+[^\n]*\bexecution\b"
+    r"|\bimport_module\s*\(|\b__import__\s*\("
+    r"|import\s+ofo_app\.checked_basket\b|from\s+ofo_app\s+import\s+[^\n]*\bchecked_basket\b"
+    r"|from\s+ofo_app\s+import\s*\([^)]*\bchecked_basket\b", re.MULTILINE)
 
 ESTIMATE_NAMES = ("margin_estimate_from", "margin_required_from")
 ESTIMATE_ALLOWED = {
@@ -54,6 +68,8 @@ def basket_violations(root: Path) -> list[str]:
             continue
         if "build_basket" in text:
             out.append(f"{rel} names build_basket")
+        if "KiteBasket" in text:
+            out.append(f"{rel} names KiteBasket")
         if _BASKET_MODULE_IMPORT.search(text):
             out.append(f"{rel} imports the basket module itself")
     return out
@@ -125,6 +141,14 @@ def test_allow_listed_files_exist() -> None:
     "import ofo.execution.basket as b\nx = b\n",
     "from ofo.execution import basket\n",
     "import importlib\nf = getattr(importlib.import_module('ofo.execution.basket'), 'x')\n",
+    # round-2 reviewer plants (attacks/a6.py)
+    "from ofo.execution import (\n    basket,\n)\ngetattr(basket, 'build_' + 'basket')\n",
+    "import importlib\nm = importlib.import_module('ofo.execution.' + 'basket')\n",
+    "import ofo.execution as e\nf = getattr(getattr(e, 'bas' + 'ket'), 'build_' + 'basket')\n",
+    "from ofo_app import checked_basket as cb\nf = vars(cb)['build_' + 'basket']\n",
+    "from ofo.execution.basket import KiteBasket, KiteOrder\nb = KiteBasket((KiteOrder(...),))\n",
+    "from ofo_app.checked_basket import KiteBasket\nb = KiteBasket(orders)\n",
+    "f = __import__('ofo.exec' + 'ution.basket')\n",
 ])
 def test_a_second_build_basket_caller_fails_the_scan(tmp_path: Path, planted: str) -> None:
     (tmp_path / "ofo_app").mkdir()

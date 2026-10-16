@@ -237,13 +237,13 @@ class _Raising(OkMargin):
             raise ConnectionError("Zerodha unreachable")
         return super().available_funds()
 
-    def required_margin(self, orders):
-        if self.which == "required_margin":
+    def zerodha_required(self, orders):
+        if self.which == "zerodha_required":
             raise ConnectionError("Zerodha unreachable")
-        return super().required_margin(orders)
+        return super().zerodha_required(orders)
 
 
-@pytest.mark.parametrize("which", ["available_funds", "required_margin"])
+@pytest.mark.parametrize("which", ["available_funds", "zerodha_required"])
 def test_a_source_that_raises_fails_closed(which: str) -> None:
     with pytest.raises(BasketRefused) as caught:
         _build(margin=_Raising(which))

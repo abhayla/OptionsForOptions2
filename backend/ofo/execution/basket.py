@@ -190,7 +190,7 @@ class MarginSource(Protocol):
         """Zerodha's available funds (``equity.net``, signed), exact Decimal."""
         ...
 
-    def required_margin(self, orders: tuple[KiteOrder, ...]) -> Decimal:
+    def zerodha_required(self, orders: tuple[KiteOrder, ...]) -> Decimal:
         """Zerodha's required margin for exactly ``orders`` (W-081 ``required_from_basket_reply``), exact Decimal."""
         ...
 
@@ -282,7 +282,7 @@ def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> Margi
     Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass."""
     try:
         available = source.available_funds()
-        required = source.required_margin(orders)
+        required = source.zerodha_required(orders)
         return check_margin(available, required)
     except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
         return check_margin(None, None)
