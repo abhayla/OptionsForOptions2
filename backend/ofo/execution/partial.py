@@ -296,6 +296,7 @@ def _strategy_position_lines(
             out.append(group[0])  # flat in every product: one line, so "outside plan" is not listed twice
             continue
         products = {v.order.product for v in own_orders if v.contract == contract and v.filled_quantity > 0}
+        products |= {h.product for h in book.adopted_for(plan.strategy_id) if h.contract == contract}
         if len(products) == 1:
             # Only the row in the product the strategy's fills name is ever used. A flat or missing row there while
             # another product is held, or one held row in a different product (a possible MIS->NRML conversion,
