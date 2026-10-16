@@ -12,6 +12,7 @@ or any error = silent no-op (fail open).
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
 import shutil
@@ -42,6 +43,7 @@ def is_this_repo(root: Path) -> bool:
     return (root / REPO_MARKER).is_file()
 
 
+@functools.cache
 def ruff_argv() -> list[str] | None:
     """The ruff executable as an argv prefix, or None when ruff is not installed.
 
@@ -106,8 +108,9 @@ def unavailable(path: Path, root: Path) -> str | None:
     return None
 
 
-def _run(cmd: list[str], cwd: Path) -> tuple[int, str] | None:
-    """Run ``cmd`` for at most TIMEOUT_S; (returncode, output) or None on timeout/OS error.
+def _run(cmd: list[str], cwd: Path) -> tuple[int | None, str] | None:
+    """Run ``cmd`` for at most TIMEOUT_S; (returncode, output); returncode None = timed out and killed;
+    None = could not start.
 
     Output goes to a temp file, not a pipe, so a grandchild that outlives the killed process cannot hold the call open.
     """
@@ -123,25 +126,32 @@ def _run(cmd: list[str], cwd: Path) -> tuple[int, str] | None:
             proc.kill()
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=2)
-            return None
+            return None, ""
         out.seek(0)
         return proc.returncode, out.read().decode("utf-8", errors="replace")
 
 
-def lint(path: Path, root: Path) -> str:
-    """Findings text for one file ('' when clean, unlinted, timed out, or the tool is unavailable)."""
+def _lint(path: Path, root: Path) -> tuple[str, bool]:
+    """(findings text, timed_out) for one file."""
     cmd = command_for(path, root)
     if cmd is None or not path.is_file():
-        return ""
+        return "", False
     cwd = root / "frontend" if cmd[0] == "node" else root
     result = _run(cmd, cwd)
     if result is None or result[0] == 0:
-        return ""
+        return "", False
+    if result[0] is None:
+        return "", True
     lines = [ln for ln in result[1].splitlines() if ln.strip()]
     if not lines:
-        return ""
+        return "", False
     shown = lines[:MAX_LINES] + ([f"... {len(lines) - MAX_LINES} more"] if len(lines) > MAX_LINES else [])
-    return "\n".join(shown)
+    return "\n".join(shown), False
+
+
+def lint(path: Path, root: Path) -> str:
+    """Findings text for one file ('' when clean, unlinted, timed out, or the tool is unavailable)."""
+    return _lint(path, root)[0]
 
 
 def _emit(text: str) -> None:
@@ -162,7 +172,10 @@ def main() -> None:
         if missing:
             _emit(f"edit_lint (REQ-075): linter unavailable ({missing}); {file_path} was not linted.")
             return
-        found = lint(path, root)
+        found, timed_out = _lint(path, root)
+        if timed_out:
+            _emit(f"edit_lint (REQ-075): linter timed out after {TIMEOUT_S} s; {file_path} was not linted.")
+            return
         if found:
             _emit(f"edit_lint (REQ-075): {file_path} has lint findings - fix them now:\n{found}")
     except Exception:  # noqa: BLE001 - a lint hook must never break a session (fail open)

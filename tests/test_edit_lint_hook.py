@@ -72,7 +72,7 @@ def _run_main(monkeypatch, capsys, payload):
 
 
 def test_main_prints_context_when_findings(monkeypatch, capsys):
-    monkeypatch.setattr(edit_lint, "lint", lambda p, r: "a.py:1:1: F401 unused")
+    monkeypatch.setattr(edit_lint, "_lint", lambda p, r: ("a.py:1:1: F401 unused", False))
     out = _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(ROOT / "backend" / "a.py")}})
     spec = json.loads(out)["hookSpecificOutput"]
     assert spec["hookEventName"] == "PostToolUse"
@@ -80,7 +80,7 @@ def test_main_prints_context_when_findings(monkeypatch, capsys):
 
 
 def test_main_silent_when_clean_or_bad_input(monkeypatch, capsys):
-    monkeypatch.setattr(edit_lint, "lint", lambda p, r: "")
+    monkeypatch.setattr(edit_lint, "_lint", lambda p, r: ("", False))
     assert _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(ROOT / "backend" / "a.py")}}) == ""
     assert _run_main(monkeypatch, capsys, "{not json") == ""
     assert _run_main(monkeypatch, capsys, {"tool_input": {}}) == ""
@@ -154,12 +154,26 @@ def test_timeout_with_grandchild_holding_output_still_returns(monkeypatch, tmp_p
     root = _fake_repo(tmp_path)
     f = root / "a.py"
     f.write_text("x = 1\n")
-    code = ("import subprocess, sys, time;"
-            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)']);"
-            "time.sleep(30)")
+    marker = tmp_path / "grandchild_done"
+    grandchild = f"import time, pathlib; time.sleep(4); pathlib.Path({str(marker)!r}).write_text('done')"
+    code = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(30)"
     monkeypatch.setattr(edit_lint, "ruff_argv", lambda: [sys.executable, "-c", code, "--"])
     monkeypatch.setattr(edit_lint, "TIMEOUT_S", 1)
     assert edit_lint.lint(f, root) == ""
+    # No clock: a pipe-based run waits for the grandchild, so its marker would exist here. The file-based run
+    # returns while the grandchild is still asleep.
+    assert not marker.exists()
+
+
+def test_main_prints_one_timed_out_line(monkeypatch, capsys, tmp_path):
+    root = _fake_repo(tmp_path)
+    f = root / "a.py"
+    f.write_text("x = 1\n")
+    monkeypatch.setattr(edit_lint, "ruff_argv", lambda: [sys.executable, "-c", "import time; time.sleep(30)", "--"])
+    monkeypatch.setattr(edit_lint, "TIMEOUT_S", 1)
+    out = _run_main(monkeypatch, capsys, {"tool_input": {"file_path": str(f)}})
+    assert len(out.strip().splitlines()) == 1
+    assert "linter timed out" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
 
 
 def test_ruff_argv_is_a_binary_not_python_dash_m():
