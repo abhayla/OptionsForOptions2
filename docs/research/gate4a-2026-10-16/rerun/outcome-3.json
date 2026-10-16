@@ -1,0 +1,2768 @@
+{
+ "state": "COMPUTED",
+ "underlying": "NIFTY",
+ "ux_level": "advanced",
+ "status_label": null,
+ "reason": null,
+ "output_label": "estimated from spot",
+ "valuation": "2026-10-16T10:22:33.380151+05:30",
+ "answered_at": "2026-10-16T10:22:33.380151+05:30",
+ "spot_level": "23127.55",
+ "spot_at": "2026-10-16T10:22:33+05:30",
+ "legs": [
+  {
+   "instrument_id": "NSE_FO:47177",
+   "symbol": "NIFTY26O1923350CE",
+   "action": "SELL",
+   "instrument": "CE",
+   "strike": "23350.00",
+   "expiry": "2026-10-19",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "39.35",
+   "captured_at": "2026-10-16T10:20:20.281614+05:30",
+   "ltp": "33.05",
+   "iv": "0.121998",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:47185",
+   "symbol": "NIFTY26O1923550CE",
+   "action": "BUY",
+   "instrument": "CE",
+   "strike": "23550.00",
+   "expiry": "2026-10-19",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "10.00",
+   "captured_at": "2026-10-16T10:20:20.281614+05:30",
+   "ltp": "10.75",
+   "iv": "0.133466",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:47160",
+   "symbol": "NIFTY26O1922950PE",
+   "action": "SELL",
+   "instrument": "PE",
+   "strike": "22950.00",
+   "expiry": "2026-10-19",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "55.30",
+   "captured_at": "2026-10-16T10:20:20.281614+05:30",
+   "ltp": "52.45",
+   "iv": "0.145631",
+   "health": "available",
+   "label": null
+  },
+  {
+   "instrument_id": "NSE_FO:47152",
+   "symbol": "NIFTY26O1922750PE",
+   "action": "BUY",
+   "instrument": "PE",
+   "strike": "22750.00",
+   "expiry": "2026-10-19",
+   "lots": 1,
+   "lot_size": 65,
+   "quantity": 65,
+   "planned_entry": "20.95",
+   "captured_at": "2026-10-16T10:20:20.281614+05:30",
+   "ltp": "22.25",
+   "iv": "0.160317",
+   "health": "available",
+   "label": null
+  }
+ ],
+ "margin": {
+  "state": "NOT_AVAILABLE_YET",
+  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login."
+ },
+ "table": {
+  "underlying": "NIFTY",
+  "spot_level": "23127.55",
+  "spot_at": "2026-10-16T10:22:33+05:30",
+  "output_label": "estimated from spot",
+  "columns": [
+   {
+    "id": "leg",
+    "label": "Leg",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "action",
+    "label": "Action",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "instrument",
+    "label": "Instrument",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "expiry",
+    "label": "Expiry",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "strike",
+    "label": "Strike",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "quantity",
+    "label": "Quantity",
+    "kind": "quantity",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "entry_price",
+    "label": "Entry Price",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "ltp",
+    "label": "LTP",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "entry_value",
+    "label": "Entry Value",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "current_value",
+    "label": "Current Value",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "unrealized_pnl",
+    "label": "Unrealized P&L",
+    "kind": "money",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "pnl_percent",
+    "label": "P&L %",
+    "kind": "percent",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "iv",
+    "label": "IV",
+    "kind": "iv",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "delta",
+    "label": "Delta",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "gamma",
+    "label": "Gamma",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "theta",
+    "label": "Theta",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "vega",
+    "label": "Vega",
+    "kind": "greek",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22100",
+    "label": "22,100",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22200",
+    "label": "22,200",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22300",
+    "label": "22,300",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22400",
+    "label": "22,400",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22500",
+    "label": "22,500",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22600",
+    "label": "22,600",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22700",
+    "label": "22,700",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22800",
+    "label": "22,800",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "22886.3",
+    "label": "0-P&L 22,886.30",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "ZERO_PNL"
+    ],
+    "visible": true
+   },
+   {
+    "id": "22900",
+    "label": "22,900",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23000",
+    "label": "23,000",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23100",
+    "label": "23,100",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23127.55",
+    "label": "CURRENT 23,127.55",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "CURRENT"
+    ],
+    "visible": true
+   },
+   {
+    "id": "23200",
+    "label": "23,200",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23300",
+    "label": "23,300",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23400",
+    "label": "23,400",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23413.7",
+    "label": "0-P&L 23,413.70",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [
+     "ZERO_PNL"
+    ],
+    "visible": true
+   },
+   {
+    "id": "23500",
+    "label": "23,500",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23600",
+    "label": "23,600",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23700",
+    "label": "23,700",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23800",
+    "label": "23,800",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "23900",
+    "label": "23,900",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "24000",
+    "label": "24,000",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "24100",
+    "label": "24,100",
+    "kind": "money",
+    "is_scenario_level": true,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "lower_be",
+    "label": "Lower Breakeven",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "upper_be",
+    "label": "Upper Breakeven",
+    "kind": "points",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   },
+   {
+    "id": "status",
+    "label": "Status",
+    "kind": "text",
+    "is_scenario_level": false,
+    "markers": [],
+    "visible": true
+   }
+  ],
+  "rows": [
+   {
+    "row_id": "1",
+    "cells": {
+     "leg": {
+      "value": "1",
+      "display": "1",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "SELL",
+      "display": "SELL",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "CE",
+      "display": "CE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-19",
+      "display": "2026-10-19",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "23350.00",
+      "display": "23,350",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "39.35",
+      "display": "\u20b939.35",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "33.05",
+      "display": "\u20b933.05",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "2148.25",
+      "display": "\u20b92,148.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "409.50",
+      "display": "\u20b9409.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "16.01",
+      "display": "16.01%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.121998",
+      "display": "0.121998",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "-14.1403",
+      "display": "-14.1403",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.21754322226274003",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0722",
+      "display": "-0.0722",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0011112138407011305",
+      "vendor": null
+     },
+     "theta": {
+      "value": "845.5447",
+      "display": "845.5447",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-13.008379944273607",
+      "vendor": null
+     },
+     "vega": {
+      "value": "-414.9615",
+      "display": "-414.9615",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "6.384022725668453",
+      "vendor": null
+     },
+     "22100": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22886.3": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23127.55": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "2557.75",
+      "display": "\u20b92,557.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-692.25",
+      "display": "\u2212\u20b9692.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23413.7": {
+      "value": "-1582.75",
+      "display": "\u2212\u20b91,582.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-7192.25",
+      "display": "\u2212\u20b97,192.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23600": {
+      "value": "-13692.25",
+      "display": "\u2212\u20b913,692.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23700": {
+      "value": "-20192.25",
+      "display": "\u2212\u20b920,192.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23800": {
+      "value": "-26692.25",
+      "display": "\u2212\u20b926,692.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23900": {
+      "value": "-33192.25",
+      "display": "\u2212\u20b933,192.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24000": {
+      "value": "-39692.25",
+      "display": "\u2212\u20b939,692.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24100": {
+      "value": "-46192.25",
+      "display": "\u2212\u20b946,192.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "2",
+    "cells": {
+     "leg": {
+      "value": "2",
+      "display": "2",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "BUY",
+      "display": "BUY",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "CE",
+      "display": "CE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-19",
+      "display": "2026-10-19",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "23550.00",
+      "display": "23,550",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "10.00",
+      "display": "\u20b910.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "10.75",
+      "display": "\u20b910.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "650.00",
+      "display": "\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "698.75",
+      "display": "\u20b9698.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "48.75",
+      "display": "\u20b948.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "7.50",
+      "display": "7.50%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.133466",
+      "display": "0.133466",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "5.3130",
+      "display": "5.3130",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.08173910134599155",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "0.0339",
+      "display": "0.0339",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.000521700002782911",
+      "vendor": null
+     },
+     "theta": {
+      "value": "-464.3587",
+      "display": "-464.3587",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-7.143980212806307",
+      "vendor": null
+     },
+     "vega": {
+      "value": "213.1321",
+      "display": "213.1321",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "3.2789557437293615",
+      "vendor": null
+     },
+     "22100": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22886.3": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23127.55": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23413.7": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-650.00",
+      "display": "\u2212\u20b9650.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23600": {
+      "value": "2600.00",
+      "display": "\u20b92,600.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23700": {
+      "value": "9100.00",
+      "display": "\u20b99,100.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23800": {
+      "value": "15600.00",
+      "display": "\u20b915,600.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23900": {
+      "value": "22100.00",
+      "display": "\u20b922,100.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24000": {
+      "value": "28600.00",
+      "display": "\u20b928,600.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24100": {
+      "value": "35100.00",
+      "display": "\u20b935,100.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "3",
+    "cells": {
+     "leg": {
+      "value": "3",
+      "display": "3",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "SELL",
+      "display": "SELL",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "PE",
+      "display": "PE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-19",
+      "display": "2026-10-19",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "22950.00",
+      "display": "22,950",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "55.30",
+      "display": "\u20b955.30",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "52.45",
+      "display": "\u20b952.45",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "3409.25",
+      "display": "\u20b93,409.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "185.25",
+      "display": "\u20b9185.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "5.15",
+      "display": "5.15%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.145631",
+      "display": "0.145631",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "17.5525",
+      "display": "17.5525",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-0.27003855888044814",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0680",
+      "display": "-0.0680",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0010463279050660925",
+      "vendor": null
+     },
+     "theta": {
+      "value": "983.9784",
+      "display": "983.9784",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-15.138129595896615",
+      "vendor": null
+     },
+     "vega": {
+      "value": "-466.4220",
+      "display": "-466.4220",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "7.1757237470421815",
+      "vendor": null
+     },
+     "22100": {
+      "value": "-51655.50",
+      "display": "\u2212\u20b951,655.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-45155.50",
+      "display": "\u2212\u20b945,155.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-38655.50",
+      "display": "\u2212\u20b938,655.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-32155.50",
+      "display": "\u2212\u20b932,155.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "-25655.50",
+      "display": "\u2212\u20b925,655.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "-19155.50",
+      "display": "\u2212\u20b919,155.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "-12655.50",
+      "display": "\u2212\u20b912,655.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-6155.50",
+      "display": "\u2212\u20b96,155.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22886.3": {
+      "value": "-546.00",
+      "display": "\u2212\u20b9546.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "344.50",
+      "display": "\u20b9344.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23127.55": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23413.7": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23600": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23700": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23800": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23900": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24000": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24100": {
+      "value": "3594.50",
+      "display": "\u20b93,594.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "4",
+    "cells": {
+     "leg": {
+      "value": "4",
+      "display": "4",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": "BUY",
+      "display": "BUY",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": "PE",
+      "display": "PE",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": "2026-10-19",
+      "display": "2026-10-19",
+      "kind": "text",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": "22750.00",
+      "display": "22,750",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": "65",
+      "display": "65",
+      "kind": "quantity",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": "20.95",
+      "display": "\u20b920.95",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": "22.25",
+      "display": "\u20b922.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "1361.75",
+      "display": "\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "1446.25",
+      "display": "\u20b91,446.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "84.50",
+      "display": "\u20b984.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "6.21",
+      "display": "6.21%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": "0.160317",
+      "display": "0.160317",
+      "kind": "iv",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "-8.2677",
+      "display": "-8.2677",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-0.12719466700164417",
+      "vendor": null
+     },
+     "gamma": {
+      "value": "0.0389",
+      "display": "0.0389",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "0.0005989303345660442",
+      "vendor": null
+     },
+     "theta": {
+      "value": "-698.8290",
+      "display": "-698.8290",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "-10.751214866611999",
+      "vendor": null
+     },
+     "vega": {
+      "value": "293.9093",
+      "display": "293.9093",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": "4.521681397980945",
+      "vendor": null
+     },
+     "22100": {
+      "value": "40888.25",
+      "display": "\u20b940,888.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "34388.25",
+      "display": "\u20b934,388.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "27888.25",
+      "display": "\u20b927,888.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "21388.25",
+      "display": "\u20b921,388.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "14888.25",
+      "display": "\u20b914,888.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "8388.25",
+      "display": "\u20b98,388.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "1888.25",
+      "display": "\u20b91,888.25",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22886.3": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23127.55": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23413.7": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23600": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23700": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23800": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23900": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24000": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24100": {
+      "value": "-1361.75",
+      "display": "\u2212\u20b91,361.75",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "no status was given for this leg",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   },
+   {
+    "row_id": "TOTAL",
+    "cells": {
+     "leg": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "action": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "instrument": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "expiry": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "strike": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "quantity": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_price": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "ltp": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "entry_value": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50 Cr",
+      "kind": "money",
+      "reason": null,
+      "side": "Cr",
+      "per_unit": null,
+      "vendor": null
+     },
+     "current_value": {
+      "value": "3412.50",
+      "display": "\u20b93,412.50 Cr",
+      "kind": "money",
+      "reason": null,
+      "side": "Cr",
+      "per_unit": null,
+      "vendor": null
+     },
+     "unrealized_pnl": {
+      "value": "728.00",
+      "display": "\u20b9728.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "pnl_percent": {
+      "value": "8.2",
+      "display": "+8.2%",
+      "kind": "percent",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "iv": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "not applicable",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "delta": {
+      "value": "0.4576",
+      "display": "0.4576",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "gamma": {
+      "value": "-0.0674",
+      "display": "-0.0674",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "theta": {
+      "value": "666.3354",
+      "display": "666.3354",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "vega": {
+      "value": "-374.3421",
+      "display": "-374.3421",
+      "kind": "greek",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22100": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22200": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22300": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22400": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22500": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22600": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22700": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22800": {
+      "value": "-5609.50",
+      "display": "\u2212\u20b95,609.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22886.3": {
+      "value": "0.00",
+      "display": "\u20b90.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "22900": {
+      "value": "890.50",
+      "display": "\u20b9890.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23000": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23100": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23127.55": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23200": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23300": {
+      "value": "4140.50",
+      "display": "\u20b94,140.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23400": {
+      "value": "890.50",
+      "display": "\u20b9890.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23413.7": {
+      "value": "0.00",
+      "display": "\u20b90.00",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23500": {
+      "value": "-5609.50",
+      "display": "\u2212\u20b95,609.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23600": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23700": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23800": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "23900": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24000": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "24100": {
+      "value": "-8859.50",
+      "display": "\u2212\u20b98,859.50",
+      "kind": "money",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "lower_be": {
+      "value": "22886.3",
+      "display": "22,886.30",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "upper_be": {
+      "value": "23413.7",
+      "display": "23,413.70",
+      "kind": "points",
+      "reason": null,
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     },
+     "status": {
+      "value": null,
+      "display": "\u2014",
+      "kind": "text",
+      "reason": "no strategy health was given",
+      "side": null,
+      "per_unit": null,
+      "vendor": null
+     }
+    }
+   }
+  ]
+ },
+ "scenario": {
+  "view": "at_expiry",
+  "label": "At Expiry",
+  "kind": "exact",
+  "available": true,
+  "unavailable_reason": null,
+  "output_label": null,
+  "levels": [
+   {
+    "level": "22100",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22200",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22300",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22400",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22500",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22600",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22700",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22800",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "22886.3",
+    "current": false,
+    "zero_pnl": true
+   },
+   {
+    "level": "22900",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23000",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23100",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23127.55",
+    "current": true,
+    "zero_pnl": false
+   },
+   {
+    "level": "23200",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23300",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23400",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23413.7",
+    "current": false,
+    "zero_pnl": true
+   },
+   {
+    "level": "23500",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23600",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23700",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23800",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "23900",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "24000",
+    "current": false,
+    "zero_pnl": false
+   },
+   {
+    "level": "24100",
+    "current": false,
+    "zero_pnl": false
+   }
+  ],
+  "totals": [
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-5609.50",
+   "0.00",
+   "890.50",
+   "4140.50",
+   "4140.50",
+   "4140.50",
+   "4140.50",
+   "4140.50",
+   "890.50",
+   "0.00",
+   "-5609.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50",
+   "-8859.50"
+  ],
+  "step": "100",
+  "start": "22100",
+  "end": "24100"
+ },
+ "payoff": {
+  "view": "at_expiry",
+  "points": [
+   {
+    "level": "22100",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22200",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22300",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22400",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22500",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22600",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22700",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "22800",
+    "pnl": "-5609.50"
+   },
+   {
+    "level": "22886.3",
+    "pnl": "0.00"
+   },
+   {
+    "level": "22900",
+    "pnl": "890.50"
+   },
+   {
+    "level": "23000",
+    "pnl": "4140.50"
+   },
+   {
+    "level": "23100",
+    "pnl": "4140.50"
+   },
+   {
+    "level": "23127.55",
+    "pnl": "4140.50"
+   },
+   {
+    "level": "23200",
+    "pnl": "4140.50"
+   },
+   {
+    "level": "23300",
+    "pnl": "4140.50"
+   },
+   {
+    "level": "23400",
+    "pnl": "890.50"
+   },
+   {
+    "level": "23413.7",
+    "pnl": "0.00"
+   },
+   {
+    "level": "23500",
+    "pnl": "-5609.50"
+   },
+   {
+    "level": "23600",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "23700",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "23800",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "23900",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "24000",
+    "pnl": "-8859.50"
+   },
+   {
+    "level": "24100",
+    "pnl": "-8859.50"
+   }
+  ]
+ },
+ "summary": {
+  "what_can_i_lose": "At most \u20b98,859.50 at expiry, before charges and taxes.",
+  "what_can_i_make": "At most \u20b94,140.50 at expiry, before charges and taxes.",
+  "where_do_i_start_losing": "If NIFTY ends below 22,886.30 or above 23,413.70 at expiry.",
+  "max_profit": "4140.50",
+  "max_loss": "8859.50",
+  "max_profit_unlimited": false,
+  "max_loss_unlimited": false,
+  "breakevens": [
+   "22886.3",
+   "23413.7"
+  ],
+  "lower_be": "22886.3",
+  "upper_be": "23413.7",
+  "risk_boundaries": [
+   "22750.00",
+   "23550.00"
+  ]
+ },
+ "advanced_details": [
+  {
+   "instrument_id": "NSE_FO:47177",
+   "symbol": "NIFTY26O1923350CE",
+   "bid": "32.7",
+   "ask": "32.8",
+   "health": "available"
+  },
+  {
+   "instrument_id": "NSE_FO:47185",
+   "symbol": "NIFTY26O1923550CE",
+   "bid": "10.7",
+   "ask": "10.75",
+   "health": "available"
+  },
+  {
+   "instrument_id": "NSE_FO:47160",
+   "symbol": "NIFTY26O1922950PE",
+   "bid": "52.5",
+   "ask": "52.65",
+   "health": "available"
+  },
+  {
+   "instrument_id": "NSE_FO:47152",
+   "symbol": "NIFTY26O1922750PE",
+   "bid": "22.15",
+   "ask": "22.25",
+   "health": "available"
+  }
+ ]
+}

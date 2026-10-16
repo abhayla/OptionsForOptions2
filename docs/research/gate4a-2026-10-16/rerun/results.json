@@ -1,0 +1,1213 @@
+{
+ "ran_at": "2026-10-16T10:20:05.861833+05:30",
+ "api": "http://127.0.0.1:8765",
+ "main_sha": "48d75a7",
+ "api_note": "running API on :8765",
+ "method": "HTTP against the running API from main; legs held on /api/strategies/live sockets like the browser",
+ "sensibull": "not run - no access (cross-check only per ADR-056)",
+ "expiry": "2026-10-19",
+ "expiries_first3": [
+  "2026-10-19",
+  "2026-10-27",
+  "2026-11-03"
+ ],
+ "probe_state": "COMPUTED",
+ "spot_at_pick": "23136.2",
+ "planned_entry_answer": [
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47177,
+   "planned_entry": "36.35",
+   "captured_at": "2026-10-16T10:20:20.275027+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47185,
+   "planned_entry": "12.00",
+   "captured_at": "2026-10-16T10:20:20.275027+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47160,
+   "planned_entry": "52.30",
+   "captured_at": "2026-10-16T10:20:20.275027+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 47152,
+   "planned_entry": "22.95",
+   "captured_at": "2026-10-16T10:20:20.275027+05:30",
+   "source": "ltp",
+   "reason_code": null
+  },
+  {
+   "exchange_segment": "NSE_FO",
+   "exchange_token": 36078,
+   "planned_entry": null,
+   "captured_at": null,
+   "source": null,
+   "reason_code": "no_live_price"
+  }
+ ],
+ "request": {
+  "underlying": "NIFTY",
+  "legs": [
+   {
+    "instrument_id": "NSE_FO:47177",
+    "action": "SELL",
+    "lots": 1,
+    "planned_entry": "39.35",
+    "captured_at": "2026-10-16T10:20:20.281614+05:30"
+   },
+   {
+    "instrument_id": "NSE_FO:47185",
+    "action": "BUY",
+    "lots": 1,
+    "planned_entry": "10.00",
+    "captured_at": "2026-10-16T10:20:20.281614+05:30"
+   },
+   {
+    "instrument_id": "NSE_FO:47160",
+    "action": "SELL",
+    "lots": 1,
+    "planned_entry": "55.30",
+    "captured_at": "2026-10-16T10:20:20.281614+05:30"
+   },
+   {
+    "instrument_id": "NSE_FO:47152",
+    "action": "BUY",
+    "lots": 1,
+    "planned_entry": "20.95",
+    "captured_at": "2026-10-16T10:20:20.281614+05:30"
+   }
+  ],
+  "ux_level": "advanced"
+ },
+ "legs": [
+  {
+   "instrument_id": "NSE_FO:47177",
+   "action": "SELL",
+   "type": "CE",
+   "strike": "23350",
+   "contract_id": 4697,
+   "lot_size": 65,
+   "symbol": "NIFTY26O1923350CE",
+   "planned_entry_live": "36.35",
+   "reason": null,
+   "planned_entry": "39.35"
+  },
+  {
+   "instrument_id": "NSE_FO:47185",
+   "action": "BUY",
+   "type": "CE",
+   "strike": "23550",
+   "contract_id": 4705,
+   "lot_size": 65,
+   "symbol": "NIFTY26O1923550CE",
+   "planned_entry_live": "12.00",
+   "reason": null,
+   "planned_entry": "10.00"
+  },
+  {
+   "instrument_id": "NSE_FO:47160",
+   "action": "SELL",
+   "type": "PE",
+   "strike": "22950",
+   "contract_id": 4682,
+   "lot_size": 65,
+   "symbol": "NIFTY26O1922950PE",
+   "planned_entry_live": "52.30",
+   "reason": null,
+   "planned_entry": "55.30"
+  },
+  {
+   "instrument_id": "NSE_FO:47152",
+   "action": "BUY",
+   "type": "PE",
+   "strike": "22750",
+   "contract_id": 4674,
+   "lot_size": 65,
+   "symbol": "NIFTY26O1922750PE",
+   "planned_entry_live": "22.95",
+   "reason": null,
+   "planned_entry": "20.95"
+  },
+  {
+   "instrument_id": "NSE_FO:36078",
+   "action": "BUY",
+   "type": "CE",
+   "strike": "28700.00",
+   "contract_id": 3435,
+   "lot_size": 65,
+   "symbol": "NIFTY26O1928700CE",
+   "planned_entry_live": null,
+   "reason": "no_live_price",
+   "planned_entry": "0.05"
+  }
+ ],
+ "calls": [
+  {
+   "call": 1,
+   "at": "2026-10-16T10:20:23.325807+05:30",
+   "http": 200,
+   "state": "COMPUTED",
+   "valuation": "2026-10-16T10:20:23.295753+05:30",
+   "spot_level": "23134.5",
+   "spot_at": "2026-10-16T10:20:23+05:30",
+   "ltps": [
+    "36",
+    "11.95",
+    "52.4",
+    "22.95"
+   ],
+   "health": [
+    "available",
+    "available",
+    "available",
+    "available"
+   ],
+   "socket_frames": 3,
+   "comparisons": [
+    {
+     "field": "leg1 unrealized_pnl",
+     "response": "217.75",
+     "hand": "217.75",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg1 entry_value",
+     "response": "2557.75",
+     "hand": "2557.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg1 current_value",
+     "response": "2340",
+     "hand": "2340",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg1 pnl_percent",
+     "response": "8.51",
+     "hand": "8.51",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg2 unrealized_pnl",
+     "response": "126.75",
+     "hand": "126.75",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg2 entry_value",
+     "response": "650.00",
+     "hand": "650.00",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg2 current_value",
+     "response": "776.75",
+     "hand": "776.75",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg2 pnl_percent",
+     "response": "19.50",
+     "hand": "19.50",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg3 unrealized_pnl",
+     "response": "188.50",
+     "hand": "188.50",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg3 entry_value",
+     "response": "3594.50",
+     "hand": "3594.50",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg3 current_value",
+     "response": "3406.0",
+     "hand": "3406.0",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg3 pnl_percent",
+     "response": "5.24",
+     "hand": "5.24",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg4 unrealized_pnl",
+     "response": "130.00",
+     "hand": "130.00",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg4 entry_value",
+     "response": "1361.75",
+     "hand": "1361.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg4 current_value",
+     "response": "1491.75",
+     "hand": "1491.75",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg4 pnl_percent",
+     "response": "9.55",
+     "hand": "9.55",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "TOTAL unrealized_pnl",
+     "response": "663.00",
+     "hand": "663.00",
+     "ok": true,
+     "formula": "S2 sum of legs"
+    },
+    {
+     "field": "TOTAL entry_value",
+     "response": "4140.50",
+     "response_side": "Cr",
+     "display": "\u20b94,140.50 Cr",
+     "hand": "4140.50",
+     "hand_side": "Cr",
+     "hand_net_signed": "4140.50",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "TOTAL current_value",
+     "response": "3477.50",
+     "response_side": "Cr",
+     "display": "\u20b93,477.50 Cr",
+     "hand": "3477.50",
+     "hand_side": "Cr",
+     "hand_net_signed": "3477.50",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "ADR-076 identity: net entry - net current = TOTAL unrealized",
+     "response": "663.00",
+     "hand": "663.00",
+     "ok": true,
+     "formula": "ADR-076 decision, last sentence"
+    },
+    {
+     "field": "max_profit",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "max_loss",
+     "response": "8859.50",
+     "hand": "8859.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "breakevens",
+     "response": [
+      "22886.3",
+      "23413.7"
+     ],
+     "hand": [
+      "22886.30",
+      "23413.70"
+     ],
+     "ok": true,
+     "formula": "S3 payoff zero crossings above 0"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [payoff.points]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [scenario.totals]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [table TOTAL cell]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [payoff.points]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [scenario.totals]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [table TOTAL cell]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [payoff.points]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [scenario.totals]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [table TOTAL cell]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [payoff.points]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [scenario.totals]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [table TOTAL cell]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [payoff.points]",
+     "level": "23134.5",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [scenario.totals]",
+     "level": "23134.5",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [table TOTAL cell]",
+     "level": "23134.5",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "ALL scenario levels (payoff points, totals, per-leg cells)",
+     "checked": 144,
+     "mismatches": 0,
+     "mismatch_list": [],
+     "ok": true
+    }
+   ],
+   "checked": 27,
+   "fails": [],
+   "pass": true,
+   "socket_frame": {
+    "valuation": "2026-10-16T10:20:22.362123+05:30",
+    "fails": [],
+    "checked": 27
+   }
+  },
+  {
+   "call": 2,
+   "at": "2026-10-16T10:21:28.364928+05:30",
+   "http": 200,
+   "state": "COMPUTED",
+   "valuation": "2026-10-16T10:21:28.338391+05:30",
+   "spot_level": "23133.9",
+   "spot_at": "2026-10-16T10:21:28+05:30",
+   "ltps": [
+    "36.95",
+    "12.05",
+    "51.35",
+    "22.65"
+   ],
+   "health": [
+    "available",
+    "available",
+    "available",
+    "available"
+   ],
+   "socket_frames": 66,
+   "comparisons": [
+    {
+     "field": "leg1 unrealized_pnl",
+     "response": "156.00",
+     "hand": "156.00",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg1 entry_value",
+     "response": "2557.75",
+     "hand": "2557.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg1 current_value",
+     "response": "2401.75",
+     "hand": "2401.75",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg1 pnl_percent",
+     "response": "6.10",
+     "hand": "6.10",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg2 unrealized_pnl",
+     "response": "133.25",
+     "hand": "133.25",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg2 entry_value",
+     "response": "650.00",
+     "hand": "650.00",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg2 current_value",
+     "response": "783.25",
+     "hand": "783.25",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg2 pnl_percent",
+     "response": "20.50",
+     "hand": "20.50",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg3 unrealized_pnl",
+     "response": "256.75",
+     "hand": "256.75",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg3 entry_value",
+     "response": "3594.50",
+     "hand": "3594.50",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg3 current_value",
+     "response": "3337.75",
+     "hand": "3337.75",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg3 pnl_percent",
+     "response": "7.14",
+     "hand": "7.14",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg4 unrealized_pnl",
+     "response": "110.50",
+     "hand": "110.50",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg4 entry_value",
+     "response": "1361.75",
+     "hand": "1361.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg4 current_value",
+     "response": "1472.25",
+     "hand": "1472.25",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg4 pnl_percent",
+     "response": "8.11",
+     "hand": "8.11",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "TOTAL unrealized_pnl",
+     "response": "656.50",
+     "hand": "656.50",
+     "ok": true,
+     "formula": "S2 sum of legs"
+    },
+    {
+     "field": "TOTAL entry_value",
+     "response": "4140.50",
+     "response_side": "Cr",
+     "display": "\u20b94,140.50 Cr",
+     "hand": "4140.50",
+     "hand_side": "Cr",
+     "hand_net_signed": "4140.50",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "TOTAL current_value",
+     "response": "3484.00",
+     "response_side": "Cr",
+     "display": "\u20b93,484.00 Cr",
+     "hand": "3484.00",
+     "hand_side": "Cr",
+     "hand_net_signed": "3484.00",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "ADR-076 identity: net entry - net current = TOTAL unrealized",
+     "response": "656.50",
+     "hand": "656.50",
+     "ok": true,
+     "formula": "ADR-076 decision, last sentence"
+    },
+    {
+     "field": "max_profit",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "max_loss",
+     "response": "8859.50",
+     "hand": "8859.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "breakevens",
+     "response": [
+      "22886.3",
+      "23413.7"
+     ],
+     "hand": [
+      "22886.30",
+      "23413.70"
+     ],
+     "ok": true,
+     "formula": "S3 payoff zero crossings above 0"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [payoff.points]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [scenario.totals]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [table TOTAL cell]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [payoff.points]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [scenario.totals]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [table TOTAL cell]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [payoff.points]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [scenario.totals]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [table TOTAL cell]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [payoff.points]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [scenario.totals]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [table TOTAL cell]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [payoff.points]",
+     "level": "23133.9",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [scenario.totals]",
+     "level": "23133.9",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [table TOTAL cell]",
+     "level": "23133.9",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "ALL scenario levels (payoff points, totals, per-leg cells)",
+     "checked": 144,
+     "mismatches": 0,
+     "mismatch_list": [],
+     "ok": true
+    }
+   ],
+   "checked": 27,
+   "fails": [],
+   "pass": true,
+   "socket_frame": {
+    "valuation": "2026-10-16T10:21:28.320142+05:30",
+    "fails": [],
+    "checked": 27
+   }
+  },
+  {
+   "call": 3,
+   "at": "2026-10-16T10:22:33.424337+05:30",
+   "http": 200,
+   "state": "COMPUTED",
+   "valuation": "2026-10-16T10:22:33.380151+05:30",
+   "spot_level": "23127.55",
+   "spot_at": "2026-10-16T10:22:33+05:30",
+   "ltps": [
+    "33.05",
+    "10.75",
+    "52.45",
+    "22.25"
+   ],
+   "health": [
+    "available",
+    "available",
+    "available",
+    "available"
+   ],
+   "socket_frames": 128,
+   "comparisons": [
+    {
+     "field": "leg1 unrealized_pnl",
+     "response": "409.50",
+     "hand": "409.50",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg1 entry_value",
+     "response": "2557.75",
+     "hand": "2557.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg1 current_value",
+     "response": "2148.25",
+     "hand": "2148.25",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg1 pnl_percent",
+     "response": "16.01",
+     "hand": "16.01",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg2 unrealized_pnl",
+     "response": "48.75",
+     "hand": "48.75",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg2 entry_value",
+     "response": "650.00",
+     "hand": "650.00",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg2 current_value",
+     "response": "698.75",
+     "hand": "698.75",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg2 pnl_percent",
+     "response": "7.50",
+     "hand": "7.50",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg3 unrealized_pnl",
+     "response": "185.25",
+     "hand": "185.25",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg3 entry_value",
+     "response": "3594.50",
+     "hand": "3594.50",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg3 current_value",
+     "response": "3409.25",
+     "hand": "3409.25",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg3 pnl_percent",
+     "response": "5.15",
+     "hand": "5.15",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "leg4 unrealized_pnl",
+     "response": "84.50",
+     "hand": "84.50",
+     "ok": true,
+     "formula": "S2 BUY (LTP-Entry)xQty; SELL (Entry-LTP)xQty"
+    },
+    {
+     "field": "leg4 entry_value",
+     "response": "1361.75",
+     "hand": "1361.75",
+     "ok": true,
+     "formula": "S2 Entry Price x Quantity"
+    },
+    {
+     "field": "leg4 current_value",
+     "response": "1446.25",
+     "hand": "1446.25",
+     "ok": true,
+     "formula": "S2 LTP x Quantity"
+    },
+    {
+     "field": "leg4 pnl_percent",
+     "response": "6.21",
+     "hand": "6.21",
+     "ok": true,
+     "formula": "unrealized/(entry x qty)x100 at 2dp (derived check)"
+    },
+    {
+     "field": "TOTAL unrealized_pnl",
+     "response": "728.00",
+     "hand": "728.00",
+     "ok": true,
+     "formula": "S2 sum of legs"
+    },
+    {
+     "field": "TOTAL entry_value",
+     "response": "4140.50",
+     "response_side": "Cr",
+     "display": "\u20b94,140.50 Cr",
+     "hand": "4140.50",
+     "hand_side": "Cr",
+     "hand_net_signed": "4140.50",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "TOTAL current_value",
+     "response": "3412.50",
+     "response_side": "Cr",
+     "display": "\u20b93,412.50 Cr",
+     "hand": "3412.50",
+     "hand_side": "Cr",
+     "hand_net_signed": "3412.50",
+     "ok": true,
+     "formula": "ADR-076: net = sum(SELL price x qty) - sum(BUY price x qty); |net| with Cr (credit) / Dr (debit)"
+    },
+    {
+     "field": "ADR-076 identity: net entry - net current = TOTAL unrealized",
+     "response": "728.00",
+     "hand": "728.00",
+     "ok": true,
+     "formula": "ADR-076 decision, last sentence"
+    },
+    {
+     "field": "max_profit",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "max_loss",
+     "response": "8859.50",
+     "hand": "8859.50",
+     "ok": true,
+     "formula": "S3 from payoff"
+    },
+    {
+     "field": "breakevens",
+     "response": [
+      "22886.3",
+      "23413.7"
+     ],
+     "hand": [
+      "22886.30",
+      "23413.70"
+     ],
+     "ok": true,
+     "formula": "S3 payoff zero crossings above 0"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [payoff.points]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [scenario.totals]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL CE 23350.00 [table TOTAL cell]",
+     "level": "23350.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [payoff.points]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [scenario.totals]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY CE 23550.00 [table TOTAL cell]",
+     "level": "23550.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [payoff.points]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [scenario.totals]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike SELL PE 22950.00 [table TOTAL cell]",
+     "level": "22950.00",
+     "response": null,
+     "hand": "4140.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [payoff.points]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [scenario.totals]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@strike BUY PE 22750.00 [table TOTAL cell]",
+     "level": "22750.00",
+     "response": null,
+     "hand": "-8859.50",
+     "ok": null,
+     "note": "level not present in response",
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [payoff.points]",
+     "level": "23127.55",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [scenario.totals]",
+     "level": "23127.55",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "payoff@spot [table TOTAL cell]",
+     "level": "23127.55",
+     "response": "4140.50",
+     "hand": "4140.50",
+     "ok": true,
+     "note": null,
+     "formula": "S1 sum of leg expiry P&L (entry price, not LTP)"
+    },
+    {
+     "field": "ALL scenario levels (payoff points, totals, per-leg cells)",
+     "checked": 144,
+     "mismatches": 0,
+     "mismatch_list": [],
+     "ok": true
+    }
+   ],
+   "checked": 27,
+   "fails": [],
+   "pass": true,
+   "socket_frame": {
+    "valuation": "2026-10-16T10:22:32.966666+05:30",
+    "fails": [],
+    "checked": 27
+   }
+  }
+ ],
+ "with_far_leg": {
+  "http": 200,
+  "state": "COMPUTED",
+  "status_label": null,
+  "far_leg": {
+   "ltp": null,
+   "health": "available",
+   "label": "no live quote"
+  }
+ }
+}
