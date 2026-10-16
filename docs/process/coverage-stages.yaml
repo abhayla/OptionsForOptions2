@@ -257,7 +257,6 @@ issues:
   "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
   "#344": 4b  # History finalize scale test times out at batch 6 intermittently on CI (5 slow batches, then asyncpg TimeoutError)
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
-  "#344": 4b  # History finalize scale test times out at batch 6 intermittently on CI (5 slow batches, then asyncpg TimeoutError)
 
 # Work items whose status is not done.
 work_items:
