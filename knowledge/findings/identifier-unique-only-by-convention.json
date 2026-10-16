@@ -1,0 +1,32 @@
+{
+ "id": "identifier-unique-only-by-convention",
+ "scope": "generic",
+ "class": "An identifier that people or logs read (an error code, a tag, a numbered row) whose uniqueness is kept only by each author picking the next free number by hand collides as soon as two parallel branches pick at the same time or one author misses an existing use; the collision is invisible unless a test asserts uniqueness over the generated set, and checking a DIFFERENT key for uniqueness (the template id) gives false comfort.",
+ "mechanism": "backend/ofo/errors/templates.py: each template carries (ErrorClass, number) chosen by hand per branch. tests/errors/test_messages.py:350 asserted only that template ids are unique. Two parallel branches (#275 grouping_duplicate_row, #279 recon_expired_standalone_retired) both took RECONCILIATION_MISMATCH_221; and on main, W-078 (#267, commit 4ff69ee) gave gate_price_outside_circuit MARKET_DATA_120, already used by marketdata_disconnected (templates.py:291 and :442).",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "Tier A review of fix/279-expiry-notes; #275 round 2",
+  "evidence": "git diff origin/main...origin/fix/275-grouping-expiry-minors showed _gate(\"grouping_duplicate_row\", _RM, 221 while fix/279 used _RM, 221; the new guard tests/errors/test_template_codes_unique.py went red on origin/main for MARKET_DATA_120 (2 templates) and red when grouping_duplicate_row was set to 219/220 (2 failed); green at 223 with MARKET_DATA_120 allow-listed (1471 passed in tests/errors+reconciliation+execution+strategy/test_templates.py)."
+ },
+ "fix": "Instance: #275 renumbered to 223 (PR for #275); MARKET_DATA_120 renumber tracked in #285. Class: test_template_codes_unique.py asserts every (ErrorClass, number) is unique over the whole catalogue, with a KNOWN_DUPLICATES allow-list that #285 empties.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["tests/errors/test_template_codes_unique.py::test_no_two_templates_share_a_code", "tests/errors/test_template_codes_unique.py::test_the_guard_detects_a_duplicate_code"],
+  "note": "Guarded: the guard merged in PR #286 and its allow-list was emptied in PR #288 (MARKET_DATA_120 -> 123 for gate_price_outside_circuit). Does not cover other hand-numbered identifiers (Q-numbers, OQ-numbers, finding F-ids); those are checked by their own tools or not at all (unmeasured)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-065.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "#275 vs #279 (RECONCILIATION_MISMATCH_221)",
+   "evidence": "caught by the #279 Tier A reviewer reading both diffs, not by a test"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "main, W-078 #267 (MARKET_DATA_120)",
+   "evidence": "merged green; found only when the guard was added"
+  }
+ ]
+}
