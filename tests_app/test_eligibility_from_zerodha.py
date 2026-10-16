@@ -17,10 +17,12 @@ from __future__ import annotations
 import datetime
 import inspect
 
+from ofo.engine import Action
 from ofo.instruments import eligibility as el
 from ofo.instruments.models import InstrumentId
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
+from ofo_app.routes import strategies as strategies_route
 from ofo_app.catalogue_store import apply_update
 from sqlalchemy import text
 from sqlalchemy.sql.elements import TextClause
@@ -137,6 +139,33 @@ async def test_ac3_an_edit_that_adds_an_expired_leg_is_refused_and_the_revision_
             await trans.rollback()
 
 
+def test_a_second_copy_of_a_stored_leg_counts_as_added():
+    """W-092 round 2 (review MINOR 2): legs are counted per copy. Stored = contract 7 BUY once; saved = twice ->
+    the second copy is ADDED (so it is checked); the first is kept. Order and other legs do not matter."""
+    buy, sell = Action.BUY, Action.SELL
+    assert strategies_route._added_legs([(7, buy), (7, buy)], [(7, buy)]) == [1]
+    assert strategies_route._added_legs([(9, sell), (7, buy), (7, buy), (7, buy)], [(7, buy), (9, sell)]) == [2, 3]
+    assert strategies_route._added_legs([(7, buy)], [(7, buy), (7, buy)]) == []  # a removed copy adds nothing
+    assert strategies_route._added_legs([(7, sell)], [(7, buy)]) == [0]  # the other side is a new leg
+    assert strategies_route._added_legs([(7, buy)], []) == [0]  # a new strategy: every leg is added
+
+
+async def test_two_legs_on_one_stored_contract_are_refused_before_eligibility(app_engine):
+    """Today the definition itself refuses two legs on one contract (422), so the copy never reaches the save."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids, stored = await _with_draft(conn, _user())
+            body = _body(ids, expected_revision=1)
+            body["legs"].append(dict(body["legs"][0]))
+            async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), LIST_DAY)) as ac:
+                resp = await ac.put(f"/strategies/{stored.id}", json=body)
+            assert (resp.status_code, resp.json()["code"]) == (422, "STRATEGY_VALIDATION_408"), resp.text
+            assert (await store.load(conn, stored.user_ref, stored.id)).revision == 1
+        finally:
+            await trans.rollback()
+
+
 async def test_ac3_an_edit_that_adds_an_unlisted_leg_is_refused(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
@@ -189,6 +218,7 @@ async def test_ac3_fresh_registry_reads_the_store_on_the_database_clock(app_engi
 
             monkeypatch.setenv("TEST_CATALOGUE_DATE", LIST_DAY.isoformat())
             registry = await elig.fresh_registry(conn, underlying="NIFTY")
+            assert type(registry) is el.ZerodhaEligibility  # the only type the gate accepts
             assert (registry.get(first).tradable, registry.get(first).checked_at) == (True, loaded_at)
 
             refused = await elig.fresh_registry(conn, underlying="NIFTY", margin_refusals={first: "Zerodha text"})

@@ -28,6 +28,7 @@ STORED definition no longer reads (unknown schema version, contract id gone, ter
 from __future__ import annotations
 
 import datetime
+from collections import Counter
 from collections.abc import Callable, Mapping
 from decimal import Decimal
 from types import MappingProxyType
@@ -264,15 +265,28 @@ def _leg_identity(saved: sf.SavedDefinition) -> list[tuple[int, Action]]:
     return [(contract_id, leg.action) for contract_id, leg in zip(saved.contract_ids, legs, strict=True)]
 
 
+def _added_legs(saved: list[tuple[int, Action]], stored: list[tuple[int, Action]]) -> list[int]:
+    """Indexes of the saved legs that are ADDED relative to the stored version, counted per copy (a multiset): a second
+    copy of a stored leg is added. Defence in depth: the definition refuses two legs on one contract today."""
+    kept = Counter(stored)
+    added = []
+    for i, key in enumerate(saved):
+        if kept[key] > 0:
+            kept[key] -= 1
+        else:
+            added.append(i)
+    return added
+
+
 async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.TodayReader,
                           stored: sf.SavedDefinition | None) -> None:
     """W-092 / ADR-104, REQ-053 AC-3 add-time check: every ADDED leg's contract must be eligible from Zerodha's data
     (in the current list, not expired on the database clock's India date). A leg already in the stored version
-    (``stored``, None for a new strategy) never blocks a save, so an old draft stays editable; the execution gate
+    (``stored``, None for a new strategy; counted per copy, so a second copy of a stored leg is added) never blocks a
+    save, so an old draft stays editable; the execution gate
     re-checks every leg. The first added leg that is not eligible is refused with the gate's own message
     (gate_contract_unavailable, or gate_contract_unconfirmed when no list was ever loaded)."""
-    kept = set(_leg_identity(stored)) if stored is not None else set()
-    added = [i for i, key in enumerate(_leg_identity(saved)) if key not in kept]
+    added = _added_legs(_leg_identity(saved), _leg_identity(stored) if stored is not None else [])
     if not added:
         return
     statuses = await elig.leg_statuses(db, [saved.contract_ids[i] for i in added], await today_of(db))
