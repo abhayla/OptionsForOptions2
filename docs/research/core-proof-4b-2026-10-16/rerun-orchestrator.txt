@@ -1,0 +1,59 @@
+== 0. raw JSON types per field (default json.load) ==
+  orders str: account_id, auction_number, average_price, exchange, exchange_order_id, exchange_timestamp, exchange_update_timestamp, guid, order_id, order_timestamp, order_type, placed_by, price, product, status, tag, tradingsymbol, transaction_type, validity, variety
+  orders int: cancelled_quantity, disclosed_quantity, filled_quantity, instrument_token, market_protection, pending_quantity, quantity, trigger_price, validity_ttl
+  orders NoneType: meta_raw, parent_order_id, status_message, status_message_raw
+  orders bool: modified
+  orders list: tags
+  orders dict: meta
+  orders MIXED-type fields across snapshots: none
+  trades str: average_price, exchange, exchange_order_id, exchange_timestamp, fill_timestamp, order_id, order_timestamp, product, trade_id, tradingsymbol, transaction_type
+  trades int: instrument_token, quantity
+  trades MIXED-type fields across snapshots: none
+  positions str: average_price, buy_m2m, buy_price, buy_value, day_buy_price, day_buy_value, day_sell_price, day_sell_value, exchange, last_price, product, segment, sell_m2m, sell_price, sell_value, tradingsymbol, value
+  positions int: average_price, buy_quantity, close_price, day_buy_quantity, day_sell_price, day_sell_quantity, day_sell_value, instrument_token, m2m, multiplier, overnight_quantity, overnight_value, pnl, quantity, realised, sell_m2m, sell_price, sell_quantity, sell_value, unrealised, value
+  positions MIXED-type fields across snapshots: ['average_price', 'day_sell_price', 'day_sell_value', 'sell_m2m', 'sell_price', 'sell_value', 'value']
+  JSON floats anywhere: none
+
+scaffolding contract for token 12080386: ('NIFTY', <Instrument.CE: 'CE'>, Decimal('23650.00'), datetime.date(2026, 10, 19)) symbol=NIFTY26O1923650CE
+
+== 1. position_line_from_kite_row on the real net rows, unconverted (parse_float=Decimal load) ==
+  REFUSED entry row NIFTY26O1923650CE qty=65: ValueError: average_price must be a Decimal or int (floats are refused), got '5.1'
+  REFUSED exit row NIFTY26O1923650CE qty=0: ValueError: last_price must be a Decimal or int (floats are refused), got '3.1'
+
+== 2. converted rows -> broker net map ==
+  entry: line NIFTY26O1923650CE net=65 avg=5.1 ltp=5.1 product=Product.NRML
+  entry: broker_net = {('NIFTY', <Instrument.CE: 'CE'>, Decimal('23650.00'), datetime.date(2026, 10, 19)): 65}
+  exit: flat row NIFTY26O1923650CE (quantity 0, average_price 0) -> no line, no units (never a 0-price holding)
+  exit: broker_net = {}
+
+== 3. Expected 1: after entry (122104) ==
+[PASS] 1 entry: strategy={('NIFTY', <Instrument.CE: 'CE'>, Decimal('23650.00'), datetime.date(2026, 10, 19)): 65} broker=65@5.1 mismatches=0
+  discriminator: broker +130 instead of +65 -> ['quantity mismatch: NIFTY 23650 CE 2026-10-19 +65']
+
+== 4. Expected 2: after exit (151006) ==
+  discriminator: strategy still active (+65) vs broker flat -> ['missing platform position: NIFTY 23650 CE 2026-10-19 -65']
+[PASS] 2 exit: strategy exited=True broker_net={} flat_row qty=0 mismatches=0
+
+== 5. Expected 4: fill ledger on the two real trades ==
+  raw trade-row price types: ['str', 'str']
+  REFUSED FillEvent with raw string price: price must be a decimal.Decimal, got str
+[PASS] 4 ledger: after entry=65 after replay=65 after exit+replays=0 rows=2 ids=['4484194', '5966618'] states={'OFS1V1L0': ('Executed', 65), 'OFS1V2L0': ('Executed', 65)}
+
+== 6. Expected 3: gross P&L ==
+[PASS] 3 pnl: position_pnl=Decimal('-130.0') fills-sum=Decimal('-130.0') kite pnl=-130 (int)
+
+== 7. Attack cases ==
+  A1 exit before entry: ACCEPTED, position=-65; then entry -> position=0
+  A2 SDK floats: REFUSED average_price must be a Decimal or int (floats are refused), got 5.1
+  A2b float last_price only: REFUSED last_price must be a Decimal or int (floats are refused), got 3.1
+  A3 flat row through parser: REFUSED average_price must be > 0, got 0  (not silently a 0-price holding)
+  A3b BrokerPositionLine(qty 0, avg 0): REFUSED average_price must be > 0, got 0
+  A3c compare with explicit 0-unit line: mismatches=0
+
+== refusals hit (product code, real data) ==
+  - entry row NIFTY26O1923650CE qty=65: ValueError: average_price must be a Decimal or int (floats are refused), got '5.1'
+  - exit row NIFTY26O1923650CE qty=0: ValueError: last_price must be a Decimal or int (floats are refused), got '3.1'
+  - FillEvent price as raw string: price must be a decimal.Decimal, got str
+  - A2 float row: average_price must be a Decimal or int (floats are refused), got 5.1
+
+SUMMARY: 4/4 PASS

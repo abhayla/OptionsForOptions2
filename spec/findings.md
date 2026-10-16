@@ -605,3 +605,27 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   call and a put, in a multi-leg basket. Script: the session scratchpad `live_basket_premium.py`.
 - Bears on: REQ-055, ADR-016, ADR-080 (executable price), ADR-094. Status: **measured 3 times, CE and PE, single and
   2-leg**; SELL legs, futures and limits below live in a multi-leg basket are unmeasured. Decided in ADR-094.
+
+## F-40 - The 4b domain chain (fill ledger, reconcile, P&L) is right on the real order, but no code turns Kite's orders/trades/positions replies into its input
+- Measured 2026-10-16 (GC-1 item 8) on the owner's real 1-lot order, recorded at
+  `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/` (snapshots 122104 = after entry, 151006 = after exit), by a
+  throwaway script over the real `ofo.*` code; script, output and result in `docs/research/core-proof-4b-2026-10-16/`.
+- With exact Decimal inputs the domain holds: both real trades (4484194, 5966618) enter the ledger once, replays are
+  no-ops, the position goes 65 -> 0; reconcile gives 0 mismatches after entry (65 long NIFTY26O1923650CE) and after
+  exit (flat), and flags a broker +130 and a still-active strategy against a flat broker; `position_pnl` gives exactly
+  -130 (= (3.10 - 5.10) x 65), matching Kite's `pnl: -130`, but as `-130.0`, not quantized to paise.
+- Every real row is refused at the boundary: `positions.py:53` refuses `average_price '5.1'` and `last_price '3.1'`
+  (strings) and SDK-shaped floats 5.1 / 3.1; the flat row (`quantity 0`, `average_price 0`) is refused by
+  `positions.py:44` (correct: never a 0-price holding, but the reconcile path has no flat-row rule while
+  `grouping.py:295` skips `quantity == 0`); `FillEvent` refuses the trade price string (`orders/model.py:260`).
+- Missing, not refused: no Kite trades-row -> `FillEvent` parser, no tradingsymbol/token -> reconcile contract key
+  (issue 115), no realised P&L from the ledger, nothing moves the strategy record to exited from the ledger. `ofo_app`
+  has no orders/trades/positions reader; `kite_margin.py` already parses with `parse_float=Decimal` (the pattern to reuse).
+- Attack: the exit trade applied before the entry is accepted (ledger -65, then 0): the end state is right, the
+  in-between state reads as a side flip.
+- Does NOT prove: live JSON-number or SDK-float parsing (the recording's prices are strings written by the recorder),
+  multi-leg or partial fills, out-of-order postbacks, MIS rows, charges (F-35's stamp check stays an owner item).
+- Bears on: REQ-054 AC-1 (fetch positions/orders), REQ-057, REQ-060, ADR-008, ADR-016, F-33. Status: **measured once,
+  one CE buy+sell**. Shapes GC-2b (Kite reply adapter, flat-row rule, contract-key mapping, trade -> fill, exit from the
+  ledger). Open for owner decision only if quantizing realised P&L to paise changes what a user sees (ADR-099 rounds
+  margin figures; P&L rounding is not stated).

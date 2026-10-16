@@ -1,0 +1,29 @@
+{
+ "id": "broker-reply-shape-unproven-at-domain-boundary",
+ "scope": "generic",
+ "class": "Domain code built and verified only against fakes that already hold the domain's own types (Decimal money, contract keys, aware times) can be fully correct and still unusable: the first real broker reply is refused at the boundary, because nothing converts the broker's real shape (JSON numbers, SDK floats, recorder strings, a flat row with a zero average price, a symbol string instead of the contract key, naive local times) into those types.",
+ "mechanism": "The parsers fail closed on any non-Decimal money and on a zero average price, and no adapter exists between the broker reply and them; tests construct domain objects directly, so the gap is invisible until a real reply is fed in.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "docs/research/core-proof-4b-2026-10-16/ (proof.py over D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/)",
+  "evidence": "positions.py:53 refused average_price '5.1' and last_price '3.1' and SDK floats 5.1/3.1; positions.py:44 refused the flat row (quantity 0, average_price 0); orders/model.py:260 refused the trade price string. With 4 scaffolding adapters the same rows pass 4/4 checks (0 mismatches at entry and exit, P&L exactly -130)."
+ },
+ "fix": "One broker reply adapter per endpoint (orders, trades, positions) at the app boundary: parse with parse_float=Decimal (kite_margin.py's pattern), Decimal(str(v)) for SDK floats, a flat-row rule shared with grouping.py:295, token -> contract key from the catalogue, IST attached to naive times; tested on the real recorded replies, asserting type(x) is Decimal and the exact text value.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No adapter exists yet (GC-2b). The guard is a test that feeds the 2026-10-16 real-order recordings through the adapter into reconcile and the fill ledger and asserts 0 mismatches and P&L -130.00."
+ },
+ "spec_ref": [
+  "spec/findings.md",
+  "spec/requirements/REQ-054.md",
+  "spec/requirements/REQ-060.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "GC-1 item 8, 4b core proof",
+   "evidence": "every real orders/trades/positions row refused at the domain boundary (F-40)"
+  }
+ ]
+}
