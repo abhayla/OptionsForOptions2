@@ -22,6 +22,11 @@
    "date": "2026-10-17",
    "where": "GC-2a, first use of the hook after PR #335 merged",
    "evidence": "5 snapshots written 00:25 by the finished #337 reviewer; deleted by hand after confirming only a builder was running"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2b, recording W-081 evidence after its verifier finished (03:00 IST)",
+   "evidence": "record_evidence_fp.py refused: 'A verifier tool call is running (snapshot 363s old)'; only builder agents were running; the finished verifier's last (refused) cleanup call left one snapshot. Second occurrence: each verifier run that ends on a refused call leaves one."
   }
  ]
 }

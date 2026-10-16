@@ -1,0 +1,27 @@
+{
+  "id": "generic-plan-under-stale-statistics",
+  "scope": "generic",
+  "class": "A prepared statement reused by an async PostgreSQL driver switches to the server's cached generic plan after a few executions; if the table's statistics are wrong at that moment (e.g. captured as 0 rows by an ANALYZE that ran during an uncommitted bulk load), the generic plan can be catastrophically slow and every later execution times out, while the first executions looked merely slow.",
+  "mechanism": "asyncpg prepares the store's lookup once and re-executes it; PostgreSQL's plan_cache_mode=auto tries custom plans for 5 executions and then may switch to a generic plan. Autovacuum's ANALYZE ran during the test's single 601,125-row INSERT and stored reltuples=0, so the generic plan chosen on the 6th execution could not finish inside asyncpg's 15 s command_timeout.",
+  "first_seen": {
+    "date": "2026-10-16",
+    "where": "CI api job, tests_app/test_history_finalize_scale.py (land/W-080 run 38897947228), then main and every branch about half the runs",
+    "evidence": "failing run 38966699828: reltuples=0.0 relpages=6222, the _slice statement active 1.4 -> 14.5 s with no wait event, then TimeoutError at batch 6; passing run 38967401667: reltuples=-1 then 601125; deterministic repro fails 2 of 2 (38967997606, 38969194878)"
+  },
+  "fix": "Store connections set plan_cache_mode=force_custom_plan (asyncpg server_settings); the scale test reproduces the zero-row statistics on purpose (seed in an open transaction, ANALYZE from a second connection, commit). Remaining: a whole-table hash per batch under zero-row statistics (2.7 s at 601k rows) is its own follow-up.",
+  "detection": {
+    "status": "guarded",
+    "checks": ["tests_app/test_history_finalize_scale.py (deterministic zero-row-statistics repro, once the #344 fix merges)"],
+    "note": "Two diagnosis rounds: the first (GC-2a) instrumented only passing runs and blamed nothing; the independent second round (GC-2b) caught a failing run and read pg_class statistics and the plan switch."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-17",
+      "where": "five CI failures on land/W-080, main b86d0f8, build/W-091-kite-replies (x2), build/W-092-eligibility",
+      "evidence": "runs 38897947228, 38938587984, 38954673065, 38961999888, 38962781684, 38968183725; issue #344"
+    }
+  ]
+}

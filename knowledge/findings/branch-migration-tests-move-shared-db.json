@@ -1,0 +1,27 @@
+{
+  "id": "branch-migration-tests-move-shared-db",
+  "scope": "generic",
+  "class": "Running a branch's migration (replay) tests against a database shared with other checkouts applies the branch's unmerged migration and can leave the shared database at a different revision than main - every other checkout's local DB tests then run against a schema they do not have.",
+  "mechanism": "atool.py --no-tests runs every tests_app file that touches alembic/_migration_replay through db_run.py when the branch changes a migration. W-017 added 0015 with a downgrade that raised; the replay tests (downgrade to base, upgrade head) stopped midway and left the shared ofo_test database at 0013 while main's head was 0014.",
+  "first_seen": {
+    "date": "2026-10-17",
+    "where": "GC-2b item 4, W-017 (branch build/W-017-allowlist), local CI mirror",
+    "evidence": "atool: 'migration tests (14 files) rc 1 | 0015_audit_broker_allowlist.py:86: RuntimeError / 6 failed, 894 passed in 2128.45s'; then `alembic current` on ofo_test -> '0013_exchange_freeze_limits' (main head 0014); restored with `alembic upgrade head` from main -> '0014_charge_rates_caps (head)'"
+  },
+  "fix": "Habit until structural: after any local run of a branch's migration tests, check `alembic current` on the shared test DB and restore main's head. Structural option (open): the mirror runs migration replay tests in a throwaway database (CREATE DATABASE ... TEMPLATE, dropped after) or leaves them to CI only.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Found by checking `alembic current` after the failing mirror run."
+  },
+  "spec_ref": [
+    "spec/testing/core-invariants.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-17",
+      "where": "W-017 migration 0015 (downgrade raised)",
+      "evidence": "shared ofo_test left at 0013; restored to 0014"
+    }
+  ]
+}
