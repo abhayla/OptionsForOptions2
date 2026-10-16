@@ -25,7 +25,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_re
 SAMPLES = ("122104", "151006")
 
 ORDER_FIELDS = {
-    "order_id", "exchange_order_id", "parent_order_id", "status", "status_message", "order_timestamp",
+    "order_id", "exchange_order_id", "parent_order_id", "status", "order_timestamp",
     "exchange_timestamp", "exchange", "tradingsymbol", "instrument_token", "order_type", "transaction_type",
     "product", "quantity", "disclosed_quantity", "price", "trigger_price", "average_price", "filled_quantity",
     "pending_quantity", "cancelled_quantity", "tag",
@@ -35,20 +35,10 @@ TRADE_FIELDS = {
     "transaction_type", "product", "quantity", "average_price", "order_timestamp", "fill_timestamp",
     "exchange_timestamp",
 }
-POSITION_FIELDS = {
-    "tradingsymbol", "exchange", "instrument_token", "product", "quantity", "average_price", "last_price",
-    "close_price", "pnl", "m2m", "unrealised", "realised", "buy_quantity", "buy_price", "sell_quantity",
-    "sell_price",
-}
 #: What the real order reply carries and the allowlist must NOT keep.
 ORDER_DROPPED = {
-    "placed_by", "account_id", "guid", "meta", "meta_raw", "tags", "status_message_raw", "variety", "validity",
-    "validity_ttl", "modified", "auction_number", "market_protection", "exchange_update_timestamp",
-}
-POSITION_DROPPED = {
-    "segment", "multiplier", "overnight_quantity", "overnight_value", "value", "buy_value", "buy_m2m", "sell_value",
-    "sell_m2m", "day_buy_quantity", "day_buy_price", "day_buy_value", "day_sell_quantity",
-    "day_sell_price", "day_sell_value",
+    "placed_by", "account_id", "guid", "meta", "meta_raw", "tags", "status_message", "status_message_raw", "variety",
+    "validity", "validity_ttl", "modified", "auction_number", "market_protection", "exchange_update_timestamp",
 }
 PLANTED = {
     "access_token": "SECRET-VALUE-1", "api_key": "key", "enctoken": "enc", "placed_by": "AB1234",
@@ -59,14 +49,11 @@ PLANTED = {
 TYPES = (
     (EventType.BROKER_RESPONSE_RECORDED, "orders", ORDER_FIELDS),
     (EventType.EXECUTION_RECORDED, "trades", TRADE_FIELDS),
-    (EventType.RECONCILIATION_RECORDED, "positions", POSITION_FIELDS),
 )
 
 
 def _records(kind: str, sample: str) -> list[dict]:
     data = json.loads((FIXTURES / f"{kind}-{sample}.json").read_text(encoding="utf-8"))["data"]
-    if kind == "positions":
-        return [*data["day"], *data["net"]]
     return list(data)
 
 
@@ -91,13 +78,6 @@ def test_real_order_fields_that_identify_the_client_are_dropped() -> None:
         kept = filter_payload(EventType.BROKER_RESPONSE_RECORDED, record)
         assert not (ORDER_DROPPED & set(kept))
     assert {k for _, r in _all("orders") for k in r} >= ORDER_DROPPED
-
-
-def test_real_position_housekeeping_is_dropped() -> None:
-    for _, record in _all("positions"):
-        kept = filter_payload(EventType.RECONCILIATION_RECORDED, record)
-        assert not (POSITION_DROPPED & set(kept))
-    assert {k for _, r in _all("positions") for k in r} >= POSITION_DROPPED
 
 
 @pytest.mark.parametrize("event_type, kind, expected", TYPES, ids=[t[1] for t in TYPES])
@@ -136,10 +116,11 @@ def test_session_types_stay_undeclared_and_refused(event_type: EventType) -> Non
     )
 
 
-def test_exactly_twelve_types_are_declared_and_the_others_still_refuse() -> None:
+def test_exactly_eleven_types_are_declared_and_the_others_still_refuse() -> None:
     declared = {e for e in EventType if audit_allowlist.is_declared(e)}
     assert {e.value for e in declared} >= {t[0].value for t in TYPES}
-    assert len(declared) == 12
+    assert len(declared) == 11
+    assert EventType.RECONCILIATION_RECORDED not in declared
     for event_type in set(EventType) - declared:
         with pytest.raises(UndeclaredEventType):
             filter_payload(event_type, {})
@@ -156,8 +137,47 @@ def test_no_declared_field_name_is_a_credential_or_identity_name() -> None:
 
 
 def test_the_database_text_follows_the_python_allowlist() -> None:
-    """allowlist_spec() (the source the migrations embed) lists the three types with the same field sets."""
+    """allowlist_spec() (the source the migrations embed) lists the two types with the same field sets."""
     spec = audit_allowlist.allowlist_spec()
     for event_type, _, expected in TYPES:
         assert set(spec[event_type.value]) == expected
         assert set(spec[event_type.value].values()) == {"scalar"}
+
+
+# The domain's real reconcile payload shapes (backend/ofo/reconciliation/resolution.py _resolve and the mismatch loop,
+# grouping.py GroupingSession.start), typed by hand from those lines.
+DOMAIN_RECONCILE_PAYLOADS = (
+    {  # resolution.py: manual resolution
+        "strategy_id": "S-1", "resolution": "accept_broker", "reason": "checked", "before_broker": [["NIFTY", 1]],
+        "before_platform": [["NIFTY", 2]], "after_platform": [["NIFTY", 1]], "still_blocked": False, "exited": False,
+    },
+    {  # resolution.py: mismatch
+        "kind": "quantity", "strategy_ids": ["S-1"], "broker_state": [["NIFTY", 1]], "platform_state": [["NIFTY", 2]],
+        "difference": [["NIFTY", -1]], "next_action": "resolve",
+    },
+    {  # grouping.py: suggest
+        "action": "suggest", "groups": [{"id": "g1", "legs": ["NIFTY:NRML"], "resembles": "none"}],
+        "unresolved": [], "hidden": [],
+    },
+)
+
+
+@pytest.mark.parametrize("payload", DOMAIN_RECONCILE_PAYLOADS, ids=["resolution", "mismatch", "grouping"])
+def test_reconciliation_recorded_stays_undeclared_and_refuses_the_domain_payloads(payload) -> None:
+    assert not audit_allowlist.is_declared(EventType.RECONCILIATION_RECORDED)
+    with pytest.raises(UndeclaredEventType):
+        filter_payload(EventType.RECONCILIATION_RECORDED, payload)
+
+
+@pytest.mark.parametrize("event_type", sorted(audit_allowlist.ALLOWLIST, key=lambda e: e.value), ids=lambda e: e.value)
+def test_a_payload_keeping_no_declared_field_is_refused_never_stored_empty(event_type: EventType) -> None:
+    with pytest.raises(PayloadShapeError):
+        filter_payload(event_type, {"not_a_declared_field": 1, "another": "x"})
+    assert filter_payload(event_type, {}) == {}  # an empty payload was and stays allowed
+    assert filter_payload(event_type, None) == {}
+
+
+def test_free_text_status_message_is_not_kept_on_a_real_order() -> None:
+    for _, record in _all("orders"):
+        assert "status_message" in record
+        assert "status_message" not in filter_payload(EventType.BROKER_RESPONSE_RECORDED, record)

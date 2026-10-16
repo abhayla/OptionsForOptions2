@@ -3,7 +3,7 @@
 Spec basis: REQ-063 AC-5 "Audit and other stored payloads use a per-event-type field ALLOWLIST (each event type
 declares the fields it may carry; anything else is dropped before storage), never a list of forbidden key names";
 W-052 (declare only the nine non-broker types; broker, order, execution, reconciliation, session and identity types
-stay undeclared until W-017, which needs real Kite responses); W-017 (declares the three broker-reply types below from
+stay undeclared until W-017, which needs real Kite responses); W-017 (declares the two broker-reply types below from
 the real replies of 2026-10-16, ``tests/fixtures/kite_replies/``).
 
 Rules:
@@ -32,28 +32,30 @@ Declared types and their fields (where the fields come from):
   starts_at, ends_at, reason (no payment instrument or gateway data: payments sit behind an adapter, ADR-012/ADR-029).
 
 - ``broker_response_recorded`` (W-017): one Kite ORDER record of ``GET /orders``, flat (not the ``data`` list):
-  order_id, exchange_order_id, parent_order_id, status, status_message, order_timestamp, exchange_timestamp, exchange,
+  order_id, exchange_order_id, parent_order_id, status, order_timestamp, exchange_timestamp, exchange,
   tradingsymbol, instrument_token, order_type, transaction_type, product, quantity, disclosed_quantity, price,
   trigger_price, average_price, filled_quantity, pending_quantity, cancelled_quantity, tag. Each is present in all
   three real order records and explains a decision (what was asked, what filled, why not). DROPPED on purpose:
-  ``placed_by`` and ``account_id`` (the client id), ``guid``, ``meta``/``meta_raw``/``tags``/``status_message_raw``
-  (free-form broker text and maps the reply does not promise to keep credential-free), and housekeeping
-  (variety, validity, validity_ttl, modified, auction_number, market_protection, exchange_update_timestamp).
+  ``placed_by`` and ``account_id`` (the client id), ``guid``, ``meta``/``meta_raw``/``tags``/``status_message``/
+  ``status_message_raw`` (free-form broker text and maps the reply does not promise to keep credential-free), and
+  housekeeping (variety, validity, validity_ttl, modified, auction_number, market_protection,
+  exchange_update_timestamp).
   ``exchange_token`` is not in the order reply (only ``instrument_token``), so it is not declared.
 - ``execution_recorded`` (W-017): one Kite TRADE record of ``GET /trades``, flat: trade_id, order_id,
   exchange_order_id, instrument_token, tradingsymbol, exchange, transaction_type, product, quantity, average_price,
   order_timestamp, fill_timestamp, exchange_timestamp (all fields of the real trade record; it carries no identity).
-- ``reconciliation_recorded`` (W-017): one Kite POSITION record (an element of ``data.net`` or ``data.day`` of
-  ``GET /portfolio/positions``), flat, one event per position: tradingsymbol, exchange, instrument_token, product,
-  quantity, average_price, last_price, close_price, pnl, m2m, unrealised, realised, buy_quantity, buy_price,
-  sell_quantity, sell_price. The ``day``/``net`` lists are not declared (a list of mappings cannot pass the scalar
-  filter). UNPROVEN: the domain's own reconcile-result payloads (``ofo.reconciliation.resolution`` kind /
-  strategy_ids / broker_state ..., ``grouping`` groups) have no real recorded reply; their keys are not declared here,
-  so a store write of them keeps nothing until a later item declares them.
+- ``reconciliation_recorded`` stays UNDECLARED and refused. The domain writes it with its own payloads
+  (``ofo.reconciliation.resolution``: kind / strategy_ids / broker_state ... and strategy_id / resolution /
+  still_blocked ...; ``grouping``: action / groups / unresolved / hidden). They have no real recorded reply and share
+  no key with a Kite position record, so declaring Kite position keys under this type would store them as ``{}``.
+  The position snapshot needs its OWN event type, a later item.
 - unproven for type session: no real Kite login reply recorded (GC-3 captures one). ``zerodha_session_authenticated``
   and ``zerodha_session_expired`` stay undeclared and refused.
 
-Every other ``ofo.audit.catalogue.EventType`` member (21 of 33) is undeclared and refused.
+A payload that has fields but keeps none of its type's declared fields is REFUSED (:class:`PayloadShapeError`), never
+stored as ``{}``. An empty payload (or None) stays allowed, as before.
+
+Every other ``ofo.audit.catalogue.EventType`` member (22 of 33) is undeclared and refused.
 """
 
 from __future__ import annotations
@@ -98,7 +100,7 @@ _TRIAL = _fields("platform_user_id", "starts_at", "ends_at", "reason")
 _SUBSCRIPTION = _fields("platform_user_id", "plan", "price", "starts_at", "ends_at", "reason")
 
 _BROKER_ORDER = _fields(
-    "order_id", "exchange_order_id", "parent_order_id", "status", "status_message", "order_timestamp",
+    "order_id", "exchange_order_id", "parent_order_id", "status", "order_timestamp",
     "exchange_timestamp", "exchange", "tradingsymbol", "instrument_token", "order_type", "transaction_type",
     "product", "quantity", "disclosed_quantity", "price", "trigger_price", "average_price", "filled_quantity",
     "pending_quantity", "cancelled_quantity", "tag",
@@ -107,11 +109,6 @@ _BROKER_TRADE = _fields(
     "trade_id", "order_id", "exchange_order_id", "instrument_token", "tradingsymbol", "exchange",
     "transaction_type", "product", "quantity", "average_price", "order_timestamp", "fill_timestamp",
     "exchange_timestamp",
-)
-_BROKER_POSITION = _fields(
-    "tradingsymbol", "exchange", "instrument_token", "product", "quantity", "average_price", "last_price",
-    "close_price", "pnl", "m2m", "unrealised", "realised", "buy_quantity", "buy_price", "sell_quantity",
-    "sell_price",
 )
 
 ALLOWLIST: Mapping[EventType, Mapping[str, FieldSpec]] = MappingProxyType(
@@ -131,7 +128,6 @@ ALLOWLIST: Mapping[EventType, Mapping[str, FieldSpec]] = MappingProxyType(
         EventType.SUBSCRIPTION_EXPIRED: _SUBSCRIPTION,
         EventType.BROKER_RESPONSE_RECORDED: _BROKER_ORDER,
         EventType.EXECUTION_RECORDED: _BROKER_TRADE,
-        EventType.RECONCILIATION_RECORDED: _BROKER_POSITION,
         EventType.ADMIN_CHANGE_RECORDED: _fields(
             "action", "reason", "client_id", "import_id", "dropped_instrument_tokens", "dropped_tradingsymbols",
             before=QUALIFYING_SNAPSHOT, after=QUALIFYING_SNAPSHOT,
@@ -205,4 +201,11 @@ def filter_payload(event_type: EventType, payload: Mapping[str, Any] | None) -> 
             f"{event_type.value}: no payload field allowlist is declared, so it cannot be stored (REQ-063 AC-5; "
             "session and identity events wait for a real recorded reply, W-017 declared only the broker-reply types)"
         )
-    return _filter(payload if payload is not None else {}, spec, "payload")
+    source = payload if payload is not None else {}
+    kept = _filter(source, spec, "payload")
+    if source and not kept:
+        raise PayloadShapeError(
+            f"{event_type.value}: the payload has {len(source)} field(s) but none is declared for this type, so it "
+            "would be stored empty; refused (REQ-063 AC-5)"
+        )
+    return kept

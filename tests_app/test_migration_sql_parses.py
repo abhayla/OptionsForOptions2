@@ -100,7 +100,7 @@ def test_every_migration_renders_statements() -> None:
 def test_0015_downgrade_refuses_only_when_broker_reply_rows_exist() -> None:
     statements = _statements("0015_audit_broker_allowlist", "downgrade")
     assert len(statements) == 1
-    for event_type in ("broker_response_recorded", "execution_recorded", "reconciliation_recorded"):
+    for event_type in ("broker_response_recorded", "execution_recorded"):
         assert event_type in statements[0]
     assert "IF has_rows THEN" in statements[0] and "refusing to downgrade" in statements[0]
 

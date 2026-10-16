@@ -1,7 +1,7 @@
-"""Audit store: declare the three broker-reply event types (W-017; REQ-063 AC-5).
+"""Audit store: declare the two broker-reply event types (W-017; REQ-063 AC-5).
 
 Basis: REQ-063 AC-5 (a per-event-type field ALLOWLIST, anything undeclared dropped before storage). W-017 adds
-``broker_response_recorded``, ``execution_recorded`` and ``reconciliation_recorded`` to
+``broker_response_recorded`` and ``execution_recorded`` to
 ``ofo_app.audit_allowlist.ALLOWLIST``. 0002 and 0003 render that allowlist at import, so a fresh database already
 has it; a database created before this revision still holds the nine-type text, so this revision brings it level
 (the case 0003's docstring names: a change to allowlist_spec() REQUIRES a new migration that re-creates the function AND
@@ -14,7 +14,7 @@ rebuilds the pins):
 
 Both re-creations are idempotent on a fresh database. Pre-phase runs against the old text, post-phase against the new.
 
-Downgrade: refuses only WHEN rows of the three new types exist (append-only store; the pattern 0011 uses), and
+Downgrade: refuses only WHEN rows of the two new types exist (append-only store; the pattern 0011 uses), and
 otherwise round-trips: the predecessors render their state from the current allowlist, so 0014's state is already
 what upgrade() leaves.
 
@@ -50,7 +50,7 @@ _PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0015")
 _AUDIT = _PREVIOUS._M8._PREV  # 0002: the audit store's constants and renderers
 _BASE = _AUDIT._BASE  # 0001
 
-NEW_EVENT_TYPES = ("broker_response_recorded", "execution_recorded", "reconciliation_recorded")
+NEW_EVENT_TYPES = ("broker_response_recorded", "execution_recorded")
 CONSTRAINT = "audit_events_event_type_check"  # PostgreSQL's name for 0002's unnamed column CHECK
 
 
@@ -85,7 +85,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Audit rows are append-only: refuse (like 0011) only when a row of one of the three new types exists.
+    # Audit rows are append-only: refuse (like 0011) only when a row of one of the two new types exists.
     # Otherwise the schema is already 0014's: 0002/0003/0014 render the CHECK, the payload allowlist and the pins from
     # the current allowlist_spec() at import, so on a replay chain 0014's state equals the state upgrade() leaves.
     # (A database created before this revision keeps the superset text; the narrower text cannot be rebuilt from the
