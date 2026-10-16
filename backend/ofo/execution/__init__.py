@@ -7,7 +7,7 @@ from ofo.execution.context import (
     MarginPlanner,
     VersionState,
     active_legs_hash,
-    margin_required_from,
+    margin_estimate_from,
 )
 from ofo.execution.safety import (
     BlockedExecution,
@@ -35,6 +35,6 @@ __all__ = [
     "VersionState",
     "active_legs_hash",
     "check_pre_execution",
-    "margin_required_from",
+    "margin_estimate_from",
     "pro_requirement",
 ]

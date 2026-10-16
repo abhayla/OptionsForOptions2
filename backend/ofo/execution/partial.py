@@ -31,7 +31,9 @@ Orchestrator defaults (not stated by the spec; each also marked where it is used
   leg; placed only after the user confirms. "Complete Strategy" prepares every missing leg.
 - OD-b a missing leg with a non-terminal order in the reconciled book is not yet failed: IN_PROGRESS, nothing prepared.
 - OD-c the price on a completing/retry order is the planned leg's price; the user reviews it before confirming.
-- OD-d margin re-check: available margin re-read from the broker; required = the planner's figure for the new orders.
+- OD-d margin re-check (#273, REQ-055 AC-1/AC-3): available margin re-read from the broker; required = ZERODHA's figure
+  for exactly the new orders (``BrokerReader.fetch_required_margin``), never the platform's planner estimate. Either
+  read failing blocks (fail closed); the planner only feeds the before/after margin shown by the Strategy Guard.
 - OD-e close orders are priced at the broker's LTP; a missing LTP prepares nothing. Buy-backs of shorts go first.
 - OD-f a broker position outside the plan, on the wrong side, or larger than planned is a reconciliation mismatch.
 - OD-g size caps: at most 20 planned legs, 100 position lines and 200 order statuses per read.
@@ -71,6 +73,7 @@ from ofo.errors import CATALOGUE, UserFacingError, display_text, render
 from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
+from ofo.money import zerodha_paise
 from ofo.engine.product import Product
 from ofo.execution.context import (
     ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash, product_key,
@@ -170,6 +173,11 @@ class BrokerReader(Protocol):
 
     def fetch_available_margin(self) -> Decimal: ...
 
+    def fetch_required_margin(self, orders: Sequence[Order]) -> Decimal:
+        """Zerodha's own required margin for exactly ``orders`` (the basket-margin reply's ``final.total`` plus the
+        ADR-094 top-up, a negative total counted as 0), an exact Decimal. The platform's estimate never stands in."""
+        ...
+
 
 class OrderRefused(Exception):
     """Raised by the broker transport when the broker definitely refused the order (its text is the message). Any
@@ -201,7 +209,7 @@ class Assessment:
     mismatches: tuple[str, ...]
     metrics: StrategyMetrics | None  # engine, on actual_legs (AC-1)
     live_pnl: Decimal | None  # engine, on actual_legs, when the broker gave every LTP
-    margin_required: Decimal | None  # planner, on actual_legs
+    margin_required: Decimal | None  # planner ESTIMATE on actual_legs: shown only, never decides a block (#273)
     choices: tuple[PartialChoice, ...]  # CHOICE_ORDER only in PARTIAL_EXCEPTION
     read_at: datetime.datetime  # the older of the two broker reads this assessment rests on
     open_orders: tuple[OrderView, ...]  # non-terminal in the reconciled book: the ONLY meaning of "in flight"
@@ -688,10 +696,12 @@ def _prepare_missing(
     )
     try:
         available = require_decimal(reader.fetch_available_margin(), "margin_available")  # OD-d: fresh read
+        # OD-d / #273: the required figure is Zerodha's for exactly these orders, rounded half-up to the paisa
+        # (ADR-101); the planner's estimate never decides the block, and an unreadable figure blocks (fail closed).
+        required = zerodha_paise(require_decimal(reader.fetch_required_margin(orders), "margin_required"))
     except Exception:  # fail closed
         logger.exception("margin re-read failed strategy=%s", plan.strategy_id)
         return _not_prepared(choice, a, "partial_margin_reread_failed")
-    required = require_decimal(planner.required_margin(Strategy(legs)), "margin_required")  # OD-d
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
     prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
                  slices=seq.orders)
