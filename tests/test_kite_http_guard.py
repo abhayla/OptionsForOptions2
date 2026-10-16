@@ -143,3 +143,33 @@ def test_plain_hosts_still_pass_through_and_uppercase_kite_still_hits_the_path_r
     kite_http.check_call("GET", "http://api.kite.trade/instruments")
     with pytest.raises(kite_http.KiteCallRefused):
         kite_http.check_call("POST", "https://API.KITE.TRADE/orders/regular")
+
+
+# -- round 6: the websocket door's address check (ofo_app/kite_ws.py applies it) ------------------------------------
+
+
+@pytest.mark.parametrize("url", [
+    "wss://ws.kite.trade?api_key=k&access_token=t", "wss://ws.kite.trade/?api_key=k", "wss://ws.kite.trade:443",
+    "ws://127.0.0.1:9", "ws://localhost:8765/x",  # local fakes are not Kite hosts: not this door's concern
+])
+def test_ws_door_accepts_the_kite_socket_and_local_fakes(url: str) -> None:
+    kite_http.check_ws_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "ws://ws.kite.trade",                    # Kite only over TLS
+    "wss://api.kite.trade",                  # wrong Kite host
+    "wss://ws.kite.trade/orders/regular",    # a path on the socket host
+    "wss://ws.kite.trade:80", "wss://WS.KITE.TRADE", "wss://ws.kite.trade.",
+    "wss://ws.kite%2Etrade", "wss://user@ws.kite.trade", "wss://ws。kite。trade", "wss://ws.zerodha.com",
+    "https://ws.kite.trade", "wss://", "",
+])
+def test_ws_door_refuses_anything_else(url: str) -> None:
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_ws_url(url)
+
+
+def test_the_kite_hosts_come_from_one_place() -> None:
+    from ofo.broker import kite_endpoints
+    assert kite_http.KITE_API_HOST is kite_endpoints.KITE_API_HOST
+    assert kite_http.KITE_WS_HOST is kite_endpoints.KITE_WS_HOST

@@ -1,25 +1,31 @@
 """W-080 AC-4 (REQ-073, ADR-054): no code path places an order through Kite's order-placement API; this test fails if
 one is added.
 
-The guarantee is STRUCTURAL and lives at runtime, not in this scan: every Kite HTTP request goes through
-``ofo.broker.kite_http.check_call`` (urllib door ``open_url``, and the httpx factory ``ofo_app.kite_http`` whose clients
-carry a request hook), which refuses BEFORE sending anything not in ``ALLOWED_CALLS`` in
-``backend/ofo/broker/kite_endpoints.py``. Those are proven by ``tests/test_kite_http_guard.py`` and
-``tests_app/test_kite_http_guard.py``. A static scan cannot see every way a client reaches a module (one passed in as a
-parameter, a path built with ``urljoin`` or ``"/".join``), so THIS file is only the second layer, and it says what it
-checks and no more:
-1. the allow-list holds no write under ``/orders`` or ``/gtt`` (read-only ``POST /charges/orders``, ``GET /orders``
-   are fine);
-2. no module outside the allow-list and the plumbing modules imports an HTTP library, calls ``__import__`` /
-   ``import_module``, names ``api.kite.trade`` or uses ``KITE_API_ROOT`` / ``KITE_API_URL``;
-3. no module carries a string that looks like an order or gtt path (``orders/..``, ``/orders``) unless it is its own
-   allow-listed path, and a listed module carries no HTTP verb or ``/``-path outside its own entries.
-It does NOT prove no client was handed in some other way; the factory's refusal is what covers that. The planted
-examples are built in memory and never committed.
+Two layers, each a structural allow-list (run-discipline B8), neither a list of forbidden spellings:
+
+1. RUNTIME (the guarantee): every Kite request goes through a door that refuses, BEFORE sending, anything not in
+   ``ALLOWED_CALLS`` (``backend/ofo/broker/kite_endpoints.py``): the urllib door ``open_url``, the httpx classes in
+   ``ofo_app/kite_http.py`` whose ``send()`` and last hop check every request (proven in ``tests/test_kite_http_guard.py``
+   and ``tests_app/test_kite_http_guard.py``), and the websocket door ``ofo_app/kite_ws.py``.
+2. STATIC (this file): ``scan_imports`` holds every backend module to an import ALLOW-list. A module may import only
+   the standard-library modules in ``SAFE_STDLIB``, the packages in ``SAFE_PACKAGES``, the exact pairs in
+   ``ALLOWED_IMPORTS``; only a door in ``NETWORK_DOORS`` may import its network module. An unknown module FAILS until
+   someone adds it here deliberately. Process / FFI / dynamic-import escapes fail anywhere (``subprocess``, ``ctypes``,
+   ``importlib`` outside ``EXEMPT``, ``builtins`` are simply not on the list; ``__import__``, ``__builtins__``,
+   ``exec``, ``eval``, ``compile``, ``sys.modules`` / ``meta_path`` / ``path_hooks`` / ``_getframe``, ``os.system`` /
+   ``popen`` / ``exec*`` / ``spawn*`` and the asyncio connection / subprocess calls are refused by name of their
+   import source). Replacing a client's ``send`` / ``event_hooks`` / ``_transport`` outside a door fails. A file that
+   does not parse fails (it cannot be shown clean).
+
+The bar, plainly: ordinary and accidental additions are caught (a new HTTP library, a raw socket, a subprocess, an
+``exec``, a guard swap). Deliberately obfuscated code (``getattr`` with a computed name, ``vars(sys)[...]``) is NOT
+claimed: that is a code-review matter, and the runtime doors still refuse whatever reaches them. Planted examples are
+written to a temp folder and never committed.
 """
 from __future__ import annotations
 
 import ast
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -29,17 +35,183 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from ofo.broker.kite_endpoints import ALLOWED_CALLS, DOOR_CONSUMERS, HTTP_PLUMBING_MODULES  # noqa: E402
+from ofo.broker.kite_endpoints import ALLOWED_CALLS, ALLOWED_IMPORTS, EXEMPT, NETWORK_DOORS  # noqa: E402
 
-BANNED_IMPORTS = ("requests", "httpx", "aiohttp", "urllib3", "urllib.request", "http.client", "kiteconnect")
-DYNAMIC_IMPORTS = ("__import__", "import_module")
-WRITE_VERBS = frozenset({"put", "delete", "patch", "request", "stream", "send", "options"})
-PLACEMENT_PATH = re.compile(r"^/(orders|gtt)(/|$)")
+# -- the allow-list -------------------------------------------------------------------------------------------------
+
+#: standard-library modules any module may import whole (none opens a connection or runs other code by itself).
+#: A submodule is NOT implied: ``logging.handlers`` (socket / HTTP handlers) and ``asyncio.subprocess`` are refused.
+SAFE_STDLIB = frozenset({
+    "__future__", "abc", "argparse", "asyncio", "base64", "binascii", "collections", "collections.abc", "contextlib",
+    "csv", "dataclasses", "datetime", "decimal", "enum", "fractions", "functools", "gzip", "hashlib", "hmac",
+    "inspect", "io", "itertools", "json", "logging", "math", "os", "os.path", "pathlib", "queue", "re", "secrets",
+    "statistics", "struct", "sys", "threading", "time", "types", "typing", "unicodedata", "weakref",
+})
+#: packages whose every submodule is allowed: ours, and the third-party ones the app is built on. sqlalchemy is the DB
+#: driver (a network client to PostgreSQL only, configured by DATABASE_URL), stated here on purpose.
+SAFE_PACKAGES = frozenset({"ofo", "ofo_app", "alembic", "cryptography", "fastapi", "jsonschema", "pydantic",
+                           "pydantic_settings", "sqlalchemy", "starlette", "yaml"})
+#: submodules of a safe package that are NOT allowed (an HTTP client inside a web framework).
+UNSAFE_SUBMODULES = frozenset({"starlette.testclient", "fastapi.testclient"})
+
+#: names refused wherever they appear: dynamic import / code execution.
+DYNAMIC_NAMES = frozenset({"__import__", "__builtins__", "exec", "eval", "compile"})
+#: members refused by their import source (``import os as o; o.system`` and ``from os import system`` alike).
+BANNED_MEMBERS = {
+    "os": ("system", "popen", "exec", "spawn", "posix_spawn", "fork", "startfile"),  # prefixes
+    "sys": ("modules", "meta_path", "path_hooks", "path_importer_cache", "_getframe"),
+}
+#: asyncio / event-loop calls that open a connection or a process; refused as an attribute on anything (a loop object
+#: has no import source) and as an imported name.
+NETWORK_CALLS = frozenset({
+    "open_connection", "open_unix_connection", "create_connection", "create_unix_connection", "start_tls",
+    "create_datagram_endpoint", "create_server", "create_unix_server", "start_server", "start_unix_server",
+    "sock_connect", "create_subprocess_exec", "create_subprocess_shell", "subprocess_exec", "subprocess_shell",
+})
+#: client attributes that carry the guard or the wire; replacing one outside a door is refused.
+GUARD_ATTRS = frozenset({"send", "_send_single_request", "event_hooks", "_event_hooks", "_transport", "_mounts",
+                         "__class__"})
+
+
+#: EXEMPT construct names that are not the attribute itself, and the source token proving the use is still there.
+CONSTRUCT_OF = {"__class__": "module-freeze"}
+USE_TOKEN = {"module-freeze": "__class__"}
+
+
+def _exempt(name: str, construct: str) -> bool:
+    return any(construct in reasons and (name == key or (key.endswith("/") and name.startswith(key)))
+               for key, reasons in EXEMPT.items())
+
+
+def _is_module(dotted: str) -> bool:
+    try:
+        return importlib.util.find_spec(dotted) is not None
+    except (ImportError, ValueError, AttributeError):
+        return False
+
+
+def _module_ok(mod: str, door_roots: frozenset[str]) -> bool:
+    if any(mod == r or mod.startswith(r + ".") for r in door_roots):
+        return True
+    if any(mod == u or mod.startswith(u + ".") for u in UNSAFE_SUBMODULES):
+        return False
+    return mod.split(".")[0] in SAFE_PACKAGES or mod in SAFE_STDLIB
+
+
+def _banned_member(module: str, member: str) -> bool:
+    return any(member.startswith(p) for p in BANNED_MEMBERS.get(module, ()))
+
+
+def _parse(source: str, name: str):
+    try:
+        return ast.parse(source), []
+    except SyntaxError as exc:
+        return None, [f"{name}: cannot be parsed ({exc.msg}), so it cannot be shown free of network access"]
+
+
+def _dotted(node: ast.AST) -> list[str] | None:
+    """``a.b.c`` -> ["a", "b", "c"]; None when the chain does not start at a plain name."""
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    return [node.id, *reversed(parts)]
+
+
+def scan_imports(source: str, name: str) -> list[str]:
+    """Every import, dynamic construct and guard swap in one module, against the allow-list (``name`` is the path
+    relative to ``backend/``; it decides door roots and exemptions)."""
+    tree, bad = _parse(source, name)
+    if tree is None:
+        return bad
+    door_roots = NETWORK_DOORS.get(name, frozenset())
+    if _exempt(name, "importlib"):
+        door_roots = door_roots | {"importlib.util"}
+    found: list[str] = []
+    bound: dict[str, str] = {}  # local name -> module it is bound to
+
+    def flag(node: ast.AST, what: str) -> None:
+        found.append(f"{name}:{getattr(node, 'lineno', 0)}: {what}")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.asname:
+                    target, local = a.name, a.asname
+                else:  # ``import a.b`` binds ``a``: everything loaded under ``a`` becomes reachable
+                    target, local = a.name.split(".")[0], a.name.split(".")[0]
+                own = any(a.name == r or a.name.startswith(r + ".") for r in door_roots)  # a door's own module
+                if not (_module_ok(a.name, door_roots) and (own or _module_ok(target, door_roots))):
+                    flag(node, f"import {a.name} is not on the import allow-list")
+                bound[local] = target
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level:
+                flag(node, "relative import cannot be resolved by the scan; use an absolute import")
+                continue
+            for a in node.names:
+                full = f"{mod}.{a.name}"
+                if (mod, a.name) in ALLOWED_IMPORTS or (mod, "*") in ALLOWED_IMPORTS and a.name != "*":
+                    continue
+                if a.name == "*":
+                    if mod.split(".")[0] not in ("ofo", "ofo_app"):
+                        flag(node, f"from {mod} import * hides what is imported")
+                    continue
+                if not _module_ok(mod, door_roots):
+                    flag(node, f"from {mod} import {a.name} is not on the import allow-list")
+                elif _banned_member(mod, a.name) or (mod.split(".")[0] == "asyncio" and a.name in NETWORK_CALLS):
+                    flag(node, f"from {mod} import {a.name} opens a process, connection or the import system")
+                elif mod.split(".")[0] not in SAFE_PACKAGES and _is_module(full) and not _module_ok(full, door_roots):
+                    flag(node, f"from {mod} import {a.name}: submodule {full} is not on the import allow-list")
+                elif _is_module(full):
+                    bound[a.asname or a.name] = full
+        elif isinstance(node, ast.Name) and node.id in DYNAMIC_NAMES:
+            flag(node, f"{node.id} (dynamic import or code execution)")
+        elif isinstance(node, ast.Attribute):
+            if node.attr in NETWORK_CALLS:
+                flag(node, f".{node.attr} opens a connection or a process")
+            if node.attr in GUARD_ATTRS and isinstance(node.ctx, (ast.Store, ast.Del)) and name not in NETWORK_DOORS                     and not _exempt(name, CONSTRUCT_OF.get(node.attr, node.attr)):
+                flag(node, f"replaces .{node.attr} of an object (a client's guard or transport)")
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            setter = (isinstance(fn, ast.Name) and fn.id in ("setattr", "delattr")) or \
+                     (isinstance(fn, ast.Attribute) and fn.attr in ("__setattr__", "__delattr__"))
+            arg = node.args[1] if setter and len(node.args) > 1 else None
+            if isinstance(arg, ast.Constant) and arg.value in GUARD_ATTRS and name not in NETWORK_DOORS:
+                flag(node, f"replaces .{arg.value} of an object via {ast.unparse(fn)}")
+
+    # attribute chains on a bound module: submodules and banned members by import source
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        chain = _dotted(node)
+        if not chain or chain[0] not in bound:
+            continue
+        module = bound[chain[0]]
+        for attr in chain[1:]:
+            if _banned_member(module, attr) and not _exempt(name, f"{module}.{attr}"):
+                flag(node, f"{module}.{attr} opens a process or reaches the import system")
+                break
+            candidate = f"{module}.{attr}"
+            if module.split(".")[0] not in SAFE_PACKAGES and _is_module(candidate):
+                if not _module_ok(candidate, door_roots):
+                    flag(node, f"{candidate} is reached through {chain[0]} and is not on the import allow-list")
+                    break
+                module = candidate
+            else:
+                break
+    return sorted(set(found))
 
 
 def placement_in(calls) -> list[str]:
     """Allow-list entries that would place, modify or cancel: any non-GET under /orders or /gtt."""
     return [f"{m} {p}" for m, p in calls if m != "GET" and PLACEMENT_PATH.match(p)]
+
+
+PLACEMENT_PATH = re.compile(r"^/(orders|gtt)(/|$)")
+WRITE_VERBS = frozenset({"put", "delete", "patch", "request", "stream", "send", "options"})
 
 
 def _docstrings(tree: ast.AST) -> set[int]:
@@ -52,83 +224,13 @@ def _docstrings(tree: ast.AST) -> set[int]:
     return out
 
 
-def _parse(source: str, name: str):
-    try:
-        return ast.parse(source), []
-    except SyntaxError as exc:
-        return None, [f"{name}: cannot be parsed ({exc.msg}), so it cannot be shown free of Kite HTTP"]
-
-
-def _is_banned(module: str) -> bool:
-    return any(module == b or module.startswith(b + ".") for b in BANNED_IMPORTS)
-
-
-def scan_network(source: str, name: str = "<source>") -> list[str]:
-    """Anything that gives a module a way to talk to Kite over HTTP."""
-    tree, bad = _parse(source, name)
-    if tree is None:
-        return bad
-    docs = _docstrings(tree)
-    found: list[str] = []
-    for node in ast.walk(tree):
-        line = getattr(node, "lineno", 0)
-        if isinstance(node, ast.Import):
-            found += [f"{name}:{line}: import {a.name}" for a in node.names
-                      if _is_banned(a.name)]
-        elif isinstance(node, ast.ImportFrom):
-            mod = node.module or ""
-            if _is_banned(mod):
-                found.append(f"{name}:{line}: from {mod} import ...")
-            found += [f"{name}:{line}: from {mod} import {a.name}" for a in node.names
-                      if _is_banned(f"{mod}.{a.name}".strip("."))]
-        elif isinstance(node, ast.Name) and node.id in DYNAMIC_IMPORTS:
-            found.append(f"{name}:{line}: dynamic import {node.id}")
-        elif isinstance(node, ast.Attribute) and node.attr in DYNAMIC_IMPORTS:
-            found.append(f"{name}:{line}: dynamic import .{node.attr}")
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs \
-                and "api.kite.trade" in node.value:
-            found.append(f"{name}:{line}: names the Kite API host")
-    return found
-
-
-ORDER_STRING = re.compile(r"(^|/)(orders|gtt)/|/(orders|gtt)$")
-ROOT_NAMES = ("KITE_API_ROOT", "KITE_API_URL")
-
-
 def _template_parts(templates) -> list[str]:
     return [p for t in templates for p in re.split(r"\{[^}]*\}", t) if p]
 
 
 def _is_own_path(value: str, templates) -> bool:
-    """The constant IS one of this module's allow-listed paths (whole, or a literal piece of one)."""
     whole = [re.compile(re.sub(r"\\\{[^}]*\\\}", "[^/]+", re.escape(t))) for t in templates]
     return any(rx.fullmatch(value.split("?")[0]) for rx in whole) or value in _template_parts(templates)
-
-
-def scan_order_strings(source: str, name: str, allowed=()) -> list[str]:
-    """Any code string that looks like an order / gtt path, unless it is the module's own allow-listed path."""
-    tree, bad = _parse(source, name)
-    if tree is None:
-        return bad
-    docs = _docstrings(tree)
-    templates = [p for _, p in allowed]
-    return [f"{name}:{getattr(n, 'lineno', 0)}: order path {n.value!r}" for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs
-            and ORDER_STRING.search(n.value) and not _is_own_path(n.value, templates)]
-
-
-def scan_root_use(source: str, name: str) -> list[str]:
-    """Use of the Kite API root constant (the way an unlisted module would reach the host with a handed-in client)."""
-    tree, bad = _parse(source, name)
-    if tree is None:
-        return bad
-    found = []
-    for n in ast.walk(tree):
-        used = (n.id if isinstance(n, ast.Name) else n.attr if isinstance(n, ast.Attribute)
-                else [a.name for a in n.names if a.name in ROOT_NAMES] if isinstance(n, ast.ImportFrom) else None)
-        if used in ROOT_NAMES or (isinstance(used, list) and used):
-            found.append(f"{name}:{getattr(n, 'lineno', 0)}: uses the Kite API root")
-    return found
 
 
 def _fits(fragment: str, templates) -> bool:
@@ -140,8 +242,15 @@ def _fits(fragment: str, templates) -> bool:
     return False
 
 
+ORDER_STRING = re.compile(r"(^|/)(orders|gtt)/|/(orders|gtt)$")
+
+
+def _is_call_target(tree: ast.AST, attr: ast.Attribute) -> bool:
+    return any(isinstance(n, ast.Call) and n.func is attr for n in ast.walk(tree))
+
+
 def scan_allowed_module(source: str, name: str, allowed) -> list[str]:
-    """A module that may call Kite: only its own methods, paths and plain requests."""
+    """A module listed in ALLOWED_CALLS: only its own methods, paths and plain requests (its allow-list binds it)."""
     tree, bad = _parse(source, name)
     if tree is None:
         return bad
@@ -172,47 +281,15 @@ def scan_allowed_module(source: str, name: str, allowed) -> list[str]:
     return found
 
 
-def _is_call_target(tree: ast.AST, attr: ast.Attribute) -> bool:
-    return any(isinstance(n, ast.Call) and n.func is attr for n in ast.walk(tree))
+def _modules_under(root: Path) -> dict[str, str]:
+    return {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for p in sorted(root.rglob("*.py"))}
 
 
-DOOR_MODULES = frozenset({"ofo.broker.kite_http", "ofo_app.kite_http"})
-_DOOR_PARENTS = frozenset({"ofo.broker", "ofo_app"})
+def scan_tree(root: Path) -> list[str]:
+    return [f for name, src in _modules_under(root).items() for f in scan_imports(src, name)]
 
 
-def scan_door_imports(source: str, name: str) -> list[str]:
-    """Any import of a Kite door module (every import form). Relative imports and dynamic imports that cannot be
-    resolved to a plain module name are flagged too: fail closed."""
-    tree, bad = _parse(source, name)
-    if tree is None:
-        return bad
-    found: list[str] = []
-    for n in ast.walk(tree):
-        line = getattr(n, "lineno", 0)
-        hit = False
-        if isinstance(n, ast.Import):
-            hit = any(a.name in DOOR_MODULES or a.name.endswith("kite_http") for a in n.names)
-        elif isinstance(n, ast.ImportFrom):
-            mod = n.module or ""
-            names = [a.name for a in n.names]
-            hit = (mod in DOOR_MODULES or mod.endswith("kite_http") or "kite_http" in names
-                   or (n.level > 0 and ("*" in names or mod == "")) or (mod in _DOOR_PARENTS and "*" in names))
-        elif isinstance(n, ast.Call):
-            fn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
-            if fn in DYNAMIC_IMPORTS:
-                arg = n.args[0] if n.args else None
-                literal = isinstance(arg, ast.Constant) and isinstance(arg.value, str)
-                hit = not literal or "kite_http" in arg.value
-        if hit:
-            found.append(f"{name}:{line}: imports a Kite door (or an import that cannot be resolved)")
-    return found
-
-
-def _backend_modules() -> dict[str, str]:
-    return {p.relative_to(BACKEND).as_posix(): p.read_text(encoding="utf-8") for p in sorted(BACKEND.rglob("*.py"))}
-
-
-# -- the real backend ---------------------------------------------------------------------------------------------
+# -- the real backend -----------------------------------------------------------------------------------------------
 
 
 def test_allow_list_holds_no_placement_modify_or_cancel_path() -> None:
@@ -222,75 +299,141 @@ def test_allow_list_holds_no_placement_modify_or_cancel_path() -> None:
     assert all(m in ("GET", "POST") for m, _ in all_calls)
 
 
-def test_no_other_module_can_talk_to_kite_over_http() -> None:
-    modules = _backend_modules()
+def test_every_backend_module_passes_the_import_allow_list() -> None:
+    modules = _modules_under(BACKEND)
     assert len(modules) > 50, "the scan must actually see the backend"
-    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)
-    offenders = [f for name, src in modules.items() if name not in permitted for f in scan_network(src, name)]
-    assert offenders == []
+    assert scan_tree(BACKEND) == []
 
 
-def test_no_module_carries_an_order_path_or_the_api_root_outside_the_list() -> None:
-    modules = _backend_modules()
-    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)
-    paths = [f for name, src in modules.items() for f in scan_order_strings(src, name, ALLOWED_CALLS.get(name, ()))]
-    roots = [f for name, src in modules.items() if name not in permitted for f in scan_root_use(src, name)]
-    assert paths == [] and roots == []
+def test_doors_exist_and_really_import_their_network_module() -> None:
+    """A stale door entry (module renamed, or no longer the one importing its library) is a finding."""
+    modules = _modules_under(BACKEND)
+    for door, roots in NETWORK_DOORS.items():
+        assert door in modules, f"{door} is a listed door but does not exist"
+        tree = ast.parse(modules[door])
+        imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names} | \
+                   {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+        assert any(i == r or i.startswith(r + ".") for i in imported for r in roots), door
 
 
-def test_listed_modules_exist_and_really_use_http() -> None:
-    """A stale entry (module renamed or no longer calling Kite) is a finding, so the list cannot rot into a free pass."""
-    modules = _backend_modules()
-    for name in set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES):
-        assert name in modules, f"{name} is listed but does not exist"
-        uses = scan_network(modules[name], name) or "kite_http" in modules[name]
-        assert uses, f"{name} is listed but no longer uses HTTP or the Kite door"
+def test_exemptions_are_still_used() -> None:
+    modules = _modules_under(BACKEND)
+    for key, reasons in EXEMPT.items():
+        names = [n for n in modules if n == key or (key.endswith("/") and n.startswith(key))]
+        assert names, f"EXEMPT {key} matches no module"
+        for construct in reasons:
+            token = USE_TOKEN.get(construct, construct.split(".")[-1])
+            assert any(token in modules[n] for n in names), f"EXEMPT {key} {construct} is no longer used"
 
 
-def test_listed_modules_stay_inside_their_own_entries() -> None:
-    modules = _backend_modules()
+def test_listed_modules_go_through_a_door_and_stay_inside_their_own_entries() -> None:
+    modules = _modules_under(BACKEND)
+    doors = ("ofo.broker.kite_http", "ofo_app.kite_http")
     for name, allowed in ALLOWED_CALLS.items():
+        assert name in modules, f"{name} is listed but does not exist"
+        assert any(d in modules[name] for d in doors), f"{name} is listed but no longer uses a Kite door"
         assert scan_allowed_module(modules[name], name, allowed) == []
 
 
-# -- the checkers catch the shapes the old forbidden-list missed ---------------------------------------------------
+# -- planted modules: the round-5 bypasses and the rest of the class ------------------------------------------------
+
+PLANTED = {
+    "b1_urllib": 'import urllib\nurllib.request.urlopen(urllib.request.Request("https://api.kite."+"trade/orde"'
+                 '+"rs/regular", data=b"x", method="POST"))\n',
+    "b2_http_client": 'import http\nhttp.client.HTTPSConnection("api.kite."+"trade").request("POST","/orde"+"rs/regular")\n',
+    "b3_socket_ssl": 'import socket, ssl\ns = ssl.create_default_context().wrap_socket(socket.create_connection(('
+                     '"api.kite."+"trade", 443)), server_hostname="x")\ns.sendall(b"POST /orders/regular")\n',
+    "b4_sys_modules": 'import sys\nsys.modules["requ"+"ests"].post("https://x/y")\n',
+    "subprocess": 'import subprocess\nsubprocess.run(["curl", "-X", "POST", "u"])\n',
+    "asyncio_open_connection": 'import asyncio\nasync def f():\n    await asyncio.open_connection("h", 443)\n',
+    "base64_exec": 'import base64\nexec(base64.b64decode(b"aW1wb3J0IHJlcXVlc3Rz"))\n',
+    "loop_create_connection": 'import asyncio\nasyncio.get_running_loop().create_connection(P, "h", 443)\n',
+    "from_asyncio_import": 'from asyncio import open_connection\n',
+    "asyncio_subprocess_attr": 'import asyncio\nasyncio.subprocess.PIPE\n',
+    "ctypes": 'import ctypes\n',
+    "dunder_import": 'm = __import__("requ" + "ests")\n',
+    "importlib": 'import importlib\nimportlib.import_module("x")\n',
+    "importlib_util": 'import importlib.util\n',
+    "builtins": 'import builtins\nbuiltins.exec("x")\n',
+    "dunder_builtins": '__builtins__["exec"]("x")\n',
+    "eval": 'eval("1")\n',
+    "compile": 'c = compile("x", "f", "exec")\n',
+    "os_system": 'import os\nos.system("curl")\n',
+    "os_alias_popen": 'import os as o\no.popen("curl")\n',
+    "from_os_import": 'from os import execv\n',
+    "sys_meta_path": 'import sys\nsys.meta_path.insert(0, F())\n',
+    "sys_getframe": 'import sys\nsys._getframe(1)\n',
+    "logging_handlers_import": 'import logging.handlers\n',
+    "logging_handlers_from": 'from logging import handlers\n',
+    "logging_handlers_attr": 'import logging\nlogging.handlers.HTTPHandler("api.kite.trade", "/orders/regular")\n',
+    "urllib_parse_binds_urllib": 'import urllib.parse\n',
+    "from_http_import_client": 'from http import client\n',
+    "from_urllib_import_request": 'from urllib import request\n',
+    "httpx_outside_door": 'import httpx\n',
+    "requests": 'import requests\n',
+    "websockets_outside_door": 'from websockets.asyncio.client import connect\n',
+    "unknown_module": 'import anyio\n',
+    "starlette_testclient": 'from starlette.testclient import TestClient\n',
+    "relative": 'from .kite_http import kite_client\n',
+    "star_import": 'from os import *\n',
+    "send_swap": 'c.send = f\n',
+    "event_hooks_swap": 'c = kite_client()\nc.event_hooks = {}\n',
+    "transport_swap": 'c._transport = t\n',
+    "class_swap": 'c.__class__ = Plain\n',
+    "setattr_send": 'setattr(c, "send", f)\n',
+    "object_setattr_send": 'object.__setattr__(c, "send", f)\n',
+    "unparsable": 'def (:\n',
+}
 
 
-@pytest.mark.parametrize("planted", [
-    'import httpx\nhttpx.Client(base_url="https://api.kite.trade").post("orders/regular")\n',
-    'import requests\nfrom urllib.parse import urljoin\nrequests.post(urljoin(ROOT, "orders/regular"))\n',
-    'from kiteconnect import KiteConnect\nk = KiteConnect()\ngetattr(k, "place_order")()\n',
-    'import kiteconnect\n',
-    'import requests\nrequests.post("/".join([ROOT, "orders", "regular"]))\n',
-    'import urllib.request\n',
-    'from urllib import request\n',
-    'from urllib.request import urlopen\n',
-    'import http.client\n',
-    'from http import client\n',
-    'import aiohttp\n',
-    'import urllib3\n',
-    'import requests.adapters\n',
-    'x = __import__("requests")\n',
-    'from importlib import import_module\nimport_module("requests")\n',
-    'mod = importlib.import_module("httpx")\n',
-    'HOST = "https://api.kite.trade"\n',
-    'url = f"{base}api.kite.trade/orders"\n',
-    'def (:\n',
+@pytest.mark.parametrize("key", sorted(PLANTED))
+def test_planted_module_fails_the_scan(tmp_path: Path, key: str) -> None:
+    (tmp_path / "ofo_app").mkdir()
+    (tmp_path / "ofo_app" / "clean.py").write_text("import json\n", encoding="utf-8")
+    (tmp_path / "ofo_app" / f"{key}.py").write_text(PLANTED[key], encoding="utf-8")
+    found = scan_tree(tmp_path)
+    assert found and all(f.startswith(f"ofo_app/{key}.py") for f in found), (key, found)
+
+
+@pytest.mark.parametrize("door, source", [
+    ("ofo_app/kite_http.py", "import requests\n"),          # a door may import only its own network module
+    ("ofo_app/kite_ws.py", "import httpx\n"),
+    ("ofo_app/kite_http.py", 'exec("x")\n'),                # doors are not exempt from the dynamic bans
+    ("ofo/broker/kite_http.py", "import socket\n"),
+    ("ofo/errors/explanations.py", "import sys\nsys.modules\n"),  # an exemption covers only its own construct
+    ("ofo_app/alembic/versions/0099_x.py", "import subprocess\n"),
 ])
-def test_network_scan_catches_planted_shapes(planted: str) -> None:
-    assert scan_network(planted, "planted.py"), planted
+def test_doors_and_exemptions_are_held_to_their_own_entry(door: str, source: str) -> None:
+    assert scan_imports(source, door), (door, source)
 
 
 @pytest.mark.parametrize("clean", [
-    '"""Docs may say api.kite.trade, requests and httpx."""\nx = 1\n',
-    'def f():\n    """POST https://api.kite.trade/orders"""\n    return 1\n',
+    '"""Docs may say exec, eval, socket, api.kite.trade and requests."""\nx = 1\n',
     'from urllib.parse import urlencode, urlsplit\n',
-    'URL = "/charges/orders"\nOTHER = "/margins/orders"\nREAD = "/orders/{id}/trades"\n',
-    'import websockets\n',
+    'from urllib.error import HTTPError, URLError\n',
+    'from http import HTTPStatus\n',
+    'import os\nos.environ.get("X")\nos.path.join("a", "b")\n',
+    'import asyncio\nasyncio.run(main())\nasyncio.wait_for(x, 1)\n',
+    'import re\nP = re.compile("a")\n',
+    'import sqlalchemy.ext.asyncio\nfrom sqlalchemy import text\n',
+    'from collections.abc import Mapping\nimport collections\n',
+    'from ofo.broker.kite_http import open_url\nfrom ofo_app.kite_http import kite_client\n',
+    'object.__setattr__(self, name, value)\nobject.__setattr__(self, "price", 1)\n',
+    'self.sent = 1\nself._fetch = transport\n',
+    'from logging.config import fileConfig\n',
 ])
-def test_network_scan_does_not_flag_clean_code(clean: str) -> None:
-    assert scan_network(clean, "clean.py") == []
+def test_clean_code_passes_the_scan(clean: str) -> None:
+    assert scan_imports(clean, "ofo_app/clean.py") == []
 
+
+def test_the_doors_may_import_their_own_network_module() -> None:
+    assert scan_imports("import httpx\n", "ofo_app/kite_http.py") == []
+    assert scan_imports("import urllib.request\nfrom urllib.parse import urlsplit\n", "ofo/broker/kite_http.py") == []
+    assert scan_imports("from websockets.asyncio.client import connect\n", "ofo_app/kite_ws.py") == []
+    assert scan_imports("import importlib.util\n", "ofo_app/alembic/versions/0002_audit_store.py") == []
+
+
+# -- the allow-list of Kite calls -----------------------------------------------------------------------------------
 
 GET_ONLY = frozenset({("GET", "/instruments/historical/{token}/minute")})
 
@@ -305,7 +448,6 @@ GET_ONLY = frozenset({("GET", "/instruments/historical/{token}/minute")})
     'u = f"{b}/orders/amo/{i}"\n',
     'u = "/gtt/triggers"\n',
     'u = "/portfolio/positions"\n',
-    'u = "/"\n',
     'r = urllib.request.Request(url, data=b"x")\n',
     'r = urllib.request.Request(url, method="DELETE")\n',
 ])
@@ -333,115 +475,3 @@ def test_placement_checker_flags_write_entries(calls) -> None:
 ])
 def test_placement_checker_does_not_flag_read_only_entries(calls) -> None:
     assert placement_in(calls) == []
-
-
-def test_scan_of_a_planted_tree_names_the_file(tmp_path: Path) -> None:
-    (tmp_path / "ok.py").write_text("x = 1\n", encoding="utf-8")
-    (tmp_path / "bad.py").write_text("import httpx\n", encoding="utf-8")
-    found = [f for p in sorted(tmp_path.glob("*.py")) for f in scan_network(p.read_text(encoding="utf-8"), p.name)]
-    assert len(found) == 1 and found[0].startswith("bad.py:1")
-
-
-# -- round 3: the plants the first static layer missed, and the order-path rule --------------------------------------
-
-P1_HANDED_IN_CLIENT = (
-    "from ofo_app.kite_client import KITE_API_ROOT\n"
-    "async def place(client, body):\n"
-    "    return await client.post(KITE_API_ROOT + \"/orders/regular\", data=body)\n")
-P7_RELATIVE_URLJOIN = "from urllib.parse import urljoin\nu = urljoin(ROOT, \"orders/regular\")\n"
-P8_BASE_URL_CLIENT = "def f(c):\n    return c.post(\"orders/regular\")\n"
-
-
-def test_static_layer_catches_p1_handed_in_client_with_the_api_root() -> None:
-    assert scan_root_use(P1_HANDED_IN_CLIENT, "unlisted.py")
-    assert scan_order_strings(P1_HANDED_IN_CLIENT, "unlisted.py")
-
-
-def test_static_layer_catches_p7_relative_urljoin() -> None:
-    assert scan_order_strings(P7_RELATIVE_URLJOIN, "kite_history.py", ALLOWED_CALLS["ofo_app/kite_history.py"])
-    assert scan_allowed_module(P7_RELATIVE_URLJOIN, "kite_history.py", ALLOWED_CALLS["ofo_app/kite_history.py"])
-
-
-def test_static_layer_catches_p8_relative_path_on_a_base_url_client() -> None:
-    assert scan_order_strings(P8_BASE_URL_CLIENT, "x.py")
-    assert scan_allowed_module(P8_BASE_URL_CLIENT, "kite_client.py", ALLOWED_CALLS["ofo_app/kite_client.py"])
-
-
-@pytest.mark.parametrize("value", ["orders/regular", "/orders", "/orders/amo", "gtt/triggers", "/gtt", "a/orders/b",
-                                   "/orders/regular/{id}"])
-def test_order_string_rule_flags(value: str) -> None:
-    assert scan_order_strings(f"x = {value!r}\n", "m.py")
-
-
-@pytest.mark.parametrize("value", ["reorders", "/api/disorders", "orders_total", "border/x"])
-def test_order_string_rule_leaves_other_words_alone(value: str) -> None:
-    assert scan_order_strings(f"x = {value!r}\n", "m.py") == []
-
-
-def test_a_module_does_not_flag_its_own_allow_listed_read_only_paths() -> None:
-    allowed = frozenset({("POST", "/margins/orders"), ("POST", "/margins/basket"), ("GET", "/user/margins"),
-                         ("GET", "/orders/{id}/trades")})
-    src = ('A = "/margins/orders"\nB = "/margins/basket"\nC = "/user/margins"\n'
-           'D = f"{r}/orders/{i}/trades"\n')
-    assert scan_allowed_module(src, "kite_margin.py", allowed) == []
-    assert scan_order_strings(src, "kite_margin.py", allowed) == []
-    assert scan_allowed_module('X = "/orders/regular"\n', "kite_margin.py", allowed)  # its own list still binds it
-
-
-
-# -- round 5: only listed modules may import a Kite door ---------------------------------------------------------------
-
-
-def test_only_listed_modules_import_a_kite_door() -> None:
-    modules = _backend_modules()
-    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES) | set(DOOR_CONSUMERS)
-    offenders = [f for name, src in modules.items() if name not in permitted for f in scan_door_imports(src, name)]
-    assert offenders == []
-
-
-VERIFIER_MODULE = (
-    "from ofo.broker.kite_http import open_url\n"
-    'H = "https://api.kite%2Etrade/"\n'
-    'open_url(H + "orde" + "rs/regular", method="POST")\n')
-
-
-@pytest.mark.parametrize("planted", [
-    VERIFIER_MODULE,
-    "import ofo.broker.kite_http\n",
-    "import ofo.broker.kite_http as k\n",
-    "from ofo.broker import kite_http\n",
-    "from ofo_app import kite_http as kh\n",
-    "from ofo_app.kite_http import kite_client\n",
-    "from .kite_http import open_url\n",
-    "from . import kite_http\n",
-    "from .. import *\n",
-    "from ofo_app import *\n",
-    'import importlib\nimportlib.import_module("ofo.broker.kite_http")\n',
-    'x = __import__("ofo_app.kite_http")\n',
-    'import importlib\nimportlib.import_module(name)\n',
-    "def (:\n",
-])
-def test_door_import_scan_catches_planted_shapes(planted: str) -> None:
-    assert scan_door_imports(planted, "planted.py"), planted
-
-
-def test_door_import_scan_does_not_flag_clean_code() -> None:
-    assert scan_door_imports("import json\nfrom ofo.broker import kite_endpoints\n", "clean.py") == []
-
-
-def test_planted_verifier_module_in_a_tree_is_named(tmp_path: Path) -> None:
-    (tmp_path / "ok.py").write_text("x = 1\n", encoding="utf-8")
-    (tmp_path / "sneaky.py").write_text(VERIFIER_MODULE, encoding="utf-8")
-    found = [f for p in sorted(tmp_path.glob("*.py")) for f in scan_door_imports(p.read_text(encoding="utf-8"), p.name)]
-    assert len(found) == 1 and found[0].startswith("sneaky.py:1")
-
-
-def test_a_door_consumer_is_not_exempt_from_the_http_library_scans() -> None:
-    """DOOR_CONSUMERS only skips the door-import scan: a listed consumer that imports urllib is still flagged."""
-    planted = "from ofo_app.kite_http import kite_async_client\nimport urllib.request\n"
-    assert scan_door_imports(planted, "ofo_app/routes/broker.py")  # the door import itself is what the list allows
-    modules = {"ofo_app/routes/broker.py": planted}
-    permitted = set(ALLOWED_CALLS) | set(HTTP_PLUMBING_MODULES)  # consumers are NOT in the network-scan exemption
-    assert "ofo_app/routes/broker.py" in DOOR_CONSUMERS
-    flagged = [f for n, src in modules.items() if n not in permitted for f in scan_network(src, n)]
-    assert flagged, "urllib import in a door consumer must still be flagged"

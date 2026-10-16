@@ -12,6 +12,10 @@ still wants. Every answer state has one behaviour:
 
 The URL carries the access token, so it is never logged: only generic messages and exception class names are
 (the W-058 rule), and the library's own wire logger is replaced by a silent one.
+
+This module is a network door (REQ-073 AC-4, ``NETWORK_DOORS`` in ``ofo.broker.kite_endpoints``): it alone may import
+``websockets``, and its connect URL goes through ``ofo.broker.kite_http.check_ws_url`` when the socket is built and
+again before EVERY connect (only ``wss://ws.kite.trade`` for a Kite host); a refusal propagates, it is never retried.
 """
 from __future__ import annotations
 
@@ -24,6 +28,8 @@ from collections.abc import Awaitable, Callable
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidStatus
 
+from ofo.broker.kite_endpoints import KITE_WS_HOST
+from ofo.broker.kite_http import check_ws_url
 from ofo.marketdata.kite_provider import KiteProvider
 from ofo_app.redaction import register_secret
 
@@ -33,7 +39,7 @@ _silent.propagate = False
 _silent.addHandler(logging.NullHandler())
 _silent.setLevel(logging.CRITICAL + 1)
 
-KITE_WS_URL = "wss://ws.kite.trade"
+KITE_WS_URL = f"wss://{KITE_WS_HOST}"
 MAX_TOKENS_PER_CONNECTION = 3000
 BACKOFF_START = 1
 BACKOFF_MAX = 30
@@ -49,6 +55,7 @@ class KiteSocket:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
         self._provider = provider
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
+        check_ws_url(self._url)  # refused before anything is held or opened
         register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
         register_secret(access_token)
         self._clock = clock
@@ -66,6 +73,7 @@ class KiteSocket:
         """Run until stopped or the session ends. Returns ``STOPPED`` or ``SESSION_ENDED``."""
         self._backoff = BACKOFF_START  # reset only by the first data frame of a connection, not by opening one
         while not self._stop:
+            check_ws_url(self._url)  # outside the try: a refusal ends the run, it is never retried
             try:
                 async with self._connect(self._url, logger=_silent, open_timeout=10) as ws:
                     self.connections += 1

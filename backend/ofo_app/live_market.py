@@ -19,6 +19,7 @@ import os
 from decimal import Decimal
 from typing import Callable, Optional
 
+from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
@@ -29,7 +30,7 @@ log = logging.getLogger("ofo_app.live_market")
 
 OWNER_REF = "owner"  # ADR-051 V1 single user; the same ref the W-058 login stores the session under
 LIVE_RATE = Decimal("0.065")  # the risk-free rate the replay uses too; a rates source is a later item
-REAL_KITE_WS = "wss://ws.kite.trade"
+REAL_KITE_WS = f"wss://{KITE_WS_HOST}"
 
 NOT_STARTED, NOT_CONNECTED, LIVE, SESSION_ENDED = "off", "not_connected", "live", "session_ended"
 

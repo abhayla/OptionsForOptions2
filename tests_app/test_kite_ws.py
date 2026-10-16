@@ -209,3 +209,34 @@ async def test_accept_then_drop_server_is_not_retried_every_second():
                                            base_url=f"ws://127.0.0.1:{port}", sleep=sleep)
         assert await asyncio.wait_for(sock.run(), 10) == STOPPED
     assert holder["delays"] == [1, 2, 4, 8]
+
+
+# -- W-080 round 6 (REQ-073 AC-4): the socket is a network door; its address is checked before anything opens ------
+
+
+@pytest.mark.parametrize("base_url", ["wss://api.kite.trade", "ws://ws.kite.trade", "wss://ws.kite%2Etrade"])
+def test_the_socket_refuses_a_non_kite_socket_address_before_connecting(base_url: str) -> None:
+    from ofo.broker.kite_http import KiteCallRefused
+
+    opened: list[str] = []
+    with pytest.raises(KiteCallRefused):
+        KiteSocket(_provider(), api_key=API_KEY, access_token=TOKEN, clock=lambda: NOW,
+                   base_url=base_url, connect=lambda url, **k: opened.append(url))
+    assert opened == []
+
+
+def test_the_socket_rechecks_its_address_before_every_connect() -> None:
+    from ofo.broker.kite_http import KiteCallRefused
+
+    opened: list[str] = []
+
+    async def stop_after_one_try(_seconds: float) -> None:  # never loops: a missing re-check fails, not hangs
+        sock.stop()
+
+    sock = KiteSocket(_provider(), api_key=API_KEY, access_token=TOKEN, clock=lambda: NOW,
+                      base_url="ws://127.0.0.1:9", connect=lambda url, **k: opened.append(url),
+                      sleep=stop_after_one_try)
+    sock._url = "wss://api.kite.trade/orders/regular"  # tampered after construction
+    with pytest.raises(KiteCallRefused):
+        asyncio.run(sock.run())
+    assert opened == []

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import datetime
 import logging
-import urllib.error
+from urllib.error import HTTPError, URLError
 
+from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import open_url as kite_open_url
 from typing import Callable, Iterable
 
@@ -20,7 +21,7 @@ from ofo.history.candles import parse_candles
 from ofo.instruments.models import ZERODHA, ListedContract
 
 log = logging.getLogger("ofo_app.kite_history")
-KITE_API_URL = "https://api.kite.trade"
+KITE_API_URL = f"https://{KITE_API_HOST}"
 Transport = Callable[[str, dict[str, str]], tuple[int, str]]
 
 
@@ -32,9 +33,9 @@ def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
     try:
         with kite_open_url(url, headers=headers, timeout=20) as response:  # checked against ALLOWED_CALLS first
             return response.status, response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
+    except HTTPError as exc:
         return exc.code, ""
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (URLError, TimeoutError, OSError) as exc:
         raise CandleFetchError(f"transport error: {type(exc).__name__}") from None
 
 
@@ -46,7 +47,7 @@ class KiteHistory:
         self._index_ids = {i for i, lc in ((f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}", lc)
                                            for lc in listed) if lc.contract.is_index()}
         self._headers = {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}  # never logged
-        self._transport = transport
+        self._fetch = transport
         self._base = base_url
 
     def minute_candles(self, instrument_id: str, start: datetime.datetime, end: datetime.datetime) -> list[MinuteBar]:
@@ -55,7 +56,7 @@ class KiteHistory:
             raise CandleFetchError("unknown instrument")
         url = (f"{self._base}/instruments/historical/{token}/minute?from={start:%Y-%m-%d+%H:%M:%S}"
                f"&to={end:%Y-%m-%d+%H:%M:%S}&oi=1")
-        status, text = self._transport(url, self._headers)
+        status, text = self._fetch(url, self._headers)
         if status != 200:
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")

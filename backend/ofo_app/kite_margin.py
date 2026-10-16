@@ -17,18 +17,19 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.error
+from urllib.error import HTTPError
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 
 log = logging.getLogger("ofo_app.kite_margin")
-KITE_API_URL: Final = "https://api.kite.trade"
+KITE_API_URL: Final = f"https://{KITE_API_HOST}"
 FUNDS_PATH: Final = "/user/margins"
 BASKET_PATH: Final = "/margins/basket?consider_positions=true"
 #: (method, url, headers, body or None) -> (HTTP status, response text)
@@ -107,7 +108,7 @@ def urllib_transport(method: str, url: str, headers: dict[str, str], body: str |
     try:
         with kite_open_url(url, method=method, data=data, headers=headers, timeout=20) as response:  # door checks first
             return response.status, response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
+    except HTTPError as exc:
         try:
             return exc.code, exc.read().decode("utf-8")
         except Exception:  # noqa: BLE001 - the status alone decides
@@ -131,7 +132,7 @@ class KiteMargin:
     def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
                  base_url: str = KITE_API_URL) -> None:
         self._headers = {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}  # never logged
-        self._transport = transport
+        self._call = transport
         self._base = base_url
 
     def __repr__(self) -> str:
@@ -140,7 +141,7 @@ class KiteMargin:
     def _data(self, method: str, path: str, body: str | None, extra: dict[str, str] | None = None) -> Mapping[str, object]:
         headers = {**self._headers, **(extra or {})}
         try:
-            status, text = self._transport(method, self._base + path, headers, body)
+            status, text = self._call(method, self._base + path, headers, body)
         except Exception:  # noqa: BLE001 - whatever the transport raises, the answer is "not confirmed"
             raise KiteMarginError("kite_margin_unavailable") from None
         if status != 200:

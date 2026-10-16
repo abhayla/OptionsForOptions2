@@ -22,14 +22,14 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
-import httpx
-
 from ofo.broker.kite_auth import KiteSession, checksum
-from ofo_app.kite_http import is_guarded
+from ofo.broker.kite_endpoints import KITE_API_HOST
+from ofo_app.kite_http import HTTPError, KiteAsyncClient, is_guarded
 
 log = logging.getLogger(__name__)
 
-KITE_API_ROOT = "https://api.kite.trade"
+KITE_API_ROOT = f"https://{KITE_API_HOST}"
+_NOT_GUARDED = "the Kite client must come from ofo_app.kite_http (it checks every request first)"
 SESSION_TOKEN_PATH = "/session/token"
 EXCHANGE_TIMEOUT_SECONDS = 10.0
 
@@ -61,9 +61,9 @@ def _error_type(response: _JsonAnswer) -> str | None:
 
 
 class HttpKiteAuth:
-    def __init__(self, api_key: str, api_secret: str, client: httpx.AsyncClient) -> None:
+    def __init__(self, api_key: str, api_secret: str, client: KiteAsyncClient) -> None:
         if not is_guarded(client):
-            raise TypeError("the Kite client must come from ofo_app.kite_http (it checks every request first)")
+            raise TypeError(_NOT_GUARDED)
         self._api_key = api_key
         self._api_secret = api_secret
         self._client = client
@@ -74,10 +74,13 @@ class HttpKiteAuth:
     async def exchange(self, request_token: str) -> KiteSession:
         form = {"api_key": self._api_key, "request_token": request_token,
                 "checksum": checksum(self._api_key, request_token, self._api_secret)}
+        if not is_guarded(self._client):  # checked on every call, not only at construction
+            form.clear()
+            raise TypeError(_NOT_GUARDED)
         try:
             response = await self._client.post(KITE_API_ROOT + SESSION_TOKEN_PATH, data=form,
                                                headers={"X-Kite-Version": "3"}, timeout=EXCHANGE_TIMEOUT_SECONDS)
-        except httpx.HTTPError:
+        except HTTPError:
             raise KiteExchangeError("kite_unavailable") from None
         finally:
             form.clear()

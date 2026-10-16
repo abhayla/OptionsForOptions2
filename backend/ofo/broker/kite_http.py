@@ -5,8 +5,9 @@
 allowed by default). Any other Kite or Zerodha host is refused too: the backend calls only ``api.kite.trade``.
 
 Two doors apply it: ``open_url`` here (stdlib ``urllib``, used by the instrument downloader and the history reader)
-and the httpx client factory ``ofo_app.kite_http`` (every httpx client the backend uses for Kite). This module is
-standard library only (the domain layer imports no HTTP package).
+and the httpx client classes in ``ofo_app.kite_http`` (whose ``send()`` applies it). ``check_ws_url`` is the same rule
+for the websocket door ``ofo_app.kite_ws``. This module is standard library only (the domain layer imports no HTTP
+package); the hosts come from ``kite_endpoints`` (one constant per host).
 """
 from __future__ import annotations
 
@@ -16,11 +17,11 @@ from collections.abc import Mapping
 from typing import Final
 from urllib.parse import unquote, urlsplit
 
-from ofo.broker.kite_endpoints import ALLOWED_CALLS
+from ofo.broker.kite_endpoints import ALLOWED_CALLS, KITE_API_HOST, KITE_WS_HOST
 
-KITE_API_HOST: Final = "api.kite.trade"
 _OTHER_KITE_SUFFIXES: Final = ("kite.trade", "zerodha.com")
 _PLAIN_NETLOC: Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
+_PLAIN_WS_NETLOC: Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
 
 class KiteCallRefused(Exception):
@@ -50,7 +51,7 @@ def check_call(method: str, url: str) -> None:
                               "nothing was sent")
     host = (parts.hostname or "").lower().rstrip(".")
     if host != KITE_API_HOST:
-        if any(host == s or host.endswith("." + s) for s in _OTHER_KITE_SUFFIXES):
+        if _is_kite_family(host):
             raise KiteCallRefused(f"{method} {host}: only {KITE_API_HOST} is called, and only allow-listed paths")
         return
     path = unquote(parts.path)
@@ -62,6 +63,28 @@ def check_call(method: str, url: str) -> None:
         raise KiteCallRefused(f"{verb} {path} is not an allow-listed Kite call; nothing was sent")
 
 
+def _is_kite_family(host: str) -> bool:
+    return any(host == s or host.endswith("." + s) for s in _OTHER_KITE_SUFFIXES)
+
+
+def check_ws_url(url: str) -> None:
+    """Raise ``KiteCallRefused`` unless ``url`` is a plain websocket address; for any Kite or Zerodha host it must be
+    exactly ``wss://ws.kite.trade`` (port absent or 443, path empty or ``/``). Same raw-netloc character rule as
+    ``check_call``; a non-Kite host (a local fake in tests) is not this door's concern, as in ``check_call``."""
+    parts = urlsplit(str(url))
+    if parts.scheme not in ("wss", "ws"):
+        raise KiteCallRefused("only ws(s) URLs are opened by the Kite socket; nothing was opened")
+    if not _PLAIN_WS_NETLOC.fullmatch(parts.netloc):
+        raise KiteCallRefused(f"{parts.netloc!r}: host has characters outside a-z 0-9 . - (or is empty); "
+                              "nothing was opened")
+    host = (parts.hostname or "").lower().rstrip(".")
+    if not _is_kite_family(host):
+        return
+    if parts.netloc not in (KITE_WS_HOST, KITE_WS_HOST + ":443") or parts.scheme != "wss" \
+            or parts.path not in ("", "/"):
+        raise KiteCallRefused(f"only wss://{KITE_WS_HOST} is opened for the Kite socket; nothing was opened")
+
+
 def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
              headers: Mapping[str, str] | None = None, timeout: float = 20):
     """``urllib`` request through the door: checked first, then ``urllib.request.urlopen``."""
@@ -70,4 +93,4 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
     return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310 - host and path checked above
 
 
-__all__ = ["KITE_API_HOST", "KiteCallRefused", "check_call", "open_url"]
+__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "KiteCallRefused", "check_call", "check_ws_url", "open_url"]
