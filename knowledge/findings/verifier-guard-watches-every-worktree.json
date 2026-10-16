@@ -27,6 +27,11 @@
    "date": "2026-10-16",
    "where": "GC-1 scratchpad docs worktree ofo2-gc1-running, 20:07-20:08 IST",
    "evidence": "work/W-090.md and work/W-092.md moved (sha256 c1262dca..., 8b62d9d0...), W-017/W-089/REQ-035/REQ-038/REQ-054 edits copied; restored, hashes matched"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-2a scratchpad worktree wt-w080, 22:35 IST: `git merge origin/main` into land/W-080 while the Tier A egress reviewer (verifier type) ran its 874-test pytest call",
+   "evidence": "quarantine 20261016-223531-1792170331599040800: 18 entries, all action 'copied' (merge-written tracked files: evidence/W-087, work/W-087..092, spec/findings.md, REQ-001/035/038/054); nothing moved; branch diff vs main afterwards = W-080's own files only. Third occurrence: the prose rule (GC-2a contract line) did not hold - the merge was not seen as a 'card write'. Mechanism: issue filed this turn - a project PreToolUse hook that refuses main-session git merge/checkout/pull/rebase/switch/reset and Write/Edit under work/, spec/, evidence/ while a fresh verifier-write-guard snapshot exists (a verifier tool call in flight)."
   }
  ]
 }
