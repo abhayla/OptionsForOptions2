@@ -137,7 +137,9 @@ def plain_headers(headers: object) -> dict[str, str]:
         return {}
     if type(headers) is not dict:
         raise TypeError("a Kite door takes headers as a plain dict of str to str; nothing was sent")
-    return {plain_str(k, "a header name"): plain_str(v, "a header value") for k, v in headers.items()}
+    if any(type(k) is not str or type(v) is not str for k, v in headers.items()):  # exact types, as plain_str
+        raise TypeError("a Kite door takes header names and values as plain str; nothing was sent")
+    return dict(headers)
 
 
 def plain_timeout(timeout: object) -> float:
@@ -150,7 +152,9 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
              headers: _Mapping[str, str] | None = None, timeout: float = 20):
     """``urllib`` request through the door: plain data only (exact types, checked before anything else), then the
     URL check, then sent inside the egress gate's door permission. Nothing the caller passed runs inside it."""
-    url, method = plain_str(url, "the URL"), plain_method(method)
+    if type(url) is not str:  # exact type, as plain_str (whose label argument would be a sentence literal here)
+        raise TypeError("a Kite door takes the URL as a plain str; nothing was sent")
+    method = plain_method(method)
     plain = plain_headers(headers)
     seconds = plain_timeout(timeout)
     if data is not None and type(data) is not bytes:
