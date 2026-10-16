@@ -46,6 +46,21 @@
    "date": "2026-10-16",
    "where": "W-081 margin gate (PR #274)",
    "evidence": "CI app job 1 failed, 1687 passed: tests_app/test_identifier_and_slots.py:68 pins the closed set of message slot types; W-081 added DisplayRupees in backend/ofo/errors/gate_slots.py and ran only tests/execution, tests/errors and tests_app/test_kite_margin_client.py; one CI round lost, fixed by adding the slot to PINNED_SLOT_TYPES (164bdb2). select_app_tests.py did not select it because gate_slots.py is a domain module (#247 two-hop / backend/ofo gap)."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "ADR-095 price protection (PR #310)",
+   "evidence": "CI lint-and-test (run 38865253358): tests/errors/test_write_allowlist.py refused `ctx.prec, ctx.rounding = ...` at backend/ofo/engine/price_protection.py:100 (attribute write not rooted at self/cls); the builder ran tests/engine plus 4 guard files, not test_write_allowlist.py (a repo-wide guard living under tests/errors/). One CI round lost; fixed with localcontext(prec=..., rounding=...)."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "W-075 charges in sentences (PR #311), after merging 51 commits of main",
+   "evidence": "Three CI rounds lost: tests_app/test_openapi_drift.py (docs/api/openapi.json stale), then frontend/e2e/strategy-table.spec.ts:79-80 and :88-89 (pre-charges amounts 4754.75 / 8245.25; the API gave 4539.65173942700 - which also exposed unrounded charges, fixed in 412b6e6). The W-075 verifier never ran the Playwright condor test; the orchestrator's brief named lines 78-79 only instead of grepping the e2e folder for the old amounts."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "#297 gate minors (PR #316)",
+   "evidence": "CI lint-and-test: tests/test_fixture_symbols.py::test_every_tradingsymbol_literal_in_tests_resolves_in_the_catalogue failed on a symbol literal in the new tests/outcome/test_notice_no_symbols.py docstring; the builder ran tests/outcome and frontend only. Second repo-guard miss of the day (with PR #310's test_write_allowlist.py): the orchestrator's briefs said 'targeted tests only' without naming the repo-wide guard set (every tests/test_*.py plus tests/errors/test_write_allowlist.py). Mechanism due (L2): the brief template / check_brief.py requires that guard set in every builder brief."
   }
  ]
 }

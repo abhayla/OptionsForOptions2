@@ -1,5 +1,63 @@
 # Session handover 2026-10-16: night build (00:00-06:30 IST), Stage 4b core first
 
+## Afternoon update (12:00-15:40 IST, owner present, market open): read this first
+Plan: `C:\Users\itsab\.claude\plans\here-is-the-note-logical-kahn.md` (use the open market; record it for the weekend).
+
+**Owner decisions:** OQ-1 = (a) pro rata -> ADR-095; OQ-7 = (a) build now -> ADR-096; real 1-lot test order today ->
+ADR-097 (options only, NRML/LIMIT, owner presses Execute, holdings never sold, read before/after). All in PR #307.
+
+**Merged (CI green, Tier A/B reviewed as listed in each PR):**
+- #308 ADR-094 margin top-up (option BUY premium up to the limit; `zerodha_total` vs `required_total`).
+- #309 #296 live market picks up a login made after start (fingerprint of the socket's token; re-read once on
+  session end). Issue #296 stays OPEN until the live login proof (below).
+- #310 ADR-095 pro-rata price protection (`backend/ofo/engine/price_protection.py`; not wired into the basket yet).
+- #311 W-075 charges in the money sentences + OQ-4 (a) line; charges rounded UP to the paisa once (CI caught money
+  leaving the API as "4539.65173942700").
+- #312 ADR-096 order-free adopt into an existing strategy; also W-083 create-new had no order-free open. Adopted
+  holdings now sit in the order book; the book is in memory only -> #313 (deferred).
+- #316 #297 items 1, 2, 4 (no raw symbols / duplicate notices; Loss line only over loss). #297 stays open for item 3
+  (product question: show Zerodha's margin on the outcome screen? the spec says nothing).
+- #317 #294 edit-lint hook (closed #294). #314/#319 coverage rows; #315 findings + afternoon live proofs.
+- #320 check_brief requires the repo guard tests and `Findings checked:` ids (mechanism for two repeated classes).
+
+**Real 1-lot order (ADR-097):** BUY NIFTY26O1923650CE 65 NRML LIMIT 5.45, filled 5.10 at 12:20:50 (order
+261016170576173, tag OFS1V1L0 came back). Funds 1,003 -> 671.50. Holdings unchanged. Basket built offline by W-080's
+`build_basket`; the owner pressed Execute on Kite's page.
+**Exit (15:09:52):** SELL 65 @ 3.10 (order 261016170858845, tag OFS1V2L0), position flat, holdings unchanged, funds
+873.00. Gross -130.00; charges ours 47.74 vs Kite 47.73 (exit matches exactly; entry differs only by stamp 0.0099, F-35:
+settle against tonight's contract note). Net about -177.73.
+- The exit exposed #321: Kite gives a closing basket a NEGATIVE margin (-214.50) and our gate refused it - fixed in
+  PR #322 (Tier A PASS). The owner first asked the assistant to place the exit itself; Kite refused the API order
+  (`403 No IPs configured for this app`): this app has no static IP, so no API placement is possible (ADR-054 does not
+  need it; registering an IP is the owner's call). The exit went through a basket page the owner pressed.
+
+**Close (15:30-15:40):**
+- #322 merged: the margin gate allows closing baskets (#321 closed).
+- #296 CLOSED with a live proof: session ended in ofo_dev, API started from main with no session, the owner logged in
+  (private window), `live market data restarted after the new Kite login` at 15:34:45 and `COMPUTED spot 23146.15` at
+  15:36:17 on the same process. The post-login page error is #159 (`/broker/connected` 404, API-only setup).
+- Recordings verified: websocket 53,165 frames / 7,404,814 ticks read back complete (708 MB); REST 11 files, 1,012
+  calls, all 200; outcome 19 files, 190 replies, all COMPUTED.
+- The owner's Kite session in ofo_dev is the NEW login of 15:34 (valid until ~04:30 IST, F-37). The API was stopped.
+- **Monday 09:15 first:** W-080 next design (globals identity) only if the owner wants the in-app basket next; #297 item
+  3 (owner: show Zerodha's margin on the outcome screen?); F-35 stamp vs tonight's contract note (entry 0.0099).
+
+**Live proofs on main:** ADR-094 (top-up 650.00 = 2 x 65 x 5; gate blocks on real funds), ADR-095 (Rs 300 -> 292.50
+allowed, every leg fills on live depth) - `docs/research/live-proofs-2026-10-16/afternoon/`.
+
+**W-080 PARKED again (#271, last comment):** rounds 9-10; AC-1/AC-2 PASS, AC-4 FAIL - the runtime gate trusts a frame
+by its `co_filename` string and stdlib compilers (`code`, `codeop`, ...) forge it. Next design: trust by
+`frame.f_globals is <trusted module __dict__>` (identity). No real risk today (no app code sends orders). Blocks the
+in-app basket and W-081 integration (#273). Noqa cleanup #318.
+
+**Recorded for the weekend (outside the repo, `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/`):** full-chain websocket
+frames (1,293 NIFTY + SENSEX contracts, 12:07 -> close), REST every 20 min (basket margins for 10 shapes x bumps
+0/2/5, charges, funds, positions; 92 calls/round, all 200), live outcome pushes every 10 min, real-order files.
+
+**Misses (recorded):** idle between items until the owner asked; briefs dispatched before `check_brief.py`; issue
+#313 filed without `--stage` (extra PR); repo guard tests skipped twice by builders; W-080 round 10 designed without
+reading `guard-by-banned-shapes`; `merge_when_green` refuses BEHIND branches (4 extra CI runs; kit #104).
+
 ## Day update (08:00-11:45 IST): night plan status - read this first
 **Night plan: complete except W-080 (PARKED) and the real 4b order (blocked on W-080, funds and the owner's yes).**
 The owner will write a new plan for the rest; nothing outside the night plan is started.

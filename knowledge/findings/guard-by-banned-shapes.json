@@ -28,6 +28,11 @@
    "date": "2026-10-16",
    "where": "W-080 (#271), REQ-073 AC-4 order-placement guard, rounds 1-6",
    "evidence": "Six verifier FAILs in this class: forbidden-list scan (r1), passed-in client (r2), Unicode-dot host U+3002 (r3), percent-encoded host api.kite%2Etrade (r4), door-less modules via bare `import urllib` / http.client / socket / sys.modules (r5), re-import through a door (`from ofo_app.kite_http import httpx`) and calling a guarded client's `_transport.handle_request` (r6, after an independent Opus re-plan). The orchestrator did not read this finding before rounds 4-6 (learning F5 miss); its advice (closed allow-list of entry points, explicit end condition per verifier round, ADR-003 Q235 scope) would have bounded the search."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "W-080 (#271) rounds 9-10: runtime gate trusts a frame by its co_filename string; round 10 scanned for spellings that build a forged code object",
+   "evidence": "Round 10 made 6 known spellings FLAGGED (orchestrator re-ran scan_spellings.py at bd19ba7: marshal, __code__, compile, inspect f_code, types.CodeType, tb_frame); the verifier at bd19ba7 then found unflagged stdlib compilers - code.InteractiveInterpreter().runsource and codeop.compile_command + type(lambda: 0)(c, {}) reached 192.0.2.1 from inside a door's extent (TimeoutError), plus py_compile, compileall, doctest, runpy.run_path. The orchestrator again did not read this finding before designing round 10 (second F5 miss on W-080). Proposed structural fix: trust a frame only when frame.f_globals IS a trusted module's own __dict__ captured at trust time (identity, not a string)."
   }
  ]
 }

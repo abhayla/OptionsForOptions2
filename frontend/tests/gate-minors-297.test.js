@@ -1,0 +1,61 @@
+// Issue 297 items 1 and 4 (REQ-067 AC-4, ADR-072, ADR-086). The answer is the real push recorded from the live
+// websocket on 2026-10-16 (iron condor, guided, 4 legs with no live quote; ofo-kite-ticks/2026-10-16/outcome).
+import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+
+let apiAnswer = null
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  return { ...actual, default: { get: () => Promise.reject(new Error('unmocked get')), post: () => Promise.resolve({ data: apiAnswer }) } }
+})
+// jsdom has no canvas; the chart's lines are tested through payoffRegions
+vi.mock('chart.js/auto', () => ({ default: class { destroy() {} } }))
+import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import { payoffRegions } from '@/lib/payoffRegions'
+import real from './fixtures/outcome-condor-guided-no-quote.json'
+
+const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
+  planned_entry: l.planned_entry, captured_at: l.captured_at })) }
+
+async function openPage() {
+  apiAnswer = real
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+  await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT), ux: 'guided' } })
+  await router.isReady()
+  const w = mount(StrategyBuilderPage, { global: { plugins: [router] } })
+  await flushPromises()
+  return w
+}
+const texts = (w, id) => w.findAll(`[data-testid="${id}"]`).map((e) => e.text())
+
+describe('item 1: a leg opened from a link is named once the catalogue answer is in', () => {
+  it('the picker rows show contract names, never "Contract details not available"', async () => {
+    const w = await openPage()
+    expect(texts(w, 'leg-name').slice(0, 4)).toEqual(['NIFTY 19 Oct 22800 PE', 'NIFTY 19 Oct 22950 PE', 'NIFTY 19 Oct 23250 CE', 'NIFTY 19 Oct 23400 CE'])
+    expect(w.text()).not.toContain('Contract details not available')
+    w.unmount()
+  })
+  it('each leg notice is printed once, under its contract name, with no raw trading symbol', async () => {
+    const w = await openPage()
+    expect(texts(w, 'stale-leg')).toEqual(['NIFTY 19 Oct 22800 PE: no live quote', 'NIFTY 19 Oct 22950 PE: no live quote',
+      'NIFTY 19 Oct 23250 CE: no live quote', 'NIFTY 19 Oct 23400 CE: no live quote'])
+    w.unmount()
+  })
+})
+
+describe('item 4: the payoff chart draws each line only over its own region (ADR-072)', () => {
+  it('the real condor payoff: Loss is drawn over the loss regions, not across the 0.00 plateau; Profit nowhere', () => {
+    const pnl = real.payoff.points.map((p) => p.pnl)
+    const { loss, profit } = payoffRegions(real.payoff.points)
+    expect(profit.some(Boolean)).toBe(false) // a condor with these quotes has no positive point
+    const interior = pnl.map((v, i) => (v === '0.00' && pnl[i - 1] === '0.00' && pnl[i + 1] === '0.00' ? i : -1)).filter((i) => i >= 0)
+    expect(interior.length).toBeGreaterThan(0)
+    for (const i of interior) expect(loss[i]).toBe(false) // the plateau between the two loss regions is not on the Loss line
+    pnl.forEach((v, i) => { if (v.startsWith('-')) expect(loss[i]).toBe(true) })
+  })
+  it('a buy-call payoff: Loss over the flat loss part and the break-even point, Profit from the break-even on', () => {
+    const pts = ['-65.00', '-65.00', '0.00', '6435.00', '12935.00'].map((pnl, i) => ({ level: String(i), pnl }))
+    expect(payoffRegions(pts)).toEqual({ loss: [true, true, true, false, false], profit: [false, false, true, true, true] })
+  })
+})

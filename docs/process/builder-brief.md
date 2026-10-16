@@ -34,6 +34,14 @@ rules were wrong tonight).
 The orchestrator runs `python scripts/orchestrator/check_brief.py <brief-file>` on every brief before dispatch; a quote
 that is not verbatim in the spec text it cites fails the brief (work item W-040).
 
+## Two lines every brief carries (check_brief.py fails the brief without them)
+- A test-commands line naming the repo-wide guard tests, both literals on one line:
+  `Tests: python -m pytest -q -p no:cacheprovider tests/test_*.py tests/errors/test_write_allowlist.py` (PR #310 and
+  #316 skipped them).
+- A Tier A brief about a guard/door/gate/scan (one of those words in its first 10 lines) carries
+  `Findings checked: <id>, <id>` where each id is a file `knowledge/findings/<id>.json` (W-080 round 10 was designed
+  without reading `guard-by-banned-shapes`). Grep the registry first; "grep findings" is not a list.
+
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
 - One test per AC in `tests_required`; each test's docstring starts with the AC id (e.g. `"""AC-3: ..."""`).
