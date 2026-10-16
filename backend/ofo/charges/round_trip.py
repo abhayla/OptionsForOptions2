@@ -57,11 +57,20 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
         raise ChargesNotComputable(str(exc)) from exc
 
 
+def is_bought_option(leg: Leg) -> bool:
+    """A bought option leg (CE or PE): the only kind that can be exercised, so the only kind that can owe exercise STT."""
+    return leg.action is Action.BUY and leg.is_option
+
+
+def holds_bought_option(legs: Sequence[Leg]) -> bool:
+    return any(is_bought_option(leg) for leg in legs)
+
+
 def exercise_stt_at(legs: Sequence[Leg], level: Decimal, rates: ChargeRates) -> Decimal:
     """STT on exercise at underlying ``level``: bought options with intrinsic value above 0 only."""
     total = Decimal("0")
     for leg in legs:
-        if leg.action is not Action.BUY or not leg.is_option:
+        if not is_bought_option(leg):
             continue
         intrinsic = max(level - leg.strike, Decimal(0)) if leg.instrument is Instrument.CE else max(leg.strike - level, Decimal(0))
         if intrinsic > 0:

@@ -1075,6 +1075,10 @@
     "sha256": "5e62246388132c7b1182dc5bdbf4d29b3c2c3a83190cfac5eda1caa658b850f4",
     "reviewed": "pending owner read"
   },
+  "explanation:summary_lose_exercise_stt_note": {
+    "sha256": "3f2b62c2cc91a84724e5ca8021540093f49565921de33341c6af815cc9fca0b2",
+    "reviewed": "pending owner read"
+  },
   "explanation:summary_lose_at_most_with_charges": {
     "sha256": "5ed3bb3629ca8026ac29878499559d7fec6dcf38cbe26c08e4ccd8559735e732",
     "reviewed": "pending owner read"

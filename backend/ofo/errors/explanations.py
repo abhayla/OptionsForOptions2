@@ -722,7 +722,7 @@ class LegacyRecorded(SlotType):
 
 LEGACY_SLOT_TEMPLATES: frozenset[str] = frozenset({"estimate_line", "estimate_assume_iv",
                                                    "estimate_assume_valued"})
-JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | "})
+JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | ", " "})
 
 
 @dataclass(frozen=True)
@@ -960,6 +960,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_lose_at_most_with_charges", "values_seen",
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
                         {"amount": Rupees, "charges": Rupees}),
+    ExplanationTemplate("summary_lose_exercise_stt_note", "values_seen",
+                        "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it."),
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),

@@ -30,7 +30,7 @@ from enum import Enum
 from typing import Final
 
 from ofo.charges import ChargeRates
-from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges
+from ofo.charges.round_trip import ChargesNotComputable, holds_bought_option, round_trip_charges
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
 from ofo.engine.metrics import UNLIMITED, StrategyMetrics, strategy_metrics
@@ -237,6 +237,12 @@ def _start_losing(regions, idx) -> ExplanationText:
     return render_explanation("summary_start_regions", index=idx, regions=regions)
 
 
+def exercise_stt_line(legs) -> ExplanationText | None:
+    """Owner OQ-4 (a): the one line under the with-charges max-loss sentence when the strategy holds a bought option
+    (exercise STT can then fall on it at expiry); None when nothing is bought. The text lives in one template."""
+    return render_explanation("summary_lose_exercise_stt_note") if holds_bought_option(legs) else None
+
+
 def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
              charges: Decimal | None = None, charges_unavailable: bool = False) -> Summary:
     idx = inputs.underlying
@@ -247,7 +253,8 @@ def _summary(metrics: StrategyMetrics, level_set: LevelSet, inputs: ModelInputs,
         lose = render_explanation("summary_lose_unlimited", index=idx)
     else:  # a zero maximum loss reads "At most ₹0.00 at expiry." - "cannot lose" is a banned phrase (ADR-003)
         lose = (render_explanation("summary_lose_at_most", amount=max_loss) if charges is None else
-                render_explanation("summary_lose_at_most_with_charges", amount=max_loss, charges=charges))
+                join_explanations([render_explanation("summary_lose_at_most_with_charges", amount=max_loss, charges=charges),
+                                   *filter(None, [exercise_stt_line(inputs.strategy.legs)])], " "))
     if profit_unl:
         make = render_explanation("summary_make_unlimited", index=idx)
     elif max_profit <= 0:

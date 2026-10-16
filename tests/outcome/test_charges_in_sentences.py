@@ -171,7 +171,8 @@ def test_summary_includes_the_hand_computed_round_trip(replayed):
     assert s.charges == charges and not s.charges_unavailable
     assert s.max_loss == D("8245.25") + charges  # charges ADDED to the loss (mutation: subtracted -> red)
     assert s.max_profit == D("4754.75") - charges  # charges SUBTRACTED from the profit (mutation: added -> red)
-    assert s.what_can_i_lose == render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss, charges=charges)
+    assert s.what_can_i_lose == (render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss, charges=charges)
+                                 + " " + EXERCISE_STT_LINE)  # the condor holds bought options (round 4)
     assert s.what_can_i_make == render_explanation("summary_make_at_most_with_charges", amount=s.max_profit, charges=charges)
     assert "including about ₹" in s.what_can_i_lose and "before charges" not in s.what_can_i_lose
 
@@ -272,3 +273,52 @@ def test_table_charges_row_is_absent_without_rates_when_unavailable_and_in_estim
     from ofo.scenario.views import View
     est = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
     assert CHARGES_ROW not in _rows(est)
+
+
+# --- round 4 (owner OQ-4 a): one line under the max-loss sentence when the strategy holds a bought option ------------------
+
+EXERCISE_STT_LINE = "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it."
+
+
+def _summary_of_legs(provider, picks, rates=RATES):
+    d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
+                                          for i, a in picks))
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    out = build_outcome(d, snap, UXLevel.STANDARD, VALUATION, rates=rates)
+    assert out.state is OutcomeState.COMPUTED, out.reason
+    return out.summary
+
+
+def test_the_real_15_oct_condor_sentence_then_the_line():
+    from ofo.errors.explanations import join_explanations
+    from ofo.outcome.service import exercise_stt_line
+    sentence = render_explanation("summary_lose_at_most_with_charges", amount=MAX_LOSS_BEFORE + HAND_TOTAL,
+                                  charges=HAND_TOTAL)
+    line = exercise_stt_line(legs())
+    assert line == EXERCISE_STT_LINE
+    assert join_explanations([sentence, line], " ") == (
+        f"At most ₹8,850.21 at expiry, including about ₹214.96 of charges and taxes. {EXERCISE_STT_LINE}")
+
+
+def test_the_replay_condor_max_loss_sentence_is_followed_by_the_line(replayed):
+    s = outcome_of(replayed, RATES)[1].summary
+    first = render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss, charges=s.charges)
+    assert s.what_can_i_lose == f"{first} {EXERCISE_STT_LINE}"
+    assert "including about ₹" in first and first.startswith("At most ₹")  # the existing sentence is unchanged
+    assert s.what_can_i_make == render_explanation("summary_make_at_most_with_charges", amount=s.max_profit,
+                                                   charges=s.charges)  # the profit sentence gets no line
+    assert "you should" not in s.what_can_i_lose.lower()
+
+
+def test_guard_no_bought_option_no_line(replayed):
+    s = _summary_of_legs(replayed, (("NSE_FO:44604", Action.SELL),))  # one short put: loss is limited, nothing bought
+    assert not s.max_loss_unlimited and s.charges is not None
+    assert s.what_can_i_lose == render_explanation("summary_lose_at_most_with_charges", amount=s.max_loss,
+                                                   charges=s.charges)
+    assert "STT" not in s.what_can_i_lose
+
+
+def test_guard_unlimited_max_loss_has_no_line_even_with_a_bought_option(replayed):
+    s = _summary_of_legs(replayed, (("NSE_FO:44624", Action.SELL), ("NSE_FO:44595", Action.BUY)))
+    assert s.max_loss_unlimited
+    assert "STT" not in s.what_can_i_lose
