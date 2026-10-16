@@ -2,6 +2,16 @@
 
 Parked under run-discipline A2 while the owner sleeps; each has a recommendation. None blocks tonight's build.
 
+**Answered 2026-10-16 morning (owner, with the question tool):**
+- W-080 / issue 271 (~08:00 IST): refuse any non-ASCII host outright, no idna conversion. Written into REQ-073 (AC-4
+  clarification) on the W-080 branch.
+- OQ-4 (~08:05 IST): **(a)** keep the fixed max-loss sentence and add the line "Holding a bought option to expiry in the
+  money adds STT on its value; squaring off before expiry avoids it." Built into W-075 before it merges (after the 4a
+  gate); written into ADR-082 with W-075.
+- OQ-9 (~08:20 IST): first answered (b) 4 calendar days, then replaced after the owner asked why limits need refreshing
+  at all: **weekly refresh by hand, warning after 8 days** - ADR-091, finding F-38.
+- Still open: OQ-1, OQ-2, OQ-7.
+
 ## OQ-1: How does price protection split a strategy-level tolerance into per-leg limits? (ADR-080 item 3)
 - **Spec basis:** ADR-080 (3): "price protection splits the user's strategy-level tolerance into per-leg limits" - the
   split rule is not stated (searched: price protection, tolerance, per-leg, split). REQ-056 AC-7 (Q28) is the

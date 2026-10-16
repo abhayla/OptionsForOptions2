@@ -75,8 +75,8 @@ from ofo.table.columns import (
     UXLevel,
     is_visible,
 )
+from ofo.money import HUNDREDTH as _PERCENT_STEP
 
-_PERCENT_STEP = Decimal("0.01")
 _TOTAL_PERCENT_STEP = Decimal("0.1")
 TOTAL_ROW_ID = "TOTAL"
 

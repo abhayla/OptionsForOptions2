@@ -73,6 +73,7 @@ from ofo.errors import UserFacingError, display_text, render
 from ofo.errors.explanations import STEP_LABEL_TEXT, render_explanation
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments import ZERODHA, Catalogue
+from ofo.instruments.models import is_lot_aligned
 
 _BUILDER_KEY: Final = object()
 MARGIN_NOT_USED: Final = render_explanation("margin_note_not_used")
@@ -324,7 +325,7 @@ def _lot_sizes(plan: ExecutionPlan, catalogue: Catalogue) -> dict[str, int]:
                                "no lot size, nothing is planned",
                                message=render("partial_slice_no_lot_size", count=len(found), contract=p.contract))
         lots[p.leg_ref] = _positive_int(found[0], f"catalogue lot size of {p.contract}")
-        if p.leg.quantity % lots[p.leg_ref]:
+        if not is_lot_aligned(p.leg.quantity, lots[p.leg_ref]):
             raise SliceRefused(detail=f"{p.contract}: {p.leg.quantity} units is not a whole number of lots of "
                                f"{lots[p.leg_ref]}", message=render("partial_slice_not_whole_lots", units=p.leg.quantity,
                                                            contract=p.contract, lot=lots[p.leg_ref]))
@@ -356,7 +357,7 @@ def slice_quantity(constraints: BrokerConstraints, contract: str, units: int, lo
     except ValueError as exc:
         raise SliceRefused(detail=str(exc), message=render("partial_slice_freeze_unusable", contract=contract)) from exc
     if lot is not None:
-        if units % lot:
+        if not is_lot_aligned(units, lot):
             raise SliceRefused(detail=f"{units} units of {contract} is not a whole number of lots of {lot}",
                                message=render("partial_slice_not_whole_lots", units=units, contract=contract, lot=lot))
         freeze = freeze // lot * lot

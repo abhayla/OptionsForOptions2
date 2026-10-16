@@ -15,9 +15,9 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Final, Sequence
 
 from ofo.engine.estimate import EstimatedNow
+from ofo.money import PAISE as _PAISA
 
 MINUS: Final = "−"
-_PAISA: Final = Decimal("0.01")
 _WHOLE: Final = Decimal("1")
 
 

@@ -23,6 +23,7 @@ from ofo.history.bars import IST, SESSION_CLOSE, SESSION_OPEN
 from ofo.history.candles import MinuteCandleSource
 from ofo.history.finalize import CHUNK_INSTRUMENTS, DayResult, finalize_into
 from ofo.history.store import DayStatus, HistoryStore
+from ofo.timeutil import HISTORY_FETCH_UNTIL as FETCH_UNTIL
 
 log = logging.getLogger("ofo_app.history_finalize")
 
@@ -30,7 +31,6 @@ log = logging.getLogger("ofo_app.history_finalize")
 #: 15:30 would make the day final before those minutes exist. 16:00 leaves a 20-minute margin after the latest observed
 #: trading (an earlier run is refused), and the Kite range runs to 15:59 so those late minutes replace the live ones.
 FINALIZE_NOT_BEFORE = datetime.time(16, 0)
-FETCH_UNTIL = datetime.time(15, 59)
 
 
 class FinalizeRefused(RuntimeError):

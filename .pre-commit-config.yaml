@@ -20,11 +20,13 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.7
+    rev: v0.15.12
     hooks:
-      # Lint only (ruff's default rules); no auto-format until the project picks a line length.
+      # Lint only, with ruff.toml (same scope and rules as CI's ratchet). Existing violations still show here;
+      # CI fails only when a rule's count rises (python scripts/ruff_ratchet.py).
       - id: ruff
-        files: ^(backend/ofo_app/|tests_app/|scripts/alembic_migration_guard\.py|scripts/generate_openapi\.py)
+        args: [--config, ruff.toml]
+        files: ^(backend|scripts|tests|tests_app)/.*\.py$
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0

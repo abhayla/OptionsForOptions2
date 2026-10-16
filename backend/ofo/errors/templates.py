@@ -838,6 +838,13 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing: this is a warning and the leg is not blocked.",
           "Check this leg's quantity against the exchange's freeze limit before sending a large order.",
           {"contract": ContractSymbol}),
+    _gate("freeze_limit_stale", _SV, 503,
+          "The freeze limit for {contract} was last read from the exchange file of {file_date}, {days} days ago. "
+          "It may have changed; Zerodha may reject a large order.",
+          "The stored limit is older than the weekly refresh, so the review cannot tell whether it is still current.",
+          "Nothing: this is a warning, the stored limit is still applied and the leg is not blocked by its age.",
+          "Refresh the freeze limits from the latest exchange file, then review again.",
+          {"contract": ContractSymbol, "file_date": Date, "days": Count}),
 )
 
 # --- W-081 (REQ-055 AC-1/AC-4): the margin check before the Kite basket is built (ofo.execution.margin_gate). Both

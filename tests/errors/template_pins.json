@@ -587,6 +587,10 @@
     "sha256": "d6ab91c416548cb240f1a17082a9c9a0bf0a9ce0e9928d60a1679fa00f6828c0",
     "reviewed": "pending owner read"
   },
+  "freeze_limit_stale": {
+    "sha256": "33de302b33d3d49d5c5b3789a4a585e739b71c245c8043513cfc4251d81c5008",
+    "reviewed": "pending owner read"
+  },
   "explanation:why_triggered": {
     "sha256": "1828d55f612d34fa10f74a459633dd938c26ab63f65c15b210c70f7104846d02",
     "reviewed": "pending owner read"

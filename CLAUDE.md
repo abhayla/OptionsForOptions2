@@ -100,10 +100,32 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   except as a whole body line `Fixes #N` when ALL of the issue is done. For part of an issue, write "addresses item 1 of
   #N". GitHub closes the whole issue otherwise (3 wrong closes on 2026-10-16). Enforced by the `pr-close-check` workflow
   (`scripts/orchestrator/pr_close_check.py --pr N` to check before pushing).
+- Coding standards (REQ-075, ADR-093): a standard is an automatic check or marked review-only; real-world values have
+  one home module (a repo test fails on a retyped literal); reuse helpers, never copy them. Per-technology rules load
+  by path from `.claude/rules/project/`; the edit hook lints each file as it is written. Every builder brief carries:
+  "no new duplicated literal; reuse the existing helper; ruff/mypy baselines must not rise; targeted tests only; no
+  regenerated files in the PR".
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
+- Fast delivery (owner, 2026-10-16: "go ahead with these changes ... followed across all the sessions"). Measured that
+  day: CI took 2-6 min per PR; the time went to redo rounds (W-080: 6) and to local runs CI repeats (full suite 2-5 min,
+  DB tests over the tunnel up to 12 min). So:
+  1. Before a push run only the fast checks (spec tools below, `python scripts/ruff_ratchet.py`,
+     `scripts/orchestrator/pr_close_check.py`) and the tests for the files you changed. The full domain suite, the app
+     suite and every DB test run in CI (its own PostgreSQL); `merge_when_green.py` blocks a red PR. Exceptions: a new
+     migration or a change to a DB store runs that one store's test file locally; a regenerated file runs its `--check`.
+     This project rule overrides the kit's "run CI's checks locally before every push" (run-discipline C3).
+  2. Red CI: read the failed job log (`gh run view <id> --log-failed`), fix, push again - no local full-suite re-run.
+  3. Review once: Tier A (fresh Opus, adversarial) only for money maths, order safety, live-data liveness, auth, secrets,
+     migrations and hooks; Tier B (Sonnet, diff only, one round) for other code; Tier C (none) for docs. A second round
+     only for a CRITICAL/MAJOR finding.
+  4. Aim the first round: every builder brief carries the reviewer's checklist and the attack cases up front, and names
+     the `knowledge/findings/` classes it was checked against (grep the registry before designing any guard).
+  5. Two failed rounds of one class = stop patching: an independent re-design first; a third failure parks the item.
+  6. Batch: fixes in the same area go in one PR; docs, findings and decision rows go in one batched docs PR.
+  7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI.
 
-## Commands (mirror CI before every push)
+## Commands (fast checks before a push; full suites run in CI)
 CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_settings.py . --check`
 - `python tools/factory_lint.py .`
@@ -117,8 +139,9 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_drift.py . --ci` (add `--base <sha>` when checking a pull request against its base)
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)
 - Merge a PR: `python tools/merge_when_green.py <pr>`
-- Before merging a branch: merge `main` into it, re-run both suites, then `python scripts/orchestrator/merge_audit.py`
-  (checks nothing was lost; three PRs went green alone and red together).
+- Before merging a branch: merge `main` into it, run the changed files' tests, then
+  `python scripts/orchestrator/merge_audit.py` (checks nothing was lost; three PRs went green alone and red together);
+  CI re-runs both full suites on the merged result.
 
 App layer (only when `backend/ofo_app`, `tests_app`, `frontend` or the domain changes; install `requirements-app.txt`):
 - The test database is `ofo_test` on the Windows VPS PostgreSQL at 127.0.0.1:5432 (an SSH tunnel from another PC;
@@ -128,7 +151,8 @@ App layer (only when `backend/ofo_app`, `tests_app`, `frontend` or the domain ch
   variables without printing them:
   `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
-  The full app suite takes ~15 min over the tunnel; run one file. Tests marked `network` hit Zerodha's public
+  The full app suite takes ~15 min over the tunnel: never run it locally; run a DB test file only for a migration or a
+  store you changed (CI runs every DB test on its own PostgreSQL). Tests marked `network` hit Zerodha's public
   instrument list.
 - `python scripts/alembic_migration_guard.py` (no empty migrations); `python scripts/generate_openapi.py --out <file>`.
 - Frontend, in `frontend/`: `npm run lint`, `npm run test:run`, `npm run build`, `npx playwright test` (needs the

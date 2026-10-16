@@ -24,8 +24,8 @@ from ofo.engine.estimate import EstimateAssumptions
 from ofo.engine.model import ModelInputs, estimate, join_labels
 from ofo.marketdata.forward import FALLBACK_LABEL
 from ofo.scenario.levels import LevelSet
+from ofo.money import PAISE as _QUOTE
 
-_QUOTE: Final = Decimal("0.01")
 
 
 class View(Enum):

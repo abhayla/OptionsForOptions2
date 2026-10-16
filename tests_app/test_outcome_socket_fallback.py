@@ -8,18 +8,21 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from test_strategy_live_push import ERROR, ChannelClosed, rig, request, settle  # noqa: F401
+from test_strategy_live_push import ERROR, ChannelClosed, rig, request, settle, strategy_ids  # noqa: F401
 
 
 @pytest.mark.parametrize("value", [True, False, None, "true", 0])
 async def test_the_socket_refuses_a_message_with_a_fallback_key(rig, value):
     provider, feed, channel, mono, push = rig
     good = request(provider)
+    before = provider.subscribed_tokens()  # the rig holds the recorded instruments (gate 4a D-1)
     task = asyncio.create_task(push.run())
     await channel.inbound.put({**good, "fallback": value})
     await settle()
     assert channel.sent == [ERROR]
-    assert provider.subscribed_tokens() == []  # nothing was subscribed for the refused message
+    # nothing was subscribed for the refused message: no fan-out hold, provider tokens unchanged
+    assert all(feed.fanout.subscriber_count(i) == 0 for i in strategy_ids(provider))
+    assert provider.subscribed_tokens() == before
     await channel.inbound.put(good)  # the same strategy without the key is answered normally
     await settle()
     assert len(channel.sent) == 2 and channel.sent[1] != ERROR and "state" in channel.sent[1]

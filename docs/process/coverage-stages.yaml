@@ -80,6 +80,7 @@ requirements:
   REQ-072: 4a           # index spot (new, Stage 3)
   REQ-073: 4b           # Kite basket order path (new, ADR-054)
   REQ-074: [S7, S8]     # CERT-In logs and incident runbook (new, F-27)
+  REQ-075: all          # coding standards as automatic checks (ADR-093, owner 2026-10-16)
 
 decisions:
   ADR-001: all
@@ -161,6 +162,9 @@ decisions:
   ADR-088: 4a           # "Checked at" server answer time on 4 non-normal Builder states (owner 2026-10-16, #245)
   ADR-089: 4a           # one-breakeven Lower/Upper BE label from loss regions (owner 2026-10-16, #171)
   ADR-090: 4b           # REQ-073 approved for build; AC-5 follows ADR-060 (owner delegation 2026-10-16)
+  ADR-091: 4b           # freeze limits refreshed weekly by hand; review warns after 8 days (owner 2026-10-16)
+  ADR-092: 4b           # never split for the freeze limit, incl. Complete/Retry/exit (owner 2026-10-16, issue 255)
+  ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
   ADR-083: 4b           # expired leg = recorded settlement; expiry-day entry warned, short leg acknowledged (owner 2026-10-15, Q269)
@@ -233,6 +237,9 @@ issues:
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
+  "#296": 4a           # deferred: live market reads the Kite session only at API start (gate 4a D-4)
+  "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
+  "#294": 4b           # deferred: edit-lint hook minors (Windows timeout, silent no-op without a linter; REQ-075 AC-8)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
@@ -292,6 +299,8 @@ findings:
   F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
   F-36: 4b        # NSE freeze limit = MaxTradQty in the daily contract file (old qtyfreeze discontinued); BSE unmeasured (ADR-081, W-076)
   F-37: 4b        # Kite token stopped 04:29:48-04:30:48 IST next morning (one night, owner app); not ~6 AM
+  F-39: 4b        # Kite basket margin for an option BUY = qty x min(limit, live price) (REQ-055, open technical decision)
+  F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
 
 hypotheses:
   H1: done

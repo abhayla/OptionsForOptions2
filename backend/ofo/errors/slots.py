@@ -18,13 +18,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum, unique
 
 from ofo.engine.legs import Instrument as _EngineInstrument
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo import wording as shared_wording
+from ofo.money import PAISE as _PAISE
+from ofo.timeutil import IST_UNNAMED as _IST
 
 #: Input-domain cap (builder brief checklist "absurd sizes"): no rupee amount shown in an error
 #: exceeds ₹1 lakh crore (10^12). Anything larger is a bug upstream, refused rather than printed.
@@ -32,8 +34,6 @@ MONEY_ABS_MAX = Decimal("1000000000000")
 #: Input-domain cap for plain integers shown in a message (lots, legs, minutes).
 INT_ABS_MAX = 1_000_000_000
 
-_PAISE = Decimal("0.01")
-_IST = timezone(timedelta(hours=5, minutes=30))
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 

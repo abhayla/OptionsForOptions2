@@ -180,6 +180,6 @@ async def test_store_to_adapter_to_review_on_the_real_rows(app_engine: AsyncEngi
             for units, can in ((55 * 65, False), (54 * 65, True)):
                 limits = await freeze_store.review_freeze_limits(conn, plan(units))
                 assert limits["NIFTY26O1923550CE"].limit == 3511 and limits["NIFTY26O1923550CE"].lot == 65
-                assert execution_review(plan(units), None, freeze_limits=limits).can_execute is can
+                assert execution_review(plan(units), None, freeze_limits=limits, today=date(2026, 10, 16)).can_execute is can
         finally:
             await trans.rollback()

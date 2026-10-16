@@ -569,3 +569,36 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   expired), never as a broker error. Not yet measured: whether the cut-off is the same every day and for other
   accounts (one night is one sample; repeat the watcher on two more nights before relying on the minute).
 - Bears on: ADR-020, REQ-060 (Q205), REQ-015, F-32. Status: **measured once**; no decision change.
+
+## F-38 - Index freeze limits are revised several times a year, not once in years; the NIFTY limit changed 11 days before this was written
+- Researched 2026-10-16 ~08:15 IST by the orchestrator (web search; secondary sources, the NSE circulars themselves not
+  read): Zerodha Trading Q&A "NSE revises Index F&O quantity freeze limits from October 5, 2026" (citing circular
+  NSE/FAOP/76693: NIFTY 1,800 -> 3,510, BANKNIFTY 1,440, FINNIFTY 3,240), the same NIFTY figure on ICICI Direct; NSE
+  revision effective 2 Mar 2026 (TeamLease RegTech, Angel One); FINNIFTY cut 1,800 -> 1,200 effective 1 Dec 2025
+  (Angel One); a BANKNIFTY change effective 1 Sep 2025 (Republic World; its figures conflict with the 2026 sources).
+  Level P2 (secondary), raised to P1 for NIFTY by our own read: NSE's 15 Oct 2026 contract file holds `MaxTradQty`
+  3511 for every NIFTY contract (F-36), which matches 3,510 as the largest order.
+- Lot sizes move as well (NIFTY 75 -> 65), and the largest order is the whole-lot number below the limit (1,800 with lot
+  65 gave 1,755), so a lot change alone changes what can be sent in one order.
+- Meaning: a freeze limit learned once is stale within months. A missed RISE blocks orders Zerodha would take (safe,
+  annoying: 27 lots refused when 54 are allowed); a missed CUT lets a leg through that Zerodha rejects while the other
+  legs fill. Revisions are announced a few days ahead (the 2 Mar 2026 one on 27 Feb), so a weekly refresh is enough;
+  a daily download is not needed.
+- Bears on: ADR-081, ADR-091, F-36, REQ-054 AC-4. Status: **researched** (NSE circular text not read; read NSE/FAOP/76693
+  before relying on the non-NIFTY figures). Led to ADR-091 (owner, 2026-10-16).
+
+## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER of the limit price and the live price, not the limit
+- Measured 2026-10-16 by the orchestrator on the owner's account (`POST /margins/basket?consider_positions=true`, read
+  only; LTP from `/quote/ltp` just before and after), 1 lot (65) of NIFTY26O1923550CE, BUY, NRML, LIMIT:
+  - 09:06 IST (pre-open, LTP 4.05): limit 5.00 -> 263.25 (65 x 4.05); limit 10.00 -> 263.25; limit 0.50 -> 32.50.
+  - 09:29 IST (market open, LTP 3.95-4.00): limit 5.00 -> 256.75 (65 x 3.95); limit 10.00 -> 256.75; limit 0.50 -> 32.50.
+  - Script: the session scratchpad `live_ltp_vs_margin.py`. Level P1 for one CE buy; SELL legs, PE, futures and
+    multi-leg baskets are unmeasured.
+- Meaning: a BUY limit above the live price can fill at up to the limit (65 x 10.00 = Rs 650 debit) while Kite's margin
+  answer is Rs 256.75. REQ-055's pre-execution margin check uses Kite's answer (ADR-016: Zerodha is the authority on
+  margin), so for a buy limit above the market it can pass a basket whose real premium outflow is larger than the
+  funds. Same day, live: available funds Rs -497 against required Rs 263.25 -> the check refused (MARGIN_201), as it
+  should.
+- Bears on: REQ-055, ADR-016, ADR-080 (executable price). Status: **measured twice on one contract**; open for a
+  technical decision (use max(Kite margin, quantity x limit) for buy legs, or keep Kite's figure) - decided with an
+  independent reviewer before the first real order.

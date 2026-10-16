@@ -24,8 +24,9 @@ from ofo.execution.freeze import StoredFreeze, freeze_limits_for_plan
 from ofo.instruments.freeze_file import Disagreement, match_to_catalogue, parse_freeze_file
 from ofo.instruments.models import NSE_FO, InstrumentId
 from ofo_app.catalogue_store import load_catalogue
+from ofo_app.sql_time import IST_SQL_ZONE
 
-_TODAY_IST = text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
+_TODAY_IST = text(f"SELECT (clock_timestamp() {IST_SQL_ZONE})::date")
 _INSERT = text(
     "INSERT INTO public.exchange_freeze_limits (exchange_segment, exchange_token, file_date, freeze_limit, file_name) "
     "VALUES (:segment, :token, :file_date, :limit, :file_name) ON CONFLICT DO NOTHING")

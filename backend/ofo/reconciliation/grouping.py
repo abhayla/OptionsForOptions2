@@ -40,12 +40,13 @@ from ofo.engine.legs import Action, Instrument, Leg, require_price
 from ofo.engine.product import Product
 from ofo.errors import render
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
-from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.instruments.models import ZERODHA, InstrumentId, is_lot_aligned
 from ofo.reconciliation.compare import ReconciliationError
 from ofo.reconciliation.positions import position_line_from_kite_row
 from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.matching import MatchResult, match
 from ofo.strategy.model import Template, TemplateError
+from ofo.money import PAISE as _PAISE
 
 __all__ = [
     "STANDALONE", "AdoptedLeg", "AdoptedStrategy", "EntrySource", "Group", "GroupSuggestion", "GroupingError",
@@ -56,7 +57,6 @@ __all__ = [
 #: A refused grouping choice: ``message`` is the four-part text from ``render()``; ``str()`` is developer detail.
 GroupingError = ReconciliationError
 
-_PAISE = Decimal("0.01")
 
 
 class EntrySource(Enum):
@@ -315,7 +315,7 @@ def suggest_groups(
             unresolved.append(Unresolved(position.tradingsymbol, "differs_from_strategy",
                                          f"zerodha={broker_net[ckey]};strategy={held[ckey]}"))
             continue
-        if abs(position.net_quantity) % position.lot_size:
+        if not is_lot_aligned(abs(position.net_quantity), position.lot_size):
             unresolved.append(Unresolved(position.tradingsymbol, "not_lot_multiple"))
             continue
         grouped.setdefault(_group_id(position.underlying, position.expiry), []).append(position)
