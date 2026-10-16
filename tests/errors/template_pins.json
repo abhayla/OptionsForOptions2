@@ -1331,8 +1331,12 @@
     "sha256": "11dedfe0f8d0e9ab25ada1c0ecd57d28e3f32524c0da22c3fad861ec16ed0164",
     "reviewed": "pending owner read"
   },
-  "grouping_not_available": {
-    "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
+  "grouping_strategy_not_adoptable": {
+    "sha256": "d0e3c700cd542290254bf122402b094a2a5ecda7bb1874a1bfbea7c0a6d81ce7",
+    "reviewed": "pending owner read"
+  },
+  "grouping_strategy_holds_contract": {
+    "sha256": "daa4c821471ef2f5b7715d9ec08550747716a52ded93e54550d8abd2b45f7992",
     "reviewed": "pending owner read"
   },
   "partial_mismatch_other_product_only": {

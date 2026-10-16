@@ -73,11 +73,12 @@ def test_confirm_writes_one_entry_with_prices_sources_and_products():
     assert event.payload["strategy_id"] == "S-C" and event.payload["resembles"] == "Iron Condor"
 
 
-def test_move_into_an_existing_strategy_is_refused_and_not_audited():
+def test_a_refused_add_to_an_existing_strategy_is_audited_once():
+    """ADR-096 brief item 7: a refused add to an existing strategy appends one entry (here: no record of S-1)."""
     s, log = started()
     with pytest.raises(GroupingError):
         s.move(key_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
-    assert len(log.events) == 1
+    assert len(log.events) == 2 and log.events[-1].payload["action"] == "add_to_strategy_refused"
 
 
 def test_audit_entries_name_the_product_so_two_rows_of_one_contract_are_distinct():
@@ -99,7 +100,6 @@ def test_a_refused_action_appends_nothing_and_changes_nothing():
     refusals = [
         lambda: s.move(key_of(SENSEX_PUT), ToGroup(CONDOR_GROUP)),
         lambda: s.move(key_of(IN_STRATEGY), STANDALONE),
-        lambda: s.move(key_of(CALL), ToStrategy("S-1")),
         lambda: s.set_entry(key_of(CALL), D("0")),
         lambda: s.set_entry(key_of(CALL), 91.5),
         lambda: s.confirm("NIFTY:2000-01-01", strategy_id="S-C"),

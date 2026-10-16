@@ -20,11 +20,16 @@ order, reads the broker or monitors anything; AC-3 (monitoring the adopted strat
 * The entry of an adopted leg is Zerodha's EXACT average (a cost, not an order price: never rounded to a tick). A
   leg holds paise, so an average finer than that needs ``set_entry`` first; ``confirm`` then refuses the WHOLE group
   until every row is adoptable (no partial adoption).
-* Adding a position to an EXISTING strategy is refused ("not available yet"): the only path found,
-  ``propose_modification`` / ``StrategyRecord.edit`` + ``propose_execution``, prepares orders for the added legs and
-  would double a leg Zerodha already holds; no order-free way to add held legs to a version exists yet.
+* Adding positions to an EXISTING strategy (ADR-096) is ORDER-FREE: ``move(key, ToStrategy(id))`` places a
+  position, ``confirm_into(id)`` adds every position placed there (all or none) through
+  ``StrategyRecord.adopt_held`` - a new active version, no proposal, no order. ``propose_modification`` /
+  ``StrategyRecord.edit`` + ``propose_execution`` prepare orders for added legs (a second buy or sell of a held
+  position) and are never used here. Refused: an unknown, exited, blocked (reconciliation required), proposed or
+  never-executed strategy; another underlying; a contract the strategy already holds or two chosen rows on one
+  contract (never netted); an average finer than paise with no entry set.
 * Every action appends exactly ONE entry through the audit log's public ``append`` (``start`` = the suggestion,
-  ``move`` / standalone, ``set_entry``, ``confirm``); a refused action changes nothing and appends nothing.
+  ``move`` / standalone, ``set_entry``, ``confirm``, ``add_to_strategy``). A refused action changes nothing; it
+  appends nothing, except a refused add to an existing strategy, which appends one ``add_to_strategy_refused`` entry.
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, NoReturn, Sequence
 
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
@@ -44,12 +49,14 @@ from ofo.instruments.models import ZERODHA, InstrumentId, is_lot_aligned
 from ofo.reconciliation.compare import ReconciliationError
 from ofo.reconciliation.positions import position_line_from_kite_row
 from ofo.strategy.definition import StrategyDefinition
+from ofo.strategy.versions import Position, StrategyRecord, VersionError
 from ofo.strategy.matching import MatchResult, match
 from ofo.strategy.model import Template, TemplateError
 from ofo.money import PAISE as _PAISE
 
 __all__ = [
-    "STANDALONE", "AdoptedLeg", "AdoptedStrategy", "EntrySource", "Group", "GroupSuggestion", "GroupingError",
+    "STANDALONE", "AddedToStrategy", "AdoptedLeg", "AdoptedStrategy", "EntrySource",
+    "Group", "GroupSuggestion", "GroupingError",
     "GroupingSession", "PositionKey", "Standalone", "SuggestedPosition", "ToGroup", "ToStrategy", "Unresolved",
     "suggest_groups",
 ]
@@ -79,7 +86,7 @@ class ToGroup:
 
 @dataclass(frozen=True)
 class ToStrategy:
-    """Refused for now (see the module docstring); kept so a caller can ask and get the honest answer."""
+    """An EXISTING strategy; ``GroupingSession.confirm_into`` adds the positions placed here, order-free (ADR-096)."""
 
     strategy_id: str
 
@@ -174,6 +181,15 @@ class AdoptedStrategy:
     underlying: str
     legs: tuple[AdoptedLeg, ...]
     resembles: str | None
+
+
+@dataclass(frozen=True)
+class AddedToStrategy:
+    """Held positions added to an EXISTING strategy as its new active ``version_number``; no order was prepared."""
+
+    strategy_id: str
+    version_number: int
+    legs: tuple[AdoptedLeg, ...]
 
 
 def _group_id(underlying: str, expiry: datetime.date) -> str:
@@ -342,10 +358,12 @@ class GroupingSession:
     """The user's grouping choices over one suggestion. Every action appends one audit entry (see module docstring)."""
 
     def __init__(self, suggestion: GroupSuggestion, *, audit: AuditLog, clock: Callable[[], datetime.datetime],
-                 actor: str, session_id: str, strategies: Mapping[str, StrategyDefinition] | None = None) -> None:
+                 actor: str, session_id: str, strategies: Mapping[str, StrategyDefinition] | None = None,
+                 records: Mapping[str, StrategyRecord] | None = None) -> None:
         self.suggestion = suggestion
         self._audit, self._clock, self._actor, self._session_id = audit, clock, actor, session_id
-        self._strategies = dict(strategies or {})
+        self._records = dict(records or {})
+        self._strategies = {**{sid: r.definition for sid, r in self._records.items()}, **dict(strategies or {})}
         self._positions = {p.key: p for g in suggestion.groups for p in g.positions}
         self._registry = {g.id: g.underlying for g in suggestion.groups}
         self._place: dict[PositionKey, Target] = {p.key: ToGroup(g.id) for g in suggestion.groups for p in g.positions}
@@ -357,10 +375,12 @@ class GroupingSession:
     @classmethod
     def start(cls, suggestion: GroupSuggestion, *, audit: AuditLog, clock: Callable[[], datetime.datetime],
               actor: str, session_id: str,
-              strategies: Mapping[str, StrategyDefinition] | None = None) -> "GroupingSession":
+              strategies: Mapping[str, StrategyDefinition] | None = None,
+              records: Mapping[str, StrategyRecord] | None = None) -> "GroupingSession":
         """Open the session; appends one ``suggest`` entry listing the suggested groups, the unresolved rows and the
         positions hidden because a strategy holds them (``symbol:strategy id``)."""
-        session = cls(suggestion, audit=audit, clock=clock, actor=actor, session_id=session_id, strategies=strategies)
+        session = cls(suggestion, audit=audit, clock=clock, actor=actor, session_id=session_id, strategies=strategies,
+                      records=records)
         session._record(EventType.RECONCILIATION_RECORDED, {
             "action": "suggest",
             "groups": [{"id": g.id, "legs": [f"{p.tradingsymbol}:{p.product.value}" for p in g.positions],
@@ -394,6 +414,10 @@ class GroupingSession:
         """Positions left standalone: shown, never ordered for, never monitored (ADR-002, ADR-084)."""
         return tuple(self._live(Standalone))
 
+    def placed_in(self, strategy_id: str) -> tuple[SuggestedPosition, ...]:
+        """Positions moved to an existing strategy and not yet added (``confirm_into``)."""
+        return tuple(p for p in self._live(ToStrategy) if self._place[p.key] == ToStrategy(strategy_id))
+
     def entry_of(self, position: SuggestedPosition) -> tuple[Decimal, EntrySource]:
         return self._entries.get(position.key, (position.average_price, EntrySource.FROM_ZERODHA))
 
@@ -420,10 +444,17 @@ class GroupingSession:
 
     def move(self, key: PositionKey, target: Target) -> None:
         position = self._position(key)
+        underlying: str | None
         if isinstance(target, ToStrategy):
-            raise ReconciliationError(f"adding {position.tradingsymbol} to strategy {target.strategy_id!r}",
-                                      message=render("grouping_not_available"))
-        if isinstance(target, ToGroup):
+            record = self._records.get(target.strategy_id)
+            if record is None:
+                self._refuse_add(target.strategy_id, (position,), "grouping_choice_unavailable",
+                                 ReconciliationError(f"no strategy record {target.strategy_id!r}"))
+            underlying = record.definition.underlying
+            if underlying != position.underlying:
+                self._refuse_add(target.strategy_id, (position,), "grouping_move_refused", ReconciliationError(
+                    f"{position.tradingsymbol} is {position.underlying}, strategy is {underlying}"))
+        elif isinstance(target, ToGroup):
             underlying = self._registry.get(target.group_id)
             if underlying is None:
                 raise ReconciliationError(f"no group {target.group_id!r}", message=render("grouping_choice_unavailable"))
@@ -456,6 +487,69 @@ class GroupingSession:
             "instrument_id": _ident(key), "old_price": str(old), "new_price": str(checked),
         })
         self._entries[key] = (checked, EntrySource.EDITED)
+
+    def _refuse_add(self, strategy_id: object, positions: Sequence[SuggestedPosition], template_id: str,
+                    error: ReconciliationError, **slots: object) -> NoReturn:
+        """Record a refused add to an existing strategy (one audit entry), then raise ``error`` (its developer detail)
+        carrying ``template_id``'s four-part message."""
+        message = render(template_id, **slots)
+        self._record(EventType.USER_APPROVAL_RECORDED, {
+            "action": "add_to_strategy_refused", "strategy_id": str(strategy_id), "reason": template_id,
+            "positions": [f"{p.tradingsymbol}:{p.product.value}" for p in positions],
+        })
+        raise ReconciliationError(str(error), message=message)
+
+    def confirm_into(self, strategy_id: str, *, at: datetime.datetime) -> AddedToStrategy:
+        """Add EVERY position placed at ``ToStrategy(strategy_id)`` to that existing strategy, order-free (ADR-096).
+
+        All or none: one refused row refuses the lot and changes nothing but the refusal's audit entry. The held
+        units become a NEW active version through ``StrategyRecord.adopt_held`` (no proposal, no
+        ``propose_execution``, no order); each leg's entry is Zerodha's average or the entry the user set (ADR-084)."""
+        members = self.placed_in(strategy_id) if isinstance(strategy_id, str) else ()
+        record = self._records.get(strategy_id) if isinstance(strategy_id, str) else None
+        if not members or record is None:
+            self._refuse_add(strategy_id, members, "grouping_choice_unavailable",
+                             ReconciliationError("nothing placed there, or no record"))
+        underlying = record.definition.underlying
+        if any(p.underlying != underlying for p in members):
+            self._refuse_add(strategy_id, members, "grouping_move_refused",
+                             ReconciliationError(f"a position is not on {underlying}"))
+        if record.exited or record.reconciliation_required or record.proposed_version is not None \
+                or record.active_version is None:
+            self._refuse_add(strategy_id, members, "grouping_strategy_not_adoptable",
+                             ReconciliationError(f"exited={record.exited} blocked={record.reconciliation_required} "
+                                                 f"proposed={record.proposed_version is not None} "
+                                                 f"active={record.active_version is not None}"))
+        needing = [p for p in members if p.needs_entry and p.key not in self._entries]
+        if needing:
+            self._refuse_add(strategy_id, members, "grouping_entry_needed",
+                             ReconciliationError(f"{len(needing)} row(s) need an entry"), contracts=len(needing))
+        held: dict[tuple, int] = {}
+        for p in members:
+            ckey = _contract_key(p.underlying, p.instrument, p.strike, p.expiry)
+            held[ckey] = held.get(ckey, 0) + p.net_quantity
+        owned = record.definition.intended_position()
+        twice = len(members) - len(held) + sum(1 for c in held if c in owned)
+        if twice:
+            self._refuse_add(strategy_id, members, "grouping_strategy_holds_contract",
+                             ReconciliationError(f"{twice} contract(s) held twice"), contracts=twice)
+        position, reason = Position.of(held), f"grouping:{self._session_id}"
+        try:
+            record.check_adopt_held(position, at=at, actor=self._actor, reason=reason)
+        except VersionError:  # any other refusal of the record (time order, capacity): fail closed; chained
+            self._refuse_add(strategy_id, members, "grouping_strategy_not_adoptable",
+                             ReconciliationError("the strategy record refused the add"))
+        legs = []
+        for p in members:
+            price, source = self.entry_of(p)
+            legs.append(AdoptedLeg(p.tradingsymbol, p.instrument_id, p.leg(price), p.product, source))
+        version = record.adopt_held(position, at=at, actor=self._actor, reason=reason)
+        self._record(EventType.STRATEGY_CHANGED, {
+            "action": "add_to_strategy", "strategy_id": strategy_id, "version": version.number,
+            "legs": [{"position": a.tradingsymbol, "entry_price": str(a.leg.entry_price),
+                      "entry_source": a.entry_source.value, "product": a.product.value} for a in legs]})
+        self._adopted_keys.update(p.key for p in members)
+        return AddedToStrategy(strategy_id, version.number, tuple(legs))
 
     def _fresh_strategy_id(self, strategy_id: str) -> None:
         if not isinstance(strategy_id, str) or not strategy_id.strip() or strategy_id in self._strategies \
