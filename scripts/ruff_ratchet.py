@@ -45,6 +45,9 @@ def decide(baseline: Mapping[str, int], current: Mapping[str, int], update: bool
     if up:
         if update:
             lines.append("ruff ratchet: --update refused, a count rose; fix the new violations first")
+        # Always end on a verdict line (finding gate-output-read-by-eye: with "fell" lines last and no summary, two
+        # builders read a failing ratchet as passing on 2026-10-16).
+        lines.append(f"ruff ratchet: FAIL, {len(up)} rule(s) rose: {', '.join(code for code, _, _ in up)}")
         return 1, lines, False
     lines.append(f"ruff ratchet: OK, no rule rose ({sum(current.values())} violations, {len(current)} rules)")
     return 0, lines, update
