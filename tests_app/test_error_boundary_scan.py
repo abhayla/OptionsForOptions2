@@ -117,7 +117,10 @@ def _allowed_outbound(tree: ast.AST, rel: str) -> set[int]:
             annotations.append(node.returns)
         elif isinstance(node, ast.AnnAssign):
             annotations.append(node.annotation)
-    return {id(sub) for ann in annotations for sub in ast.walk(ann)
+    # An annotation that runs code (a call, a walrus, a lambda) is not a plain type name: nothing inside it is allowed.
+    plain = [ann for ann in annotations
+             if not any(isinstance(sub, (ast.Call, ast.NamedExpr, ast.Lambda)) for sub in ast.walk(ann))]
+    return {id(sub) for ann in plain for sub in ast.walk(ann)
             if isinstance(sub, ast.Attribute) and sub.attr == attr and isinstance(sub.value, ast.Name)
             and sub.value.id in aliases}
 
@@ -301,6 +304,13 @@ OUTBOUND_STILL_REFUSED = {
     "other_module": 'import starlette.responses as _httpx\ndef g() -> _httpx.Response:\n    ...\n',
     "other_banned_attr": 'import httpx as _httpx\ndef g() -> _httpx.JSONResponse:\n    ...\n',
     "bare_name_annotation": 'def g() -> Response:\n    ...\n',
+    # Tier A review (GC-2a): the module check (``a.name == module``) needs its own killing plant - fastapi's Response
+    # IS starlette's, and no import rule names fastapi
+    "fastapi_alias": 'import fastapi as _httpx\ndef g() -> _httpx.Response:\n    ...\n',
+    "construct_in_return_annotation": 'import httpx as _httpx\ndef g() -> _httpx.Response(200):\n    ...\n',
+    "construct_in_annassign": 'import httpx as _httpx\nx: _httpx.Response(200, text="e") = None\n',
+    "walrus_in_annotation": 'import httpx as _httpx\ndef g() -> (R := _httpx.Response):\n    ...\n',
+    "lambda_in_annotation": 'import httpx as _httpx\ndef g() -> (lambda: _httpx.Response)():\n    ...\n',
 }
 
 
