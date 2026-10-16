@@ -27,7 +27,7 @@ inside a transaction that is rolled back.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -36,7 +36,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from ofo.engine import Action, Instrument
 from ofo.instruments.models import BrokerRef, Contract, InstrumentId, ListedContract
+from ofo.orders.model import FillEvent, Order, OrderBook, OrderState
+from ofo.reconciliation.delisted import DELISTED_HELD, DelistedContract, block_delisted_held
+from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
+from ofo.strategy.versions import StrategyRecord
 from ofo_app.catalogue_store import (
     CatalogueStoreError,
     apply_update,
@@ -638,6 +643,33 @@ async def test_ac3_r2_a_small_cleanup_is_accepted_and_delists_the_missing() -> N
     assert (result.added, result.seen, result.delisted, result.retired, result.newly_unlisted) == (0, 1818, 14, 0, 14)
     assert _delist_writes(conn) == [{"ids": list(range(101, 115))}]
     assert conn.writes[0][0] == "UPDATE" and "SET delisted = TRUE" in conn.writes[0][1]
+    assert len(result.delisted_contracts) == result.delisted == 14
+    assert {d.instrument_id for d in result.delisted_contracts} == missing
+    assert all(d.tradingsymbols == (next(r for r in live if r.id == d.instrument_id).ref("zerodha").broker_symbol,)
+               for d in result.delisted_contracts)
+
+
+async def test_adr058_the_store_result_feeds_the_book_block_end_to_end() -> None:
+    """ADR-058: the update that delists 61746 names it; fed to block_delisted_held, the strategy holding 65 of it is
+    blocked and the one holding another contract is not. (No recorded held case exists: the book is built by hand.)"""
+    others = [*_fillers(10), *_fillers(2, first_token=200001, expiry=date(2029, 12, 24))]
+    result = await apply_update(_FakeConn([*_stored_all(others), _stored(R61746_B, 61)]), others,
+                                as_of=_as_of(date(2026, 8, 26)))
+    at = datetime(2026, 8, 26, 10, 0, tzinfo=UTC)
+    book = OrderBook(clock=lambda: at)
+    for strategy in ("STRAT-1", "STRAT-2"):
+        leg = DefinitionLeg(Action.BUY, Instrument.CE, Decimal("23000"), date(2026, 10, 27), 75)
+        record = StrategyRecord(StrategyDefinition("NIFTY", (leg,)), at=at)
+        record.propose_execution(at=at)
+        book.bind_strategy(strategy, record)
+    for strategy, symbol, boid in (("STRAT-1", "NIFTY29DEC23000CE", "B-1"), ("STRAT-2", "NIFTY27DEC10000CE", "B-2")):
+        book.add(Order(strategy, "leg-0", symbol, Action.BUY, 65, Decimal("91.50"), broker_order_id=boid,
+                       version_id="v1"))
+        book.transition(boid, OrderState.SUBMITTED)
+        book.apply_fill(FillEvent(f"T-{boid}", boid, symbol, Action.BUY, 65, Decimal("91.50"), at))
+    assert block_delisted_held(book, result.delisted_contracts) == ("STRAT-1",)
+    assert book.is_submit_blocked("STRAT-1") and not book.is_submit_blocked("STRAT-2")
+    assert book.reconciliation_events("STRAT-1")[-1].reason == DELISTED_HELD
 
 
 async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None:
@@ -705,6 +737,8 @@ async def test_ac3_r2_plan_for_61746_delists_then_a_reuse_is_a_new_contract() ->
     result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
     assert (result.delisted, result.retired, result.added) == (1, 0, 0)
     assert _delist_writes(conn) == [{"ids": [61]}]
+    # ADR-058: the result names WHICH contract was delisted (identity + Zerodha symbol), not only how many
+    assert result.delisted_contracts == (DelistedContract(InstrumentId("NSE_FO", 61746), ("NIFTY29DEC23000CE",)),)
     reuse = _row(61746, date(2026, 11, 24), "0", "FUT", "NIFTY26NOVFUT")
     after = _FakeConn(_stored_all(others))
     result = await apply_update(after, others + [reuse], as_of=_as_of(date(2026, 9, 1)))
