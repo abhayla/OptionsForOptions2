@@ -14,7 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from test_kite_login import ACCESS_TOKEN, CALLBACK, REQUEST_TOKEN, FakeKite, _app, _state, _TxDB
-from test_strategy_live_push import DB, FakeSocket, held_replay, settle
+from test_strategy_live_push import DB, VALUATION, FakeSocket, held_replay, settle
 from marketdata._kite_fixture import new_provider  # tests/ is on sys.path via test_strategy_live_push
 from ofo.instruments.catalogue import Catalogue as RealCatalogue
 from ofo_app import broker_token_store, catalogue_store, db, kite_ws, live_market, main
@@ -46,7 +46,7 @@ async def kite_world(monkeypatch):
     """The stored-session world: ``world["token"]`` is what the token store answers (None = no session); every
     lookup is counted; the socket the market builds is a fake that runs until stopped."""
     provider, clock, items = new_provider()
-    world: dict = {"token": None, "lookups": 0, "sockets": [], "raise": None}
+    world: dict = {"token": None, "lookups": 0, "sockets": [], "raise": None, "ends": []}
 
     async def token(*a, **k):
         world["lookups"] += 1
@@ -65,9 +65,22 @@ async def kite_world(monkeypatch):
         return Catalogue()
 
     class Sock(FakeSocket):
+        """Runs until stopped, or, when built with an ``ends`` event, ends with "session ended" once it is set.
+        Records the fingerprint of the token it was built with and the socket tasks still alive at its birth."""
+
         def __init__(self, prov, *, api_key, access_token, clock, base_url):
             super().__init__(prov, result="stopped")
+            self.fingerprint = live_market.token_fingerprint(access_token)
+            self.alive_at_birth = socket_tasks()
+            self.ends = world["ends"].pop(0) if world["ends"] else None
             world["sockets"].append(self)
+
+        async def run(self):
+            if self.ends is None:
+                return await super().run()
+            await self.ends.wait()
+            self.provider.on_session_ended(VALUATION)
+            return "session ended"
 
     async def stored(*a, **k):
         world["stored"] = True
@@ -149,14 +162,14 @@ async def test_a_login_while_live_leaves_the_running_socket_alone(kite_world, mo
     provider, clock, _ = new_provider()
     market = live_market.LiveMarket()
     sock = FakeSocket(provider, result="stopped")
-    market.attach(provider, sock, clock)
+    market.attach(provider, sock, clock, live_market.token_fingerprint(ACCESS_TOKEN))
     task, feed = market._task, market.feed
     live_market.set_current(market)
     monkeypatch.setenv("LIVE_MARKET", "1")
     kite_world["token"] = ACCESS_TOKEN
     connected(await login(_app(FakeKite(), _TxDB())))
     assert market._task is task and market.feed is feed and sock.stopped is False
-    assert kite_world["lookups"] == 0 and kite_world["sockets"] == []
+    assert kite_world["lookups"] == 1 and kite_world["sockets"] == []  # one read: same session, nothing restarts
     assert socket_tasks() == [task]
     await market.close()
 
@@ -170,7 +183,7 @@ async def test_two_logins_at_once_start_one_socket(kite_world, monkeypatch):
     cfg = _app(FakeKite(), _TxDB()).state.broker.config
     await asyncio.gather(live_market.pick_up_login(cfg), live_market.pick_up_login(cfg))
     assert market.state == live_market.LIVE
-    assert kite_world["lookups"] == 1 and len(kite_world["sockets"]) == 1 and len(socket_tasks()) == 1
+    assert len(kite_world["sockets"]) == 1 and len(socket_tasks()) == 1
     await market.close()
 
 
@@ -229,3 +242,84 @@ async def test_a_login_after_shutdown_starts_nothing(kite_world, monkeypatch):
     monkeypatch.setenv("LIVE_MARKET", "1")
     await market.pick_up_login(_app(FakeKite(), _TxDB()).state.broker.config)
     assert kite_world["lookups"] == 0 and socket_tasks() == []
+
+
+# ---- round 2: "running" is not "running on the stored session" (F-37: the token dies ~04:30 IST, the socket stays) --
+
+TOKEN_A, TOKEN_B = "ACtok_fake_A_11112222333344", "ACtok_fake_B_55556666777788"
+
+
+async def started_on(token: str, kite_world) -> live_market.LiveMarket:
+    kite_world["token"] = token
+    market = live_market.LiveMarket()
+    await market.start(_app(FakeKite(), _TxDB()).state.broker.config)
+    live_market.set_current(market)
+    assert market.state == live_market.LIVE
+    return market
+
+
+async def test_live_on_a_and_a_login_stores_b_restarts_onto_b_with_the_old_socket_stopped_first(kite_world,
+                                                                                             monkeypatch, caplog):
+    monkeypatch.setenv("LIVE_MARKET", "1")
+    caplog.set_level(logging.DEBUG)
+    market = await started_on(TOKEN_A, kite_world)
+    old_task = market._task
+    kite_world["token"] = TOKEN_B
+    connected(await login(_app(FakeKite(), _TxDB())))
+    first, second = kite_world["sockets"]
+    assert first.fingerprint == live_market.token_fingerprint(TOKEN_A) and first.stopped is True
+    assert second.fingerprint == live_market.token_fingerprint(TOKEN_B)
+    assert second.alive_at_birth == [] and old_task.done()  # the old socket was stopped AND awaited first
+    assert market.running() and socket_tasks() == [market._task]
+    for r in caplog.records:
+        text = r.getMessage() + (r.exc_text or "")
+        assert TOKEN_A not in text and TOKEN_B not in text
+    await market.close()
+
+
+async def test_live_on_a_and_a_login_stores_a_again_does_not_restart(kite_world, monkeypatch):
+    monkeypatch.setenv("LIVE_MARKET", "1")
+    market = await started_on(TOKEN_A, kite_world)
+    task = market._task
+    connected(await login(_app(FakeKite(), _TxDB())))  # the store still answers A
+    assert market._task is task and len(kite_world["sockets"]) == 1 and kite_world["sockets"][0].stopped is False
+    await market.close()
+
+
+async def test_session_ended_on_a_with_b_already_stored_restarts_onto_b_once(kite_world, monkeypatch):
+    end_a = asyncio.Event()
+    kite_world["ends"] = [end_a]
+    market = await started_on(TOKEN_A, kite_world)
+    kite_world["token"] = TOKEN_B  # the login landed while A's socket still looked live (or in its backoff)
+    end_a.set()
+    await settle()
+    assert market.state == live_market.LIVE and len(kite_world["sockets"]) == 2
+    assert kite_world["sockets"][1].fingerprint == live_market.token_fingerprint(TOKEN_B)
+    assert kite_world["sockets"][1].alive_at_birth == [] and socket_tasks() == [market._task]
+    assert kite_world["lookups"] == 2  # the start, then exactly one re-read for the ended socket
+    await market.close()
+
+
+async def test_session_ended_with_a_still_stored_reads_once_and_does_not_loop(kite_world, monkeypatch):
+    end_a = asyncio.Event()
+    kite_world["ends"] = [end_a]
+    market = await started_on(TOKEN_A, kite_world)
+    end_a.set()
+    await settle(20)
+    assert market.state == live_market.SESSION_ENDED and len(kite_world["sockets"]) == 1
+    assert kite_world["lookups"] == 2 and socket_tasks() == []
+    await market.close()
+
+
+async def test_close_cancels_a_pending_re_read(kite_world, monkeypatch):
+    end_a = asyncio.Event()
+    kite_world["ends"] = [end_a]
+    market = await started_on(TOKEN_A, kite_world)
+    kite_world["token"] = TOKEN_B
+    await market._lock.acquire()  # hold the re-read at the lock, then shut down
+    end_a.set()
+    await settle()
+    market._lock.release()
+    await market.close()
+    await settle()
+    assert len(kite_world["sockets"]) == 1 and socket_tasks() == []
