@@ -251,7 +251,7 @@ def _sealed_objects():
 
 @pytest.mark.parametrize("attack", [
     copy.copy, copy.deepcopy, pickle.dumps,
-    lambda o: dataclasses.replace(o),
+    dataclasses.replace,
     lambda o: object.__setattr__(o, "x", 1),
 ], ids=["copy", "deepcopy", "pickle", "replace", "setattr"])
 def test_the_sealed_objects_cannot_be_copied_pickled_replaced_or_written(attack):

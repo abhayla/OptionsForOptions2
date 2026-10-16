@@ -107,7 +107,8 @@ def test_a_newer_list_replaces_zerodha_row_with_its_new_date_and_lot(rows: list[
 def test_eligibility_is_keyed_by_instrument_id(catalogue: Catalogue) -> None:
     entry = catalogue.get(NIFTY_23150_CE)
     reg = zerodha_eligibility(catalogue, at=datetime(2026, 9, 29, 10, 0, tzinfo=IST))
-    assert entry is not None and reg.is_tradable(NIFTY_23150_CE) and not reg.is_tradable(InstrumentId("NSE_FO", 99_999_999))
+    assert entry is not None and reg.is_tradable(NIFTY_23150_CE)
+    assert not reg.is_tradable(InstrumentId("NSE_FO", 99_999_999))
     with pytest.raises(TypeError):
         reg.is_tradable(18920450)  # type: ignore[arg-type]  # a broker token is not the identity
     with pytest.raises(TypeError):

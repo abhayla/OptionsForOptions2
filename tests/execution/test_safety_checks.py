@@ -91,7 +91,7 @@ def _exit_opens_position(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> In
 
 
 class _BrokenCatalogue(Catalogue):
-    """A catalogue whose every read raises (the eligibility object is sealed, so the store failure is simulated here)."""
+    """A catalogue whose every read raises (eligibility is sealed, so the store failure is simulated here)."""
 
     def __getattribute__(self, name: str) -> object:
         if not name.startswith("__"):

@@ -15,7 +15,7 @@ Sealed means: an immutable tuple with no attribute storage (``object.__setattr__
 ``record``), calling the class raises, subclasses are refused, ``copy``/``deepcopy``/``pickle``/``dataclasses.replace``
 raise, and identities are stored as plain ``(segment, token)`` tuples so editing an ``InstrumentId`` object afterwards
 changes nothing. This is not proof against deliberate tricks (``tuple.__new__``, ``copyreg``, a ``__class__`` swap,
-a fabricated row object): those are out of scope as for ``KiteBasket`` (ADR-003 Q235); the door scan
+a fabricated row object): those are out of scope as for the sealed basket (ADR-003 Q235); the door scan
 (``tests/test_door_names_private.py``) allows ``tuple.__new__`` only in this file among the instruments package.
 """
 from __future__ import annotations
@@ -131,8 +131,8 @@ def list_state_from_row(row: Any) -> ListState:
     expiry = row.expiry
     if expiry is not None and type(expiry) is not date:
         raise TypeError(f"list row column expiry must be a date or None, got {expiry!r}")
-    flags = tuple(_strict_bool(getattr(row, name), name)
-                  for name in ("currently_listed", "retired", "delisted", "has_zerodha_row"))
+    flags = (_strict_bool(row.currently_listed, "currently_listed"), _strict_bool(row.retired, "retired"),
+             _strict_bool(row.delisted, "delisted"), _strict_bool(row.has_zerodha_row, "has_zerodha_row"))
     return tuple.__new__(ListState, (instrument_id.exchange_segment, instrument_id.exchange_token, instrument_type,
                                      expiry, *flags))
 
