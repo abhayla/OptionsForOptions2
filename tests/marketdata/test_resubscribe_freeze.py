@@ -15,6 +15,7 @@ import datetime
 from _kite_fixture import NIFTY_CE_ID, NIFTY_PE_ID, all_instrument_ids, new_provider, replay
 from ofo.marketdata.fanout import FanOut
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST_UNNAMED as SEC_TZ
 
 SPOT_ID = "NSE_INDEX:1001"
 SEC = datetime.timedelta(seconds=1)
@@ -130,3 +131,35 @@ def test_a_tick_between_release_and_send_is_given_to_no_one_and_restored_on_a_re
     provider.subscribe([NIFTY_CE_ID])
     again = provider.book.get(NIFTY_CE_ID, end + SEC)
     assert again is not None and str(again.ltp) == "777"
+
+
+def test_released_before_its_first_quote_then_ticked_before_the_send_never_becomes_readable():
+    # Tier A reviewer repro: subscribe X, send, unsubscribe X, tick X, send -> no holderless quote, nothing delivered
+    provider, _clock, _items = new_provider()
+    seen = []
+    provider.live_quote_stream(seen.append)
+    token = provider._token_of[NIFTY_CE_ID]
+    at = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=SEC_TZ)
+    provider.on_connected(at)
+    provider.subscribe([NIFTY_CE_ID])
+    provider.drain_subscription_changes()
+    provider.unsubscribe([NIFTY_CE_ID])
+    provider.on_frame(_ltp_frame((token, 12345)), at + SEC)
+    provider.drain_subscription_changes()
+    assert provider.book.get(NIFTY_CE_ID, at + SEC) is None and seen == []
+    assert provider.subscribed_tokens() == []
+    assert provider.counters["unwanted_tick"] == 1
+
+
+def test_a_not_wanted_token_with_no_parked_entry_is_dropped_and_counted_and_a_re_take_gets_the_next_tick():
+    provider, _clock, _items = new_provider()
+    token = provider._token_of[NIFTY_CE_ID]
+    at = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=SEC_TZ)
+    provider.on_connected(at)
+    provider.on_frame(_ltp_frame((token, 12345)), at)  # never subscribed
+    assert provider.book.get(NIFTY_CE_ID, at) is None and provider.counters["unwanted_tick"] == 1
+    provider.subscribe([NIFTY_CE_ID])
+    provider.drain_subscription_changes()
+    provider.on_frame(_ltp_frame((token, 12400)), at + SEC)
+    fresh = provider.book.get(NIFTY_CE_ID, at + SEC)
+    assert fresh is not None and str(fresh.ltp) == "124" and fresh.health is DataHealth.AVAILABLE
