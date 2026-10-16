@@ -150,10 +150,16 @@ class QuoteBook:
         """The time of the last quote held for an instrument whose subscription ended; None if none was kept."""
         return self._ended_times.get(instrument_id)
 
+    def update_parked(self, quote: NormalizedQuote) -> bool:
+        """A tick for a released instrument whose unsubscribe is not out yet: kept for ``restore``, never readable.
+        False when the instrument is not parked."""
+        if quote.instrument_id not in self._parked:
+            return False
+        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp)
+        return True
+
     def update(self, quote: NormalizedQuote) -> None:
-        if quote.instrument_id in self._parked:  # still arriving before the unsubscribe went out: kept, not readable
-            self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp)
-            return
+        self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
         self._entries[instrument_id] = BookEntry(quote, quote.timestamp)
 

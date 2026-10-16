@@ -114,3 +114,19 @@ def test_a_tick_after_the_unsubscribe_was_sent_never_brings_a_ghost_quote_back()
     provider.subscribe([NIFTY_CE_ID])  # taken again: its ticks count once more
     provider.on_frame(_ltp_frame((token, 12345)), end + 2 * SEC)
     assert provider.book.get(NIFTY_CE_ID, end + 2 * SEC) is not None
+
+
+def test_a_tick_between_release_and_send_is_given_to_no_one_and_restored_on_a_re_take():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    provider.drain_subscription_changes()
+    end = replay(provider, clock)
+    seen = []
+    provider.live_quote_stream(seen.append)
+    token = provider._token_of[NIFTY_CE_ID]
+    provider.unsubscribe([NIFTY_CE_ID])
+    provider.on_frame(_ltp_frame((token, 77700)), end + SEC)  # Kite still sends it: the unsubscribe is not out yet
+    assert provider.book.get(NIFTY_CE_ID, end + SEC) is None and seen == []
+    provider.subscribe([NIFTY_CE_ID])
+    again = provider.book.get(NIFTY_CE_ID, end + SEC)
+    assert again is not None and str(again.ltp) == "777"

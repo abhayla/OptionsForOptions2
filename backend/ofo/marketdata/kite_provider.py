@@ -96,6 +96,8 @@ class KiteProvider(MarketDataProvider):
                 self.counters["unmapped_token"] += 1
                 continue
             self.counters["ticks"] += 1
+            if tick.token not in self._wanted and self.book.update_parked(quote):
+                continue  # released, unsubscribe not sent yet: kept for a re-take, given to no one
             self.book.update(quote)
             out.append(quote)
             if self._listener is not None:
