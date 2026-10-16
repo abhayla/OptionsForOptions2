@@ -270,3 +270,25 @@ def test_an_average_price_finer_than_a_paisa_is_kept_exact():
     assert kite_money("5.125", "price") == Decimal("5.13")  # a money figure still rounds (ADR-101)
     with pytest.raises(ValueError):
         kite_money(float("nan"), "average_price", exact=True)
+
+
+def test_integer_money_and_overflow_in_exact_mode_fail_cleanly():
+    """Tier A review MAJOR: live Kite sends "average_price": 0 (a JSON int) on every open/cancelled order."""
+    from ofo_app.kite_replies import KiteReplyError, kite_money  # noqa: PLC0415
+
+    assert kite_money(0, "average_price", exact=True) == Decimal("0.00")
+    assert kite_money(5, "average_price", exact=True) == Decimal("5.00")
+    with pytest.raises(KiteReplyError):
+        kite_money(Decimal("1E+30"), "average_price", exact=True)
+
+
+def test_an_unfilled_order_row_with_integer_zero_average_parses():
+    """The real order rows as live Kite sends them: an OPEN order has the JSON integer 0 as its average price."""
+    from ofo_app.kite_replies import order_from_row  # noqa: PLC0415
+
+    row = json.loads((FIXTURES / "orders-122104.json").read_text(encoding="utf-8"), parse_float=Decimal)
+    rows = row["data"] if isinstance(row, dict) and "data" in row else row
+    first = dict(rows[0])
+    first["average_price"] = 0
+    first["status"] = "OPEN"
+    assert order_from_row(first).average_price == Decimal("0.00")

@@ -69,10 +69,13 @@ def kite_money(value: object, name: str, *, exact: bool = False) -> Decimal:
     elif type(value) is not Decimal and type(value) is not int:
         raise KiteReplyError(f"{name} must be a Decimal, int, float or decimal string, got {value!r}")
     if exact:
-        if not value.is_finite():  # type: ignore[union-attr]
+        exact_value = Decimal(value)  # an int (Kite's "average_price": 0 on an unfilled order) is exact too
+        if not exact_value.is_finite():
             raise KiteReplyError(f"{name} must be finite, got {value!r}")
-        exact_value = Decimal(value)
-        at_paisa = zerodha_paise(exact_value)
+        try:
+            at_paisa = zerodha_paise(exact_value)
+        except (TypeError, ValueError) as exc:
+            raise KiteReplyError(f"{name}: {exc}") from None
         return at_paisa if at_paisa == exact_value else exact_value  # 5.1 -> 5.10 (same value); 5.125 stays
     try:
         return zerodha_paise(value)
@@ -227,7 +230,7 @@ def fill_from_trade_row(row: Mapping[str, object]) -> FillEvent:
     """One trades-reply row as a `FillEvent` (timestamp from ``fill_timestamp``; ``order_timestamp`` unused)."""
     try:
         return FillEvent(_text(row, "trade_id"), _text(row, "order_id"), _text(row, "tradingsymbol"), _side(row),
-                         _whole(row, "quantity"), kite_money(_field(row, "average_price"), "average_price", exact=True),
+                         _whole(row, "quantity"), kite_money(_field(row, "average_price"), "average_price"),
                          ist_timestamp(_field(row, "fill_timestamp"), "fill_timestamp"))
     except KiteReplyError:
         raise
