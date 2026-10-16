@@ -45,11 +45,11 @@ def test_ac4_both_reads_happen_before_anything_is_prepared(catalogue, eligibilit
     """AC-4: positions and order status are each read exactly once, then margin, before the single order exists."""
     broker = FakeBroker(three_positions(), statuses())
     prep = _complete(broker, cat=catalogue, elig=eligibility)
-    assert broker.calls == ["positions", "order_statuses", "margin"]
+    assert broker.calls == ["positions", "order_statuses", "margin", "required_margin"]
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
 
 
-@pytest.mark.parametrize("failing", ["positions", "order_statuses", "margin"])
+@pytest.mark.parametrize("failing", ["positions", "order_statuses", "margin", "required_margin"])
 def test_ac4_a_failed_read_prepares_nothing(failing: str, catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-4 fail closed: if any re-read fails, nothing is prepared and the reason says so."""
     broker = FakeBroker(three_positions(), statuses(), fail=failing)
@@ -85,14 +85,58 @@ def test_ac4_still_open_missing_leg_prepares_nothing(catalogue, eligibility) -> 
 
 
 def test_ac4_margin_rechecked_with_fresh_broker_figure(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 re-check margin: fresh available 1,200.00 < planner's 4,400.00 for the missing order -> the gate blocks
-    with MARGIN_INSUFFICIENT and nothing is prepared; the planner was asked about the ONE missing leg only."""
-    planner = FakePlanner(D("4400.00"))
-    prep = _complete(FakeBroker(three_positions(), statuses(), margin=D("1200.00")), planner=planner,
-                     ctx=entry_context(margin_available=D("999999.00")), cat=catalogue, elig=eligibility)
+    """AC-4 re-check margin: fresh available 1,200.00 < Zerodha's 4,400.00 for the missing order -> the gate blocks
+    with MARGIN_INSUFFICIENT and nothing is prepared; Zerodha was asked about the ONE missing order only."""
+    broker = FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("4400.00"))
+    prep = _complete(broker, ctx=entry_context(margin_available=D("999999.00"), margin_required=D("0")),
+                     cat=catalogue, elig=eligibility)
     assert prep.orders == ()
     assert CheckCode.MARGIN_INSUFFICIENT in prep.gate.failed_codes
-    assert [(leg.strike, leg.quantity) for leg in planner.asked[-1].legs] == [(D("23600"), LOT)]
+    (asked,) = broker.required_asked
+    assert [(o.contract, o.side, o.quantity) for o in asked] == [(CONTRACTS[3], Action.BUY, LOT)]
+
+
+def test_273_planner_below_funds_but_zerodha_above_blocks(catalogue, eligibility) -> None:
+    """#273 / REQ-055 AC-3: the planner says 1,000.00 (fits in 1,200.00) but Zerodha says 1,200.01 for the same order:
+    Zerodha's figure decides, so the gate blocks by one paisa and nothing is prepared."""
+    broker = FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.01"))
+    prep = _complete(broker, planner=FakePlanner(D("1000.00")), cat=catalogue, elig=eligibility)
+    assert prep.orders == () and not prep.ready
+    assert CheckCode.MARGIN_INSUFFICIENT in prep.gate.failed_codes
+
+
+def test_273_planner_above_funds_but_zerodha_below_is_not_blocked(catalogue, eligibility) -> None:
+    """#273: the planner's 999,999.00 estimate is far above the 1,200.00 available, Zerodha says 1,200.00 (equal is
+    enough): the estimate never decides, so the margin check passes and the missing order is prepared."""
+    broker = FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.00"))
+    prep = _complete(broker, planner=FakePlanner(D("999999.00")), cat=catalogue, elig=eligibility)
+    assert CheckCode.MARGIN_INSUFFICIENT not in prep.gate.failed_codes
+    assert prep.ready and [(o.contract, o.quantity) for o in prep.orders] == [(CONTRACTS[3], LOT)]
+
+
+@pytest.mark.parametrize("bad", [ValueError("no figure"), D("NaN"), -D("1"), 4400.0, "4400.00", None])
+def test_273_unusable_zerodha_figure_blocks(bad, catalogue, eligibility) -> None:
+    """#273 fail closed: Zerodha's required figure raising, NaN, negative, a float, a string or None prepares nothing;
+    the planner's estimate is never used in its place."""
+    broker = FakeBroker(three_positions(), statuses(), margin=D("150000.00"))
+    if isinstance(bad, Exception):
+        broker.fail = "required_margin"
+    else:
+        broker.required = bad
+    prep = _complete(broker, planner=FakePlanner(D("1.00")), cat=catalogue, elig=eligibility)
+    assert prep.orders == () and not prep.ready
+    assert "could not re-read" in prep.reason
+
+
+def test_273_zerodha_required_is_rounded_to_the_paisa(catalogue, eligibility) -> None:
+    """ADR-101: Zerodha's 1,200.004999 is rounded half-up to 1,200.00 where it is read, so it fits 1,200.00; and
+    1,200.005 rounds to 1,200.01, which does not."""
+    ok = _complete(FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.004999")),
+                   cat=catalogue, elig=eligibility)
+    assert ok.ready
+    short = _complete(FakeBroker(three_positions(), statuses(), margin=D("1200.00"), required=D("1200.005")),
+                      cat=catalogue, elig=eligibility)
+    assert not short.ready and CheckCode.MARGIN_INSUFFICIENT in short.gate.failed_codes
 
 
 def test_ac4_gate_blocks_completion_when_market_closed(catalogue, eligibility) -> None:  # noqa: ANN001

@@ -110,11 +110,14 @@ class FakeBroker:
 
     def __init__(self, positions: list[BrokerPositionLine], order_statuses: list[BrokerOrderStatus],
                  margin: D = D("150000.00"), fail: str | None = None,
-                 read_at: datetime.datetime = READ_AT, default_product: Product | None = Product.NRML) -> None:
+                 read_at: datetime.datetime = READ_AT, default_product: Product | None = Product.NRML,
+                 required: D = D("4400.00")) -> None:
         # real broker rows always carry a product; ``default_product`` fills a line built without one (None = unread)
         positions = [dataclasses.replace(p, product=default_product) if p.product is None else p for p in positions]
         self.positions, self.order_statuses, self.margin, self.fail = positions, order_statuses, margin, fail
         self.read_at = read_at
+        self.required = required  # Zerodha's required margin for the orders asked about (#273)
+        self.required_asked: list[tuple] = []
         self.calls: list[str] = []
 
     def _read(self, name: str) -> None:
@@ -133,6 +136,11 @@ class FakeBroker:
     def fetch_available_margin(self) -> D:
         self._read("margin")
         return self.margin
+
+    def fetch_required_margin(self, orders) -> D:
+        self._read("required_margin")
+        self.required_asked.append(tuple(orders))
+        return self.required
 
 
 class FakePlanner:

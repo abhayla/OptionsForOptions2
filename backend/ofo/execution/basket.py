@@ -17,8 +17,19 @@ Rules:
 - Orders keep the plan's order. Each order's exchange and trading symbol come from the contract's ZERODHA row, found by
   the catalogue and carried with the contract's ``InstrumentId``; a contract with no unique, listed ZERODHA row refuses
   the WHOLE basket with ``MissingBrokerRef`` / ``BasketRefused`` (REQ-054 AC-3: no symbol is guessed or derived).
-- The basket calls the freeze check and the margin check ITSELF through the required ``freeze_check`` and
-  ``margin_check`` parameters (no defaults) and refuses on a block, a wrong-typed answer or a raised error (fail closed).
+- The basket calls the freeze check ITSELF through the required ``freeze_check`` parameter, and decides the margin
+  ITSELF: it reads Zerodha's available funds and Zerodha's required figure for exactly these orders from the required
+  ``margin_source`` (no defaults) and calls ``margin_gate.check_margin`` on the two numbers. No verdict object crosses
+  this boundary, so none made, copied or edited elsewhere can produce a basket (finding caller-supplied-verdict-
+  trusted). A block, a wrong-typed answer or a raised error refuses the whole basket (fail closed). In production the
+  one caller is ``ofo_app.checked_basket``, whose source is the real Zerodha client (REQ-055 AC-1/AC-3).
+- Ordinary code cannot make a ``KiteBasket`` except through ``build_basket``: calling the class raises (there is no
+  token to borrow), it is an immutable tuple with no attribute storage, subclasses are refused, and
+  copy/pickle/``dataclasses.replace`` raise (finding sealed-object-mutable-after-seal). This is not proof against
+  deliberate tricks (``tuple.__new__``, ``copyreg``, ``__class__`` swap, a caller's own lying margin source -
+  Tier A review 2026-10-17, MINOR); those are out of scope (ADR-003 Q235), the scans catch some, and Zerodha checks
+  margin again when the user places the basket on Kite's page. A basket is not tied to a time: callers build it
+  again on every request.
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
 - Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
@@ -29,11 +40,14 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from typing import Protocol
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final, Protocol
+from typing import Final
 
+from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
+from ofo.execution.margin_gate import MarginVerdict, check_margin
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
@@ -46,7 +60,14 @@ _SEGMENT_TO_EXCHANGE: Final = {segment: exchange for exchange, segment in ZERODH
 
 
 class BasketRefused(ValueError):
-    """The whole basket is refused (a gate blocked, a gate could not answer, or a contract/tag cannot be used)."""
+    """The whole basket is refused (a gate blocked, a gate could not answer, or a contract/tag cannot be used).
+
+    ``user_message`` carries the gate's own user-facing message when it has one (a margin shortfall: Zerodha's
+    available vs required, REQ-055 AC-4); None otherwise."""
+
+    def __init__(self, text: str, user_message: UserFacingError | None = None) -> None:
+        super().__init__(text)
+        self.user_message = user_message
 
 
 # -- tags ---------------------------------------------------------------------------------------------------------
@@ -112,9 +133,35 @@ class KiteOrder:
         return "{" + ", ".join(json.dumps(k) + ": " + v for k, v in parts) + "}"
 
 
-@dataclass(frozen=True)
-class KiteBasket:
-    orders: tuple[KiteOrder, ...]
+class KiteBasket(tuple):
+    """The basket of orders ``build_basket`` decided may be sent; sealed (see the module rules)."""
+
+    __slots__ = ()
+
+    def __new__(cls, *_args: object, **_kwargs: object) -> KiteBasket:
+        raise TypeError("a KiteBasket comes only from build_basket")
+
+    def __init_subclass__(cls, **_kwargs: object) -> None:
+        raise TypeError("KiteBasket cannot be subclassed")
+
+    @property
+    def orders(self) -> tuple[KiteOrder, ...]:
+        return tuple(self)
+
+    def __copy__(self) -> KiteBasket:
+        raise TypeError("a KiteBasket cannot be copied; build it again")
+
+    def __deepcopy__(self, _memo: object) -> KiteBasket:
+        raise TypeError("a KiteBasket cannot be copied; build it again")
+
+    def __reduce_ex__(self, _protocol: object) -> object:
+        raise TypeError("a KiteBasket cannot be pickled; build it again")
+
+    def __reduce__(self) -> object:
+        raise TypeError("a KiteBasket cannot be pickled; build it again")
+
+    def __repr__(self) -> str:
+        return f"KiteBasket(orders={self.orders!r})"
 
     def orders_json(self) -> str:
         """The JSON list for the ``data`` form field."""
@@ -136,15 +183,22 @@ def _number(price: Decimal) -> str:
     return text
 
 
-class MarginVerdict(Protocol):
-    """What the margin gate returns: ``allowed`` must be exactly ``True`` for the basket to be built. (W-081's own
-    verdict type is adapted to this at integration.)"""
-
-    allowed: bool
-
-
 FreezeGate = Callable[[ExecutionPlan], FreezeCheck]
-MarginGate = Callable[[tuple[KiteOrder, ...]], MarginVerdict]  # asked about exactly the orders that would be sent
+
+
+class MarginSource(Protocol):
+    """Zerodha's two margin figures, read by ``build_basket`` itself. Production passes only
+    ``ofo_app.checked_basket``'s adapter over the real Zerodha client (tests/test_margin_from_zerodha_only.py)."""
+
+    def available_funds(self) -> Decimal:
+        """Zerodha's available funds (``equity.net``, signed), exact Decimal."""
+        ...
+
+    def zerodha_required(self, orders: tuple[KiteOrder, ...]) -> Decimal:
+        """Zerodha's required margin for exactly ``orders`` (W-081 ``required_from_basket_reply``), exact Decimal."""
+        ...
+
+
 _STRATEGY_ID_RE: Final = re.compile(r"(?:S-)?([1-9][0-9]*)", re.ASCII)
 
 
@@ -163,6 +217,14 @@ def _strategy_number(plan: ExecutionPlan) -> int:
     return int(m.group(1))
 
 
+def zerodha_exchange(segment: str) -> str:
+    """Zerodha's exchange name (``NFO``/``BFO``) for a catalogue segment; an unknown segment refuses the basket."""
+    exchange = _SEGMENT_TO_EXCHANGE.get(segment)
+    if exchange is None:
+        raise BasketRefused(f"no Zerodha exchange for segment {segment!r}")
+    return exchange
+
+
 def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[InstrumentId, str, str]]:
     out = []
     for planned in plan.legs:
@@ -179,20 +241,17 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
                 or (leg.strike is not None and c.strike != leg.strike)):
             raise BasketRefused(f"{ref.broker_symbol} is not the contract of leg {planned.leg_ref} "
                                 "(type, expiry or strike differ); no basket built")
-        exchange = _SEGMENT_TO_EXCHANGE.get(entry.id.exchange_segment)
-        if exchange is None:
-            raise BasketRefused(f"no Zerodha exchange for segment {entry.id.exchange_segment!r}")
-        out.append((entry.id, exchange, ref.broker_symbol))
+        out.append((entry.id, zerodha_exchange(entry.id.exchange_segment), ref.broker_symbol))
     return out
 
 
 def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,
-                 freeze_check: FreezeGate, margin_check: MarginGate) -> KiteBasket:
+                 freeze_check: FreezeGate, margin_source: MarginSource) -> KiteBasket:
     """Turn ``plan`` into a basket of read-only LIMIT orders in plan order, or refuse the whole basket.
 
     The tag's strategy id is read from ``plan.strategy_id``; ``plan_version`` is the one caller value (the plan holds no
-    version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_check`` (the resolved orders -> object with
-    ``allowed is True``) are REQUIRED; the basket asks them itself and never trusts a caller's earlier verdict."""
+    version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_source`` (Zerodha's two figures) are REQUIRED; the
+    basket asks them itself, decides the margin with ``check_margin`` itself, and never takes a caller's verdict."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"build_basket needs an ExecutionPlan, got {plan!r}")
     if not isinstance(catalogue, Catalogue):
@@ -214,11 +273,24 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
         raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
     if freeze.blocks:
         raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
-    margin = _ask(margin_check, orders, "margin")
-    if getattr(margin, "allowed", None) is not True:
-        raise BasketRefused("the margin check did not allow this basket; no basket built")
-    return KiteBasket(orders)
+    margin = _decide_margin(margin_source, orders)
+    if margin.allowed is not True:
+        shown = margin.message
+        raise BasketRefused("the margin check did not allow this basket; no basket built"
+                            + ("" if shown is None else "\n" + display_text(shown)), shown)
+    return tuple.__new__(KiteBasket, orders)
 
 
-__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginVerdict", "TagParts", "build_basket",
-           "make_tag", "parse_tag"]
+def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> MarginVerdict:
+    """Both of Zerodha's figures, read here, then the gate. A read that raises, or a figure that is not an exact finite
+    Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass."""
+    try:
+        available = source.available_funds()
+        required = source.zerodha_required(orders)
+        return check_margin(available, required)
+    except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
+        return check_margin(None, None)
+
+
+__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginSource", "TagParts", "build_basket",
+           "make_tag", "parse_tag", "zerodha_exchange"]

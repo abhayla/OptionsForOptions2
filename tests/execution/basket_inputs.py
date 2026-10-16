@@ -45,20 +45,22 @@ def real_plan(cat: Catalogue, strategy_id: str = "S-9") -> ExecutionPlan:
     return ExecutionPlan(strategy_id, tuple(legs))
 
 
-class MarginVerdict:
-    def __init__(self, allowed: bool, reason: str) -> None:
-        self.allowed, self.reason = allowed, reason
-
-
 class OkMargin:
-    """Fake margin gate; records the plans it was asked about."""
+    """Fake margin SOURCE (W-081 round 2): Zerodha's two figures as the basket reads them - funds 1.00 vs required 0.00,
+    or 0.00 vs 1.00 when blocked, or the given ``available``/``required``. Records the orders it was asked about."""
 
-    def __init__(self, allowed: bool = True) -> None:
-        self.allowed, self.calls = allowed, []
+    def __init__(self, allowed: bool = True, available: object = None, required: object = None) -> None:
+        self.allowed, self.calls, self.funds_calls = allowed, [], 0
+        self.available = available if available is not None else (D("1.00") if allowed else D("0.00"))
+        self.required = required if required is not None else (D("0.00") if allowed else D("1.00"))
 
-    def __call__(self, plan):
-        self.calls.append(plan)
-        return MarginVerdict(self.allowed, "" if self.allowed else "not enough margin")
+    def available_funds(self):
+        self.funds_calls += 1
+        return self.available
+
+    def zerodha_required(self, orders):
+        self.calls.append(orders)
+        return self.required
 
 
 class FakeFreeze:
