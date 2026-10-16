@@ -355,9 +355,10 @@ def test_a_planted_backend_file_is_caught_by_the_real_scan(tmp_path: Path) -> No
 # Runtime resistance to code that rewrites the checker in-process is out of scope (ADR-003 Q235); this scan flags it.
 
 MECHANISM_MODULES = frozenset({"ctypes", "pickle", "copyreg", "marshal", "shelve", "dill", "importlib", "pkgutil",
-                               "builtins", "cffi", "gc"})
+                               "builtins", "cffi", "gc", "inspect"})
 MECHANISM_NAMES = frozenset({"__builtins__", "__import__", "__loader__", "__spec__"})
-SYS_MECHANISMS = frozenset({"modules", "_getframe", "meta_path", "path_hooks"})
+SYS_MECHANISMS = frozenset({"modules", "_getframe", "meta_path", "path_hooks",
+                            "_current_frames", "_current_exceptions"})
 
 #: Backend paths (prefix) allowed to use a mechanism, each with its reason and the tokens it may use. A token is a module
 #: name (`importlib`) or `sys.<attr>`.
@@ -365,6 +366,12 @@ FORBIDDEN_MODULE_ALLOWED = {
     "ofo_app/alembic/versions/": ("migration scripts load the shared baseline helper by file path "
                                   "(importlib.util.spec_from_file_location); they never run in the API process",
                                   frozenset({"importlib"})),
+    "ofo/broker/egress.py": ("the egress gate is the one place that walks the calling frames (inspect.currentframe) to "
+                             "decide whether a socket connect came through the door; it reads, never builds, a frame",
+                             frozenset({"inspect"})),
+    "ofo_app/errors.py": ("inspect.iscoroutinefunction(endpoint) only picks the sync or async wrapper for a route; it "
+                          "touches no frame or code object",
+                          frozenset({"inspect"})),
     "ofo/errors/explanations.py": ("user_words() reads its caller's module name with sys._getframe(1) to refuse any "
                                    "caller outside REQUEST_LAYER; it is the door's own read-only guard, not a route",
                                    frozenset({"sys._getframe"})),
@@ -510,8 +517,18 @@ def forged_redirect():
 #: Names whose every reference (a call, `functools.partial(setattr, ...)`, `map(getattr, ...)`) is a primitive.
 REFLECTION_NAMES = frozenset({"setattr", "delattr", "eval", "exec", "compile", "globals", "locals", "vars"})
 #: Attribute / string names that lead from an object to its class, code, frames or namespace (read or write).
+#: Every attribute or constructor that yields a frame or a code object, or builds one (round 10: the egress gate trusts a
+#: frame by its co_filename string, so forging that string needs one of these). Any `co_*` attribute / keyword / string is
+#: flagged too (see `_is_code_field`). `inspect` is a MECHANISM_MODULE; `sys._getframe` etc. are SYS_MECHANISMS.
+FRAME_AND_CODE = frozenset({"f_code", "f_back", "f_globals", "f_locals", "f_builtins", "tb_frame", "tb_next",
+                            "gi_frame", "gi_code", "cr_frame", "cr_code", "ag_frame", "ag_code",
+                            "CodeType", "FunctionType", "LambdaType", "replace_code"})
 REFLECTION_DUNDERS = frozenset({"__subclasses__", "__mro__", "__bases__", "__globals__", "__code__", "__closure__",
-                                "__func__", "__self__", "__class__", "__dict__"})
+                                "__func__", "__self__", "__class__", "__dict__"}) | FRAME_AND_CODE
+
+
+def _is_code_field(name: str) -> bool:
+    return name.startswith("co_") and len(name) > 3
 #: `x.__setattr__(name, v)` / `object.__setattr__(x, name, v)`: a primitive unless the name argument is a string literal.
 #: Value = how many trailing arguments follow the name (set: 1 value; del / getattribute: none).
 DUNDER_ACCESSORS = {"__setattr__": 1, "__delattr__": 0, "__getattribute__": 0}
@@ -554,18 +571,21 @@ def reflection_uses(source: str, where: str = "<src>") -> list[tuple[int, str]]:
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.Name):
-            if node.id in REFLECTION_NAMES | OPERATOR_PRIMITIVES:
+            if node.id in REFLECTION_NAMES | OPERATOR_PRIMITIVES | FRAME_AND_CODE or _is_code_field(node.id):
                 found.append((line, node.id))
             elif node.id in ("getattr", "hasattr") and id(node) not in called:
                 found.append((line, node.id))  # `map(getattr, ...)`, `partial(getattr, ...)`: the name argument is hidden
         elif isinstance(node, ast.Attribute):
-            if node.attr in REFLECTION_DUNDERS | OPERATOR_PRIMITIVES:
+            if node.attr in REFLECTION_DUNDERS | OPERATOR_PRIMITIVES or _is_code_field(node.attr):
                 found.append((line, node.attr))
             elif node.attr in DUNDER_ACCESSORS and id(node) not in called:
                 found.append((line, node.attr))
-        elif isinstance(node, ast.alias) and node.name.split(".")[-1] in REFLECTION_NAMES | OPERATOR_PRIMITIVES:
+        elif isinstance(node, ast.keyword) and node.arg and _is_code_field(node.arg):
+            found.append((line or node.value.lineno, node.arg))  # `code.replace(co_filename=...)`
+        elif isinstance(node, ast.alias) and node.name.split(".")[-1] in (
+                REFLECTION_NAMES | OPERATOR_PRIMITIVES | FRAME_AND_CODE):
             found.append((getattr(node, "lineno", 0), node.name.split(".")[-1]))
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs                 and node.value in REFLECTION_DUNDERS:
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs                 and (node.value in REFLECTION_DUNDERS or _is_code_field(node.value)):
             found.append((line, node.value))  # `getattr(x, "__globals__")`: a literal name reaching the same place
     return sorted(set(found))
 
@@ -574,6 +594,12 @@ def reflection_uses(source: str, where: str = "<src>") -> list[tuple[int, str]]:
 #: editing this dict in plain view; an entry whose primitive is no longer used fails (test below). `ofo_app/routes/` gets
 #: no entry: route code never needs reflection.
 REFLECTION_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
+    "ofo/broker/egress.py": (frozenset({'f_back', 'f_code', 'co_filename'}),
+        "the egress gate walks the calling frames (f_back) and reads each frame's code file name "
+        "(f_code.co_filename) to tell the door's own caller from untrusted code; it only reads them"),
+    "ofo/errors/explanations.py": (frozenset({'f_globals'}),
+        "user_words() reads the caller frame's module name (sys._getframe(1).f_globals['__name__']) "
+        "to refuse any caller outside REQUEST_LAYER"),
     "ofo/engine/black_scholes.py": (frozenset({'getattr'}),
         "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
     "ofo/engine/model.py": (frozenset({'__setattr__', 'getattr'}),
@@ -661,7 +687,7 @@ def test_every_allow_list_entry_is_still_used() -> None:
              if prims - used.get(f, set())]
     assert stale == []
     assert all(reason.strip() for _, reason in REFLECTION_ALLOWED.values())
-    assert all(prims <= PRIMITIVES for prims, _ in REFLECTION_ALLOWED.values())
+    assert all(p in PRIMITIVES or _is_code_field(p) for prims, _ in REFLECTION_ALLOWED.values() for p in prims)
 
 
 def test_route_code_gets_no_reflection_allowance() -> None:
@@ -1001,3 +1027,40 @@ def test_a_planted_route_file_and_a_planted_module_are_caught_by_the_real_scan(t
     plant.write_text(ROUND9_ATTACKS["A1_strip_boundary"], encoding="utf-8")
     for where in ROUND9_PLACES:
         assert app_assembly_violations(plant.read_text(encoding="utf-8"), where)
+
+
+# --- round 10: every way plain Python reaches or builds a code object / frame (co_filename forgery) -------------------
+FORGERY_SPELLINGS = {
+    "marshal": "import marshal, types\nf = types.FunctionType(marshal.loads(b''), {})\n",
+    "__code__ replace": "def g(): pass\ng.__code__ = g.__code__.replace(co_filename='x')\n",
+    "compile": "c = compile('pass', 'site-packages/httpx/x.py', 'exec')\n",
+    "inspect frame f_code": ("import inspect, types\n"
+                             "c = inspect.currentframe().f_code.replace(co_filename='site-packages/httpx/x.py')\n"
+                             "f = types.FunctionType(c, {})\n"),
+    "types.CodeType ctor": ("import types\nc = types.CodeType(0, 0, 0, 0, 0, 0, b'', (), (), (), "
+                            "'site-packages/httpx/x.py', 'f', 'f', 1, b'', b'')\nf = types.FunctionType(c, {})\n"),
+    "traceback tb_frame": ("import sys, types\ntry:\n    1/0\nexcept Exception as e:\n"
+                           "    c = e.__traceback__.tb_frame.f_code.replace(co_filename='x')\n"),
+    "from-import ctor alias": "from types import CodeType as C\nc = C(0)\n",
+    "lambda type": "import types\nf = types.LambdaType(c, {})\n",
+    "generator code": "def g():\n    yield 1\nc = g().gi_code\n",
+    "coroutine frame": "async def g(): pass\nc = g().cr_frame.f_back\n",
+    "inspect stack": "from inspect import stack\nstack()\n",
+    "sys._current_frames": "import sys\nsys._current_frames()\n",
+    "string name": "c = getattr(x, 'f_code')\n",
+    "co_ keyword only": "c = code.replace(co_name='x')\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(FORGERY_SPELLINGS))
+def test_round10_every_code_or_frame_spelling_is_flagged(name: str) -> None:
+    src = FORGERY_SPELLINGS[name]
+    assert reflection_violations(src, "ofo_app/planted.py") or forbidden_module_uses(src, "ofo_app/planted.py"), name
+
+
+def test_round10_a_frame_allowance_is_only_for_the_listed_files() -> None:
+    plant = "import sys\nx = sys._getframe(1).f_globals\n"
+    assert forbidden_module_uses(plant, "ofo/errors/explanations.py") == []
+    assert reflection_violations(plant, "ofo/errors/explanations.py") == []
+    assert reflection_violations(plant, "ofo_app/routes/plant.py")
+    assert forbidden_module_uses(plant, "ofo_app/routes/plant.py")
