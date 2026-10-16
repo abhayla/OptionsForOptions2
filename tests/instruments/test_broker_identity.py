@@ -15,14 +15,13 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from execution.execution_inputs import refuse, zerodha_eligibility
 
 from ofo.instruments import (
     BROKER_CODES,
     BrokerRef,
     Catalogue,
     Contract,
-    EligibilityRegistry,
-    EligibilityStatus,
     InstrumentId,
     ListedContract,
     MissingBrokerRef,
@@ -106,11 +105,13 @@ def test_a_newer_list_replaces_zerodha_row_with_its_new_date_and_lot(rows: list[
 
 
 def test_eligibility_is_keyed_by_instrument_id(catalogue: Catalogue) -> None:
-    reg = EligibilityRegistry()
-    reg.record(EligibilityStatus(NIFTY_23150_CE, True, datetime(2026, 9, 29, 10, 0, tzinfo=IST)))
-    assert reg.is_tradable(NIFTY_23150_CE) and not reg.is_tradable(InstrumentId("NSE_FO", 73909))
+    entry = catalogue.get(NIFTY_23150_CE)
+    reg = zerodha_eligibility(catalogue, at=datetime(2026, 9, 29, 10, 0, tzinfo=IST))
+    assert entry is not None and reg.is_tradable(NIFTY_23150_CE) and not reg.is_tradable(InstrumentId("NSE_FO", 99_999_999))
     with pytest.raises(TypeError):
-        reg.record(EligibilityStatus(18920450, True, datetime(2026, 9, 29, 10, 0, tzinfo=IST)))  # type: ignore[arg-type]
+        reg.is_tradable(18920450)  # type: ignore[arg-type]  # a broker token is not the identity
+    with pytest.raises(TypeError):
+        refuse(reg, 18920450)  # type: ignore[arg-type]
 
 
 def test_a_row_without_an_exchange_identity_stops_the_load() -> None:

@@ -42,6 +42,8 @@ OBJECT_NEW_ALLOWED = {
 TUPLE_NEW_ALLOWED = {
     "ofo/execution/basket.py": "build_basket makes the sealed KiteBasket; nothing else can",
     "ofo/execution/margin_gate.py": "check_margin makes the sealed MarginVerdict; nothing else can",
+    "ofo/instruments/eligibility.py": "registry_from_list / apply_margin_refusals / list_state_from_row make the sealed "
+                                      "ZerodhaEligibility and ListState (W-092 round 2); nothing else can",
 }
 ALL_CHECKS = frozenset({"names", "apinames", "indirect", "forgery"})
 

@@ -29,9 +29,12 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 from ofo.instruments.eligibility import (
-    EligibilityRegistry,
+    NO_ELIGIBILITY,
     EligibilityStatus,
     ListState,
+    ZerodhaEligibility,
+    apply_margin_refusals,
+    list_state_from_row,
     registry_from_list,
     status_from_list,
 )
@@ -54,10 +57,8 @@ _NOW = text("SELECT clock_timestamp()")
 
 
 def _state(row: Any) -> ListState:
-    return ListState(
-        instrument_id=InstrumentId(row.exchange_segment, int(row.exchange_token)),
-        instrument_type=row.instrument_type, expiry=row.expiry, listed=bool(row.currently_listed),
-        retired=bool(row.retired), delisted=bool(row.delisted), has_zerodha_row=bool(row.has_zerodha_row))
+    """The store row read through the domain's one row reader (the sealed ``ListState``; no hand-made state)."""
+    return list_state_from_row(row)
 
 
 async def _loaded_at(conn: Any) -> datetime.datetime | None:
@@ -79,7 +80,7 @@ async def leg_statuses(conn: Any, contract_ids: Sequence[int],
 
 
 async def fresh_registry(conn: Any, *, underlying: str | None = None,
-                         margin_refusals: Mapping[InstrumentId, str] | None = None) -> EligibilityRegistry:
+                         margin_refusals: Mapping[InstrumentId, str] | None = None) -> ZerodhaEligibility:
     """The just-before-execution registry (ADR-104 (a) + (b)), built NOW from the store. Caller: the GC-2c Execute
     route, straight into ``check_pre_execution``. ``margin_refusals`` = instrument -> Zerodha's error text for each
     leg the basket-margin reply refused; stamped with the database clock. Every live contract gets a status; with no
@@ -87,11 +88,13 @@ async def fresh_registry(conn: Any, *, underlying: str | None = None,
     today = await database_today(conn)
     loaded_at = await _loaded_at(conn)
     if loaded_at is None:
-        return EligibilityRegistry()
+        return NO_ELIGIBILITY
     rows = (await conn.execute(_LIVE, {"broker": ZERODHA, "underlying": underlying})).all()
-    refused_at = (await conn.execute(_NOW)).scalar_one() if margin_refusals else None
-    return registry_from_list((_state(r) for r in rows), today=today, loaded_at=loaded_at,
-                              refusals=margin_refusals, refused_at=refused_at)
+    eligibility = registry_from_list((_state(r) for r in rows), today=today, loaded_at=loaded_at)
+    if not margin_refusals:
+        return eligibility
+    refused_at = (await conn.execute(_NOW)).scalar_one()
+    return apply_margin_refusals(eligibility, margin_refusals, refused_at=refused_at)
 
 
 TodayReader = Callable[[Any], Awaitable[datetime.date]]

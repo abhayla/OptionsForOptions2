@@ -13,11 +13,11 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
-from execution_inputs import AS_OF, IST, all_true_context, check, closing_orders
+from execution_inputs import IST, all_true_context, check, closing_orders, zerodha_eligibility
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import ExecutionAction, FlagCode, VersionState
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
+from ofo.instruments import Catalogue, ZerodhaEligibility, parse_instruments_csv
 
 CSV = Path(__file__).resolve().parents[1] / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
 EXPIRY = datetime.date(2026, 10, 15)
@@ -35,11 +35,8 @@ def cat() -> Catalogue:
 
 
 @pytest.fixture(scope="module")
-def elig(cat: Catalogue) -> EligibilityRegistry:
-    r = EligibilityRegistry()
-    for e in cat.all_entries():
-        r.record(EligibilityStatus(e.contract.id, True, AS_OF))
-    return r
+def elig(cat: Catalogue) -> ZerodhaEligibility:
+    return zerodha_eligibility(cat)
 
 
 def _symbol(cat: Catalogue, kind: str) -> str:

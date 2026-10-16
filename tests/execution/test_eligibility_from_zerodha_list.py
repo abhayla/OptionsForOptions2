@@ -15,8 +15,12 @@ Zerodha's RMS rules."
 from __future__ import annotations
 
 import ast
+import copy
+import dataclasses
 import datetime
 import json
+import pickle
+from types import SimpleNamespace
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -24,7 +28,7 @@ import pytest
 from execution_inputs import IST, all_true_context, check
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import CheckCode
-from ofo.instruments import NSE_FO, Catalogue, EligibilityRegistry, InstrumentId
+from ofo.instruments import NSE_FO, Catalogue, EligibilityStatus, InstrumentId, ZerodhaEligibility
 from ofo.instruments import eligibility as el
 from ofo.instruments.parser import zerodha_listed
 
@@ -58,16 +62,25 @@ def _catalogue() -> Catalogue:
     return cat
 
 
-def _registry(today: datetime.date = TODAY, **kw) -> EligibilityRegistry:
+def _registry(today: datetime.date = TODAY, *, refusals=None, refused_at=None) -> ZerodhaEligibility:
     states = el.states_from_parsed_list([e.contract for e in _catalogue().all_entries()], LIST_ROWS)
-    return el.registry_from_list(states, today=today, loaded_at=LOADED_AT, **kw)
+    minted = el.registry_from_list(states, today=today, loaded_at=LOADED_AT)
+    return minted if refusals is None else el.apply_margin_refusals(minted, refusals, refused_at=refused_at)
+
+
+def _row(**flags) -> SimpleNamespace:
+    """One synthetic store row (the columns ``list_state_from_row`` reads) for the core contract."""
+    base = dict(exchange_segment=NSE_FO, exchange_token=47189, instrument_type="CE",
+                expiry=datetime.date(2026, 10, 19), currently_listed=True, retired=False, delisted=False,
+                has_zerodha_row=True)
+    return SimpleNamespace(**(base | flags))
 
 
 def _leg(strike: str) -> Leg:
     return Leg(Action.BUY, Instrument.CE, D(strike), datetime.date(2026, 10, 19), 65, D("40.00"))
 
 
-def _gate(leg: Leg, registry: EligibilityRegistry):
+def _gate(leg: Leg, registry: object):
     return check(Strategy((leg,)), all_true_context(as_of=AS_OF), _catalogue(), registry)
 
 
@@ -109,13 +122,12 @@ def test_expired_is_not_tradable_even_when_the_list_still_carries_it():
     ({"delisted": True}, el.REASON_DELISTED),
     ({"retired": True}, el.REASON_RETIRED),
     ({"has_zerodha_row": False}, el.REASON_NO_ZERODHA_ROW),
-    ({"listed": False}, el.REASON_NOT_IN_LIST),
+    ({"currently_listed": False}, el.REASON_NOT_IN_LIST),
     ({"expiry": None}, el.REASON_NO_EXPIRY),
     ({"instrument_type": "INDEX", "expiry": None}, el.REASON_INDEX),
 ])
 def test_every_lifecycle_refusal_has_its_reason(flags, reason):
-    base = dict(instrument_id=CORE_ID, instrument_type="CE", expiry=datetime.date(2026, 10, 19), listed=True)
-    status = el.status_from_list(el.ListState(**(base | flags)), today=TODAY, loaded_at=LOADED_AT)
+    status = el.status_from_list(el.list_state_from_row(_row(**flags)), today=TODAY, loaded_at=LOADED_AT)
     assert (status.tradable, status.reason) == (False, reason)
 
 
@@ -136,6 +148,8 @@ def test_a_refusal_never_makes_a_contract_tradable():
         _registry(refusals={CORE_ID: "  "}, refused_at=LOADED_AT)  # no text = not Zerodha's answer
     with pytest.raises(TypeError):
         _registry(refusals={CORE_ID: "x"})  # a refusal without its time
+    with pytest.raises(TypeError):
+        el.apply_margin_refusals(_registry(), {(NSE_FO, 47189): "x"}, refused_at=LOADED_AT)  # not an InstrumentId
 
 
 def test_a_list_row_the_catalogue_does_not_hold_is_never_added():
@@ -150,7 +164,7 @@ def test_the_clock_inputs_fail_closed():
         el.registry_from_list([], today=AS_OF, loaded_at=LOADED_AT)  # a datetime is not the India date
     with pytest.raises(TypeError):
         el.registry_from_list([], today=TODAY, loaded_at=datetime.datetime(2026, 10, 16, 12, 7))  # noqa: DTZ001 - naive on purpose
-    state = el.ListState(CORE_ID, "CE", datetime.date(2026, 10, 19), True)
+    state = el.list_state_from_row(_row())
     with pytest.raises(ValueError):
         el.registry_from_list([state, state], today=TODAY, loaded_at=LOADED_AT)
 
@@ -163,3 +177,114 @@ def test_the_registry_has_no_path_that_writes_into_the_catalogue():
     assert not imported & {"Catalogue", "CatalogueEntry", "ofo.instruments.catalogue"}, imported
     called = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert not called & {"load", "update", "apply_update", "mark_unlisted"}, called
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# W-092 round 2 (Tier A review MAJOR: forgeable eligibility; findings caller-supplied-verdict-trusted,
+# sealed-object-mutable-after-seal). The gate trusts only the sealed ZerodhaEligibility minted from list rows.
+# ---------------------------------------------------------------------------------------------------------------
+
+UNCONFIRMED = "has not been confirmed as available on Zerodha yet"
+
+
+def _refused_as_unconfirmed(registry: object) -> None:
+    result = _gate(_leg("23650"), registry)
+    assert [f.code for f in result.failures] == [CheckCode.CONTRACT_NOT_ELIGIBLE]
+    assert UNCONFIRMED in result.failures[0].reason
+
+
+class _HandMade:
+    """A1: a hand-made registry that says the core contract is tradable (the old open registry's shape)."""
+
+    def get(self, instrument_id):
+        return EligibilityStatus(instrument_id, True, LOADED_AT)
+
+    def is_tradable(self, instrument_id):
+        return True
+
+
+def test_a1_a_hand_made_registry_is_refused_by_the_gate():
+    with pytest.raises(TypeError):
+        ZerodhaEligibility(((NSE_FO, 47189, True, LOADED_AT, None),))  # the class cannot be called
+    _refused_as_unconfirmed(_HandMade())
+    _refused_as_unconfirmed(((NSE_FO, 47189, True, LOADED_AT, None),))  # a plain tuple of entries
+    _refused_as_unconfirmed(None)
+
+
+def test_a1b_a_margin_refusal_cannot_be_overwritten_to_tradable():
+    key = InstrumentId(NSE_FO, 47189)
+    refused = _registry(refusals={key: "Margin validation failed"}, refused_at=LOADED_AT)
+    assert not hasattr(refused, "record")
+    with pytest.raises((AttributeError, TypeError)):
+        object.__setattr__(refused, "_status", {})
+    with pytest.raises(TypeError):
+        refused[0] = (NSE_FO, 47189, True, LOADED_AT, None)  # type: ignore[index]
+    status = refused.get(CORE_ID)
+    object.__setattr__(status, "tradable", True)  # the returned status is a copy: editing it changes nothing
+    object.__setattr__(key, "exchange_token", 47185)  # nor does editing the refusal's key afterwards
+    assert refused.is_tradable(CORE_ID) is False
+    assert CheckCode.CONTRACT_NOT_ELIGIBLE in _gate(_leg("23650"), refused).failed_codes
+    assert _registry().is_tradable(CORE_ID)  # a new registry from the list is unaffected
+
+
+def test_a1c_a_hand_made_contract_state_is_refused():
+    with pytest.raises(TypeError):
+        el.ListState(CORE_ID, "CE", datetime.date(2026, 10, 19), True)
+    for forged in [SimpleNamespace(instrument_id=CORE_ID, instrument_type="CE", expiry=datetime.date(2026, 10, 19),
+                                   listed=True, retired=False, delisted=False, has_zerodha_row=True),
+                   (NSE_FO, 47189, "CE", datetime.date(2026, 10, 19), True, False, False, True)]:
+        with pytest.raises(TypeError):
+            el.status_from_list(forged, today=TODAY, loaded_at=LOADED_AT)
+        with pytest.raises(TypeError):
+            el.registry_from_list([forged], today=TODAY, loaded_at=LOADED_AT)
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_a_row_flag_that_is_not_a_bool_is_refused(value):
+    with pytest.raises(TypeError):
+        el.list_state_from_row(_row(currently_listed=value))
+
+
+def _sealed_objects():
+    return [_registry(), el.list_state_from_row(_row())]
+
+
+@pytest.mark.parametrize("attack", [
+    copy.copy, copy.deepcopy, pickle.dumps,
+    lambda o: dataclasses.replace(o),
+    lambda o: object.__setattr__(o, "x", 1),
+], ids=["copy", "deepcopy", "pickle", "replace", "setattr"])
+def test_the_sealed_objects_cannot_be_copied_pickled_replaced_or_written(attack):
+    for sealed in _sealed_objects():
+        with pytest.raises((TypeError, AttributeError)):
+            attack(sealed)
+
+
+def test_the_sealed_types_cannot_be_subclassed():
+    for sealed_type in (ZerodhaEligibility, el.ListState):
+        with pytest.raises(TypeError):
+            type("Sub", (sealed_type,), {})
+
+
+def test_a_tuple_carrying_real_entries_is_not_the_sealed_type():
+    """The gate compares the exact type: a plain tuple holding a minted object's own entries is refused."""
+    minted = _registry()
+    _refused_as_unconfirmed(tuple(minted))
+    assert not _gate(_leg("23650"), minted).blocked
+
+
+def test_only_the_eligibility_modules_mint_eligibility():
+    """Product code mints eligibility only in the domain module and the app's store reader (no other product caller
+    can feed the gate a registry it built itself)."""
+    backend = Path(el.__file__).resolve().parents[2]
+    allowed = {"ofo/instruments/eligibility.py", "ofo_app/eligibility_from_zerodha.py"}
+    minting = {"registry_from_list", "apply_margin_refusals", "list_state_from_row", "states_from_parsed_list"}
+    users = set()
+    for path in backend.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        names |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
+        if names & minting:
+            users.add(path.relative_to(backend).as_posix())
+    assert users == allowed

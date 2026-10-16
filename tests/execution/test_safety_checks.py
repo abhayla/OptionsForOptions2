@@ -29,61 +29,55 @@ from ofo.execution import (
     active_legs_hash,
 )
 from ofo.instruments.models import ListedContract
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
-from execution_inputs import FIXTURE
+from ofo.instruments import Catalogue, ZerodhaEligibility, parse_instruments_csv
+from execution_inputs import FIXTURE, refuse, zerodha_eligibility
 
-Inputs = tuple[Strategy, ExecutionContext, Catalogue, EligibilityRegistry]
+Inputs = tuple[Strategy, ExecutionContext, Catalogue, ZerodhaEligibility]
 
 # ADR-003 forbidden wording (plus "you should"): no reason text may carry it.
 FORBIDDEN = re.compile(r"you should|best trade|best adjustment|recommended|guarantee|risk-free|certain profit", re.I)
 
 
-def _ctx(**overrides: object) -> Callable[[Strategy, Catalogue, EligibilityRegistry], Inputs]:
+def _ctx(**overrides: object) -> Callable[[Strategy, Catalogue, ZerodhaEligibility], Inputs]:
     return lambda s, c, e: (s, all_true_context(**overrides), c, e)
 
 
-def _strike_off_ladder(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _strike_off_ladder(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     legs = list(s.legs)
     legs[1] = dataclasses.replace(legs[1], strike=D("23010"))
     return Strategy(tuple(legs)), all_true_context(), c, e
 
 
-def _unlisted(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _unlisted(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     token = find_token(c, "PE", "23000")
     c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
     return s, all_true_context(), c, e
 
 
-def _not_eligible(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
-    e.record(EligibilityStatus(find_token(c, "CE", "23400"), False, AS_OF, "OI limit reached"))
-    return s, all_true_context(), c, e
+def _not_eligible(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
+    return s, all_true_context(), c, refuse(e, find_token(c, "CE", "23400"))
 
 
-def _eligibility_unknown(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
-    fresh = EligibilityRegistry()
-    skip = find_token(c, "CE", "23600")
-    for entry in c.all_entries():
-        if entry.contract.id != skip:
-            fresh.record(EligibilityStatus(entry.contract.id, True, AS_OF))
-    return s, all_true_context(), c, fresh
+def _eligibility_unknown(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
+    return s, all_true_context(), c, zerodha_eligibility(c, omit={find_token(c, "CE", "23600")})
 
 
-def _ambiguous(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _ambiguous(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     (orig,) = [x for x in parse_instruments_csv(FIXTURE) if x.id == find_token(c, "PE", "22800")]
     c.load([ListedContract(dataclasses.replace(orig.contract, exchange_token=999_001),
                            tuple(dataclasses.replace(r, broker_token="999000001") for r in orig.broker_refs))])
     return s, all_true_context(), c, e
 
 
-def _bad_quantity(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _bad_quantity(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     return Strategy(condor_legs(quantity=100)), all_true_context(), c, e
 
 
-def _expired(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _expired(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     return s, all_true_context(as_of=AS_OF.replace(month=10, day=7)), c, e
 
 
-def _duplicate(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _duplicate(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     return Strategy(s.legs + (s.legs[0],)), all_true_context(), c, e
 
 
@@ -92,17 +86,21 @@ def _exit_ctx(**overrides: object) -> ExecutionContext:
     return all_true_context(**({"action": ExecutionAction.EXIT, "active_legs": condor_legs()} | overrides))
 
 
-def _exit_opens_position(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
+def _exit_opens_position(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     return s, _exit_ctx(), c, e  # the condor's own legs (same sides as held) labelled EXIT
 
 
-class _BrokenEligibility(EligibilityRegistry):
-    def get(self, instrument_id) -> EligibilityStatus | None:
-        raise RuntimeError("eligibility store unavailable")
+class _BrokenCatalogue(Catalogue):
+    """A catalogue whose every read raises (the eligibility object is sealed, so the store failure is simulated here)."""
+
+    def __getattribute__(self, name: str) -> object:
+        if not name.startswith("__"):
+            raise RuntimeError("catalogue store unavailable")
+        return super().__getattribute__(name)
 
 
-def _internal_error(s: Strategy, c: Catalogue, e: EligibilityRegistry) -> Inputs:
-    return s, all_true_context(), c, _BrokenEligibility()
+def _internal_error(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
+    return s, all_true_context(), _BrokenCatalogue(), e
 
 
 INTERNAL_REASON = "An internal error stopped the safety checks. Execution is blocked and no order has been submitted."
@@ -257,9 +255,7 @@ def test_every_reason_is_plain_decision_support_wording(condor, catalogue, eligi
     for _, mutate, _, _ in MUTATIONS:
         cat = Catalogue()
         cat.load(parse_instruments_csv(FIXTURE))
-        elig = EligibilityRegistry()
-        for entry in cat.all_entries():
-            elig.record(EligibilityStatus(entry.contract.id, True, AS_OF))
+        elig = zerodha_eligibility(cat)
         result = check(*mutate(Strategy(condor_legs()), cat, elig))
         for failure in result.failures:
             assert failure.reason.strip() and not FORBIDDEN.search(failure.reason), failure.reason
@@ -559,24 +555,22 @@ def test_exit_may_close_part_but_never_more_than_held(catalogue, eligibility):
     assert check(Strategy(over), _exit_ctx(), catalogue, eligibility).failed_codes == {CheckCode.EXIT_NOT_REDUCE_ONLY}
 
 
-def _stale_leg_prices(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
+def _stale_leg_prices(cat: Catalogue, elig: ZerodhaEligibility) -> dict[str, object]:
     return {"data_health": _stale}
 
 
-def _not_accepting_fresh_orders(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
-    elig.record(EligibilityStatus(find_token(cat, "CE", "23400"), False, AS_OF, "OI limit reached"))
-    return {}
+def _not_accepting_fresh_orders(cat: Catalogue, elig: ZerodhaEligibility) -> dict[str, object]:
+    return {"eligibility": refuse(elig, find_token(cat, "CE", "23400"))}
 
 
-def _eligibility_never_read(cat: Catalogue, elig: EligibilityRegistry) -> dict[str, object]:
-    fresh = EligibilityRegistry()
-    skip = find_token(cat, "PE", "23000")
-    for entry in cat.all_entries():
-        token = entry.contract.id
-        if token != skip:
-            fresh.record(EligibilityStatus(token, True, AS_OF))
-    elig.__dict__.update(fresh.__dict__)
-    return {}
+def _eligibility_never_read(cat: Catalogue, elig: ZerodhaEligibility) -> dict[str, object]:
+    return {"eligibility": zerodha_eligibility(cat, omit={find_token(cat, "PE", "23000")})}
+
+
+def _flip(flip, catalogue: Catalogue, eligibility: ZerodhaEligibility) -> tuple[dict[str, object], ZerodhaEligibility]:
+    """A flip's context overrides plus the eligibility it rebuilt (sealed: a flip returns a new one, never edits)."""
+    overrides = dict(flip(catalogue, eligibility))
+    return overrides, overrides.pop("eligibility", eligibility)
 
 
 EXIT_SKIPPED = [
@@ -593,7 +587,8 @@ EXIT_SKIPPED = [
 def test_checks_not_required_for_an_exit_do_not_block_it(case, flip, code, catalogue, eligibility):
     """AC-1 (SPEC CHANGE, review MAJOR 2): margin, 'not accepting fresh orders' eligibility, rule validity and data
     health do not block an exit; stale data is carried as a warning."""
-    result = check(Strategy(EXIT_ALL), _exit_ctx(**flip(catalogue, eligibility)), catalogue, eligibility)
+    overrides, elig = _flip(flip, catalogue, eligibility)
+    result = check(Strategy(EXIT_ALL), _exit_ctx(**overrides), catalogue, elig)
     assert result.failures == ()
     assert code not in result.passed and code in result.not_applicable
     stale_flags = [f.message for f in result.flags if f.code is FlagCode.DATA_STALE_ON_EXIT]
@@ -603,7 +598,8 @@ def test_checks_not_required_for_an_exit_do_not_block_it(case, flip, code, catal
 @pytest.mark.parametrize("case,flip,code", EXIT_SKIPPED, ids=[x[0] for x in EXIT_SKIPPED])
 def test_the_same_flips_block_a_new_entry(case, flip, code, condor, catalogue, eligibility):
     """AC-1: entries keep every check - each flip above blocks a NEW_ENTRY with its own code."""
-    result = check(condor, all_true_context(**flip(catalogue, eligibility)), catalogue, eligibility)
+    overrides, elig = _flip(flip, catalogue, eligibility)
+    result = check(condor, all_true_context(**overrides), catalogue, elig)
     assert result.failed_codes == {code}
 
 
@@ -634,7 +630,7 @@ def test_checks_required_for_an_exit_still_block_it(case, overrides, orders, cod
 def test_internal_error_blocks_with_a_record_and_never_passes(condor, catalogue, caplog):
     """AC-2 (review P10): an exception inside the checks blocks with INTERNAL_ERROR, a record, nothing passed."""
     with caplog.at_level(logging.ERROR, logger="ofo.execution.safety"):
-        result = check(condor, all_true_context(), catalogue, _BrokenEligibility())
+        result = check(condor, all_true_context(), _BrokenCatalogue(), zerodha_eligibility(catalogue))
     assert [(f.code, f.reason) for f in result.failures] == [(CheckCode.INTERNAL_ERROR, INTERNAL_REASON)]
     assert result.passed == ()
     assert result.blocked_execution.failed_codes == (CheckCode.INTERNAL_ERROR,)

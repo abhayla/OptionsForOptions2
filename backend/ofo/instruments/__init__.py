@@ -15,7 +15,7 @@ from ofo.instruments.models import (
     MissingBrokerRef,
 )
 from ofo.instruments.catalogue import Catalogue, CatalogueEntry, ContractKind
-from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
+from ofo.instruments.eligibility import EligibilityStatus, ZerodhaEligibility
 from ofo.instruments.parser import parse_instruments_csv
 
 __all__ = [
@@ -32,7 +32,7 @@ __all__ = [
     "Catalogue",
     "CatalogueEntry",
     "ContractKind",
-    "EligibilityRegistry",
     "EligibilityStatus",
+    "ZerodhaEligibility",
     "parse_instruments_csv",
 ]
