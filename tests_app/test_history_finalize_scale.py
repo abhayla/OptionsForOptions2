@@ -19,6 +19,7 @@ proven in test_history_finalize_job.py.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import os
 import sys
@@ -26,6 +27,7 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
+import asyncpg
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "history"))
@@ -129,5 +131,54 @@ def test_finalize_is_resumable_and_a_rerun_rewrites_nothing_already_made_final(c
         after = {(i, m): x for i, m, x in admin_sql(marks, fetch=True)}
         assert len(after) == n * MINUTES
         assert all(after[(i, m)] == x for i, m, x in done)  # the first run's rows are the same row versions
+    finally:
+        pg.close()
+
+
+def _seed_with_analyze_during_insert(n: int):
+    """The failing runs' state: an ANALYZE that ran while the seed INSERT was still uncommitted (reltuples=0,
+    relpages>0, no pg_stats rows). Returns (reltuples, relpages, pg_stats rows) read after the commit."""
+    url = _url("TEST_ADMIN_DATABASE_URL").replace("postgresql+asyncpg", "postgresql")
+    sql = ("INSERT INTO public.history_minute_bars (instrument_id, minute, trade_date, open, high, low, close, volume, "
+           "oi, source, removed) SELECT 'NSE_FO:' || (100000 + i), t.ts, '2026-10-08', 100 + (i % 50), 101 + (i % 50), "
+           "99 + (i % 50), 100.50 + (i % 50), 5, 3, 'live', FALSE FROM generate_series(1, %d) AS i, "
+           "generate_series(0, %d) AS m, LATERAL (SELECT timestamptz '2026-10-08 09:15+05:30' + "
+           "m * interval '1 minute' AS ts) AS t").replace("%d", str(n), 1).replace("%d", str(MINUTES - 1), 1)
+
+    async def run():
+        a, b = await asyncpg.connect(url), await asyncpg.connect(url)
+        try:
+            tr = a.transaction()
+            await tr.start()
+            await a.execute(sql)
+            await b.execute("ANALYZE public.history_minute_bars")
+            await tr.commit()
+            st = await b.fetchrow("SELECT reltuples, relpages, (SELECT count(*) FROM pg_stats WHERE "
+                                  "tablename = 'history_minute_bars') FROM pg_class "
+                                  "WHERE relname = 'history_minute_bars'")
+            return tuple(st)
+        finally:
+            await a.close()
+            await b.close()
+
+    return asyncio.run(run())
+
+
+@pytest.mark.usefixtures("committed_day")
+def test_finalize_finishes_when_statistics_say_zero_rows_because_analyze_ran_during_the_seed():
+    """#344: with the table's statistics at zero rows the 6th execution of a prepared statement switched to a generic
+    plan that timed out (batch 6). The store forces custom plans, so every batch is planned on its own values."""
+    reltuples, _relpages, _stats_rows = _seed_with_analyze_during_insert(N)
+    assert reltuples == 0, f"repro left reltuples={reltuples}, not 0: the zero-row statistics bug is not exercised"
+    ids = [iid(i) for i in range(1, N + 1)]
+    pg, source = PostgresHistoryStore(_url("TEST_DATABASE_URL")), GeneratedCandles()
+    try:
+        result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
+        batches = result.batch_seconds
+        assert result.status.value == "final" and result.errors == {}
+        assert result.counts.replaced == N * MINUTES and result.counts.kept_live == 0
+        assert max(batches) < BATCH_BOUND_S, f"one batch exceeded {BATCH_BOUND_S} s: {batches}"
+        assert sum(batches) < BOUND_S, f"total exceeded {BOUND_S} s"
+        assert source.calls == N
     finally:
         pg.close()
