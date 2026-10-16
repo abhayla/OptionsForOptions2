@@ -102,3 +102,18 @@ Parked under run-discipline A2 while the owner sleeps; each has a recommendation
   is unchanged (0 differences in blocked strategies over the fuzz). Written into REQ-060 as a clarification.
 - **Alternative if you disagree:** keep the standalone record and keep showing the note until you clear it.
 
+## OQ-9: When is a stored freeze limit too old to trust? (#257)
+- **Spec basis:** ADR-081 "While no freeze limit is stored for a contract, the review warns that Zerodha may reject a
+  large order." The spec says nothing about the limit's age (searched: freeze, stale, age, file date, trading day,
+  holiday - ADR-081, REQ-054 AC-4, F-36).
+- **Real case:** limits loaded from NSE's 15 Oct 2026 file (NIFTY 3511) would still be used weeks later if the daily
+  load stopped, with no warning.
+- **Why it is not built tonight:** "older than the last trading day" needs an exchange holiday calendar, and the repo
+  has none; choosing its source (NSE's published holiday list, kept as data with a date) is a new dependency.
+- **Options:** (a) warn when the newest file date is older than the last trading day, with an NSE holiday list stored
+  as admin data; (b) warn when it is older than N calendar days (e.g. 4, covering a normal weekend), with no calendar;
+  (c) no age check (today's behaviour).
+- **Recommendation: (b) now, (a) later** - 4 calendar days catches a stopped load within about one working day after
+  a normal weekend and needs nothing new (cost: a false warning after a long exchange holiday, e.g. a weekend plus two
+  holidays); replace it with (a) when a trading calendar exists for other reasons.
+

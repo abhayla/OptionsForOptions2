@@ -228,15 +228,12 @@ issues:
   "#148": 4a            # W-024 follow-up: response serializer + request-boundary user words (round-10 review)
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
-  "#237": 4a            # deferred: browser e2e of Save Draft cannot run in CI (fixtures age past expiry; ofo_test rows not removable)
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
   "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
   "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # deferred: pre-execution margin check blocks on the platform estimate (REQ-055 AC-3)
-  "#275": 4b           # deferred: W-083 duplicate row + hidden-position audit; W-086 futures wording + repeated ack
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
-  "#285": 4b           # deferred: MARKET_DATA_120 shared by two templates (renumber the circuit one)
   "#269": 4b           # PARKED: W-075 on OQ-4 (max-loss sentence vs expiry table with STT on exercise)
   "#247": 4a           # PARKED: #242 remainder - selector misses two-hop import dependents (silent 0)
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
@@ -294,6 +291,7 @@ findings:
   F-34: done      # bars from ticks vs Kite candles (decided, ADR-067)
   F-35: 4b        # Zerodha published rates vs charges reply; STT/stamp rounding unmeasured until a real fill (ADR-082)
   F-36: 4b        # NSE freeze limit = MaxTradQty in the daily contract file (old qtyfreeze discontinued); BSE unmeasured (ADR-081, W-076)
+  F-37: 4b        # Kite token stopped 04:29:48-04:30:48 IST next morning (one night, owner app); not ~6 AM
 
 hypotheses:
   H1: done
