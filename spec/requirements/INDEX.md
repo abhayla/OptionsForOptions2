@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 74; sections: 18
+Requirements: 75; sections: 18
 
 ## Accounts and identity (4)
 
@@ -46,11 +46,12 @@ Requirements: 74; sections: 18
 | REQ-034 | Outcome view and scenario levels | foundation | Approved |
 | REQ-035 | Single strategy table | foundation | Approved |
 
-## Delivery (1)
+## Delivery (2)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-067 | Delivery controls | feature | Specified |
+| REQ-075 | Coding standards are checked automatically, at edit time and in CI, without slowing small changes | foundation | Approved |
 
 ## Entitlements and billing (7)
 
