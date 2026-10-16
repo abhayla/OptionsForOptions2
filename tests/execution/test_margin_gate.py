@@ -349,7 +349,8 @@ def test_321_any_finite_negative_total_is_zero_required(total: object) -> None:
     assert required_from_basket_reply(_reply((CE, "NFO", None), total=total), [_leg(CE, "SELL")]) == Decimal(0)
 
 
-@pytest.mark.parametrize("total", [Decimal("-Infinity"), Decimal("Infinity"), Decimal("NaN"), Decimal("-NaN"), None, -214.5])
+@pytest.mark.parametrize("total", [Decimal("-Infinity"), Decimal("Infinity"), Decimal("NaN"), Decimal("-NaN"), None,
+                                   -214.5])
 def test_321_a_non_finite_or_non_number_total_still_blocks(total: object) -> None:
     with pytest.raises(MarginReplyError):
         required_from_basket_reply(_reply((CE, "NFO", None), total=total), [_leg(CE, "SELL")])
