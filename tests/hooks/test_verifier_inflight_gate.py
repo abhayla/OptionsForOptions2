@@ -130,15 +130,17 @@ def test_write_path_spellings_refused(snap, layout):
     fresh(snap)
     root = layout["linked"]
     other = root / "backend" / "ofo"
+    # (path, cwd, kind): "backslash" only separates on Windows; "case" only matters on a case-insensitive disk
     cases = [
-        ("..\\..\\work\\W-1.md", other),       # relative with backslashes, from a subfolder
-        ("../../work/W-1.md", other),
-        (str(root / "Work" / "W-1.md"), root),  # mixed case on a case-insensitive disk
-        (str(root / "SPEC" / "x.md"), root),
+        ("..\\..\\work\\W-1.md", other, "backslash"),  # relative with backslashes, from a subfolder
+        ("../../work/W-1.md", other, "plain"),
+        (str(root / "Work" / "W-1.md"), root, "case"),  # mixed case on a case-insensitive disk
+        (str(root / "SPEC" / "x.md"), root, "case"),
     ]
-    for fp, cwd in cases:
-        if os.sep == "/" and fp.lower() != fp and not (root / fp.split("/")[-2]).exists():
-            continue  # case-insensitive spelling only matters where the disk is
+    case_insensitive = (root / "WORK").exists() or (root / "SPEC").exists() or os.path.normcase("A") == "a"
+    for fp, cwd, kind in cases:
+        if (kind == "backslash" and os.sep == "/") or (kind == "case" and not case_insensitive):
+            continue  # that spelling cannot reach the guarded folder on this OS / disk
         r = run({"tool_name": "Write", "tool_input": {"file_path": fp}, "cwd": str(cwd)}, snap)
         assert r.returncode == REFUSED, (fp, r.stderr)
 
