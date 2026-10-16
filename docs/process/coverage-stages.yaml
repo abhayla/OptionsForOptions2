@@ -259,6 +259,7 @@ issues:
 
 # Work items whose status is not done.
 work_items:
+  W-088: 4a           # #159: a real login lands on the frontend page (FRONTEND_ORIGIN, write-once door origin)
   W-008: S8
   W-009: S8
   W-011: S8
