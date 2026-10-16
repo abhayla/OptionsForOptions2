@@ -273,3 +273,72 @@ def test_finalize_is_resumable_and_a_rerun_rewrites_nothing_already_made_final(c
         assert all(after[(i, m)] == x for i, m, x in done)  # the first run's rows are the same row versions
     finally:
         pg.close()
+
+
+# ---- DIAG-344 deterministic reproduction (temporary) -------------------------------------------------------------
+def _seed_with_analyze_during_insert(n: int):
+    """The failing runs' state: an ANALYZE that ran while the seed INSERT was still uncommitted (reltuples=0,
+    relpages>0, no pg_stats rows)."""
+    import asyncio
+    import asyncpg
+    url = _url("TEST_ADMIN_DATABASE_URL").replace("postgresql+asyncpg", "postgresql")
+    sql = ("INSERT INTO public.history_minute_bars (instrument_id, minute, trade_date, open, high, low, close, volume, "
+           "oi, source, removed) SELECT 'NSE_FO:' || (100000 + i), t.ts, '2026-10-08', 100 + (i % 50), 101 + (i % 50), "
+           "99 + (i % 50), 100.50 + (i % 50), 5, 3, 'live', FALSE FROM generate_series(1, %d) AS i, "
+           "generate_series(0, %d) AS m, LATERAL (SELECT timestamptz '2026-10-08 09:15+05:30' + m * interval '1 minute' "
+           "AS ts) AS t" % (n, MINUTES - 1))
+
+    async def run():
+        a, b = await asyncpg.connect(url), await asyncpg.connect(url)
+        try:
+            tr = a.transaction()
+            await tr.start()
+            await a.execute(sql)
+            await b.execute("ANALYZE public.history_minute_bars")
+            await tr.commit()
+            st = await b.fetchrow("SELECT reltuples, relpages, (SELECT count(*) FROM pg_stats WHERE "
+                                  "tablename = 'history_minute_bars') FROM pg_class WHERE relname = 'history_minute_bars'")
+            await b.execute("PREPARE s344(text[], timestamptz[]) AS SELECT b.instrument_id FROM unnest($1, $2) AS "
+                            "k(i, m) JOIN public.history_minute_bars AS b ON b.instrument_id = k.i AND b.minute = k.m "
+                            "WHERE NOT b.removed")
+            plans = {}
+            for mode in ("force_custom_plan", "force_generic_plan"):
+                await b.execute(f"SET plan_cache_mode = {mode}")
+                rows = await b.fetch("EXPLAIN EXECUTE s344(array_fill('NSE_FO:100001'::text, ARRAY[18750]), "
+                                     "array_fill(timestamptz '2026-10-08 09:15+05:30', ARRAY[18750]))")
+                plans[mode] = " | ".join(r[0].strip()[:80] for r in rows[:5])
+            return tuple(st), plans
+        finally:
+            await a.close()
+            await b.close()
+
+    return asyncio.run(run())
+
+
+class _CustomPlanStore(PostgresHistoryStore):
+    def _engine_(self):
+        if self._engine is None:
+            from sqlalchemy.ext.asyncio import create_async_engine
+            self._engine = create_async_engine(
+                self._url, pool_size=2, max_overflow=2, pool_pre_ping=True,
+                connect_args={"timeout": 5, "command_timeout": 15,
+                              "server_settings": {"jit": "off", "plan_cache_mode": "force_custom_plan"}})
+        return self._engine
+
+
+@pytest.mark.parametrize("store_cls", [PostgresHistoryStore, _CustomPlanStore], ids=["as-is", "force-custom"])
+def test_diag344_repro(committed_day, capsys, store_cls):
+    state, plans = _seed_with_analyze_during_insert(N)
+    ids = [iid(i) for i in range(1, N + 1)]
+    pg = store_cls(_url("TEST_DATABASE_URL"))
+    try:
+        started = time.perf_counter()
+        result = finalize_trading_day(pg, DAY, GeneratedCandles(), ids, now=at(16, 5))
+        elapsed = time.perf_counter() - started
+        with capsys.disabled():
+            print(f"\nDIAG344 REPRO {store_cls.__name__} state(reltuples,relpages,pg_stats)={state} "
+                  f"elapsed={elapsed:.1f} errors={result.errors} "
+                  f"batches={[round(s, 2) for s in result.batch_seconds][:8]}"
+                  f"\nDIAG344 REPRO plans={plans}", flush=True)
+    finally:
+        pg.close()
