@@ -10,11 +10,11 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-from execution_inputs import FIXTURE, IST, all_true_context, check
+from execution_inputs import FIXTURE, IST, all_true_context, check, zerodha_eligibility
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import FlagCode
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
+from ofo.instruments import Catalogue, ZerodhaEligibility, parse_instruments_csv
 
 FUT_EXPIRY = datetime.date(2026, 10, 29)
 DAY = datetime.datetime(2026, 10, 29, 10, 0, tzinfo=IST)
@@ -30,11 +30,8 @@ def cat() -> Catalogue:
 
 
 @pytest.fixture(scope="module")
-def elig(cat: Catalogue) -> EligibilityRegistry:
-    r = EligibilityRegistry()
-    for e in cat.all_entries():
-        r.record(EligibilityStatus(e.contract.id, True, DAY))
-    return r
+def elig(cat: Catalogue) -> ZerodhaEligibility:
+    return zerodha_eligibility(cat, at=DAY)
 
 
 def _run(action: Action, cat, elig, as_of=DAY):

@@ -10,7 +10,8 @@ import dataclasses
 import datetime
 from decimal import Decimal as D
 from pathlib import Path
-from collections.abc import Mapping
+from types import SimpleNamespace
+from collections.abc import Iterable, Mapping
 from typing import Any, Callable
 
 import pytest
@@ -28,7 +29,8 @@ from ofo.execution import (
     active_legs_hash,
     check_pre_execution,
 )
-from ofo.instruments import Catalogue, EligibilityRegistry, EligibilityStatus, parse_instruments_csv
+from ofo.instruments import Catalogue, InstrumentId, ZerodhaEligibility, parse_instruments_csv
+from ofo.instruments.eligibility import apply_margin_refusals, list_state_from_row, registry_from_list
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -58,13 +60,32 @@ def catalogue() -> Catalogue:
     return cat
 
 
+def zerodha_eligibility(catalogue: Catalogue, *, at: datetime.datetime = AS_OF, today: datetime.date | None = None,
+                        omit: Iterable[InstrumentId] = (),
+                        refused: Mapping[InstrumentId, str] | None = None) -> ZerodhaEligibility:
+    """THE one test path to eligibility (W-092 round 2): synthetic list rows (every catalogue contract listed with a
+    Zerodha row, except ``omit``) through the same minting functions production uses - ``list_state_from_row`` ->
+    ``registry_from_list`` -> ``apply_margin_refusals``. The gate accepts nothing else, so a test cannot hand-make one.
+    ``today`` defaults to the India date of ``at`` (the load time); ``refused`` = margin-reply refusals."""
+    skip = set(omit)
+    states = [list_state_from_row(SimpleNamespace(
+        exchange_segment=e.contract.id.exchange_segment, exchange_token=e.contract.id.exchange_token,
+        instrument_type=e.contract.instrument_type, expiry=e.contract.expiry, currently_listed=True, retired=False,
+        delisted=False, has_zerodha_row=True)) for e in catalogue.all_entries() if e.contract.id not in skip]
+    minted = registry_from_list(states, today=today or at.date(), loaded_at=at)
+    return apply_margin_refusals(minted, refused, refused_at=at) if refused else minted
+
+
+def refuse(eligibility: ZerodhaEligibility, *instrument_ids: InstrumentId, text: str = "OI limit reached",
+           at: datetime.datetime = AS_OF) -> ZerodhaEligibility:
+    """A NEW eligibility with these contracts refused by the margin reply (the sealed input is never changed)."""
+    return apply_margin_refusals(eligibility, dict.fromkeys(instrument_ids, text), refused_at=at)
+
+
 @pytest.fixture()
-def eligibility(catalogue: Catalogue) -> EligibilityRegistry:
-    """Every catalogue contract confirmed tradable (as a Zerodha read would record it)."""
-    registry = EligibilityRegistry()
-    for entry in catalogue.all_entries():
-        registry.record(EligibilityStatus(entry.contract.id, True, AS_OF))
-    return registry
+def eligibility(catalogue: Catalogue) -> ZerodhaEligibility:
+    """Every catalogue contract confirmed tradable (as Zerodha's list load would leave it)."""
+    return zerodha_eligibility(catalogue)
 
 
 class AnyBand(Mapping):
@@ -144,7 +165,7 @@ STRATEGY_ID = "S-1"
 
 
 def check(
-    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: EligibilityRegistry,
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility,
     strategy_id: str = STRATEGY_ID,
 ) -> SafetyResult:
     """Run the gate for a strategy whose own id is ``strategy_id`` (every test strategy is S-1 unless stated)."""

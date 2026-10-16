@@ -9,7 +9,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from execution_inputs import check, AS_OF, EXPIRY, FIXTURE, all_true_context, condor_legs, find_token
+from execution_inputs import check, AS_OF, EXPIRY, FIXTURE, all_true_context, condor_legs, find_token, refuse
 from ofo.audit import AuditLog
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy
 from ofo.execution import (
@@ -20,7 +20,7 @@ from ofo.execution import (
     SafetyResult,
     margin_estimate_from,
 )
-from ofo.instruments import EligibilityStatus, parse_instruments_csv
+from ofo.instruments import parse_instruments_csv
 
 SENSEX_EXPIRY = datetime.date(2026, 10, 8)
 NEAR_NIFTY_EXPIRY = datetime.date(2026, 9, 29)
@@ -187,7 +187,7 @@ def test_validation_never_changes_strategy_catalogue_or_eligibility(catalogue, e
     legs = list(condor_legs(quantity=100))
     legs[1] = dataclasses.replace(legs[1], strike=D("23010"))
     strategy = Strategy(tuple(legs) + (legs[0],))
-    eligibility.record(EligibilityStatus(find_token(catalogue, "CE", "23400"), False, AS_OF))
+    eligibility = refuse(eligibility, find_token(catalogue, "CE", "23400"))
     before_strategy = copy.deepcopy(strategy)
     before_legs = [id(leg) for leg in strategy.legs]
     before_catalogue = [(e.contract, e.currently_listed) for e in catalogue.all_entries()]
@@ -224,8 +224,7 @@ def test_unlisted_contract_is_reported_with_alternatives_not_replaced(condor, ca
 
 def test_alternatives_exclude_unlisted_and_ineligible_strikes(condor, catalogue, eligibility):
     """AC-5: alternatives are only listed AND eligible strikes of the same type and expiry, nearest first."""
-    eligibility.record(EligibilityStatus(find_token(catalogue, "PE", "23000"), False, AS_OF, "OI limit"))
-    eligibility.record(EligibilityStatus(find_token(catalogue, "PE", "22950"), False, AS_OF, "OI limit"))
+    eligibility = refuse(eligibility, find_token(catalogue, "PE", "23000"), find_token(catalogue, "PE", "22950"))
     result = check(condor, all_true_context(), catalogue, eligibility)
     (failure,) = result.failures
     assert failure.code is CheckCode.CONTRACT_NOT_ELIGIBLE
@@ -236,7 +235,7 @@ def test_unavailable_futures_contract_offers_no_strike_alternatives(catalogue, e
     """AC-5: an ineligible future is reported; no strike alternative is invented for a futures leg."""
     fut = Leg(Action.BUY, Instrument.FUT, None, datetime.date(2026, 10, 27), 65, D("23250"))
     (token,) = [c.id for c in catalogue.contracts_for("NIFTY", fut.expiry, frozenset({"FUT"}))]
-    eligibility.record(EligibilityStatus(token, False, AS_OF))
+    eligibility = refuse(eligibility, token)
     result = check(Strategy((fut,)), all_true_context(), catalogue, eligibility)
     (failure,) = result.failures
     assert failure.code is CheckCode.CONTRACT_NOT_ELIGIBLE and failure.alternatives == ()
