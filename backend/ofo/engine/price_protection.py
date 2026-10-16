@@ -22,7 +22,12 @@ from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
 
 from ofo.engine.executable_price import (
-    Depth, _action, _decimal, _positive_int, executable_limit, round_to_tick,
+    Depth,
+    _action,
+    _decimal,
+    _positive_int,
+    executable_limit,
+    round_to_tick,
 )
 from ofo.engine.legs import Action
 from ofo.money import PAISE

@@ -15,7 +15,6 @@ from decimal import localcontext
 from pathlib import Path
 
 import pytest
-
 from ofo.engine import Action
 from ofo.engine.executable_price import Depth, depth_from_quote, round_to_tick
 from ofo.engine.price_protection import PlannedLeg, protected_limits
@@ -23,6 +22,7 @@ from ofo.engine.price_protection import PlannedLeg, protected_limits
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/kite_quotes/iron-condor-2026-10-16.json"
 TICK = D("0.05")
 NO_DEPTH = Depth(bids=(), asks=())
+ON_TICK_IN_FIVE = 4  # property cases: 4 in 5 planned prices on the tick, the rest any paisa
 
 
 @pytest.fixture(scope="module")
@@ -111,7 +111,7 @@ def test_rounding_toward_the_user(side, planned, expected):
 
 def test_one_paisa_tolerance_leaves_no_room(real):
     """Checklist 3: every leg's limit is its planned price rounded toward the user."""
-    legs = _real_legs(real) + [_leg(Action.BUY, 65, "12.37"), _leg(Action.SELL, 65, "12.37")]
+    legs = [*_real_legs(real), _leg(Action.BUY, 65, "12.37"), _leg(Action.SELL, 65, "12.37")]
     result = protected_limits(legs, D("0.01"), TICK)
     for leg in result.legs:
         assert leg.limit == round_to_tick(leg.planned_price, TICK, leg.side)
@@ -156,13 +156,14 @@ def test_buy_below_one_tick_is_refused_not_loosened():
 
 def test_property_adverse_never_exceeds_tolerance_and_limits_are_tightest_within_share():
     """Checklist 1, 2,000 random strategies of 1-4 legs, mixed sides, on- and off-tick prices."""
-    rng = random.Random(95)
+    rng = random.Random(95)  # noqa: S311 - a seeded, reproducible case generator, not security
     for _ in range(2000):
         legs = []
         for _ in range(rng.randint(1, 4)):
             side = rng.choice([Action.BUY, Action.SELL])
             quantity = rng.choice([rng.randint(1, 2000), 65 * rng.randint(1, 20)])
-            price = D(rng.randint(1, 20000)) * TICK if rng.random() < 0.8 else D(rng.randint(5, 100000)) / 100
+            on_tick = rng.randint(1, 5) <= ON_TICK_IN_FIVE
+            price = D(rng.randint(1, 20000)) * TICK if on_tick else D(rng.randint(5, 100000)) / 100
             legs.append(_leg(side, quantity, str(price)))
         tolerance = D(rng.randint(0, 500000)) / 100
         result = protected_limits(legs, tolerance, TICK)
