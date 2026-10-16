@@ -327,7 +327,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                              snapshot.forwards)
     except SpotRefused:
         spot_q = snapshot.spot
-        if spot_q is None or spot_q.ltp is None:
+        if spot_q is None or not is_live_price(spot_q.ltp):
             reason = render_explanation("outcome_spot_missing", underlying=definition.underlying)
         else:
             reason = render_explanation("outcome_spot_unusable", underlying=definition.underlying,

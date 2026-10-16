@@ -2,12 +2,16 @@
 gate run showed an AVAILABLE quote with LTP 0 valued at Current Value 0.00 / P&L -100%. Real 2026-10-08 replay; the
 state is made by changing ONE input (the leg's last price) of the real snapshot."""
 import dataclasses
+import datetime
 from decimal import Decimal
 
 import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.errors.explanations import render_explanation
+from ofo.marketdata.forward import ForwardUnavailable, parity_forward
+from ofo.marketdata.quote import is_live_price
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
-from ofo.outcome.planned_entry import is_live_price, planned_entry_of
+from ofo.outcome.planned_entry import planned_entry_of
 from ofo.rules.inputs import DataHealth
 from ofo.table import TOTAL_ROW_ID, ColumnId
 from outcome.test_same_engine import RATE, VALUATION, definition
@@ -62,3 +66,15 @@ def test_zero_spot_is_refused(replayed):
     d, snap = _snap(replayed, Decimal("1"))
     out = build_outcome(d, dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, ltp=Decimal("0"))))
     assert out.state is OutcomeState.REFUSED
+    assert out.reason == render_explanation("outcome_spot_missing", underlying="NIFTY")  # not "unusable, AVAILABLE"
+
+
+def test_zero_spot_refuses_the_forward(replayed):
+    _, snap = _snap(replayed, Decimal("1"))
+    zero = dataclasses.replace(snap.spot, ltp=Decimal("0"))
+    with pytest.raises(ForwardUnavailable):
+        parity_forward([], zero, datetime.date(2026, 10, 13), VALUATION, RATE)
+
+
+def test_negative_price_is_not_live():
+    assert not is_live_price(Decimal("-0.05"))

@@ -34,6 +34,6 @@ def planned_entry_of(quote: NormalizedQuote | None) -> PlannedEntry | None:
         if is_live_price(quote.ltp):
             return PlannedEntry(quote.ltp.quantize(_CENT, rounding=ROUND_HALF_UP), "ltp")
         return None
-    if quote.bid is not None and quote.ask is not None and quote.bid > 0 and quote.ask > 0:
+    if is_live_price(quote.bid) and is_live_price(quote.ask):
         return PlannedEntry(((quote.bid + quote.ask) / 2).quantize(_CENT, rounding=ROUND_HALF_UP), "mid")
     return None
