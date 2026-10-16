@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -63,8 +64,9 @@ def failed_jobs(text):
 
 
 class Lander:
-    def __init__(self, worktree, title, body_file, env):
+    def __init__(self, worktree, title, body_file, env, branch=None):
         self.worktree = worktree
+        self.given_branch = branch
         self.title = title
         self.body_file = body_file
         self.env = env
@@ -78,14 +80,19 @@ class Lander:
         return self.run(["git", "-C", self.worktree, *args])
 
     def read_branch(self):
-        _, text = self.git("rev-parse", "--abbrev-ref", "HEAD")
-        self.branch = text.strip() or "<branch>"
-        if self.branch in ("main", "HEAD"):
-            raise Stop(f"worktree is on {self.branch}; land a feature branch")
+        if self.given_branch:
+            self.branch = self.given_branch
+        else:
+            _, text = self.git("rev-parse", "--abbrev-ref", "HEAD")
+            self.branch = text.strip() or "<branch>"
+            if self.branch == "HEAD":
+                raise Stop("detached HEAD: no branch name to push; pass --branch <name>")
+        if self.branch == "main":
+            raise Stop("worktree is on main; land a feature branch")
 
     def close_check(self):
         rc, log = self.git("log", "--format=%B%n---COMMIT---", "origin/main..HEAD")
-        if rc != 0:
+        if rc != 0 and not self.env.dry_run:
             raise Stop(f"could not read commit messages: {log.strip()}")
         commits_file = os.path.join(self.env.tmp_dir, f"land-commits-{os.getpid()}.txt")
         if not self.env.dry_run:
@@ -97,7 +104,8 @@ class Lander:
             raise Stop("before push: closing-reference check failed\n" + text.strip())
 
     def push(self):
-        rc, text = self.git("push", "-u", "origin", self.branch)
+        target = f"HEAD:refs/heads/{self.branch}" if self.given_branch else self.branch
+        rc, text = self.git("push", "-u", "origin", target)
         if rc != 0:
             raise Stop("push failed\n" + text.strip())
 
@@ -128,14 +136,21 @@ class Lander:
             raise Stop("could not read the PR number from: " + text.strip())
         print(f"created PR #{self.pr}")
 
+    def failed_run_id(self, jobs):
+        """The run id out of the failed check's own link (.../actions/runs/<id>/job/<n>), never another run's."""
+        _, text = self.run(["gh", "pr", "checks", str(self.pr), "--json", "name,state,link"], self.worktree)
+        with contextlib.suppress(json.JSONDecodeError, TypeError, AttributeError):
+            for check in json.loads(text):
+                found = re.search(r"/runs/(\d+)", check.get("link") or "")
+                if check.get("name") in jobs and found:
+                    return found.group(1)
+        return "<id>"
+
     def red_ci(self, text):
-        _, runs = self.run(["gh", "run", "list", "--branch", self.branch, "--limit", "1", "--json", "databaseId"],
-                           self.worktree)
-        run_id = "<id>"
-        with contextlib.suppress(json.JSONDecodeError, KeyError, IndexError, TypeError):
-            run_id = json.loads(runs)[0]["databaseId"]
-        jobs = ", ".join(failed_jobs(text)) or "see PR checks"
-        raise Stop(f"CI red; failed job(s): {jobs}\nnext: gh run view {run_id} --log-failed")
+        jobs = failed_jobs(text)
+        run_id = self.failed_run_id(jobs)
+        raise Stop(f"CI red; failed job(s): {', '.join(jobs) or 'see PR checks'}\n"
+                   f"next: gh run view {run_id} --log-failed")
 
     def update_branch(self):
         rc, text = self.run(["gh", "pr", "update-branch", str(self.pr)], self.worktree)
@@ -184,10 +199,10 @@ class Lander:
         print(f"MERGED PR #{self.pr} at {stamp}")
 
 
-def land(worktree, title, body_file, env=None):
+def land(worktree, title, body_file, env=None, branch=None):
     """Return 0 when merged, 1 when stopped."""
     try:
-        Lander(worktree, title, body_file, env or Env()).land()
+        Lander(worktree, title, body_file, env or Env(), branch).land()
     except Stop as stop:
         print("STOPPED: " + str(stop))
         return 1
@@ -213,12 +228,13 @@ def main(argv=None):
     ap.add_argument("--title", required=True)
     ap.add_argument("--body-file", required=True)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--branch", help="branch name to push; required on a detached HEAD (CI checkouts)")
     a = ap.parse_args(argv)
     if not os.path.isdir(a.worktree) or not os.path.isfile(a.body_file):
         print("worktree or body file not found")
         return 2
     env = Env(runner=DryRunner(a.worktree), dry_run=True) if a.dry_run else Env()
-    return land(a.worktree, a.title, a.body_file, env)
+    return land(a.worktree, a.title, a.body_file, env, a.branch)
 
 
 if __name__ == "__main__":

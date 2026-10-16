@@ -1,5 +1,6 @@
 """land.py: push -> PR -> merge gate in one command, with a faked command runner (no network, no real git/gh)."""
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,11 +37,14 @@ class Fake:
             "create-pr": (0, "https://github.com/o/r/pull/77\n"),
             "view-pr": (0, self.state + "\n"),
             "update-pr": (self.update_rc, ""),
-            "list-run": (0, json.dumps([{"databaseId": 4242}])),
+            "checks": (0, json.dumps([
+                {"name": "app-tests", "state": "SUCCESS", "link": "https://github.com/o/r/actions/runs/111/job/1"},
+                {"name": "lint-and-test", "state": "FAILURE", "link": "https://github.com/o/r/actions/runs/222/job/2"},
+            ])),
         }
         by_prefix = {("gh", "pr", "list"): "list-pr", ("gh", "pr", "create"): "create-pr",
                      ("gh", "pr", "view"): "view-pr", ("gh", "pr", "update-branch"): "update-pr",
-                     ("gh", "run", "list"): "list-run"}
+                     ("gh", "pr", "checks"): "checks"}
         key = by_prefix.get(tuple(cmd[:3]))
         key = key or next((k for k in ("rev-parse", "origin/main..HEAD") if k in cmd), None)
         return answers.get(key, (0, ""))
@@ -110,11 +114,12 @@ def test_behind_gives_up_after_three_retries(tmp_path, capsys):
 
 
 def test_red_ci_names_failed_job_and_log_hint(tmp_path, capsys):
-    fake = Fake([(1, "REFUSED: PR 77 has a failing check: lint=pass, app-tests=fail")])
+    fake = Fake([(1, "REFUSED: PR 77 has a failing check: app-tests=pass, lint-and-test=fail")])
     rc, out = run(fake, tmp_path, capsys)
     assert rc == 1
-    assert "failed job(s): app-tests" in out
-    assert "gh run view 4242 --log-failed" in out
+    assert "failed job(s): lint-and-test" in out
+    assert "gh run view 222 --log-failed" in out  # the failed job's own run, not the first run found
+    assert "111" not in out
     assert not fake.ran("update-branch")
 
 
@@ -125,15 +130,45 @@ def test_other_refusal_does_not_loop(tmp_path, capsys):
     assert len(fake.ran(GATE)) == 1
 
 
-def test_dry_run_runs_nothing_and_prints_commands(tmp_path, capsys):
+def make_repo(tmp_path, detach=False):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    base = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*base, "init", "-q", "-b", "feat/y"], check=True)  # noqa: S603
+    subprocess.run([*base, "commit", "-q", "--allow-empty", "-m", "c"], check=True)  # noqa: S603
+    if detach:
+        subprocess.run([*base, "checkout", "-q", "--detach"], check=True)  # noqa: S603
     body = tmp_path / "b.md"
     body.write_text("b", encoding="utf-8")
-    rc = land.main([str(Path(__file__).resolve().parents[2]), "--title", "t", "--body-file", str(body), "--dry-run"])
+    return repo, body
+
+
+def test_dry_run_runs_nothing_and_prints_commands(tmp_path, capsys):
+    repo, body = make_repo(tmp_path)
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "would run: git -C" in out and "push -u origin" in out
+    assert "push -u origin feat/y" in out
     assert "would run: gh pr create" in out
     assert "dry run: nothing was run" in out
+
+
+def test_detached_head_without_branch_stops_clearly(tmp_path, capsys):
+    repo, body = make_repo(tmp_path, detach=True)
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "detached HEAD" in out
+    assert "--branch" in out
+
+
+def test_detached_head_with_branch_pushes_head_to_that_branch(tmp_path, capsys):
+    repo, body = make_repo(tmp_path, detach=True)
+    rc = land.main([str(repo), "--title", "t", "--body-file", str(body), "--dry-run", "--branch", "feat/z"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "push -u origin HEAD:refs/heads/feat/z" in out
+    assert "--head feat/z" in out
 
 
 def test_add_stage_inserts_inside_issues_block_and_keeps_crlf(tmp_path):
