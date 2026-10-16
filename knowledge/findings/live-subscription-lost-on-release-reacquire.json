@@ -1,0 +1,28 @@
+{
+ "id": "live-subscription-lost-on-release-reacquire",
+ "scope": "project",
+ "class": "A shared market-data subscription whose holder set changes from one holder to another (release then acquire inside one subscription change, or before the vendor confirms the unsubscribe) stops receiving ticks while the per-instrument health still reads live, because staleness is judged from the feed as a whole (other instruments keep ticking). Wider shape: liveness measured on a shared stream can never see one member of it going silent.",
+ "mechanism": "2026-10-16 stage 4a gate re-run on main 640a47b (live Kite, ofo_dev): one socket released the NIFTY index and option legs, another acquired them right after; the index stopped updating. Cause in code not yet proven (fix in progress on branch fix/live-resubscribe-freeze).",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "gate 4a re-run, D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/gate4a/ (repro_spot.json, outcome-1..3.json)",
+  "evidence": "repro_spot.json: spot 22982.45 with spot_at 09:23:39 on every 1-second sample for 26 s while the three legs ticked (13.95 -> 14.2, 50.5 -> 49.15, 20.4 -> 19.85), state COMPUTED throughout; outcome-1/2/3.json (09:20:26, 09:21:31, 09:22:36): spot_at 09:20:15 in all three. Re-checked by the orchestrator from the files."
+ },
+ "fix": "In progress (gate 4a D-1): keep an instrument subscribed when it changes holders; flag a quote stale on its own last-tick time.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test covers release+acquire of the same instrument; the existing staleness check is feed-wide (6.3 s after a forced pause of the WHOLE feed, 2026-10-08)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-077.md",
+  "spec/decisions/ADR-020.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "gate 4a re-run D-1",
+   "evidence": "repro_spot.json 26 s frozen spot"
+  }
+ ]
+}
