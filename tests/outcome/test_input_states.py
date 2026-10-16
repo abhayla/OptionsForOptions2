@@ -65,7 +65,7 @@ def test_one_leg_stale_is_computed_with_its_label(replayed):
     hhmm = q.timestamp.astimezone(IST).strftime("%H:%M")
     leg = _leg(out, STALE_LEG)
     assert leg.label == f"stale since {hhmm} IST" and leg.strike == Decimal("23000")
-    assert f"{leg.symbol}: stale since {hhmm} IST" in out.output_label
+    assert leg.symbol not in str(out.output_label or "")  # the leg's notice is on the leg only (issue 297)
 
 
 def test_leg_with_no_quote_keeps_expiry_scenarios_and_shows_no_live_pnl(replayed):
