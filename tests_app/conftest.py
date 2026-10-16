@@ -14,6 +14,7 @@ engine and @compiles shims are deliberately not copied.
 from __future__ import annotations
 
 import base64
+import math
 import os
 from collections.abc import AsyncIterator
 
@@ -21,6 +22,16 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+
+@pytest.fixture(autouse=True)
+def _no_charge_rates_by_default(monkeypatch):
+    """W-075: the outcome route and the live push load the charge rates in force from the database, cached in
+    ``ofo_app.routes.outcome._rates_cache``. Tests that do not care get a cached "no rate set" (never a connection
+    attempt, never a wall-clock wait); the wiring tests seed the cache with a rate set instead."""
+    # the import waits for the test: the KITE_* placeholders below must be in the environment before the app loads
+    from ofo_app.routes import outcome  # noqa: PLC0415 - import order: env placeholders are set after this module's top
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": None})
 
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.
