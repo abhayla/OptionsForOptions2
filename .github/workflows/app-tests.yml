@@ -19,6 +19,12 @@ on:
       - 'scripts/generate_openapi.py'
       - 'frontend/**'
       - '.github/workflows/app-tests.yml'
+      # the ruff ratchet (REQ-075 AC-3) covers tests/ and scripts/, so its inputs start this workflow too
+      - 'tests/**'
+      - 'ruff.toml'
+      - 'requirements-dev.txt'
+      - 'scripts/ruff_ratchet.py'
+      - 'scripts/ruff_baseline.json'
   pull_request:
     paths:
       - 'backend/ofo/**'
@@ -31,6 +37,12 @@ on:
       - 'scripts/generate_openapi.py'
       - 'frontend/**'
       - '.github/workflows/app-tests.yml'
+      # the ruff ratchet (REQ-075 AC-3) covers tests/ and scripts/, so its inputs start this workflow too
+      - 'tests/**'
+      - 'ruff.toml'
+      - 'requirements-dev.txt'
+      - 'scripts/ruff_ratchet.py'
+      - 'scripts/ruff_baseline.json'
 
 permissions:
   contents: read
