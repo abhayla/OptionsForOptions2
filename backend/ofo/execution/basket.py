@@ -109,7 +109,7 @@ class KiteOrder:
                  ("order_type", json.dumps(self.order_type)), ("product", json.dumps(self.product)),
                  ("price", _number(self.price)), ("quantity", str(self.quantity)),
                  ("readonly", "true" if self.readonly else "false"), ("tag", json.dumps(self.tag))]
-        return "{" + ", ".join(f"{json.dumps(k)}: {v}" for k, v in parts) + "}"
+        return "{" + ", ".join(json.dumps(k) + ": " + v for k, v in parts) + "}"
 
 
 @dataclass(frozen=True)
@@ -209,7 +209,7 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
         for p, (iid, exchange, symbol), tag in zip(plan.legs, resolved, tags))
     for o in orders:
         _number(o.price)  # refuse a non-positive price before anything is handed out
-    freeze = _ask(freeze_check, plan, "freeze limit")
+    freeze = _ask(freeze_check, plan, "freeze-limit")
     if not isinstance(freeze, FreezeCheck):
         raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
     if freeze.blocks:

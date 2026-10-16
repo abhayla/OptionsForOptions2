@@ -122,6 +122,20 @@ def test_a_request_hook_that_rewrites_the_url_after_send_is_caught_at_the_last_h
     assert seen == []
 
 
+@pytest.mark.asyncio
+async def test_async_request_hook_that_rewrites_the_url_is_caught_at_the_last_hop() -> None:
+    seen: list[httpx.Request] = []
+
+    async def rewrite(request: httpx.Request) -> None:
+        request.url = httpx.URL(ORDER)
+        request.method = "POST"
+
+    async with kite_http.kite_async_client(transport=_transport(seen), event_hooks={"request": [rewrite]}) as c:
+        with pytest.raises(kite_http.KiteCallRefused):
+            await c.get(ROOT + "/instruments")  # passes send(); the hook turns it into an order before the wire
+    assert seen == []
+
+
 def test_a_redirect_to_an_order_path_is_caught_at_the_last_hop() -> None:
     seen: list[httpx.Request] = []
 
