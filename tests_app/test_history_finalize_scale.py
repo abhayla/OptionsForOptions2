@@ -108,6 +108,25 @@ class _Diag:  # DIAG-344 (temporary, branch diag/scale-flake only)
                     vac = await conn.fetch("SELECT pid, relid::regclass::text, phase, heap_blks_scanned, "
                                            "heap_blks_total FROM pg_stat_progress_vacuum")
                     locks = await conn.fetch("SELECT pid, locktype, mode, objid FROM pg_locks WHERE NOT granted")
+                    st = await conn.fetch(
+                        "SELECT s.n_live_tup, s.n_dead_tup, s.n_mod_since_analyze, s.last_autoanalyze IS NOT NULL, "
+                        "s.autoanalyze_count, s.autovacuum_count, c.reltuples, c.relpages, "
+                        "(SELECT count(*) FROM pg_stats WHERE tablename = 'history_minute_bars') "
+                        "FROM pg_stat_user_tables s JOIN pg_class c ON c.oid = s.relid "
+                        "WHERE s.relname = 'history_minute_bars'")
+                    act = [*act, ("STATS", *tuple(st[0]))] if st else act
+                    if int(t) % 3 == 0:
+                        for name, sql in (
+                            ("SLICE", "SELECT b.instrument_id FROM unnest(CAST($1 AS text[]), CAST($2 AS timestamptz[])) "
+                                      "AS k(i, m) JOIN public.history_minute_bars AS b ON b.instrument_id = k.i "
+                                      "AND b.minute = k.m WHERE NOT b.removed"),
+                            ("KEPT", "SELECT count(*) FROM public.history_minute_bars WHERE trade_date = $1 "
+                                     "AND source = 'live' AND NOT removed")):
+                            try:
+                                plan = await conn.fetch(f"EXPLAIN (GENERIC_PLAN) {sql}")
+                                act = [*act, (f"GENERIC-{name}", " | ".join(r[0].strip()[:90] for r in plan[:4]))]
+                            except Exception as exc:  # noqa: BLE001
+                                act = [*act, (f"GENERIC-{name}", repr(exc)[:120])]
                     load = open("/proc/loadavg").read().strip() if os.path.exists("/proc/loadavg") else "-"
                     self.db.append((t, [tuple(r) for r in act], [tuple(r) for r in vac],
                                     [tuple(r) for r in locks], load, self._threads_cpu()))
@@ -182,7 +201,24 @@ def test_finalize_of_a_full_day_is_set_based_and_finishes_within_the_bound(commi
         result = finalize_trading_day(pg, DAY, source, ids, now=at(16, 5))
         elapsed = time.perf_counter() - started
         cpu1 = os.times()
+
+        async def _prepared():
+            from sqlalchemy import text as _t
+            out = []
+            for _ in range(2):  # pool_size 2: try to see both pooled connections
+                async with pg._engine_().connect() as c:
+                    rows = await c.execute(_t(
+                        "SELECT pg_backend_pid(), generic_plans, custom_plans, left(regexp_replace(statement, "
+                        "'\\s+', ' ', 'g'), 70) FROM pg_prepared_statements ORDER BY generic_plans + custom_plans DESC"))
+                    out.append([tuple(r) for r in rows][:8])
+            return out
+
+        try:
+            prepared = pg._run(_prepared())
+        except Exception as exc:  # noqa: BLE001
+            prepared = repr(exc)
         with capsys.disabled():
+            print(f"\nDIAG344 prepared={prepared}", flush=True)
             diag.dump(f"elapsed={elapsed:.1f} batches={[round(s, 2) for s in result.batch_seconds]} "
                       f"errors={result.errors} proc_user={cpu1.user - cpu0.user:.1f} "
                       f"proc_sys={cpu1.system - cpu0.system:.1f}")
