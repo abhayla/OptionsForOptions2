@@ -1,0 +1,27 @@
+{
+ "id": "liveness-from-a-file-nobody-deletes",
+ "scope": "generic",
+ "class": "A check that decides 'is X running right now?' from the presence of a marker file is wrong whenever the writer does not reliably delete the marker: it reports X running long after X ended, and every block or wait built on it stalls for the full staleness window.",
+ "mechanism": "The kit verifier write-guard writes a snapshot at a verifier's PreToolUse and deletes it at PostToolUse; measured 2026-10-17 00:25, 70 snapshots from the last 24 h were still on disk (5 from the PR #337 reviewer that had finished minutes earlier). The project's verifier_inflight_gate hook (PR #335) treats any snapshot younger than 15 minutes as 'a verifier call is in flight', so after a verifier run it refused the orchestrator's `git add` (snapshot 170 s old) with no verifier running.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2a docs batch, main session, 00:25 IST",
+  "evidence": "refusal: 'BLOCKED by verifier_inflight_gate: `git add` is not on the read-only list. A verifier tool call is running (snapshot 170s old)'; `ls verifier-write-guard/snap` -> 70 files dated 2026-10-16 01:29 .. 2026-10-17 00:25; only a builder agent was running"
+ },
+ "fix": "Open. Options for GC-2b: (a) shorten the window to the longest single verifier tool call (measure it first); (b) treat a snapshot as live only while its verifier agent runs (needs the agent's start/stop, e.g. a SubagentStart/Stop marker written by a project hook and owned by session, run-discipline D2); (c) a kit fix so the guard always deletes its snapshot (PostToolUseFailure, refused calls) - kit issue. Until then the refusal text names the file to delete; delete only after confirming no verifier agent is running.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Seen only as a false refusal. A detection would count snapshots older than the window at session start."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "GC-2a, first use of the hook after PR #335 merged",
+   "evidence": "5 snapshots written 00:25 by the finished #337 reviewer; deleted by hand after confirming only a builder was running"
+  }
+ ]
+}

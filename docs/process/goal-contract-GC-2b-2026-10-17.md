@@ -71,6 +71,11 @@ header note naming the source file and the redaction; CI then runs the test.
    scale-test hang (two unexplained CI failures, runs 38897947228 and 38938587984; two later runs green; lead:
    autovacuum on `history_minute_bars`) - if it recurs on any CI run, open a `deferred` issue with the run id, do not
    retry blindly; OQ-10 (breakeven columns vs charges) waits for the owner, not this contract.
+5b. **The verifier-in-flight hook false-blocks after a verifier ends (finding `liveness-from-a-file-nobody-deletes`,
+   Tier A hook, ~45 min, before item 2 if a verifier will run in this contract).** The kit guard leaves snapshots
+   behind (70 in 24 h), so the hook holds guarded writes up to 15 min after every verifier. Measure the longest single
+   verifier tool call from tonight's snapshots' timestamps first, then pick the fix (finding's options a-c); a kit
+   issue for option (c). Until fixed: delete the named snapshot ONLY after confirming no verifier agent is running.
 6. **Kit issue Startup-Factory #113 (filed by GC-2a):** running a kit tool inside a linked worktree outside the project
    folder is blocked and the bare form runs against main; `check_brief.py` false FAIL next to an ADR-named branch.
    Until the kit answers, use a launcher that sets `cwd` (GC-2a's `kit_in.py` pattern, like `atool.py`). Nothing to
