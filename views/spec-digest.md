@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (91)
+## Decisions (92)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -97,6 +97,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE when the loss region lies above it, taken from the… [none — uses the ADR-072 loss regions for the tabl…]
 - ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
 - ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refreshed by running the freeze-file loader once a week (Monday, next to the Kite login) and whenever NS… [extends ADR-081]
+- ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze limit "is blocked on the order review with the reason and the limit, never split") covers every ord… [extends ADR-081]
 
 ## Requirements (74)
 
