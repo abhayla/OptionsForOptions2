@@ -34,11 +34,15 @@ from collections.abc import Callable as _Callable
 from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
 from ofo.broker.kite_http import check_ws_url as _check_ws_url
+from ofo.broker.kite_http import plain_str as _plain_str
 from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
+import websockets as _websockets
 from websockets.asyncio.client import connect as _ws_connect
 from websockets.exceptions import InvalidStatus as _InvalidStatus
 
 from ofo_app.redaction import register_secret as _register_secret
+
+_egress._trust_modules(_websockets, __file__)  # W-080 r9: the frames a real connect runs through
 
 _log = logging.getLogger("ofo_app.kite_ws")
 _silent = logging.getLogger("ofo_app.kite_ws.wire")  # the library logs request lines (with the token) at DEBUG
@@ -61,6 +65,8 @@ class KiteSocket:
                  connect: _Callable | None = None,
                  sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep) -> None:
         self._provider = provider
+        for value in (api_key, access_token, base_url):  # plain data only (W-080 r9): a str subclass is caller code
+            _plain_str(value, "the socket address parts")
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
         _check_ws_url(self._url)  # refused before anything is held or opened
         _register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
@@ -112,7 +118,10 @@ class KiteSocket:
         """Open the socket; the egress gate's door context covers ONLY the opening handshake of the real connect,
         after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs
         outside."""
-        cm = self._connect(self._url, logger=_silent, open_timeout=10)
+        if self._real_connect:  # no environment proxy: a proxy would be a second, unchecked host
+            cm = self._connect(self._url, logger=_silent, open_timeout=10, proxy=None)
+        else:
+            cm = self._connect(self._url, logger=_silent, open_timeout=10)
         if self._real_connect:
             with _egress._door():
                 ws = await cm.__aenter__()

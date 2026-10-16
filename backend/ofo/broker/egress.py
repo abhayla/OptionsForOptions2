@@ -11,8 +11,13 @@ loopback (127.0.0.0/8, ::1, ::ffff:127.x)   allowed (local test fakes, a databas
 unix socket (AF_UNIX)                       allowed (local only)
 the configured database endpoint            allowed: ``_allow_endpoints`` is called ONCE by ``ofo_app`` at import with
                                             the database URLs from the environment (resolved once); later calls refused
-inside a Kite door, after its URL check     allowed: the door sets ``_DOOR`` to a private sentinel only around the
-                                            actual send/connect, and resets it in ``finally``
+inside a Kite door, after its URL check     allowed only for the door's own call chain: the door's permission is a
+                                            token (thread, asyncio task, nonce, door frame) live only around the send;
+                                            the connect must come from that thread and task, the nonce must be live,
+                                            and every frame between the connect and the door must be a trusted
+                                            library (W-080 round 9), so caller code run inside it (a callback, a log
+                                            handler, a trace function, a copied context, a task or thread started
+                                            inside) gets nothing
 anything else (any other host, any         refused with ``EgressRefused`` BEFORE the packet leaves
 library, raw socket, sendto/sendmsg)
 an address family the gate cannot classify  refused (fail closed)
@@ -30,15 +35,19 @@ Standard library only (the domain layer imports no HTTP package and no app confi
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import contextvars
+import inspect
 import ipaddress
 import os
+import selectors
 import socket
 import sys
 import threading
-from collections.abc import Iterable, Iterator
-from typing import Final
+from collections.abc import Iterable
+from types import FrameType, ModuleType
+from typing import Final, NamedTuple
 from urllib.parse import urlsplit
 
 
@@ -48,8 +57,16 @@ class EgressRefused(RuntimeError):
     A RuntimeError, not an OSError, so no network library maps it to a retryable connect error."""
 
 
-_SENTINEL: Final = object()
+class _Token(NamedTuple):
+    thread: int
+    task: object
+    nonce: object
+    frame: FrameType
+
+
 _DOOR: Final = contextvars.ContextVar("ofo_egress_door", default=None)
+_LIVE: Final[set[object]] = set()  # the nonces of the doors open right now; a nonce dies when its door closes
+_MAX_DEPTH: Final = 400
 
 _CONNECT_EVENTS: Final = frozenset({"socket.connect", "socket.sendto", "socket.sendmsg"})
 _SPAWN_EVENTS: Final = frozenset({"subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn",
@@ -60,20 +77,84 @@ _PENDING: Final = threading.local()  # test mode only: one allowed Popen -> its 
 
 _state: dict[str, object] = {"installed": False, "endpoints": frozenset(), "sealed": False, "programs": frozenset(),
                              "test": False}
+#: files and package folders whose frames may sit between a door and its connect (the standard library's network
+#: modules here; the doors add their own HTTP / websocket packages with ``_trust_modules`` at their import)
+_TRUSTED: Final[set[str]] = set()
 
 
-@contextlib.contextmanager
-def _door() -> Iterator[None]:
-    """Door context, for the Kite doors only, AFTER their URL check and only around the send/connect itself."""
-    token = _DOOR.set(_SENTINEL)
+def _current_task() -> object:
     try:
-        yield
-    finally:
-        _DOOR.reset(token)
+        return asyncio.current_task()
+    except RuntimeError:  # no running event loop in this thread
+        return None
+
+
+class _Door:
+    """Door permission, for the Kite doors only, AFTER their URL check and only around the send/connect itself.
+
+    The permission is bound to the frame that entered it (``with _egress._door():`` in a door function), the thread,
+    the asyncio task, and a fresh nonce that dies on exit; nothing copied from it (a context, a task) is a door."""
+
+    __slots__ = ("_reset", "_token")
+
+    def __enter__(self) -> None:
+        frame = inspect.currentframe().f_back  # the door function's frame, running the with statement
+        token = _Token(threading.get_ident(), _current_task(), object(), frame)
+        _LIVE.add(token.nonce)
+        self._token = token
+        self._reset = _DOOR.set(token)
+
+    def __exit__(self, *exc: object) -> None:
+        _LIVE.discard(self._token.nonce)
+        _DOOR.reset(self._reset)
+        del self._token
+
+
+def _door() -> _Door:
+    return _Door()
+
+
+def _token_holds(token: object) -> bool:
+    return (isinstance(token, _Token) and token.nonce in _LIVE and token.thread == threading.get_ident()
+            and token.task is _current_task())
 
 
 def _in_door() -> bool:
-    return _DOOR.get() is _SENTINEL
+    return _token_holds(_DOOR.get())
+
+
+def _trusted_file(filename: str) -> bool:
+    name = os.path.normcase(os.path.abspath(filename))
+    return any(name == t or name.startswith(t + os.sep) for t in _TRUSTED)
+
+
+def _trust_modules(*modules: ModuleType | str) -> None:
+    """Called by the doors at import with the library modules their sends run through (a package: its folder; a
+    ``str``: that one file, the door's own ``__file__``)."""
+    for module in modules:
+        if isinstance(module, str):
+            _TRUSTED.add(os.path.normcase(os.path.abspath(module)))
+            continue
+        path = os.path.normcase(os.path.abspath(module.__file__ or ""))
+        _TRUSTED.add(os.path.dirname(path) if hasattr(module, "__path__") else path)
+
+
+def _door_permits(frame: FrameType | None) -> bool:
+    """True only when the live door token's own frame is reached from ``frame`` through trusted-library frames alone:
+    no caller code (a callback, a log handler, a trace function, a ``__str__``) sits between the door and the connect,
+    and the connect runs in the door's own thread and task (another task's or thread's stack never reaches it)."""
+    token = _DOOR.get()
+    if not _token_holds(token):
+        return False
+    for _ in range(_MAX_DEPTH):
+        if frame is None:
+            return False
+        if frame is token.frame:
+            return True
+        if not _trusted_file(frame.f_code.co_filename):
+            return False
+        frame = frame.f_back
+    return False
 
 
 def _allow_endpoints(urls: Iterable[str]) -> None:
@@ -161,7 +242,7 @@ def _spawn_allowed(event: str, args: tuple) -> bool:
 def _hook(event: str, args: tuple) -> None:
     if event in _CONNECT_EVENTS:
         sock, address = args[0], args[1]
-        if _in_door() or _address_allowed(getattr(sock, "family", None), address):
+        if _address_allowed(getattr(sock, "family", None), address) or _door_permits(inspect.currentframe().f_back):
             return
         raise EgressRefused(f"{event} to {address!r} refused: only loopback, the database, or a Kite door after its "
                             "URL check may connect; nothing was sent")
@@ -172,6 +253,7 @@ def _hook(event: str, args: tuple) -> None:
 def install() -> None:
     """Install the hook once (idempotent). An audit hook cannot be removed."""
     if not _state["installed"]:
+        _trust_modules(asyncio, contextlib, selectors, socket, __file__)  # the doors add their libraries
         sys.addaudithook(_hook)
         _state["installed"] = True
 

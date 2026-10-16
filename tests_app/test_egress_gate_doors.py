@@ -7,15 +7,22 @@ packet leaves; with the gate disabled each would try the network instead. No dat
 """  # noqa: E501
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import logging
+import logging.handlers
 import socket
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
 from ofo.broker import egress
+from ofo.broker import kite_http as broker_http
 from ofo.broker.egress import EgressRefused
 from ofo_app import kite_client, kite_http, kite_ws
+from websockets.asyncio.server import serve
 
 TEST_NET = "192.0.2.1"
 KITE = "https://api.kite.trade"
@@ -114,10 +121,14 @@ def test_a_callback_never_runs_inside_door_context() -> None:
         yield b"x"
 
     with kite_http.KiteClient(_test_transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(EgressRefused):
+        with pytest.raises(TypeError):  # W-080 r9: the door API takes no auth and no body iterator at all
             client.get(KITE + "/instruments", auth=Auth())
-        with pytest.raises(EgressRefused):
+        with pytest.raises(TypeError):
             client.post(KITE + "/margins/basket", content=body())
+        with pytest.raises(EgressRefused):  # the unbound httpx send: the auth flow still runs outside the door
+            httpx.Client.send(client, httpx.Request("GET", KITE + "/instruments"), auth=Auth())
+        with pytest.raises(EgressRefused):  # and the body generator is read before it
+            httpx.Client.send(client, httpx.Request("POST", KITE + "/margins/basket", content=body()))
 
 
 class _Ok(BaseHTTPRequestHandler):
@@ -246,3 +257,194 @@ def test_r8_kite_socket_refuses_a_non_kite_ws_url(door_entries: list[int]) -> No
         kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
                            base_url=f"ws://{TEST_NET}:80")
     assert door_entries == []
+
+
+# -- W-080 round 9: caller code run while a door's permission is active gets nothing -----------------------------------
+# Each attack aims at TEST-NET; on the round-8 head each one reached socket.connect (a timeout, not EgressRefused).
+
+def _trace_attack(seen: list[str]):
+    def inside(name, info):
+        seen.append(name)
+        _connect_test_net()
+    return inside
+
+
+def test_r9_a_trace_extension_is_refused_at_the_door_signature() -> None:
+    seen: list[str] = []
+    with kite_http.kite_client(timeout=2) as client, pytest.raises(TypeError):
+        client.get(KITE + "/user/margins", extensions={"trace": _trace_attack(seen)})
+    assert seen == []
+
+
+def test_r9_a_hand_built_request_with_a_trace_is_refused_at_the_last_hop() -> None:
+    seen: list[str] = []
+    request = httpx.Request("GET", KITE + "/user/margins", extensions={"trace": _trace_attack(seen)})
+    with kite_http.KiteClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client,             pytest.raises(kite_http.KiteCallRefused):
+        httpx.Client.send(client, request)
+    assert seen == []
+
+
+async def test_r9_a_hand_built_async_request_with_a_trace_is_refused_at_the_last_hop() -> None:
+    seen: list[str] = []
+    request = httpx.Request("POST", KITE + "/session/token", extensions={"trace": _trace_attack(seen)})
+    async with kite_http.KiteAsyncClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
+        with pytest.raises(kite_http.KiteCallRefused):
+            await httpx.AsyncClient.send(c, request)
+    assert seen == []
+
+
+def test_r9_plain_data_only_at_the_door_signature() -> None:
+    class Sly(str):
+        def encode(self, *args, **kwargs):
+            _connect_test_net()
+            return super().encode(*args, **kwargs)
+
+    with kite_http.kite_client(timeout=2) as client:
+        for bad in ({"headers": {"X-Kite-Version": Sly("3")}}, {"params": {"a": object()}}, {"json": {1: "x"}},
+                    {"content": iter([b"x"])}):
+            with pytest.raises(TypeError):
+                client.request("GET", KITE + "/instruments", **bad)
+        with pytest.raises(TypeError):
+            client.request(Sly("GET"), KITE + "/instruments")
+    for bad in ({"headers": {"a": Sly("b")}}, {"data": bytearray(b"x")}, {"timeout": "20"}):
+        with pytest.raises(TypeError):
+            broker_http.open_url(KITE + "/instruments", **bad)
+    with pytest.raises(TypeError):
+        kite_ws.KiteSocket(_provider(), api_key=Sly("k"), access_token="t", clock=lambda: None)  # noqa: S106 - a placeholder, never a secret
+
+
+def test_r9_a_copied_context_from_inside_a_door_gets_nothing() -> None:
+    with egress._door():
+        ctx = contextvars.copy_context()
+        with pytest.raises(EgressRefused):  # caller code inside the door: not the door's own frame chain
+            ctx.run(_connect_test_net)
+    with pytest.raises(EgressRefused):  # after the door: its nonce is dead
+        ctx.run(_connect_test_net)
+
+
+async def test_r9_a_task_or_thread_started_inside_a_door_gets_nothing() -> None:
+    async def connect() -> None:
+        _connect_test_net()
+
+    errors: list[BaseException] = []
+
+    def in_thread() -> None:
+        try:
+            _connect_test_net()
+        except BaseException as exc:
+            errors.append(exc)
+
+    with egress._door():
+        task = asyncio.create_task(connect())
+        with pytest.raises(EgressRefused):
+            await task
+        with pytest.raises(EgressRefused):
+            await asyncio.to_thread(_connect_test_net)  # to_thread copies the context into the worker thread
+        with pytest.raises(EgressRefused):
+            await asyncio.get_running_loop().run_in_executor(None, contextvars.copy_context().run, _connect_test_net)
+        thread = threading.Thread(target=contextvars.copy_context().run, args=(in_thread,))
+        thread.start()
+        thread.join(10)
+    assert [type(e) for e in errors] == [EgressRefused]
+
+
+def test_r9_a_log_handler_or_trace_function_inside_a_door_gets_nothing() -> None:
+    errors: list[BaseException] = []
+
+    class Handler(logging.Handler):
+        def emit(self, record) -> None:
+            try:
+                _connect_test_net()
+            except BaseException as exc:
+                errors.append(exc)
+
+    class StdlibSocket(logging.handlers.SocketHandler):
+        def handleError(self, record) -> None:
+            errors.append(sys.exc_info()[1])
+
+    log = logging.getLogger("ofo_app.test_r9")
+    log.propagate = False
+    handlers = [Handler(), StdlibSocket(TEST_NET, 9)]
+    for h in handlers:
+        log.addHandler(h)
+    try:
+        with egress._door():
+            log.warning("inside the door")
+    finally:
+        for h in handlers:
+            log.removeHandler(h)
+    assert [type(e) for e in errors] == [EgressRefused, EgressRefused]
+
+    errors.clear()
+
+    def target() -> int:
+        return 1
+
+    def tracer(frame, event, arg):
+        if event == "call" and frame.f_code is target.__code__:
+            try:
+                _connect_test_net()
+            except BaseException as exc:
+                errors.append(exc)
+
+    previous = sys.gettrace()
+    sys.settrace(tracer)
+    try:
+        with egress._door():
+            target()
+    finally:
+        sys.settrace(previous)
+    assert [type(e) for e in errors] == [EgressRefused]
+
+
+# -- W-080 round 9: with the door as the ONLY permission, every real door transport still connects -------------------
+
+@pytest.fixture
+def door_only(monkeypatch):
+    """Loopback is no longer allowed by address: a connect passes only through the door's own permission."""
+    monkeypatch.setattr(egress, "_address_allowed", lambda family, address: False)
+    # the local server has a port, which the URL check refuses; this test is about the egress permission alone
+    monkeypatch.setattr(kite_http, "_check_call", lambda method, url: None)
+    monkeypatch.setattr(broker_http, "check_call", lambda method, url: None)
+    with pytest.raises(EgressRefused):
+        socket.create_connection(("127.0.0.1", 9), timeout=1)
+
+
+@pytest.fixture
+def local_server():
+    class Ok(_Ok):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            self.do_GET()
+
+    server = HTTPServer(("127.0.0.1", 0), Ok)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    server.server_close()
+
+
+def test_r9_the_sync_doors_connect_through_their_own_permission(door_only, local_server) -> None:
+    with kite_http.kite_client(timeout=5) as client:
+        assert client.get(local_server + "/instruments").text == "ok"
+    with broker_http.open_url(local_server + "/instruments", timeout=5) as response:
+        assert response.read() == b"ok"
+
+
+async def test_r9_the_async_door_connects_in_its_own_task(door_only, local_server) -> None:
+    async with kite_http.kite_async_client(timeout=5) as client:
+        response = await client.post(local_server + "/session/token", data={"a": "b"})
+    assert response.text == "ok"
+
+
+async def test_r9_the_socket_door_connects_through_its_own_permission(door_only) -> None:
+    async def handler(ws) -> None:
+        await ws.close()
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        sock = kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106 - a placeholder, never a secret
+                                  base_url=f"ws://127.0.0.1:{port}")
+        async with sock._opened() as ws:
+            assert ws is not None

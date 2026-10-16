@@ -41,14 +41,22 @@ NETWORK_MODULES = RAW_NETWORK | frozenset(r for roots in NETWORK_DOORS.values() 
 #: Backend file -> (the other modules' private names it may use, reason). Frozen from the real uses on 2026-10-16;
 #: adding a use means adding it here with its reason (and a reviewer reading why).
 PRIVATE_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
-    "ofo/broker/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
+    "ofo/broker/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode",
+                                           "ofo.broker.egress._trust_modules"}),
                                 "the urllib Kite door opens door context after check_call; loopback passes only in "
-                                "the one egress test mode"),
-    "ofo_app/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
-                             "the httpx Kite door opens door context after check_call; its test seam asks test mode"),
-    "ofo_app/kite_ws.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode"}),
+                                "the one egress test mode; it names the library frames its send runs through"),
+    "ofo_app/kite_http.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode",
+                                        "ofo.broker.egress._trust_modules"}),
+                             "the httpx Kite door opens door context after check_call; its test seam asks test mode; "
+                             "it names the library frames its send runs through"),
+    "ofo_app/kite_ws.py": (frozenset({"ofo.broker.egress._door", "ofo.broker.egress._test_mode",
+                                      "ofo.broker.egress._trust_modules"}),
                            "the websocket Kite door opens door context after check_ws_url; "
-                           "its test seam asks test mode"),
+                           "its test seam asks test mode; it names the library frames its connect runs through"),
+    "ofo/engine/price_protection.py": (frozenset({"ofo.engine.executable_price._action",
+                                                  "ofo.engine.executable_price._positive_int"}),
+                                       "same package's order-side and positive-integer validators (ADR-095, from "
+                                       "main), reused rather than copied"),
     "ofo_app/__init__.py": (frozenset({"ofo.broker.egress._allow_endpoints"}),
                             "sets the database endpoints once, at app import"),
     "ofo/errors/explanations.py": (frozenset({"ofo.errors.slots._require_exact", "sys._getframe"}),

@@ -33,7 +33,7 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
 #: ``KITE_WS_HOST``, whose connect URL goes through ``check_ws_url`` first.
 NETWORK_DOORS: Final[dict[str, frozenset[str]]] = {
     "ofo/broker/kite_http.py": frozenset({"urllib.request"}),
-    "ofo_app/kite_http.py": frozenset({"httpx"}),
+    "ofo_app/kite_http.py": frozenset({"httpx", "httpcore", "anyio", "h11", "sniffio", "socket"}),  # W-080 r9: own last hop
     "ofo_app/kite_ws.py": frozenset({"websockets"}),
     "ofo/broker/egress.py": frozenset({"socket"}),  # the gate itself: address-family constants and one getaddrinfo
 }

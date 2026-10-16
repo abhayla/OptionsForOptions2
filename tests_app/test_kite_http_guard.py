@@ -90,8 +90,10 @@ def test_a_swapped_transport_and_every_entry_point_still_refuse_with_zero_reques
         c.post(ORDER, data={"x": "1"})
     with pytest.raises(kite_http.KiteCallRefused):
         c.request("POST", ORDER)
-    with pytest.raises(kite_http.KiteCallRefused), c.stream("POST", ORDER):
-        pass
+    with pytest.raises(TypeError):  # W-080 r9: stream / send / build_request are closed (plain data only)
+        c.stream("POST", ORDER)
+    with pytest.raises(kite_http.KiteCallRefused):  # the unbound httpx send still meets the last hop
+        httpx.Client.send(c, httpx.Request("POST", ORDER))
     c.close()
     assert seen == [] and swapped == []
 
@@ -102,9 +104,10 @@ async def test_async_entry_points_still_refuse() -> None:
     async with _async_client(seen) as c:
         with pytest.raises(kite_http.KiteCallRefused):
             await c.post(ORDER)
+        with pytest.raises(TypeError):  # W-080 r9: stream is closed
+            c.stream("POST", ORDER)
         with pytest.raises(kite_http.KiteCallRefused):
-            async with c.stream("POST", ORDER):
-                pass
+            await httpx.AsyncClient.send(c, httpx.Request("POST", ORDER))
     assert seen == []
 
 
@@ -117,7 +120,9 @@ def test_a_redirect_to_an_order_path_is_caught_at_the_last_hop() -> None:
 
     client = kite_http.KiteClient(_test_transport=httpx.MockTransport(handler))
     with client as c, pytest.raises(kite_http.KiteCallRefused):
-        c.post(ROOT + "/session/token", data={"a": "b"}, follow_redirects=True)  # per request: each hop is checked
+        # the door's own API never follows a redirect (W-080 r9); the unbound httpx send with follow_redirects meets the
+        # last-hop check on every hop
+        httpx.Client.send(c, httpx.Request("POST", ROOT + "/session/token", data={"a": "b"}), follow_redirects=True)
     assert [(r.method, r.url.path) for r in seen] == [("POST", "/session/token")]  # the redirect never left
 
 

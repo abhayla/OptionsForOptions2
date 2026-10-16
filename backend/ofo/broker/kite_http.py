@@ -25,6 +25,9 @@ from ofo.broker import egress as _egress
 from ofo.broker.kite_endpoints import ALLOWED_CALLS as _ALLOWED_CALLS
 from ofo.broker.kite_endpoints import KITE_API_HOST, KITE_WS_HOST
 
+# W-080 round 9: the library frames a door's send runs through (urllib, http.client, ssl), trusted by the egress gate
+_egress._trust_modules(_urllib_request, _urllib_request.http.client, _urllib_request.ssl, _egress)
+
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
@@ -106,19 +109,57 @@ class _NoRedirect(_urllib_request.HTTPRedirectHandler):
         return None
 
 
-#: this door's own opener (never the process-wide one, which caller code could have replaced), without redirects.
-_OPENER: _Final = _urllib_request.build_opener(_NoRedirect)
+#: this door's own opener (never the process-wide one, which caller code could have replaced), without redirects and
+#: without proxies (an environment proxy would be a second host, never checked).
+_OPENER: _Final = _urllib_request.build_opener(_NoRedirect, _urllib_request.ProxyHandler({}))
+#: the methods a door sends (W-080 round 9: plain data only, checked by exact type before the door opens)
+METHODS: _Final = frozenset({"GET", "POST", "PUT", "DELETE"})
+
+
+def plain_method(method: object) -> str:
+    """The method as a plain ``str`` from ``METHODS``: another type (a ``str`` subclass included) is a TypeError,
+    another method a ``KiteCallRefused``."""
+    if type(method) is not str:
+        raise TypeError("a Kite door takes the method as a plain str; nothing was sent")
+    if method not in METHODS:
+        raise KiteCallRefused(f"{method!r}: a Kite door sends only GET, POST, PUT or DELETE; nothing was sent")
+    return method
+
+
+def plain_str(value: object, what: str) -> str:
+    if type(value) is not str:  # exact type: a subclass's methods would be caller code run by the libraries
+        raise TypeError(f"a Kite door takes {what} as a plain str; nothing was sent")
+    return value
+
+
+def plain_headers(headers: object) -> dict[str, str]:
+    if headers is None:
+        return {}
+    if type(headers) is not dict:
+        raise TypeError("a Kite door takes headers as a plain dict of str to str; nothing was sent")
+    return {plain_str(k, "a header name"): plain_str(v, "a header value") for k, v in headers.items()}
+
+
+def plain_timeout(timeout: object) -> float:
+    if type(timeout) not in (int, float):
+        raise TypeError("a Kite door takes the timeout as a number of seconds; nothing was sent")
+    return float(timeout)  # type: ignore[arg-type]
 
 
 def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
              headers: _Mapping[str, str] | None = None, timeout: float = 20):
-    """``urllib`` request through the door: checked first, then sent inside the egress gate's door context."""
+    """``urllib`` request through the door: plain data only (exact types, checked before anything else), then the
+    URL check, then sent inside the egress gate's door permission. Nothing the caller passed runs inside it."""
+    url, method = plain_str(url, "the URL"), plain_method(method)
+    plain = plain_headers(headers)
+    seconds = plain_timeout(timeout)
+    if data is not None and type(data) is not bytes:
+        raise TypeError(f"{method}: the body must be bytes; nothing was sent")
     check_call(method, url)
-    if not isinstance(data, (bytes, type(None))):
-        raise KiteCallRefused(f"{method}: the body must be bytes; nothing was sent")
-    request = _urllib_request.Request(url, data=data, headers=dict(headers or {}), method=method)  # noqa: S310 - scheme and host checked by check_call above
+    request = _urllib_request.Request(url, data=data, headers=plain, method=method)
     with _egress._door():
-        return _OPENER.open(request, timeout=timeout)  # host and path checked above; no redirect is followed
+        return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect is followed
 
 
-__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "KiteCallRefused", "check_call", "check_ws_url", "open_url"]
+__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "KiteCallRefused", "check_call", "check_ws_url", "open_url",
+           "plain_headers", "plain_method", "plain_str", "plain_timeout"]
