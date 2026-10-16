@@ -923,6 +923,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_reason_no_provider", "values_seen", "no live market data provider is connected"),
     ExplanationTemplate("outcome_margin_pending", "values_seen",
                         "Margin from Zerodha is not shown yet; it needs your Kite login."),
+    # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
+    ExplanationTemplate("outcome_margin_checked", "values_seen",
+                        "Margin from Zerodha for these planned orders: {needed} needed, {available} available. "
+                        "Checked at {time}.",
+                        {"needed": Rupees, "available": Rupees, "time": ClockSeconds}),
+    ExplanationTemplate("outcome_margin_unreadable", "values_seen",
+                        "Margin from Zerodha could not be read just now, so no margin figure is shown."),
+    ExplanationTemplate("outcome_margin_no_basket", "values_seen",
+                        "Margin from Zerodha is shown when every leg is a listed Zerodha contract."),
     ExplanationTemplate("outcome_feed_disconnected", "values_seen",
                         "Live market data disconnected. Last updated: {time}. Live strategy monitoring is paused.",
                         {"time": ClockSeconds}),

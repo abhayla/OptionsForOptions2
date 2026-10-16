@@ -23,8 +23,10 @@ from pydantic import ValidationError
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
 from ofo_app.errors import SocketClosed
+from ofo_app.outcome_margin import OutcomeMargin
 from ofo_app.routes.outcome import (ContractLookup, MarketContext, OutcomeRequest, get_contract_lookup,
-                                    load_charge_rates, outcome_response, stored_legs_for)
+                                    get_margin_source, load_charge_rates, margin_for_request, outcome_response,
+                                    stored_legs_for)
 
 MIN_PUSH_INTERVAL = 1.0  # ADR-068: at most once a second per strategy
 POLL_SECONDS = 0.05
@@ -50,9 +52,13 @@ def _input_state(quote) -> tuple:
 
 
 class StrategyPush:
-    def __init__(self, channel: Channel, feed: Optional[LiveFeed], *, monotonic: Callable[[], float],
-                 poll: float = POLL_SECONDS, lookup: Optional[ContractLookup] = None) -> None:
+    def __init__(self, channel: Channel, feed: Optional[LiveFeed], *,  # noqa: PLR0913 - one seam per collaborator
+                 monotonic: Callable[[], float],
+                 poll: float = POLL_SECONDS, lookup: Optional[ContractLookup] = None,
+                 margin_source: Optional[OutcomeMargin] = None) -> None:
         self._channel = channel
+        # ADR-099: the app's one plan-keyed margin cache, shared with the REST route: a tick re-push reads no margin
+        self._margin_source = margin_source if margin_source is not None else get_margin_source()
         self._feed = feed
         self._monotonic = monotonic
         self._poll = poll
@@ -114,7 +120,8 @@ class StrategyPush:
             rates = await load_charge_rates()
             ctx = None if self._feed is None else self._feed.ctx
             stored = await stored_legs_for(self._req, ctx, self._lookup)  # same helper as the REST route
-            body = outcome_response(self._req, ctx, stored=stored, rates=rates)
+            margin = await margin_for_request(self._req, ctx, self._margin_source)  # same step as the REST route
+            body = outcome_response(self._req, ctx, stored=stored, rates=rates, margin=margin)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return

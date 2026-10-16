@@ -995,6 +995,18 @@
     "sha256": "1c208982a42505fbffde00656f1616a3c77146e057f653a636f865f78c0cf63d",
     "reviewed": "pending owner read"
   },
+  "explanation:outcome_margin_checked": {
+    "sha256": "020eabd2e5e7f1639dab1ef453be7255578bc9d8ca31851accadc8915d993b94",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_unreadable": {
+    "sha256": "397de18d6ed7dec7b5830dd70004d173e2a7cdaba1ae278b3bbdd5750ef4b0b6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_no_basket": {
+    "sha256": "8e8130567abe418582b983907deb156d30ac522f1a72c20986bc387b16904af7",
+    "reviewed": "pending owner read"
+  },
   "explanation:outcome_feed_disconnected": {
     "sha256": "ee1886ecf40de1e68603ed5047b9b57e3c11f6ab1962ce6eb7103ba32ef393e8",
     "reviewed": "pending owner read"

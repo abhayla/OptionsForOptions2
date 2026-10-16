@@ -27,6 +27,7 @@ from ofo.broker.kite_endpoints import KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
+from ofo.money import zerodha_paise
 
 log = logging.getLogger("ofo_app.kite_margin")
 KITE_API_URL: Final = f"https://{KITE_API_HOST}"
@@ -106,10 +107,11 @@ class BasketMargin:
     orders: tuple[OrderMargin, ...]
 
 
-def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, str]:
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
+                     timeout: float = 20) -> tuple[int, str]:
     data = None if body is None else body.encode("utf-8")
     try:
-        with kite_open_url(url, method=method, data=data, headers=headers, timeout=20) as response:  # door checks first
+        with kite_open_url(url, method=method, data=data, headers=headers, timeout=timeout) as response:  # door first
             return response.status, response.read().decode("utf-8")
     except HTTPError as exc:
         try:
@@ -128,7 +130,10 @@ def _money(value: object) -> Decimal:
     amount = Decimal(value)
     if not amount.is_finite():
         raise KiteMarginError("kite_margin_no_figure")
-    return amount
+    try:
+        return zerodha_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
+    except ValueError:  # too large to round to the paisa: not a usable figure, so "not confirmed" (fail closed)
+        raise KiteMarginError("kite_margin_no_figure") from None
 
 
 class KiteMargin:

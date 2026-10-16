@@ -14,6 +14,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import StrategyTable from '@/components/strategy/StrategyTable.vue'
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
+import MarginLine from '@/components/strategy/MarginLine.vue'
 import StrategyHeader from '@/components/strategy/StrategyHeader.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
@@ -255,7 +256,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :underlying="data.underlying"
         :last-updated="data.valuation"
       />
-      <p class="mt-2 text-sm text-ink-muted" data-testid="margin">{{ data.margin.reason }}</p>
+      <MarginLine :margin="data.margin" />
 
       <div class="mt-4"><PayoffChart :points="data.payoff.points" /></div>
       <h2 class="mt-4 mb-1 text-sm font-medium">Outcome at each index level</h2>

@@ -171,6 +171,7 @@ decisions:
   ADR-098: 4b           # REQ-073 AC-4: forged code objects out of scope; W-080 merges (owner 2026-10-16)
   ADR-099: 4b           # outcome screen shows Zerodha margin when connected, refreshed on plan change (owner 2026-10-16)
   ADR-100: 4b           # no static IP for the Kite app; API order placement stays impossible (owner 2026-10-16)
+  ADR-101: 4b           # Zerodha money figures rounded half-up to the paisa at parse (architect, GC-2a)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)

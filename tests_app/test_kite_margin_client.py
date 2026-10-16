@@ -187,6 +187,24 @@ def test_adr094_the_client_adds_the_buy_premium_above_kites_figure() -> None:
     assert (result.zerodha_total, result.required_total) == (Decimal("6409"), Decimal("7065.50"))
 
 
+def test_099_float_tails_from_kite_read_to_the_paisa_through_the_client() -> None:
+    """ADR-099: final.total 68498.85000000001 and equity.net 68498.84999999999 are both the paisa 68498.85, so the
+    basket is allowed; a real shortfall of one paisa is still blocked."""
+    assert REPLY_TEXT.count("68498.85") == 1  # only final.total carries this figure
+    tailed = REPLY_TEXT.replace("68498.85", "68498.85000000001")
+    assert tailed != REPLY_TEXT
+
+    def transport(net: str):
+        return lambda method, url, headers, body: (200, tailed) if "basket" in url else (200, funds_text(net))
+
+    basket = client(transport("1")).fetch_basket_margin(condor())
+    assert (basket.zerodha_total, basket.required_total) == (Decimal("68498.85"), Decimal("68498.85"))
+    assert client(transport("68498.84999999999")).fetch_available_funds() == Decimal("68498.85")
+    assert margin_verdict(client(transport("68498.84999999999")), condor()).allowed is True
+    assert margin_verdict(client(transport("68498.85000000001")), condor()).allowed is True
+    assert margin_verdict(client(transport("68498.844")), condor()).allowed is False  # 68498.84 is a real shortfall
+
+
 class _Once:
     def __init__(self, exc: Exception) -> None:
         self.exc = exc
@@ -317,6 +335,16 @@ def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypa
     with pytest.raises(KiteMarginError) as raised:
         KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
     assert raised.value.code == "kite_margin_token"
+
+
+def test_099_a_figure_too_large_for_the_paisa_is_not_confirmed() -> None:
+    """Tier A round 3 MINOR: 1e30 must give the normal "not confirmed" error, not escape as InvalidOperation."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app.kite_margin import KiteMarginError, _money  # noqa: PLC0415
+
+    with pytest.raises(KiteMarginError):
+        _money(Decimal("1E+30"))
 
 
 def test_transport_goes_through_the_kite_door_and_a_refusal_fails_closed(monkeypatch) -> None:

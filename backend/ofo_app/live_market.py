@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import functools
 import hashlib
 import logging
 import os
@@ -28,8 +29,10 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo_app.config import app_env, get_settings
+from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.live_push import LiveFeed
-from ofo_app.routes.outcome import MarketContext
+from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
+from ofo_app.routes.outcome import MarketContext, server_now
 
 log = logging.getLogger("ofo_app.live_market")
 
@@ -230,6 +233,36 @@ def current_context() -> Optional[MarketContext]:  # noqa: UP045
 
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
     return None if _current is None else _current.feed
+
+
+def current_session() -> tuple[str, bytes | None] | None:
+    """ADR-099: the live Kite session as (user, the running socket's token fingerprint - never the token), or None
+    when none is live (not started, not connected, ended, or the test replay). The outcome margin reads Zerodha only
+    with one, and keys its cache by it, so a new login never shows the old session's figures. An unknown fingerprint
+    is None: the margin is then read but never cached (two unknown sessions never share figures)."""
+    if _current is None or not _current.running():
+        return None
+    fingerprint = _current._fingerprint  # the module's own market object
+    return OWNER_REF, fingerprint
+
+
+async def owner_margin_client() -> KiteMargin | None:
+    """ADR-099: the owner's margin client from the stored session (the same read the socket start uses), or None."""
+    market = _current
+    if market is None or market._config is None:
+        return None
+    token = await market._stored_token(market._config)
+    if token is None:
+        return None
+    # each call bounded so the worker thread never outlives the outcome read timeout
+    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
+
+
+@functools.cache
+def margin_source() -> OutcomeMargin:
+    """The running app's one margin reader: one plan-keyed cache for the REST route and every live push."""
+    return OutcomeMargin(current_session, owner_margin_client, clock=server_now)
 
 
 async def pick_up_login(broker_config) -> None:

@@ -88,6 +88,8 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/kite_http.py": "the httpx Kite door: its client classes check every request - REQ-073 AC-4",
     "ofo_app/kite_history.py": "Kite's minute-candle client, through the urllib door - REQ-073 AC-4",
     "ofo_app/kite_margin.py": "Kite's margin client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/outcome_margin.py": "composition point of the outcome screen's Zerodha margin read (ADR-099): calls the "
+                                 "Kite margin client for the planned basket, like live_market.py - REQ-063 AC-1",
     "ofo/instruments/downloader.py": "fetches Kite's instrument list through the urllib door - REQ-073 AC-4",
 }
 
