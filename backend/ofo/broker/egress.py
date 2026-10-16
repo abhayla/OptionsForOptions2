@@ -58,7 +58,6 @@ import selectors
 import socket
 import sys
 import threading
-import time as _t  # DIAG-W080 (temporary)
 from collections.abc import Iterable
 from types import FrameType, ModuleType
 from typing import Final, NamedTuple
@@ -279,30 +278,13 @@ def _hook(event: str, args: tuple) -> None:
         raise EgressRefused(f"{event} refused: the backend starts no process; nothing was started")
 
 
-_DIAG: dict = {}  # DIAG-W080 (temporary): (event, thread name) -> [count, seconds, refusals]
-
-
-def _diag_hook(event: str, args: tuple) -> None:  # DIAG-W080 (temporary)
-    key = (event, threading.current_thread().name)
-    rec = _DIAG.setdefault(key, [0, 0.0, 0])
-    t0 = _t.perf_counter()
-    try:
-        _hook(event, args)
-    except BaseException:
-        rec[2] += 1
-        raise
-    finally:
-        rec[0] += 1
-        rec[1] += _t.perf_counter() - t0
-
-
 def install() -> None:
     """Install the hook once (idempotent). An audit hook cannot be removed. Called by ``ofo_app.main.create_app`` (the
     API process), by every Kite door module at its import, and by the test suites' conftest; importing ``ofo`` alone
     does not call it."""
     if not _state["installed"]:
         _trust_modules(asyncio, contextlib, selectors, socket, __file__)  # the doors add their libraries
-        sys.addaudithook(_diag_hook)  # DIAG-W080 (temporary)
+        sys.addaudithook(_hook)
         _state["installed"] = True
 
 
