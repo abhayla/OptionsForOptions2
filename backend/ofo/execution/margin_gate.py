@@ -84,11 +84,16 @@ def check_margin(available: Decimal | None, required: Decimal | None) -> MarginV
 class PlannedOrder(Protocol):
     """The fields of one order as sent to Zerodha's basket-margin call (``ofo_app.kite_margin.BasketOrder`` fits)."""
 
-    exchange: str
-    tradingsymbol: str
-    transaction_type: str
-    quantity: int
-    price: Decimal
+    @property
+    def exchange(self) -> str: ...
+    @property
+    def tradingsymbol(self) -> str: ...
+    @property
+    def transaction_type(self) -> str: ...
+    @property
+    def quantity(self) -> int: ...
+    @property
+    def price(self) -> Decimal: ...
 
 
 def _premium(value: object) -> Decimal:
