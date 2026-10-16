@@ -31,7 +31,8 @@ mismatches (AC-3); POST Execute for v2 (the exit), then the 151006 replies -> fl
   out-of-order fill is refused and blocks, never a side flip), W-092 eligibility from Zerodha (PR #346; ADR-104; the
   gate accepts only a sealed `ZerodhaEligibility`; save/restore refuse NEW ineligible legs), ADR-058 delisted-held
   blocks the holding strategy (PR #347), W-081 AC-1/3/4 verified on main; the CI scale-test flake's root cause
-  (#344: generic plan under zero-row statistics) and its fix (PR #348). <W-017 RESULT>.
+  (#344: generic plan under zero-row statistics) and its fix (PR #348). W-017 for the broker-reply types (PR #349: `broker_response_recorded`, `execution_recorded`; migration 0015; a non-empty
+  payload keeping no declared key is refused; session types unproven until GC-3).
 - Not done by GC-2b and moved here BY NAME: W-091's "strategy record exits when the ledger reaches 0" (RESULT gap e).
 
 ## Done list (order 1 -> 2; 3-5 behind time gates; 6-8 always)
@@ -64,7 +65,11 @@ mismatches (AC-3); POST Execute for v2 (the exit), then the 151006 replies -> fl
    daily load keeps contracts "listed"); the ADR-058 delisted-held function's app caller (needs item 3's persisted
    order book) AND, before that wiring, `clear_reconciliation_block` must refuse while a `delisted_held` position is
    still held (PR #347 review MINOR: today it checks fill counts only); positions keyed by symbol without exchange
-   (PR #347 MINOR); <GC-2b parks>.
+   (PR #347 MINOR); W-091 / W-092 / W-017 AC verifier passes on main (their cards are in_review, no evidence yet); the audit
+   allowlist's nested-snapshot `{}` (PR #349 MINOR, older than it); the #344 follow-up (whole-table hash per batch
+   under zero-row statistics); the verifier-in-flight hook's false block after a verifier ends (finding
+   `liveness-from-a-file-nobody-deletes`, 2 occurrences; kit issue #113) - workaround: delete the named snapshot only
+   after confirming no verifier agent runs. GC-2b parked nothing.
 5b. **Mechanism for `caller-supplied-verdict-trusted` (6 occurrences, 2 in GC-2a/2b nights; Tier A, ~1 h, runs before
    item 3 if 1 h + tail remain).** One shared seal helper in the domain that every proof-object uses (today
    `KiteBasket`, `MarginVerdict`, the sealed eligibility each hand-roll it), and a repo test that every type a gate
