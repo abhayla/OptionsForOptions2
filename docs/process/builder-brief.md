@@ -74,6 +74,14 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   every other type, generated, not hand-listed. A guard written as "refuse X, Y, Z" fails review.
 - **Grid values come from the grid** (W-025: pick-list steps offset from an unaligned level missed every strike):
   any value a user can pick that must be a strike/level is snapped to, and asserted against, the real catalogue.
+- **A changed shown value is searched in every test tree** (W-075, 2026-10-16: two CI rounds on e2e lines nobody
+  named): before editing, grep `tests/`, `tests_app/`, `frontend/tests/` and `frontend/e2e/` for the OLD value and
+  update every hit; money leaving the API is a 2-decimal string (W-075 sent "4539.65173942700").
+- **Money and order checks are tested with closing shapes too** (finding `margin-gate-blocks-closing-basket`, #321:
+  Kite gives an exit basket a negative margin and the gate blocked every exit): every check that reads a broker figure
+  gets an entry case AND a closing/position-reducing case from a real reply.
+- **After merging main into your branch, re-run `python scripts/ruff_ratchet.py`** (E501 rose twice on 2026-10-16 only
+  after the merge).
 - Type hints on public functions; small modules; no dead code; no print statements.
 
 ## Before you finish

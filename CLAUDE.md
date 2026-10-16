@@ -126,6 +126,14 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
      `python scripts/orchestrator/land.py <worktree> --title T --body-file F` (close check, push, PR, merge gate, updates
      a BEHIND branch; `--dry-run` shows the commands); `gh_issue.py app ... --stage <stage>` also stages the new issue.
+  8. Orchestrator lessons (2026-10-16, owner: "update the learning so that even the future sessions ... do not repeat
+     that mistake"): never idle while a ready item waits - after each result start the next independent item, then
+     report; run `gh pr update-branch N` before `merge_when_green.py N` (4 green PRs refused as BEHIND, kit #104); file
+     issues only with `gh_issue.py --stage` and commit the row the same turn; READ the findings a guard brief cites
+     before designing it; merge main into a parked branch before any new round; reviewer briefs are narrow and say
+     "hands-on attacks first"; before any live Kite action load the `zerodha-expert` skill (API orders need a static
+     IP, ADR-100) and plan entry AND exit through the product path; validate a probe on a known-good state first (the
+     REST outcome is "not live" without a subscribed screen; the first live push precedes the quotes).
 
 ## Commands (fast checks before a push; full suites run in CI)
 CI installs `pyyaml jsonschema pytest` on Python 3.12.
