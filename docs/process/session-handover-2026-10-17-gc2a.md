@@ -40,7 +40,11 @@ Ran 2026-10-16 22:22 IST -> 2026-10-17 ~01:15 IST under `/goal` (cap 6 h, 04:22)
 - **Item 8 - GC-2b:** written, independently reviewed (fresh Opus, Explore type: READY WITH CHANGES, 3 MAJOR + 5
   MINOR, all accepted - recordings outside git need redacted fixtures, the exit-from-ledger objective kept in scope,
   W-092 not strictly after W-091, gates with a 1.5 h tail reserve, DB stop restored, ADR-058 item raised to Tier A,
-  `fill_timestamp` used directly, cap wording), marked NEXT.
+  `fill_timestamp` used directly, cap wording), marked NEXT. A second fresh review of the merged contract (Opus,
+  Explore type, 30 tool calls; READY WITH CHANGES, 2 MAJOR + 5 MINOR, all accepted): the plan exceeded the cap ->
+  explicit give-way order; no recorded "product download" instrument list exists for 2026-10-16 -> the recorder's real
+  list, labelled; snapshot mtime cannot give a call length; W-092 / W-091 cards to align; F-40 cited ADR-099 for
+  rounding -> ADR-101 (spec/findings.md fixed); JSON-number variants are built in the test.
 
 ## Mechanisms added tonight (Learn-or-block)
 - **PR #335 verifier-in-flight hook** (d988ca7, 00:13): while a verifier tool call runs, the main session cannot write

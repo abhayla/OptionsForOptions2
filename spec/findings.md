@@ -627,5 +627,6 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   multi-leg or partial fills, out-of-order postbacks, MIS rows, charges (F-35's stamp check stays an owner item).
 - Bears on: REQ-054 AC-1 (fetch positions/orders), REQ-057, REQ-060, ADR-008, ADR-016, F-33. Status: **measured once,
   one CE buy+sell**. Shapes GC-2b (Kite reply adapter, flat-row rule, contract-key mapping, trade -> fill, exit from the
-  ledger). Open for owner decision only if quantizing realised P&L to paise changes what a user sees (ADR-099 rounds
-  margin figures; P&L rounding is not stated).
+  ledger). Open for owner decision only if quantizing realised P&L to paise changes what a user sees (ADR-101,
+  2026-10-17, rounds Zerodha's margin and funds figures half-up to the paisa at parse - ADR-099 is the margin display;
+  P&L rounding is not stated).

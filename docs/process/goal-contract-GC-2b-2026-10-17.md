@@ -6,6 +6,10 @@ on ofo_test). **Cap: 6 h wall-clock** - this contract's cap governs even though 
 cap, unfinished items are parked and named, then item 8 still runs. **Tail reserve: 1.5 h** for items 5-8 (docs
 batch, GC-2c and its review, merge): every time gate below is "item estimate + 1.5 h remain", checked when the
 previous item merges, with the clock read (`date`), and the reading written in the handover.
+**Give-way order (second contract review, 2026-10-17: items 1 + 5b + 2 + 5 + tail = 6.25-7.25 h, over the cap):**
+when the clock says the cap cannot hold, park in this order and name each in the handover: (i) item 5's W-081
+re-verify, (ii) item 5b's fix (its workaround - delete a snapshot only after confirming no verifier runs - stays),
+(iii) items 3 and 4 (expected to park). Items 1 and 2 are the contract; the tail is never spent on anything else.
 
 Core: W-091 - the recorded real Kite replies of the owner's 1-lot order (orders / trades / positions at 122104 =
 after entry and 151006 = after exit, `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/`) pass through ONE
@@ -13,9 +17,12 @@ product adapter into the fill ledger and reconcile, with no scaffolding.
 Proof: `docs/research/core-proof-4b-2026-10-16/proof.py` re-run with its four throwaway adapters replaced by the
 product adapter: 0 mismatches after entry (65 long NIFTY26O1923650CE) and after exit (flat), the position's P&L equal
 to Kite's own flat row (`positions-151006.json`: `pnl -130`, `unrealised -130`, `realised 0` - the test names which
-Kite field it compares, and the paisa quantization is the item's first decision row, written BEFORE the assertion),
+Kite field it compares, and the paisa quantization is the item's first decision row, written BEFORE the assertion), and the W-091 card's core (which already says \"-130.00\") is aligned to that decision in the same PR;
+F-40's condition stands: quantizing realised P&L is an owner question only if it changes what a user sees -
+then it goes to the owner-questions file;
 trade ids 4484194 and 5966618 each entered once; then the same rows as JSON numbers (`parse_float=Decimal`) and as SDK
-floats (`Decimal(str(v))`). The recordings live OUTSIDE git (`proof.py` reads `OFO_KITE_TICKS`), so step 1 first
+floats (`Decimal(str(v))`). The recording holds no JSON floats (RESULT.md: money as strings; `pnl`, `m2m` and a flat
+row's `average_price 0` as ints), so the test BUILDS those two variants from the strings itself. The recordings live OUTSIDE git (`proof.py` reads `OFO_KITE_TICKS`), so step 1 first
 copies the six reply files (orders/trades/positions at 122104 and 151006) into `tests/fixtures/kite_replies/` with the
 owner's client id (`placed_by` / `account_id` "DA1707", and any user name or email) replaced by a placeholder, and a
 header note naming the source file and the redaction; CI then runs the test.
@@ -51,15 +58,21 @@ header note naming the source file and the redaction; CI then runs the test.
    trade id; a contract key that matches two catalogue rows.
 2. **W-092 eligibility from Zerodha (Tier A; estimate 1.5-2 h).** Its decision step runs in parallel with item 1's
    review (it does not need the adapter: eligibility comes from the instrument list and the margin reply); the build
-   waits for item 1's merge only where they touch the same files. First, as architect and recorded: which Zerodha
+   waits for item 1's merge only where they touch the same files. Its card says `depends_on: [W-091]`:
+   the first GC-2b PR that touches W-092 updates the card to match (decision step parallel, build after item 1 only
+   where files overlap). First, as architect and recorded: which Zerodha
    replies count as "what Zerodha data allows" (REQ-053 AC-1/AC-3; the spec does not name them - audit B). Likely the
    day's Kite instrument list (listed, not expired; the product's own instrument download, NOT the recorder's
    `instruments.json`, which is a symbol/group map) + the basket-margin reply (an order Zerodha would refuse shows
    there); the decision row says how this keeps the catalogue stored separately from current eligibility (REQ-053
    AC-2);
    if the choice changes what a user sees, it goes to `owner-questions-<the run's date>.md` and the run continues with the
-   spec-conformant part. Core: the real NIFTY26O1923650CE of 2026-10-16 is let in from that day's instrument list
-   (recorded fixture of the product's download); a contract absent from it is blocked at add time; the "again just before execution" check is wired in the domain now, and its caller (the
+   spec-conformant part. Core: the real NIFTY26O1923650CE of 2026-10-16 is let in from that day's list as RECORDED: the
+   recorder's `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/instruments.json` (1,293 rows; symbol, group, type,
+   strike, expiry, lot - the recorder's capture of Kite's list that day, labelled as such in the fixture header).
+   The repo slice under `tests/fixtures/instruments/` is from 2026-09-29 and has 0 rows for this contract, so it is
+   not used for the core; a fresh public download (no login needed) may be added as a SEPARATE fixture with its own
+   date, never presented as 2026-10-16's; a contract absent from it is blocked at add time; the "again just before execution" check is wired in the domain now, and its caller (the
    Execute route) lands in GC-2c - say so in the card. A catalogue-store change runs only its own DB test file through
    `db_run.py`; tunnel down = park the item, continue the offline ones.
 3. **ADR-058 delisted-held -> reconciliation (Tier A: a raised reconciliation blocks execution, ADR-019 - order
@@ -79,8 +92,9 @@ header note naming the source file and the redaction; CI then runs the test.
    retry blindly; OQ-10 (breakeven columns vs charges) waits for the owner, not this contract.
 5b. **The verifier-in-flight hook false-blocks after a verifier ends (finding `liveness-from-a-file-nobody-deletes`,
    Tier A hook, ~45 min, before item 2 if a verifier will run in this contract).** The kit guard leaves snapshots
-   behind (70 in 24 h), so the hook holds guarded writes up to 15 min after every verifier. Measure the longest single
-   verifier tool call from tonight's snapshots' timestamps first, then pick the fix (finding's options a-c); a kit
+   behind (70 in 24 h), so the hook holds guarded writes up to 15 min after every verifier. A snapshot has only a creation time, so it
+   cannot give a call's length: measure the longest verifier tool call with a timing log (start/stop per call), or use
+   the gaps between consecutive snapshots as an UPPER bound and say so; then pick the fix (finding's options a-c); a kit
    issue for option (c). Until fixed: delete the named snapshot ONLY after confirming no verifier agent is running.
 6. **Kit issue Startup-Factory #113 (filed by GC-2a):** running a kit tool inside a linked worktree outside the project
    folder is blocked and the bare form runs against main; `check_brief.py` false FAIL next to an ADR-named branch.
