@@ -55,6 +55,7 @@ _MAX_NESTING = 20
 _TIMEOUT_KEYS = frozenset({"connect", "read", "write", "pool"})
 
 _egress._trust_modules(_anyio, _h11, _httpcore, _httpx, _sniffio, __file__)
+_egress.install()  # W-080 integration: importing a Kite door installs the gate (idempotent with create_app's)
 
 
 def _limits() -> _httpx.Limits:

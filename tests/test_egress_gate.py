@@ -45,6 +45,18 @@ def test_importing_ofo_alone_does_not_gate_a_tool_process() -> None:
     assert _fresh(code) == ["False", "1"]
 
 
+def test_importing_the_urllib_kite_door_gates_a_fresh_process() -> None:
+    """Review MAJOR (W-080 integration): every process that can reach Kite imports a door, and importing a door
+    installs the gate, so a Kite-capable process that never calls create_app (history_finalize) is still gated."""
+    code = ("import socket, subprocess, sys\nimport ofo.broker.kite_http\nfrom ofo.broker import egress\n"
+            "print(egress.installed())\n"
+            f"try:\n    socket.create_connection(('{TEST_NET}', 443), timeout=2)\n"
+            "except egress.EgressRefused:\n    print('connect-refused')\n"
+            "try:\n    subprocess.run([sys.executable, '-c', 'pass'])\n"
+            "except egress.EgressRefused:\n    print('spawn-refused')\n")
+    assert _fresh(code) == ["True", "connect-refused", "spawn-refused"]
+
+
 def test_install_the_way_the_app_does_gates_a_fresh_process() -> None:
     """The same ``install()`` call ``create_app`` makes: a connect to TEST-NET and a process start are both refused."""
     code = ("import socket, subprocess, sys\nfrom ofo.broker import egress\n"

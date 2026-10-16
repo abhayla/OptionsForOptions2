@@ -2,9 +2,10 @@
 
 One ``sys.addaudithook`` hook, installed once by the API process's entry point (``ofo_app.main.create_app``, before
 the app is built and so before the first request; the lifespan refuses to start without it) and by the test suites'
-conftest the same way, sees every socket connect and every process spawn that Python code makes, whatever library or
-spelling made it. Importing ``ofo`` does NOT install it: migrations, scripts and dev programs that import the package
-are not gated (W-080 integration; REQ-073 AC-4 is about the app). The API has no switch to skip it: ``create_app``
+conftest the same way, and by importing ANY Kite door module (``NETWORK_DOORS``), so every process that can reach Kite
+is gated (``python -m ofo_app.history_finalize`` included). It sees every socket connect and every process spawn that
+Python code makes, whatever library or spelling made it. Importing ``ofo`` alone does NOT install it: migrations,
+scripts and dev programs that load no door are not gated (W-080 integration). The API has no switch to skip it: ``create_app``
 calls ``install()`` unconditionally, and an audit hook cannot be removed. It decides on the CALLER, not the
 host (a ``socket.connect`` event carries only the resolved IP; measured on Python 3.13):
 
@@ -234,12 +235,14 @@ def _spawn_allowed(event: str, args: tuple) -> bool:
     if event == "_winapi.CreateProcess":
         pending = _PENDING.pop(thread, False)  # consumed: a second CreateProcess needs a new allowed Popen
         return bool(programs) and pending
+    _PENDING.pop(thread, None)  # every other spawn event clears this thread's entry: nothing stale survives it
     if not programs or event != "subprocess.Popen":
         return False
     program = _program(args)
     name = os.path.normcase(program) if program is not None else None
     allowed = name is not None and (name in programs or os.path.basename(name) in programs)
-    _PENDING[thread] = allowed
+    if allowed:
+        _PENDING[thread] = True
     return allowed
 
 
@@ -256,7 +259,8 @@ def _hook(event: str, args: tuple) -> None:
 
 def install() -> None:
     """Install the hook once (idempotent). An audit hook cannot be removed. Called by ``ofo_app.main.create_app`` (the
-    API process) and by the test suites' conftest; importing ``ofo`` does not call it."""
+    API process), by every Kite door module at its import, and by the test suites' conftest; importing ``ofo`` alone
+    does not call it."""
     if not _state["installed"]:
         _trust_modules(asyncio, contextlib, selectors, socket, __file__)  # the doors add their libraries
         sys.addaudithook(_hook)

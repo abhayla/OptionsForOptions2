@@ -43,6 +43,7 @@ from websockets.exceptions import InvalidStatus as _InvalidStatus
 from ofo_app.redaction import register_secret as _register_secret
 
 _egress._trust_modules(_websockets, __file__)  # W-080 r9: the frames a real connect runs through
+_egress.install()  # W-080 integration: importing a Kite door installs the gate (idempotent with create_app's)
 
 _log = logging.getLogger("ofo_app.kite_ws")
 _silent = logging.getLogger("ofo_app.kite_ws.wire")  # the library logs request lines (with the token) at DEBUG

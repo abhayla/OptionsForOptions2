@@ -27,6 +27,9 @@ from ofo.broker.kite_endpoints import KITE_API_HOST, KITE_WS_HOST
 
 # W-080 round 9: the library frames a door's send runs through (urllib, http.client, ssl), trusted by the egress gate
 _egress._trust_modules(_urllib_request, _urllib_request.http.client, _urllib_request.ssl, _egress)
+# W-080 integration: any process that can reach Kite imports a door, so importing a door installs the gate (idempotent
+# with create_app's install); a tool process that loads no door is not gated.
+_egress.install()
 
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
