@@ -21,6 +21,7 @@ from typing import Final, Protocol
 from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
 from ofo.money import PAISE as _PAISE
+from ofo.money import zerodha_paise
 
 _MINT: Final = object()  # module-private: only check_margin mints a verdict
 
@@ -102,7 +103,7 @@ def _premium(value: object) -> Decimal:
     amount = Decimal(value)
     if not amount.is_finite() or amount < 0:
         raise MarginReplyError("a BUY leg's option_premium is not a finite amount of 0 or more")
-    return amount
+    return zerodha_paise(amount)  # ADR-099/ADR-101: rounded half-up to the paisa where it is parsed
 
 
 def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> Decimal:
@@ -138,11 +139,16 @@ def _final_total(data: Mapping[str, object]) -> Decimal:
     total = final.get("total") if isinstance(final, Mapping) else None
     if type(total) is not Decimal and type(total) is not int:
         raise MarginReplyError("the basket margin reply has no numeric final.total")
-    # Kite's own float noise in final.total (e.g. 68498.85000000001) errs on the safe side: a higher required
-    # margin can only block a basket that is exactly at the limit, never allow one that is short.
+    # ADR-099 / ADR-101: every Kite money figure is rounded half-up to the paisa where it is parsed, so Kite's float
+    # noise (68498.85000000001) cannot flip the shortfall flag. The only widening: with both figures rounded, a basket
+    # short by under one paisa (needed .854 vs funds .845) can pass; a full paisa short is blocked.
     value = Decimal(total)  # an int (Kite prints whole totals without a point) is exact
     if not value.is_finite():
         raise MarginReplyError("the basket margin reply's final.total is not a finite amount")
+    try:
+        value = zerodha_paise(value)
+    except ValueError:
+        raise MarginReplyError("the basket margin reply's final.total is too large to use") from None
     # A basket that closes or reduces held positions releases margin and Kite reports a negative total (real
     # 2026-10-16 exit: -214.5). That needs 0, and is never a credit toward other legs (ADR-094, #321).
     return max(value, Decimal(0))

@@ -6,9 +6,9 @@ tested without network access. This module is never imported by the test suite (
 """
 from __future__ import annotations
 
-import urllib.request
 from io import StringIO
 
+from ofo.broker.kite_http import open_url
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_stream
 from ofo.instruments.sources import get as get_source
@@ -19,7 +19,7 @@ _TIMEOUT_SECONDS = 30
 def download_instruments_csv() -> str:
     """Fetch the raw instrument-list CSV text from Zerodha's public endpoint."""
     url = get_source("instrument_list_url").url
-    with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
+    with open_url(url, timeout=_TIMEOUT_SECONDS) as response:  # checked against ALLOWED_CALLS first
         return response.read().decode("utf-8")
 
 

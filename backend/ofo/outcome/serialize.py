@@ -23,6 +23,12 @@ def _t(value: datetime.datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
+def _margin(out: Outcome) -> dict[str, Any]:
+    m = out.margin
+    return {"state": m.state, "reason": m.reason, "needed": _s(m.needed), "available": _s(m.available),
+            "checked_at": _t(m.checked_at), "shortfall": m.shortfall}
+
+
 def _col_id(cid: object) -> str:
     if isinstance(cid, Enum):
         return str(cid.value)
@@ -89,6 +95,6 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
         "state": out.state.value, "underlying": out.underlying, "ux_level": out.ux_level.value,
         "status_label": out.status_label, "reason": out.reason, "output_label": out.output_label,
         "valuation": _t(out.valuation), "spot_level": _s(out.spot_level), "spot_at": _t(out.spot_at),
-        "legs": [_leg(leg) for leg in out.legs], "margin": {"state": out.margin.state, "reason": out.margin.reason},
+        "legs": [_leg(leg) for leg in out.legs], "margin": _margin(out),
         "table": table, "scenario": scenario, "payoff": payoff, "summary": summary,
     }

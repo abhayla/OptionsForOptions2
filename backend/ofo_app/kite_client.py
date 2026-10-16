@@ -22,14 +22,15 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
-import httpx
-
 from ofo.broker.kite_auth import KiteSession, checksum
+from ofo.broker.kite_endpoints import KITE_API_HOST
+
+from ofo_app.kite_http import HTTPError, KiteAsyncClient
 
 log = logging.getLogger(__name__)
 
-KITE_API_ROOT = "https://api.kite.trade"
-SESSION_TOKEN_PATH = "/session/token"
+KITE_API_ROOT = f"https://{KITE_API_HOST}"
+SESSION_TOKEN_PATH = "/session/token"  # noqa: S105
 EXCHANGE_TIMEOUT_SECONDS = 10.0
 
 
@@ -60,7 +61,7 @@ def _error_type(response: _JsonAnswer) -> str | None:
 
 
 class HttpKiteAuth:
-    def __init__(self, api_key: str, api_secret: str, client: httpx.AsyncClient) -> None:
+    def __init__(self, api_key: str, api_secret: str, client: KiteAsyncClient) -> None:
         self._api_key = api_key
         self._api_secret = api_secret
         self._client = client
@@ -74,12 +75,12 @@ class HttpKiteAuth:
         try:
             response = await self._client.post(KITE_API_ROOT + SESSION_TOKEN_PATH, data=form,
                                                headers={"X-Kite-Version": "3"}, timeout=EXCHANGE_TIMEOUT_SECONDS)
-        except httpx.HTTPError:
+        except HTTPError:
             raise KiteExchangeError("kite_unavailable") from None
         finally:
             form.clear()
         status = response.status_code
-        if status == 200:
+        if status == 200:  # noqa: PLR2004
             try:
                 body = response.json()
             except ValueError:
@@ -92,13 +93,13 @@ class HttpKiteAuth:
             if not isinstance(user_id, str) or not user_id:
                 raise KiteExchangeError("kite_no_user_id")
             return KiteSession(access_token=token, user_id=user_id)
-        if status >= 500:
+        if status >= 500:  # noqa: PLR2004
             raise KiteExchangeError("kite_unavailable")
-        if status == 429:
+        if status == 429:  # noqa: PLR2004
             raise KiteExchangeError("kite_busy")
         error_type = _error_type(response)
-        if status == 403 or error_type == "TokenException":
+        if status == 403 or error_type == "TokenException":  # noqa: PLR2004
             raise KiteExchangeError("kite_token_exception")
-        if status == 400 or error_type == "InputException":
+        if status == 400 or error_type == "InputException":  # noqa: PLR2004
             raise KiteExchangeError("kite_input_exception")
         raise KiteExchangeError("kite_refused")

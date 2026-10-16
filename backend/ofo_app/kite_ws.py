@@ -12,28 +12,46 @@ still wants. Every answer state has one behaviour:
 
 The URL carries the access token, so it is never logged: only generic messages and exception class names are
 (the W-058 rule), and the library's own wire logger is replaced by a silent one.
+
+This module is a network door (REQ-073 AC-4, ``NETWORK_DOORS`` in ``ofo.broker.kite_endpoints``): it alone may import
+``websockets``, and its connect URL goes through ``ofo.broker.kite_http.check_ws_url`` when the socket is built and
+again before EVERY connect (only ``wss://ws.kite.trade`` for a Kite host); a refusal propagates, it is never retried.
+Only then, and only around the real ``websockets`` connect, is the runtime egress gate's door context open
+(``ofo.broker.egress``); an injected ``connect`` (tests only) never gets it.
 """
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
-from collections.abc import Awaitable, Callable
+import sys
+from collections.abc import AsyncIterator as _AsyncIterator
+from collections.abc import Awaitable as _Awaitable
+from collections.abc import Callable as _Callable
 
-from websockets.asyncio.client import connect as ws_connect
-from websockets.exceptions import InvalidStatus
+from ofo.broker import egress as _egress
+from ofo.broker.kite_endpoints import KITE_WS_HOST as _KITE_WS_HOST
+from ofo.broker.kite_http import check_ws_url as _check_ws_url
+from ofo.broker.kite_http import plain_str as _plain_str
+from ofo.marketdata.kite_provider import KiteProvider as _KiteProvider
+import websockets as _websockets
+from websockets.asyncio.client import connect as _ws_connect
+from websockets.exceptions import InvalidStatus as _InvalidStatus
 
-from ofo.marketdata.kite_provider import KiteProvider
-from ofo_app.redaction import register_secret
+from ofo_app.redaction import register_secret as _register_secret
 
-log = logging.getLogger("ofo_app.kite_ws")
+_egress._trust_modules(_websockets, __file__)  # W-080 r9: the frames a real connect runs through
+_egress.install()  # W-080 integration: importing a Kite door installs the gate (idempotent with create_app's)
+
+_log = logging.getLogger("ofo_app.kite_ws")
 _silent = logging.getLogger("ofo_app.kite_ws.wire")  # the library logs request lines (with the token) at DEBUG
 _silent.propagate = False
 _silent.addHandler(logging.NullHandler())
 _silent.setLevel(logging.CRITICAL + 1)
 
-KITE_WS_URL = "wss://ws.kite.trade"
+KITE_WS_URL = f"wss://{_KITE_WS_HOST}"
 MAX_TOKENS_PER_CONNECTION = 3000
 BACKOFF_START = 1
 BACKOFF_MAX = 30
@@ -43,16 +61,22 @@ _POLL_SECONDS = 0.5  # how often to look for subscription changes while the sock
 
 
 class KiteSocket:
-    def __init__(self, provider: KiteProvider, *, api_key: str, access_token: str,
-                 clock: Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
-                 connect: Callable = ws_connect,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+    def __init__(self, provider: _KiteProvider, *, api_key: str, access_token: str,  # noqa: PLR0913
+                 clock: _Callable[[], datetime.datetime], base_url: str = KITE_WS_URL,
+                 connect: _Callable | None = None,
+                 sleep: _Callable[[float], _Awaitable[None]] = asyncio.sleep) -> None:
         self._provider = provider
+        for value in (api_key, access_token, base_url):  # plain data only (W-080 r9): a str subclass is caller code
+            _plain_str(value, "the socket address parts")
         self._url = f"{base_url}?api_key={api_key}&access_token={access_token}"  # never logged
-        register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
-        register_secret(access_token)
+        _check_ws_url(self._url)  # refused before anything is held or opened
+        _register_secret(api_key)  # W-024 r10: the held values are redacted from every log record
+        _register_secret(access_token)
         self._clock = clock
-        self._connect = connect
+        if connect is not None and not _egress._test_mode():  # the test seam: refused outside the test suites
+            raise _egress.EgressRefused("the Kite socket takes an injected connect only inside the test suites")
+        self._connect = connect or _ws_connect
+        self._real_connect = connect is None  # door context only around the real websockets connect
         self._sleep = sleep
         self._stop = False
         self.connections = 0
@@ -66,20 +90,21 @@ class KiteSocket:
         """Run until stopped or the session ends. Returns ``STOPPED`` or ``SESSION_ENDED``."""
         self._backoff = BACKOFF_START  # reset only by the first data frame of a connection, not by opening one
         while not self._stop:
+            _check_ws_url(self._url)  # outside the try: a refusal ends the run, it is never retried
             try:
-                async with self._connect(self._url, logger=_silent, open_timeout=10) as ws:
+                async with self._opened() as ws:
                     self.connections += 1
                     self._provider.on_connected(self._clock())
-                    log.info("kite socket connected")
+                    _log.info("kite socket connected")
                     await self._subscribe_all(ws)
                     await self._pump(ws)
-            except InvalidStatus as exc:
-                if exc.response.status_code == 403:
+            except _InvalidStatus as exc:
+                if exc.response.status_code == 403:  # noqa: PLR2004
                     self._provider.on_session_ended(self._clock())
-                    log.warning("kite socket refused with 403: session ended")
+                    _log.warning("kite socket refused with 403: session ended")
                     return SESSION_ENDED
                 self._dropped(type(exc).__name__)
-            except Exception as exc:  # network error, close, timeout: all handled the same way
+            except Exception as exc:  # network error, close, timeout: all handled the same way  # noqa: BLE001
                 self._dropped(type(exc).__name__)
             else:
                 self._dropped("closed")
@@ -89,9 +114,31 @@ class KiteSocket:
             self._backoff = min(self._backoff * 2, BACKOFF_MAX)
         return STOPPED
 
+    @contextlib.asynccontextmanager
+    async def _opened(self) -> _AsyncIterator[object]:
+        """Open the socket; the egress gate's door context covers ONLY the opening handshake of the real connect,
+        after ``check_ws_url`` passed in ``run``. Everything after (subscribe, pump, provider callbacks) runs
+        outside."""
+        if self._real_connect:  # no environment proxy: a proxy would be a second, unchecked host
+            cm = self._connect(self._url, logger=_silent, open_timeout=10, proxy=None)
+        else:
+            cm = self._connect(self._url, logger=_silent, open_timeout=10)
+        if self._real_connect:
+            with _egress._door():
+                ws = await cm.__aenter__()
+        else:
+            ws = await cm.__aenter__()
+        try:
+            yield ws
+        except BaseException:
+            if not await cm.__aexit__(*sys.exc_info()):
+                raise
+        else:
+            await cm.__aexit__(None, None, None)
+
     def _dropped(self, reason: str) -> None:
         self._provider.on_disconnected(self._clock())
-        log.warning("kite socket dropped: %s", reason)
+        _log.warning("kite socket dropped: %s", reason)
 
     async def _subscribe_all(self, ws) -> None:
         tokens = self._provider.subscribed_tokens()
@@ -115,7 +162,7 @@ class KiteSocket:
         while not self._stop:
             try:
                 message = await asyncio.wait_for(ws.recv(), timeout=_POLL_SECONDS)
-            except asyncio.TimeoutError:
+            except TimeoutError:  # asyncio.TimeoutError is this builtin on Python 3.11+
                 await self._send_changes(ws)
                 continue
             if isinstance(message, bytes):
@@ -125,3 +172,7 @@ class KiteSocket:
             else:
                 self._provider.on_text(message)
             await self._send_changes(ws)
+
+
+__all__ = ["BACKOFF_MAX", "BACKOFF_START", "KITE_WS_URL", "MAX_TOKENS_PER_CONNECTION", "SESSION_ENDED", "STOPPED",
+           "KiteSocket"]

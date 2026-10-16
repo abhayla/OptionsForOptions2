@@ -13,15 +13,27 @@ engine and @compiles shims are deliberately not copied.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import math
 import os
+import sys
 from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.broker import egress as _egress
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+# W-080 round 7 (REQ-073 AC-4): the egress gate's TEST mode (this suite only): the doors accept their test seams (a
+# mock transport, an injected websocket connect) and this Python may run as a child process. Production never enters it.
+# The gate itself is installed here with the call the API's create_app makes (importing ofo does not install it).
+_egress.install()
+_egress._enter_test_mode([sys.executable])
+# The app runs only on the selector loop (ofo_app.event_loop); on Windows the default is the Proactor loop.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +44,7 @@ def _no_charge_rates_by_default(monkeypatch):
     # the import waits for the test: the KITE_* placeholders below must be in the environment before the app loads
     from ofo_app.routes import outcome  # noqa: PLC0415 - import order: env placeholders are set after this module's top
     monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": None})
+
 
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.
@@ -92,8 +105,8 @@ async def db_session(app_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    from ofo_app.db import get_db
-    from ofo_app.main import create_app
+    from ofo_app.db import get_db  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
 
     app = create_app()
 
