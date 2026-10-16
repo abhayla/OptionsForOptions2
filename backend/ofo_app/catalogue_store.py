@@ -82,6 +82,7 @@ from ofo.instruments.parser import (
     ParsedInstruments, parse_instruments_rows, zerodha_index_row, zerodha_segment)
 from ofo_app import audit_store
 from ofo.money import HUNDREDTH
+from ofo.reconciliation.delisted import DelistedContract
 
 #: Fixed key for the update lock (any constant; only the catalogue store uses it).
 CATALOGUE_UPDATE_LOCK_KEY = 5_300_053_001
@@ -189,6 +190,8 @@ class StoreUpdateResult:
     retired: int = 0  # live contracts retired by this load (expiry before the load date, ADR-057)
     delisted: int = 0  # live contracts the list no longer carries (ADR-058) or whose token it reuses (ADR-059)
     reinstated: int = 0  # delisted contracts back, identical, under their own internal id (ADR-059)
+    # the `delisted` contracts by exchange identity + Zerodha symbol: the input of block_delisted_held (ADR-058)
+    delisted_contracts: tuple[DelistedContract, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -585,7 +588,10 @@ async def apply_update(
     newly_unlisted = sum(1 for _, _, was_listed in retiring if was_listed) + leaving_listed
     return StoreUpdateResult(added=len(new), seen=len(present), newly_unlisted=newly_unlisted,
                              revised=len(revised), domain=domain, retired=len(retire_ids), delisted=len(delist_ids),
-                             reinstated=len(reinstate))
+                             reinstated=len(reinstate),
+                             delisted_contracts=tuple(
+                                 DelistedContract(i, (before[i].broker_refs[ZERODHA].broker_symbol,))
+                                 for i in sorted(vanishing | replaced)))
 
 
 def with_terms(row: ListedContract, **changes: Any) -> ListedContract:

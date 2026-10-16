@@ -445,6 +445,10 @@ class OrderBook:
             raise ValueError("this record is already bound to another strategy id")
         self._records[strategy_id] = record
 
+    def strategy_ids(self) -> tuple[str, ...]:
+        """Every strategy id bound in this book."""
+        return tuple(self._records)
+
     def require_version(self, strategy_id: str, version_id: object) -> StrategyRecord:
         """REQ-036 AC-1: the strategy is bound to a record AND ``version_id`` ('v<n>') is a version in it."""
         record = self.record_for(strategy_id)

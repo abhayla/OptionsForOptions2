@@ -15,7 +15,7 @@ import pytest
 from ofo.audit import AuditLog, EventType
 from ofo.instruments.parser import zerodha_listed
 from ofo.instruments.catalogue import Catalogue, ContractKind
-from ofo.instruments.eligibility import EligibilityRegistry, EligibilityStatus
+from execution.execution_inputs import refuse, zerodha_eligibility
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_csv
 
@@ -246,14 +246,11 @@ def test_update_normal_refresh_still_works(catalogue: Catalogue, contracts: list
 
 def test_catalogue_and_eligibility_are_separate_structures(catalogue: Catalogue) -> None:
     """AC-2: the catalogue never merges current eligibility into a contract record."""
-    registry = EligibilityRegistry()
     some_entry = catalogue.all_entries()[0]
     token = some_entry.contract.id
 
-    # Recording eligibility must not be reachable from, or reflected on, the catalogue entry.
-    registry.record(
-        EligibilityStatus(instrument_id=token, tradable=False, checked_at=datetime(2026, 9, 29))
-    )
+    # Eligibility built from the list and then refused must not be reachable from, or reflected on, the catalogue.
+    registry = refuse(zerodha_eligibility(catalogue), token)
 
     assert not hasattr(some_entry.contract, "tradable")
     assert not hasattr(some_entry, "tradable")

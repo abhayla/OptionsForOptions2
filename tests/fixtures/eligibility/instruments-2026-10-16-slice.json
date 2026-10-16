@@ -1,0 +1,51 @@
+{
+ "source": "D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/instruments.json (the recorder's copy of that day's Zerodha instrument list, file written 2026-10-16 12:07 IST); rows copied verbatim, keyed by Zerodha instrument_token",
+ "exchange_token_rule": "Zerodha instrument_token >> 8 = the exchange token; checked against NSE's own 15 Oct 2026 contract file tests/fixtures/exchange/NSE_FO_contract_15102026_sample.csv rows 47185, 47187, 47188, 47189",
+ "tick_size": "0.05 (every NFO option row of Zerodha's list, e.g. tests/fixtures/kite_ws/instruments-2026-10-08-subscribed.csv); the recorder's copy does not keep it",
+ "list_loaded_at": "2026-10-16T12:07:00+05:30",
+ "list": {
+  "12079874": {
+   "symbol": "NIFTY26O1923600CE",
+   "group": "NIFTY 2026-10-19",
+   "type": "CE",
+   "strike": "23600.00",
+   "expiry": "2026-10-19",
+   "lot": 65
+  },
+  "12080130": {
+   "symbol": "NIFTY26O1923600PE",
+   "group": "NIFTY 2026-10-19",
+   "type": "PE",
+   "strike": "23600.00",
+   "expiry": "2026-10-19",
+   "lot": 65
+  },
+  "12080386": {
+   "symbol": "NIFTY26O1923650CE",
+   "group": "NIFTY 2026-10-19",
+   "type": "CE",
+   "strike": "23650.00",
+   "expiry": "2026-10-19",
+   "lot": 65
+  },
+  "12083202": {
+   "symbol": "NIFTY26O1923650PE",
+   "group": "NIFTY 2026-10-19",
+   "type": "PE",
+   "strike": "23650.00",
+   "expiry": "2026-10-19",
+   "lot": 65
+  }
+ },
+ "catalogue_only": {
+  "12079362": {
+   "symbol": "NIFTY26O1923550CE",
+   "group": "NIFTY 2026-10-19",
+   "type": "CE",
+   "strike": "23550.00",
+   "expiry": "2026-10-19",
+   "lot": 65
+  }
+ },
+ "catalogue_only_note": "a real contract the catalogue holds that is NOT in the list slice: NSE token 47185 (NSE 15 Oct 2026 contract file), Zerodha token 12079362"
+}

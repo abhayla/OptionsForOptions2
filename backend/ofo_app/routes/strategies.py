@@ -28,17 +28,21 @@ STORED definition no longer reads (unknown schema version, contract id gone, ter
 from __future__ import annotations
 
 import datetime
+from collections import Counter
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from types import MappingProxyType
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import text
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from ofo.engine.legs import Action
-from ofo.errors import UserFacing, UserFacingError, render
+from ofo.engine.legs import Leg as EngineLeg
+from ofo.errors import LegValue, UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import text
+
+from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -166,8 +170,9 @@ class StrategyRefused(UserFacing, Exception):
     """A refused Save Draft call: carries only its `render()` message; the error boundary shows it (422), or at the status of
     ``failure`` (404 not found; 409 for a stale revision or a saved form that no longer reads)."""
 
-    def __init__(self, template: str, failure: Failure | None = None) -> None:
-        self.message: UserFacingError = render(template)
+    def __init__(self, template: str, failure: Failure | None = None, *,
+                 message: UserFacingError | None = None) -> None:
+        self.message: UserFacingError = render(template) if message is None else message
         super().__init__(template)
         self.failure: Failure | None = failure
 
@@ -251,6 +256,52 @@ async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
         rules_ref=body.rules_ref, risk_limits=limits, preferences=dict(body.preferences))
 
 
+_NO_PRICE = Decimal("0")  # the message names the leg's contract only; no price is shown
+
+
+def _leg_identity(saved: sf.SavedDefinition) -> list[tuple[int, Action]]:
+    """A leg is the same leg when its contract and side are the same (quantity and planned entry do not make it new)."""
+    legs = saved.definition.legs
+    return [(contract_id, leg.action) for contract_id, leg in zip(saved.contract_ids, legs, strict=True)]
+
+
+def _added_legs(saved: list[tuple[int, Action]], stored: list[tuple[int, Action]]) -> list[int]:
+    """Indexes of the saved legs that are ADDED relative to the stored version, counted per copy (a multiset): a second
+    copy of a stored leg is added. Defence in depth: the definition refuses two legs on one contract today."""
+    kept = Counter(stored)
+    added = []
+    for i, key in enumerate(saved):
+        if kept[key] > 0:
+            kept[key] -= 1
+        else:
+            added.append(i)
+    return added
+
+
+async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.TodayReader,
+                          stored: sf.SavedDefinition | None) -> None:
+    """W-092 / ADR-104, REQ-053 AC-3 add-time check: every ADDED leg's contract must be eligible from Zerodha's data
+    (in the current list, not expired on the database clock's India date). A leg already in the stored version
+    (``stored``, None for a new strategy; counted per copy, so a second copy of a stored leg is added) never blocks a
+    save, so an old draft stays editable; the execution gate
+    re-checks every leg. The first added leg that is not eligible is refused with the gate's own message
+    (gate_contract_unavailable, or gate_contract_unconfirmed when no list was ever loaded)."""
+    added = _added_legs(_leg_identity(saved), _leg_identity(stored) if stored is not None else [])
+    if not added:
+        return
+    statuses = await elig.leg_statuses(db, [saved.contract_ids[i] for i in added], await today_of(db))
+    underlying = saved.definition.underlying
+    for index, status in zip(added, statuses, strict=True):
+        if status is not None and status.tradable:
+            continue
+        leg = saved.definition.legs[index]
+        engine_leg = EngineLeg(leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, _NO_PRICE)
+        value = LegValue(index + 1, engine_leg,
+                         underlying)
+        template = "gate_contract_unconfirmed" if status is None else "gate_contract_unavailable"
+        raise StrategyRefused(template, message=render(template, leg=value))
+
+
 async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
     """Runs one store call; commits on success, rolls back on any error (nothing half-written)."""
     try:
@@ -266,10 +317,12 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
 
 
 @router.post("/strategies", status_code=201, response_model=StrategyOut, response_model_exclude_unset=True)
-async def save_draft(body: StrategyIn, db: Any = Depends(get_db),
-                     user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+async def save_draft(body: StrategyIn, today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                     db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        return await _strategy_out(db, await store.save_draft(db, user_ref, await _definition(db, body)))
+        saved = await _definition(db, body)
+        await _check_eligible(db, saved, today_of, None)
+        return await _strategy_out(db, await store.save_draft(db, user_ref, saved))
     return await _run(db, work, form_status=422)
 
 
@@ -292,11 +345,14 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
-async def update_strategy(strategy_id: int, body: StrategyUpdateIn, db: Any = Depends(get_db),
-                          user_ref: str = Depends(current_user_ref)) -> StrategyOut:
+async def update_strategy(strategy_id: int, body: StrategyUpdateIn,
+                          today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                          db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         store.check_strategy_id(strategy_id)  # before the catalogue is read
-        return await _strategy_out(db, await store.update(db, user_ref, strategy_id, await _definition(db, body),
+        saved = await _definition(db, body)
+        await _check_eligible(db, saved, today_of, (await store.load(db, user_ref, strategy_id)).saved)
+        return await _strategy_out(db, await store.update(db, user_ref, strategy_id, saved,
                                                           expected_revision=body.expected_revision))
     return await _run(db, work, form_status=422)
 
@@ -314,9 +370,15 @@ async def strategy_history(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.post("/strategies/{strategy_id}/restore/{seq}", response_model=StrategyOut, response_model_exclude_unset=True)
-async def restore_strategy(strategy_id: int, seq: int, expected_revision: int = Query(gt=0),
+async def restore_strategy(strategy_id: int, seq: int,
+                           today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                           expected_revision: int = Query(gt=0),
                            db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
+        current = (await store.load(db, user_ref, strategy_id)).saved
+        for entry in await store.history(db, user_ref, strategy_id):
+            if entry.seq == seq:  # a missing entry is left to restore, which answers it as not found
+                await _check_eligible(db, entry.saved, today_of, current)
         return await _strategy_out(db, await store.restore(db, user_ref, strategy_id, seq,
                                                            expected_revision=expected_revision))
     return await _run(db, work, form_status=409)
