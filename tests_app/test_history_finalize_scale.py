@@ -19,6 +19,7 @@ proven in test_history_finalize_job.py.
 """
 from __future__ import annotations
 
+# ruff: noqa  # DIAG-344 branch only (never merged)
 import datetime
 import os
 import sys
