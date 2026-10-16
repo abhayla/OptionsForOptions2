@@ -10,18 +10,19 @@ test never leaves a row). Expected values: the seed is F-35's rate text of 2026-
 from __future__ import annotations
 
 import importlib.util
+import os
+import types
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from ofo_app import charge_rates_store
+from ofo_app.charge_rates_store import ChargeRatesError, add_rate_set, rates_in_force
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
-
-from ofo_app import charge_rates_store
-from ofo_app.charge_rates_store import ChargeRatesError, add_rate_set, rates_in_force
 
 D = Decimal
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
@@ -279,3 +280,46 @@ async def test_a_set_that_mixes_dates_is_refused():
     rows[3].read_on = date(2026, 10, 16)
     with pytest.raises(ChargeRatesError, match="mixes"):
         await rates_in_force(_FakeSession(rows), SEED_DAY)
+
+
+MIGRATION_0014 = (Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
+                  / "0014_charge_rates_caps.py")
+
+
+async def test_the_database_refuses_a_stamp_or_sebi_rate_at_or_above_its_cap(admin_engine):
+    """W-075 (W-074 verifier MINOR D1): 0014's CHECK ``charge_rates_unit_caps``: sebi_rate < 0.00001 and stamp_buy_rate
+    < 0.0001. A percentage typed as a number (0.0001 for SEBI, 0.003 for stamp)
+    passes 0012's 1% cap and is refused here.
+    Where the migration is not applied (a local ofo_test; CI always applies it), its own SQL is run inside the rolled
+    back transaction first, so the constraint text is still what is tested; in CI (OFO_REQUIRE_DB_TESTS=1) the
+    constraint must already be there."""
+    loader_spec = importlib.util.spec_from_file_location("ofo_caps_0014_for_test", MIGRATION_0014)
+    mod = importlib.util.module_from_spec(loader_spec)
+    loader_spec.loader.exec_module(mod)
+    statements: list[str] = []
+    mod.op = types.SimpleNamespace(execute=lambda sql, *a, **k: statements.append(str(sql)))
+    mod.upgrade()
+    bad = (("sebi_rate", "0.00001"), ("sebi_rate", "0.0001"), ("stamp_buy_rate", "0.0001"), ("stamp_buy_rate", "0.003"))
+    good = (("sebi_rate", "0.000001"), ("sebi_rate", "0.000009"), ("stamp_buy_rate", "0.00003"),
+            ("stamp_buy_rate", "0.00009"))
+    insert = text("INSERT INTO public.charge_rates (component, read_on, value, source_url) "
+                  "VALUES (:c, DATE '2031-01-01', CAST(:v AS numeric), 'https://x')")
+    for rows, refused in ((bad, True), (good, False)):
+        for component, value in rows:
+            conn, trans = await _tx(admin_engine)
+            try:
+                present = (await conn.execute(text(
+                    "SELECT count(*) FROM pg_constraint WHERE conname = 'charge_rates_unit_caps'"))).scalar_one()
+                if not present:
+                    assert os.environ.get("GITHUB_ACTIONS") != "true", "0014 is not applied in the CI database"
+                    # never ALTER TABLE on a shared database (W-075 round 3, D4): CI applies the real migration
+                    pytest.skip("charge_rates_unit_caps is not in this database: 0014 is applied by CI's upgrade "
+                                "head, never by a test on the shared ofo_test")
+                if refused:
+                    with pytest.raises(DBAPIError, match="charge_rates_unit_caps"):
+                        await conn.execute(insert, {"c": component, "v": value})
+                else:
+                    await conn.execute(insert, {"c": component, "v": value})
+            finally:
+                await trans.rollback()
+                await conn.close()

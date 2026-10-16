@@ -33,6 +33,8 @@ Rules implemented:
   flag through the same invariant; ``mark_exited()`` closes a strategy whose broker position is flat (ADR-019 Q200
   Exited; deferred issue #19: a flat broker position cannot be adopted as a definition, so without this the
   strategy stayed blocked forever). An exited strategy accepts no further change.
+- ``adopt_held()`` (ADR-096) adds a position already held at Zerodha as a new ACTIVE version with no proposal and no
+  order; the recorded actual position gains the same units. It never routes through ``edit``/``propose_execution``.
 """
 from __future__ import annotations
 
@@ -46,6 +48,7 @@ from ofo.strategy.definition import (
     MAX_TEXT,
     MAX_UNITS,
     Contract,
+    DefinitionError,
     DefinitionLeg,
     StrategyDefinition,
     contract_sort_key,
@@ -195,6 +198,7 @@ class OutcomeKind(Enum):
     OBSERVED = "observed"  # a broker position recorded by a reconciliation run, outside any execution result
     EXITED = "exited"  # the broker position is flat and the strategy was closed (ADR-019 Q200)
     SETTLED = "settled"  # expired legs closed at the exchange settlement price; the strategy continues (ADR-083)
+    ADOPTED = "adopted"  # a position already held at Zerodha joined the strategy order-free (ADR-096)
 
 
 @dataclass(frozen=True)
@@ -541,6 +545,87 @@ class StrategyRecord:
             version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
         return version
 
+    @classmethod
+    def from_held(cls, definition: StrategyDefinition, *, at: datetime.datetime, actor: str,
+                  clock: Callable[[], datetime.datetime] = _utc_now) -> StrategyRecord:
+        """A NEW strategy whose legs are all already held at Zerodha (ADR-084 create-new adoption), ORDER-FREE.
+
+        Version 1 is active at once, with the broker's position equal to it and an ADOPTED outcome; no proposal and
+        no ``propose_execution`` (both lead to orders, a second buy or sell of what is already held)."""
+        _require_text(actor, "actor")
+        record = cls(definition, at=at, clock=clock)
+        version = record._add_version(definition, None, at, actor, "adopted", (), pending=False)
+        intended = version.intended_position
+        record._set("_executed", True)
+        record._record_adoption(version, intended, ExecutionOutcome(
+            version.number, OutcomeKind.ADOPTED, intended, intended, at, f"adopted:v{version.number}"))
+        return record
+
+    def check_adopt_held(self, held: Position, *, at: datetime.datetime, actor: str,
+                         reason: str) -> StrategyDefinition:
+        """Raise exactly when ``adopt_held`` would refuse; change nothing. Returns the new version's definition.
+
+        Refused (fail closed): exited, reconciliation required, a proposal in flight (ADR-019), nothing active yet
+        (a draft's legs are not held, so the new version could never agree with Zerodha), an empty held position,
+        another underlying, a contract the active version already holds (never netted, whatever the side or units),
+        or a recorded broker position that is not the active version's (the held units would land on a wrong picture).
+        """
+        self._refuse_while_blocked("adopt")
+        _require_text(actor, "actor")
+        _require_text(reason, "reason", allow_empty=True)
+        if not isinstance(held, Position):
+            raise VersionError(f"adopt_held needs a Position, got {held!r}")
+        if not held.lines:
+            raise VersionError("there is no held position to adopt")
+        active = self.active_version
+        if active is None:
+            raise VersionError("nothing of this strategy is executed yet; a held position joins an executed strategy")
+        if self.actual_position != active.intended_position:
+            raise VersionError("the recorded broker position differs from the active version; reconcile first")
+        definition = active.definition
+        try:
+            new_legs = _held_legs(held, definition)
+        except DefinitionError as exc:  # a held line outside a leg's guards (round 2 minor): refused, never raised raw
+            raise VersionError(f"the held position cannot join this strategy: {exc}") from exc
+        if len(self.versions) >= MAX_VERSIONS:
+            raise VersionError(f"version list is full ({MAX_VERSIONS})")
+        if len(self.outcomes) >= MAX_OUTCOMES:
+            raise VersionError(f"outcome log is full ({MAX_OUTCOMES})")
+        self._check_time(at)
+        try:
+            return dataclasses.replace(definition, legs=(*definition.legs, *new_legs))
+        except ValueError as exc:  # too many legs, a leg outside the stored form
+            raise VersionError(f"the held position cannot join this strategy: {exc}") from exc
+
+    def adopt_held(self, held: Position, *, at: datetime.datetime, actor: str, reason: str = "") -> Version:
+        """Add a position already held at Zerodha as a NEW active version, ORDER-FREE (ADR-096).
+
+        Never goes through ``edit`` / ``propose_execution`` (both prepare orders for added legs, which would buy or
+        sell a held position a second time). The new version's intended position = the active one's + ``held`` and
+        it is active at once; the recorded actual position gains the same units (they are held, not to be executed),
+        so the standing invariant holds and the next reconciliation run agrees unless Zerodha changed since.
+        """
+        definition = self.check_adopt_held(held, at=at, actor=actor, reason=reason)
+        before = self._active_intended()  # check_adopt_held proved a version is active and the broker agrees with it
+        self._stamp(at)
+        changes = definition.changes_from(self.definition)  # the added legs, described
+        version = self._add_version(definition, self.active_version.number if self.active_version else None, at,
+                                    actor, reason, changes, pending=False)
+        actual = Position.of({**before.as_dict(), **held.as_dict()})
+        reference = f"adopted:v{version.number}"
+        self._record_adoption(version, actual, ExecutionOutcome(
+            version.number, OutcomeKind.ADOPTED, version.intended_position, actual, at, reference))
+        return version
+
+    def _record_adoption(self, version: Version, actual: Position, outcome: ExecutionOutcome) -> None:
+        """The in-memory steps of ``adopt_held`` after its checks; none of them can fail."""
+        self._set("_active", version.number)
+        self._set("_actual", actual)
+        self._set("_observed_at", None)
+        self._set("_references", {*self._references, outcome.reference})  # type: ignore[attr-defined]
+        self._set("_outcomes", [*self.outcomes, outcome])
+        self._recheck_invariant()
+
     def observe_broker_position(
         self, position: Position, *, at: datetime.datetime, reference: str
     ) -> ExecutionOutcome | None:
@@ -778,6 +863,20 @@ class StrategyRecord:
             self._set("_pending", version.number)
             self._set("_confirmed", False)
         return version
+
+
+def _held_legs(held: Position, definition: StrategyDefinition) -> tuple[DefinitionLeg, ...]:
+    """The held lines as new legs of ``definition``: same underlying, and never on a contract it already holds."""
+    current = definition.intended_position()
+    legs = []
+    for contract, units in held.lines:
+        if contract[0] != definition.underlying:
+            raise VersionError(f"{describe_contract(contract)} is not on {definition.underlying}")
+        if contract in current:
+            raise VersionError(f"the active version already holds {describe_contract(contract)}; never netted")
+        _underlying, instrument, strike, expiry = contract
+        legs.append(DefinitionLeg(Action.BUY if units > 0 else Action.SELL, instrument, strike, expiry, abs(units)))
+    return tuple(legs)
 
 
 def _definition_from(position: Position, like: StrategyDefinition) -> StrategyDefinition:

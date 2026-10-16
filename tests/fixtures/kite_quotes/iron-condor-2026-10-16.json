@@ -1,0 +1,262 @@
+{
+  "source": "ofo-kite-ticks/2026-10-16/rest/rest-120852.json",
+  "recorded_at": "2026-10-16T12:08:52+05:30",
+  "quote_call": "quote NIFTY 2026-10-19",
+  "legs_call": "margins/basket NIFTY 2026-10-19 iron_condor bump=0 cp=true",
+  "lot": 65,
+  "tick": 0.05,
+  "legs": [
+    {
+      "tradingsymbol": "NIFTY26O1922800PE",
+      "side": "BUY",
+      "quantity": 65,
+      "last_price": 29.8,
+      "timestamp": "2026-10-16 12:08:52",
+      "depth": {
+        "buy": [
+          {
+            "price": 29.65,
+            "quantity": 7735,
+            "orders": 15
+          },
+          {
+            "price": 29.6,
+            "quantity": 12740,
+            "orders": 18
+          },
+          {
+            "price": 29.55,
+            "quantity": 12155,
+            "orders": 20
+          },
+          {
+            "price": 29.5,
+            "quantity": 4745,
+            "orders": 10
+          },
+          {
+            "price": 29.45,
+            "quantity": 7930,
+            "orders": 12
+          }
+        ],
+        "sell": [
+          {
+            "price": 29.75,
+            "quantity": 2080,
+            "orders": 7
+          },
+          {
+            "price": 29.8,
+            "quantity": 10920,
+            "orders": 23
+          },
+          {
+            "price": 29.85,
+            "quantity": 13845,
+            "orders": 22
+          },
+          {
+            "price": 29.9,
+            "quantity": 15535,
+            "orders": 17
+          },
+          {
+            "price": 29.95,
+            "quantity": 14755,
+            "orders": 14
+          }
+        ]
+      }
+    },
+    {
+      "tradingsymbol": "NIFTY26O1922950PE",
+      "side": "SELL",
+      "quantity": 65,
+      "last_price": 58.15,
+      "timestamp": "2026-10-16 12:08:52",
+      "depth": {
+        "buy": [
+          {
+            "price": 58.6,
+            "quantity": 5265,
+            "orders": 8
+          },
+          {
+            "price": 58.55,
+            "quantity": 5005,
+            "orders": 13
+          },
+          {
+            "price": 58.5,
+            "quantity": 8255,
+            "orders": 20
+          },
+          {
+            "price": 58.45,
+            "quantity": 4485,
+            "orders": 9
+          },
+          {
+            "price": 58.4,
+            "quantity": 5655,
+            "orders": 12
+          }
+        ],
+        "sell": [
+          {
+            "price": 58.75,
+            "quantity": 780,
+            "orders": 3
+          },
+          {
+            "price": 58.8,
+            "quantity": 4680,
+            "orders": 11
+          },
+          {
+            "price": 58.85,
+            "quantity": 3965,
+            "orders": 6
+          },
+          {
+            "price": 58.9,
+            "quantity": 3575,
+            "orders": 5
+          },
+          {
+            "price": 58.95,
+            "quantity": 4550,
+            "orders": 8
+          }
+        ]
+      }
+    },
+    {
+      "tradingsymbol": "NIFTY26O1923250CE",
+      "side": "SELL",
+      "quantity": 65,
+      "last_price": 40.55,
+      "timestamp": "2026-10-16 12:08:51",
+      "depth": {
+        "buy": [
+          {
+            "price": 40.5,
+            "quantity": 6370,
+            "orders": 7
+          },
+          {
+            "price": 40.45,
+            "quantity": 2405,
+            "orders": 12
+          },
+          {
+            "price": 40.4,
+            "quantity": 8060,
+            "orders": 13
+          },
+          {
+            "price": 40.35,
+            "quantity": 3510,
+            "orders": 9
+          },
+          {
+            "price": 40.3,
+            "quantity": 2405,
+            "orders": 7
+          }
+        ],
+        "sell": [
+          {
+            "price": 40.65,
+            "quantity": 7345,
+            "orders": 22
+          },
+          {
+            "price": 40.7,
+            "quantity": 12350,
+            "orders": 25
+          },
+          {
+            "price": 40.75,
+            "quantity": 3250,
+            "orders": 9
+          },
+          {
+            "price": 40.8,
+            "quantity": 4810,
+            "orders": 10
+          },
+          {
+            "price": 40.85,
+            "quantity": 3055,
+            "orders": 8
+          }
+        ]
+      }
+    },
+    {
+      "tradingsymbol": "NIFTY26O1923400CE",
+      "side": "BUY",
+      "quantity": 65,
+      "last_price": 16.25,
+      "timestamp": "2026-10-16 12:08:52",
+      "depth": {
+        "buy": [
+          {
+            "price": 16.25,
+            "quantity": 3055,
+            "orders": 10
+          },
+          {
+            "price": 16.2,
+            "quantity": 11505,
+            "orders": 26
+          },
+          {
+            "price": 16.15,
+            "quantity": 6240,
+            "orders": 14
+          },
+          {
+            "price": 16.1,
+            "quantity": 7800,
+            "orders": 16
+          },
+          {
+            "price": 16.05,
+            "quantity": 7280,
+            "orders": 16
+          }
+        ],
+        "sell": [
+          {
+            "price": 16.3,
+            "quantity": 1170,
+            "orders": 3
+          },
+          {
+            "price": 16.35,
+            "quantity": 6500,
+            "orders": 16
+          },
+          {
+            "price": 16.4,
+            "quantity": 8645,
+            "orders": 21
+          },
+          {
+            "price": 16.45,
+            "quantity": 10010,
+            "orders": 24
+          },
+          {
+            "price": 16.5,
+            "quantity": 7215,
+            "orders": 18
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1079,6 +1079,14 @@
     "sha256": "5e62246388132c7b1182dc5bdbf4d29b3c2c3a83190cfac5eda1caa658b850f4",
     "reviewed": "pending owner read"
   },
+  "explanation:summary_lose_exercise_stt_note": {
+    "sha256": "3f2b62c2cc91a84724e5ca8021540093f49565921de33341c6af815cc9fca0b2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_lose_at_most_with_charges": {
+    "sha256": "5ed3bb3629ca8026ac29878499559d7fec6dcf38cbe26c08e4ccd8559735e732",
+    "reviewed": "pending owner read"
+  },
   "explanation:summary_lose_at_most": {
     "sha256": "73d0ac30b935c10cbaf1ce343aa5ec59a887c15e43c2d5346b720625d54d6ef7",
     "reviewed": "pending owner read"
@@ -1089,6 +1097,10 @@
   },
   "explanation:summary_make_none": {
     "sha256": "936d1a9931857ebc1eaee2db7ec9a2af9610015417c73dca44eca673e6032791",
+    "reviewed": "pending owner read"
+  },
+  "explanation:summary_make_at_most_with_charges": {
+    "sha256": "5ed3bb3629ca8026ac29878499559d7fec6dcf38cbe26c08e4ccd8559735e732",
     "reviewed": "pending owner read"
   },
   "explanation:summary_make_at_most": {
@@ -1169,6 +1181,10 @@
   },
   "explanation:cell_text": {
     "sha256": "8461935265421850080cd604591d7c73fcae4aca56478d139ffb97314a917403",
+    "reviewed": "pending owner read"
+  },
+  "explanation:cell_charges_row_label": {
+    "sha256": "15f3134d5882c186b17f6f87fa6cf811347dae3ca3233ab49f1e510a0620aa3d",
     "reviewed": "pending owner read"
   },
   "explanation:cell_health": {
@@ -1331,8 +1347,12 @@
     "sha256": "11dedfe0f8d0e9ab25ada1c0ecd57d28e3f32524c0da22c3fad861ec16ed0164",
     "reviewed": "pending owner read"
   },
-  "grouping_not_available": {
-    "sha256": "8b509ce74caa7d0731fca0f8300ec27a9ca157d345cc1047b730d0f5de336c36",
+  "grouping_strategy_not_adoptable": {
+    "sha256": "d0e3c700cd542290254bf122402b094a2a5ecda7bb1874a1bfbea7c0a6d81ce7",
+    "reviewed": "pending owner read"
+  },
+  "grouping_strategy_holds_contract": {
+    "sha256": "daa4c821471ef2f5b7715d9ec08550747716a52ded93e54550d8abd2b45f7992",
     "reviewed": "pending owner read"
   },
   "partial_mismatch_other_product_only": {

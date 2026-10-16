@@ -164,6 +164,10 @@ decisions:
   ADR-090: 4b           # REQ-073 approved for build; AC-5 follows ADR-060 (owner delegation 2026-10-16)
   ADR-091: 4b           # freeze limits refreshed weekly by hand; review warns after 8 days (owner 2026-10-16)
   ADR-092: 4b           # never split for the freeze limit, incl. Complete/Retry/exit (owner 2026-10-16, issue 255)
+  ADR-094: 4b           # margin check adds BUY premium up to the limit (F-39; technical call + reviewer)
+  ADR-095: 4b           # price tolerance split pro rata to each leg's planned value (owner OQ-1, 2026-10-16)
+  ADR-096: 4b           # held position added to an existing strategy order-free (owner OQ-7, 2026-10-16)
+  ADR-097: 4b           # real test orders: options only, owner presses Execute, holdings never sold (owner 2026-10-16)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
@@ -246,6 +250,7 @@ issues:
   "#232": 4a            # 4a gate shots: leg picker error in every state, raw ids/ISO times on screen (gate review decides)
   "#234": 4a            # deferred: W-065 p3 r2 verifier LOWs (push matcher raw values, socket fallback flag, outage test gap)
   "#200": 4a            # PARKED: door remainder after W-070 (module rebinding, seal reuse not CI-flagged; REQ-065 AC-2)
+  "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
 
 # Work items whose status is not done.

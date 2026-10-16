@@ -140,15 +140,15 @@ def test_move_into_a_group_of_another_underlying_is_refused_and_changes_nothing(
     assert SENSEX_PUT in {p.tradingsymbol for p in by_id(s.groups())["SENSEX:2026-10-01"].positions}
 
 
-def test_adding_to_an_existing_strategy_is_not_available_yet_and_leaves_everything_visible():
-    """Round 2 item 4: no order-free path exists (W-027's add prepares orders), so the move is refused honestly."""
+def test_adding_to_a_strategy_with_no_record_is_refused_and_leaves_everything_visible():
+    """ADR-096: the order-free add needs the strategy's record (tests/reconciliation/test_adopt_into_existing.py);
+    a session given only definitions refuses, and the position stays where it was."""
     s = session()
     before = len(s.groups())
     with pytest.raises(GroupingError) as err:
         s.move(key_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
-    assert "not available yet" in err.value.user_message.what_happened
+    assert err.value.user_message.code == "RECONCILIATION_MISMATCH_213"
     assert len(s.groups()) == before and SECOND_EXPIRY_CALL in {p.tradingsymbol for g in s.groups() for p in g.positions}
-    assert not hasattr(s, "confirm_existing")
 
 
 def test_standalone_position_is_shown_and_never_adopted():

@@ -47,6 +47,7 @@ from ofo.errors import UserFacing, UserFacingError, render
 from ofo.safe_compare import equal_secret
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ofo_app import live_market
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.broker_config import BrokerConfig
 from ofo_app.broker_crypto import TokenCipher
@@ -256,6 +257,7 @@ async def kite_callback(  # noqa: PLR0911, PLR0913
         return _refused_redirect(request, rt, "broker_store_failed")
     finally:
         del session
+    await live_market.pick_up_login(rt.config)  # #296: never raises; the login stands whatever the market does
     return typed_redirect(BrokerRedirectOut(redirect="connected"), CONNECTED_FRONTEND_PATH, _state_cookie(rt))
 
 

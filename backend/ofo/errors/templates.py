@@ -594,10 +594,19 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Zerodha shows a product type on {contracts} position(s) that this platform does not recognise.",
           "This position cannot be added to a strategy.", "Adding this position to a strategy.",
           "It stays visible here. Check the product type in Zerodha.", _REC_SLOT),
-    _gate("grouping_not_available", _RM, 218,
-          "Adding a position to an existing strategy is not available yet.",
-          "The position stays where it was and is still shown.", "This move only.",
-          "Create a new strategy from the position, or leave it standalone."),
+    # ADR-096: adding a held position to an existing strategy (order-free). 218 retired with its "not available yet".
+    _gate("grouping_strategy_not_adoptable", _RM, 224,
+          "This strategy cannot take a position now: it has exited, has nothing executed yet, waits for a "
+          "reconciliation, or has a change waiting to be executed.",
+          "The position stays where it was and is still shown. No order was prepared.",
+          "Adding positions to this strategy.",
+          "Resolve the strategy first, or create a new strategy from the position, or leave it standalone."),
+    _gate("grouping_strategy_holds_contract", _RM, 225,
+          "The strategy would hold {contracts} contract(s) twice: it already has a leg on it, or two of the chosen "
+          "positions are on it.",
+          "The position stays where it was and is still shown, so no leg is counted twice. No order was prepared.",
+          "Adding these positions to this strategy.",
+          "Check the leg against Zerodha, or use the reconciliation screen.", _REC_SLOT),
     _gate("grouping_duplicate_row", _RM, 223,
           "Zerodha sent a second row for {contracts} contract(s) and product that it already showed.",
           "The second row is shown but not grouped, because Zerodha lists each contract and product once.",

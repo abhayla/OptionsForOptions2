@@ -13,12 +13,13 @@ NaN, infinity or negative amount raises.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
-from typing import Final
+from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, render
+from ofo.instruments.models import OPTION_TYPES
 from ofo.money import PAISE as _PAISE
 
 _MINT: Final = object()  # module-private: only check_margin mints a verdict
@@ -80,11 +81,58 @@ def check_margin(available: Decimal | None, required: Decimal | None) -> MarginV
     return MarginVerdict(available, required, _mint=_MINT)
 
 
-def required_from_basket_reply(data: Mapping[str, object]) -> Decimal:
-    """The margin the basket needs: ``final.total`` of Zerodha's ``POST /margins/basket`` reply ``data``.
+class PlannedOrder(Protocol):
+    """The fields of one order as sent to Zerodha's basket-margin call (``ofo_app.kite_margin.BasketOrder`` fits)."""
 
-    The reply must have been parsed with ``parse_float=Decimal``; anything but a finite, non-negative Decimal there
-    (missing keys, null, float, string, bool) raises `MarginReplyError`."""
+    @property
+    def exchange(self) -> str: ...
+    @property
+    def tradingsymbol(self) -> str: ...
+    @property
+    def transaction_type(self) -> str: ...
+    @property
+    def quantity(self) -> int: ...
+    @property
+    def price(self) -> Decimal: ...
+
+
+def _premium(value: object) -> Decimal:
+    if type(value) is not Decimal and type(value) is not int:
+        raise MarginReplyError("a BUY leg of the basket margin reply has no numeric option_premium")
+    amount = Decimal(value)
+    if not amount.is_finite() or amount < 0:
+        raise MarginReplyError("a BUY leg's option_premium is not a finite amount of 0 or more")
+    return amount
+
+
+def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> Decimal:
+    """The margin the basket needs (ADR-094): ``final.total`` of Zerodha's ``POST /margins/basket`` reply ``data``
+    plus, for each option BUY leg, ``max(0, quantity x limit price - that leg's option_premium)``.
+
+    Kite prices an option BUY at the lower of the limit and the live price (F-39); the user may pay up to the limit.
+    SELL legs and futures add nothing; a negative difference is 0, never a credit. ``orders`` is the request list sent
+    to Kite, in the same order as ``data["orders"]``. The reply must have been parsed with ``parse_float=Decimal``.
+    Anything unusable (no final.total, a BUY leg's option_premium missing/not a number/negative, a count or identity
+    mismatch between request and reply, a bad quantity or price) raises `MarginReplyError`."""
+    required = _final_total(data)
+    rows = data.get("orders")
+    if not isinstance(rows, list) or len(rows) != len(orders):
+        raise MarginReplyError("the basket margin reply does not list the orders that were sent")
+    for row, order in zip(rows, orders, strict=True):
+        if not isinstance(row, Mapping) or (row.get("tradingsymbol"), row.get("exchange")) != (
+                order.tradingsymbol, order.exchange):
+            raise MarginReplyError("the basket margin reply's orders do not match the orders that were sent")
+        if order.transaction_type != "BUY" or order.tradingsymbol[-2:] not in OPTION_TYPES:
+            continue
+        quantity, price = order.quantity, order.price
+        if (type(quantity) is not int or quantity <= 0 or type(price) is not Decimal or not price.is_finite()
+                or price <= 0):
+            raise MarginReplyError("a BUY leg has no usable quantity and limit price")
+        required += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))
+    return required
+
+
+def _final_total(data: Mapping[str, object]) -> Decimal:
     final = data.get("final") if isinstance(data, Mapping) else None
     total = final.get("total") if isinstance(final, Mapping) else None
     if type(total) is not Decimal and type(total) is not int:
