@@ -34,7 +34,11 @@ import anyio.abc as _anyio_abc
 import h11 as _h11
 import httpcore as _httpcore
 import httpx as _httpx
-import sniffio as _sniffio
+
+try:  # newer anyio no longer depends on sniffio (CI's app environment lacks it); trust its frames only if installed
+    import sniffio as _sniffio
+except ImportError:  # pragma: no cover - depends on the installed anyio
+    _sniffio = None
 from httpcore._backends.anyio import AnyIOStream as _AnyIOStream
 from httpx._client import BoundAsyncStream as _BoundAsyncStream
 from httpx._client import BoundSyncStream as _BoundSyncStream
@@ -54,7 +58,7 @@ _SCALARS = (str, int, float, bool, _Decimal, type(None))
 _MAX_NESTING = 20
 _TIMEOUT_KEYS = frozenset({"connect", "read", "write", "pool"})
 
-_egress._trust_modules(_anyio, _h11, _httpcore, _httpx, _sniffio, __file__)
+_egress._trust_modules(*(m for m in (_anyio, _h11, _httpcore, _httpx, _sniffio) if m is not None), __file__)
 _egress.install()  # W-080 integration: importing a Kite door installs the gate (idempotent with create_app's)
 
 
