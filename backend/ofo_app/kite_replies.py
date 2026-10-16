@@ -50,6 +50,19 @@ class KiteReplyError(ValueError):
     """A Kite reply field that cannot be turned into a domain value; nothing is guessed."""
 
 
+def _exact_figure(value: Decimal | int, name: str) -> Decimal:
+    """An average price kept as Kite sent it: 5.1 -> 5.10 (same value), 5.125 stays; an int (Kite's
+    "average_price": 0 on an unfilled order) is exact too; non-finite or too large -> KiteReplyError."""
+    exact_value = Decimal(value)
+    if not exact_value.is_finite():
+        raise KiteReplyError(f"{name} must be finite, got {value!r}")
+    try:
+        at_paisa = zerodha_paise(exact_value)
+    except (TypeError, ValueError) as exc:
+        raise KiteReplyError(f"{name}: {exc}") from None
+    return at_paisa if at_paisa == exact_value else exact_value
+
+
 def kite_money(value: object, name: str, *, exact: bool = False) -> Decimal:
     """One Kite money figure as an exact Decimal at the paisa (see the module docstring for the accepted shapes).
 
@@ -69,14 +82,7 @@ def kite_money(value: object, name: str, *, exact: bool = False) -> Decimal:
     elif type(value) is not Decimal and type(value) is not int:
         raise KiteReplyError(f"{name} must be a Decimal, int, float or decimal string, got {value!r}")
     if exact:
-        exact_value = Decimal(value)  # an int (Kite's "average_price": 0 on an unfilled order) is exact too
-        if not exact_value.is_finite():
-            raise KiteReplyError(f"{name} must be finite, got {value!r}")
-        try:
-            at_paisa = zerodha_paise(exact_value)
-        except (TypeError, ValueError) as exc:
-            raise KiteReplyError(f"{name}: {exc}") from None
-        return at_paisa if at_paisa == exact_value else exact_value  # 5.1 -> 5.10 (same value); 5.125 stays
+        return _exact_figure(value, name)
     try:
         return zerodha_paise(value)
     except (TypeError, ValueError) as exc:
