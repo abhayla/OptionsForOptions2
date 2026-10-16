@@ -22,6 +22,12 @@ MAX_VOLUME = 10**12  # absurd-size guard; no real instrument trades this many un
 MAX_IV_PERCENT = Decimal("1000")  # IV expressed as a percent; anything above this is corrupted data, not a spike
 
 
+def is_live_price(ltp: Decimal | None) -> bool:
+    """The one zero rule (ADR-020 Q185 "no fake prices"): a last price is a price only when present and above 0. An
+    exchange sends 0 for "no trade yet"; valuing a leg at 0 shows Current Value 0.00 / P&L -100% (gate 4a D-3)."""
+    return ltp is not None and ltp > 0
+
+
 def _require_nonempty(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string, got {value!r}")

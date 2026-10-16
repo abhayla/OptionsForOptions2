@@ -37,7 +37,7 @@ from ofo.engine.model import (ModelInputs, SpotRefused, data_label, expiry_model
 from ofo.instruments.models import ZERODHA
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.marketdata.forward import ForwardUnavailable, mid_price
-from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
@@ -289,7 +289,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         symbol, kind, strike, _expiry = _contract_fields(snapshot, p.instrument_id)
         q = lm.quote
         ltp = iv = None
-        if q is None:
+        if q is None or (q.ltp is not None and not is_live_price(q.ltp)):  # a last price of 0 is no live price
             label = render_explanation("leg_label_no_quote")
         elif q.health in _UNUSABLE or q.ltp is None:
             label = (render_explanation("leg_label_quote_unusable", health=q.health) if q.ltp is not None

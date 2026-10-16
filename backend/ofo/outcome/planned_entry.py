@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
-from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.rules.inputs import DataHealth
 from ofo.money import PAISE as _CENT
 
@@ -31,7 +31,7 @@ def planned_entry_of(quote: NormalizedQuote | None) -> PlannedEntry | None:
     if quote is None or quote.health is not DataHealth.AVAILABLE:
         return None
     if quote.ltp is not None:
-        if quote.ltp > 0:
+        if is_live_price(quote.ltp):
             return PlannedEntry(quote.ltp.quantize(_CENT, rounding=ROUND_HALF_UP), "ltp")
         return None
     if quote.bid is not None and quote.ask is not None and quote.bid > 0 and quote.ask > 0:
