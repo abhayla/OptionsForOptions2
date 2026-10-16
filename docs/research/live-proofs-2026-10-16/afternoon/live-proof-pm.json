@@ -1,0 +1,377 @@
+{
+ "at": "2026-10-16T13:30:56+05:30",
+ "adr094": [
+  {
+   "exch": "NFO",
+   "expiry": "2026-10-19",
+   "orders": [
+    [
+     "NIFTY26O1923250CE",
+     65,
+     "46.55"
+    ],
+    [
+     "NIFTY26O1922950PE",
+     65,
+     "47.35"
+    ]
+   ],
+   "zerodha_total": "5453.5",
+   "required_total": "6103.50",
+   "per_order_kite": [
+    [
+     "NIFTY26O1923250CE",
+     "2700.75"
+    ],
+    [
+     "NIFTY26O1922950PE",
+     "2752.75"
+    ]
+   ],
+   "verdict_allowed": false,
+   "verdict_available": "671.5",
+   "verdict_required": "6103.50"
+  },
+  {
+   "exch": "BFO",
+   "expiry": "2026-10-22",
+   "orders": [
+    [
+     "SENSEX26O2275000CE",
+     20,
+     "318.95"
+    ],
+    [
+     "SENSEX26O2274400PE",
+     20,
+     "386.25"
+    ]
+   ],
+   "zerodha_total": "13906",
+   "required_total": "14104.00",
+   "per_order_kite": [
+    [
+     "SENSEX26O2275000CE",
+     "6281"
+    ],
+    [
+     "SENSEX26O2274400PE",
+     "7625"
+    ]
+   ],
+   "verdict_allowed": false,
+   "verdict_available": "671.5",
+   "verdict_required": "14104.00"
+  }
+ ],
+ "adr095": {
+  "tolerance": "300",
+  "total_adverse": "292.50",
+  "legs": [
+   {
+    "symbol": "NIFTY26O1922800PE",
+    "side": "BUY",
+    "planned": "21.25",
+    "share": "52.86",
+    "limit": "22.05",
+    "adverse": "52.00",
+    "fills_within": true,
+    "executable_limit": "21.35"
+   },
+   {
+    "symbol": "NIFTY26O1922950PE",
+    "side": "SELL",
+    "planned": "42.7",
+    "share": "106.21",
+    "limit": "41.10",
+    "adverse": "104.00",
+    "fills_within": true,
+    "executable_limit": "42.60"
+   },
+   {
+    "symbol": "NIFTY26O1923250CE",
+    "side": "SELL",
+    "planned": "41.15",
+    "share": "102.36",
+    "limit": "39.60",
+    "adverse": "100.75",
+    "fills_within": true,
+    "executable_limit": "41.45"
+   },
+   {
+    "symbol": "NIFTY26O1923400CE",
+    "side": "BUY",
+    "planned": "15.5",
+    "share": "38.55",
+    "limit": "16.05",
+    "adverse": "35.75",
+    "fills_within": true,
+    "executable_limit": "15.45"
+   }
+  ]
+ },
+ "adr095_inputs": [
+  [
+   "NIFTY26O1922800PE",
+   "BUY",
+   65,
+   "21.25"
+  ],
+  [
+   "NIFTY26O1922950PE",
+   "SELL",
+   65,
+   "42.7"
+  ],
+  [
+   "NIFTY26O1923250CE",
+   "SELL",
+   65,
+   "41.15"
+  ],
+  [
+   "NIFTY26O1923400CE",
+   "BUY",
+   65,
+   "15.5"
+  ]
+ ],
+ "adr095_quotes": {
+  "NFO:NIFTY26O1922800PE": {
+   "last_price": "21.25",
+   "depth": {
+    "buy": [
+     {
+      "price": "21.25",
+      "quantity": 8385,
+      "orders": 18
+     },
+     {
+      "price": "21.2",
+      "quantity": 9555,
+      "orders": 20
+     },
+     {
+      "price": "21.15",
+      "quantity": 9685,
+      "orders": 23
+     },
+     {
+      "price": "21.1",
+      "quantity": 6370,
+      "orders": 14
+     },
+     {
+      "price": "21.05",
+      "quantity": 10075,
+      "orders": 11
+     }
+    ],
+    "sell": [
+     {
+      "price": "21.35",
+      "quantity": 7540,
+      "orders": 20
+     },
+     {
+      "price": "21.4",
+      "quantity": 13910,
+      "orders": 29
+     },
+     {
+      "price": "21.45",
+      "quantity": 11050,
+      "orders": 16
+     },
+     {
+      "price": "21.5",
+      "quantity": 15730,
+      "orders": 17
+     },
+     {
+      "price": "21.55",
+      "quantity": 13585,
+      "orders": 9
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1922950PE": {
+   "last_price": "42.7",
+   "depth": {
+    "buy": [
+     {
+      "price": "42.6",
+      "quantity": 9815,
+      "orders": 13
+     },
+     {
+      "price": "42.55",
+      "quantity": 10530,
+      "orders": 17
+     },
+     {
+      "price": "42.5",
+      "quantity": 18135,
+      "orders": 25
+     },
+     {
+      "price": "42.45",
+      "quantity": 14105,
+      "orders": 15
+     },
+     {
+      "price": "42.4",
+      "quantity": 14430,
+      "orders": 18
+     }
+    ],
+    "sell": [
+     {
+      "price": "42.7",
+      "quantity": 130,
+      "orders": 1
+     },
+     {
+      "price": "42.75",
+      "quantity": 8320,
+      "orders": 9
+     },
+     {
+      "price": "42.8",
+      "quantity": 15145,
+      "orders": 17
+     },
+     {
+      "price": "42.85",
+      "quantity": 12675,
+      "orders": 14
+     },
+     {
+      "price": "42.9",
+      "quantity": 13715,
+      "orders": 11
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1923250CE": {
+   "last_price": "41.15",
+   "depth": {
+    "buy": [
+     {
+      "price": "41.45",
+      "quantity": 1235,
+      "orders": 4
+     },
+     {
+      "price": "41.4",
+      "quantity": 5330,
+      "orders": 13
+     },
+     {
+      "price": "41.35",
+      "quantity": 4940,
+      "orders": 10
+     },
+     {
+      "price": "41.3",
+      "quantity": 8515,
+      "orders": 15
+     },
+     {
+      "price": "41.25",
+      "quantity": 5265,
+      "orders": 10
+     }
+    ],
+    "sell": [
+     {
+      "price": "41.55",
+      "quantity": 1040,
+      "orders": 7
+     },
+     {
+      "price": "41.6",
+      "quantity": 6955,
+      "orders": 13
+     },
+     {
+      "price": "41.65",
+      "quantity": 7995,
+      "orders": 19
+     },
+     {
+      "price": "41.7",
+      "quantity": 4875,
+      "orders": 13
+     },
+     {
+      "price": "41.75",
+      "quantity": 4680,
+      "orders": 10
+     }
+    ]
+   }
+  },
+  "NFO:NIFTY26O1923400CE": {
+   "last_price": "15.5",
+   "depth": {
+    "buy": [
+     {
+      "price": "15.4",
+      "quantity": 325,
+      "orders": 5
+     },
+     {
+      "price": "15.35",
+      "quantity": 4485,
+      "orders": 10
+     },
+     {
+      "price": "15.3",
+      "quantity": 10855,
+      "orders": 25
+     },
+     {
+      "price": "15.25",
+      "quantity": 10725,
+      "orders": 22
+     },
+     {
+      "price": "15.2",
+      "quantity": 3640,
+      "orders": 7
+     }
+    ],
+    "sell": [
+     {
+      "price": "15.45",
+      "quantity": 6435,
+      "orders": 12
+     },
+     {
+      "price": "15.5",
+      "quantity": 9295,
+      "orders": 15
+     },
+     {
+      "price": "15.55",
+      "quantity": 9425,
+      "orders": 19
+     },
+     {
+      "price": "15.6",
+      "quantity": 12480,
+      "orders": 22
+     },
+     {
+      "price": "15.65",
+      "quantity": 9490,
+      "orders": 17
+     }
+    ]
+   }
+  }
+ }
+}
