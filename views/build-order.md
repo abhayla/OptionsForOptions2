@@ -23,7 +23,7 @@ Done (13): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
-| REQ-055 | Margin checks | foundation | normal | blocked: its own work item W-081 blocked: Integrate with the basket after #271 (basket build must take a MarginVerdict from margin_verdict); live-read /user/margins and /margins/basket on the owner's session (equity.net, final.total with consider_positions=true); fix #273; then re-verify AC-1/AC-3/AC-4. |
+| REQ-055 | Margin checks | foundation | normal | next |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | next |
 | REQ-064 | Audit log | foundation | normal | next |
