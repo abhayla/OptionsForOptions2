@@ -442,7 +442,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   216/216, 208/208, 334/336, 271-328 contracts); Greeks against Kite - NOT POSSIBLE (no Kite Greeks), internal check
   PASS with the forward, FAIL with spot; stale flagged - PARTIAL (per-contract ages measured; feed-stale not
   exercised); forced reconnect - PASS (2.2 s); history persisted - PASS; fan-out to 100/1,000 users - NOT RUN (frames
-  recorded for the replay); licence status - recorded in F-23, F-31; next-morning token expiry - running (to be added).
+  recorded for the replay); licence status - recorded in F-23, F-31; next-morning token expiry - measured once in F-37
+  (the token stopped between 04:29:48 and 04:30:48 IST).
 - Afternoon run (2026-10-08 14:41-15:45, 1,603 instruments after the intraday strike additions of F-33): a forced
   disconnect with a 10 s pause at 14:51:02 was flagged stale at 14:51:08 (feed age 6.34 s), data resumed after a
   13.47 s gap, and the feed was flagged live again at 14:51:18 - **the feed-stale flag is now proven live (PASS)**.
@@ -553,3 +554,18 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   order") applies to BFO legs.
 - Meaning: ADR-081's "exchange's published freeze-quantity file" is, for NSE, this contract file - no decision change.
 - Bears on: ADR-081, REQ-054 AC-4, F-04. Status: **measured** (built by W-076).
+
+## F-37 - The owner's Kite access token stopped working between 04:29:48 and 04:30:48 IST the next morning, not "around 6 AM"
+- Measured 2026-10-15 15:50 -> 2026-10-16 04:30 IST by `docs/research/kite-proof-2026-10-07/kite_token_watch.py`
+  (token from the encrypted daily cache, `/quote/ltp?i=NSE:NIFTY+50` every 15 minutes, every minute from 04:00 to 09:00
+  IST). Result file `docs/research/kite-proof-2026-10-07/token-watch-2026-10-15.json`: 74 probes, 0 network errors,
+  last success 2026-10-16T04:29:48+05:30, first failure 2026-10-16T04:30:48+05:30 with HTTP 403 `TokenException`.
+  One night, one account (the owner's app). Level P1.
+- The common figure (the `zerodha-expert` skill and `legacy-reuse.md`: "token expiry ~6 AM") is about 1.5 hours late
+  for this account. A job that runs between about 04:30 and the morning login with yesterday's token gets a 403.
+- Meaning: ADR-020's "expires every day (morning)" holds; the measured cut-off is about 04:30 IST. Anything planned
+  for the night with the day's token (the expiry-day settlement read, Q205's reconciliation after the session expires)
+  must finish before about 04:30 or treat a 403 as "session expired" (F-07: `TokenException` (403) means the session
+  expired), never as a broker error. Not yet measured: whether the cut-off is the same every day and for other
+  accounts (one night is one sample; repeat the watcher on two more nights before relying on the minute).
+- Bears on: ADR-020, REQ-060 (Q205), REQ-015, F-32. Status: **measured once**; no decision change.

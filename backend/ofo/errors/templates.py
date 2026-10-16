@@ -23,7 +23,7 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
     RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
@@ -272,6 +272,28 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "only close or reduce positions this strategy holds.",
           "Sending it would add risk instead of removing it.", "This exit.",
           "Remove the order that opens or adds to a position, then try the exit again."),
+    _gate("gate_exit_product_mismatch", _SV, 109,
+          "{leg} is an exit whose product differs from the product of the position it closes, or the position's "
+          "product could not be read. Execution is blocked and no order has been submitted.",
+          "Zerodha would treat an order in another product as a new position, not as closing this one.",
+          "This exit.",
+          "Refresh the strategy's positions from Zerodha, then try the exit again.", {"leg": LegRef}),
+    _gate("gate_price_band_unknown", _MD, 121,
+          "We could not read today's price band for {leg}, so its price cannot be checked. Execution is blocked and "
+          "no order has been submitted.",
+          "An order priced outside the band would be rejected by Zerodha.", "This leg.",
+          "Refresh market data, then try again.", {"leg": LegRef}),
+    _gate("gate_price_not_known", _MD, 122,
+          "The price for {leg} is not known yet, so it cannot be checked against today's price band. Execution is "
+          "blocked and no order has been submitted.",
+          "An order priced outside the band would be rejected by Zerodha.", "This leg.",
+          "Set the order price for this leg, then try again.", {"leg": LegRef}),
+    _gate("gate_price_outside_circuit", _MD, 123,
+          "The price {limit} for {leg} is outside today's price band for this contract ({lower} to {upper}). The "
+          "price has not been changed.",
+          "Zerodha would reject an order priced outside the band.", "This leg.",
+          "Choose a price inside the band, or remove the leg, then try again.",
+          {"leg": LegRef, "limit": Money, "lower": Money, "upper": Money}),
     _gate("gate_market_unconfirmed", _MD, 101,
           "We could not confirm that the market is open. Execution is paused until it is confirmed.",
           "No order can be placed while the market's status is unknown.", _EXEC,
@@ -480,6 +502,10 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The broker sink did not resolve this request, or it was already sent.",
           _SEND_IMPACT + " Each request is sent once at most.", _SEND_BLOCKED,
           "Check the strategy's orders in Zerodha before preparing anything again."),
+    _gate("send_entry_product_not_nrml", _SV, 211,
+          "An entry or adjustment order carries a product other than NRML.",
+          _SEND_IMPACT + " Every entry and adjustment order is NRML; only an exit takes its position's product.",
+          _SEND_BLOCKED, _SEND_REPREPARE),
 )
 
 
@@ -532,6 +558,72 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A recorded standalone position changed on {contracts} contract(s).",
           "The recorded standalone quantity no longer matches Zerodha.", _REC_NONE_BLOCKED,
           "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
+    # W-083 (REQ-061, ADR-084): grouping the positions already open at Zerodha. All pending owner read.
+    _gate("grouping_unknown_contract", _RM, 210,
+          "Zerodha shows a position on {contracts} contract(s) that are not in this platform's contract list.",
+          "This position cannot be grouped or added to a strategy.", "Adding this position to a strategy.",
+          "It stays visible here. Refresh the contract list and connect again to try once more.", _REC_SLOT),
+    _gate("grouping_not_lot_multiple", _RM, 211,
+          "Zerodha shows a quantity on {contracts} contract(s) that is not a whole number of lots.",
+          "This position cannot be added to a strategy, because a strategy leg is a whole number of lots.",
+          "Adding this position to a strategy.", "It stays visible here. Check the quantity in Zerodha.", _REC_SLOT),
+    _gate("grouping_move_refused", _RM, 212,
+          "This position cannot be moved there: the group or strategy is on a different underlying.",
+          "The position stays where it was.", "This move only.",
+          "Choose a group or strategy on the same underlying, or leave the position standalone."),
+    _gate("grouping_choice_unavailable", _RM, 213,
+          "That choice is not available: the position, group or strategy is not in the list of open positions, "
+          "or the group was already adopted.",
+          "Nothing was changed.", "This choice only.", "Reload your open positions and choose again."),
+    _gate("grouping_entry_price_invalid", _RM, 214,
+          "The entry price is not valid: it must be above zero with at most two decimal places.",
+          "The leg keeps its previous entry price.", "Adopting this leg with that price.",
+          "Enter a price above zero with at most two decimal places."),
+    _gate("grouping_differs_from_strategy", _RM, 215,
+          "Zerodha's quantity or side on {contracts} contract(s) differs from the strategy that holds it.",
+          "This position is shown but not grouped, because it does not match the strategy.",
+          "Adding this position to a new strategy.",
+          "Check the position and the strategy against Zerodha, or use the reconciliation screen.", _REC_SLOT),
+    _gate("grouping_entry_needed", _RM, 216,
+          "Zerodha's average price on {contracts} leg(s) has more than two decimal places.",
+          "A strategy leg holds an entry price of at most two decimal places, so it cannot hold that price as it is.",
+          "Adopting this group until every leg has an entry price.",
+          "Enter the entry price for each of those legs with at most two decimal places, then confirm again.",
+          _REC_SLOT),
+    _gate("grouping_unknown_product", _RM, 217,
+          "Zerodha shows a product type on {contracts} position(s) that this platform does not recognise.",
+          "This position cannot be added to a strategy.", "Adding this position to a strategy.",
+          "It stays visible here. Check the product type in Zerodha.", _REC_SLOT),
+    _gate("grouping_not_available", _RM, 218,
+          "Adding a position to an existing strategy is not available yet.",
+          "The position stays where it was and is still shown.", "This move only.",
+          "Create a new strategy from the position, or leave it standalone."),
+    _gate("grouping_duplicate_row", _RM, 223,
+          "Zerodha sent a second row for {contracts} contract(s) and product that it already showed.",
+          "The second row is shown but not grouped, because Zerodha lists each contract and product once.",
+          "Adding this position to a strategy.",
+          "It stays visible here. Check the position in Zerodha, then connect again.", _REC_SLOT),
+    # W-085 (ADR-083 part 1): expiry settlement notes (renumbered after W-083's 210-218).
+    _gate("recon_awaiting_settlement", _RM, 219,
+          "{contracts} expired contract(s) held here are not at Zerodha and have no settlement price yet.",
+          "The strategy's P&L for the expired leg is not final until its settlement price arrives.",
+          _REC_NONE_BLOCKED,
+          "Wait for the exchange settlement price; the leg is then closed in the platform. No strategy is blocked.",
+          _REC_SLOT),
+    _gate("recon_expired_still_at_broker", _RM, 220,
+          "Zerodha still lists {contracts} expired contract(s) that the platform has already settled.",
+          "None: the platform closed the expired leg at its settlement price.", _REC_NONE_BLOCKED,
+          "Zerodha may remove the expired position the next morning; check again then. No strategy is blocked.",
+          _REC_SLOT),
+    # Issue #279 items 2 and 3 (numbers follow W-085's 219-220).
+    _gate("recon_expired_standalone_retired", _RM, 221,
+          "{contracts} expired contract(s) recorded as standalone positions are no longer at Zerodha.",
+          "None: no strategy holds them and no leg will close; the standalone record is retired.",
+          _REC_NONE_BLOCKED,
+          "Nothing to do. This note is shown once, then the standalone record is removed.", _REC_SLOT),
+    _gate("recon_expired_quantity_differs", _RM, 222,
+          "Zerodha still shows a quantity on {contracts} expired contract(s) that differs from the platform's record.",
+          _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
 )
 
 
@@ -614,6 +706,18 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("partial_mismatch_unresolved", _RM, 308, "This strategy has an unresolved reconciliation mismatch.",
           "The strategy's position cannot be trusted until it is reconciled.", _MISMATCH_BLOCKED,
           "Reconcile this strategy first, then choose again."),
+    _gate("partial_mismatch_product_ambiguous", _RM, 309,
+          "{contract}: Zerodha shows this contract in more than one product and the platform's own orders do not "
+          "say which one belongs to this strategy.",
+          "The platform cannot tell which position this strategy would reduce.", _MISMATCH_BLOCKED,
+          "Exit the position in Zerodha yourself, then refresh this strategy from Zerodha and choose again.",
+          _PCONTRACT),
+    _gate("partial_mismatch_other_product_only", _RM, 310,
+          "{contract}: the strategy's own position (the product its fills carry) is not open at Zerodha; Zerodha "
+          "shows a position in another product on this contract that the platform did not place.",
+          "The platform cannot treat that other position as this strategy's.", _MISMATCH_BLOCKED,
+          "Check the position in Zerodha; the platform will not close the other position for this strategy.",
+          _PCONTRACT),
 )
 
 # --- Round 9 part 6: the API boundary (backend/ofo_app/errors.py). Any exception that is not `UserFacing` shows the
@@ -736,8 +840,21 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"contract": ContractSymbol}),
 )
 
+# --- W-081 (REQ-055 AC-1/AC-4): the margin check before the Kite basket is built (ofo.execution.margin_gate). Both
+# figures are Zerodha's (`available` from the funds read, `required` from the basket margin's final total); amounts
+# print with the engine's rupee formatter. New: awaiting the owner's read.
+_MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("margin_basket_insufficient", _MG, 201,
+          "Zerodha says this strategy needs {required} of margin; {available} is available in your account.",
+          "Zerodha would reject these orders for insufficient margin, so the basket was not built.",
+          "Building the Zerodha basket for this strategy.",
+          "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again.",
+          {"available": DisplayRupees, "required": DisplayRupees}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
-              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES)
+              + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
+              + _MARGIN_GATE_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

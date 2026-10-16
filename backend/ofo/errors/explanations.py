@@ -801,6 +801,30 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("flag_charges_unavailable", "values_seen",
                         "A charges estimate is not available for this strategy."),
     ExplanationTemplate("flag_stale_on_exit", "values_seen", "Prices shown may be stale — confirm to continue."),
+    ExplanationTemplate("flag_price_band_unknown_on_exit", "values_seen",
+                        "We could not check this exit's price against today's price band — confirm to continue."),
+    ExplanationTemplate("flag_expiry_day_entry", "values_seen",
+                        "{symbol} expires today. Bought on its expiry day it gives no margin offset against a "
+                        "short leg that expires later.", {"symbol": LegRef}),
+    ExplanationTemplate("flag_expiry_day_short", "values_seen",
+                        "{symbol} is a short leg that expires today. Selling it on its expiry day carries extra "
+                        "expiry-day margin (an extra 2% on short options) and no margin offset against a later-expiry "
+                        "leg.", {"symbol": LegRef}),
+    ExplanationTemplate("flag_expiry_day_future", "values_seen",
+                        "{symbol} is a future that expires today. A position taken on its expiry day gets no margin "
+                        "offset against a leg that expires later. Futures expiry is cash-settled.", {"symbol": LegRef}),
+    ExplanationTemplate("confirm_expiry_day_short", "values_seen",
+                        "{symbols}: short leg(s) that expire today. Selling on the expiry day carries extra "
+                        "expiry-day margin (an extra 2% on short options) and no margin offset against a later-expiry "
+                        "leg.", {"symbols": LegRefs}),
+    ExplanationTemplate("flag_expiry_day_future_short", "values_seen",
+                        "{symbol} is a short future that expires today. Selling it on its expiry day gets no margin "
+                        "offset against a leg that expires later. Futures expiry is cash-settled.",
+                        {"symbol": LegRef}),
+    ExplanationTemplate("confirm_expiry_day_short_future", "values_seen",
+                        "{symbols}: short future(s) that expire today, with no margin offset against a later-expiry "
+                        "leg. Futures expiry is cash-settled.", {"symbols": LegRefs}),
+    ExplanationTemplate("confirm_to_continue", "values_seen", "Confirm to continue."),
     # --- round 9 part 5: platform wording that was built inline (admin, estimate, review, rules, labels) -----------
     ExplanationTemplate("label_client_id", "values_seen", "Client ID"),
     ExplanationTemplate("client_id_not_valid", "values_seen",

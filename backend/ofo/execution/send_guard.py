@@ -31,6 +31,7 @@ from decimal import Decimal
 from typing import Final, Protocol
 
 from ofo.engine import Action
+from ofo.engine.product import Product
 from ofo.errors import UserFacingError, display_text, render
 from ofo.instruments import ZERODHA, Catalogue, MissingBrokerRef
 from ofo.orders import TERMINAL_STATES, Order, OrderBook
@@ -78,6 +79,7 @@ class _BrokerRequest:
     quantity: int
     price: Decimal
     client_tag: str
+    product: Product = Product.NRML  # ADR-080: copied from the order, which is NRML or its position's product
     _mint: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -118,6 +120,8 @@ def allowed_or_refuse(
             raise _refuse("send_contract_not_a_leg", version=version.number)
         if (order.side is leg[1]) == reducing:
             raise _refuse("send_side_not_allowed")
+        if not reducing and order.product is not Product.NRML:  # ADR-080, structural (run-discipline B8)
+            raise _refuse("send_entry_product_not_nrml")
         wanted[order.contract] = wanted.get(order.contract, 0) + order.quantity
     views = book.views_for(strategy_id)
     for contract, units in wanted.items():
@@ -195,7 +199,8 @@ class _BrokerSink:
                 if not isinstance(order.client_tag, str):
                     raise _refuse("send_client_tag_missing")
                 requests.append(_BrokerRequest(strategy_id, f"v{version.number}", order.leg_ref, symbol, side,
-                                               one.quantity, order.price, order.client_tag, _mint=_MINT))
+                                               one.quantity, order.price, order.client_tag, product=order.product,
+                                               _mint=_MINT))
             by_contract: dict[str, list[Order]] = {}
             for one in derived:
                 by_contract.setdefault(one.contract, []).append(one)

@@ -1,0 +1,41 @@
+{
+ "id": "pr-text-closes-issue-unintended",
+ "scope": "generic",
+ "class": "A code host that closes issues from free text (GitHub: a closing keyword - close/fix/resolve and their forms, optional colon - directly before #N in a PR body or in a commit message reaching the default branch) closes a whole issue whenever an author writes a qualified reference ('Fix #263 items 1-3') or ordinary prose ('the clash with #275 is resolved: #275 moved'); without a check on the text, every partial fix and every prose mention is a possible wrong close, found only later from the issue list.",
+ "mechanism": "PR #283 body line 1 '**Fix #263 items 1-3 ...**' closed #263 (item 4 open); PR #284 line 1 '**Fix #279 items 2-3 ...**' closed #279 (items 1 and 4 open) and 'The code clash with #275 is resolved: #275 moved to 223' closed #275 before its own fix merged. A memory (pr-body-close-keywords, 2026-09-29) already described the class; prose memory did not stop it.",
+ "first_seen": {
+  "date": "2026-09-29",
+  "where": "W-028 PR, '(it closes #43 items 1 to 3)'",
+  "evidence": "memory pr-body-close-keywords: #43 auto-closed with item 4 open, reopened by hand"
+ },
+ "fix": "Instance: #263, #275 and #279 were reopened with comments on 2026-10-16. Class: scripts/orchestrator/pr_close_check.py plus .github/workflows/pr-close-check.yml (PR #289, merged 2026-10-16), which fails a PR on any closing reference that is not a whole body line 'Fixes #N', and on any closing reference in a commit message; a CLAUDE.md hard rule.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "scripts/orchestrator/pr_close_check.py",
+   "tests/test_pr_close_check.py",
+   ".github/workflows/pr-close-check.yml (job close-keywords)"
+  ],
+  "note": "Guarded since PR #289: the job ran on its own PR and passed. Real PR bodies #283 and #284 are fixtures and fail on the lines that closed issues. Does not cover issues closed by hand, or text edited after merge. Before #289 the only detector was coverage.py listing closed issues, which was late and accidental."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-070.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-09-29",
+   "where": "W-028 PR",
+   "evidence": "#43 closed with item 4 open"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "PR #283",
+   "evidence": "#263 closed with item 4 open; gh issue view 263 closedByPullRequestsReferences = 283"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "PR #284",
+   "evidence": "#279 (items 1, 4 open) and #275 (fix unmerged) closed; closedByPullRequestsReferences = 284"
+  }
+ ]
+}

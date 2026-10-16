@@ -1,4 +1,4 @@
-﻿# Builder brief: W-074 charges rate table and calculator (Tier A)
+# Builder brief: W-074 charges rate table and calculator (Tier A)
 
 Core: the rate table, applied to the real orders in Kite's 2026-10-15 `/charges/orders` replies, reproduces every
 component Kite returned to 4 decimals (stamp duty excepted, see rule 5).

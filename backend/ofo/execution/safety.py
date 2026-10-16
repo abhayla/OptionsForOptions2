@@ -19,7 +19,9 @@ from enum import Enum
 from fractions import Fraction
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
+from ofo.execution.price_check import circuit_block
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
     REQUIRED_DATA_INPUTS,
@@ -27,6 +29,7 @@ from ofo.execution.context import (
     ExecutionAction,
     ExecutionContext,
     active_legs_hash,
+    product_key,
 )
 from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
@@ -58,6 +61,7 @@ class CheckCode(str, Enum):
     DUPLICATE_LEG = "DUPLICATE_LEG"
     MARGIN_INSUFFICIENT = "MARGIN_INSUFFICIENT"
     EXIT_NOT_REDUCE_ONLY = "EXIT_NOT_REDUCE_ONLY"
+    PRICE_OUTSIDE_BAND = "PRICE_OUTSIDE_BAND"
     ACTIVE_LEGS_UNVERIFIED = "ACTIVE_LEGS_UNVERIFIED"
     STRATEGY_MISMATCH = "STRATEGY_MISMATCH"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -73,6 +77,7 @@ _CONTRACT_CHECKS: tuple[CheckCode, ...] = (
     CheckCode.CONTRACT_NOT_LISTED,
     CheckCode.CONTRACT_NOT_ELIGIBLE,
     CheckCode.QUANTITY_INVALID,
+    CheckCode.PRICE_OUTSIDE_BAND,
 )
 
 
@@ -83,6 +88,10 @@ class FlagCode(str, Enum):
     UNLIMITED_LOSS = "UNLIMITED_LOSS"
     CHARGES_UNAVAILABLE = "CHARGES_UNAVAILABLE"
     DATA_STALE_ON_EXIT = "DATA_STALE_ON_EXIT"
+    PRICE_BAND_UNKNOWN_ON_EXIT = "PRICE_BAND_UNKNOWN_ON_EXIT"
+    EXPIRY_DAY_ENTRY = "EXPIRY_DAY_ENTRY"  # W-086: an entry/adjustment leg whose contract expires today (warn)
+    EXPIRY_DAY_SHORT = "EXPIRY_DAY_SHORT"  # W-086: ... and the leg is a short OPTION (explicit acknowledgement)
+    EXPIRY_DAY_SHORT_FUTURE = "EXPIRY_DAY_SHORT_FUTURE"  # ... and the leg is a short FUTURE (acknowledgement, no 2%)
 
 
 @dataclass(frozen=True)
@@ -122,6 +131,7 @@ def _fail(code: CheckCode, template_id: str, *, leg_number: int | None = None,
 class Flag:
     code: FlagCode
     message: str
+    contracts: tuple[str, ...] = ()  # the trading symbols the flag is about (a confirmation names them all once)
 
     def __post_init__(self) -> None:
         if type(self.message) is ExplanationText:  # a render_explanation() line: keep and check its plain text
@@ -457,6 +467,7 @@ EXIT_NOT_REQUIRED: frozenset[CheckCode] = frozenset({
     CheckCode.ENTITLEMENT_REQUIRED,
 })
 STALE_ON_EXIT = render_explanation("flag_stale_on_exit")
+BAND_UNKNOWN_ON_EXIT = render_explanation("flag_price_band_unknown_on_exit")
 
 
 def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
@@ -468,7 +479,92 @@ def _exit_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | N
     for (key, side), units in _positions(strategy.legs).items():
         if held.get((key, opposite[side]), 0) < units:
             return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_adds_position")
+    return _exit_product_failure(strategy, ctx)
+
+
+def _exit_product_failure(strategy: Strategy, ctx: ExecutionContext) -> CheckFailure | None:
+    """ADR-080: an exit takes the product of the position it reduces. A leg whose exit product (default NRML) differs
+    from the held position's product, or whose position product is unknown, blocks. Not supplied = not checked."""
+    if ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        return None  # (an unsupported underlying is already blocked)
+    if ctx.active_products is None or ctx.exit_products is None:  # like missing active legs: never skip
+        return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_unverified")
+    for number, leg in enumerate(strategy.legs, start=1):
+        key = product_key(leg)
+        held = ctx.active_products.get(key)
+        if held is None or held is not ctx.exit_products.get(key):  # an unread product on either side blocks
+            return _fail(CheckCode.EXIT_NOT_REDUCE_ONLY, "gate_exit_product_mismatch", leg_number=number,
+                         leg=LegValue(number, leg, ctx.underlying))
     return None
+
+
+def _price_failures(strategy: Strategy, ctx: ExecutionContext) -> tuple[list[CheckFailure], bool]:
+    """ADR-080: a leg priced outside the day's circuit band is blocked with the reason, never clamped; a leg whose
+    band could not be read is blocked too, for an entry or adjustment. An EXIT is only blocked by a price outside a
+    KNOWN band (Zerodha would reject it, Q239); a missing band, or a leg priced 0/unknown (a stored leg), is not
+    compared and is reported as the second value so the caller warns instead (REQ-059 exit carve-out)."""
+    out: list[CheckFailure] = []
+    unchecked = False
+    is_exit = ctx.action is ExecutionAction.EXIT
+    for number, leg in enumerate(strategy.legs, start=1):
+        value = LegValue(number, leg, ctx.underlying)
+        band = None if ctx.price_bands is None else ctx.price_bands.get(product_key(leg))
+        if is_exit and (band is None or leg.entry_price is None or leg.entry_price <= 0):
+            unchecked = True
+        elif ctx.action is ExecutionAction.ADJUSTMENT and (
+            ctx.order_prices is None or ctx.order_prices.get(product_key(leg)) is None
+        ):  # the leg holds a placeholder: compare the ORDER's price or nothing, never the placeholder
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_not_known", leg_number=number, leg=value))
+        elif band is None:
+            out.append(_fail(CheckCode.PRICE_OUTSIDE_BAND, "gate_price_band_unknown", leg_number=number, leg=value))
+        else:
+            price = ctx.order_prices[product_key(leg)] if ctx.action is ExecutionAction.ADJUSTMENT else leg.entry_price
+            if price is None:
+                continue
+            blocked = circuit_block(price, band[0], band[1], value)
+            if blocked is not None:
+                out.append(CheckFailure(CheckCode.PRICE_OUTSIDE_BAND, blocked, leg_number=number))
+    return out, unchecked
+
+
+def _expiry_day_flags(
+    strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, held_legs: tuple[Leg, ...] | None
+) -> list[Flag]:
+    """W-086 (ADR-083 decision 2, REQ-056 AC-6, F-20): a leg whose contract expires TODAY (IST date of the context
+    clock) is an elevated warning naming the extra expiry-day margin; a SELL such leg is exceptional and needs the
+    user's explicit acknowledgement. An EXIT is never flagged (REQ-059 exit carve-out). A leg whose contract cannot be
+    resolved to one Zerodha symbol is already blocked by its own check, so it is skipped here.
+
+    An ADJUSTMENT's strategy is the whole proposed version, so a held leg that carries over is not an entry: only a
+    contract that is NEW, GROWS on the same side or FLIPS side is flagged (compared with ``held_legs``, the VERIFIED
+    held legs). Held legs missing or unverified (None): every expiring leg is flagged (fail safe)."""
+    if ctx.action is ExecutionAction.EXIT or ctx.underlying not in SUPPORTED_UNDERLYINGS:
+        return []
+    today = ctx.as_of.astimezone(IST).date()
+    index = _index(catalogue, ctx.underlying)
+    held = _positions(held_legs) if ctx.action is ExecutionAction.ADJUSTMENT and held_legs is not None else {}
+    out: list[Flag] = []
+    for leg in strategy.legs:
+        if leg.expiry != today:
+            continue
+        if leg.quantity <= held.get((_key(leg.expiry, leg.instrument.value, leg.strike), leg.action.value), 0):
+            continue  # a held position kept or reduced: not an entry
+        matches = index.get(_key(leg.expiry, leg.instrument.value, leg.strike), [])
+        if len(matches) != 1 or not matches[0].has_ref(ZERODHA):
+            continue
+        symbol = matches[0].ref(ZERODHA).broker_symbol
+        if leg.instrument is Instrument.FUT:  # F-20: the extra 2% is for short OPTIONS only
+            if leg.action is Action.SELL:  # ADR-083 decision 2: any SHORT leg expiring that day needs acknowledgement
+                out.append(Flag(FlagCode.EXPIRY_DAY_SHORT_FUTURE,
+                                render_explanation("flag_expiry_day_future_short", symbol=symbol), (symbol,)))
+            else:
+                out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_future", symbol=symbol)))
+        elif leg.action is Action.SELL:
+            out.append(Flag(FlagCode.EXPIRY_DAY_SHORT, render_explanation("flag_expiry_day_short", symbol=symbol),
+                            (symbol,)))
+        else:
+            out.append(Flag(FlagCode.EXPIRY_DAY_ENTRY, render_explanation("flag_expiry_day_entry", symbol=symbol)))
+    return out
 
 
 def _active_legs_failure(ctx: ExecutionContext, strategy_id: str) -> CheckFailure | None:
@@ -500,13 +596,19 @@ def _run_checks(
     if strategy_id != ctx.strategy_id:
         failures.insert(0, _fail(CheckCode.STRATEGY_MISMATCH, "gate_strategy_mismatch"))
     not_checked: tuple[CheckCode, ...] = ()
+    band_unchecked = False
     if ctx.underlying not in SUPPORTED_UNDERLYINGS:
         failures.insert(0, _fail(CheckCode.UNDERLYING_UNSUPPORTED, "gate_underlying_unsupported",
                                  symbol=ctx.underlying))
         not_checked = _CONTRACT_CHECKS + (CheckCode.DUPLICATE_LEG,)
     else:
         failures.extend(_leg_failures(strategy, ctx, catalogue, eligibility))
+        price_failures, band_unchecked = _price_failures(strategy, ctx)
+        failures.extend(price_failures)
     flags, max_loss = _risk_flags(strategy, ctx)
+    flags.extend(_expiry_day_flags(strategy, ctx, catalogue, trusted.active_legs))
+    if band_unchecked:  # an EXIT whose price could not be checked: a warning the user confirms, never a block
+        flags.append(Flag(FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, BAND_UNKNOWN_ON_EXIT))
 
     not_applicable: frozenset[CheckCode] = frozenset()
     if ctx.action is ExecutionAction.EXIT:
@@ -514,6 +616,8 @@ def _run_checks(
         if any(f.code is CheckCode.DATA_UNHEALTHY for f in failures):
             flags.append(Flag(FlagCode.DATA_STALE_ON_EXIT, STALE_ON_EXIT))
         failures = [f for f in failures if f.code not in not_applicable]
+        if band_unchecked and not any(f.code is CheckCode.PRICE_OUTSIDE_BAND for f in failures):
+            not_checked = not_checked + (CheckCode.PRICE_OUTSIDE_BAND,)  # warned, not verified: never "passed"
         if unverified is None:
             exit_failure = _exit_failure(strategy, ctx)
             if exit_failure is not None:
@@ -530,6 +634,21 @@ def _run_checks(
     failed = {f.code for f in failures}
     passed = tuple(c for c in CheckCode if c not in failed and c not in not_checked and c not in not_applicable)
     return failures, passed, not_checked, not_applicable - {CheckCode.INTERNAL_ERROR}, flags, max_loss
+
+
+def _confirmation_text(flags: list[Flag]) -> str:
+    stale = any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
+    band = any(f.code is FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT for f in flags)
+    texts = ([str.__str__(STALE_ON_EXIT)] if stale else []) + ([str.__str__(BAND_UNKNOWN_ON_EXIT)] if band else [])
+    options = tuple(c for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT for c in f.contracts)
+    futures = tuple(c for f in flags if f.code is FlagCode.EXPIRY_DAY_SHORT_FUTURE for c in f.contracts)
+    if options:  # one sentence naming every expiring short option, one for short futures, one "Confirm to continue."
+        texts.append(str.__str__(render_explanation("confirm_expiry_day_short", symbols=options)))
+    if futures:
+        texts.append(str.__str__(render_explanation("confirm_expiry_day_short_future", symbols=futures)))
+    if options or futures:
+        texts.append(str.__str__(render_explanation("confirm_to_continue")))
+    return " ".join(texts)
 
 
 def check_pre_execution(
@@ -559,7 +678,10 @@ def check_pre_execution(
         failures = [_fail(CheckCode.INTERNAL_ERROR, "gate_internal_error")]
         passed, not_checked, not_applicable, flags, max_loss = (), (), frozenset(), [], None
 
-    needs_confirmation = not failures and any(f.code is FlagCode.DATA_STALE_ON_EXIT for f in flags)
+    needs_confirmation = not failures and any(
+        f.code in (FlagCode.DATA_STALE_ON_EXIT, FlagCode.PRICE_BAND_UNKNOWN_ON_EXIT, FlagCode.EXPIRY_DAY_SHORT,
+                   FlagCode.EXPIRY_DAY_SHORT_FUTURE)
+        for f in flags)
     record = None
     if failures:
         record = BlockedExecution(
@@ -571,7 +693,7 @@ def check_pre_execution(
         failures=tuple(failures), passed=passed, not_checked=not_checked,
         not_applicable=tuple(c for c in CheckCode if c in not_applicable), flags=tuple(flags), max_loss=max_loss,
         margin_required=context.margin_required, charges_estimate=context.charges_estimate, blocked_execution=record,
-        requires_confirmation=needs_confirmation, confirmation_text=STALE_ON_EXIT if needs_confirmation else None,
+        requires_confirmation=needs_confirmation, confirmation_text=_confirmation_text(flags) if needs_confirmation else None,
     )
     if result.blocked:
         logger.warning(

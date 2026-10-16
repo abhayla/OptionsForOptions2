@@ -20,6 +20,7 @@ from decimal import Decimal as D
 from unittest import mock
 
 import pytest
+from collections.abc import Mapping
 
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.strategy import Strategy
@@ -165,6 +166,32 @@ def _make_eligibility(catalogue: Catalogue) -> EligibilityRegistry:
     return registry
 
 
+class _AnyBand(Mapping):
+    """A circuit band for every leg (test default; the gate blocks a leg whose band is missing)."""
+
+    def __getitem__(self, key):  # noqa: ANN001, ANN204
+        return (D("0.05"), D("1000000"))
+
+    def __iter__(self):  # noqa: ANN204
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+class _AnyPrice(Mapping):
+    """The adjustment orders' prices (test default): a real, in-band 50.00 for every leg."""
+
+    def __getitem__(self, key):  # noqa: ANN001, ANN204
+        return D("50.00")
+
+    def __iter__(self):  # noqa: ANN204
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
 def _context(version_number: int, **overrides) -> ExecutionContext:
     base = ExecutionContext(
         strategy_id=STRATEGY_ID, version_id=f"v{version_number}", actor="user:U-1", underlying="NIFTY",
@@ -172,7 +199,8 @@ def _context(version_number: int, **overrides) -> ExecutionContext:
         session_valid=True, pro_entitled=True, version_state=VersionState.PROPOSED, rules_valid=True,
         dependencies_satisfied=True, data_health={d: DataHealth.HEALTHY for d in DataInput},
         margin_available=D("500000.00"), margin_required=D("50000.00"),
-        reconciliation_blocked_strategy_ids=frozenset(), charges_estimate=D("236.40"),
+        reconciliation_blocked_strategy_ids=frozenset(), charges_estimate=D("236.40"), price_bands=_AnyBand(),
+        order_prices=_AnyPrice(),
     )
     return dataclasses.replace(base, **overrides)
 
