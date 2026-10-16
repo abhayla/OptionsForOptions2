@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from http import HTTPStatus
+from typing import ClassVar
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -41,6 +43,36 @@ def socket_tasks() -> list[asyncio.Task]:
     return [t for t in asyncio.all_tasks() if t.get_name() == "kite-socket" and not t.done()]
 
 
+class WorldSocket(FakeSocket):
+    """Runs until stopped, or, when built with an ``ends`` event, ends with "session ended" once it is set.
+    Records the fingerprint of the token it was built with and the socket tasks still alive at its birth."""
+
+    world: ClassVar[dict] = {}  # the kite_world fixture binds its world here
+
+    def __init__(self, prov, *, api_key, access_token, clock, base_url):
+        super().__init__(prov, result="stopped")
+        self.fingerprint = live_market.token_fingerprint(access_token)
+        self.alive_at_birth = socket_tasks()
+        self.ends = self.world["ends"].pop(0) if self.world["ends"] else None
+        self.world["sockets"].append(self)
+
+    async def run(self):
+        if self.ends is None:
+            return await super().run()
+        await self.ends.wait()
+        self.provider.on_session_ended(VALUATION)
+        return "session ended"
+
+
+async def stop_all(world) -> None:
+    """A failed test must not leave a socket task for the next one to count."""
+    for sock in world["sockets"]:
+        sock.stopped = True
+    for task in socket_tasks():
+        task.cancel()
+    await settle()
+
+
 @pytest.fixture
 async def kite_world(monkeypatch):
     """The stored-session world: ``world["token"]`` is what the token store answers (None = no session); every
@@ -64,42 +96,21 @@ async def kite_world(monkeypatch):
     async def load(conn):
         return Catalogue()
 
-    class Sock(FakeSocket):
-        """Runs until stopped, or, when built with an ``ends`` event, ends with "session ended" once it is set.
-        Records the fingerprint of the token it was built with and the socket tasks still alive at its birth."""
-
-        def __init__(self, prov, *, api_key, access_token, clock, base_url):
-            super().__init__(prov, result="stopped")
-            self.fingerprint = live_market.token_fingerprint(access_token)
-            self.alive_at_birth = socket_tasks()
-            self.ends = world["ends"].pop(0) if world["ends"] else None
-            world["sockets"].append(self)
-
-        async def run(self):
-            if self.ends is None:
-                return await super().run()
-            await self.ends.wait()
-            self.provider.on_session_ended(VALUATION)
-            return "session ended"
-
     async def stored(*a, **k):
         world["stored"] = True
 
     monkeypatch.setattr(db, "get_engine", _Engine)
     monkeypatch.setattr(broker_token_store, "access_token_for", token)
     monkeypatch.setattr(catalogue_store, "load_catalogue", load)
-    monkeypatch.setattr(kite_ws, "KiteSocket", Sock)
+    monkeypatch.setattr(WorldSocket, "world", world)
+    monkeypatch.setattr(kite_ws, "KiteSocket", WorldSocket)
     monkeypatch.setattr(broker_routes, "store_session", stored)
     monkeypatch.setenv("DATABASE_URL", DB)
     monkeypatch.setenv("KITE_WS_URL", "ws://127.0.0.1:1/fake-kite")
     monkeypatch.delenv("APP_ENV", raising=False)
     get_settings.cache_clear()
     yield world
-    for sock in world["sockets"]:  # a failed test must not leave a socket task for the next one to count
-        sock.stopped = True
-    for task in socket_tasks():
-        task.cancel()
-    await settle()
+    await stop_all(world)
     live_market.set_current(None)
     get_settings.cache_clear()
 
@@ -111,7 +122,7 @@ async def login(app) -> object:
 
 
 def connected(response) -> None:
-    assert response.status_code == 302 and response.headers["location"] == CONNECTED
+    assert response.status_code == HTTPStatus.FOUND and response.headers["location"] == CONNECTED
 
 
 async def test_a_login_after_start_brings_not_connected_to_live_and_shutdown_stops_it(kite_world, monkeypatch,
@@ -246,6 +257,7 @@ async def test_a_login_after_shutdown_starts_nothing(kite_world, monkeypatch):
 
 # ---- round 2: "running" is not "running on the stored session" (F-37: the token dies ~04:30 IST, the socket stays) --
 
+START_AND_ONE_RE_READ = 2  # session lookups: the start, then exactly one re-read for the ended socket
 TOKEN_A, TOKEN_B = "ACtok_fake_A_11112222333344", "ACtok_fake_B_55556666777788"
 
 
@@ -293,10 +305,11 @@ async def test_session_ended_on_a_with_b_already_stored_restarts_onto_b_once(kit
     kite_world["token"] = TOKEN_B  # the login landed while A's socket still looked live (or in its backoff)
     end_a.set()
     await settle()
-    assert market.state == live_market.LIVE and len(kite_world["sockets"]) == 2
-    assert kite_world["sockets"][1].fingerprint == live_market.token_fingerprint(TOKEN_B)
-    assert kite_world["sockets"][1].alive_at_birth == [] and socket_tasks() == [market._task]
-    assert kite_world["lookups"] == 2  # the start, then exactly one re-read for the ended socket
+    first, second = kite_world["sockets"]
+    assert market.state == live_market.LIVE and first.fingerprint == live_market.token_fingerprint(TOKEN_A)
+    assert second.fingerprint == live_market.token_fingerprint(TOKEN_B)
+    assert second.alive_at_birth == [] and socket_tasks() == [market._task]
+    assert kite_world["lookups"] == START_AND_ONE_RE_READ
     await market.close()
 
 
@@ -307,7 +320,7 @@ async def test_session_ended_with_a_still_stored_reads_once_and_does_not_loop(ki
     end_a.set()
     await settle(20)
     assert market.state == live_market.SESSION_ENDED and len(kite_world["sockets"]) == 1
-    assert kite_world["lookups"] == 2 and socket_tasks() == []
+    assert kite_world["lookups"] == START_AND_ONE_RE_READ and socket_tasks() == []
     await market.close()
 
 
