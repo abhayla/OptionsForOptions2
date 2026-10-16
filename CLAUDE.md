@@ -96,6 +96,10 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   lacks a row, add it there first. Kite API facts: the user-level `zerodha-expert` skill. Engine-math reviews: the
   project skill `options-math-review`.
 - Every PR body carries the Spec-deviation block (`Class: none` is valid); CI fails without it.
+- Never put fix/close/resolve (any form, even with a colon) directly before `#N` in a PR body or commit message,
+  except as a whole body line `Fixes #N` when ALL of the issue is done. For part of an issue, write "addresses item 1 of
+  #N". GitHub closes the whole issue otherwise (3 wrong closes on 2026-10-16). Enforced by the `pr-close-check` workflow
+  (`scripts/orchestrator/pr_close_check.py --pr N` to check before pushing).
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
 

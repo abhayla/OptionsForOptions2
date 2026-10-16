@@ -1,0 +1,19 @@
+**Fix #263 items 1-3 (Tier B): product-keyed broker positions, NRML-only entries at the sink, freeze-load conflict raises.**
+
+Addresses items 1-3 of #263. Item 4 (plan version on the basket tag) stays open until the plan builder lands.
+
+- **Item 1** `backend/ofo/execution/partial.py`: the broker read is keyed by (contract, product). An exit uses only the row in the ledger's product. If a contract is also held in another product, a separate template names that position, and the platform never trades it. A flat or other-product-only row is refused, so the check fails closed.
+- **Item 2** `backend/ofo/execution/send_guard.py`: the sink refuses a non-NRML entry or adjustment order (ADR-080 "every entry and adjustment order is NRML"). This is a structural guarantee, run-discipline B8.
+- **Item 3** `backend/ofo_app/freeze_store.py`: insert first. On a conflict the stored limit is compared, and a different limit raises instead of being dropped. `tests_app/test_freeze_store_race.py` covers it.
+- New error templates in the partial-exit 301-310 range (templates + pins).
+- Review: round 1 REVISE, round 2 PASS, round 3 fixed the minors. Merge candidate (main merged): domain suite **4239 passed**; lint, trace, drift and spec refs are all green.
+
+Spec deviation
+Class: none
+Spec section: spec/decisions/ADR-080.md
+Detail: implements ADR-080's NRML rule structurally and the exit-product rule per (contract, product); no behaviour change outside it
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01RHDuFYJcqBvv1nRGqtm1b9
+
