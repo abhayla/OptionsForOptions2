@@ -53,7 +53,8 @@ def test_adr077_only_the_time_is_kept_never_a_price():
 
 
 def test_adr077_never_subscribed_keeps_the_q185_draft_label():
-    seeded, sclock, _ = new_provider()
+    seeded, sclock, sitems = new_provider()
+    seeded.subscribe(all_instrument_ids(sitems))  # ticks count only for held tokens (gate 4a D-1)
     replay(seeded, sclock)
     d = definition(seeded)  # only to name real legs
     provider, clock, items = new_provider()  # a provider no frame ever reached

@@ -58,8 +58,10 @@ class KiteProvider(MarketDataProvider):
         self.book = QuoteBook(self.feed)
         self._listener: QuoteListener | None = None
         self._wanted: set[int] = set()
-        self._added: list[int] = []
-        self._removed: list[int] = []
+        # what Kite was last told (gate 4a D-1): the changes sent are wanted - sent and sent - wanted, computed at the
+        # send, so a token released and taken again before the send is never unsubscribed on the wire
+        self._sent: set[int] = set()
+        self._released: set[int] = set()  # Kite was told to drop these: a late tick never brings a quote back
         self.counters: Counter = Counter()
 
     @staticmethod
@@ -82,6 +84,9 @@ class KiteProvider(MarketDataProvider):
         self.counters["malformed"] += result.malformed
         out = []
         for tick in result.ticks:
+            if tick.token in self._released:
+                self.counters["released_tick"] += 1
+                continue
             try:
                 quote = self.normalise(tick, received_at)
             except (ValueError, KeyError):  # unknown instrument type / segment, invalid value: skip, never raise
@@ -89,6 +94,10 @@ class KiteProvider(MarketDataProvider):
                 continue
             if quote is None:
                 self.counters["unmapped_token"] += 1
+                continue
+            if tick.token not in self._wanted:  # fail closed: a token nobody holds never reaches the book or a listener
+                if not self.book.update_parked(quote):  # parked: kept only for a re-take before the send
+                    self.counters["unwanted_tick"] += 1
                 continue
             self.counters["ticks"] += 1
             self.book.update(quote)
@@ -149,16 +158,16 @@ class KiteProvider(MarketDataProvider):
             token = self._token_of[i]
             if token not in self._wanted:
                 self._wanted.add(token)
-                self._added.append(token)
+                self._released.discard(token)
+                self.book.restore(i)  # released and taken again before the send: Kite never stopped sending it
                 self.counters["vendor_subscribe"] += 1
 
     def unsubscribe(self, instrument_ids: Sequence[str]) -> None:
         for i in instrument_ids:
-            self.book.remove(i)  # no stale price may outlive the subscription
+            self.book.park(i)  # unreadable at once (no stale price outlives the subscription); restored if retaken
             token = self._token_of.get(i)
             if token in self._wanted:
                 self._wanted.discard(token)
-                self._removed.append(token)
 
     def last_quote_time(self, instrument_id: str) -> datetime.datetime | None:
         return self.book.ended_time(instrument_id)
@@ -167,8 +176,17 @@ class KiteProvider(MarketDataProvider):
         return sorted(self._wanted)
 
     def drain_subscription_changes(self) -> tuple[list[int], list[int]]:
-        """(tokens to subscribe, tokens to unsubscribe) since the last call; the socket sends them."""
-        added, removed, self._added, self._removed = self._added, self._removed, [], []
+        """(tokens to subscribe, tokens to unsubscribe): the NET difference between what is wanted now and what Kite
+        was last told; the socket sends them and Kite is then taken to hold exactly what is wanted. A token in both
+        call histories (released and taken again, or taken and released) is in neither list."""
+        added = sorted(self._wanted - self._sent)
+        removed = sorted(self._sent - self._wanted)
+        for token in self._sent - self._wanted:
+            self._released.add(token)
+        for i in self.book.parked_ids():  # released for good now: never restored, its time stays kept
+            if self._token_of.get(i) not in self._wanted:
+                self.book.forget_parked(i)
+        self._sent = set(self._wanted)
         return added, removed
 
     def live_quote_stream(self, listener: QuoteListener) -> None:

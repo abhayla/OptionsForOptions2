@@ -39,6 +39,7 @@ def test_last_unsubscribe_releases_the_vendor_subscription_and_a_bad_subscriber_
     h_bad = fan.subscribe(bad, [NIFTY_CE_ID])
     h_good = fan.subscribe(good.append, [NIFTY_CE_ID])
     assert provider.counters["vendor_subscribe"] == 1
+    sent, _ = provider.drain_subscription_changes()  # the socket sends the subscribe
     replay(provider, clock)
     fan.pump()
     assert good and fan.listener_errors == len(good)  # the bad one failed every time, the good one got every update
@@ -47,4 +48,4 @@ def test_last_unsubscribe_releases_the_vendor_subscription_and_a_bad_subscriber_
     fan.unsubscribe(h_good)
     assert provider.subscribed_tokens() == []
     added, removed = provider.drain_subscription_changes()
-    assert len(added) == 1 and removed == added
+    assert len(sent) == 1 and added == [] and removed == sent  # net diff since the last send (gate 4a D-1)
