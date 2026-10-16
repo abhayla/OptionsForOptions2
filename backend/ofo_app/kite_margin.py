@@ -127,7 +127,10 @@ def _money(value: object) -> Decimal:
     amount = Decimal(value)
     if not amount.is_finite():
         raise KiteMarginError("kite_margin_no_figure")
-    return kite_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
+    try:
+        return kite_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
+    except ValueError:  # too large to round to the paisa: not a usable figure, so "not confirmed" (fail closed)
+        raise KiteMarginError("kite_margin_no_figure") from None
 
 
 class KiteMargin:

@@ -140,11 +140,15 @@ def _final_total(data: Mapping[str, object]) -> Decimal:
     if type(total) is not Decimal and type(total) is not int:
         raise MarginReplyError("the basket margin reply has no numeric final.total")
     # ADR-099 / ADR-101: every Kite money figure is rounded half-up to the paisa where it is parsed, so Kite's float
-    # noise (68498.85000000001) cannot flip the shortfall flag. The only widening: a basket short by under 0.005 passes.
+    # noise (68498.85000000001) cannot flip the shortfall flag. The only widening: with both figures rounded, a basket
+    # short by under one paisa (needed .854 vs funds .845) can pass; a full paisa short is blocked.
     value = Decimal(total)  # an int (Kite prints whole totals without a point) is exact
     if not value.is_finite():
         raise MarginReplyError("the basket margin reply's final.total is not a finite amount")
-    value = kite_paise(value)
+    try:
+        value = kite_paise(value)
+    except ValueError:
+        raise MarginReplyError("the basket margin reply's final.total is too large to use") from None
     # A basket that closes or reduces held positions releases margin and Kite reports a negative total (real
     # 2026-10-16 exit: -214.5). That needs 0, and is never a credit toward other legs (ADR-094, #321).
     return max(value, Decimal(0))

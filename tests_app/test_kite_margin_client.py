@@ -336,3 +336,13 @@ def test_ac1_a_403_with_an_unreadable_body_still_reports_the_token_code(monkeypa
     with pytest.raises(KiteMarginError) as raised:
         KiteMargin(api_key="key", access_token=SECRET).fetch_available_funds()
     assert raised.value.code == "kite_margin_token"
+
+
+def test_099_a_figure_too_large_for_the_paisa_is_not_confirmed() -> None:
+    """Tier A round 3 MINOR: 1e30 must give the normal "not confirmed" error, not escape as InvalidOperation."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app.kite_margin import KiteMarginError, _money  # noqa: PLC0415
+
+    with pytest.raises(KiteMarginError):
+        _money(Decimal("1E+30"))

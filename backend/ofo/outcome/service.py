@@ -173,8 +173,9 @@ MARGIN: Final = Margin(MARGIN_NOT_AVAILABLE_YET, render_explanation("outcome_mar
 
 
 def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.datetime) -> Margin:
-    """ADR-099: Zerodha's two figures and the time they were read, each to the paisa on the safe side: the amount
-    needed rounds UP and the funds DOWN (Kite's float noise 68498.85000000001 reads 68498.86), and ``shortfall``
+    """ADR-099: Zerodha's two figures and the time they were read. Both arrive already rounded half-up to the paisa
+    where they were parsed (ADR-101: Kite's float noise 68498.85000000001 reads 68498.85); any rounding left here is on
+    the safe side (needed UP, funds DOWN) for figures not from Kite, and ``shortfall``
     compares exactly the two amounts shown, so the screen never shows equal figures with a shortfall mark, nor hides a
     shortfall the gate would block. Display only: the gate (REQ-055) is the check before the basket."""
     for value in (needed, available):

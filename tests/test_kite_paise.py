@@ -32,3 +32,19 @@ def test_kite_paise_refuses_anything_but_decimal_or_int(bad: object) -> None:
 def test_kite_paise_refuses_a_non_finite_figure(bad: Decimal) -> None:
     with pytest.raises(ValueError, match="finite"):
         kite_paise(bad)
+
+
+def test_kite_paise_never_returns_negative_zero() -> None:
+    """Tier A round 3 MINOR: -1e-13 rounds to the paisa as -0.00; the API must never show "-0.00"."""
+    result = kite_paise(Decimal("-0.0000000000001"))
+    assert str(result) == "0.00"
+
+
+def test_kite_paise_too_large_is_a_value_error_and_the_gate_fails_closed() -> None:
+    """Tier A round 3 MINOR: 1e30 cannot be held at the paisa; it must not escape as decimal.InvalidOperation."""
+    from ofo.execution.margin_gate import MarginReplyError, _final_total  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="too large"):
+        kite_paise(Decimal("1E+30"))
+    with pytest.raises(MarginReplyError):
+        _final_total({"final": {"total": Decimal("1E+30")}})
