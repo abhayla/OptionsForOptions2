@@ -1,4 +1,4 @@
-﻿# Builder brief: W-076 freeze limit from NSE's contract file, block at review (Tier A)
+# Builder brief: W-076 freeze limit from NSE's contract file, block at review (Tier A)
 
 Core: parsing the real NSE contract-file sample gives NIFTY26O1923550CE (token 47185) freeze limit 3511 with file date
 2026-10-15; a 55-lot NIFTY leg (3,575 units) is blocked at review, a 54-lot leg (3,510 units) passes.

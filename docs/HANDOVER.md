@@ -1,6 +1,12 @@
 # Handover
 
-**2026-10-15 night — START HERE: `docs/process/session-handover-2026-10-15c.md`.** W-065 done (#235, after a round-1
+**2026-10-16 night — START HERE: `docs/process/session-handover-2026-10-16.md`.** Stage 4b built core first
+(ADR-087): W-074, W-076, W-077, W-078, W-082, W-085 and W-086 done; W-081 merged as a component (BLOCKED); W-083
+PARTIAL; fixes #237, #259, #263 (1-3), #275, #279 (1-3) and #285; PR close-keyword check (#289). Parked: W-075 (OQ-4),
+W-080 (#271), #257 (OQ-9). F-37: the Kite token stops at about 04:30 IST. NEXT: 4a gate re-run with the owner's 09:15
+login, then live proofs (margin, depth, charges, freeze).
+
+**2026-10-15 night — `docs/process/session-handover-2026-10-15c.md`.** W-065 done (#235, after a round-1
 FAIL on a second tab), W-071 done (#241), all Stage 4b questions Q263-Q270 decided (ADR-079..085, F-35). ofo_dev now
 holds today's real catalogue. Token-expiry watcher running overnight. NEXT: read the watcher -> F-id; 4a gate re-run
 with one owner login (the 11:55 run predates #212/#211/#216); then 4b build items.

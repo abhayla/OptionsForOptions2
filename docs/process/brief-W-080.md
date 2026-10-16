@@ -1,4 +1,4 @@
-﻿# Builder brief: W-080 read-only Kite basket from the execution plan (Tier A)
+# Builder brief: W-080 read-only Kite basket from the execution plan (Tier A)
 
 Core: a 4-leg iron condor plan on the real 2026-10-15 contracts (NIFTY26O1923150CE, NIFTY26O1923350CE,
 NIFTY26O1922750PE, NIFTY26O1922550PE) produces a basket of 4 orders: exchange NFO, those trading symbols looked up by

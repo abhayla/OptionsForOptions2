@@ -1,0 +1,18 @@
+**Fix #237 (Tier A): the Save Draft browser e2e runs in CI against a recorded fixture, through a TEST-ONLY catalogue date pin.**
+
+Fixes #237.
+
+- `backend/ofo_app/pinned_clock.py`: `TEST_CATALOGUE_DATE` (exactly YYYY-MM-DD) read through one seam `pinned_today()`, used by `database_today` for the catalogue routes; refused at `create_app`, in the Settings validator and on every call unless `APP_ENV` is exactly `test`. Without the pin the routes use the database clock (ADR-023) as before. The save path reads no clock (stored retired/delisted flags).
+- `python -m ofo_app.seed_test_catalogue`: loads the fixture through the normal guarded loader with `as_of` = the pin; refused unless `GITHUB_ACTIONS=true`, `APP_ENV=test`, a pin is set and the catalogue is empty; refuses a database named `ofo_dev`. Nothing is deleted; no guard is loosened.
+- `.github/workflows/app-tests.yml` (project-owned): seeds CI's throwaway database (`PYTHONPATH: backend`), starts a pinned API on 8002 and a preview on 4176 with readiness waits, sets `E2E_PINNED_CATALOGUE=1`; the Save Draft spec un-skips on it. `ci.yml` untouched.
+- Review (Opus): R1 REVISE (CRITICAL: the seed step could not import; MAJOR: the seed could fill the shared ofo_test), R2 fixed. Domain suite 4221 passed; targeted app tests 273 passed. **The Playwright spec runs for the first time in this PR's CI** - the merge waits for it to pass (not skip).
+
+Spec deviation
+Class: none
+Spec section: spec/decisions/ADR-023.md
+Detail: test-only override refused outside APP_ENV=test; the database clock stays the only clock in every other environment
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01RHDuFYJcqBvv1nRGqtm1b9
+

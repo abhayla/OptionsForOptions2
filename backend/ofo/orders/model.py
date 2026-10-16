@@ -42,6 +42,7 @@ from types import MappingProxyType
 from typing import Final, Literal, NoReturn
 
 from ofo.engine.legs import Action, require_price
+from ofo.engine.product import Product
 from ofo.strategy.versions import StrategyRecord
 
 
@@ -173,6 +174,7 @@ class Order:
     broker_order_id: str | None = None
     version_id: str | None = None  # REQUIRED (REQ-036 AC-1): None is refused; the default only keeps field order
     client_tag: str | None = None  # the platform's own id, set before the broker sees the order
+    product: Product = Product.NRML  # ADR-080: entries/adjustments NRML; an exit carries its position's product
     _state: OrderState = field(default=OrderState.PREPARED, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -191,6 +193,8 @@ class Order:
         _non_empty_str(self.version_id, "version_id")
         if self.client_tag is not None:
             _non_empty_str(self.client_tag, "client_tag")
+        if not isinstance(self.product, Product):
+            raise ValueError(f"product must be a Product, got {self.product!r}")
 
     @property
     def state(self) -> OrderState:
