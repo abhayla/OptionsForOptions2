@@ -236,6 +236,23 @@ async def test_the_owner_client_bounds_each_call_below_the_read_timeout(monkeypa
     assert seen["timeout"] == timeout
 
 
+async def test_099_kites_float_noise_is_not_a_shortfall_on_the_screen() -> None:
+    """ADR-099 (issue 297): Zerodha final.total 67842.35000000001 + the 656.50 BUY top-up, funds 68498.84999999999:
+    both read 68498.85, so the screen shows equal figures and NO shortfall."""
+    funds = '{"status": "success", "data": {"equity": {"enabled": true, "net": 68498.84999999999}}}'
+    reply = json.loads(BASKET_TEXT)
+    reply["data"]["final"]["total"] = "@@"  # swapped for the float-tail text below, which json.dumps cannot print
+    basket = json.dumps(reply).replace('"@@"', "67842.35000000001")
+    assert "67842.35000000001" in basket
+
+    def transport(_method, url, _headers, _body):
+        return HTTPStatus.OK, (funds if url.endswith("/user/margins") else basket)
+
+    m = await margin_answer(source(transport), CTX, plan())
+    assert m.state == "CHECKED" and (str(m.needed), str(m.available)) == ("68498.85", "68498.85")
+    assert m.shortfall is False
+
+
 def test_enough_funds_is_no_shortfall() -> None:
     m = outcome_margin.margin_checked(Decimal("7065.50"), Decimal("7065.50"), CHECKED_AT)
     assert m.shortfall is False and str(m.available) == "7065.50"

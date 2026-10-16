@@ -25,6 +25,7 @@ from decimal import Decimal
 from typing import Final
 
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
+from ofo.money import kite_paise
 
 log = logging.getLogger("ofo_app.kite_margin")
 KITE_API_URL: Final = "https://api.kite.trade"
@@ -126,7 +127,7 @@ def _money(value: object) -> Decimal:
     amount = Decimal(value)
     if not amount.is_finite():
         raise KiteMarginError("kite_margin_no_figure")
-    return amount
+    return kite_paise(amount)  # ADR-099/ADR-101: half-up to the paisa where the figure is parsed
 
 
 class KiteMargin:

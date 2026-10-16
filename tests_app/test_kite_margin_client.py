@@ -188,6 +188,24 @@ def test_adr094_the_client_adds_the_buy_premium_above_kites_figure() -> None:
     assert (result.zerodha_total, result.required_total) == (Decimal("6409"), Decimal("7065.50"))
 
 
+def test_099_float_tails_from_kite_read_to_the_paisa_through_the_client() -> None:
+    """ADR-099: final.total 68498.85000000001 and equity.net 68498.84999999999 are both the paisa 68498.85, so the
+    basket is allowed; a real shortfall of one paisa is still blocked."""
+    assert REPLY_TEXT.count("68498.85") == 1  # only final.total carries this figure
+    tailed = REPLY_TEXT.replace("68498.85", "68498.85000000001")
+    assert tailed != REPLY_TEXT
+
+    def transport(net: str):
+        return lambda method, url, headers, body: (200, tailed) if "basket" in url else (200, funds_text(net))
+
+    basket = client(transport("1")).fetch_basket_margin(condor())
+    assert (basket.zerodha_total, basket.required_total) == (Decimal("68498.85"), Decimal("68498.85"))
+    assert client(transport("68498.84999999999")).fetch_available_funds() == Decimal("68498.85")
+    assert margin_verdict(client(transport("68498.84999999999")), condor()).allowed is True
+    assert margin_verdict(client(transport("68498.85000000001")), condor()).allowed is True
+    assert margin_verdict(client(transport("68498.844")), condor()).allowed is False  # 68498.84 is a real shortfall
+
+
 class _Once:
     def __init__(self, exc: Exception) -> None:
         self.exc = exc
