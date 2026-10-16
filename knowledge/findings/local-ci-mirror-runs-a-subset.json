@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "The mirror is still hand-maintained: a new ci.yml step would be missed again. A test that parses ci.yml's run: lines and asserts atool.py runs each tool is the candidate detection (L2 on a second occurrence)."
+  "note": "The mirror is still hand-maintained: a new ci.yml step would be missed again. A test that parses ci.yml's run: lines and asserts atool.py runs each tool is the candidate detection (L2 on a second occurrence). 2026-10-16: the orchestrator's own pushes skipped the mirror entirely; GC-2a carries 'run atool.py <worktree> --no-tests before every push' as a checkable line."
  },
  "spec_ref": [
   "spec/decisions/ADR-046.md"
@@ -22,6 +22,11 @@
    "date": "2026-10-09",
    "where": "PR #134 (W-061)",
    "evidence": "one wasted CI round; merge refused"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-1 docs PR #333 (orchestrator, not a builder)",
+   "evidence": "pushed after a hand-picked set of fast checks (lint, trace, coverage, findings index, spec refs, ruff); CI lint-and-test red on 3 skipped steps: build_order --check, build_spec_index --check, and tests/test_tests_required_exist.py (W-087 entries separated by ';'). scripts/orchestrator/atool.py <worktree-dir> --no-tests runs every ci.yml step plus the repo guard tests in ~1 min and would have caught all three."
   }
  ]
 }

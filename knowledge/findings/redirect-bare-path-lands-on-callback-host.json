@@ -1,0 +1,33 @@
+{
+ "id": "redirect-bare-path-lands-on-callback-host",
+ "scope": "generic",
+ "class": "A backend redirect to a frontend page written as a bare path ('/broker/connected') resolves against the host the request came in on; when a third party (an OAuth provider) calls the API's own host directly, the browser lands on the API, which serves no pages, so every success and refusal shows a 404 - and tests that assert the bare Location string, or open the page directly, confirm the bug instead of catching it.",
+ "mechanism": "Kite calls back on KITE_REDIRECT_URL = http://127.0.0.1:8765/kite/callback (the API); broker.py:196 and :262 redirected to bare paths; the API has no static/page fallback and the vite proxy forwards only /api and /ws; tests_app/test_kite_login.py:127 asserted the bare path and the Playwright tests used page.goto on the frontend directly.",
+ "first_seen": {
+  "date": "2026-10-08",
+  "where": "W-058 live owner-login proof; again 2026-10-16 15:34 IST (session-handover-2026-10-16.md), a week after PR 162 added the pages",
+  "evidence": "the backend's USER_INPUT_003 404 body after a good login (issue 159); GC-1 Tier A review 2026-10-16 traced the origin"
+ },
+ "fix": "Redirect to an absolute, start-up-validated FRONTEND_ORIGIN (scheme + host + port only) plus the page path; the class test resolves every Location against the real callback URL with urljoin, as a browser does, and asserts the frontend origin for success and every refusal code (W-088).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when W-088's class test (urljoin of each Location against KITE_REDIRECT_URL, every REFUSAL_CODES member) merges; the live check is the next owner login (GC-3)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-015.md",
+  "spec/requirements/REQ-065.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-08",
+   "where": "W-058 live login",
+   "evidence": "404 after a stored session 82"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "live login 15:34 IST",
+   "evidence": "404 again after PR 162 had added the landing pages"
+  }
+ ]
+}

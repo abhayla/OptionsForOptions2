@@ -21,10 +21,12 @@ Use it as `/goal <the text above>`.
 
 | Id | Status | Closes | When / size | Owner needed | Contract |
 |---|---|---|---|---|---|
-| GC-1 | RUNNING (started 2026-10-16 19:50 IST, cap 03:50 IST) | 4a close-out + 4b core proof | Fri 2026-10-16 night, cap 8 h | No | `goal-contract-GC-1-2026-10-16.md` |
-| GC-2a | planned | #327 Linux egress fix, ADR-099 paisa rounding, W-017 on real responses, W-081 wired + #273 | Sat, 4-6 h | No | written by GC-1 |
-| GC-2b | planned | App chain: Execute route -> read-only basket -> return-from-Kite read-back -> reconcile -> audit; persisted order book (#313); Execute screen (REQ-073 AC-1..3, REQ-057/058/060) | Sun, 5-6 h | No | written by GC-2a |
-| GC-3 | planned | 4b live gate: 1-lot order through the product (ADR-097 guardrails), reconcile, P&L = ADR-008 on the fill, audit chain read back | Mon 09:15, ~2 h | **Yes**: Kite login, typed go, Execute press | written by GC-2b |
+| GC-1 | DONE (2026-10-16 19:50-21:00 IST; PRs #331, #332, #333) | 4a close-out + 4b core proof | Fri 2026-10-16 night, cap 8 h | No | `goal-contract-GC-1-2026-10-16.md` |
+| GC-2a | NEXT | #327 Linux egress fix (core), then ADR-099 paisa rounding (#297 item 3), then W-081 wired + #273 (if 2.5 h remain), W-075 AC-7 re-verify | Sat, cap 6 h | No | `goal-contract-GC-2a-2026-10-17.md` |
+| GC-2b | planned | 4b boundary (GC-1 F-40): W-091 Kite orders/trades/positions -> domain on the real-order recordings, W-092 eligibility filled from Zerodha (the gate refuses every leg today), ADR-058 delisted-held -> reconciliation, W-017 allowlist (session type unproven until GC-3 captures a login reply) | Sat/Sun, 5-6 h | No | written by GC-2a |
+| GC-2c | planned | App chain: Execute route -> read-only basket -> return-from-Kite read-back -> reconcile -> audit; persisted order book (#313); Execute screen (REQ-073 AC-1..3, REQ-057/058/060) | Sun, 5-6 h | No | written by GC-2b |
+| GC-3 | planned | 4b live gate: 1-lot order through the product (ADR-097 guardrails), reconcile, P&L = ADR-008 on the fill, audit chain read back; first step: a real login lands on `/broker/connected` (W-088) | Mon 09:15 if GC-2c is DONE, ~2 h | **Yes**: Kite login, typed go, Execute press | written by GC-2c |
+| GC-2d | planned | 4a screen gaps off the 4b critical path (GC-1 audit): W-089 Settings -> Broker & Market Data, W-090 range/step + At Expiry/Estimated Now, REQ-063 AC-3 repo-wide money guard, evidence-only verifier passes (REQ-048/049/052) | any free slot before GC-4, ~6 h | No | written by whichever contract runs before it |
 | GC-4 | planned | 4c build on the recorded replay: REQ-043 statuses, REQ-041 rules -> REQ-042 alert + prepared basket, REQ-062 in-app Alerts + AC-3 dedupe | ~6 h | No | written by GC-3 |
 | GC-5 | planned | 4c live gate: a real rule fires, WhatsApp via the Notifier delivered (terminal status read), core gate (core-invariants section 4) | market hours | **Yes**: Notifier typed go, release record first | written by GC-4 |
 
