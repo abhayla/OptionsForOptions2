@@ -110,7 +110,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
     plus, for each option BUY leg, ``max(0, quantity x limit price - that leg's option_premium)``.
 
     Kite prices an option BUY at the lower of the limit and the live price (F-39); the user may pay up to the limit.
-    SELL legs and futures add nothing; a negative difference is 0, never a credit. ``orders`` is the request list sent
+    SELL legs and futures add nothing; a negative difference is 0, never a credit, and so is a negative ``final.total``
+    (a closing basket). ``orders`` is the request list sent
     to Kite, in the same order as ``data["orders"]``. The reply must have been parsed with ``parse_float=Decimal``.
     Anything unusable (no final.total, a BUY leg's option_premium missing/not a number/negative, a count or identity
     mismatch between request and reply, a bad quantity or price) raises `MarginReplyError`."""
@@ -140,6 +141,8 @@ def _final_total(data: Mapping[str, object]) -> Decimal:
     # Kite's own float noise in final.total (e.g. 68498.85000000001) errs on the safe side: a higher required
     # margin can only block a basket that is exactly at the limit, never allow one that is short.
     value = Decimal(total)  # an int (Kite prints whole totals without a point) is exact
-    if not value.is_finite() or value < 0:
-        raise MarginReplyError("the basket margin reply's final.total is not a finite amount of 0 or more")
-    return value
+    if not value.is_finite():
+        raise MarginReplyError("the basket margin reply's final.total is not a finite amount")
+    # A basket that closes or reduces held positions releases margin and Kite reports a negative total (real
+    # 2026-10-16 exit: -214.5). That needs 0, and is never a credit toward other legs (ADR-094, #321).
+    return max(value, Decimal(0))
