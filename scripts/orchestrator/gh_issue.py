@@ -14,6 +14,19 @@ STAGES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
                            "docs", "process", "coverage-stages.yaml")
 
 
+def _refuse_if_verifier_in_flight(target):
+    """Shared check from the in-flight hook module (no copy of its logic); fails open when it cannot be loaded."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"))
+        from verifier_inflight_gate import inflight_block_reason  # noqa: PLC0415 - path is set just above
+        why = inflight_block_reason(target, "--stage write by " + os.path.basename(__file__))
+    except Exception:  # noqa: BLE001 - a missing or broken hook module fails open
+        return
+    if why:
+        sys.stderr.write(why + "\n")
+        sys.exit(2)
+
+
 def add_stage(number, stage, title, path=STAGES_FILE):
     """Insert the issue line after the last entry of the `issues:` block (other blocks follow it)."""
     with open(path, encoding="utf-8", newline="") as handle:
@@ -46,6 +59,8 @@ def main(argv):
         stage = args[i + 1]
         del args[i:i + 2]
     key, label, title, body = args[:4]
+    if stage:
+        _refuse_if_verifier_in_flight(os.path.dirname(STAGES_FILE))
     if stage and key != "app":
         print("--stage only applies to the app repo")
         return 2
