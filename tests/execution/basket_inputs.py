@@ -9,7 +9,6 @@ from pathlib import Path
 
 from ofo.engine import Action, Instrument, Leg
 from ofo.execution.freeze import FreezeCheck
-from ofo.execution.margin_gate import check_margin
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA
@@ -47,15 +46,21 @@ def real_plan(cat: Catalogue, strategy_id: str = "S-9") -> ExecutionPlan:
 
 
 class OkMargin:
-    """Fake margin gate returning W-081's real verdict (funds 1.00 vs required 0.00, or 0.00 vs 1.00 when blocked);
-    records the orders it was asked about."""
+    """Fake margin SOURCE (W-081 round 2): Zerodha's two figures as the basket reads them - funds 1.00 vs required 0.00,
+    or 0.00 vs 1.00 when blocked, or the given ``available``/``required``. Records the orders it was asked about."""
 
-    def __init__(self, allowed: bool = True) -> None:
-        self.allowed, self.calls = allowed, []
+    def __init__(self, allowed: bool = True, available: object = None, required: object = None) -> None:
+        self.allowed, self.calls, self.funds_calls = allowed, [], 0
+        self.available = available if available is not None else (D("1.00") if allowed else D("0.00"))
+        self.required = required if required is not None else (D("0.00") if allowed else D("1.00"))
 
-    def __call__(self, orders):
+    def available_funds(self):
+        self.funds_calls += 1
+        return self.available
+
+    def required_margin(self, orders):
         self.calls.append(orders)
-        return check_margin(D("1.00"), D("0.00")) if self.allowed else check_margin(D("0.00"), D("1.00"))
+        return self.required
 
 
 class FakeFreeze:

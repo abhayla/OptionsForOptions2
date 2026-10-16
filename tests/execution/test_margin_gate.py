@@ -171,34 +171,27 @@ def test_ac1_a_huge_balance_still_covers_a_normal_requirement() -> None:
 
 
 def test_ac1_a_caller_cannot_forge_an_allowed_verdict() -> None:
-    """AC-1: MarginVerdict cannot be built outside check_margin (caller-supplied-verdict-trusted)."""
+    """AC-1: MarginVerdict cannot be built outside check_margin (caller-supplied-verdict-trusted); there is no mint
+    token to borrow (round 2: the old ``_MINT`` let any importer build one)."""
+    assert not hasattr(margin_gate, "_MINT")
     with pytest.raises(TypeError):
         MarginVerdict(Decimal("1"), Decimal("9"))  # type: ignore[call-arg]
     with pytest.raises(TypeError):
-        MarginVerdict(Decimal("1"), Decimal("9"), _mint=object())  # type: ignore[arg-type]
+        MarginVerdict(Decimal("1"), Decimal("9"), _mint=object())  # type: ignore[call-arg]
     with pytest.raises(TypeError):  # `allowed` and `message` are not inputs
         MarginVerdict(Decimal("1"), Decimal("9"), allowed=True, message=None)  # type: ignore[call-arg]
-    with pytest.raises(TypeError):  # even a holder of the mint cannot pass them
-        MarginVerdict(Decimal("1"), Decimal("9"), margin_gate._MINT, True)  # type: ignore[call-arg]
 
 
-def test_ac1_replace_cannot_forge_an_allowed_verdict() -> None:
-    """AC-1 (round 2 item 1): dataclasses.replace cannot set `allowed` or drop the message; copying with other
-    amounts re-derives both from available >= required."""
+def test_ac1_replace_cannot_copy_a_verdict() -> None:
+    """AC-1 (round 2): a verdict is not a dataclass, so ``dataclasses.replace`` raises for every field, including the
+    amounts (round 1 let ``replace(blocked, available=big)`` make an allowed verdict); it cannot be edited either."""
     blocked = check_margin(Decimal("68498.84"), Decimal("68498.85"))
-    # Python 3.12 raises ValueError here, 3.13 TypeError; the guarantee (no forged field) is the same.
-    with pytest.raises((TypeError, ValueError)):
-        dataclasses.replace(blocked, allowed=True, message=None)
-    with pytest.raises((TypeError, ValueError)):
-        dataclasses.replace(blocked, message=None)
-    with pytest.raises((TypeError, ValueError)):
-        dataclasses.replace(blocked, allowed=True)
-    still_blocked = dataclasses.replace(blocked, available=Decimal("1"))
-    assert still_blocked.allowed is False and still_blocked.message is not None
-    now_allowed = dataclasses.replace(blocked, available=Decimal("68498.85"))
-    assert now_allowed.allowed is True and now_allowed.message is None  # derived from the amounts, not asserted
-    with pytest.raises(dataclasses.FrozenInstanceError):
+    for changes in ({"allowed": True}, {"message": None}, {"available": Decimal("99999999")}, {}):
+        with pytest.raises(TypeError):
+            dataclasses.replace(blocked, **changes)
+    with pytest.raises(AttributeError):
         blocked.allowed = True  # type: ignore[misc]
+    assert blocked.allowed is False and blocked.message is not None
 
 
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:

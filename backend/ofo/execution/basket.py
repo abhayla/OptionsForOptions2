@@ -17,10 +17,15 @@ Rules:
 - Orders keep the plan's order. Each order's exchange and trading symbol come from the contract's ZERODHA row, found by
   the catalogue and carried with the contract's ``InstrumentId``; a contract with no unique, listed ZERODHA row refuses
   the WHOLE basket with ``MissingBrokerRef`` / ``BasketRefused`` (REQ-054 AC-3: no symbol is guessed or derived).
-- The basket calls the freeze check and the margin check ITSELF through the required ``freeze_check`` and
-  ``margin_check`` parameters (no defaults) and refuses on a block, a wrong-typed answer or a raised error (fail closed).
-  The margin answer must be W-081's ``margin_gate.MarginVerdict`` (only ``check_margin`` mints one); in production the
-  one caller is ``ofo_app.checked_basket``, whose check is Zerodha's figures (REQ-055 AC-1/AC-3).
+- The basket calls the freeze check ITSELF through the required ``freeze_check`` parameter, and decides the margin
+  ITSELF: it reads Zerodha's available funds and Zerodha's required figure for exactly these orders from the required
+  ``margin_source`` (no defaults) and calls ``margin_gate.check_margin`` on the two numbers. No verdict object crosses
+  this boundary, so none made, copied or edited elsewhere can produce a basket (finding caller-supplied-verdict-
+  trusted). A block, a wrong-typed answer or a raised error refuses the whole basket (fail closed). In production the
+  one caller is ``ofo_app.checked_basket``, whose source is the real Zerodha client (REQ-055 AC-1/AC-3).
+- A ``KiteBasket`` exists only if ``build_basket`` built it: calling the class raises (there is no token to borrow), it
+  is an immutable tuple with no attribute storage, subclasses are refused, and copy/pickle/``dataclasses.replace``
+  raise (finding sealed-object-mutable-after-seal).
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
 - Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
@@ -31,13 +36,14 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from typing import Protocol
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
 from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
-from ofo.execution.margin_gate import MarginVerdict
+from ofo.execution.margin_gate import MarginVerdict, check_margin
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
@@ -123,9 +129,35 @@ class KiteOrder:
         return "{" + ", ".join(json.dumps(k) + ": " + v for k, v in parts) + "}"
 
 
-@dataclass(frozen=True)
-class KiteBasket:
-    orders: tuple[KiteOrder, ...]
+class KiteBasket(tuple):
+    """The basket of orders ``build_basket`` decided may be sent; sealed (see the module rules)."""
+
+    __slots__ = ()
+
+    def __new__(cls, *_args: object, **_kwargs: object) -> KiteBasket:
+        raise TypeError("a KiteBasket comes only from build_basket")
+
+    def __init_subclass__(cls, **_kwargs: object) -> None:
+        raise TypeError("KiteBasket cannot be subclassed")
+
+    @property
+    def orders(self) -> tuple[KiteOrder, ...]:
+        return tuple(self)
+
+    def __copy__(self) -> KiteBasket:
+        raise TypeError("a KiteBasket cannot be copied; build it again")
+
+    def __deepcopy__(self, _memo: object) -> KiteBasket:
+        raise TypeError("a KiteBasket cannot be copied; build it again")
+
+    def __reduce_ex__(self, _protocol: object) -> object:
+        raise TypeError("a KiteBasket cannot be pickled; build it again")
+
+    def __reduce__(self) -> object:
+        raise TypeError("a KiteBasket cannot be pickled; build it again")
+
+    def __repr__(self) -> str:
+        return f"KiteBasket(orders={self.orders!r})"
 
     def orders_json(self) -> str:
         """The JSON list for the ``data`` form field."""
@@ -148,8 +180,21 @@ def _number(price: Decimal) -> str:
 
 
 FreezeGate = Callable[[ExecutionPlan], FreezeCheck]
-MarginGate = Callable[[tuple[KiteOrder, ...]], MarginVerdict]  # asked about exactly the orders that would be sent;
-# production passes only ``ofo_app.checked_basket``'s Zerodha adapter (tests/test_margin_from_zerodha_only.py)
+
+
+class MarginSource(Protocol):
+    """Zerodha's two margin figures, read by ``build_basket`` itself. Production passes only ``ofo_app.checked_basket``'s
+    adapter over the real Zerodha client (tests/test_margin_from_zerodha_only.py)."""
+
+    def available_funds(self) -> Decimal:
+        """Zerodha's available funds (``equity.net``, signed), exact Decimal."""
+        ...
+
+    def required_margin(self, orders: tuple[KiteOrder, ...]) -> Decimal:
+        """Zerodha's required margin for exactly ``orders`` (W-081 ``required_from_basket_reply``), exact Decimal."""
+        ...
+
+
 _STRATEGY_ID_RE: Final = re.compile(r"(?:S-)?([1-9][0-9]*)", re.ASCII)
 
 
@@ -197,12 +242,12 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
 
 
 def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,
-                 freeze_check: FreezeGate, margin_check: MarginGate) -> KiteBasket:
+                 freeze_check: FreezeGate, margin_source: MarginSource) -> KiteBasket:
     """Turn ``plan`` into a basket of read-only LIMIT orders in plan order, or refuse the whole basket.
 
     The tag's strategy id is read from ``plan.strategy_id``; ``plan_version`` is the one caller value (the plan holds no
-    version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_check`` (the resolved orders -> object with
-    ``allowed is True``) are REQUIRED; the basket asks them itself and never trusts a caller's earlier verdict."""
+    version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_source`` (Zerodha's two figures) are REQUIRED; the
+    basket asks them itself, decides the margin with ``check_margin`` itself, and never takes a caller's verdict."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"build_basket needs an ExecutionPlan, got {plan!r}")
     if not isinstance(catalogue, Catalogue):
@@ -224,17 +269,24 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
         raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
     if freeze.blocks:
         raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
-    margin = _ask(margin_check, orders, "margin")
-    # Only W-081's own verdict counts (minted solely by ``check_margin`` from Zerodha's two figures): a look-alike
-    # object with ``allowed = True`` is refused (finding caller-supplied-verdict-trusted).
-    if type(margin) is not MarginVerdict:
-        raise BasketRefused("the margin check gave no usable answer; no basket built")
+    margin = _decide_margin(margin_source, orders)
     if margin.allowed is not True:
         shown = margin.message
         raise BasketRefused("the margin check did not allow this basket; no basket built"
                             + ("" if shown is None else "\n" + display_text(shown)), shown)
-    return KiteBasket(orders)
+    return tuple.__new__(KiteBasket, orders)
 
 
-__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginVerdict", "TagParts", "build_basket",
+def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> MarginVerdict:
+    """Both of Zerodha's figures, read here, then the gate. A read that raises, or a figure that is not an exact finite
+    Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass."""
+    try:
+        available = source.available_funds()
+        required = source.required_margin(orders)
+        return check_margin(available, required)
+    except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
+        return check_margin(None, None)
+
+
+__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginSource", "TagParts", "build_basket",
            "make_tag", "parse_tag", "zerodha_exchange"]
