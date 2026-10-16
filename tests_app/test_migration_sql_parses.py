@@ -25,8 +25,8 @@ MIGRATIONS = ("0001_baseline_ledger_clock", "0002_audit_store", "0003_catalogue_
               "0009_minute_history", "0010_strategy_schema_version", "0011_strategy_planned_entry",
               "0012_charge_rates", "0013_exchange_freeze_limits", "0014_charge_rates_caps",
               "0015_audit_broker_allowlist")
-#: Migrations whose downgrade refuses (raises) instead of emitting SQL; the refusal itself is asserted below.
-REFUSES_DOWNGRADE = ("0015_audit_broker_allowlist",)
+#: Migrations whose downgrade emits no SQL of its own to parse (none now: 0015 refuses only when rows exist, in SQL).
+REFUSES_DOWNGRADE: tuple[str, ...] = ()
 _DO = re.compile(r"^\s*DO\s+(\$\w*\$)(.*)\1\s*;?\s*$", re.DOTALL)
 
 
@@ -97,10 +97,12 @@ def test_every_migration_renders_statements() -> None:
     assert all(v > 0 for v in counts.values()), counts
 
 
-def test_a_refusing_downgrade_raises_with_its_reason() -> None:
-    for name in REFUSES_DOWNGRADE:
-        with pytest.raises(RuntimeError, match="cannot be undone"):
-            _statements(name, "downgrade")
+def test_0015_downgrade_refuses_only_when_broker_reply_rows_exist() -> None:
+    statements = _statements("0015_audit_broker_allowlist", "downgrade")
+    assert len(statements) == 1
+    for event_type in ("broker_response_recorded", "execution_recorded", "reconciliation_recorded"):
+        assert event_type in statements[0]
+    assert "IF has_rows THEN" in statements[0] and "refusing to downgrade" in statements[0]
 
 
 C1_DO = """
