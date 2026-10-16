@@ -121,7 +121,11 @@ class PostgresHistoryStore:
             self._engine = create_async_engine(
                 self._url, pool_size=2, max_overflow=2, pool_pre_ping=True,
                 connect_args={"timeout": _CONNECT_TIMEOUT_S, "command_timeout": _COMMAND_TIMEOUT_S,
-                              "server_settings": {"jit": "off"}})
+                              "server_settings": {
+                                  "jit": "off",
+                                  # a generic plan chosen on the 6th execution under zero-row statistics times out
+                                  # (#344; investigation runs 38966699828 / 38967997606 / 38969194878)
+                                  "plan_cache_mode": "force_custom_plan"}})
         return self._engine
 
     @contextlib.asynccontextmanager
