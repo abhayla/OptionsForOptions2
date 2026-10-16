@@ -94,9 +94,12 @@ class OrderMargin:
 
 @dataclass(frozen=True)
 class BasketMargin:
-    """Zerodha's answer for a basket: `final_total` is the required margin (after the hedge benefit)."""
+    """The basket's margin. `zerodha_total` is Zerodha's own ``final.total`` (after the hedge benefit); show it only as
+    "Zerodha says". `required_total` is what the check needs: that figure plus the ADR-094 top-up for option BUY legs
+    up to their limit price (never below `zerodha_total`)."""
 
-    final_total: Decimal
+    zerodha_total: Decimal
+    required_total: Decimal
     initial_total: Decimal
     orders: tuple[OrderMargin, ...]
 
@@ -172,9 +175,11 @@ class KiteMargin:
         body = "[" + ", ".join(o.as_json() for o in orders) + "]"
         data = self._data("POST", BASKET_PATH, body, {"Content-Type": "application/json"})
         try:
-            final_total = required_from_basket_reply(data)
+            required_total = required_from_basket_reply(data, orders)
         except MarginReplyError:
             raise KiteMarginError("kite_margin_no_figure") from None
+        final = data.get("final")  # a dict with a numeric total: required_from_basket_reply just read it
+        zerodha_total = _money(final.get("total") if isinstance(final, dict) else None)
         initial = data.get("initial")
         rows = data.get("orders")
         if not isinstance(initial, dict) or not isinstance(rows, list):
@@ -183,7 +188,7 @@ class KiteMargin:
                           for r in rows if isinstance(r, dict))
         if len(per_order) != len(rows):
             raise KiteMarginError("kite_margin_no_figure")
-        return BasketMargin(final_total, _money(initial.get("total")), per_order)
+        return BasketMargin(zerodha_total, required_total, _money(initial.get("total")), per_order)
 
 
 def _error_type(text: str) -> str | None:
@@ -199,7 +204,7 @@ def margin_verdict(client: KiteMargin, orders: Sequence[BasketOrder]) -> MarginV
     figure blocks (the gate's "could not confirm" message); nothing is retried. A negative balance is compared and shown as Zerodha gives it."""
     try:
         available: Decimal | None = client.fetch_available_funds()
-        required: Decimal | None = client.fetch_basket_margin(orders).final_total
+        required: Decimal | None = client.fetch_basket_margin(orders).required_total
     except KiteMarginError:
         available = required = None
     return check_margin(available, required)
