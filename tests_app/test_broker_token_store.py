@@ -36,7 +36,7 @@ from ofo_app.routes import broker as broker_routes
 
 API_KEY = "kite_fake_key"
 API_SECRET = "kite_fake_secret_value"
-FRONTEND = "http://127.0.0.1:4173"
+FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest: every app in a run shares one origin
 REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"
 ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"
 CHECKSUM = hashlib.sha256((API_KEY + REQUEST_TOKEN + API_SECRET).encode()).hexdigest()

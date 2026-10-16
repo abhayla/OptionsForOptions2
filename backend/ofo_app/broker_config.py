@@ -52,7 +52,7 @@ class BrokerConfig:
     callback_path: str
     expected_user_id: str
     token_key: bytes
-    frontend_origin: str = ""  # validated, no trailing slash
+    frontend_origin: str  # validated, no trailing slash
 
     def __repr__(self) -> str:  # never print the key bytes
         return f"BrokerConfig(api_key={self.api_key!r}, callback_path={self.callback_path!r})"
@@ -76,13 +76,23 @@ def _derived_from(key: bytes, secret: str) -> bool:
 
 
 #: scheme://host[:port] and nothing else: no userinfo, path, query or fragment. One trailing "/" is dropped first.
-_ORIGIN = re.compile(r"https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?")
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+_HOST = rf"(?P<netloc_name>{_LABEL}(?:\.{_LABEL})*|\[(?=[0-9A-Fa-f:]*[0-9A-Fa-f])[0-9A-Fa-f:]+\])"
+_ORIGIN = re.compile(rf"https?://{_HOST}(?::(?P<port>[0-9]{{1,5}}))?")
+_DOTTED_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)*")
+MAX_PORT = 65535
+MAX_IPV4_PARTS = 4
 
 
 def validate_frontend_origin(value: str) -> str:
-    """The origin without a trailing slash, or ``BrokerConfigError`` (fail closed)."""
+    """The origin without a trailing slash, or ``BrokerConfigError`` (fail closed): a port is 1-65535 and an all-number
+    host is a dotted quad of exactly four parts."""
     origin = value[:-1] if value.endswith("/") else value
-    if _ORIGIN.fullmatch(origin) is None:
+    match = _ORIGIN.fullmatch(origin)
+    bad_port = match is not None and match["port"] is not None and not 0 < int(match["port"]) <= MAX_PORT
+    bad_quad = match is not None and _DOTTED_NUMBER.fullmatch(match["netloc_name"]) is not None \
+        and len(match["netloc_name"].split(".")) != MAX_IPV4_PARTS
+    if match is None or bad_port or bad_quad:
         raise BrokerConfigError("FRONTEND_ORIGIN must be http(s)://host[:port] with no path, query, fragment or login")
     return origin
 

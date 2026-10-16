@@ -35,7 +35,7 @@ REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"
 ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"
 CALLBACK = "/kite/callback"
 USER_ID = "AB1234"
-FRONTEND = "http://127.0.0.1:4173"  # the vite preview origin (frontend/README.md); the API's own host differs
+FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest (the vite preview origin); the API's host differs
 CREDENTIAL_WORDS = ("password", "pin", "otp", "totp", "twofa", "2fa")
 
 
@@ -791,9 +791,12 @@ async def test_a_generic_exchange_exception_redirects_as_kite_unavailable():
 # ---- #159: after the callback the browser's next URL is on the FRONTEND origin, never the API's host ----
 
 API_HOST = "http://127.0.0.1:8765"  # the owner's KITE_REDIRECT_URL host: the API, which serves no pages
-BAD_ORIGINS = ["http://127.0.0.1:4173/app", "javascript:alert(1)", "http://user:pw@host", "//evil.example",
+BAD_ORIGINS = [FRONTEND + "/app", "javascript:alert(1)", "http://user:pw@host", "//evil.example",
                "http://host?x=1", "http://host#f", "", "ftp://host", "http://host/a/", "http://ho st", "host:4173",
-               "http://host:99999x", "https://host//"]
+               "http://host:99999x", "https://host//",
+               "http://host:0", "http://host:65536", "http://host:99999", "http://[:]:4173", "http://[::]x",
+               "http://a..b",
+               "http://.a", "http://a.", "http://1.2.3.4.5", "http://1.2.3", "http://256", "http://-a", "http://a-"]
 
 
 class _Begin:
@@ -895,10 +898,10 @@ def test_a_frontend_origin_that_is_not_just_scheme_host_port_is_refused(bad):
     assert "FRONTEND_ORIGIN" in str(raised.value)
 
 
-@pytest.mark.parametrize("good, kept", [("http://127.0.0.1:4173", "http://127.0.0.1:4173"),
+@pytest.mark.parametrize("good, kept", [(FRONTEND, FRONTEND), (FRONTEND + "/", FRONTEND),
                                         ("https://app.example.com/", "https://app.example.com"),
                                         ("http://localhost:5173", "http://localhost:5173"),
-                                        ("http://[::1]:4173", "http://[::1]:4173")])
+                                        ("http://[::1]:5173", "http://[::1]:5173")])
 def test_a_plain_origin_is_accepted_and_one_trailing_slash_is_dropped(good, kept):
     assert load_broker_config(_settings(FRONTEND_ORIGIN=good)).frontend_origin == kept
 
@@ -916,7 +919,27 @@ def test_the_door_lets_a_location_name_only_the_configured_frontend_origin():
     ok = errors_module.typed_redirect(out, FRONTEND + "/broker/connected")
     assert ok.headers["location"] == FRONTEND + "/broker/connected"
     for bad in (FRONTEND + "0/x", FRONTEND + ".evil.example/x", FRONTEND + "@evil.example/x",
-                FRONTEND + "//evil.example", FRONTEND, "http://127.0.0.1:4174/x", "https://127.0.0.1:4173/x",
+                FRONTEND + "//evil.example", FRONTEND, FRONTEND[:-1] + "4/x",
+                FRONTEND.replace("http", "https", 1) + "/x",
                 API_HOST + "/broker/connected"):
         with pytest.raises(ValueError):
             errors_module.typed_redirect(out, bad)
+
+
+def test_the_door_origin_is_write_once_and_validated_inside_the_setter():
+    create_app(_owner_config())  # sets it (or repeats the same value: a no-op)
+    errors_module.set_frontend_origin(FRONTEND)  # the same value again is fine
+    errors_module.set_frontend_origin(FRONTEND + "/")  # normalised to the same value
+    other = "https://evil.example"
+    with pytest.raises(ValueError):
+        errors_module.set_frontend_origin(other)  # a different value is refused
+    other_config = load_broker_config(_settings(FRONTEND_ORIGIN=other))
+    with pytest.raises(ValueError):
+        create_app(other_config)  # a second app with another origin fails closed
+    for bad in BAD_ORIGINS:
+        with pytest.raises(BrokerConfigError):
+            errors_module.set_frontend_origin(bad)  # a bad value cannot be stored by a direct call
+    out = broker_routes.BrokerRedirectOut(redirect="connected")
+    with pytest.raises(ValueError):
+        errors_module.typed_redirect(out, other + "/steal?x=1")  # the refused value never became allowed
+    assert errors_module.typed_redirect(out, FRONTEND + "/broker/connected").headers["location"].startswith(FRONTEND)

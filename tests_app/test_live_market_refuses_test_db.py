@@ -66,7 +66,7 @@ def _create_app(monkeypatch, url: str):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("DATABASE_URL", url)
     for k, v in (("KITE_API_KEY", "k"), ("KITE_API_SECRET", "s"), ("KITE_REDIRECT_URL", "http://127.0.0.1:8000/kite/callback"),
-                 ("FRONTEND_ORIGIN", "http://127.0.0.1:4173"), ("KITE_EXPECTED_USER_ID", "ZZ0000"),
+                 ("KITE_EXPECTED_USER_ID", "ZZ0000"),
                  ("BROKER_TOKEN_KEY", base64.urlsafe_b64encode(bytes(32)).decode())):
         monkeypatch.setenv(k, v)
     return main.create_app()
