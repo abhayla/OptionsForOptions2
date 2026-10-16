@@ -79,7 +79,7 @@ def _map_money(node: object, convert) -> object:
 
 def _json_numbers(name: str) -> object:
     """The same reply as live Kite REST sends it: money as JSON numbers, read with parse_float=Decimal."""
-    as_numbers = _map_money(copy.deepcopy(_recorded(name)), lambda v: float(v))  # float-ok: only to WRITE the JSON
+    as_numbers = _map_money(copy.deepcopy(_recorded(name)), float)  # float-ok: only to WRITE the JSON
     text = json.dumps({"status": "success", "data": as_numbers})
     assert '"5.1"' not in text  # no money string is left: every figure is a JSON number
     return json.loads(text, parse_float=Decimal)["data"]
@@ -87,7 +87,7 @@ def _json_numbers(name: str) -> object:
 
 def _sdk_floats(name: str) -> object:
     """The same reply as the kiteconnect SDK hands it over: money as Python floats."""
-    return _map_money(copy.deepcopy(_recorded(name)), lambda v: float(v))  # float-ok: simulating the SDK's floats
+    return _map_money(copy.deepcopy(_recorded(name)), float)  # float-ok: simulating the SDK's floats
 
 
 SHAPES = {"recorded-strings": _recorded, "json-numbers": _json_numbers, "sdk-floats": _sdk_floats}
@@ -174,8 +174,9 @@ def test_time_only_order_timestamp_is_never_used_and_a_time_only_fill_timestamp_
     row = dict(_recorded("trades-122104")[0])
     assert row["order_timestamp"] == "12:20:50"  # the real reply: time-only
     assert fill_from_trade_row({**row, "order_timestamp": "junk"}) == fill_from_trade_row(row)
-    with pytest.raises(KiteReplyError, match="fill_timestamp"):
-        fill_from_trade_row({**row, "fill_timestamp": "12:20:50"})
+    for partial in ("12:20:50", "2026-10-16", "2026-10-16T12:20:50+00:00", "2026-10-16 12:20"):
+        with pytest.raises(KiteReplyError, match="fill_timestamp"):  # never midnight, never another zone's text
+            fill_from_trade_row({**row, "fill_timestamp": partial})
     with pytest.raises(KiteReplyError, match="fill_timestamp"):
         fill_from_trade_row({k: v for k, v in row.items() if k != "fill_timestamp"})
     naive_sdk = fill_from_trade_row({**row, "fill_timestamp": datetime.datetime(2026, 10, 16, 12, 20, 50)})  # noqa: DTZ001 SDK shape
