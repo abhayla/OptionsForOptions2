@@ -21,6 +21,7 @@ from ofo.errors.explanations import render_explanation
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Final
 
@@ -85,12 +86,12 @@ def _notes(seq: OrderSequence) -> tuple[str, ...]:
 
 def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
                      constraints: BrokerConstraints | None = None, *,
-                     freeze_limits: Mapping[str, StoredFreeze] | None) -> ExecutionReview:
+                     freeze_limits: Mapping[str, StoredFreeze] | None, today: date) -> ExecutionReview:
     """AC-5: build the review from the engine, the margin planner and the sequence builder.
 
     W-076 (ADR-081): ``freeze_limits`` (broker trading symbol -> stored limit) decides which legs are blocked; a leg
     with no entry carries the warning. The argument is REQUIRED (no default, so the check cannot be skipped by
-    omission); ``None`` means no limit is known, so every leg warns. Build it with ``freeze_limits_for_plan``."""
+    omission), as is ``today`` (the review date, passed in by the caller, for the limit's age warning); ``None`` means no limit is known, so every leg warns. Build it with ``freeze_limits_for_plan``."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"execution_review needs an ExecutionPlan, got {plan!r}")
     strategy = Strategy(tuple(p.leg for p in plan.legs))
@@ -113,7 +114,7 @@ def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
     except Exception as exc:  # fail closed to "unknown": never a made-up figure
         unknown.append(("margin_required", render_explanation("review_unknown_margin")))  # the planner's own error is not shown
     seq = sequence_plan(plan, planner, constraints)
-    freeze = freeze_check(plan, freeze_limits)
+    freeze = freeze_check(plan, freeze_limits, today=today)
     return ExecutionReview(plan.strategy_id, margin, max_loss, max_profit, current, len(plan.legs), _lines(plan, seq),
                            BROKER, seq.margin_note, _notes(seq), tuple(unknown), freeze.blocks, freeze.warnings)
 
