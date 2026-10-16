@@ -28,8 +28,6 @@ import datetime
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import text
-
 from ofo.instruments.eligibility import (
     EligibilityRegistry,
     EligibilityStatus,
@@ -38,6 +36,8 @@ from ofo.instruments.eligibility import (
     status_from_list,
 )
 from ofo.instruments.models import ZERODHA, InstrumentId
+from sqlalchemy import text
+
 from ofo_app.catalogue_picker import BROKER_ROWS, CONTRACTS, database_today
 
 _STATE_COLUMNS = (

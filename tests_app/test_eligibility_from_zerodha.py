@@ -17,17 +17,27 @@ from __future__ import annotations
 import datetime
 import inspect
 
-from sqlalchemy import text
-from sqlalchemy.sql.elements import TextClause
-
 from ofo.instruments import eligibility as el
 from ofo.instruments.models import InstrumentId
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update
+from sqlalchemy import text
+from sqlalchemy.sql.elements import TextClause
 from test_strategy_followups import _ConnMaker
-from test_strategy_store import (AS_OF, IRON_CONDOR, LOT, WING, _app, _body, _client, _fixture_rows, _ids, _user,
-                                _with_draft)
+from test_strategy_store import (
+    AS_OF,
+    IRON_CONDOR,
+    LOT,
+    WING,
+    _app,
+    _body,
+    _client,
+    _fixture_rows,
+    _ids,
+    _user,
+    _with_draft,
+)
 
 LIST_DAY = AS_OF.date()  # 2026-10-08, the recorded list's day
 AFTER_EXPIRY = datetime.date(2026, 10, 14)  # the condor's contracts expired 2026-10-13

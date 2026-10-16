@@ -29,19 +29,18 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import text
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from decimal import Decimal
-
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, UserFacing, UserFacingError, render
 from ofo.strategy import stored_form as sf
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import text
+
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money

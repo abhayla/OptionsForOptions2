@@ -21,11 +21,10 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
-
 from execution_inputs import IST, all_true_context, check
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution import CheckCode
-from ofo.instruments import Catalogue, EligibilityRegistry, InstrumentId, NSE_FO
+from ofo.instruments import NSE_FO, Catalogue, EligibilityRegistry, InstrumentId
 from ofo.instruments import eligibility as el
 from ofo.instruments.parser import zerodha_listed
 

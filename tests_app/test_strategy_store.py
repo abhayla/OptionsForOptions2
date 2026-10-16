@@ -29,11 +29,6 @@ from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
-
 from ofo.engine.legs import Action, Instrument
 from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
@@ -42,6 +37,10 @@ from ofo_app.db import get_db
 from ofo_app.eligibility_from_zerodha import get_eligibility_today
 from ofo_app.main import create_app
 from ofo_app.routes import strategies as strategy_routes
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 8, 9, 0, tzinfo=IST)

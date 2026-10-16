@@ -55,13 +55,14 @@ class EligibilityRegistry:
 #     tradable with Zerodha's text. The reasons below are internal (audit/log); the user sees the gate's catalogue text.
 # ---------------------------------------------------------------------------------------------------------------
 
-REASON_NOT_IN_LIST = "not in Zerodha's current instrument list"
-REASON_EXPIRED = "its expiry has passed"
-REASON_DELISTED = "delisted: Zerodha's list stopped carrying it before its expiry"
-REASON_RETIRED = "retired after its expiry"
-REASON_NO_ZERODHA_ROW = "no live Zerodha row for this contract"
-REASON_INDEX = "an index row is not a tradable contract"
-REASON_NO_EXPIRY = "no expiry date in the list"
+# Reason CODES (not sentences: user wording comes only from the message catalogue, REQ-065 AC-2).
+REASON_NOT_IN_LIST = "not_in_current_list"  # the latest Zerodha list load does not carry it
+REASON_EXPIRED = "expired"  # its expiry date is before today's India date
+REASON_DELISTED = "delisted"  # Zerodha's list stopped carrying it before its expiry (ADR-058)
+REASON_RETIRED = "retired"  # retired after its expiry (ADR-057)
+REASON_NO_ZERODHA_ROW = "no_zerodha_row"  # no live Zerodha row for this contract
+REASON_INDEX = "index_row"  # an index row is not a tradable contract
+REASON_NO_EXPIRY = "no_expiry"  # the list row has no expiry date
 
 
 @dataclass(frozen=True)

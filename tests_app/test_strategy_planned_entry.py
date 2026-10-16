@@ -22,19 +22,17 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from ofo.engine.legs import Action
 from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update
 from ofo_app.db import get_db
+from ofo_app.eligibility_from_zerodha import get_eligibility_today
 from ofo_app.main import create_app
 from ofo_app.routes import strategies as strategy_routes
-
-from ofo_app.eligibility_from_zerodha import get_eligibility_today
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
 from test_strategy_store import AS_OF, IRON_CONDOR, LOT, _fixture_rows, _ids, fixture_today  # the same real rows
 
 IST = timezone(timedelta(hours=5, minutes=30))
