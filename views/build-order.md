@@ -4,31 +4,28 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (10): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070, REQ-072
+Done (13): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
 | REQ-015 | Zerodha connection | core | normal | next |
 | REQ-028 | Generic strategy engine and templates | core | normal | next |
-| REQ-038 | Strategy definition, live state and versions | core | normal | next |
 | REQ-048 | Market-data pipeline and browser boundary | core | normal | next |
 | REQ-049 | Normalized market data and data health | core | normal | next |
 | REQ-052 | Market-data sourcing and licensing | core | normal | next |
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
 | REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | normal | next |
-| REQ-001 | V1 scope: underlyings, leg types, broker | foundation | normal | next |
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
 | REQ-012 | Registration and identity layers | foundation | normal | next |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
-| REQ-035 | Single strategy table | foundation | normal | next |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
 | REQ-055 | Margin checks | foundation | normal | blocked: its own work item W-081 blocked: Integrate with the basket after #271 (basket build must take a MarginVerdict from margin_verdict); live-read /user/margins and /margins/basket on the owner's session (equity.net, final.total with consider_positions=true); fix #273; then re-verify AC-1/AC-3/AC-4. |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
-| REQ-063 | Security boundaries | foundation | normal | blocked: its own work item W-017 blocked: wait for Zerodha access |
+| REQ-063 | Security boundaries | foundation | normal | next |
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: #200 remainder (fix (1) and (2), one bounded round, ADR-074) built on branch fix/200-door-remainder: rebinding + ASGI send-path CI scans, seal recorded in the door send path; awaiting the independent verifier |
 | REQ-075 | Coding standards are checked automatically, at edit time and in CI, without slowing small changes | foundation | normal | next |

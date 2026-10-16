@@ -1,0 +1,32 @@
+{
+ "id": "verifier-guard-watches-every-worktree",
+ "scope": "generic",
+ "class": "A write guard that protects a verifier's independence by moving any new file under work/, spec/ or evidence/ while a verifier runs cannot tell the orchestrator's writes from the verifier's, and it watches every worktree of the repo, not only the verifier's own folder - so the orchestrator's cards and spec edits made in parallel, even in a separate worktree, silently disappear into quarantine.",
+ "mechanism": "The verifier's PostToolUse write-guard diffs work/, spec/ and evidence/ across the repo's worktrees after each verifier tool call and moves new untracked files to %TEMP%/verifier-quarantine/<stamp>/ (MANIFEST action 'moved'); tracked edits are 'copied'. The workaround written on 2026-10-16 morning (use a scratch worktree) assumed it watched only the main checkout.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "main checkout, W-083 card (session 159f685c)",
+  "evidence": "work/W-083.md written mid-verification vanished; restored from the quarantine MANIFEST"
+ },
+ "fix": "Structural: the guard watches only the verifier's own verify folder (the path it created), never other worktrees - a kit change (harvest issue). Filed as abhayla/Startup-Factory issue 110 (harvest, 2026-10-16). Until then: no card/spec/evidence write anywhere while a verifier is in flight; draft outside any git worktree and copy in after it returns; on a vanished file, restore from the newest MANIFEST and compare sha256.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Detected only by noticing a missing file. The orchestrator compares git status of its own worktrees before and after each verifier (deliver step 4) - that check found this one."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "main checkout, morning",
+   "evidence": "work/W-083.md moved to quarantine"
+  },
+  {
+   "date": "2026-10-16",
+   "where": "GC-1 scratchpad docs worktree ofo2-gc1-running, 20:07-20:08 IST",
+   "evidence": "work/W-090.md and work/W-092.md moved (sha256 c1262dca..., 8b62d9d0...), W-017/W-089/REQ-035/REQ-038/REQ-054 edits copied; restored, hashes matched"
+  }
+ ]
+}

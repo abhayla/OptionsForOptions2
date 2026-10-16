@@ -1,5 +1,11 @@
 # Handover
 
+**2026-10-16 night (goal contract GC-1) — START HERE: `docs/process/session-handover-2026-10-16-gc1.md`, then
+`docs/process/goal-chain.md` (GC-2a is NEXT).** 4a close-out audit (`4a-closeout-audit-2026-10-16.md`); REQ-001, REQ-035,
+REQ-038 Verified; #159 fixed in W-088 (PR #332; live check at GC-3); 4b core proof: the domain is right on the real
+order, but no Kite reply adapter exists (F-40 -> W-091 in GC-2b). Chain re-planned: GC-2b boundary, GC-2c Execute chain,
+GC-2d 4a screens. Per-PC: `.env` needs `FRONTEND_ORIGIN=http://127.0.0.1:4173`.
+
 **2026-10-16 night — START HERE: `docs/process/session-handover-2026-10-16.md`.** Stage 4b built core first
 (ADR-087): W-074, W-076, W-077, W-078, W-082, W-085 and W-086 done; W-081 merged as a component (BLOCKED); W-083
 PARTIAL; fixes #237, #259, #263 (1-3), #275, #279 (1-3) and #285; PR close-keyword check (#289). Parked: W-075 (OQ-4),

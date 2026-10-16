@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from http import HTTPStatus
 from typing import ClassVar
 
@@ -23,7 +24,7 @@ from ofo_app import broker_token_store, catalogue_store, db, kite_ws, live_marke
 from ofo_app.config import get_settings
 from ofo_app.routes import broker as broker_routes
 
-CONNECTED = broker_routes.CONNECTED_FRONTEND_PATH
+CONNECTED = os.environ["FRONTEND_ORIGIN"] + broker_routes.CONNECTED_FRONTEND_PATH  # set once in conftest
 
 
 class _Conn:
