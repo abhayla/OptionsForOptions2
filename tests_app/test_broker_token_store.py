@@ -301,7 +301,8 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         response = await _login(ac)
     # the browser: a fixed path, no query, no cookie, no token anywhere
-    assert response.status_code == 302 and response.headers["location"] == FRONTEND + broker_routes.CONNECTED_FRONTEND_PATH
+    assert response.status_code == 302
+    assert response.headers["location"] == FRONTEND + broker_routes.CONNECTED_FRONTEND_PATH
     assert response.headers["referrer-policy"] == "no-referrer"
     # the only cookie sent is the login cookie being cleared (empty value, Max-Age=0), never a session or token
     cookies = response.headers.get_list("set-cookie")

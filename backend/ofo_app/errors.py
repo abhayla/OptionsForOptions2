@@ -562,14 +562,13 @@ def _kite_login_parts(location: str) -> tuple[str, str]:
     return api_key, state
 
 
-_frontend_origin: str = ""
+_FRONTEND_ORIGIN: list[str] = [""]
 
 
 def set_frontend_origin(origin: str) -> None:
-    """Set once by `create_app` from the validated `FRONTEND_ORIGIN` (scheme://host[:port], no path): the one other
+    """Set by `create_app` from the validated `FRONTEND_ORIGIN` (scheme://host[:port], no path): the one other
     site a Location may name, followed by a path from the same allow-list (#159)."""
-    global _frontend_origin
-    _frontend_origin = origin
+    _FRONTEND_ORIGIN[0] = origin
 
 
 def _check_location(location: str) -> None:
@@ -580,8 +579,8 @@ def _check_location(location: str) -> None:
         raise ValueError("a redirect location is text")
     if _PATH_LOCATION.fullmatch(location):
         return  # a path on this site
-    if _frontend_origin and location.startswith(_frontend_origin) and _PATH_LOCATION.fullmatch(
-            location[len(_frontend_origin):]):
+    origin = _FRONTEND_ORIGIN[0]
+    if origin and location.startswith(origin) and _PATH_LOCATION.fullmatch(location[len(origin):]):
         return  # a path on the frontend: the remainder starts with exactly one "/", so the host cannot be extended
     if not _is_kite_login_url(location):
         raise ValueError("a redirect leaves this site only for the Zerodha login URL")

@@ -12,7 +12,8 @@ import base64
 import hashlib
 import logging
 import os
-from urllib.parse import parse_qs, urlsplit
+from http import HTTPStatus
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import httpx
 import pytest
@@ -819,9 +820,7 @@ def _owner_config() -> BrokerConfig:
 
 def _browser_next_url(response) -> str:
     """Resolve the Location against the page Kite called back on, exactly as a browser does."""
-    from urllib.parse import urljoin
-
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     return urljoin(API_HOST + CALLBACK, response.headers["location"])
 
 
@@ -880,7 +879,7 @@ async def test_the_login_route_busy_refusal_still_answers_an_error_body_not_a_re
         for _ in range(20):
             await ac.get(broker_routes.LOGIN_PATH)
         last = await ac.get(broker_routes.LOGIN_PATH)
-    assert last.status_code == 429 and last.json() == render("broker_login_busy").as_dict()
+    assert last.status_code == HTTPStatus.TOO_MANY_REQUESTS and last.json() == render("broker_login_busy").as_dict()
 
 
 async def test_the_redirect_never_carries_the_token_state_or_access_token(monkeypatch):
@@ -916,7 +915,8 @@ def test_the_door_lets_a_location_name_only_the_configured_frontend_origin():
     out = broker_routes.BrokerRedirectOut(redirect="connected")
     ok = errors_module.typed_redirect(out, FRONTEND + "/broker/connected")
     assert ok.headers["location"] == FRONTEND + "/broker/connected"
-    for bad in (FRONTEND + "0/x", FRONTEND + ".evil.example/x", FRONTEND + "@evil.example/x", FRONTEND + "//evil.example",
-                FRONTEND, "http://127.0.0.1:4174/x", "https://127.0.0.1:4173/x", API_HOST + "/broker/connected"):
+    for bad in (FRONTEND + "0/x", FRONTEND + ".evil.example/x", FRONTEND + "@evil.example/x",
+                FRONTEND + "//evil.example", FRONTEND, "http://127.0.0.1:4174/x", "https://127.0.0.1:4173/x",
+                API_HOST + "/broker/connected"):
         with pytest.raises(ValueError):
             errors_module.typed_redirect(out, bad)
