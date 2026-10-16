@@ -19,11 +19,10 @@ from decimal import Decimal
 
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST_UNNAMED as IST
+from ofo.timeutil import SESSION_CLOSE, SESSION_OPEN
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 ONE_MINUTE = datetime.timedelta(minutes=1)
-SESSION_OPEN = datetime.time(9, 15)
-SESSION_CLOSE = datetime.time(15, 30)
 #: a quiet spell across ALL subscribed instruments longer than this is a feed gap (the longest healthy quiet spell
 #: measured on 2026-10-08 was 1.0 s with 8 instruments, 0.51 s with 1,091; the laptop outage was 114 s).
 FEED_GAP_AFTER = datetime.timedelta(seconds=5)

@@ -20,7 +20,7 @@ import datetime
 import threading
 import time
 from collections import Counter
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
 from typing import Iterable
 
 from sqlalchemy import text
@@ -29,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from ofo.history.bars import IST, BarSource, MinuteBar, session_gaps
 from ofo.history.store import DayStatus, FinalizeCounts, Gap, InMemoryHistoryStore
+from ofo.money import PAISE as _PAISA
 
-_PAISA = Decimal("0.01")
 _LOCK_KEY = 6700067  # pg_advisory_xact_lock key: one history writer at a time (the recorder and the finalize job)
 _CONNECT_TIMEOUT_S = 5
 _COMMAND_TIMEOUT_S = 15

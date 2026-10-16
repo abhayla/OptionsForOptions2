@@ -42,6 +42,7 @@ HOMES: dict[str, frozenset[str]] = {
 #: Temporary exceptions: ONLY files another branch owns today. Each entry: (rule, file).
 PHASE_2: frozenset[tuple[str, str]] = frozenset({
     ("ist_offset", "ofo/errors/explanations.py"),  # phase 2: ofo/errors/explanations.py owned by W-080/W-075 today
+    ("lot_modulo", "ofo/execution/freeze.py"),  # phase 2: ofo/execution/freeze.py owned by W-080/W-075 today
 })
 
 EXCLUDED_DIRS = ("ofo_app/alembic/versions/",)
@@ -198,6 +199,23 @@ def test_every_constant_lives_in_its_one_home():
     assert files > 50, f"scanned only {files} files under {BACKEND}: the scan is not looking where the code is"
     assert violations == [], "constants outside their home:\n" + "\n".join(violations)
     assert used == set(PHASE_2), f"stale phase-2 entries (remove them): {sorted(set(PHASE_2) - used)}"
+
+
+def test_the_shared_values_are_the_real_world_ones():
+    import datetime
+
+    from ofo import money, timeutil
+    from ofo.instruments.models import is_lot_aligned
+
+    assert timeutil.IST_OFFSET == datetime.timedelta(hours=5, minutes=30)
+    assert timeutil.IST.tzname(None) == "IST" and timeutil.IST_UNNAMED.tzname(None) == "UTC+05:30"
+    assert timeutil.IST == timeutil.IST_UNNAMED
+    assert timeutil.IST_SQL_ZONE == "AT TIME ZONE 'Asia/Kolkata'"
+    assert (timeutil.SESSION_OPEN, timeutil.SESSION_CLOSE) == (datetime.time(9, 15), datetime.time(15, 30))
+    assert timeutil.EXPIRY_CLOSE == datetime.time(15, 30, tzinfo=timeutil.IST)
+    assert (timeutil.EXPIRY_DAY_SETTLE_FROM, timeutil.HISTORY_FETCH_UNTIL) == (datetime.time(15, 39), datetime.time(15, 59))
+    assert str(money.PAISE) == "0.01" and str(money.HUNDREDTH) == "0.01"
+    assert [is_lot_aligned(u, 65) for u in (65, 130, 64, 66)] == [True, True, False, False]
 
 
 def test_the_homes_exist():

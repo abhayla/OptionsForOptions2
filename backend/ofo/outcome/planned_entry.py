@@ -16,8 +16,8 @@ from typing import Literal
 
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
+from ofo.money import PAISE as _CENT
 
-_CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True)

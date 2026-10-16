@@ -39,6 +39,7 @@ from typing import Final
 from ofo.engine import legs
 from ofo.engine.legs import Instrument, Leg
 from ofo.engine.strategy import Strategy
+from ofo.money import HUNDREDTH
 
 
 class _Unlimited:
@@ -96,12 +97,12 @@ def _to_decimal(value: Fraction) -> Decimal:
         result = Decimal(value.numerator) / Decimal(value.denominator)
     if Fraction(result) == value:
         return result
-    return result.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+    return result.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
 
 
 def _shown(level: Decimal) -> Decimal:
     """``level`` as the display prints it: rounded half-even to the 0.01 point step (engine.display.format_points)."""
-    return level.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+    return level.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
 
 
 def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) -> list[Fraction]:

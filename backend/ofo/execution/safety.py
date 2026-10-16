@@ -33,13 +33,14 @@ from ofo.execution.context import (
 )
 from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, EligibilityRegistry
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.instruments.models import is_lot_aligned
 from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
 from ofo.errors.explanations import ExplanationText, render_explanation
+from ofo.timeutil import IST_UNNAMED as IST
 
 logger = logging.getLogger("ofo.execution.safety")
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 MAX_ALTERNATIVES = 2
 
 
@@ -405,7 +406,7 @@ def _leg_failures(
         except ValueError:
             out.append(_fail(CheckCode.QUANTITY_INVALID, "gate_lot_size_unconfirmed", leg_number=number, leg=value))
         else:
-            if leg.quantity % lot != 0:
+            if not is_lot_aligned(leg.quantity, lot):
                 out.append(_fail(CheckCode.QUANTITY_INVALID, "gate_quantity_not_lots", leg_number=number, leg=value,
                                  quantity=leg.quantity, underlying=underlying, lot=lot, two_lots=2 * lot))
         if leg.expiry < today:

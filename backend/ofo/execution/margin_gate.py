@@ -19,9 +19,9 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Final
 
 from ofo.errors import UserFacingError, render
+from ofo.money import PAISE as _PAISE
 
 _MINT: Final = object()  # module-private: only check_margin mints a verdict
-_PAISE: Final = Decimal("0.01")
 
 
 class MarginReplyError(ValueError):

@@ -20,11 +20,12 @@ from sqlalchemy import text
 
 from ofo.instruments.models import ZERODHA
 from ofo_app.pinned_clock import pinned_today
+from ofo.timeutil import IST_SQL_ZONE
 
 CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
 
-_TODAY = text("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date")
+_TODAY = text(f"SELECT (now() {IST_SQL_ZONE})::date")
 
 _PICKABLE = (
     f"FROM {CONTRACTS} AS c JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id AND b.broker = :broker "

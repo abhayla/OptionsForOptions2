@@ -150,3 +150,9 @@ def find_ref(contract: Contract, refs, broker: str) -> BrokerRef:
         if r.broker == broker:
             return r
     raise MissingBrokerRef(detail=f"{contract.id} has no {broker} row; it cannot be traded at {broker}")
+
+
+def is_lot_aligned(units: int, lot: int) -> bool:
+    """True when ``units`` is a whole number of lots of ``lot`` (THE lot-alignment rule, shared by the safety gate,
+    the slicer, reconciliation and the stored form). ``lot`` is the caller's already-validated lot size."""
+    return units % lot == 0
