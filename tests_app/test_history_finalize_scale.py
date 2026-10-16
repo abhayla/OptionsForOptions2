@@ -301,12 +301,14 @@ def _seed_with_analyze_during_insert(n: int):
             await b.execute("PREPARE s344(text[], timestamptz[]) AS SELECT b.instrument_id FROM unnest($1, $2) AS "
                             "k(i, m) JOIN public.history_minute_bars AS b ON b.instrument_id = k.i AND b.minute = k.m "
                             "WHERE NOT b.removed")
+            await b.execute("PREPARE s344l(text[], timestamptz[]) AS " + _LATERAL_HEAD + "b.instrument_id" + _LATERAL_FROM)
             plans = {}
             for mode in ("force_custom_plan", "force_generic_plan"):
                 await b.execute(f"SET plan_cache_mode = {mode}")
-                rows = await b.fetch("EXPLAIN EXECUTE s344(array_fill('NSE_FO:100001'::text, ARRAY[18750]), "
-                                     "array_fill(timestamptz '2026-10-08 09:15+05:30', ARRAY[18750]))")
-                plans[mode] = " | ".join(r[0].strip()[:80] for r in rows[:5])
+                for name in ("s344", "s344l"):
+                    rows = await b.fetch(f"EXPLAIN EXECUTE {name}(array_fill('NSE_FO:100001'::text, ARRAY[18750]), "
+                                         "array_fill(timestamptz '2026-10-08 09:15+05:30', ARRAY[18750]))")
+                    plans[f"{name}/{mode}"] = " | ".join(r[0].strip()[:80] for r in rows[:5])
             return tuple(st), plans
         finally:
             await a.close()
@@ -326,7 +328,31 @@ class _CustomPlanStore(PostgresHistoryStore):
         return self._engine
 
 
-@pytest.mark.parametrize("store_cls", [PostgresHistoryStore, _CustomPlanStore], ids=["as-is", "force-custom"])
+_LATERAL_HEAD = "SELECT "
+_LATERAL_FROM = (" FROM unnest(CAST($1 AS text[]), CAST($2 AS timestamptz[])) AS k(i, m) CROSS JOIN LATERAL "
+                 "(SELECT * FROM public.history_minute_bars AS x WHERE x.instrument_id = k.i AND x.minute = k.m "
+                 "AND NOT x.removed) AS b")
+
+
+class _LateralStore(PostgresHistoryStore):
+    @staticmethod
+    async def _slice(conn, kw, pieces):
+        from sqlalchemy import text as _t
+        from ofo_app.history_store import _bar
+        found = {}
+        named = [(b.instrument_id, b.minute) for b in (*kw["bars"], *kw["candles"])]
+        if named:
+            sql = (_LATERAL_HEAD + "b.instrument_id, b.minute, b.open, b.high, b.low, b.close, b.volume, b.oi, b.source"
+                   + _LATERAL_FROM).replace("$1", ":i").replace("$2", ":m")
+            rows = await conn.execute(_t(sql), {"i": [n[0] for n in named], "m": [n[1] for n in named]})
+            found.update({(b.instrument_id, b.minute): b for b in map(_bar, rows)})
+        rest = await PostgresHistoryStore._slice(conn, {**kw, "bars": [], "candles": []}, pieces)
+        found.update({(b.instrument_id, b.minute): b for b in rest})
+        return list(found.values())
+
+
+@pytest.mark.parametrize("store_cls", [PostgresHistoryStore, _CustomPlanStore, _LateralStore],
+                         ids=["as-is", "force-custom", "lateral"])
 def test_diag344_repro(committed_day, capsys, store_cls):
     state, plans = _seed_with_analyze_during_insert(N)
     ids = [iid(i) for i in range(1, N + 1)]
