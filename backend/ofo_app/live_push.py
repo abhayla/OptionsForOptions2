@@ -23,8 +23,8 @@ from pydantic import ValidationError
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
 from ofo_app.errors import SocketClosed
-from ofo_app.routes.outcome import (ContractLookup, MarketContext, OutcomeRequest, get_contract_lookup, outcome_response,
-                                    stored_legs_for)
+from ofo_app.routes.outcome import (ContractLookup, MarketContext, OutcomeRequest, get_contract_lookup,
+                                    load_charge_rates, outcome_response, stored_legs_for)
 
 MIN_PUSH_INTERVAL = 1.0  # ADR-068: at most once a second per strategy
 POLL_SECONDS = 0.05
@@ -111,9 +111,10 @@ class StrategyPush:
     async def _push(self) -> None:
         self._dirty = False
         try:
+            rates = await load_charge_rates()
             ctx = None if self._feed is None else self._feed.ctx
             stored = await stored_legs_for(self._req, ctx, self._lookup)  # same helper as the REST route
-            body = outcome_response(self._req, ctx, stored=stored)
+            body = outcome_response(self._req, ctx, stored=stored, rates=rates)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return

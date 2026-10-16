@@ -13,25 +13,54 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Awaitable, Callable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
-
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
+from ofo.instruments.models import InstrumentId as ContractKey
+from ofo.instruments.models import ListedContract
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.instruments.models import InstrumentId as ContractKey, ListedContract
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
 from ofo.table import UXLevel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
+
+from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
 from ofo_app.errors import ClosedRoute
 
 router = APIRouter(route_class=ClosedRoute)
 log = logging.getLogger("ofo_app.outcome")
+
+# A loaded rate set is reused for 300 s (rates change by a dated admin row, so a few minutes of lag is harmless and the
+# live push asks every second); a FAILED load (no database, no table, no complete set) is remembered as "no rates" for
+# 30 s and then retried, so a database outage costs one attempt per 30 s, not one per push.
+_RATES_TTL, _RATES_RETRY = 300.0, 30.0
+_rates_cache: dict = {"until": 0.0, "value": None}
+
+
+async def load_charge_rates() -> Optional[ChargeRates]:
+    """The charge rates in force (ADR-082: the database clock picks the set), or None when none can be read. None is
+    never an error here: the outcome then keeps ADR-071's "before charges and taxes" sentence (W-075 decision (b)).
+    Works with or without a Zerodha session: the rates do not depend on one."""
+    now = time.monotonic()
+    if now < _rates_cache["until"]:
+        return _rates_cache["value"]
+    try:
+        async with db.get_sessionmaker()() as session:
+            value = await charge_rates_store.rates_in_force(session)
+        _rates_cache.update(until=now + _RATES_TTL, value=value)
+    except Exception:  # noqa: BLE001 - no database, table or set gives None (logged, never shown)
+        log.warning("charge rates unavailable: outcome sentences stay before charges", exc_info=True)
+        _rates_cache.update(until=now + _RATES_RETRY, value=None)
+        value = None
+    return value
+
 
 #: The longest the no-provider answer waits for the stored catalogue (#259): a hanging database host must not delay the
 #: "not connected" answer up to the driver's connect timeout. On timeout the legs stay unnamed, like any unreadable read.
@@ -223,6 +252,8 @@ class SummaryOut(ApiModel):
     lower_be: Optional[Money]
     upper_be: Optional[Money]
     risk_boundaries: list[Money]
+    charges: Optional[Money] = None  # W-075: the round-trip charges inside max_profit / max_loss
+    charges_unavailable: bool = False
 
 
 class MarginOut(ApiModel):
@@ -327,9 +358,10 @@ def live_context() -> Optional[MarketContext]:
     return live_market.current_context()
 
 
-def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
+def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Optional[Callable[[str], bool]] = None, *, now: AnswerClock = server_now,
-                     stored: Optional[Mapping[str, ListedContract]] = None) -> OutcomeResponse:
+                     stored: Optional[Mapping[str, ListedContract]] = None,
+                     rates: Optional[ChargeRates] = None) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -350,7 +382,7 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:
-            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view))
+            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates)
     body = outcome_to_dict(out)
     body["answered_at"] = answered_at
     for column in (body.get("table") or {}).get("columns", ()):
@@ -362,9 +394,12 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],
 
 
 @router.post("/api/strategies/outcome", response_model=OutcomeResponse, response_model_exclude_unset=True)
-def strategy_outcome(req: OutcomeRequest,
+def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencies, one per input
                      ctx: Optional[MarketContext] = Depends(get_market_context),
                      streaming: Optional[Callable[[str], bool]] = Depends(get_streaming),
                      now: AnswerClock = Depends(get_answer_clock),
-                     stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs)) -> OutcomeResponse:
-    return outcome_response(req, ctx, streaming, now=now, stored=stored)
+                     stored: Optional[Mapping[str, ListedContract]] = Depends(get_stored_legs),
+                     rates: Optional[ChargeRates] = Depends(load_charge_rates)) -> OutcomeResponse:
+    # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
+    return outcome_response(req, ctx, streaming, now=now, stored=stored,
+                            rates=rates if isinstance(rates, ChargeRates) else None)

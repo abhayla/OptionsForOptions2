@@ -81,6 +81,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
             "max_loss_unlimited": s.max_loss_unlimited, "breakevens": [_s(b) for b in s.breakevens],
             "lower_be": _s(s.lower_be), "upper_be": _s(s.upper_be),
             "risk_boundaries": [_s(b) for b in s.risk_boundaries],
+            "charges": _s(s.charges), "charges_unavailable": s.charges_unavailable,
         }
     if out.table is not None:
         table = _table(out.table, out.visible_columns)

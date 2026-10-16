@@ -722,7 +722,7 @@ class LegacyRecorded(SlotType):
 
 LEGACY_SLOT_TEMPLATES: frozenset[str] = frozenset({"estimate_line", "estimate_assume_iv",
                                                    "estimate_assume_valued"})
-JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | "})
+JOIN_SEPARATORS: frozenset[str] = frozenset({", ", "; ", " | ", " "})
 
 
 @dataclass(frozen=True)
@@ -957,10 +957,19 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("summary_lose_unlimited", "values_seen",
                         "Your loss has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_lose_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
+    ExplanationTemplate("summary_lose_at_most_with_charges", "values_seen",
+                        "At most {amount} at expiry, including about {charges} of charges and taxes.",
+                        {"amount": Rupees, "charges": Rupees}),
+    ExplanationTemplate("summary_lose_exercise_stt_note", "values_seen",
+                        "Holding a bought option to expiry in the money adds STT on its value; "
+                        "squaring off before expiry avoids it."),
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
     ExplanationTemplate("summary_make_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
+    ExplanationTemplate("summary_make_at_most_with_charges", "values_seen",
+                        "At most {amount} at expiry, including about {charges} of charges and taxes.",
+                        {"amount": Rupees, "charges": Rupees}),
     ExplanationTemplate("summary_start_regions", "values_seen", "If {index} ends {regions} at expiry.",
                         {"index": UnderlyingName, "regions": LevelRegions}),
     ExplanationTemplate("summary_start_touch", "values_seen", "At every level except exactly {levels} at expiry.",
@@ -985,6 +994,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
+    ExplanationTemplate("cell_charges_row_label", "values_seen", "Charges and taxes (estimate)"),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 

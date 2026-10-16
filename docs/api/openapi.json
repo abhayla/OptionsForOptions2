@@ -1720,6 +1720,22 @@
             "title": "Breakevens",
             "type": "array"
           },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_unavailable": {
+            "default": false,
+            "title": "Charges Unavailable",
+            "type": "boolean"
+          },
           "lower_be": {
             "anyOf": [
               {
