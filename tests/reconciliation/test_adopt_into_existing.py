@@ -23,6 +23,7 @@ from grouping_inputs import (EXP_CONDOR, EXP_SECOND, IN_STRATEGY, LOT, SECOND_EX
 from ofo.audit.catalogue import EventType
 from ofo.engine import Action, Instrument
 from ofo.instruments import Catalogue, parse_instruments_csv
+from ofo.orders.model import OrderBook
 from ofo.reconciliation.compare import compare
 from ofo.reconciliation.grouping import (EntrySource, GroupingError, GroupingSession, ToStrategy, suggest_groups)
 from ofo.reconciliation.resolution import record_report
@@ -84,6 +85,12 @@ def order_free_violations(record: StrategyRecord, versions_before: int) -> list[
     return problems
 
 
+def bound_book(record: StrategyRecord) -> OrderBook:
+    book = OrderBook(clock=now)
+    book.bind_strategy("S-1", record)
+    return book
+
+
 def real_setup():
     """S-1 holds SELL 65 of the real NIFTY 23650 PE (same expiry as the bought CE); the CE row is the real one."""
     cat, held_row = real_catalogue(), real_row()
@@ -94,14 +101,14 @@ def real_setup():
     suggestion = suggest_groups([held_row], {"S-1": s1}, cat)
     log = audit_log()
     session = GroupingSession.start(suggestion, audit=log, clock=now, actor="user-1", session_id="sess-1",
-                                    records={"S-1": record})
+                                    records={"S-1": record}, book=bound_book(record))
     return session, record, log, suggestion.groups[0].positions[0]
 
 
 # ---- the core, on the real row ----------------------------------------------------------------------------------
 
 def test_real_held_ce_joins_existing_strategy_as_new_order_free_version(monkeypatch):
-    session, record, log, ce = real_setup()
+    session, record, _log, ce = real_setup()
     assert (ce.net_quantity, ce.average_price, ce.product.value) == (65, D("5.1"), "NRML")
     # Mutation guard: any order-preparing path used by the adopt fails the test outright.
     for name in ("edit", "propose_execution", "confirm", "apply_result"):
@@ -138,13 +145,29 @@ def test_reconciliation_after_adopt_agrees_and_still_detects_a_later_change():
     assert mismatch.strategy_ids == ("S-1",) and mismatch.difference == ((contract_of(ce), 65),)
 
 
-def test_mutation_routing_the_adopt_through_edit_is_caught():
-    """Mutation: adopt via ``edit`` (an order-preparing proposal) -> the order-free check reports it."""
-    _session, record, _log, ce = real_setup()
-    new = StrategyDefinition(ce.underlying, (*record.definition.legs,
-                                             DefinitionLeg(Action.BUY, ce.instrument, ce.strike, ce.expiry, 65)))
-    record.edit(new, at=T_ADOPT)
+def test_mutation_routing_the_adopt_through_edit_is_caught(monkeypatch):
+    """Mutation: ``adopt_held`` replaced by an ``edit`` (an order-preparing proposal); the same session call then
+    leaves a proposed version, and the order-free check the core test uses reports it."""
+    session, record, _log, ce = real_setup()
+
+    def through_edit(self, held, *, at, actor, reason=""):
+        legs = tuple(DefinitionLeg(Action.BUY if u > 0 else Action.SELL, c[1], c[2], c[3], abs(u))
+                     for c, u in held.lines)
+        return self.edit(StrategyDefinition(ce.underlying, (*self.definition.legs, *legs)), at=at)
+
+    monkeypatch.setattr(StrategyRecord, "adopt_held", through_edit)
+    session.move(ce.key, ToStrategy("S-1"))
+    session.confirm_into("S-1", at=T_ADOPT)
     assert "a proposed version is waiting for execution" in order_free_violations(record, 1)
+
+
+def test_a_record_not_bound_to_the_sessions_order_book_is_refused_and_audited():
+    record = executed_record(S1)
+    s, log = slice_session([row(SECOND_EXPIRY_CALL, -LOT, "120.25")], record, bind=False)
+    s.move(key_of(SECOND_EXPIRY_CALL), ToStrategy("S-1"))
+    with pytest.raises(GroupingError):
+        s.confirm_into("S-1", at=T_ADOPT)
+    assert refused_reason(log) == "grouping_strategy_not_adoptable" and len(record.versions) == 1
 
 
 # ---- refusals (slice catalogue) ---------------------------------------------------------------------------------
@@ -152,11 +175,11 @@ def test_mutation_routing_the_adopt_through_edit_is_caught():
 S1 = StrategyDefinition("NIFTY", (DefinitionLeg(Action.SELL, Instrument.CE, D("23200"), EXP_CONDOR, LOT),))
 
 
-def slice_session(rows, record, *, strategy_map=None):
+def slice_session(rows, record, *, strategy_map=None, bind=True):
     suggestion = suggest_groups(rows, {} if strategy_map is None else strategy_map, slice_catalogue())
     log = audit_log()
     s = GroupingSession.start(suggestion, audit=log, clock=now, actor="user-1", session_id="sess-1",
-                              records={"S-1": record})
+                              records={"S-1": record}, book=bound_book(record) if bind else OrderBook(clock=now))
     return s, log
 
 

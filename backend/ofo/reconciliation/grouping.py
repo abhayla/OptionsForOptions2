@@ -27,6 +27,9 @@ order, reads the broker or monitors anything; AC-3 (monitoring the adopted strat
   position) and are never used here. Refused: an unknown, exited, blocked (reconciliation required), proposed or
   never-executed strategy; another underlying; a contract the strategy already holds or two chosen rows on one
   contract (never netted); an average finer than paise with no entry set.
+* Both adoption paths put the adopted units into the order book's ledger as adopted holdings (no order id invented):
+  ``confirm_into`` through the session's book, ``open_adopted`` for a strategy ``confirm`` created. Without that, Complete
+  saw room for a second buy and Close saw nothing to close (round 2, finding state-with-no-working-exit).
 * Every action appends exactly ONE entry through the audit log's public ``append`` (``start`` = the suggestion,
   ``move`` / standalone, ``set_entry``, ``confirm``, ``add_to_strategy``). A refused action changes nothing; it
   appends nothing, except a refused add to an existing strategy, which appends one ``add_to_strategy_refused`` entry.
@@ -37,7 +40,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Callable, Iterable, Mapping, NoReturn, Sequence
+from typing import Callable, Iterable, Mapping, NoReturn, Protocol, Sequence
 
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
@@ -48,7 +51,7 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, is_lot_aligned
 from ofo.reconciliation.compare import ReconciliationError
 from ofo.reconciliation.positions import position_line_from_kite_row
-from ofo.strategy.definition import StrategyDefinition
+from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import Position, StrategyRecord, VersionError
 from ofo.strategy.matching import MatchResult, match
 from ofo.strategy.model import Template, TemplateError
@@ -58,8 +61,19 @@ __all__ = [
     "STANDALONE", "AddedToStrategy", "AdoptedLeg", "AdoptedStrategy", "EntrySource",
     "Group", "GroupSuggestion", "GroupingError",
     "GroupingSession", "PositionKey", "Standalone", "SuggestedPosition", "ToGroup", "ToStrategy", "Unresolved",
-    "suggest_groups",
+    "open_adopted", "suggest_groups",
 ]
+
+class OrderBook(Protocol):
+    """The parts of ``ofo.orders.model.OrderBook`` an adoption uses. Duck-typed on purpose: only the execution flows
+    import ``ofo.orders`` (AC-3 import guard), and adopting a held position prepares no order."""
+
+    def record_for(self, strategy_id: str) -> StrategyRecord: ...
+    def bind_strategy(self, strategy_id: str, record: StrategyRecord) -> None: ...
+    def check_adopted(self, strategy_id: str, lines: Iterable[tuple[str, Action, int, Product]], *, reference: str,
+                      at: datetime.datetime, bound: bool = True) -> tuple: ...
+    def record_adopted(self, holdings: Iterable) -> None: ...
+
 
 #: A refused grouping choice: ``message`` is the four-part text from ``render()``; ``str()`` is developer detail.
 GroupingError = ReconciliationError
@@ -359,8 +373,9 @@ class GroupingSession:
 
     def __init__(self, suggestion: GroupSuggestion, *, audit: AuditLog, clock: Callable[[], datetime.datetime],
                  actor: str, session_id: str, strategies: Mapping[str, StrategyDefinition] | None = None,
-                 records: Mapping[str, StrategyRecord] | None = None) -> None:
+                 records: Mapping[str, StrategyRecord] | None = None, book: OrderBook | None = None) -> None:
         self.suggestion = suggestion
+        self._book = book
         self._audit, self._clock, self._actor, self._session_id = audit, clock, actor, session_id
         self._records = dict(records or {})
         self._strategies = {**{sid: r.definition for sid, r in self._records.items()}, **dict(strategies or {})}
@@ -376,11 +391,12 @@ class GroupingSession:
     def start(cls, suggestion: GroupSuggestion, *, audit: AuditLog, clock: Callable[[], datetime.datetime],
               actor: str, session_id: str,
               strategies: Mapping[str, StrategyDefinition] | None = None,
-              records: Mapping[str, StrategyRecord] | None = None) -> "GroupingSession":
+              records: Mapping[str, StrategyRecord] | None = None,
+              book: OrderBook | None = None) -> "GroupingSession":
         """Open the session; appends one ``suggest`` entry listing the suggested groups, the unresolved rows and the
         positions hidden because a strategy holds them (``symbol:strategy id``)."""
         session = cls(suggestion, audit=audit, clock=clock, actor=actor, session_id=session_id, strategies=strategies,
-                      records=records)
+                      records=records, book=book)
         session._record(EventType.RECONCILIATION_RECORDED, {
             "action": "suggest",
             "groups": [{"id": g.id, "legs": [f"{p.tradingsymbol}:{p.product.value}" for p in g.positions],
@@ -534,16 +550,22 @@ class GroupingSession:
             self._refuse_add(strategy_id, members, "grouping_strategy_holds_contract",
                              ReconciliationError(f"{twice} contract(s) held twice"), contracts=twice)
         position, reason = Position.of(held), f"grouping:{self._session_id}"
-        try:
-            record.check_adopt_held(position, at=at, actor=self._actor, reason=reason)
-        except VersionError:  # any other refusal of the record (time order, capacity): fail closed; chained
-            self._refuse_add(strategy_id, members, "grouping_strategy_not_adoptable",
-                             ReconciliationError("the strategy record refused the add"))
         legs = []
         for p in members:
             price, source = self.entry_of(p)
             legs.append(AdoptedLeg(p.tradingsymbol, p.instrument_id, p.leg(price), p.product, source))
+        book = self._book
+        try:
+            if book is None or book.record_for(strategy_id) is not record:
+                raise VersionError(detail="the strategy is not bound to this session's order book")
+            record.check_adopt_held(position, at=at, actor=self._actor, reason=reason)
+            holdings = book.check_adopted(strategy_id, _lines(legs), reference=f"{reason}:{len(record.versions) + 1}",
+                                          at=at)
+        except ValueError:  # the record or the book refuses (time order, capacity, unbound, busy): fail closed
+            self._refuse_add(strategy_id, members, "grouping_strategy_not_adoptable",
+                             ReconciliationError("the strategy record or order book refused the add"))
         version = record.adopt_held(position, at=at, actor=self._actor, reason=reason)
+        book.record_adopted(holdings)  # checked above: the ledger holds the adopted units, no order id invented
         self._record(EventType.STRATEGY_CHANGED, {
             "action": "add_to_strategy", "strategy_id": strategy_id, "version": version.number,
             "legs": [{"position": a.tradingsymbol, "entry_price": str(a.leg.entry_price),
@@ -583,3 +605,28 @@ class GroupingSession:
         self._new_ids.add(strategy_id)
         self._adopted.append(adopted)
         return adopted
+
+
+def _lines(legs: Sequence[AdoptedLeg]) -> tuple[tuple[str, Action, int, Product], ...]:
+    return tuple((a.tradingsymbol, a.leg.action, a.leg.quantity, a.product) for a in legs)
+
+
+def open_adopted(adopted: AdoptedStrategy, *, book: OrderBook, at: datetime.datetime, actor: str,
+                 clock: Callable[[], datetime.datetime]) -> StrategyRecord:
+    """Open the strategy a ``confirm`` created (ADR-084): an order-free record whose version 1 is active, bound to
+    ``book``, and the adopted units in the book's ledger as adopted holdings (no order id invented). All or nothing:
+    every check runs before the record is bound or a holding written."""
+    if not isinstance(adopted, AdoptedStrategy):
+        raise ReconciliationError(f"open_adopted needs an AdoptedStrategy, got {adopted!r}")
+    legs = tuple(DefinitionLeg(a.leg.action, a.leg.instrument, a.leg.strike, a.leg.expiry, a.leg.quantity)
+                 for a in adopted.legs)
+    try:
+        record = StrategyRecord.from_held(StrategyDefinition(adopted.underlying, legs), at=at, actor=actor,
+                                          clock=clock)
+        rows = book.check_adopted(adopted.strategy_id, _lines(adopted.legs),
+                                  reference=f"adopted:{adopted.strategy_id}:v1", at=at, bound=False)
+    except ValueError as exc:  # two rows on one contract, an id in use: developer detail; nothing was written
+        raise ReconciliationError(f"cannot open {adopted.strategy_id!r}: {exc}") from exc
+    book.bind_strategy(adopted.strategy_id, record)
+    book.record_adopted(rows)
+    return record

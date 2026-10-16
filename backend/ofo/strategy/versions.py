@@ -48,6 +48,7 @@ from ofo.strategy.definition import (
     MAX_TEXT,
     MAX_UNITS,
     Contract,
+    DefinitionError,
     DefinitionLeg,
     StrategyDefinition,
     contract_sort_key,
@@ -544,6 +545,22 @@ class StrategyRecord:
             version.number, OutcomeKind.RECONCILED, version.intended_position, self._actual, at, reference))
         return version
 
+    @classmethod
+    def from_held(cls, definition: StrategyDefinition, *, at: datetime.datetime, actor: str,
+                  clock: Callable[[], datetime.datetime] = _utc_now) -> StrategyRecord:
+        """A NEW strategy whose legs are all already held at Zerodha (ADR-084 create-new adoption), ORDER-FREE.
+
+        Version 1 is active at once, with the broker's position equal to it and an ADOPTED outcome; no proposal and
+        no ``propose_execution`` (both lead to orders, a second buy or sell of what is already held)."""
+        _require_text(actor, "actor")
+        record = cls(definition, at=at, clock=clock)
+        version = record._add_version(definition, None, at, actor, "adopted", (), pending=False)
+        intended = version.intended_position
+        record._set("_executed", True)
+        record._record_adoption(version, intended, ExecutionOutcome(
+            version.number, OutcomeKind.ADOPTED, intended, intended, at, f"adopted:v{version.number}"))
+        return record
+
     def check_adopt_held(self, held: Position, *, at: datetime.datetime, actor: str,
                          reason: str) -> StrategyDefinition:
         """Raise exactly when ``adopt_held`` would refuse; change nothing. Returns the new version's definition.
@@ -566,7 +583,10 @@ class StrategyRecord:
         if self.actual_position != active.intended_position:
             raise VersionError("the recorded broker position differs from the active version; reconcile first")
         definition = active.definition
-        new_legs = _held_legs(held, definition)
+        try:
+            new_legs = _held_legs(held, definition)
+        except DefinitionError as exc:  # a held line outside a leg's guards (round 2 minor): refused, never raised raw
+            raise VersionError(f"the held position cannot join this strategy: {exc}") from exc
         if len(self.versions) >= MAX_VERSIONS:
             raise VersionError(f"version list is full ({MAX_VERSIONS})")
         if len(self.outcomes) >= MAX_OUTCOMES:

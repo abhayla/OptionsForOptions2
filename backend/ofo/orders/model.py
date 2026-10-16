@@ -262,6 +262,36 @@ class FillEvent:
             raise ValueError(f"timestamp must be a timezone-aware datetime.datetime, got {self.timestamp!r}")
 
 
+@dataclass(frozen=True)
+class AdoptedHolding:
+    """Units a strategy holds WITHOUT a platform fill: a position already held at Zerodha that the user adopted into
+    the strategy (ADR-084 create-new, ADR-096 add-to-existing). It carries no order id (none is invented); it counts
+    in the strategy's position exactly as a fill would, so the send guard, Close and the partial assessment see it."""
+
+    strategy_id: str
+    contract: str
+    side: Action
+    quantity: int
+    product: Product
+    reference: str
+    at: datetime.datetime
+
+    def __post_init__(self) -> None:
+        _non_empty_str(self.strategy_id, "strategy_id")
+        _non_empty_str(self.contract, "contract")
+        if not isinstance(self.side, Action):
+            raise ValueError(f"side must be an Action, got {self.side!r}")
+        _positive_int(self.quantity, "quantity")
+        if not isinstance(self.product, Product):
+            raise ValueError(f"product must be a Product, got {self.product!r}")
+        _non_empty_str(self.reference, "reference")
+        _aware(self.at, "at")
+
+    @property
+    def signed(self) -> int:
+        return self.quantity if self.side is Action.BUY else -self.quantity
+
+
 class FillLedger:
     """Append-only store of confirmed fills, keyed by ``(broker_order_id, trade_id)`` -- the
     composite key is what stops a trade id that Kite only guarantees unique PER ORDER from
@@ -386,6 +416,7 @@ class OrderBook:
         self._live_preparation: dict[str, object] = {}  # strategy -> the one unconsumed preparation (its owner)
         self._closing_read_at: dict[str, datetime.datetime] = {}  # strategy -> read on which Close was chosen
         self._records: dict[str, StrategyRecord] = {}  # strategy id -> its record (REQ-036 AC-1)
+        self._adopted: list[AdoptedHolding] = []  # held units adopted without a platform fill (ADR-084, ADR-096)
 
     # -- strategies (REQ-036 AC-1) ----------------------------------------------------------
 
@@ -607,12 +638,58 @@ class OrderBook:
         return {boid: self._orders[key] for boid, key in self._by_broker.items()}
 
     def position(self, strategy_id: str, contract: str) -> int:
-        return self._ledger.position(strategy_id, contract, self._orders_by_broker())
+        """Confirmed fills plus adopted holdings: the strategy's units on one contract."""
+        adopted = sum(h.signed for h in self._adopted if h.strategy_id == strategy_id and h.contract == contract)
+        return self._ledger.position(strategy_id, contract, self._orders_by_broker()) + adopted
 
     def positions_for(self, strategy_id: str) -> Mapping[str, int]:
         contracts = {o.contract for o in self._orders.values() if o.strategy_id == strategy_id}
+        contracts |= {h.contract for h in self._adopted if h.strategy_id == strategy_id}
         result = {c: self.position(strategy_id, c) for c in contracts}
         return {c: q for c, q in result.items() if q != 0}
+
+    def adopted_for(self, strategy_id: str) -> tuple[AdoptedHolding, ...]:
+        return tuple(h for h in self._adopted if h.strategy_id == strategy_id)
+
+    def check_adopted(self, strategy_id: str, lines: Iterable[tuple[str, Action, int, Product]], *, reference: str,
+                      at: datetime.datetime, bound: bool = True) -> tuple[AdoptedHolding, ...]:
+        """Build the holdings for ``lines`` (contract, side, units, product) and raise exactly when ``record_adopted``
+        would refuse them; change nothing. Refused: a strategy with no record here, a reference already used, or a
+        contract the strategy already has units, orders or holdings on (never netted into an existing leg).
+        ``bound=False``: the check for a strategy about to be bound (create-new), which must not be bound yet.
+        The adopting flow (reconciliation/grouping.py) calls this with the book it was given; it does not import
+        this module, so the AC-3 import guard (tests/execution/test_strategy_only.py) stands."""
+        rows = tuple(AdoptedHolding(strategy_id, c, side, units, product, f"{reference}:{c}:{product.value}", at)
+                     for c, side, units, product in lines)
+        if not bound:
+            if strategy_id in self._records:
+                raise ValueError(f"strategy {strategy_id!r} is already bound")
+            return self._check_holdings(rows, bound=False)
+        return self._check_holdings(rows)
+
+    def _check_holdings(self, rows: tuple[AdoptedHolding, ...], *, bound: bool = True) -> tuple[AdoptedHolding, ...]:
+        if not rows:
+            raise ValueError("no adopted holding to record")
+        used = {h.reference for h in self._adopted}
+        seen: set[tuple[str, str]] = set()
+        for h in rows:
+            if not isinstance(h, AdoptedHolding):
+                raise ValueError(f"record_adopted needs AdoptedHolding rows, got {h!r}")
+            if bound:
+                self.record_for(h.strategy_id)
+            if h.reference in used:
+                raise ValueError(f"adopted holding {h.reference!r} was already recorded")
+            key = (h.strategy_id, h.contract)
+            busy = any(o.strategy_id == h.strategy_id and o.contract == h.contract for o in self._orders.values())
+            if key in seen or busy or self.position(*key):
+                raise ValueError(f"strategy {h.strategy_id!r} already has {h.contract!r}; never netted")
+            seen.add(key)
+            used.add(h.reference)
+        return rows
+
+    def record_adopted(self, holdings: Iterable[AdoptedHolding]) -> None:
+        """Record held units adopted into a strategy (all rows or none). The only writer of adopted holdings."""
+        self._adopted.extend(self._check_holdings(tuple(holdings)))
 
     def raw_fills(self) -> tuple[FillEvent, ...]:
         """Every fill row ever appended -- for property tests and reconciliation reads only."""
