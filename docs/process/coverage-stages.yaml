@@ -254,6 +254,7 @@ issues:
   "#313": 4b           # deferred: order book, fills and adopted holdings in memory only (ADR-096 review)
   "#199": 4a            # deferred: three MINORs from the W-070 round-4 review (expires strip, per-status headers, scan)
   "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
+  "#344": 4b  # History finalize scale test times out at batch 6 intermittently on CI (5 slow batches, then asyncpg TimeoutError)
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
 
 # Work items whose status is not done.
