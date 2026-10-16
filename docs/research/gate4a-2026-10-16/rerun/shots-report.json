@@ -1,0 +1,90 @@
+{
+ "live-1280.png": {
+  "state": "computed",
+  "live": "live",
+  "scrollWidth": 1280,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract details not available planned entry 10.00 captured 16 Oct 2026, 1"
+ },
+ "no-live-quote-leg-1280.png": {
+  "state": "stale",
+  "live": "live",
+  "scrollWidth": 1280,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract details not available planned entry 10.00 captured 16 Oct 2026, 1"
+ },
+ "api-unreachable-1280.png": {
+  "state": "error",
+  "live": "down",
+  "scrollWidth": 1280,
+  "item1_picker_error": "The page could not get an answer from the server. What this means: The numbers on this page are not shown, so none of them can be mistaken for current values. What is blocked: Nothing was changed and no order was placed. What to do next: Try again in a moment.",
+  "expiry_options": 1,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg The page could not get an answer from the server. What this means: The numbers on this page are not shown, so none of them can be mistaken for current values. What is blocked: Nothing was changed and no order was placed. What to do next: Try again in a moment. Underlying NIFTY SENSEX Expiry Choose Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract "
+ },
+ "no-draft-1280.png": {
+  "state": "no-draft",
+  "live": "off",
+  "scrollWidth": 1280,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add Save Draft Saved drafts Draft 1, NIFTY, updated 15 Oct 2026, 16:49:49 IST Open Draft 2, NIFTY, updated 15 Oct 2026, 16:49:59 IST Open Draft 3, NIFTY, updated 15 Oct 2026, 16:56:05 IST Open Draft "
+ },
+ "live-390.png": {
+  "state": "computed",
+  "live": "live",
+  "scrollWidth": 390,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract details not available planned entry 10.00 captured 16 Oct 2026, 1"
+ },
+ "no-live-quote-leg-390.png": {
+  "state": "stale",
+  "live": "live",
+  "scrollWidth": 390,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract details not available planned entry 10.00 captured 16 Oct 2026, 1"
+ },
+ "api-unreachable-390.png": {
+  "state": "error",
+  "live": "down",
+  "scrollWidth": 390,
+  "item1_picker_error": "The page could not get an answer from the server. What this means: The numbers on this page are not shown, so none of them can be mistaken for current values. What is blocked: Nothing was changed and no order was placed. What to do next: Try again in a moment.",
+  "expiry_options": 1,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg The page could not get an answer from the server. What this means: The numbers on this page are not shown, so none of them can be mistaken for current values. What is blocked: Nothing was changed and no order was placed. What to do next: Try again in a moment. Underlying NIFTY SENSEX Expiry Choose Type Choose Strike Choose Buy or sell BUY SELL Lots Add SELL 1 lot, Contract details not available planned entry 39.35 captured 16 Oct 2026, 10:24:08 IST Edit Remove BUY 1 lot, Contract "
+ },
+ "no-draft-390.png": {
+  "state": "no-draft",
+  "live": "off",
+  "scrollWidth": 390,
+  "item1_picker_error": null,
+  "expiry_options": 19,
+  "item2_fragment_this_request": false,
+  "item3_raw_ids": [],
+  "item4_iso_times": [],
+  "text": "OptionsForOptions Home Strategies Positions Market Orders Alerts Learn You Strategy Builder A draft strategy and what it could do at different index levels. This is for planning, not a recommendation. Add a leg Underlying NIFTY SENSEX Expiry Choose 2026-10-19 2026-10-27 2026-11-03 2026-11-09 2026-11-17 2026-11-23 2026-12-29 2027-03-30 2027-06-29 2027-09-28 2027-12-28 2028-06-27 2028-12-26 2029-06-26 2029-12-24 2030-06-25 2030-12-31 2031-06-24 Type Choose Strike Choose Buy or sell BUY SELL Lots Add Save Draft Saved drafts Draft 1, NIFTY, updated 15 Oct 2026, 16:49:49 IST Open Draft 2, NIFTY, updated 15 Oct 2026, 16:49:59 IST Open Draft 3, NIFTY, updated 15 Oct 2026, 16:56:05 IST Open Draft "
+ }
+}

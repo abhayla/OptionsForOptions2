@@ -599,6 +599,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   margin), so for a buy limit above the market it can pass a basket whose real premium outflow is larger than the
   funds. Same day, live: available funds Rs -497 against required Rs 263.25 -> the check refused (MARGIN_201), as it
   should.
-- Bears on: REQ-055, ADR-016, ADR-080 (executable price). Status: **measured twice on one contract**; open for a
-  technical decision (use max(Kite margin, quantity x limit) for buy legs, or keep Kite's figure) - decided with an
-  independent reviewer before the first real order.
+- 10:33 IST, a 2-leg BUY basket, limits 5.00 above live: NIFTY26O1923550CE (LTP 11.15, limit 16.15) gave
+  `option_premium` 724.75 = 65 x 11.15; NIFTY26O1922750PE (LTP 20.75, limit 25.75) gave 1348.75 = 65 x 20.75;
+  `final.total` 2073.50 = their sum. So the per-leg `option_premium` in the same reply is the live-price premium for a
+  call and a put, in a multi-leg basket. Script: the session scratchpad `live_basket_premium.py`.
+- Bears on: REQ-055, ADR-016, ADR-080 (executable price), ADR-094. Status: **measured 3 times, CE and PE, single and
+  2-leg**; SELL legs, futures and limits below live in a multi-leg basket are unmeasured. Decided in ADR-094.

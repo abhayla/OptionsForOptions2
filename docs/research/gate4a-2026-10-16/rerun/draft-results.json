@@ -1,0 +1,148 @@
+{
+ "at": "2026-10-16T04:54:08.346Z",
+ "before": [
+  {
+   "instrument": "NSE_FO:47177",
+   "action": "SELL",
+   "lots": "1",
+   "entry": "35.60",
+   "captured": "2026-10-16T10:24:11.100199+05:30",
+   "strike": "23350.00",
+   "type": "CE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47185",
+   "action": "BUY",
+   "lots": "1",
+   "entry": "11.55",
+   "captured": "2026-10-16T10:24:11.815448+05:30",
+   "strike": "23550.00",
+   "type": "CE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47160",
+   "action": "SELL",
+   "lots": "1",
+   "entry": "49.00",
+   "captured": "2026-10-16T10:24:12.326415+05:30",
+   "strike": "22950.00",
+   "type": "PE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47152",
+   "action": "BUY",
+   "lots": "1",
+   "entry": "20.45",
+   "captured": "2026-10-16T10:24:12.863136+05:30",
+   "strike": "22750.00",
+   "type": "PE",
+   "expiry": "2026-10-19"
+  }
+ ],
+ "saved_id": "10",
+ "save_error": null,
+ "after_reload_leg_rows": 0,
+ "after": [
+  {
+   "instrument": "NSE_FO:47177",
+   "action": "SELL",
+   "lots": "1",
+   "entry": "35.60",
+   "captured": "2026-10-16T10:24:11.100199+05:30",
+   "strike": "23350.00",
+   "type": "CE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47185",
+   "action": "BUY",
+   "lots": "1",
+   "entry": "11.55",
+   "captured": "2026-10-16T10:24:11.815448+05:30",
+   "strike": "23550.00",
+   "type": "CE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47160",
+   "action": "SELL",
+   "lots": "1",
+   "entry": "49.00",
+   "captured": "2026-10-16T10:24:12.326415+05:30",
+   "strike": "22950.00",
+   "type": "PE",
+   "expiry": "2026-10-19"
+  },
+  {
+   "instrument": "NSE_FO:47152",
+   "action": "BUY",
+   "lots": "1",
+   "entry": "20.45",
+   "captured": "2026-10-16T10:24:12.863136+05:30",
+   "strike": "22750.00",
+   "type": "PE",
+   "expiry": "2026-10-19"
+  }
+ ],
+ "stored": [
+  {
+   "contract_id": 4697,
+   "action": "SELL",
+   "quantity": 65,
+   "planned_entry": "35.60",
+   "captured_at": "2026-10-16T10:24:11.100199+05:30",
+   "strike": "23350.00"
+  },
+  {
+   "contract_id": 4705,
+   "action": "BUY",
+   "quantity": 65,
+   "planned_entry": "11.55",
+   "captured_at": "2026-10-16T10:24:11.815448+05:30",
+   "strike": "23550.00"
+  },
+  {
+   "contract_id": 4682,
+   "action": "SELL",
+   "quantity": 65,
+   "planned_entry": "49.00",
+   "captured_at": "2026-10-16T10:24:12.326415+05:30",
+   "strike": "22950.00"
+  },
+  {
+   "contract_id": 4674,
+   "action": "BUY",
+   "quantity": 65,
+   "planned_entry": "20.45",
+   "captured_at": "2026-10-16T10:24:12.863136+05:30",
+   "strike": "22750.00"
+  }
+ ],
+ "equal_screen_before_after": true,
+ "field_diffs": [],
+ "stored_equals_screen": true,
+ "all_entries_present": true,
+ "network": [
+  "GET /api/catalogue/NIFTY/expiries 200",
+  "GET /api/strategies 200",
+  "GET /api/catalogue/NIFTY/contracts?expiry=2026-10-19 200",
+  "POST /api/strategies/planned-entry 200",
+  "POST /api/strategies/outcome 200",
+  "POST /api/strategies/planned-entry 200",
+  "POST /api/strategies/outcome 200",
+  "POST /api/strategies/planned-entry 200",
+  "POST /api/strategies/outcome 200",
+  "POST /api/strategies/planned-entry 200",
+  "POST /api/strategies/outcome 200",
+  "POST /api/strategies 201",
+  "GET /api/strategies 200",
+  "GET /api/catalogue/NIFTY/expiries 200",
+  "GET /api/strategies/10 200",
+  "GET /api/catalogue/NIFTY/contracts?expiry=2026-10-19 200",
+  "POST /api/strategies/outcome 200",
+  "GET /api/strategies/10 200"
+ ]
+}
