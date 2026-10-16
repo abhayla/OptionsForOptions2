@@ -39,6 +39,7 @@ from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from ofo_app.db import get_db
+from ofo_app.eligibility_from_zerodha import get_eligibility_today
 from ofo_app.main import create_app
 from ofo_app.routes import strategies as strategy_routes
 
@@ -120,7 +121,14 @@ def _app(maker, user_ref: str):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[strategy_routes.current_user_ref] = lambda: user_ref
+    app.dependency_overrides[get_eligibility_today] = lambda: fixture_today
     return app
+
+
+async def fixture_today(_db) -> date:
+    """W-092 (ADR-104): the add-time eligibility check reads "today" on the database clock; the recorded 2026-10-08
+    list's contracts expire 2026-10-13, so these storage tests judge them on the list's own day."""
+    return AS_OF.date()
 
 
 def _client(app) -> AsyncClient:

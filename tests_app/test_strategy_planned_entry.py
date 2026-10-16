@@ -34,7 +34,8 @@ from ofo_app.db import get_db
 from ofo_app.main import create_app
 from ofo_app.routes import strategies as strategy_routes
 
-from test_strategy_store import AS_OF, IRON_CONDOR, LOT, _fixture_rows, _ids  # the same real rows
+from ofo_app.eligibility_from_zerodha import get_eligibility_today
+from test_strategy_store import AS_OF, IRON_CONDOR, LOT, _fixture_rows, _ids, fixture_today  # the same real rows
 
 IST = timezone(timedelta(hours=5, minutes=30))
 CAPTURED = "2026-10-15T09:20:05+05:30"
@@ -76,6 +77,7 @@ def _client(conn, user: str) -> AsyncClient:
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[strategy_routes.current_user_ref] = lambda: user
+    app.dependency_overrides[get_eligibility_today] = lambda: fixture_today  # W-092: judged on the list's own day
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://t")
 
 
