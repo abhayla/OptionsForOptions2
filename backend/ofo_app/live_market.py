@@ -25,6 +25,7 @@ from typing import Callable, Optional
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo_app.config import app_env, get_settings
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
 
@@ -93,7 +94,6 @@ class LiveMarket:
         from ofo_app import catalogue_store
         from ofo_app.broker_crypto import TokenCipher
         from ofo_app.broker_token_store import access_token_for
-        from ofo_app.config import get_settings
         from ofo_app.db import get_engine
         from ofo_app.kite_ws import KiteSocket
 
@@ -129,7 +129,6 @@ class LiveMarket:
             await self._halt()
             self.feed, self._socket = None, None
             try:
-                from ofo_app.config import app_env, get_settings
                 require_safe(app_env() or "", get_settings().KITE_WS_URL)
                 await self.start(broker_config)
             except Exception as exc:  # noqa: BLE001 - the login stands; never the message (token, socket URL)

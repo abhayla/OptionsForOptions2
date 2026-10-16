@@ -15,8 +15,9 @@ from httpx import ASGITransport, AsyncClient
 
 from test_kite_login import ACCESS_TOKEN, CALLBACK, REQUEST_TOKEN, FakeKite, _app, _state, _TxDB
 from test_strategy_live_push import DB, FakeSocket, held_replay, settle
-from marketdata._kite_fixture import new_provider  # noqa: E402  (tests/ is on sys.path via test_strategy_live_push)
-from ofo_app import broker_token_store, catalogue_store, db, kite_ws, live_market
+from marketdata._kite_fixture import new_provider  # tests/ is on sys.path via test_strategy_live_push
+from ofo.instruments.catalogue import Catalogue as RealCatalogue
+from ofo_app import broker_token_store, catalogue_store, db, kite_ws, live_market, main
 from ofo_app.config import get_settings
 from ofo_app.routes import broker as broker_routes
 
@@ -41,7 +42,7 @@ def socket_tasks() -> list[asyncio.Task]:
 
 
 @pytest.fixture
-def kite_world(monkeypatch):
+async def kite_world(monkeypatch):
     """The stored-session world: ``world["token"]`` is what the token store answers (None = no session); every
     lookup is counted; the socket the market builds is a fake that runs until stopped."""
     provider, clock, items = new_provider()
@@ -49,14 +50,14 @@ def kite_world(monkeypatch):
 
     async def token(*a, **k):
         world["lookups"] += 1
+        await asyncio.sleep(0.01)  # a real lookup yields to the loop: lets two logins interleave
         if world["raise"] is not None:
             raise world["raise"]
         return world["token"]
 
     class Catalogue:
         def all_entries(self):
-            from ofo.instruments.catalogue import Catalogue as C
-            c = C()
+            c = RealCatalogue()
             c.load(items)
             return c.all_entries()
 
@@ -71,7 +72,7 @@ def kite_world(monkeypatch):
     async def stored(*a, **k):
         world["stored"] = True
 
-    monkeypatch.setattr(db, "get_engine", lambda: _Engine())
+    monkeypatch.setattr(db, "get_engine", _Engine)
     monkeypatch.setattr(broker_token_store, "access_token_for", token)
     monkeypatch.setattr(catalogue_store, "load_catalogue", load)
     monkeypatch.setattr(kite_ws, "KiteSocket", Sock)
@@ -81,6 +82,11 @@ def kite_world(monkeypatch):
     monkeypatch.delenv("APP_ENV", raising=False)
     get_settings.cache_clear()
     yield world
+    for sock in world["sockets"]:  # a failed test must not leave a socket task for the next one to count
+        sock.stopped = True
+    for task in socket_tasks():
+        task.cancel()
+    await settle()
     live_market.set_current(None)
     get_settings.cache_clear()
 
@@ -99,8 +105,6 @@ async def test_a_login_after_start_brings_not_connected_to_live_and_shutdown_sto
                                                                                       caplog):
     """Core + checklist 6: the real lifespan starts with no session; the real callback stores one; the market goes
     live with one socket task; leaving the lifespan stops that task."""
-    from ofo_app import main
-
     async def no_db() -> None:  # the engine is a fake here; nothing to dispose
         return None
 
