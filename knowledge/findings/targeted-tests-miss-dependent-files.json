@@ -56,6 +56,11 @@
    "date": "2026-10-16",
    "where": "W-075 charges in sentences (PR #311), after merging 51 commits of main",
    "evidence": "Three CI rounds lost: tests_app/test_openapi_drift.py (docs/api/openapi.json stale), then frontend/e2e/strategy-table.spec.ts:79-80 and :88-89 (pre-charges amounts 4754.75 / 8245.25; the API gave 4539.65173942700 - which also exposed unrounded charges, fixed in 412b6e6). The W-075 verifier never ran the Playwright condor test; the orchestrator's brief named lines 78-79 only instead of grepping the e2e folder for the old amounts."
+  },
+  {
+   "date": "2026-10-16",
+   "where": "#297 gate minors (PR #316)",
+   "evidence": "CI lint-and-test: tests/test_fixture_symbols.py::test_every_tradingsymbol_literal_in_tests_resolves_in_the_catalogue failed on a symbol literal in the new tests/outcome/test_notice_no_symbols.py docstring; the builder ran tests/outcome and frontend only. Second repo-guard miss of the day (with PR #310's test_write_allowlist.py): the orchestrator's briefs said 'targeted tests only' without naming the repo-wide guard set (every tests/test_*.py plus tests/errors/test_write_allowlist.py). Mechanism due (L2): the brief template / check_brief.py requires that guard set in every builder brief."
   }
  ]
 }

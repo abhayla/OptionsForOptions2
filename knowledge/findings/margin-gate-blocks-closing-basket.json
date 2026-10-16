@@ -1,0 +1,29 @@
+{
+ "id": "margin-gate-blocks-closing-basket",
+ "scope": "project",
+ "class": "A pre-trade check that validates the broker's required-margin figure as 'a non-negative amount' blocks every basket that reduces or closes held positions, because the broker reports such a basket with a NEGATIVE required margin (it releases money). Wider shape: a validity range written from entry orders only ('margin is >= 0') turns the risk-reducing order - the exit - into a refused one.",
+ "mechanism": "Proven live 2026-10-16 15:06 IST: SELL 65 NIFTY26O1923650CE NRML against +65 held, POST /margins/basket?consider_positions=true -> final.total -214.5 (real_order.py fetch: 'kite margin -214.5'); backend/ofo/execution/margin_gate.py required_from_basket_reply raises MarginReplyError for value < 0, so margin_verdict blocks. Unit tests and the 2026-10-16 recordings covered entry baskets only.",
+ "first_seen": {
+  "date": "2026-10-16",
+  "where": "exit of the real 1-lot test order (ADR-097), issue #321",
+  "evidence": "D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/fetch.json margin_raw at 15:06; the owner placed the exit (order 261016170858845, SELL 65 @ 3.10 COMPLETE 15:09:52) from a basket built outside the gate."
+ },
+ "fix": "Not built yet (#321): treat a final.total below 0 as 0 required, never as a credit to available funds (ADR-094's 'never a credit' rule), with today's reply as the failing test's fixture; sweep every check that validates broker money ranges for the exit case.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test feeds a closing basket's reply today. The REST recorder (rec_rest.py) recorded entry shapes only; add closing shapes when a position is held."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-094.md",
+  "spec/decisions/ADR-016.md",
+  "spec/requirements/REQ-055.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-16",
+   "where": "real exit, 15:06 IST",
+   "evidence": "final.total -214.5"
+  }
+ ]
+}
