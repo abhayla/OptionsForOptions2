@@ -212,13 +212,23 @@ def test_the_shared_values_are_the_real_world_ones():
     assert datetime.timedelta(hours=5, minutes=30) == timeutil.IST_OFFSET
     assert timeutil.IST.tzname(None) == "IST" and timeutil.IST_UNNAMED.tzname(None) == "UTC+05:30"
     assert timeutil.IST == timeutil.IST_UNNAMED
-    assert timeutil.IST_SQL_ZONE == "AT TIME ZONE 'Asia/Kolkata'"
+    assert timeutil.IST_ZONE_NAME == "Asia/Kolkata"
     assert (datetime.time(9, 15), datetime.time(15, 30)) == (timeutil.SESSION_OPEN, timeutil.SESSION_CLOSE)
     assert datetime.time(15, 30, tzinfo=timeutil.IST) == timeutil.EXPIRY_CLOSE
     assert datetime.time(15, 39) == timeutil.EXPIRY_DAY_SETTLE_FROM
     assert datetime.time(15, 59) == timeutil.HISTORY_FETCH_UNTIL
     assert str(money.PAISE) == "0.01" and str(money.HUNDREDTH) == "0.01"
     assert [is_lot_aligned(u, 65) for u in (65, 130, 64, 66)] == [True, True, False, False]
+
+
+def test_the_new_homes_import_only_the_standard_library():
+    import sys  # noqa: PLC0415 - stdlib_module_names lives on sys
+
+    for rel in ("ofo/timeutil.py", "ofo/money.py"):
+        tree = ast.parse((BACKEND / rel).read_text(encoding="utf-8"))
+        roots = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        roots |= {(n.module or "").split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+        assert roots <= set(sys.stdlib_module_names) | {"__future__"}, (rel, roots)
 
 
 def test_the_homes_exist():

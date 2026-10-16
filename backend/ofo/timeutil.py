@@ -21,8 +21,7 @@ IST_UNNAMED: Final = datetime.timezone(IST_OFFSET)
 
 #: The IANA zone name, for the database's clock.
 IST_ZONE_NAME: Final = "Asia/Kolkata"
-#: The SQL fragment that reads a timestamp on India's wall clock: `now() AT TIME ZONE 'Asia/Kolkata'`.
-IST_SQL_ZONE: Final = f"AT TIME ZONE '{IST_ZONE_NAME}'"
+#: (The SQL fragment built from it lives in the app layer, `ofo_app.sql_time.IST_SQL_ZONE`: the domain has no SQL.)
 
 #: The regular trading session of NSE/BSE index derivatives, IST wall clock (naive times).
 SESSION_OPEN: Final = datetime.time(9, 15)

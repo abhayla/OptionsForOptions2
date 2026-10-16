@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from ofo.charges import ChargeRates
 from ofo.instruments.models import BSE_FO, NSE_FO
-from ofo.timeutil import IST_SQL_ZONE
+from ofo_app.sql_time import IST_SQL_ZONE
 
 #: Stored component names (migration 0012 COMPONENTS; a test pins them equal).
 COMPONENTS = ("brokerage_per_order", "stt_sell_rate", "stt_exercise_rate", "transaction_rate_nse_fo",

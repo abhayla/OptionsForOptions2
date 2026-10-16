@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 from ofo.instruments.models import ZERODHA
 from ofo_app.pinned_clock import pinned_today
-from ofo.timeutil import IST_SQL_ZONE
+from ofo_app.sql_time import IST_SQL_ZONE
 
 CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"

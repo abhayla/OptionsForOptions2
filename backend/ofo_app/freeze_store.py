@@ -24,7 +24,7 @@ from ofo.execution.freeze import StoredFreeze, freeze_limits_for_plan
 from ofo.instruments.freeze_file import Disagreement, match_to_catalogue, parse_freeze_file
 from ofo.instruments.models import NSE_FO, InstrumentId
 from ofo_app.catalogue_store import load_catalogue
-from ofo.timeutil import IST_SQL_ZONE
+from ofo_app.sql_time import IST_SQL_ZONE
 
 _TODAY_IST = text(f"SELECT (clock_timestamp() {IST_SQL_ZONE})::date")
 _INSERT = text(
