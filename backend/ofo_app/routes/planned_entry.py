@@ -12,19 +12,26 @@ The browser computes nothing: the price is a string from a Decimal, rounded half
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-
 from ofo.outcome import read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
+from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
 
 router = APIRouter(route_class=ClosedRoute)
+
+PLANNED_ENTRY_WAIT_S = 3.0  # gate 4a D-2: the longest the route holds an unheld contract for its first live quote
+PLANNED_ENTRY_POLL_S = 0.05  # how often the held contract's quote is looked at inside that wait
 
 InstrumentIdIn = Annotated[str, StringConstraints(pattern=r"^[A-Z_]{1,20}:[0-9]{1,12}$")]
 
@@ -40,10 +47,10 @@ class PlannedEntryIn(BaseModel):
 class PlannedEntryOut(ApiModel):
     exchange_segment: Identifier
     exchange_token: int
-    planned_entry: Optional[Money]
-    captured_at: Optional[datetime.datetime]
-    source: Optional[Literal["ltp", "mid"]]
-    reason_code: Optional[Reason]
+    planned_entry: Money | None
+    captured_at: datetime.datetime | None
+    source: Literal["ltp", "mid"] | None
+    reason_code: Reason | None
 
 
 class PlannedEntriesOut(ApiModel):
@@ -57,17 +64,62 @@ def _entry(instrument_id: str, **fields: Any) -> dict[str, Any]:
             "source": None, "reason_code": None, **fields}
 
 
+def get_live_feed() -> LiveFeed | None:
+    """The running app's shared fan-out (LIVE_MARKET with a session); None otherwise (not connected, the test replay,
+    a test's own context): then nothing is held and the answer is the book as it is. Tests override this dependency."""
+    return live_market.current_feed()
+
+
+def _no_listener(_quote) -> None:  # the route only waits for the book to fill; it needs no pushed quotes
+    return None
+
+
+def _read(ctx: MarketContext, underlying: str, ids: list[str]):
+    valuation = ctx.clock()
+    snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate)
+    priced = {i: planned_entry_of(snapshot.legs[i].quote) for i in ids if snapshot.legs[i].problem is None}
+    return valuation, snapshot, priced
+
+
+async def _hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
+                             unpriced: list[str]):
+    """Gate 4a D-2 (ADR-075, ADR-020): hold the contracts that have no live price on the shared fan-out until each has
+    its first AVAILABLE quote or PLANNED_ENTRY_WAIT_S passes, and ALWAYS release exactly that hold (timeout, error,
+    client disconnect). Subscribe and release run on the event loop, like the live push's. A contract that already has
+    a live price is never acquired, so another holder's hold is never touched by this one."""
+    try:
+        handle = feed.fanout.subscribe(_no_listener, unpriced, max_queue=1)
+    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the unpriced answer stands
+        return _read(ctx, underlying, ids)
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + PLANNED_ENTRY_WAIT_S
+        while True:
+            await asyncio.sleep(PLANNED_ENTRY_POLL_S)
+            result = _read(ctx, underlying, ids)
+            if all(result[2].get(i) is not None for i in unpriced):
+                return result
+            if not ctx.provider.status().connected or loop.time() >= deadline:
+                return result
+    finally:
+        with contextlib.suppress(Exception):
+            feed.fanout.unsubscribe(handle)
+
+
 @router.post("/api/strategies/planned-entry", response_model=PlannedEntriesOut)
-def planned_entry(body: PlannedEntryIn,
-                  ctx: Optional[MarketContext] = Depends(get_market_context),
-                  now: AnswerClock = Depends(get_answer_clock)) -> PlannedEntriesOut:
+async def planned_entry(body: PlannedEntryIn,
+                        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                        now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                        feed: Annotated[LiveFeed | None, Depends(get_live_feed)]) -> PlannedEntriesOut:
     answered_at = now()
     ids = list(dict.fromkeys(body.instrument_ids))
     if ctx is None or not ctx.provider.status().connected:
         return PlannedEntriesOut.model_validate({"entries": [_entry(i, reason_code="not_connected") for i in ids],
                                                "answered_at": answered_at})
-    valuation = ctx.clock()
-    snapshot = read_snapshot(ctx.provider, body.underlying, ids, valuation, ctx.rate)
+    valuation, snapshot, priced_by_id = _read(ctx, body.underlying, ids)
+    unpriced = [i for i, p in priced_by_id.items() if p is None]
+    if unpriced and feed is not None:
+        valuation, snapshot, priced_by_id = await _hold_until_priced(feed, ctx, body.underlying, ids, unpriced)
     entries = []
     for iid in ids:
         leg = snapshot.legs[iid]
@@ -76,7 +128,7 @@ def planned_entry(body: PlannedEntryIn,
                       else "expired" if leg.problem == "expired" else "wrong_underlying")
             entries.append(_entry(iid, reason_code=reason))
             continue
-        priced = planned_entry_of(leg.quote)  # the domain rule (ofo.outcome.planned_entry); the route only calls it
+        priced = priced_by_id[iid]  # the domain rule (ofo.outcome.planned_entry); the route only calls it
         if priced is None:
             entries.append(_entry(iid, reason_code="no_live_price"))
         else:
