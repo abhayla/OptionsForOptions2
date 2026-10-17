@@ -31,7 +31,7 @@ vi.mock('@/composables/useStrategyLive', () => ({
 import ExecuteStrategyPage from '@/pages/ExecuteStrategyPage.vue'
 import ExecutionReturnedPage from '@/pages/ExecutionReturnedPage.vue'
 import BasketForm from '@/components/execution/BasketForm.vue'
-import { LAST_EXECUTED_KEY, NOT_LIVE_PARTS, basketFields, isLiveOutcome, readLastExecuted, rememberExecuted } from '@/lib/execute'
+import { KITE_BASKET_URL, LAST_EXECUTED_KEY, NOT_LIVE_PARTS, basketFields, isLiveOutcome, readLastExecuted, rememberExecuted } from '@/lib/execute'
 
 const DATA = '[{"variety": "regular", "tradingsymbol": "NIFTY26O1923650CE", "exchange": "NFO", "transaction_type": "BUY", ' +
   '"order_type": "LIMIT", "product": "NRML", "price": 3.35, "quantity": 65, "readonly": true, "tag": "OFS1V1L0"}]'
@@ -168,6 +168,65 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     button.click()
     button.click()
     expect(submitSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1: only Kite basket url exactly; a lookalike host or http gets no form', () => {
+    expect(KITE_BASKET_URL).toBe(KITE_URL)
+    for (const url of ['https://kite.zerodha.com.evil.example/connect/basket', 'http://kite.zerodha.com/connect/basket',
+      'https://kite.zerodha.com/connect/basket/', 'https://kite.zerodha.com/connect/login']) {
+      expect(basketFields({ basket: { ...REPLY.basket, url } })).toBeNull()
+    }
+  })
+
+  it('AC-1: a lookalike basket url from the API shows the neutral refusal and builds no form', async () => {
+    answers['POST /strategies/1/execute'] = ok({ ...REPLY, basket: { ...REPLY.basket, url: 'https://kite.zerodha.com.evil.example/connect/basket' } })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+    expect(text(w, 'execute-error-what')).toBe('The page could not get an answer from the server.')
+  })
+
+  it('AC-1: the socket dropping after live shows the not-live message and disables Execute; a live push restores it', async () => {
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    live.onDown()
+    await flushPromises()
+    expect(text(w, 'execute-error-what')).toBe(NOT_LIVE_PARTS.what_happened)
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeDefined()
+    live.onPush({ ...LIVE_PUSH, state: 'NOT_CONNECTED' })
+    await flushPromises()
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    expect(w.find('[data-testid="execute-error-what"]').exists()).toBe(false)
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('AC-1: "Open Kite\'s page again" re-posts the same fields and calls no API', async () => {
+    const w = mount(BasketForm, { props: { reply: REPLY, strategyId: '1' } })
+    await w.get('[data-testid="place-on-kite"]').trigger('click')
+    const before = [...w.get('[data-testid="basket-form"]').element.querySelectorAll('input')].map((i) => [i.name, i.value])
+    await w.get('[data-testid="open-kite-again"]').trigger('click')
+    const after = [...w.get('[data-testid="basket-form"]').element.querySelectorAll('input')].map((i) => [i.name, i.value])
+    expect(submitSpy).toHaveBeenCalledTimes(2)
+    expect(after).toEqual(before)
+    expect(after).toEqual([['api_key', 'replay_api_key'], ['data', DATA]])
+    expect(calls).toEqual([])
+  })
+
+  it('AC-3: a return reply without contracts or plans still renders', async () => {
+    answers['POST /strategies/1/execution/return'] = ok({ ...RETURN, contracts: undefined, plans: undefined })
+    rememberExecuted('1')
+    const w = mount(ExecutionReturnedPage, { global: { stubs: { RouterLink: true } } })
+    await w.get('[data-testid="check-with-zerodha"]').trigger('click')
+    await flushPromises()
+    expect(text(w, 'return-mismatches')).toBe('0')
+    expect(w.find('[data-testid="return-contract"]').exists()).toBe(false)
   })
 
   it('AC-1: a live push for other legs never opens Execute', async () => {

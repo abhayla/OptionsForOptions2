@@ -28,15 +28,21 @@ export function isLiveOutcome(push) {
     push.legs.every((l) => !l.label)
 }
 
+/** The one address the basket form may post to: Kite's basket endpoint (backend `basket_post.py`, ADR-054). The browser
+ *  never CALLS a broker host (ADR-012); this constant is only compared with the server's url and used as a form target
+ *  the owner submits, so the vendor-host lint is disabled for this one line with that reason. */
+// eslint-disable-next-line no-restricted-syntax -- ADR-054: the read-only basket's form target, compared, never fetched
+export const KITE_BASKET_URL = 'https://kite.zerodha.com/connect/basket'
+
 /** The basket form's three values exactly as the Execute reply gives them, or null when the reply's basket is not the
- *  server's `{url, api_key, data}` shape with non-empty strings and an https url (fail closed: no form is offered). */
+ *  server's `{url, api_key, data}` shape with non-empty strings and exactly KITE_BASKET_URL (fail closed: no form). */
 export function basketFields(reply) {
   const b = reply?.basket
   if (!b || typeof b !== 'object') return null
   const keys = Object.keys(b).sort()
   if (keys.join(',') !== 'api_key,data,url') return null
   if (![b.url, b.api_key, b.data].every((v) => typeof v === 'string' && v.length > 0)) return null
-  if (!b.url.startsWith('https://')) return null
+  if (b.url !== KITE_BASKET_URL) return null
   return { url: b.url, api_key: b.api_key, data: b.data }
 }
 

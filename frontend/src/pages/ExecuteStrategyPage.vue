@@ -36,15 +36,21 @@ const live = useStrategyLive({
   onPush: (body) => {
     if (!draft || !matchesLegs(body, draft)) return // a push for another strategy is never read
     liveNow.value = isLiveOutcome(body)
-    if (liveNow.value && phase.value === 'waiting-live') {
+    if (liveNow.value && (phase.value === 'waiting-live' || phase.value === 'not-live')) {
       clearTimeout(liveTimer)
+      everLive.value = true
+      errorParts.value = null // live again: the not-live message goes, the actions return
       phase.value = 'live'
+    } else if (!liveNow.value && phase.value === 'live') {
+      notLive()
     }
   },
   onDown: () => {
     liveNow.value = false
+    if (phase.value === 'live') notLive() // dropped after going live: say so and disable, never a silent button
   },
 })
+const everLive = ref(false)
 
 function notLive() {
   errorParts.value = NOT_LIVE_PARTS
@@ -84,7 +90,7 @@ async function prepare(action) {
     phase.value = 'prepared'
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
-    phase.value = 'live'
+    phase.value = liveNow.value ? 'live' : 'not-live' // the socket may have dropped while Execute was answering
   }
 }
 </script>
@@ -95,11 +101,11 @@ async function prepare(action) {
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
 
-    <div v-if="phase === 'live' || phase === 'executing'" class="mt-2 flex gap-2" data-testid="execute-actions">
-      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase === 'executing'" @click="prepare('ENTRY')">
+    <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive))" class="mt-2 flex gap-2" data-testid="execute-actions">
+      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('ENTRY')">
         Prepare entry orders
       </button>
-      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase === 'executing'" @click="prepare('EXIT')">
+      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('EXIT')">
         Prepare exit orders
       </button>
     </div>

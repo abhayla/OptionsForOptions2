@@ -38,13 +38,13 @@ async function check() {
     <div v-if="result" class="mt-2 text-sm" data-testid="return-result">
       <p>Read from Zerodha at <span data-testid="return-read-at">{{ istTime(result.read_at) }}</span>.</p>
       <ul>
-        <li v-for="p in result.plans" :key="p.plan_number" data-testid="return-plan" :data-plan="p.plan_number" :data-state="p.state">
+        <li v-for="p in result.plans ?? []" :key="p.plan_number" data-testid="return-plan" :data-plan="p.plan_number" :data-state="p.state">
           Plan {{ p.plan_number }} ({{ p.action }}): <span data-testid="return-plan-state">{{ p.state }}</span>
         </li>
       </ul>
       <p>Mismatches: <span data-testid="return-mismatches">{{ result.mismatches }}</span></p>
       <p v-if="result.blocked" data-testid="return-blocked">Execution is blocked until the mismatch is resolved.</p>
-      <table v-if="result.contracts.length" class="mt-1">
+      <table v-if="Array.isArray(result.contracts) && result.contracts.length" class="mt-1">
         <thead><tr><th>Contract</th><th>Zerodha units</th><th>This platform's units</th><th>Mismatch</th></tr></thead>
         <tbody>
           <tr v-for="c in result.contracts" :key="c.tradingsymbol" data-testid="return-contract">

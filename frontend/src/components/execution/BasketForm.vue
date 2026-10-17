@@ -24,6 +24,13 @@ function placeOnKite() {
   form.value.submit()
   emit('sent')
 }
+
+// The browser may block the new tab. Re-posting opens Kite's page again with the SAME reply's fields (the same sealed
+// basket, the same plan): no new Execute call, so no second plan is reserved. Only the owner's click posts it.
+function openAgain() {
+  if (!sent.value || !fields.value || !form.value) return
+  form.value.submit()
+}
 </script>
 
 <template>
@@ -42,5 +49,8 @@ function placeOnKite() {
       Open Kite to place these orders
     </button>
     <p v-if="sent" class="mt-2 text-sm" data-testid="basket-sent">Kite's order page opened in a new tab. Place or close the orders there, then check with Zerodha below.</p>
+    <button v-if="fields && sent" type="button" data-testid="open-kite-again" class="mt-2 rounded border border-line px-3 py-1" @click="openAgain">
+      Open Kite's page again
+    </button>
   </div>
 </template>
