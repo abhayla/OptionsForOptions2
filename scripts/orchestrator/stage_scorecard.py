@@ -6,7 +6,8 @@ and writes nothing. A source that fails or returns nothing prints `unmeasured: <
 check-validates-nothing-reports-pass).
 
 Window rule: `since` is inclusive, `until` is exclusive (a run created exactly at `--until` is excluded). PRs and runs
-are filtered here; the commit list uses git's own --since/--until.
+are filtered here; the commit list uses git's own --since/--until, so a commit exactly at --until IS counted, and
+`git log --all` includes commits on unmerged branches.
 Example: python scripts/orchestrator/stage_scorecard.py --since 2026-10-16T17:52:00Z --until 2026-10-17T12:00:00Z
 """
 import argparse
@@ -30,7 +31,7 @@ _AREAS = (
     ("product code", ("backend/", "frontend/src")),
 )
 _ROUND = re.compile(r"(\bround\s*\d+|\bfix round\b|^r\d+:)", re.IGNORECASE)
-_MERGE_MAIN = re.compile(r"^Merge (remote-tracking )?branch '(origin/)?main'")
+_MERGE_MAIN = re.compile(r"^Merge (?:(?:remote-tracking )?branch '(?:origin/)?main'|(?:origin/)?main)(?: into |$)")
 
 
 def parse_time(text: str) -> datetime:
@@ -118,7 +119,10 @@ def _gh_json(args: list[str]) -> tuple[list[dict] | None, str]:
 
 def _truncated(rows: list[dict], key: str, since: datetime, limit: int = LIMIT) -> bool:
     """True when the fetch hit the limit and its oldest row is newer than the window start (rows may be missing)."""
-    return len(rows) >= limit and min(parse_time(r[key]) for r in rows if r.get(key)) > since
+    if len(rows) < limit:
+        return False
+    oldest = min((parse_time(r[key]) for r in rows if r.get(key)), default=None)
+    return oldest is None or oldest > since  # no timestamps at all: cannot show the window is covered
 
 
 def render(since: datetime, until: datetime, data: dict) -> str:
