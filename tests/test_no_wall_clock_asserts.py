@@ -11,6 +11,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
 #: Both project test trees: tests/ (domain) and tests_app/ (database-backed app tests).

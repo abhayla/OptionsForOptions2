@@ -23,8 +23,11 @@ import datetime
 import pathlib
 from decimal import Decimal, InvalidOperation
 
+import pytest
 from ofo import money, timeutil
 from ofo.instruments.models import is_lot_aligned
+
+pytestmark = pytest.mark.repo_scan
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent / "backend"
 

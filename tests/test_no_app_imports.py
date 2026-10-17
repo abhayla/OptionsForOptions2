@@ -5,6 +5,10 @@ Tests that need ofo_app live in tests_app/. A string that merely mentions the na
 import ast
 import pathlib
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 ROOT = pathlib.Path(__file__).resolve().parent
 
 

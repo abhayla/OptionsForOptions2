@@ -20,6 +20,10 @@ import pathlib
 import re
 import sys
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 APP = pathlib.Path(__file__).resolve().parents[1] / "backend" / "ofo_app"
 DOOR = "errors.py"
 BANNED_NAMES = frozenset({

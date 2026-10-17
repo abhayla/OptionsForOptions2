@@ -53,6 +53,8 @@ from ofo.strategy.definition import StrategyDefinition
 from ofo.strategy.versions import ExecutionResult, Position, ResultStatus
 from ofo.strategy.guard import GuardRefused, StrategyGuard
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[2] / "backend" / "ofo"
 
 
