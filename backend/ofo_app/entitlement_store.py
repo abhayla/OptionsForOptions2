@@ -303,7 +303,6 @@ async def append(
             conn,
             event_type,
             actor=event.audit.actor,
-            timestamp=recorded_at,
             correlation_id=f"ledger:{row_id}",
             payload=audit_payload,
         )

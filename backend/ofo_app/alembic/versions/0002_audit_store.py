@@ -51,7 +51,7 @@ from pathlib import Path
 
 from alembic import op
 
-from ofo_app.audit_allowlist import allowlist_spec
+from ofo_app.audit_allowlist import BASE_REVISION, allowlist_spec
 
 revision = "0002_audit_store"
 down_revision = "0001_baseline"
@@ -72,8 +72,9 @@ def _load_previous():
 
 _BASE = _load_previous()
 
-#: The payload allowlist, generated from ofo_app.audit_allowlist (single source).
-PAYLOAD_ALLOWLIST = allowlist_spec()
+#: The payload allowlist, generated from ofo_app.audit_allowlist (single source), as every database at 0016 holds it:
+#: a type declared by a later migration (``DECLARED_IN_REVISION``) is rendered by that migration, never here.
+PAYLOAD_ALLOWLIST = allowlist_spec(through_revision=BASE_REVISION)
 DECLARED_EVENT_TYPES = tuple(sorted(PAYLOAD_ALLOWLIST))
 
 AUDIT_LINK_SQLSTATE = "OF003"  # a row that does not extend the anchored chain

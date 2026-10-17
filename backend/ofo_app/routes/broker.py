@@ -8,6 +8,7 @@ the user logs in on Zerodha's own page. REQ-015 AC-9: the token is stored only a
   server-side, bound to the user).
 - ``GET <path of KITE_REDIRECT_URL>`` (``/kite/callback``): consumes the state, checks Kite's answer, exchanges the
   request token, stores the access token encrypted, then 302 to a fixed frontend path with no token and no query.
+  A hit with NO ``state`` parameter at all is Kite's basket return (W-105): 302 to /execution/returned, nothing else.
   Every refusal answers a 302 to the frontend page /broker/refused?code=<closed code> (#163), which shows the
   reviewed catalogue message for that code (GET /api/broker/refusals/{code}); no body, no JSON. Nothing is stored on
   a refusal. The login route (not a landing from Kite) still raises `BrokerLoginRefused` for a full cap.
@@ -64,12 +65,15 @@ LOGIN_PATH = "/broker/zerodha/login"
 CONNECTED_FRONTEND_PATH = "/broker/connected"
 #: Where the browser lands after a REFUSED login (#163): a frontend page; the query carries only the closed code.
 REFUSED_FRONTEND_PATH = "/broker/refused"
+#: Where the browser lands back from a Kite basket (W-105): Kite sends it to the SAME registered redirect URL as a
+#: login, "exactly like login", but with no ``state`` (only login carries our redirect_params). Fixed, no query.
+BASKET_RETURN_FRONTEND_PATH = "/execution/returned"
 STATE_TTL_SECONDS = 600
 #: Live login states held at once (the login route is anonymous); over it the login is refused.
 MAX_LIVE_STATES = 20
 STATE_COOKIE = "ofo_kite_login"
 #: Query keys whose presence makes an access-log line drop its whole query string.
-SECRET_QUERY_KEYS = frozenset({"request_token", "state", "access_token"})
+SECRET_QUERY_KEYS = frozenset({"request_token", "request_key", "state", "access_token"})
 #: ADR-051 V1 is single-user: the owner. Platform login replaces this dependency later.
 V1_OWNER_REF = "owner"
 
@@ -106,7 +110,7 @@ class BrokerLoginRefused(UserFacing, Exception):
 class BrokerRedirectOut(ApiModel):
     """Names the redirect a broker route answers with (the 302 itself has no body)."""
 
-    redirect: Literal["zerodha_login", "connected", "refused"]
+    redirect: Literal["zerodha_login", "connected", "refused", "basket_returned"]
 
 
 class RefusalOut(ApiModel):
@@ -235,6 +239,12 @@ async def kite_callback(  # noqa: PLR0911, PLR0913
     db: AsyncSession = Depends(get_db),  # noqa: B008
 ) -> object:
     rt = runtime(request)
+    if state is None:
+        # W-105 (REQ-073 AC-3): a basket return, not a login. No state store, no token exchange, nothing stored; no
+        # incoming query is copied into the location (the request_token never reaches the address bar). An EMPTY
+        # ``state=`` is not absent: it takes the login path below and is refused as broker_state_invalid.
+        return typed_redirect(BrokerRedirectOut(redirect="basket_returned"),
+                              f"{rt.config.frontend_origin}{BASKET_RETURN_FRONTEND_PATH}")
     user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))
     if user_ref is None:
         return _refused_redirect(request, rt, "broker_state_invalid")
@@ -263,13 +273,18 @@ async def kite_callback(  # noqa: PLR0911, PLR0913
 
 
 class CallbackQueryFilter(logging.Filter):
-    """Drops the query string of any uvicorn access record whose query carries request_token, state or access_token,
-    on any path (uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with args (client, method, path-with-query, http version,
-    status)). Key-based, so a trailing slash or a root_path prefix cannot route around it."""
+    """Drops query strings from uvicorn access records (uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with args (client,
+    method, path-with-query, http version, status)), in two layers:
+
+    1. On a callback path in ``paths`` the WHOLE query is dropped whatever its keys (W-105: Kite's basket return
+       carries a request_key, and any key Kite adds later is covered without a list). Matched case-insensitively on
+       the path's end, so a trailing slash or a root_path prefix cannot route around it.
+    2. On any path, a query carrying a key in SECRET_QUERY_KEYS is dropped (key-based second layer)."""
 
     def __init__(self, paths: tuple[str, ...] = ()) -> None:
         super().__init__()
-        self.paths = paths  # kept for the record; matching is by query key, not by path
+        self.paths = paths
+        self._ends = tuple(p.rstrip("/").lower() for p in paths if p.rstrip("/"))
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
@@ -282,6 +297,8 @@ class CallbackQueryFilter(logging.Filter):
     def _strip(self, value: object) -> object:
         if isinstance(value, str) and "?" in value:
             path, query = value.split("?", 1)
+            if self._ends and path.rstrip("/").lower().endswith(self._ends):
+                return path
             keys = {k.lower() for k, _ in parse_qsl(query, keep_blank_values=True)}
             if keys & SECRET_QUERY_KEYS or any(k in query.lower() for k in SECRET_QUERY_KEYS):
                 return path

@@ -156,7 +156,14 @@ function syncLive() {
   else live.stop()
 }
 
+// W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
+const savedId = ref(null)
+const openSaved = (next, id) => {
+  setLegs(next)
+  savedId.value = Number.isInteger(id) ? id : null
+}
 const setLegs = (next) => {
+  savedId.value = null
   linkRefused.value = false
   legs.value = next
   load()
@@ -199,7 +206,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="setLegs" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
 
@@ -267,7 +274,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
         :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
       />
       <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
-      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" @recalculate="load" />
+      <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>

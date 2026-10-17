@@ -73,6 +73,11 @@
    "date": "2026-10-10",
    "where": "#155 round-1 brief (orchestrator), docs/process/brief-155.md rule (c)",
    "evidence": "the brief let PowerShell's `$ErrorActionPreference = 'Stop'` stand in for `set -e`, from memory; the Tier A reviewer measured on this PC's pwsh 7.5.2 that a failing native program does not stop the script (PSNativeCommandUseErrorActionPreference=False), so the hook allowed exactly the masked commit it exists to block (CRITICAL); corrected in round 2."
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2e briefs (orchestrator-written): W-103, W-102, W-101..W-106",
+   "evidence": "Four brief rules not checked against the source: (1) W-103 brief said an undeclared audit key is 'refused' - REQ-063 AC-5 and filter_payload DROP it (caught by the orchestrator before dispatch); (2) W-102 brief said show an exit's margin 'as given' (negative) - ADR-099 says a closing basket counts as 0 (caught by the Tier A review); (3) W-102/W-103 briefs put REQ-056+REQ-073 / REQ-063+REQ-073 on one card - trace_check refuses one card for two requirements sharing AC numbers (caught by the builders); (4) every brief said 'no regenerated files' - docs/api/openapi.json is checked by test_committed_openapi_matches_the_app (caught by CI on W-105 and W-102). check_brief.py verifies quotes only, not unquoted rules."
   }
  ],
  "fix": "Brief rule for the orchestrator: every product rule in a brief quotes the spec text (file:line) it rests on; a rule the spec does not state is labelled 'orchestrator default (ADR-045) — not from the spec' so builders and verifiers challenge it. Verifiers already recompute from the spec.",
