@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from ofo.broker import egress as _egress
 
-from ofo_app import errors, event_loop, live_market, pinned_clock, replay_mode
+from ofo_app import errors, event_loop, execute_replay_switch, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db
@@ -90,6 +90,11 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         feeds = replay_mode.ReplayFeeds(ctx)  # W-065: one replay feed per socket connection (reconnects get prices)
         live.set_replay_feed(feeds)
         app.dependency_overrides[outcome.get_streaming] = lambda: feeds.streaming  # REST not live after a socket drop
+    if execute_replay_switch.replay_requested():  # W-101 test-only; refused outside APP_ENV=test, first
+        execute_replay_switch.require_test_env(app_env() or "")
+        from ofo_app import execute_replay  # noqa: PLC0415 - only here: production never reads test fixtures
+        # Execute + return answer from the recorded 2026-10-16 replies, no live session
+        app.dependency_overrides.update(execute_replay.overrides())
     app.include_router(health.router)
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
