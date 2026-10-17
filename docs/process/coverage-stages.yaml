@@ -338,6 +338,8 @@ findings:
   F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
   F-40: 4b        # 4b domain chain right on the real order; no Kite reply -> domain adapter (GC-1 core proof)
   F-41: 4b        # Kite basket return lands on the shared login redirect URL (W-105; live shape at GC-3)
+  F-42: 4b        # REQ-058/060 verified on domain modules the Kite-basket routes never call (#380)
+  F-43: 4b        # Mon 2026-10-19 is the nearest NIFTY expiry (GC-3 expiry choice, OQ-15)
 
 hypotheses:
   H1: done
