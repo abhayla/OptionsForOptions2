@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (105)
+## Decisions (107)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -111,6 +111,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it opened that contract on (its adopted holding's sid… [applies ADR-016, ADR-018, ADR-019]
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instrument list as the product's own download loaded it… [applies ADR-016, ADR-057, ADR-058, REQ-053]
 - ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2, OFS{strategy}V{plan}L{leg}) is a PLAN NUMBER minted for each Execute of a strategy (entry, exit… [applies ADR-050, ADR-054, REQ-073]
+- ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
+- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
 
 ## Requirements (75)
 
@@ -190,7 +192,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (198)
+## Spec sections (200)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -291,6 +293,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-38 - Index freeze limits are revised several times a year, not once…
 - ## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER…
 - ## F-40 - The 4b domain chain (fill ledger, reconcile, P&L) is right on…
+- ## F-41 - Kite returns the browser from a basket to the SAME registered…
 
 ### spec/open-questions.md
 
@@ -366,6 +369,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q268 — DECIDED → ADR-080 (expert role) — Bid/ask/slippage: what LIMIT…
 - ## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expir…
 - ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grou…
+- ## Q271 — DECIDED (expert role, 2026-10-17; spec silent - REQ-060 F-08 c…
 
 ### spec/operations/README.md
 

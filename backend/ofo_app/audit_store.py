@@ -5,6 +5,9 @@ chain verification are ``ofo.audit`` (models.py, log.py); this module only store
 
 append(conn, ...) inside the caller's transaction (READ COMMITTED, the PostgreSQL default; anything else is refused):
 1. ``pg_advisory_xact_lock(AUDIT_APPEND_LOCK_KEY)`` serialises appends until the caller commits or rolls back.
+   Then the event's time is read from the database clock (``clock_timestamp()``, ADR-023). The caller never supplies
+   it (finding request-clock-for-database-stamped-fact): ``append`` has no ``timestamp`` parameter, so a request
+   clock cannot reach the event, its hash or its row.
 2. Reads the anchor (event_count, last_hash) from ``public.audit_anchor``.
 3. Filters the payload through the event type's field allowlist (undeclared type: refused, nothing sent), refuses any
    value the store cannot round-trip exactly (float, non-finite Decimal, NUL or lone surrogate in a string, other
@@ -47,6 +50,7 @@ _DATETIME_TAG = "$datetime"
 
 _LOCK = text("SELECT pg_advisory_xact_lock(:k)")
 _ISOLATION = text("SELECT current_setting('transaction_isolation')")
+_NOW = text("SELECT clock_timestamp()")
 _ANCHOR = text("SELECT event_count, last_hash FROM public.audit_anchor WHERE id = 1")
 _INSERT = text(
     'INSERT INTO public.audit_events (seq, event_type, actor, "timestamp", correlation_id, payload, previous_hash, '
@@ -174,6 +178,14 @@ async def _take_lock(conn: Any) -> None:
     await conn.execute(_LOCK, {"k": AUDIT_APPEND_LOCK_KEY})
 
 
+async def _database_now(conn: Any) -> datetime:
+    """The database clock (``clock_timestamp()``: real time, not the transaction start), timezone-aware."""
+    moment = (await conn.execute(_NOW)).scalar_one()
+    if not isinstance(moment, datetime) or moment.tzinfo is None or moment.utcoffset() is None:
+        raise AuditStoreError(f"the database clock returned {moment!r}, not a timezone-aware time; refusing")
+    return moment
+
+
 async def read_anchor(conn: Any) -> HeadAnchor:
     row = (await conn.execute(_ANCHOR)).one_or_none()
     if row is None:
@@ -186,20 +198,21 @@ async def append(
     event_type: EventType,
     *,
     actor: str,
-    timestamp: datetime,
     correlation_id: str,
     payload: Mapping[str, Any] | None = None,
 ) -> StoredEvent:
-    """Append one event inside the caller's transaction and return it with its seq. The caller commits."""
+    """Append one event inside the caller's transaction and return it with its seq. The caller commits.
+
+    The event's time is the database clock read after the lock; there is no way to pass one in.
+    """
     filtered = filter_payload(event_type, payload)  # refuses an undeclared type before any SQL
     encoded = encode_payload(filtered)
-    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        raise AuditStoreError("timestamp must be timezone-aware")
 
     isolation = (await conn.execute(_ISOLATION)).scalar_one()
     if isolation != "read committed":
         raise AuditStoreError(f"audit appends need READ COMMITTED (the head is read after the lock), got {isolation}")
     await _take_lock(conn)
+    timestamp = await _database_now(conn)
     head = await read_anchor(conn)
     event = AuditEvent(
         event_type=event_type,

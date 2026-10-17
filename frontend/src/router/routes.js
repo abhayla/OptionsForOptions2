@@ -44,6 +44,8 @@ export const routes = [
   ...sectionRoutes,
   ...settingsRoutes,
   { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
+  { path: '/strategy/:id/execute', name: 'execute-strategy', component: () => import('../pages/ExecuteStrategyPage.vue'), meta: { title: 'Execute Strategy', section: 'strategies', responsiveSample: '/strategy/1/execute' } },
+  { path: '/execution/returned', name: 'execution-returned', component: () => import('../pages/ExecutionReturnedPage.vue'), meta: { title: 'Back from Kite', section: 'strategies' } },
   { path: '/broker/connected', name: 'broker-connected', component: () => import('../pages/BrokerConnectedPage.vue'), meta: { title: 'Zerodha connected', section: 'settings' } },
   { path: '/broker/refused', name: 'broker-refused', component: () => import('../pages/BrokerRefusedPage.vue'), meta: { title: 'Zerodha login not completed', section: 'settings' } },
   { path: '/health-status', name: 'health-status', component: () => import('../pages/HealthPage.vue'), meta: { title: 'System health', section: 'system' } },

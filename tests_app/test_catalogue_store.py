@@ -67,6 +67,20 @@ def _migration():
     return module
 
 
+def _head_pins() -> dict[str, str]:
+    """The pins of the HIGHEST-numbered migration that publishes ``PINNED_BODIES`` (W-103: 0017 moved the payload
+    allowlist body, so the head database's pins are no longer 0006's). Found by walking alembic's revision chain down
+    from head, never a fixed path."""
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    scripts = ScriptDirectory.from_config(Config(str(ROOT / "backend" / "ofo_app" / "alembic.ini")))
+    revision = scripts.get_revision(scripts.get_current_head())
+    while not hasattr(revision.module, "PINNED_BODIES"):
+        revision = scripts.get_revision(revision.down_revision)
+    return dict(revision.module.PINNED_BODIES)
+
+
 def _fixture_text() -> str:
     return "".join(line for line in FIXTURE.read_text(encoding="utf-8").splitlines(True) if not line.startswith("#"))
 
@@ -411,7 +425,9 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
     assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == [["zerodha", "NIFTY26O1325050CE"]]
-    assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
+    assert calls[0][2]["actor"] == "admin-1"
+    # the store stamps the database clock itself: the domain's as_of is never forwarded as the event time
+    assert set(calls[0][2]) == {"actor", "correlation_id", "payload"}
 
     # a failed catalogue write leaves no audit event
     calls.clear()
@@ -646,9 +662,12 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             head = await read_anchor(conn)
-            now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            # as_of is the fixture's fixed download day, far from now: the audit event still stores, because the
+            # store stamps the database clock itself (finding request-clock-for-database-stamped-fact)
+            before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
-            await apply_update(conn, truncated, as_of=now, force=True, reason="broker delisted", actor="admin-1")
+            await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+            after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             listed = (await conn.execute(text(
                 f"SELECT currently_listed FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26O1325050CE')"))).scalar_one()
             assert listed is False
@@ -659,6 +678,7 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
 
             assert event.event_type is EventType.ADMIN_CHANGE_RECORDED
             assert event.payload["action"] == "catalogue_force_update" and event.actor == "admin-1"
+            assert before <= event.timestamp <= after and event.timestamp != AS_OF
         finally:
             await trans.rollback()
 
@@ -784,7 +804,7 @@ async def test_allowlist_holds_with_the_catalogue_table(admin_engine: AsyncEngin
 
 async def test_live_function_bodies_equal_the_pins(admin_engine: AsyncEngine) -> None:
     async with admin_engine.connect() as conn:
-        for signature, digest in _migration().PINNED_BODIES.items():
+        for signature, digest in _head_pins().items():
             live = (await conn.execute(text("SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(:f)"),
                                        {"f": signature})).scalar_one()
             assert live == digest, signature

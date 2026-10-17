@@ -11,7 +11,8 @@ Zerodha read (orders, trades, positions). One request = one transaction, in this
    ``waiting`` and ``reconciliation_required`` leave it open; nothing is ever sent to Zerodha (no Kite write exists
    here);
 4. orders tagged for the strategy with no stored plan: listed and written to the audit log once per (order, status,
-   filled) as ``broker_response_recorded``;
+   filled) as ``broker_response_recorded``; the stored plans' own orders likewise, and each of their trades once per
+   (order id, trade id) as ``execution_recorded`` (W-103, ``order_audit``; database clock);
 5. the reconciliation rows from the final stored state; the strategy's state and the fills' realised P&L. Other
    strategies are keyed by THEIR own underlying; a contract one of them touches through an open or drifted plan is
    undecidable here (reconciliation required, reason named).
@@ -29,11 +30,11 @@ from ofo.errors import render
 from ofo.instruments.models import InstrumentId
 from sqlalchemy import text
 
-from ofo_app import audit_store
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
+from ofo_app import order_audit
 from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
@@ -51,10 +52,6 @@ router = APIRouter(route_class=ClosedRoute)
 _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
     "WHERE s.user_ref = :u AND p.strategy_id <> :s ORDER BY p.strategy_id")
-_RECORDED = text("SELECT 1 FROM public.audit_events WHERE event_type = :t AND correlation_id = :c")
-# The audit event's time is the database's clock (the trigger's own reference, ADR-023 Q256: +/- 60 s of recorded_at),
-# never the injectable request clock: a skewed request clock must not refuse the record (like entitlement_store).
-_DB_NOW = text("SELECT clock_timestamp()")
 PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required"]
 
 
@@ -263,14 +260,9 @@ def _correlation(strategy_id: int, row: Mapping[str, object]) -> str:
 
 async def _record_externals(req: _Request, book: er.TodaysBook) -> None:
     """ADR-050 item 4(d): every external order recorded once per (order, status, filled) - a replay adds nothing."""
-    kind = EventType.BROKER_RESPONSE_RECORDED
     for row in book.external:
-        correlation = _correlation(req.strategy_id, row)
-        if (await req.db.execute(_RECORDED, {"t": kind.value, "c": correlation})).first() is not None:
-            continue
-        at = (await req.db.execute(_DB_NOW)).scalar_one()
-        await audit_store.append(req.db, kind, actor="system", timestamp=at, correlation_id=correlation,
-                                 payload=dict(row))
+        await order_audit.record_once(req.db, EventType.BROKER_RESPONSE_RECORDED, _correlation(req.strategy_id, row),
+                                      row)
 
 
 def _plan_out(plan: plans.StoredPlan, live: Mapping[int, er.PlanAnswer]) -> dict[str, object]:
@@ -328,6 +320,7 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
     world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))
     live = await _settle_open_plan(req, history, book, world)
     await _record_externals(req, book)
+    await order_audit.record_broker_book(req.db, zerodha.orders, zerodha.trades, tags)  # W-103: our orders + trades
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     return _answer(req, history, live, book, world)
 

@@ -14,13 +14,15 @@ privilege), Decimal('1365.00') keeps its two decimal places.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import importlib.util
 import json
 import re
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -30,7 +32,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditChainError
 from ofo.audit.models import GENESIS_HASH, AuditEvent, canonical_json
-from ofo_app import audit_store
+from ofo.entitlements.engine import trial_grant
+from ofo.entitlements.events import AuditNote
+from ofo_app import audit_store, entitlement_store, order_audit
 from ofo_app.audit_allowlist import (
     ALLOWLIST,
     PayloadShapeError,
@@ -64,8 +68,16 @@ DECLARED = {
     EventType.ADMIN_CHANGE_RECORDED,
     # W-017: the two broker-reply types (declared from the real replies of 2026-10-16)
     EventType.BROKER_RESPONSE_RECORDED, EventType.EXECUTION_RECORDED,
+    # W-103: the Execute route's stored plan (migration 0017)
+    EventType.ORDER_PREPARED,
 }
 UNDECLARED = sorted(set(EventType) - DECLARED, key=lambda e: e.value)
+#: Frozen: the types 0002 renders (every database at 0016). Never derived from the live allowlist.
+PRE_0017_TYPES = {
+    "entitlement_changed", "trial_started", "trial_expired", "direct_customer_eligibility_granted",
+    "direct_customer_eligibility_revoked", "referral_reward_granted", "subscription_started", "subscription_expired",
+    "broker_response_recorded", "execution_recorded", "admin_change_recorded",
+}
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,6 +85,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def _migration():
     path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0002_audit_store.py"
     spec = importlib.util.spec_from_file_location("ofo_migration_0002_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def _order_prepared_migration():
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0017_audit_order_prepared.py"
+    spec = importlib.util.spec_from_file_location("ofo_migration_0017_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -111,7 +131,6 @@ async def _subscription(conn: AsyncConnection, **extra) -> audit_store.StoredEve
         conn,
         EventType.SUBSCRIPTION_STARTED,
         actor="admin-1",
-        timestamp=now,
         correlation_id=_cid(),
         payload={"platform_user_id": "u-1", "plan": "pro", "price": PRICE, "starts_at": now, **extra},
     )
@@ -157,13 +176,15 @@ async def _next_event(
 # ---------------------------------------------------------------------------------------------------------------
 
 
-def test_exactly_the_nine_non_broker_and_two_broker_reply_types_are_declared() -> None:
+def test_exactly_the_nine_non_broker_two_broker_reply_and_order_prepared_types_are_declared() -> None:
     assert set(ALLOWLIST) == DECLARED
-    assert len(DECLARED) == 11 and len(UNDECLARED) == 22 and len(EventType) == 33
+    assert len(DECLARED) == 12 and len(UNDECLARED) == 21 and len(EventType) == 33
 
 
 def test_database_event_type_check_equals_the_python_allowlist() -> None:
-    assert set(_migration().DECLARED_EVENT_TYPES) == {e.value for e in ALLOWLIST}
+    """0002 renders the 0016 state (every type but those a later revision declares); 0017 renders the full list."""
+    assert set(_migration().DECLARED_EVENT_TYPES) == PRE_0017_TYPES
+    assert set(_order_prepared_migration().AFTER) == {e.value for e in ALLOWLIST}
 
 
 def test_migration_genesis_equals_ofo_audit_genesis() -> None:
@@ -199,7 +220,7 @@ async def test_undeclared_type_refused_before_any_sql(event_type: EventType) -> 
     """conn=None: a refusal that sent SQL would raise AttributeError, not UndeclaredEventType."""
     with pytest.raises(UndeclaredEventType, match=event_type.value):
         await append(
-            None, event_type, actor="a", timestamp=datetime.now(UTC), correlation_id="c", payload={}
+            None, event_type, actor="a", correlation_id="c", payload={}
         )
 
 
@@ -317,15 +338,15 @@ async def test_core_three_events_reload_on_a_new_connection_and_verify(app_engin
         now = await _db_clock(conn)
         stored = [
             await append(
-                conn, EventType.SUBSCRIPTION_STARTED, actor="admin-1", timestamp=now, correlation_id=_cid(),
+                conn, EventType.SUBSCRIPTION_STARTED, actor="admin-1", correlation_id=_cid(),
                 payload={"platform_user_id": "u-1", "plan": "pro", "price": PRICE, "starts_at": now},
             ),
             await append(
-                conn, EventType.TRIAL_STARTED, actor="system", timestamp=now, correlation_id=_cid(),
+                conn, EventType.TRIAL_STARTED, actor="system", correlation_id=_cid(),
                 payload={"platform_user_id": "u-2", "starts_at": now, "ends_at": now + timedelta(days=7)},
             ),
             await append(
-                conn, EventType.ENTITLEMENT_CHANGED, actor="admin-1", timestamp=now, correlation_id=_cid(),
+                conn, EventType.ENTITLEMENT_CHANGED, actor="admin-1", correlation_id=_cid(),
                 payload={"action": "entitlement_status", "client_id": "AB1234",
                          "before": {"entitlement_status": "limited"}, "after": {"entitlement_status": "pro"}},
             ),
@@ -418,8 +439,7 @@ async def test_undeclared_type_refused_with_no_row_written(app_engine: AsyncEngi
         before = (await conn.execute(text("SELECT count(*) FROM public.audit_events"))).scalar_one()
         anchor_before = await audit_store.read_anchor(conn)
         with pytest.raises(UndeclaredEventType):
-            await append(conn, EventType.ORDER_SUBMITTED, actor="a", timestamp=await _db_clock(conn),
-                         correlation_id=_cid(), payload={"order_id": "1"})
+            await append(conn, EventType.ORDER_SUBMITTED, actor="a", correlation_id=_cid(), payload={"order_id": "1"})
         after = (await conn.execute(text("SELECT count(*) FROM public.audit_events"))).scalar_one()
         assert after == before and await audit_store.read_anchor(conn) == anchor_before
 
@@ -454,13 +474,14 @@ async def test_raw_insert_outside_the_allowlist_is_refused(
 
 
 async def check_clock_refused(conn: AsyncConnection) -> None:
-    """An event 2 minutes off the database clock is refused (OF001), both ways."""
+    """A raw row 2 minutes off the database clock (correct hash, canonical text and link) is refused (OF001), both
+    ways. append() can no longer be given a time, so the database check is driven by a raw INSERT."""
     for minutes in (2, -2):
-        now = await _db_clock(conn)
+        head, event = await _next_event(conn, EventType.TRIAL_EXPIRED, {"platform_user_id": "u-1"})
+        off = dataclasses.replace(event, timestamp=event.timestamp + timedelta(minutes=minutes))
         try:
             async with conn.begin_nested():
-                await append(conn, EventType.TRIAL_EXPIRED, actor="system", timestamp=now + timedelta(minutes=minutes),
-                             correlation_id=_cid(), payload={"platform_user_id": "u-1"})
+                await conn.execute(text(RAW_INSERT), _raw(off, head.count + 1))
         except DBAPIError as exc:
             assert _sqlstate(exc) == CLOCK_SQLSTATE, f"refused with {_sqlstate(exc)}, expected {CLOCK_SQLSTATE}: {exc}"
             continue
@@ -738,3 +759,270 @@ async def test_real_log_still_verifies_after_all_mutations(app_engine: AsyncEngi
     async with app_engine.connect() as conn:
         log, anchor = await load_log(conn)
     assert log.verify(anchor).ok and anchor.count == len(log.events)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# W-103: order_prepared (REQ-063 AC-5) and migration 0017
+# ---------------------------------------------------------------------------------------------------------------
+
+PREPARED = {"strategy_id": 1, "plan_number": 1, "action": "ENTRY", "tags": "OFS1V1L0"}
+
+
+async def _prepared(conn: AsyncConnection, payload: dict) -> audit_store.StoredEvent:
+    return await append(conn, EventType.ORDER_PREPARED, actor="u-1", correlation_id=_cid(), payload=payload)
+
+
+async def _stored_payload(conn: AsyncConnection, seq: int) -> dict:
+    raw = (await conn.execute(text("SELECT payload::text FROM public.audit_events WHERE seq = :s"), {"s": seq}))
+    return json.loads(raw.scalar_one())
+
+
+async def test_ac5_order_prepared_keeps_its_four_fields_drops_an_extra_and_refuses_bad_payloads(
+    app_engine: AsyncEngine,
+) -> None:
+    """AC-5: {strategy_id, plan_number, action, tags, x} is stored WITHOUT x; {x} alone is refused
+    (PayloadShapeError); plan_number 1.0 is refused by the store's float rule; neither refusal writes a row."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            stored = await _prepared(conn, {**PREPARED, "x": 1})
+            assert stored.event.payload == PREPARED and await _stored_payload(conn, stored.seq) == PREPARED
+            anchor = await audit_store.read_anchor(conn)
+            with pytest.raises(PayloadShapeError, match="none is declared"):
+                await _prepared(conn, {"x": 1})
+            with pytest.raises(AuditStoreError, match="float"):
+                await _prepared(conn, {**PREPARED, "plan_number": 1.0})
+            assert await audit_store.read_anchor(conn) == anchor
+            log, head = await load_log(conn)
+            assert log.verify(head).ok
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_live_event_type_check_names_exactly_the_declared_types(admin_engine: AsyncEngine) -> None:
+    """AC-5: the database's event-type CHECK and the code's allowlist agree at head (both copies, not only one)."""
+    async with admin_engine.connect() as conn:
+        definition = (await conn.execute(text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'audit_events_event_type_check'"
+        ))).scalar_one()
+    assert set(re.findall(r"'([a-z_]+)'::text", definition)) == {e.value for e in ALLOWLIST}
+
+
+async def _db_allowlist(conn: AsyncConnection) -> dict:
+    return json.loads((await conn.execute(text("SELECT public.ofo_audit_payload_allowlist()::text"))).scalar_one())
+
+
+async def test_ac5_0017_downgrade_removes_order_prepared_and_upgrade_restores_it(admin_engine: AsyncEngine) -> None:
+    """AC-5: 0017 down -> the database allowlist and CHECK are 0016's (no order_prepared; an order_prepared append is
+    refused by the database), the allowlist function's 'post' check passes; up -> equal to the code again and the
+    append stores. Rolled back."""
+    from _migration_replay import round_trip_sql  # noqa: PLC0415
+
+    own_down, own_up, down, up = round_trip_sql("0017_audit_order_prepared.py")
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
+    migration = _order_prepared_migration()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            assert await _db_allowlist(conn) == allowlist_spec()
+            for sql in down:
+                await conn.execute(text(sql))
+            assert await _db_allowlist(conn) == migration.BEFORE
+            assert "order_prepared" not in migration.BEFORE
+            with pytest.raises(DBAPIError):
+                async with conn.begin_nested():
+                    await _prepared(conn, PREPARED)
+            for sql in up:
+                await conn.execute(text(sql))
+            assert await _db_allowlist(conn) == allowlist_spec()
+            assert (await _prepared(conn, PREPARED)).event.payload == PREPARED
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_0017_downgrade_is_refused_while_an_order_prepared_event_is_stored(admin_engine: AsyncEngine) -> None:
+    """AC-5: the audit store is append-only, so the downgrade refuses (nothing changes) once a row of the type
+    exists."""
+    from _migration_replay import recorded  # noqa: PLC0415
+
+    own_down = recorded("0017_audit_order_prepared.py", "downgrade")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _prepared(conn, PREPARED)
+            with pytest.raises(DBAPIError, match="order_prepared events"):
+                async with conn.begin_nested():
+                    await conn.execute(text(own_down[0]))
+            assert await _db_allowlist(conn) == allowlist_spec()
+        finally:
+            await trans.rollback()
+
+
+def test_ac5_the_0016_render_is_frozen_and_a_new_type_without_a_revision_is_refused() -> None:
+    """AC-5: 0002 renders exactly the 11 pre-0017 types (a frozen literal, not "all minus order_prepared"); a type
+    added to the allowlist without a DECLARED_IN_REVISION entry is refused at import (fail closed), as is a base type
+    given a revision or a revision at or below 16."""
+    from ofo_app import audit_allowlist as al  # noqa: PLC0415
+
+    assert set(allowlist_spec(through_revision=16)) == PRE_0017_TYPES == al.BASE_TYPES
+    fake = {**ALLOWLIST, EventType.ORDER_SUBMITTED: {"order_id": "scalar"}}
+    with pytest.raises(ValueError, match="order_submitted"):
+        al.check_revisions(fake, al.DECLARED_IN_REVISION)
+    al.check_revisions(fake, {**al.DECLARED_IN_REVISION, EventType.ORDER_SUBMITTED: 18})
+    for bad in ({**al.DECLARED_IN_REVISION, EventType.TRIAL_STARTED: 18}, {EventType.ORDER_PREPARED: 16}):
+        with pytest.raises(ValueError, match="DECLARED_IN_REVISION"):
+            al.check_revisions(ALLOWLIST, bad)
+
+
+def test_ac5_0017_pin_swap_fails_closed_and_through_revision_is_checked() -> None:
+    """AC-5: the chain text must pin the 0016 allowlist body exactly once, else the migration refuses to render;
+    ``allowlist_spec(through_revision=...)`` refuses a revision before the base and a non-int."""
+    migration = _order_prepared_migration()
+    good = migration.previous_allowlist_sql()
+    assert migration.extended_allowlist_sql() != good
+    old_pin = migration._M4._md5_body(migration.allowed_function_sql(migration.BEFORE))
+    for broken in (good.replace(f"'{old_pin}'", "'0'"), good + f"'{old_pin}'"):
+        migration.previous_allowlist_sql = lambda text=broken: text
+        with pytest.raises(RuntimeError, match="exactly once"):
+            migration.extended_allowlist_sql()
+    for bad in (15, True, "17", 16.0):
+        with pytest.raises(ValueError, match="through_revision"):
+            allowlist_spec(through_revision=bad)
+    assert "order_prepared" not in allowlist_spec(through_revision=16)
+    assert allowlist_spec(through_revision=17) == allowlist_spec()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Finding request-clock-for-database-stamped-fact: the store stamps its own time from the database clock
+# ---------------------------------------------------------------------------------------------------------------
+
+#: A pinned request clock far from the database clock (the GC-2c failure: a route's frozen "now").
+REQUEST_CLOCK = datetime(2026, 10, 16, 15, 7, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+#: The brief's bound: the stored time is within 5 s of clock_timestamp() read in the same transaction.
+DB_CLOCK_BOUND = timedelta(seconds=5)
+
+
+def test_append_refuses_a_caller_supplied_timestamp_with_type_error() -> None:
+    """append has no timestamp parameter: passing one is a TypeError at the call, before any SQL (conn=None)."""
+    with pytest.raises(TypeError, match="timestamp"):
+        append(None, EventType.SUBSCRIPTION_STARTED, actor="a", timestamp=REQUEST_CLOCK,  # type: ignore[call-arg]
+               correlation_id="c", payload={})
+
+
+def _within_db_clock(stamp: datetime, before: datetime, after: datetime) -> bool:
+    return before <= stamp <= after and after - stamp <= DB_CLOCK_BOUND
+
+
+async def test_append_under_a_far_request_clock_stores_the_database_time(app_engine: AsyncEngine) -> None:
+    """Core proof: the session's time zone is set far from IST (UTC+14) and the request clock is pinned to
+    2026-10-16 15:07 IST; the stored time is the database clock read in the same transaction, not the request clock,
+    and the row, the event and the hash all carry it."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await conn.execute(text("SET LOCAL TIME ZONE 'Pacific/Kiritimati'"))
+            before = await _db_clock(conn)
+            stored = await append(conn, EventType.TRIAL_STARTED, actor="system", correlation_id=_cid(),
+                                  payload={"platform_user_id": "u-far"})
+            after = await _db_clock(conn)
+            row_ts = (await conn.execute(text('SELECT "timestamp" FROM public.audit_events WHERE seq = :s'),
+                                         {"s": stored.seq})).scalar_one()
+            assert _within_db_clock(stored.event.timestamp, before, after), (before, stored.event.timestamp, after)
+            assert row_ts == stored.event.timestamp
+            assert abs(stored.event.timestamp - REQUEST_CLOCK) > DB_CLOCK_BOUND
+            log, anchor = await load_log(conn)
+            assert log.events[stored.seq - 1].hash == stored.event.hash and log.verify(anchor).ok
+        finally:
+            await trans.rollback()
+
+
+async def test_database_clock_that_is_not_an_aware_time_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The store fails closed if the clock read returns anything but a timezone-aware datetime."""
+
+    class _Conn:
+        def __init__(self, value: object) -> None:
+            self.value = value
+
+        async def execute(self, *_args: object) -> object:
+            value = self.value
+            return type("R", (), {"scalar_one": lambda _self: value})()
+
+    naive = datetime(2026, 10, 17, 10, 0)  # noqa: DTZ001 - the naive value under test
+    for bad in (None, "2026-10-17T10:00:00+05:30", naive):
+        with pytest.raises(AuditStoreError, match="database clock"):
+            await audit_store._database_now(_Conn(bad))
+
+
+async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitlement_store(
+    app_engine: AsyncEngine,
+) -> None:
+    """The Execute route's order_prepared, the return route's broker response, the entitlement store and a direct
+    append share one chain; each event's time is the database clock of its own transaction. (The catalogue store's
+    forced update is proven on the real write in test_catalogue_store.py with a fixed as_of far from now.)"""
+    plan = SimpleNamespace(strategy_id=1, plan_number=1, action="ENTRY", orders=(SimpleNamespace(tag="OFS1V1L0"),))
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            head = await read_anchor(conn)
+            before = await _db_clock(conn)
+            await order_audit.record_prepared(conn, plan, actor="u-1")
+            order_row = {"order_id": f"ord-{uuid.uuid4().hex}", "status": "COMPLETE"}
+            assert await order_audit.record_once(conn, EventType.BROKER_RESPONSE_RECORDED,
+                                                 order_audit.order_correlation(order_row), order_row)
+            user = f"test-clock-{uuid.uuid4().hex}"
+            await entitlement_store.append(conn, user, trial_grant("trial", before, "registration",
+                                                                   AuditNote("system", "test")))
+            await _subscription(conn)
+            after = await _db_clock(conn)
+            log, anchor = await load_log(conn)
+            assert anchor.count == head.count + 4 and log.verify(anchor).ok
+            new = log.events[head.count:]
+            assert [e.event_type for e in new] == [EventType.ORDER_PREPARED, EventType.BROKER_RESPONSE_RECORDED,
+                                                   EventType.TRIAL_STARTED, EventType.SUBSCRIPTION_STARTED]
+            assert all(_within_db_clock(e.timestamp, before, after) for e in new), [e.timestamp for e in new]
+            assert [e.timestamp for e in new] == sorted(e.timestamp for e in new)
+        finally:
+            await trans.rollback()
+
+
+class _RecordingConn:
+    """A fake connection: answers the store's statements, records their order and the INSERT's parameters."""
+
+    def __init__(self, clock: datetime) -> None:
+        self.clock = clock
+        self.order: list[str] = []
+        self.inserted: dict = {}
+
+    async def execute(self, stmt: object, params: object = None) -> SimpleNamespace:
+        sql = str(stmt)
+        if "transaction_isolation" in sql:
+            self.order.append("isolation")
+            return SimpleNamespace(scalar_one=lambda: "read committed")
+        if "pg_advisory_xact_lock" in sql:
+            self.order.append("lock")
+            return SimpleNamespace()
+        if "clock_timestamp" in sql:
+            self.order.append("clock")
+            return SimpleNamespace(scalar_one=lambda: self.clock)
+        if "audit_anchor" in sql:
+            self.order.append("anchor")
+            row = SimpleNamespace(event_count=0, last_hash=GENESIS_HASH)
+            return SimpleNamespace(one_or_none=lambda: row)
+        if "INSERT INTO public.audit_events" in sql:
+            self.order.append("insert")
+            self.inserted = dict(params)  # type: ignore[call-overload]
+            return SimpleNamespace()
+        raise AssertionError(f"unexpected statement: {sql}")
+
+
+async def test_event_time_is_the_clock_read_after_the_lock_and_before_the_anchor() -> None:
+    """The stored time is exactly what SELECT clock_timestamp() returned (a sentinel no Python clock can produce),
+    it reaches the hash input, and the clock is read after the lock and before the anchor (a time read before the
+    lock can be stale by the lock wait and trip the trigger's 60 s window, OF001)."""
+    sentinel = datetime(2001, 1, 1, tzinfo=timezone(timedelta(0)))
+    conn = _RecordingConn(sentinel)
+    stored = await append(conn, EventType.TRIAL_STARTED, actor="system", correlation_id="c-1",
+                          payload={"platform_user_id": "u-1"})
+    assert stored.event.timestamp == sentinel and conn.inserted["ts"] == sentinel
+    assert "2001-01-01T00:00:00+00:00" in conn.inserted["canonical"]
+    assert conn.order == ["isolation", "lock", "clock", "anchor", "insert"]

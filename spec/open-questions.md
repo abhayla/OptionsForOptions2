@@ -432,3 +432,10 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
 
 ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grouping (REQ-061): which positions are suggested together, and what entry price does a grouped leg get?
 - Answer: one suggested group per underlying and expiry, confirmed by the user; entry = Zerodha's average, editable.
+
+## Q271 — DECIDED (expert role, 2026-10-17; spec silent - REQ-060 F-08 covers external ORDERS only) — Are the trades of orders placed outside the platform written to the audit log?
+- Found by the W-103 Tier A review (GC-2e): the return route records an external order (one not carrying our tag) once
+  as `broker_response_recorded`, but writes no `execution_recorded` for its trades.
+- Answer: no, for now. The audit log records what the platform prepared and what came back for the platform's own
+  orders; an external order is recorded once at order level so a mismatch can be explained, and its fills belong to
+  the user's own Kite record. Revisit if reconciliation ever adopts an external fill into a strategy (REQ-061).
