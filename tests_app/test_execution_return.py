@@ -279,6 +279,29 @@ async def _audit_count(conn) -> int:
     return int((await conn.execute(sql)).scalar_one())
 
 
+#: W-017's declared keys (work/W-017.md, the allow-list module's docstring): one Kite ORDER record / one TRADE record.
+W017_ORDER_KEYS = ("order_id", "exchange_order_id", "parent_order_id", "status", "order_timestamp",
+                   "exchange_timestamp", "exchange", "tradingsymbol", "instrument_token", "order_type",
+                   "transaction_type", "product", "quantity", "disclosed_quantity", "price", "trigger_price",
+                   "average_price", "filled_quantity", "pending_quantity", "cancelled_quantity", "tag")
+W017_TRADE_KEYS = ("trade_id", "order_id", "exchange_order_id", "instrument_token", "tradingsymbol", "exchange",
+                   "transaction_type", "product", "quantity", "average_price", "order_timestamp", "fill_timestamp",
+                   "exchange_timestamp")
+
+
+def _kept(row: dict, keys: tuple[str, ...]) -> dict:
+    """The recorded row restricted to the W-017 keys it carries (what the allow-list keeps)."""
+    return {k: row[k] for k in keys if k in row}
+
+
+def _expected_reply_events(snapshot: str, order_id: str) -> list[tuple[str, str, dict]]:
+    """The two events one real order's return writes: its ORDER record, then its TRADE record (one each)."""
+    (order,) = [r for r in _data(f"orders-{snapshot}") if r["order_id"] == order_id]
+    (trade,) = [r for r in _data(f"trades-{snapshot}") if r["order_id"] == order_id]
+    return [("broker_response_recorded", f"order:{order_id}:COMPLETE:65", _kept(order, W017_ORDER_KEYS)),
+            ("execution_recorded", f"trade:{order_id}:{trade['trade_id']}", _kept(trade, W017_TRADE_KEYS))]
+
+
 async def _created_date(conn) -> datetime.date:
     """The India date the database stamps a new plan with (``created_at`` is the real clock, not the pin)."""
     from ofo_app.sql_time import IST_SQL_ZONE  # noqa: PLC0415
@@ -308,9 +331,11 @@ def _app_for(conn, user, reads: _Reads, today: datetime.date | None = None):
 async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, monkeypatch):
     """AC-3 core: plan 1 open + 12:21:04 replies -> filled 65 of 65, platform 65 = Zerodha 65, 0 mismatches; plan 2
     open + 15:10:06 replies -> exited, position 0, Zerodha flat, strategy exited, P&L -130.00; a replay changes
-    nothing; only GET reads were made."""
+    nothing; only GET reads were made. W-103: each order read back by tag -> one ``broker_response_recorded``, each
+    trade -> one ``execution_recorded`` (W-017 keys), never twice across returns; the chain verifies."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
-    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from ofo_app.audit_store import load_log  # noqa: PLC0415
+    from test_execute_route import _strategy_one, audit_head, audit_since  # noqa: PLC0415
     from test_strategy_store import _user  # noqa: PLC0415
 
     monkeypatch.setenv("APP_ENV", "test")
@@ -322,8 +347,14 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             sid = await _strategy_one(conn, user, app_engine.url.username)
             assert await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45")) == ENTRY_PLAN
             entry = _Reads("122104")
+            head = await audit_head(conn)
             resp = await _post(_app_for(conn, user, entry), sid)
             assert resp.status_code == HTTPStatus.OK, resp.text
+            # W-103: the order read back by tag and its one trade, each recorded once (real 12:21:04 replies)
+            entry_events = await audit_since(conn, head)
+            assert entry_events == _expected_reply_events("122104", "261016170576173")
+            assert entry_events[1][2]["trade_id"] == "4484194" and entry_events[0][2]["filled_quantity"] == 65
+            assert "placed_by" not in entry_events[0][2] and "account_id" not in entry_events[0][2]
             body = resp.json()
             assert body["plans"] == [{"plan_number": 1, "action": "ENTRY", "state": "filled", "choices": [],
                                      "reason": None}]
@@ -338,7 +369,10 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             assert await _store_plan(conn, user, sid, ("EXIT", "SELL", "3.10")) == EXIT_PLAN
             exit_reads = _Reads("151006")
             app = _app_for(conn, user, exit_reads)
+            head = await audit_head(conn)
             first = (await _post(app, sid)).json()
+            # the 15:10:06 book repeats the entry order and trade: only the exit's order and trade are new
+            assert await audit_since(conn, head) == _expected_reply_events("151006", "261016170858845")
             assert [p["state"] for p in first["plans"]] == ["filled", "exited"]
             assert first["contracts"][0] == {"tradingsymbol": SYMBOL, "platform_units": 0, "zerodha_units": 0,
                                                   "other_strategies_units": 0, "unexplained_units": 0,
@@ -346,7 +380,11 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             assert (first["mismatches"], first["blocked"], first["strategy_state"], first["realised_pnl"]) == (
                 0, False, "exited", "-130.00")
             before = await plans.plans_for(conn, user, sid)
+            head = await audit_head(conn)
             again = (await _post(app, sid)).json()
+            assert await audit_since(conn, head) == []  # a replayed return writes no audit event
+            _, anchor = await load_log(conn)  # the hash chain verifies with the four events in it
+            assert anchor.count == head
             assert {k: v for k, v in again.items() if k != "read_at"} == {
                 k: v for k, v in first.items() if k != "read_at"}
             assert await plans.plans_for(conn, user, sid) == before
