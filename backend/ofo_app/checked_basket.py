@@ -64,6 +64,12 @@ def checked_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int,
                         margin_source=_zerodha_margin_source(margin_client))
 
 
+def is_checked_basket(value: object) -> bool:
+    """True only for the sealed basket ``build_basket`` makes (W-095: the route and ``basket_post`` check through
+    this, so no other file names the basket type)."""
+    return type(value) is KiteBasket
+
+
 def zerodha_required_margin(client: KiteMargin, catalogue: Catalogue, orders: Sequence[Order]) -> Decimal:
     """Zerodha's required margin (``required_total``, rounded to the paisa where parsed, ADR-101) for exactly
     ``orders``. A contract without one listed ZERODHA row, an unsendable order or an unreadable reply raises."""
@@ -80,4 +86,4 @@ def zerodha_required_margin(client: KiteMargin, catalogue: Catalogue, orders: Se
     return KiteMargin.fetch_basket_margin(client, wanted).required_total
 
 
-__all__ = ["basket_orders", "checked_basket", "zerodha_required_margin"]
+__all__ = ["basket_orders", "checked_basket", "is_checked_basket", "zerodha_required_margin"]

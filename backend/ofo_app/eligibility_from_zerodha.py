@@ -65,6 +65,11 @@ async def _loaded_at(conn: Any) -> datetime.datetime | None:
     return (await conn.execute(_LOADED_AT, {"broker": ZERODHA})).scalar_one()
 
 
+async def list_loaded_at(conn: Any) -> datetime.datetime | None:
+    """When Zerodha's instrument list was last loaded (None: never) - the Execute route's list-health input (W-095)."""
+    return await _loaded_at(conn)
+
+
 async def leg_statuses(conn: Any, contract_ids: Sequence[int],
                        today: datetime.date) -> list[EligibilityStatus | None]:
     """ADR-104 (a) for each leg, in order. ``None`` for a leg whose contract has no row or when no load ever ran (the
