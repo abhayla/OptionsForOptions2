@@ -98,7 +98,7 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - Type hints on public functions; small modules; no dead code; no print statements.
 
 ## Before you finish
-Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 12; CI runs the full
+Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 11; CI runs the full
 suites): your brief's `Tests:` line (guard tests + `-m repo_scan` + your changed files' tests) ·
 `python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
