@@ -321,3 +321,63 @@ def test_stale_work_item_now_done_fails(tmp_path):
     save_stages(tmp_path, st)
     r = run(tmp_path, "--check")
     assert r.returncode == 1 and "W-001" in r.stdout and "no longer discovered" in r.stdout
+
+
+# --- staged-label grace: an open issue with no stage row is a note for 24 h, only when labelled `staged` ---
+from datetime import UTC, datetime, timedelta  # noqa: E402
+
+NOW = datetime(2026, 10, 17, 12, 0, tzinfo=UTC)
+
+
+def _issue(age, labels=("staged",), created=None):
+    return {"#7": {"created": created or NOW - age, "labels": set(labels)}}
+
+
+def _grace(tmp_path, monkeypatch, gh, now=NOW):
+    make_repo(tmp_path)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(cov, "gh_open_issues", lambda root: (gh, ""))
+    errors, _f, _c, _a, notes, _r = cov.check(tmp_path, use_gh=True, require_gh=False, now=now)
+    return errors, notes
+
+
+def test_staged_issue_under_24h_is_a_note(tmp_path, monkeypatch):
+    errors, notes = _grace(tmp_path, monkeypatch, _issue(timedelta(hours=23, minutes=59)))
+    assert errors == [] and any("#7" in n and "under 24 h" in n for n in notes)
+
+
+def test_staged_issue_at_24h_fails(tmp_path, monkeypatch):
+    errors, _ = _grace(tmp_path, monkeypatch, _issue(timedelta(hours=24)))
+    assert any("#7" in e and "no stage" in e for e in errors)
+    errors, _ = _grace(tmp_path, monkeypatch, _issue(timedelta(hours=25)))
+    assert any("#7" in e and "no stage" in e for e in errors)
+
+
+def test_unlabelled_issue_fails_at_once(tmp_path, monkeypatch):
+    errors, _ = _grace(tmp_path, monkeypatch, _issue(timedelta(minutes=1), labels=("bug",)))
+    assert any("#7" in e and "no stage" in e for e in errors)
+
+
+def test_naive_now_and_z_suffix_created_are_parsed_aware(tmp_path, monkeypatch):
+    assert cov.parse_created("2026-10-17T11:00:00Z").utcoffset() == timedelta(0)
+    assert cov.parse_created("2026-10-17T11:00:00").tzinfo is not None
+    created = cov.parse_created("2026-10-17T11:00:00Z")
+    errors, _ = _grace(tmp_path, monkeypatch, _issue(None, created=created), now=NOW.replace(tzinfo=None))
+    assert errors == []
+
+
+def test_gh_open_issues_requests_created_at_and_labels(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(cov.shutil, "which", lambda n: "gh")
+    monkeypatch.setenv("GH_TOKEN", "x")
+    seen = {}
+
+    def fake(cmd, **k):
+        seen["cmd"] = cmd
+        out = [{"number": 7, "createdAt": "2026-10-17T11:00:00Z", "labels": [{"name": "staged"}]}]
+        return type("R", (), {"returncode": 0, "stdout": json.dumps(out), "stderr": ""})()
+
+    monkeypatch.setattr(cov.subprocess, "run", fake)
+    issues, _ = cov.gh_open_issues(tmp_path)
+    assert "number,createdAt,labels" in seen["cmd"]
+    assert issues["#7"]["labels"] == {"staged"} and issues["#7"]["created"].tzinfo is not None

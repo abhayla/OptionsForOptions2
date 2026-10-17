@@ -10,7 +10,9 @@ A Q### quote passes if the id's open-questions section or any spec/ file mention
 Also (guard-set checks, exit 1): (a) some line must name all three literals `tests/test_*.py`,
 `tests/errors/test_write_allowlist.py` and `tests/errors/test_producer_inventory.py` (the repo-wide guard tests);
 (b) a Tier A brief whose first 10 lines mention a guard/door/gate/scan needs a `Findings checked:` line whose ids
-each exist as knowledge/findings/<id>.json.
+each exist as knowledge/findings/<id>.json;
+(c) any brief (any tier) whose first 10 lines mention a guard/door/gate/scan needs a line starting `Threat model:`
+(outside a code fence) that contains both `in scope` and `out of scope`.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
@@ -157,6 +159,22 @@ GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py",
                "tests/errors/test_producer_inventory.py", "-m repo_scan")
 GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
+THREAT_RE = re.compile(r"^\W*Threat model:(.*)$", re.I)
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def _threat_model_lines(lines: list[str]) -> list[str]:
+    """Lines starting `Threat model:` (case-insensitive, leading punctuation ok) outside a ``` or ~~~ fence."""
+    out, fence = [], None
+    for line in lines:
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence = m.group(1)
+        elif m and m.group(1) == fence:
+            fence = None
+        elif fence is None and THREAT_RE.match(line):
+            out.append(line)
+    return out
 
 
 def check_guard_set(brief: str, root: Path) -> list[str]:
@@ -174,6 +192,10 @@ def check_guard_set(brief: str, root: Path) -> list[str]:
             misses.append("MISSING `Findings checked:` line with finding ids (Tier A guard/door/gate/scan brief)")
         misses.extend(f"UNKNOWN finding id `{fid}`: no knowledge/findings/{fid}.json" for fid in ids
                       if not (root / "knowledge" / "findings" / f"{fid}.json").is_file())
+    has_threat = any("in scope" in t.lower() and "out of scope" in t.lower() for t in _threat_model_lines(lines))
+    if any(GUARD_WORD_RE.search(x) for x in lines[:10]) and not has_threat:
+        misses.append("MISSING `Threat model:` line containing both `in scope` and `out of scope` "
+                      "(guard/door/gate/scan brief)")
     return misses
 
 

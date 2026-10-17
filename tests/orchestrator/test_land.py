@@ -209,3 +209,12 @@ def test_add_stage_inserts_inside_issues_block_and_keeps_crlf(tmp_path):
     assert text.index('"#294": 4a  # A title') < text.index("work_items:")
     assert "\r\n" in text and "\n" not in text.replace("\r\n", "")
     assert not gh_issue.add_stage("294", "4a", "again", path=str(f))
+
+
+def test_gh_issue_stage_adds_staged_label_and_plain_does_not():
+    """Dies if --stage stops adding the `staged` label that gives the issue its 24 h coverage grace."""
+    staged = gh_issue.create_cmd("app", "bug", "t", "b.md", stage="S1")
+    plain = gh_issue.create_cmd("app", "bug", "t", "b.md")
+    i = staged.index("staged")
+    assert staged[i - 1] == "--label"
+    assert "staged" not in plain and staged.count("--label") == 2 and plain.count("--label") == 1

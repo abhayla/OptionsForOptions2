@@ -9,11 +9,13 @@ docs/process/coverage-stages.yaml (master plan 2026-10-07, A2).
   --require-gh  any gh failure fails the check (also implied when GITHUB_ACTIONS=true)
 Stdlib + PyYAML only.
 """
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -175,20 +177,37 @@ def load_stages(root, errors):
 GH_LIMIT = 1000
 
 
+STAGED_LABEL = "staged"
+STAGED_GRACE = timedelta(hours=24)
+
+
+def parse_created(text):
+    """GitHub createdAt ('...Z' or offset) -> timezone-aware datetime; a naive value is taken as UTC."""
+    dt = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _created_of(issue):
+    return parse_created(issue["createdAt"]) if issue.get("createdAt") else None
+
+
 def gh_open_issues(root):
-    """-> (set of '#N' or None, reason). None means gh could not give a trustworthy list; reason says why."""
+    """-> ({'#N': {'created': aware datetime or None, 'labels': set}} or None, reason).
+    None means gh could not give a trustworthy list; reason says why."""
     if not shutil.which("gh"):
         return None, "gh binary not found"
     try:
         if not os.environ.get("GITHUB_TOKEN") and not os.environ.get("GH_TOKEN"):
             if subprocess.run(["gh", "auth", "status"], capture_output=True, cwd=root).returncode != 0:
                 return None, "gh is not authenticated"
-        r = subprocess.run(["gh", "issue", "list", "--state", "open", "--json", "number", "--limit", str(GH_LIMIT)],
-                           capture_output=True, text=True, cwd=root, encoding="utf-8")
+        cmd = ["gh", "issue", "list", "--state", "open", "--json", "number,createdAt,labels",
+               "--limit", str(GH_LIMIT)]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=root, encoding="utf-8")
         if r.returncode != 0:
             return None, f"gh issue list exited {r.returncode}: {(r.stderr or '').strip()[:200]}"
-        import json
-        issues = {f"#{i['number']}" for i in json.loads(r.stdout)}
+        issues = {f"#{i['number']}": {"created": _created_of(i),
+                                      "labels": {lb["name"] for lb in i.get("labels", [])}}
+                  for i in json.loads(r.stdout)}
     except Exception as e:  # noqa: BLE001
         return None, f"gh failed: {type(e).__name__}: {str(e)[:200]}"
     if len(issues) >= GH_LIMIT:
@@ -233,7 +252,10 @@ def normalise(stages, found, errors):
     return rows
 
 
-def check(root, use_gh=True, require_gh=False):
+def check(root, use_gh=True, require_gh=False, now=None):
+    now = now or datetime.now(UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
     errors = []
     found = discover(root, errors)
     stages = load_stages(root, errors)
@@ -261,7 +283,13 @@ def check(root, use_gh=True, require_gh=False):
                 notes.append(f"issues: not checked ({why})")
         else:
             have = {str(k) for k in stages.get("issues", {})}
+            meta = issues if isinstance(issues, dict) else {i: {} for i in issues}
+            issues = set(meta)
             for i in sorted(issues - have, key=lambda s: int(s[1:])):
+                created = meta[i].get("created")
+                if STAGED_LABEL in meta[i].get("labels", ()) and created and now - created < STAGED_GRACE:
+                    notes.append(f"issues: {i} is labelled {STAGED_LABEL} and under 24 h old; its stage row is due")
+                    continue
                 errors.append(f"issues: {i} is open on GitHub and has no stage")
             for i in sorted(have - issues, key=lambda s: int(s[1:]) if s[1:].isdigit() else 0):
                 # A merged "Fixes #N" closes the issue; failing here would break main and every open PR
