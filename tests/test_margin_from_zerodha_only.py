@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 
 BASKET_ALLOWED = {

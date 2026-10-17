@@ -21,6 +21,8 @@ from ofo.entitlements.events import AccessLevel, NewGrant, Source
 
 from .helpers import ist, ledger_for, note, record
 
+pytestmark = pytest.mark.repo_scan
+
 PACKAGE_DIR = Path(ofo.entitlements.__file__).parent
 
 
