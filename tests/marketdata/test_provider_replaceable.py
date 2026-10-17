@@ -96,6 +96,14 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/kite_replies.py": "the Kite orders/trades/positions reply adapter (W-091): turns Kite's reply rows into "
                                "the domain's fills, position lines and contract keys - REQ-063 AC-1",
     "ofo/instruments/downloader.py":"fetches Kite's instrument list through the urllib door - REQ-073 AC-4",
+    "ofo_app/routes/execute.py": "composition root of the Execute route (W-095): wires the Kite read, margin and reply "
+                                 "adapters to the gate and checked_basket, like routes/broker.py - REQ-063 AC-1",
+    "ofo_app/routes/execution_return.py": "composition root of the return-from-Kite route (W-096): wires the owner's "
+                                          "Kite read client and reply adapter to the return logic, like "
+                                          "routes/execute.py - REQ-063 AC-1",
+    "ofo_app/return_book.py": "the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
+                              "strategy's book through kite_replies; execution_return.py stays Kite-free - "
+                              "REQ-063 AC-1",
 }
 
 

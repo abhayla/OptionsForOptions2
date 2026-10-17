@@ -32,6 +32,7 @@ from ofo.marketdata.kite_provider import IST, KiteProvider
 
 from ofo_app.config import app_env, get_settings
 from ofo_app.kite_margin import KiteMargin, urllib_transport
+from ofo_app.kite_reads import KiteReads
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
 from ofo_app.routes.outcome import MarketContext, server_now
@@ -269,6 +270,20 @@ async def owner_margin_client() -> KiteMargin | None:
     # each call bounded so the worker thread never outlives the outcome read timeout
     transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
     return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
+
+
+async def owner_kite_reads() -> tuple[str, KiteReads] | None:
+    """W-095: (api key, the owner's Zerodha read client) from the stored session - the same read as
+    ``owner_margin_client`` - or None when not connected. The token never leaves this module."""
+    market = _current
+    if market is None or market._config is None:
+        return None
+    token = await market._stored_token(market._config)
+    if token is None:
+        return None
+    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    api_key = market._config.api_key
+    return api_key, KiteReads(api_key=api_key, access_token=token, transport=transport)
 
 
 @functools.cache

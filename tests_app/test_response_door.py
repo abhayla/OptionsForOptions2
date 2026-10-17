@@ -21,6 +21,7 @@ from pydantic import AliasGenerator, ConfigDict, Field
 from ofo.errors import render
 from ofo_app import api_models
 from ofo_app.api_models import CatalogueText, Identifier
+from ofo_app.basket_post import BasketPost
 from ofo_app.main import create_app
 from ofo_app.routes import broker
 
@@ -240,6 +241,10 @@ def _sample(tp, required_only: bool = False):
         return datetime.date(2026, 10, 27)
     if isinstance(tp, type) and issubclass(tp, api_models.ApiModel):
         return _build(tp, required_only)
+    if tp is BasketPost:  # W-095: made only from a real KiteBasket (the owner's 2026-10-16 entry)
+        from test_execute_route import _real_basket  # noqa: PLC0415
+
+        return BasketPost.of(_real_basket(), "kitekey")
     raise AssertionError(f"no sample for {tp!r}: the door and this test must learn a new leaf kind together")
 
 
@@ -263,8 +268,9 @@ def test_the_app_models_are_all_swept() -> None:
         "BrokerRedirectOut", "RefusalOut", "ExpiriesOut", "ContractOut", "ContractsOut", "HealthOut", "PlannedEntryOut",
         "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
-        "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse"}
-    assert len(_app_models()) == 30
+        "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
+        "BasketOrderOut", "ExecuteOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut", "ReturnOut"}
+    assert len(_app_models()) == 36
 
 
 @pytest.mark.parametrize("required_only", [False, True])

@@ -32,6 +32,9 @@ _egress._trust_modules(_urllib_request, _urllib_request.http.client, _urllib_req
 _egress.install()
 
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
+#: One instrument as Kite's quote takes it: ``EXCHANGE:TRADINGSYMBOL``, plain ASCII only (W-099).
+QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
+_QUOTE_TARGET: _Final = re.compile(rf"/quote(\?i={QUOTE_INSTRUMENT}(&i={QUOTE_INSTRUMENT})*)?", re.ASCII)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
 
@@ -73,6 +76,10 @@ def check_call(method: str, url: str) -> None:
     verb = str(method).upper()
     if not any(m == verb and rx.fullmatch(path) for m, rx in _ALLOWED):
         raise KiteCallRefused(f"{verb} {path} is not an allow-listed Kite call; nothing was sent")
+    if path == "/quote":  # the one call with a query: the repeated ``i=`` and nothing else, judged on the RAW text
+        target = str(url).partition("//")[2][len(parts.netloc):]
+        if not _QUOTE_TARGET.fullmatch(target):
+            raise KiteCallRefused(f"{verb} /quote: only repeated i=EXCHANGE:SYMBOL queries are sent; nothing was sent")
 
 
 def _loopback_test_host(host: str) -> bool:
@@ -168,5 +175,5 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
         return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect is followed
 
 
-__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "KiteCallRefused", "check_call", "check_ws_url", "open_url",
-           "plain_headers", "plain_method", "plain_str", "plain_timeout"]
+__all__ = ["KITE_API_HOST", "KITE_WS_HOST", "METHODS", "QUOTE_INSTRUMENT", "KiteCallRefused", "check_call",
+           "check_ws_url", "open_url", "plain_headers", "plain_method", "plain_str", "plain_timeout"]
