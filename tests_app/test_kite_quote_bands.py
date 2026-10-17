@@ -60,7 +60,8 @@ def test_core_real_quote_gives_the_band() -> None:
 def test_allow_list_entry_has_exactly_the_four_reads() -> None:
     """AC-4: the module's entry is the three W-093 reads plus GET /quote, nothing else."""
     assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == frozenset({
-        ("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"), ("GET", "/quote")})
+        ("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"), ("GET", "/portfolio/holdings"),
+        ("GET", "/quote")})
 
 
 def test_repeated_i_query_is_sent_in_asked_order() -> None:

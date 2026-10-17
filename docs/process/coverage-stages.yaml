@@ -282,6 +282,7 @@ work_items:
   W-098: 4b           # GC-2c: one seal for proof objects + repo test that every gate proof type refuses forgery
   W-099: 4b           # GC-2c: circuit bands from GET /quote for the pre-execution gate (ADR-080)
   W-100: 4b           # GC-2c: circuit bands wired into the Execute route (ADR-080)
+  W-106: 4b           # GC-2e: holdings read on the Kite read door (ADR-097 (4) before/after check)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
