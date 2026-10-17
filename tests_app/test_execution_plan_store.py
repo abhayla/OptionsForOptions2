@@ -34,7 +34,8 @@ from sqlalchemy.exc import DBAPIError
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 8, 9, 0, tzinfo=IST)
-FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_ws" / "instruments-2026-10-08-subscribed.csv"
+FIXTURE = (Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_ws"
+           / "instruments-2026-10-08-subscribed.csv")
 SYMBOLS = ["NIFTY26O1322800CE", "NIFTY26O1323000CE", "NIFTY26O1322400PE", "NIFTY26O1322200PE"]
 LOT = 65
 CHECK_VIOLATION = "23514"
@@ -49,17 +50,18 @@ def _user() -> str:
     return "test-" + uuid.uuid4().hex
 
 
-def _order(strategy_id: int, plan_number: int, side: str, price: str, leg: int = 0, **over) -> plans.PlanOrder:
+def _order(strategy_id: int, plan_number: int, side: str, px: str, leg: int = 0, **over) -> plans.PlanOrder:
     fields = dict(leg_index=leg, tag=make_tag(strategy_id, plan_number, leg), instrument_id=REAL_INSTRUMENT,
-                  tradingsymbol=REAL_SYMBOL, transaction_type=side, quantity=LOT, price=Decimal(price))
+                  tradingsymbol=REAL_SYMBOL, transaction_type=side, quantity=LOT, price=Decimal(px))
     fields.update(over)
     return plans.PlanOrder(**fields)
 
 
-async def _new_strategy(conn, user: str) -> int:
+async def _new_strategy(conn, user: str, *, catalogue: bool = True) -> int:
     with FIXTURE.open(encoding="utf-8", newline="") as stream:
         rows = [r for r in parse_rows_naming_the_row(stream) if r.ref("zerodha").broker_symbol in SYMBOLS]
-    await apply_update(conn, rows, as_of=AS_OF)
+    if catalogue:
+        await apply_update(conn, rows, as_of=AS_OF)
     found = (await conn.execute(text(
         "SELECT b.broker_symbol, c.id FROM public.broker_instruments b JOIN public.catalogue_contracts c "
         "ON c.id = b.contract_id WHERE b.broker = 'zerodha' AND b.broker_symbol = ANY(:s) "
@@ -161,7 +163,8 @@ async def test_bad_floor_is_refused(app_engine, floor):
 
 async def test_another_users_or_missing_strategy_is_not_found(app_engine):
     async with _Tx(app_engine) as tx:
-        for who, sid in [("someone-else", tx.strategy_id), (tx.user, tx.strategy_id + 10**6), (tx.user, 0), (tx.user, True)]:
+        missing = tx.strategy_id + 10**6
+        for who, sid in [("someone-else", tx.strategy_id), (tx.user, missing), (tx.user, 0), (tx.user, True)]:
             await _refused(plans.NOT_FOUND, plans.next_plan_number(tx.conn, who, sid))
             await _refused(plans.NOT_FOUND, plans.plans_for(tx.conn, who, sid))
             await _refused(plans.NOT_FOUND, plans.open_plan(tx.conn, who, sid))
@@ -267,7 +270,8 @@ async def test_a_multi_leg_plan_keeps_its_order_and_exact_prices(app_engine):
     async with _Tx(app_engine) as tx:
         sid = tx.strategy_id
         legs = tuple(_order(sid, 1, side, price, leg=i)
-                     for i, (side, price) in enumerate([("SELL", "101.05"), ("BUY", "12.30"), ("SELL", "99"), ("BUY", "0.05")]))
+                     for i, (side, price) in enumerate(
+                         [("SELL", "101.05"), ("BUY", "12.30"), ("SELL", "99"), ("BUY", "0.05")]))
         stored = await plans.record_plan(tx.conn, tx.user, sid, await plans.next_plan_number(tx.conn, tx.user, sid),
                                          "ENTRY", legs)
         assert [(o.leg_index, o.tag, o.price) for o in stored.orders] == [
@@ -300,9 +304,10 @@ async def test_the_database_refuses_a_second_open_plan_by_raw_sql(app_engine):
     ("UPDATE public.execution_plan_orders SET tag = 'X1' WHERE strategy_id = :s", INSUFFICIENT_PRIVILEGE),
     ("UPDATE public.execution_plans SET plan_number = 9 WHERE strategy_id = :s", INSUFFICIENT_PRIVILEGE),
     ("UPDATE public.execution_plans SET closed_at = NULL WHERE strategy_id = :s", INSUFFICIENT_PRIVILEGE),
-    ("UPDATE public.execution_plans SET status = 'open', close_reason = NULL WHERE strategy_id = :s", PLAN_GUARD_SQLSTATE),
+    ("UPDATE public.execution_plans SET status = 'open', close_reason = NULL WHERE strategy_id = :s",
+     PLAN_GUARD_SQLSTATE),
     ("UPDATE public.execution_plans SET status = 'closed' WHERE strategy_id = :s", CHECK_VIOLATION),
-    ("UPDATE public.execution_plans SET close_reason = 'filled' WHERE strategy_id = :s", CHECK_VIOLATION),
+    ("UPDATE public.execution_plans SET close_reason = 'filled' WHERE strategy_id = :s", PLAN_GUARD_SQLSTATE),
 ])
 async def test_the_database_refuses_deleting_or_rewriting_a_plan(app_engine, sql, sqlstate):
     async with _Tx(app_engine) as tx:
@@ -336,7 +341,7 @@ _ORDER_INSERT = ("INSERT INTO public.execution_plan_orders (strategy_id, plan_nu
     ({"price": -1}, CHECK_VIOLATION),
     ({"l": -1, "tag": "OFS{s}V1L-1"}, CHECK_VIOLATION),
     ({"l": 0}, UNIQUE_VIOLATION),                       # the same tag again
-    ({"p": 2, "tag": "OFS{s}V2L0"}, "23503"),           # no such plan (foreign key)
+    ({"p": 2, "tag": "OFS{s}V2L0"}, PLAN_GUARD_SQLSTATE),  # no such open plan
 ])
 async def test_the_database_refuses_a_bad_order_row(app_engine, over, sqlstate):
     async with _Tx(app_engine) as tx:
@@ -355,18 +360,21 @@ async def test_the_database_refuses_an_order_added_to_a_closed_plan(app_engine):
         await tx.enter("ENTRY", "BUY", "5.45")
         await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled")
         await _refused_sql(tx.conn, _ORDER_INSERT, PLAN_GUARD_SQLSTATE,
-                           {"s": s, "p": 1, "l": 1, "tag": f"OFS{s}V1L1", "side": "BUY", "q": 65, "price": Decimal("5.45")})
+                           {"s": s, "p": 1, "l": 1, "tag": f"OFS{s}V1L1", "side": "BUY", "q": 65,
+                            "price": Decimal("5.45")})
 
 
 async def test_a_duplicate_tag_across_strategies_is_impossible(app_engine):
-    """A tag must equal OFS<its own strategy>V<plan>L<leg>, and the tag column is UNIQUE: the other strategy's tag cannot
-    be copied onto a row of this one."""
-    async with _Tx(app_engine) as a, _Tx(app_engine) as b:
+    """A tag must equal OFS<its own strategy>V<plan>L<leg>, and the tag column is UNIQUE: the other strategy's tag
+    cannot be copied onto a row of this one."""
+    async with _Tx(app_engine) as a:
+        other = await _new_strategy(a.conn, a.user, catalogue=False)
         await a.enter("ENTRY", "BUY", "5.45")
-        await b.enter("ENTRY", "BUY", "5.45")
-        assert a.strategy_id != b.strategy_id
-        await _refused_sql(b.conn, _ORDER_INSERT, CHECK_VIOLATION,
-                           {"s": b.strategy_id, "p": 1, "l": 1, "tag": f"OFS{a.strategy_id}V1L0", "side": "BUY",
+        number = await plans.next_plan_number(a.conn, a.user, other)
+        await plans.record_plan(a.conn, a.user, other, number, "ENTRY", (_order(other, number, "BUY", "5.45"),))
+        assert other != a.strategy_id
+        await _refused_sql(a.conn, _ORDER_INSERT, CHECK_VIOLATION,
+                           {"s": other, "p": 1, "l": 1, "tag": f"OFS{a.strategy_id}V1L0", "side": "BUY",
                             "q": 65, "price": Decimal("5.45")})
 
 
@@ -376,7 +384,7 @@ async def test_a_duplicate_tag_across_strategies_is_impossible(app_engine):
 
 
 async def _remove_own_rows(admin_engine, contract_ids: list[int], user_ref: str) -> None:
-    async with admin_engine.connect() as conn:
+    async with admin_engine.connect() as conn:  # noqa: SIM117
         async with conn.begin():
             await conn.execute(text("SET LOCAL session_replication_role = replica"))
             mine = "(SELECT id FROM public.strategies WHERE user_ref = :u)"
@@ -389,7 +397,8 @@ async def _remove_own_rows(admin_engine, contract_ids: list[int], user_ref: str)
             for table in tables:
                 await conn.execute(text(f'DELETE FROM public."{table}" WHERE contract_id = ANY(:ids)'),  # noqa: S608
                                    {"ids": contract_ids})
-            await conn.execute(text("DELETE FROM public.catalogue_contracts WHERE id = ANY(:ids)"), {"ids": contract_ids})
+            await conn.execute(text("DELETE FROM public.catalogue_contracts WHERE id = ANY(:ids)"),
+                               {"ids": contract_ids})
 
 
 async def test_two_connections_cannot_both_pass_next_plan_number(app_engine, admin_engine):
@@ -400,7 +409,8 @@ async def test_two_connections_cannot_both_pass_next_plan_number(app_engine, adm
             async with setup.begin():
                 sid = await _new_strategy(setup, user)
             ids = [int(r[0]) for r in (await setup.execute(text(
-                "SELECT c.id FROM public.broker_instruments b JOIN public.catalogue_contracts c ON c.id = b.contract_id "
+                "SELECT c.id FROM public.broker_instruments b JOIN public.catalogue_contracts c "
+                "ON c.id = b.contract_id "
                 "WHERE b.broker = 'zerodha' AND b.broker_symbol = ANY(:s)"), {"s": SYMBOLS})).all()]
         async with app_engine.connect() as first, app_engine.connect() as second:
             t1, t2 = await first.begin(), await second.begin()
@@ -417,3 +427,88 @@ async def test_two_connections_cannot_both_pass_next_plan_number(app_engine, adm
             await t2.rollback()
     finally:
         await _remove_own_rows(admin_engine, ids, user)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Filled quantities at close (the position per strategy comes from the database)
+# ---------------------------------------------------------------------------------------------------------------
+
+
+async def _two_leg_plan(tx) -> tuple[str, str]:
+    sid = tx.strategy_id
+    legs = (_order(sid, 1, "SELL", "101.05", leg=0), _order(sid, 1, "BUY", "12.30", leg=1))
+    await plans.record_plan(tx.conn, tx.user, sid, await plans.next_plan_number(tx.conn, tx.user, sid), "ENTRY", legs)
+    return legs[0].tag, legs[1].tag
+
+
+async def test_closing_with_every_order_filled_stores_the_quantities(app_engine):
+    async with _Tx(app_engine) as tx:
+        a, b = await _two_leg_plan(tx)
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled", filled={a: 65, b: 65})
+        assert [o.filled_quantity for o in closed.orders] == [65, 65]
+        again = (await plans.plans_for(tx.conn, tx.user, tx.strategy_id))[0]
+        assert [o.filled_quantity for o in again.orders] == [65, 65]
+
+
+async def test_a_plan_closed_without_fills_stores_none(app_engine):
+    async with _Tx(app_engine) as tx:
+        await tx.enter("ENTRY", "BUY", "5.45")
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled")
+        assert [o.filled_quantity for o in closed.orders] == [None]
+
+
+@pytest.mark.parametrize("reason", ["filled", "exited"])
+async def test_filled_and_exited_need_every_order_filled_in_full(app_engine, reason):
+    async with _Tx(app_engine) as tx:
+        a, b = await _two_leg_plan(tx)
+        for fills in ({a: 65}, {a: 65, b: 64}, {}):
+            await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason=reason,
+                                                            filled=fills))
+        assert (await plans.open_plan(tx.conn, tx.user, tx.strategy_id)) is not None
+
+
+async def test_partial_needs_some_filled_and_some_short(app_engine):
+    async with _Tx(app_engine) as tx:
+        a, b = await _two_leg_plan(tx)
+        for fills in ({a: 65, b: 65}, {}, {a: 0, b: 0}):
+            await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial",
+                                                            filled=fills))
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial", filled={a: 65})
+        assert [o.filled_quantity for o in closed.orders] == [65, 0]  # the missing tag counts as 0
+
+
+async def test_nothing_placed_needs_every_fill_zero(app_engine):
+    async with _Tx(app_engine) as tx:
+        a, _b = await _two_leg_plan(tx)
+        await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="nothing_placed",
+                                                        filled={a: 1}))
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="nothing_placed", filled={})
+        assert [o.filled_quantity for o in closed.orders] == [0, 0]
+
+
+@pytest.mark.parametrize("fills", [{"OFS1V1L9": 1}, {"{a}": -1}, {"{a}": 66}, {"{a}": True}, {"{a}": 1.0}, {"{a}": "1"},
+                                   ["x"]])
+async def test_a_foreign_tag_or_impossible_quantity_is_refused(app_engine, fills):
+    async with _Tx(app_engine) as tx:
+        a, _ = await _two_leg_plan(tx)
+        if isinstance(fills, dict):
+            fills = {k.replace("{a}", a): v for k, v in fills.items()}
+        await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial",
+                                                        filled=fills))
+
+
+async def test_the_database_guards_the_filled_quantity(app_engine):
+    async with _Tx(app_engine) as tx:
+        a, _b = await _two_leg_plan(tx)
+        s = tx.strategy_id
+        set_fill = "UPDATE public.execution_plan_orders SET filled_quantity = :f WHERE tag = :t"
+        await _refused_sql(tx.conn, set_fill, CHECK_VIOLATION, {"f": 66, "t": a})  # above quantity
+        await _refused_sql(tx.conn, set_fill, CHECK_VIOLATION, {"f": -1, "t": a})
+        await _refused_sql(tx.conn, "UPDATE public.execution_plan_orders SET filled_quantity = NULL WHERE tag = :t",
+                           PLAN_GUARD_SQLSTATE, {"t": a})
+        await tx.conn.execute(text(set_fill), {"f": 10, "t": a})
+        await _refused_sql(tx.conn, set_fill, PLAN_GUARD_SQLSTATE, {"f": 20, "t": a})  # written once
+        insert_filled = _ORDER_INSERT.replace("price)", "price, filled_quantity)", 1).replace(":price)", ":price, 1)")
+        await _refused_sql(tx.conn, insert_filled, PLAN_GUARD_SQLSTATE,
+                           {"s": s, "p": 1, "l": 2, "tag": f"OFS{s}V1L2", "side": "BUY", "q": 65,
+                            "price": Decimal("5.45")})

@@ -13,8 +13,10 @@ Changes (owner-run, one transaction):
   close_reason set. Guard trigger (SQLSTATE OF016): no DELETE; the only UPDATE is open -> closed with the identity
   columns unchanged; closed_at is set from the database clock, never from the application.
 - public.execution_plan_orders: tag UNIQUE, CHECK 1..20 ASCII alphanumerics AND equal to OFS<strategy>V<plan>L<leg>;
-  quantity > 0; price NUMERIC(14,2) > 0. Guard trigger (OF016): insert-only, and only into an open plan.
-- Grants: the application role gets SELECT and INSERT on both tables, UPDATE (status, close_reason) on the plans.
+  quantity > 0; price NUMERIC(14,2) > 0. Guard trigger (OF016): insert-only (only filled_quantity is set, once,
+  at close), and only into an open plan.
+- Grants: the application role gets SELECT and INSERT on both tables, UPDATE (status, close_reason) on the plans and
+  UPDATE (filled_quantity) on the orders.
 - downgrade: refuses while any plan is stored (order intent is a record); otherwise drops what upgrade created.
 
 Revision ID: 0016_execution_plans
@@ -92,7 +94,18 @@ def _order_guard_sql() -> str:
         SET search_path = {SEARCH_PATH}
         AS $fn$
         BEGIN
-            IF TG_OP <> 'INSERT' THEN
+            IF TG_OP = 'UPDATE' THEN
+                -- the only change ever allowed: Zerodha's filled quantity, written once, while the plan is open
+                IF OLD.filled_quantity IS NOT NULL OR NEW.filled_quantity IS NULL
+                   OR NEW.strategy_id <> OLD.strategy_id OR NEW.plan_number <> OLD.plan_number
+                   OR NEW.leg_index <> OLD.leg_index OR NEW.tag <> OLD.tag
+                   OR NEW.instrument_id <> OLD.instrument_id OR NEW.tradingsymbol <> OLD.tradingsymbol
+                   OR NEW.transaction_type <> OLD.transaction_type OR NEW.quantity <> OLD.quantity
+                   OR NEW.price <> OLD.price THEN
+                    RAISE EXCEPTION 'execution plan orders only gain a filled quantity, once'
+                        USING ERRCODE = '{PLAN_SQLSTATE}';
+                END IF;
+            ELSIF TG_OP <> 'INSERT' OR NEW.filled_quantity IS NOT NULL THEN
                 RAISE EXCEPTION 'execution plan orders are insert-only' USING ERRCODE = '{PLAN_SQLSTATE}';
             END IF;
             IF NOT EXISTS (SELECT 1 FROM {PLANS} p WHERE p.strategy_id = NEW.strategy_id
@@ -102,7 +115,7 @@ def _order_guard_sql() -> str:
             RETURN NEW;
         END
         $fn$
-        """
+        """  # noqa: S608 constant table name
 
 
 def upgrade() -> None:
@@ -139,6 +152,7 @@ def upgrade() -> None:
             transaction_type TEXT          NOT NULL CHECK (transaction_type IN ('BUY', 'SELL')),
             quantity         INTEGER       NOT NULL CHECK (quantity > 0),
             price            NUMERIC(14,2) NOT NULL CHECK (price > 0),
+            filled_quantity  INTEGER       CHECK (filled_quantity IS NULL OR filled_quantity BETWEEN 0 AND quantity),
             PRIMARY KEY (strategy_id, plan_number, leg_index),
             FOREIGN KEY (strategy_id, plan_number) REFERENCES {PLANS} (strategy_id, plan_number),
             CHECK (tag = 'OFS' || strategy_id || 'V' || plan_number || 'L' || leg_index)
@@ -159,6 +173,7 @@ def upgrade() -> None:
         op.execute(f'REVOKE ALL ON TABLE {table} FROM "{role}"')
         op.execute(f'GRANT SELECT, INSERT ON TABLE {table} TO "{role}"')
     op.execute(f'GRANT UPDATE (status, close_reason) ON TABLE {PLANS} TO "{role}"')
+    op.execute(f'GRANT UPDATE (filled_quantity) ON TABLE {ORDERS} TO "{role}"')
     op.execute(f"REVOKE ALL ON FUNCTION {allowlist}(TEXT, TEXT) FROM PUBLIC")
     op.execute(f"SELECT {allowlist}('{role}', 'post')")
 
@@ -175,7 +190,7 @@ def downgrade() -> None:
             END IF;
         END
         $down$;
-        """
+        """  # noqa: S608 constant table name
     )
     op.execute(f"DROP TABLE {ORDERS}")
     op.execute(f"DROP TABLE {PLANS}")
