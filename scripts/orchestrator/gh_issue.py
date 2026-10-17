@@ -51,6 +51,14 @@ def add_stage(number, stage, title, path=STAGES_FILE):
     return True
 
 
+def create_cmd(key, label, title, body, stage=None):
+    """The `gh issue create` argument list; a staged issue also gets the `staged` label (24 h coverage grace)."""
+    cmd = ["gh", "issue", "create", "-R", repos[key], "--label", label]
+    if stage:
+        cmd += ["--label", "staged"]
+    return [*cmd, "--title", title, "--body-file", body]
+
+
 def main(argv):
     args = list(argv)
     stage = None
@@ -64,8 +72,7 @@ def main(argv):
     if stage and key != "app":
         print("--stage only applies to the app repo")
         return 2
-    r = subprocess.run(["gh", "issue", "create", "-R", repos[key], "--label", label, "--title", title,
-                        "--body-file", body], capture_output=True, text=True)
+    r = subprocess.run(create_cmd(key, label, title, body, stage), capture_output=True, text=True)
     print(r.stdout, r.stderr)
     if r.returncode == 0 and stage:
         tail = r.stdout.strip().rsplit("/", 1)[-1]
