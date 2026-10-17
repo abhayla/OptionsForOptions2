@@ -27,3 +27,9 @@ asserts the client id appears nowhere in this folder.
 15:07:20) from `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/fetch.json`, unchanged. The envelope
 `{"status": "success", "data": {"NFO:NIFTY26O1923650CE": ...}}` is OURS (the recorder kept only the inner object); the
 money strings such as `"0.05"` are the recorder's shape, live Kite REST sends JSON numbers (tests cover both).
+
+## W-106 holdings fixture
+
+`holdings-documented.json`: the DOCUMENTED shape of `GET /portfolio/holdings` (Kite Connect v3 portfolio docs: the
+envelope `status` / `data` and the per-row fields, JSON numbers for quantities and prices), with illustrative values
+(GOLDBEES, INFY). It is NOT a recording of the owner's account; GC-3 records the real reply and replaces it.

@@ -95,6 +95,7 @@ class RecordedKite:
                  trades: str | None = None, reads_only: bool = False) -> None:
         self.funds, self.basket_total, self.orders, self.positions = funds, basket_total, orders, positions
         self.trades, self.reads_only = trades, reads_only
+        self.calls: list[str] = []  # every Kite URL asked (W-102: the cost adds no Zerodha read)
 
     def _reply(self, name: str) -> Any:
         return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=Decimal)
@@ -102,6 +103,7 @@ class RecordedKite:
     def __call__(self, method: str, url: str, headers: Any, body: Any) -> tuple[int, str]:
         if self.reads_only and method != "GET":
             raise AssertionError(f"the return replay answers reads only, not {method} {url}")
+        self.calls.append(url)
         if "/quote?i=" in url:
             return 200, self.quote_text or (REPLIES / "quote-150720.json").read_text(encoding="utf-8")
         if url.endswith("/user/margins"):

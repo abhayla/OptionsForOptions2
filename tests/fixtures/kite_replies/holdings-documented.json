@@ -1,0 +1,53 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "tradingsymbol": "GOLDBEES",
+      "exchange": "BSE",
+      "instrument_token": 151552516,
+      "isin": "INF204KB17I5",
+      "product": "CNC",
+      "price": 0,
+      "used_quantity": 0,
+      "quantity": 2,
+      "t1_quantity": 0,
+      "realised_quantity": 2,
+      "authorised_quantity": 0,
+      "authorised_date": "2021-06-08 00:00:00",
+      "opening_quantity": 2,
+      "collateral_quantity": 0,
+      "collateral_type": "",
+      "discrepancy": false,
+      "average_price": 46.67,
+      "last_price": 53.47,
+      "close_price": 53.68,
+      "pnl": 13.6,
+      "day_change": -0.21,
+      "day_change_percentage": -0.39
+    },
+    {
+      "tradingsymbol": "INFY",
+      "exchange": "NSE",
+      "instrument_token": 408065,
+      "isin": "INE009A01021",
+      "product": "CNC",
+      "price": 0,
+      "used_quantity": 0,
+      "quantity": 10,
+      "t1_quantity": 3,
+      "realised_quantity": 10,
+      "authorised_quantity": 0,
+      "authorised_date": "2021-06-08 00:00:00",
+      "opening_quantity": 10,
+      "collateral_quantity": 0,
+      "collateral_type": "",
+      "discrepancy": false,
+      "average_price": 1380.25,
+      "last_price": 1512.8,
+      "close_price": 1509.1,
+      "pnl": 1325.5,
+      "day_change": 3.7,
+      "day_change_percentage": 0.25
+    }
+  ]
+}
