@@ -214,6 +214,7 @@ def test_ac1_basket_post_is_the_real_basket_text_and_nothing_else():
 class _Replay:
     """Fake transport for both Zerodha clients, answering with recorded replies."""
 
+    quote_text: str | None = None  # a /quote body to serve instead of the recorded quote-150720.json
     order_rows: list | None = None  # rows derived from the real replies (``_rows_of``), else the named fixture
     position_rows: list | None = None
 
@@ -224,6 +225,8 @@ class _Replay:
         return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=D)
 
     def __call__(self, method, url, headers, body):
+        if "/quote?i=" in url:
+            return 200, self.quote_text or (REPLIES / "quote-150720.json").read_text(encoding="utf-8")
         if url.endswith("/user/margins"):
             return 200, '{"status": "success", "data": {"equity": {"enabled": true, "net": %s}}}' % self.funds  # noqa: UP031
         if "/margins/basket" in url:
@@ -268,8 +271,11 @@ def _session_for(replay):
 
 
 class _Quotes:
+    """The depth source: depth and last price only, NO band (as the live feed). The band comes from Zerodha's quote."""
+
     def __init__(self) -> None:
-        self.quote = ep.quote_from_kite(_live_quote())
+        live = ep.quote_from_kite(_live_quote())
+        self.quote = ep.LegQuote(live.depth, live.at, live.last_price, None)
 
     def leg_quote(self, instrument_id, token):
         return self.quote if token == TOKEN else None
@@ -391,6 +397,48 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             await trans.rollback()
 
 
+@pytest.mark.usefixtures("app_engine")
+async def test_w100_entry_band_comes_from_zerodhas_quote_and_an_unknown_one_refuses_the_leg(app_engine, admin_engine,
+                                                                                            monkeypatch):
+    """W-100 (ADR-080): the depth source carries no band; ENTRY with a reply lacking the contract, or a failed /quote
+    read, is refused ``gate_price_band_unknown``; a band whose top (3.30) is under the 3.35 ask refuses the leg as
+    outside the band; the recorded band (0.05 - 81.55) lets it through. Nothing is stored by a refusal."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_strategy_followups import _ConnMaker  # noqa: PLC0415
+    from test_strategy_store import _app, _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    sym = REAL_ORDER["tradingsymbol"]
+    narrow = json.loads((REPLIES / "quote-150720.json").read_text(encoding="utf-8"))
+    narrow["data"][f"NFO:{sym}"]["upper_circuit_limit"] = "3.30"
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            app = _app(_ConnMaker(conn), user)
+            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+
+            async def entry(quote_text: str | None, phrase: str) -> None:
+                replay = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
+                replay.quote_text = quote_text
+                app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
+                await _refused_with(app, sid, "ENTRY", phrase)
+                assert not await plans.plans_for(conn, user, sid)
+
+            await entry(_NO_CONTRACT_QUOTE, "could not read today's price band")
+            await entry("{}", "could not read today's price band")  # a whole-reply failure: no bands at all
+            await entry(json.dumps(narrow), "outside today's price band")
+            ok = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
+            app.dependency_overrides[route.get_kite_session] = lambda: _session_for(ok)
+            assert (await _post(app, sid, "ENTRY")).status_code == 200
+        finally:
+            await trans.rollback()
+
+
 async def _refused_with(app, sid: int, action: str, phrase: str) -> None:
     resp = await _post(app, sid, action)
     assert resp.status_code == 409, resp.text
@@ -413,11 +461,7 @@ async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
     assert [p.plan_number for p in await plans.plans_for(conn, user, sid)] == [1, 2]  # nothing stored
 
 
-def _no_band_quotes():
-    live = ep.quote_from_kite(_live_quote())
-    quotes = _Quotes()
-    quotes.quote = ep.LegQuote(live.depth, live.at, live.last_price, None)
-    return quotes
+_NO_CONTRACT_QUOTE = '{"status": "success", "data": {}}'  # Zerodha's reply without the contract
 
 
 def _position_rows(**changes) -> list:
@@ -472,9 +516,11 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             _with(positions=_position_rows(product=None))
             await _refused("EXIT", "differs from the product")
             _with()
-            app.dependency_overrides[route.get_quote_reader] = _no_band_quotes
+            replay = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
+            replay.quote_text = _NO_CONTRACT_QUOTE
+            app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
             await _refused("EXIT", "Market data needed for execution")
-            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            _with()
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
             (sell,) = resp.json()["orders"]

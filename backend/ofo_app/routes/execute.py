@@ -26,6 +26,7 @@ an unreadable entitlement history -> ``pro_entitled`` None (the gate blocks wher
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -148,7 +149,8 @@ def _feed_key(instrument_id: InstrumentId) -> str:
 class LiveDepthQuotes:
     """Production: ``live_market.latest_depth`` (W-097; None unless the feed is healthy and the last packet was a full
     frame), read at the server clock, with the feed's last price when it holds one. The live feed carries no circuit
-    band, so ``band`` is None and the gate blocks an entry leg as band-unknown (reported gap, never a made-up band)."""
+    band, so ``band`` is None here: the route adds Zerodha's own quote band (``_banded``); where that is absent the gate
+    blocks an entry leg as band-unknown (never a made-up band)."""
 
     def __init__(self, clock: Callable[[], datetime.datetime]) -> None:
         self._clock = clock
@@ -329,8 +331,9 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     catalogue = await load_catalogue(req.db)
     underlying = stored.saved.definition.underlying
     try:
-        priced = ep.price_legs(str(req.strategy_id), underlying, await _wanted(req, stored, units), catalogue,
-                               req.quotes.leg_quote)
+        wanted = await _wanted(req, stored, units)
+        quote_of = await _banded(req, wanted, catalogue)
+        priced = ep.price_legs(str(req.strategy_id), underlying, wanted, catalogue, quote_of)
         context = await _context(req, stored, priced, held, catalogue)
     except ep.LegRefused as refused:
         raise _refuse_with(refused.message) from None
@@ -343,6 +346,30 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     return _answer(plan_number, basket, req.session.api_key)
+
+
+async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
+    """ADR-080: the day's circuit band of every leg from Zerodha's own quote (``fetch_circuit_bands``, one call, off the
+    event loop), never from the depth source. The returned reader gives each leg's depth quote the band Zerodha stated;
+    a contract absent from the reply, or a whole-reply ``KiteReadError``, leaves the band None, so the gate blocks an
+    ENTRY leg (``gate_price_band_unknown``) and refuses an EXIT that would need confirming (fail closed)."""
+    names: dict[InstrumentId, str] = {}
+    for want in wanted:
+        entry = catalogue.get(want.instrument_id)
+        names[want.instrument_id] = (f"{zerodha_exchange(entry.id.exchange_segment)}:"
+                                     f"{entry.ref(ZERODHA).broker_symbol}")
+    try:
+        bands = await asyncio.to_thread(req.session.reads.fetch_circuit_bands, list(names.values()))
+    except KiteReadError:
+        bands = {}
+
+    def quote_of(instrument_id: InstrumentId, broker_token: str) -> ep.LegQuote | None:
+        quote = req.quotes.leg_quote(instrument_id, broker_token)
+        if quote is None:
+            return None
+        return dataclasses.replace(quote, band=bands.get(names.get(instrument_id, "")))
+
+    return quote_of
 
 
 async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext, catalogue: Any,
