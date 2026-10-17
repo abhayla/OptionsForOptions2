@@ -27,7 +27,7 @@ ROOT = "https://api.kite.trade"
     ("POST", ROOT + "/orders/iceberg"),
     ("POST", ROOT + "/orders/auction"),
     ("POST", ROOT + "/gtt/triggers"),
-    ("GET", ROOT + "/orders/123"),  # a read, but not allow-listed (only exact GET /orders is, W-093): nothing by default
+    ("GET", ROOT + "/orders/123"),  # only exact GET /orders is allowed (W-093)
     ("POST", ROOT + "/session/token/extra"),
     ("GET", ROOT + "/session/token"),  # right path, wrong method
     ("POST", ROOT + "//orders/regular"),

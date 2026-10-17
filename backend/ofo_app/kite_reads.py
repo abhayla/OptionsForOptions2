@@ -9,7 +9,7 @@ Each fetch returns the reply's ``data`` parsed with ``parse_float=Decimal`` (ADR
 ``ofo_app.kite_replies``. The transport is injected; tests replay the recorded 2026-10-16 reply files. The access token
 travels only in the Authorization header and is never logged or put in an exception: an error carries a code.
 
-Codes: kite_read_token (403 / TokenException) · kite_read_busy (429) · kite_read_refused (other 4xx, or the door refused)
+Codes: kite_read_token (403 / TokenException) · kite_read_busy (429) · kite_read_refused (other 4xx, door refused)
 · kite_read_unavailable (5xx, network, junk body) · kite_read_bad_reply (not ``status: success``, or ``data`` of the
 wrong type).
 """
@@ -70,7 +70,7 @@ class KiteReads:
         except KiteMarginError as exc:  # urllib_transport's own codes; only the code is read
             raise KiteReadError("kite_read_refused" if exc.code == "kite_margin_refused"
                                 else "kite_read_unavailable") from None
-        except Exception:  # noqa: BLE001 - whatever the transport raises, the answer is "not confirmed"
+        except Exception:  # noqa: BLE001 - whatever the transport raises: "not confirmed"
             raise KiteReadError("kite_read_unavailable") from None
         if status != _OK:
             log.warning("kite read HTTP status %s", status)

@@ -21,7 +21,7 @@ from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, fills_from_reply, orders_from_reply, positions_from_reply
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
-SECRET = "tok-SECRET-123"  # noqa: S105
+SECRET = "tok-SECRET-123"
 READS = frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions")})
 BASE = "https://api.kite.trade"
 CONTRACT = ("NIFTY", Instrument.CE, Decimal("23650.00"), __import__("datetime").date(2026, 10, 19))
@@ -99,7 +99,7 @@ def test_requests_are_exactly_the_allow_listed_reads() -> None:
     """AC-4: each fetch makes one GET to its allow-listed path; the token is only in the Authorization header."""
     fake = entry_replay()
     door = client(fake)
-    door.fetch_orders(), door.fetch_trades(), door.fetch_positions()  # noqa: B018
+    door.fetch_orders(), door.fetch_trades(), door.fetch_positions()
     assert [(m, u) for m, u, _, _ in fake.calls] == [
         ("GET", f"{BASE}/orders"), ("GET", f"{BASE}/trades"), ("GET", f"{BASE}/portfolio/positions")]
     assert {(m, u.removeprefix(BASE)) for m, u, _, _ in fake.calls} == READS
@@ -151,7 +151,8 @@ def test_token_exception_body_maps_to_token_code() -> None:
     assert raised.value.code == "kite_read_token"
 
 
-@pytest.mark.parametrize("exc", [OSError("boom"), TimeoutError(), RuntimeError("x"), KiteMarginError("kite_margin_unavailable")])
+@pytest.mark.parametrize("exc", [OSError("boom"), TimeoutError(), RuntimeError("x"),
+                                 KiteMarginError("kite_margin_unavailable")])
 def test_transport_failure_is_unavailable(exc) -> None:
     """AC-3: whatever the transport raises is "not confirmed"."""
     with pytest.raises(KiteReadError) as raised:
@@ -222,7 +223,7 @@ def test_the_token_appears_nowhere(caplog) -> None:
     assert SECRET not in repr(door) and SECRET not in str(vars(door).get("_base", ""))
     for fake in (Replay(status=403, text=SECRET), Replay(status=500, text=SECRET), Replay(text=SECRET),
                  Replay(raises=RuntimeError(SECRET)), Replay(raises=KiteMarginError(SECRET)),
-                 Replay(text='{"status": "error", "message": "%s"}' % SECRET)):  # noqa: UP031
+                 Replay(text='{"status": "error", "message": "%s"}' % SECRET)):
         with pytest.raises(KiteReadError) as raised:
             client(fake).fetch_orders()
         assert SECRET not in str(raised.value) and SECRET not in repr(raised.value.args)

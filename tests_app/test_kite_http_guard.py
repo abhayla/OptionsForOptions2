@@ -32,7 +32,7 @@ def _async_client(seen: list[httpx.Request], **kwargs) -> kite_http.KiteAsyncCli
 REFUSED = [
     ("POST", ROOT + "/orders/regular"), ("PUT", ROOT + "/orders/regular/123"),
     ("DELETE", ROOT + "/orders/regular/123"), ("POST", ROOT + "/gtt/triggers"),
-    ("PATCH", ROOT + "/orders/regular/123"), ("GET", ROOT + "/orders/123"),  # W-093 allow-listed GET /orders (exact path); a longer path stays refused
+    ("PATCH", ROOT + "/orders/regular/123"), ("GET", ROOT + "/orders/123"),  # W-093: only exact GET /orders is allowed
 ]
 
 
