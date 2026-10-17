@@ -66,3 +66,11 @@ and the hook refuses the file. Then the orchestrator's decision on each finding.
 | 8 MINOR | ACCEPTED | L2's "go" covers product NRML and order type LIMIT; stops line says NRML/LIMIT only. |
 | 9 MINOR | ACCEPTED | P0 done by 09:00 IST; L1 by 11:30 IST. |
 | 10 MINOR | ACCEPTED | This file is that record. |
+
+## Re-check of the applied changes (fresh Sonnet, read-only, 2026-10-17 ~19:25 IST)
+
+Verdict: "Applied: 10/10 | missing: none". Decision 6 was judged applied in substance (P0.1 names both PRs and stops
+if either is missing). One new gap it found, fixed: P0 1b said the probe runs read-only on ofo_dev "before market
+hours where a session exists", but no Kite session exists before the owner's L1 login - P0 now proves only the dry
+run on the recorded replies, and the probe's first live run is L1's own probe. The draft review file it could not
+confirm exists (checked with `ls`).

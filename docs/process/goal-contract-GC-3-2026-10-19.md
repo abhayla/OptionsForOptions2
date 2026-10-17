@@ -25,7 +25,8 @@ Proof: L1-L4 below, each step's output read back and written as an evidence row 
    computes gross P&L from the two fills and prints Kite's position P&L beside it, (d) reloads the audit log with
    `audit_store.load_log` (it verifies the hash chain against the stored anchor) and lists this run's
    `order_prepared` / `broker_response_recorded` / `execution_recorded` rows. Dry-run (a)-(d) against the recorded
-   2026-10-16 replies first (no network), then once read-only on ofo_dev before market hours where a session exists.
+   2026-10-16 replies first (no network) - that is all P0 can prove, since no Kite session exists before the owner's
+   L1 login; its first live run (part (a) + (b)) is L1's probe itself, read back before anything else happens.
    Tier B review, merged before L1.
 1c. ofo_dev holds a charge-rate set (`charge_rates_store.rates_in_force` returns one) - otherwise the Execute reply's
    `charges` is null and the core's "full cost" fails (review finding 5).
