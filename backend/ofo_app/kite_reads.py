@@ -117,9 +117,7 @@ def _units(value: object) -> int:
     return value
 
 
-def _holding(row: object) -> Holding:
-    if not isinstance(row, dict):
-        raise KiteReadError("kite_read_bad_reply")
+def _holding(row: dict) -> Holding:  # ``_rows`` has already refused any non-object row
     return Holding(_text(row.get("tradingsymbol")), _text(row.get("exchange")), _text(row.get("isin")),
                    _units(row.get("quantity")), _units(row.get("t1_quantity")))
 
