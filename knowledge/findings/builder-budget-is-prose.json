@@ -57,6 +57,11 @@
    "date": "2026-10-16",
    "where": "GC-1 item 1, three read-only Sonnet audit agents (general-purpose type, no maxTurns cap)",
    "evidence": "budget 40 tool calls each; used 104 (part A), 66 (part B), 57 (part C); wall-clock 4.5-6.4 min of 20 - the call budget, not the time budget, was ignored. W-088 builder round 1: 91 of 75."
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c builders (Sonnet, builder type, maxTurns 100)",
+   "evidence": "tool calls used / budget: W-093 62/50, W-097 71/56, W-098 65/56, W-094 76/64 (and a 49-minute run against a 60-minute time budget, ending on an unfinished background mirror). W-095 round 1 (Opus) 78/80 stayed inside but stopped with the core unproven. Overruns sit at +12..+24% of budget, under the 100-turn hard stop."
   }
  ]
 }

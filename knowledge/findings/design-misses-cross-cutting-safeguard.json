@@ -1,0 +1,30 @@
+{
+ "id": "design-misses-cross-cutting-safeguard",
+ "scope": "generic",
+ "class": "A design written from the requirement it implements (and the ADRs that requirement cites) misses a safeguard defined in a cross-cutting decision that applies to it only by reference from a third document; the design then contradicts a standing decision without labelling it a SPEC CHANGE, and only an adversarial review finds it.",
+ "mechanism": "GC-2c items 1-2 implement REQ-073. REQ-073 cites ADR-054 and ADR-050 item 4a (the tag), and the contract and the orchestrator's first design read those for the tag only. ADR-054's decision text applies 'the eight safeguards of ADR-050 item 4' to the basket path, and ADR-050 4(b) is 'persist the order intent before sending'. Both the contract (written by GC-2b: 'the order book, fills and adopted holdings are in memory only (#313)', persistence as an optional item 3 'expected to park') and the first design (D3: plans in an in-process registry) kept the plan in memory. The independent design review (2026-10-17 ~06:35 IST, finding 7 MAJOR) quoted ADR-050.md:49 and ADR-054.md:8.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2c contract (goal-contract-GC-2c-2026-10-18.md items 1-3) and the orchestrator's design note for items 1-2",
+  "evidence": "review record docs/process/gc-2c-design-review-2026-10-17.md finding 7; ADR-054 decision: 'Confirmation, reconciliation and the eight safeguards of ADR-050 item 4 run on the result'; ADR-050 item 4: '(b) persist the order intent before sending'; the contract's own review (gc-2c-contract-review-2026-10-17.md) did not raise it"
+ },
+ "fix": "Applied for this instance: ADR-105 and W-094 store the plan before the basket is returned. Class fix proposed: when a design implements a requirement, grep the decision rows for every decision that the requirement's cited ADRs themselves apply ('applies', 'refines', 'run on', 'item N'), and list each safeguard with how the design meets it; a design review brief asks 'which standing decision does this contradict?' first.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by an independent adversarial design review. A check could list, for a work item's requirement, the decisions reachable in two hops (requirement -> cited ADR -> ADR it applies) and require the brief to name each; not built."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-050.md",
+  "spec/decisions/ADR-054.md",
+  "spec/decisions/ADR-105.md",
+  "spec/requirements/REQ-073.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c contract and first design for the Execute chain",
+   "evidence": "review finding 7 MAJOR; accepted; plans stored by W-094 (migration 0016)"
+  }
+ ]
+}

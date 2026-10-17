@@ -42,21 +42,37 @@ bad |= r.returncode
 # A changed migration can break any test that walks the migration chain, whatever its name (finding
 # targeted-tests-miss-dependent-files, 2nd occurrence: 0010 broke 0009's round-trip test, found only in CI). With
 # --no-tests, run every tests_app file that touches migrations against the real test database (light: targeted files).
+# Finding branch-migration-tests-move-shared-db (2nd occurrence, GC-2c W-094): those tests migrate the SHARED database
+# to the branch's head (0016) while main is at 0015, so the step always ends by downgrading back to main's head and
+# proving it with main's own `current` (atool_restore.py); a database left ahead of main turns the step red.
 if "--no-tests" in sys.argv:
     changed = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD"], cwd=wt, capture_output=True,
                              text=True).stdout.splitlines()
     if any("/alembic/versions/" in f for f in changed):
         import glob
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import atool_restore
         files = sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "tests_app", "test_*.py"))
                        if any(k in open(p, encoding="utf-8").read() for k in ("alembic", "_migration_replay")))
         runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db_run.py")
         main_checkout = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        r = subprocess.run([sys.executable, runner, wt, sys.executable, "-m", "pytest", "-q", "-rs", "-p",
-                            "no:cacheprovider", "-c", "pytest-app.ini", *files], cwd=main_checkout,
-                           capture_output=True, text=True)
-        out = (r.stdout + r.stderr).strip().splitlines()
-        print("migration tests", f"({len(files)} files)", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
-        bad |= r.returncode
+
+        def migration_step():
+            r = subprocess.run([sys.executable, runner, wt, sys.executable, "-m", "pytest", "-q", "-rs", "-p",
+                                "no:cacheprovider", "-c", "pytest-app.ini", *files], cwd=main_checkout,
+                               capture_output=True, text=True)
+            out = (r.stdout + r.stderr).strip().splitlines()
+            print("migration tests", f"({len(files)} files)", "rc", r.returncode, "|", " / ".join(out[-2:])[:600])
+            return r.returncode
+
+        def report_restore(res):
+            global bad
+            print("migration restore", "rc", 0 if res[0] else 1, "|", res[1])
+            bad |= 0 if res[0] else 1
+
+        step_rc = atool_restore.run_with_restore(migration_step, atool_restore.real_run, main_checkout, wt,
+                                                 report_restore)
+        bad |= step_rc  # after the call: report_restore may have set the global `bad` itself
 
     # A changed route / response model / store can break tests_app files the builder never ran (finding
     # targeted-tests-miss-dependent-files, 4th occurrence: #241 changed the strategy response; two files pinning it
