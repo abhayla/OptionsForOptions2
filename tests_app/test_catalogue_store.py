@@ -67,6 +67,19 @@ def _migration():
     return module
 
 
+def _head_pins() -> dict[str, str]:
+    """The pins of the HIGHEST-numbered migration that publishes ``PINNED_BODIES`` (W-103: 0017 moved the payload
+    allowlist body, so the head database's pins are no longer 0006's). Found by scanning, never a fixed path."""
+    versions = ROOT / "backend" / "ofo_app" / "alembic" / "versions"
+    publishers = sorted(p for p in versions.glob("[0-9][0-9][0-9][0-9]_*.py")
+                        if re.search(r"^PINNED_BODIES\b", p.read_text(encoding="utf-8"), re.MULTILINE))
+    path = publishers[-1]
+    spec = importlib.util.spec_from_file_location(f"ofo_migration_pins_{path.stem}_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return dict(module.PINNED_BODIES)
+
+
 def _fixture_text() -> str:
     return "".join(line for line in FIXTURE.read_text(encoding="utf-8").splitlines(True) if not line.startswith("#"))
 
@@ -784,7 +797,7 @@ async def test_allowlist_holds_with_the_catalogue_table(admin_engine: AsyncEngin
 
 async def test_live_function_bodies_equal_the_pins(admin_engine: AsyncEngine) -> None:
     async with admin_engine.connect() as conn:
-        for signature, digest in _migration().PINNED_BODIES.items():
+        for signature, digest in _head_pins().items():
             live = (await conn.execute(text("SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(:f)"),
                                        {"f": signature})).scalar_one()
             assert live == digest, signature

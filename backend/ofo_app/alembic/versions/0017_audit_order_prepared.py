@@ -79,6 +79,16 @@ def check_sql(allowed: dict) -> list[str]:
     ]
 
 
+#: The latest module that published the function-body pins (0006); its pins are 0016's.
+_PINS = _load("0006_index_segments.py", "ofo_migration_pins_for_0017")
+_ALLOWED_SIGNATURE = f"{_AUDIT.ALLOWED_FUNCTION}()"
+if _ALLOWED_SIGNATURE not in _PINS.PINNED_BODIES:
+    raise RuntimeError(f"0006's pins do not cover {_ALLOWED_SIGNATURE}")
+#: The pins after this revision: 0006's, with the payload allowlist function's digest computed from the body
+#: this revision installs (never a pasted hex). A later revision that moves a pinned body publishes its own.
+PINNED_BODIES = {**_PINS.PINNED_BODIES, _ALLOWED_SIGNATURE: _M4._md5_body(allowed_function_sql(AFTER))}
+
+
 def previous_allowlist_sql() -> str:
     return _PREVIOUS.extended_allowlist_sql()
 
