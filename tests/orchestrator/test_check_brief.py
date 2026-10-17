@@ -12,6 +12,7 @@ _spec.loader.exec_module(check_brief)
 
 GUARD_LINE = ("Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.py "
               "tests/errors/test_producer_inventory.py -m repo_scan`\n")
+THREAT_LINE = "Threat model: in scope: a forged id; out of scope: a stolen token.\n"
 
 
 def run(tmp_path, text, *extra):
@@ -139,6 +140,7 @@ def test_guard_set_fixed_w080_copy_passes(tmp_path):
     """W-080 r9 plus the guard line and two real finding ids passes (quotes unchanged)."""
     text = (ROOT / "docs" / "process" / "brief-W-080-r9.md").read_text(encoding="utf-8")
     text += "\nFindings checked: guard-by-banned-shapes, targeted-tests-miss-dependent-files\n" + GUARD_LINE
+    text += THREAT_LINE
     brief = tmp_path / "b.md"
     brief.write_text(text, encoding="utf-8")
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
@@ -154,7 +156,7 @@ def test_guard_set_unknown_finding_id_fails(tmp_path, capsys):
 def test_guard_set_tier_b_or_non_guard_needs_no_findings(tmp_path):
     """Tier A without guard words, and a Tier B guard brief, need no Findings line; only the guard tests."""
     assert run(tmp_path, "# Brief (Tier A)\nA parser change.\n") == 0
-    assert run(tmp_path, "# Brief (Tier B)\nA new guard.\n") == 0
+    assert run(tmp_path, "# Brief (Tier B)\nA new guard.\n" + THREAT_LINE) == 0
 
 
 def test_guard_set_missing_guard_tests_line_fails(tmp_path, capsys):
@@ -187,3 +189,57 @@ def test_guard_set_needs_repo_scan_literal(tmp_path, capsys):
     assert "-m repo_scan" in capsys.readouterr().out
     brief.write_text(three.rstrip("`\n") + " -m repo_scan`\n", encoding="utf-8")
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
+
+
+def _real_guard_brief_without_threat_model() -> Path:
+    """A committed brief whose first 10 lines match GUARD_WORD_RE and that has no `Threat model:` line."""
+    p = ROOT / "docs" / "process" / "brief-W-024-r10.md"
+    lines = p.read_text(encoding="utf-8").splitlines()
+    assert any(check_brief.GUARD_WORD_RE.search(x) for x in lines[:10])
+    assert not any(x.startswith("Threat model:") for x in lines)
+    return p
+
+
+def test_threat_model_real_guard_brief_without_one_fails(capsys):
+    """Dies if the Threat model check is removed: the real brief names a guard and has no threat model."""
+    code, out = _brief_out(_real_guard_brief_without_threat_model(), capsys)
+    assert code == 1 and "MISSING `Threat model:`" in out
+
+
+def test_threat_model_line_missing_or_partial_fails_full_passes(tmp_path, capsys):
+    base = "# Brief (Tier B)\nA new guard.\n"
+    assert run(tmp_path, base) == 1
+    assert run(tmp_path, base + "Threat model: in scope: a forged id.\n") == 1
+    assert "MISSING `Threat model:`" in capsys.readouterr().out
+    assert run(tmp_path, base + "Threat model: out of scope: a stolen token.\n") == 1
+    assert run(tmp_path, base + THREAT_LINE) == 0
+
+
+def test_threat_model_inside_code_block_does_not_count(tmp_path):
+    text = "# Brief (Tier B)\nA new guard.\n```\n" + THREAT_LINE + "```\n"
+    assert run(tmp_path, text) == 1
+
+
+def test_threat_model_good_fixture_plus_line_passes(tmp_path):
+    """The good fixture (mentions no guard) plus a Threat model line, and with a guard word, both pass."""
+    text = (FIXTURES / "brief_good_req058.md").read_text(encoding="utf-8")
+    brief = tmp_path / "b.md"
+    brief.write_text("A gate brief.\n" + text + THREAT_LINE, encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
+
+
+
+
+def test_threat_model_inside_tilde_fence_does_not_count(tmp_path):
+    """Dies if only ``` fences are tracked."""
+    text = "# Brief (Tier B)\nA new guard.\n~~~\n" + THREAT_LINE + "~~~\n"
+    assert run(tmp_path, text) == 1
+    assert run(tmp_path, text + THREAT_LINE) == 0
+
+
+def test_threat_model_bullet_and_lowercase_forms_pass(tmp_path):
+    """Dies if THREAT_RE goes back to a case-sensitive, column-0 match."""
+    base = "# Brief (Tier B)\nA new guard.\n"
+    assert run(tmp_path, base + "- " + THREAT_LINE) == 0
+    assert run(tmp_path, base + THREAT_LINE.replace("Threat model", "threat model")) == 0
+    assert run(tmp_path, base + "- Threat model: in scope only.\n") == 1
