@@ -269,8 +269,8 @@ def test_the_app_models_are_all_swept() -> None:
         "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
-        "BasketOrderOut", "ExecuteOut"}
-    assert len(_app_models()) == 32
+        "BasketOrderOut", "ExecuteOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut", "ReturnOut"}
+    assert len(_app_models()) == 36
 
 
 @pytest.mark.parametrize("required_only", [False, True])
