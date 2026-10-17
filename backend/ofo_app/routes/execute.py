@@ -30,15 +30,18 @@ import dataclasses
 import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
 
 from fastapi import APIRouter, Depends
+from ofo.charges.calculator import ChargeOrder
+from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument, Leg
 from ofo.engine.product import Product
 from ofo.entitlements.engine import access_at
 from ofo.entitlements.events import AccessLevel
 from ofo.errors import UserFacingError, render
+from ofo.errors.explanations import render_explanation
 from ofo.execution.basket import BasketRefused, KiteOrder, parse_tag, zerodha_exchange
 from ofo.execution.context import (
     EXECUTABLE_VERSION_STATES,
@@ -50,6 +53,7 @@ from ofo.execution.context import (
     active_legs_hash,
     product_key,
 )
+from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
@@ -64,7 +68,7 @@ from ofo_app import entitlement_store, live_market
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, Identifier, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
@@ -75,6 +79,7 @@ from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, positions_from_reply
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute)
@@ -105,11 +110,24 @@ class BasketOrderOut(ApiModel):
     tag: Identifier
 
 
+class CostOut(ApiModel):
+    """W-102 (ADR-097 "a final yes on the exact contract, side, quantity, limit price and cost"): what the basket costs,
+    every figure computed on the server (one engine, ADR-008); the browser only shows it."""
+
+    net_premium: Money  # quantity x LIMIT per order, BUY paid (negative), SELL received (positive)
+    charges: Optional[Money]  # noqa: UP045 - ofo.charges.calculator at the stored rates; None = no rate set read
+    charges_note: Optional[CatalogueText]  # noqa: UP045 - set exactly when charges is None
+    funds_available: Optional[Money]  # noqa: UP045 - Zerodha's equity.net from the gate's one read
+    margin_required: Optional[Money]  # noqa: UP045 - the gate's margin (ADR-094) from the same read
+    figures_read_at: datetime.datetime  # the route clock read right after Zerodha's figures
+
+
 class ExecuteOut(ApiModel):
     plan_number: int
     tags: list[Identifier]
     basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
     orders: list[BasketOrderOut]  # display only
+    cost: CostOut
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -248,6 +266,8 @@ class _Request:
     session: KiteSession
     quotes: QuoteReader
     now: datetime.datetime
+    clock: Callable[[], datetime.datetime]
+    rates: ChargeRates | None
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -257,12 +277,14 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     quotes: Annotated[QuoteReader, Depends(get_quote_reader)],
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+    rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
 ) -> ExecuteOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_unconfirmed")
-        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock()), stored)
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
+                             stored)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -334,7 +356,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         wanted = await _wanted(req, stored, units)
         quote_of = await _banded(req, wanted, catalogue)
         priced = ep.price_legs(str(req.strategy_id), underlying, wanted, catalogue, quote_of)
-        context = await _context(req, stored, priced, held, catalogue)
+        context, figures = await _context(req, stored, priced, held, catalogue)
     except ep.LegRefused as refused:
         raise _refuse_with(refused.message) from None
     except (KeyError, ValueError):  # a contract the catalogue cannot resolve: the catalogue refusal, never a 500
@@ -345,7 +367,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action, _plan_orders(basket))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
-    return _answer(plan_number, basket, req.session.api_key)
+    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures))
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
@@ -399,13 +421,41 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     return basket
 
 
-def _answer(plan_number: int, basket: Any, api_key: str) -> ExecuteOut:
+@dataclass(frozen=True)
+class Figures:
+    """Zerodha's funds and the gate's margin from ``_zerodha_margin``'s ONE read (None = not confirmed), and the route
+    clock read right after it."""
+
+    funds_available: Decimal | None
+    margin_required: Decimal | None
+    read_at: datetime.datetime
+
+
+def _paise(value: Decimal | None) -> Decimal | None:
+    return None if value is None else value.quantize(PAISE, rounding=ROUND_HALF_UP) + 0
+
+
+def cost_out(orders: Any, rates: ChargeRates | None, figures: Figures) -> CostOut:
+    """The basket's cost from its own sealed orders (side, quantity, LIMIT, segment) through the one domain function
+    (``ofo.execution.cost.basket_cost``), quantized to the paisa only here, at the API boundary. No rates -> charges
+    None plus the catalogue note, never a default rate set."""
+    cost = basket_cost([ChargeOrder(o.instrument_id.exchange_segment, o.transaction_type, o.quantity, o.price)
+                        for o in orders], rates)
+    note = render_explanation("execute_cost_charges_not_included") if cost.charges is None else None
+    return CostOut.model_validate({
+        "net_premium": _paise(cost.net_premium), "charges": _paise(cost.charges), "charges_note": note,
+        "funds_available": _paise(figures.funds_available), "margin_required": _paise(figures.margin_required),
+        "figures_read_at": figures.read_at})
+
+
+def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
                     "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
-                   for o in basket.orders]})
+                   for o in basket.orders],
+        "cost": cost})
 
 
 # ---- the ExecutionContext, one real source per field ---------------------------------------------------------------
@@ -525,9 +575,10 @@ def _exit_fields(sid: str, held: _Held, priced: ep.PricedPlan, positions: Positi
 
 
 async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Held,
-                   catalogue: Any) -> ExecutionContext:
+                   catalogue: Any) -> tuple[ExecutionContext, Figures]:
     sid, underlying = str(req.strategy_id), stored.saved.definition.underlying
     available, required = await _zerodha_margin(req, priced, catalogue)
+    figures = Figures(available, required, req.clock())  # the same one read, shown in the reply (W-102)
     positions = await _positions(req, catalogue)
     is_exit = req.action == EXIT
     db_now = await elig.database_now(req.db)  # the clock that stamped the grants and the list load (ADR-023)
@@ -546,8 +597,9 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
         reconciliation_blocked_strategy_ids=_reconciliation(req, held, positions, catalogue, underlying),
         price_bands=priced.price_bands,
         **(_exit_fields(sid, held, priced, positions, catalogue) if is_exit else _NO_ACTIVE_LEGS),
-    )
+    ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "ExecuteIn", "ExecuteOut", "LiveDepthQuotes", "get_execute_clock", "get_kite_session",
-           "get_quote_reader", "held_products", "market_open", "price_and_time"]
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
+           "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
+           "price_and_time"]
