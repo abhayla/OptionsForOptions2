@@ -31,6 +31,12 @@ test.describe('Execute screen on the Execute replay API', () => {
       await route.abort()
     })
 
+    // the screen rebuilds the saved legs from the catalogue: under TEST_CATALOGUE_DATE=2026-10-16 it must list the
+    // recorded contract (expiry 2026-10-19), asserted here so a missing contract fails loudly instead of skipping
+    const listed = await page.request.get(`${EXECUTE_REPLAY_URL}/api/catalogue/NIFTY/contracts?expiry=2026-10-19`)
+    expect(listed.status(), await listed.text()).toBe(200)
+    expect((await listed.json()).contracts.map((c: { symbol: string }) => c.symbol)).toContain('NIFTY26O1923650CE')
+
     await page.goto(`${EXECUTE_REPLAY_URL}/strategy/1/execute`)
     const entry = page.getByTestId('prepare-entry')
     await expect(entry).toBeVisible()
@@ -44,8 +50,10 @@ test.describe('Execute screen on the Execute replay API', () => {
     await expect(row).toHaveCount(1)
     await expect(row.locator('td')).toHaveText(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
     await expect(page.getByTestId('cost-net-premium')).toHaveText('-217.75')
+    expect(reply.cost.net_premium).toBe('-217.75') // the API's own string, before the screen is read
+    expect(reply.cost.margin_required).not.toBeNull() // the derived entry reply carries Zerodha's margin
     await expect(page.getByTestId('cost-margin')).toHaveText(reply.cost.margin_required)
-    await expect(page.getByTestId('cost-funds')).toHaveText(reply.cost.funds_available)
+    await expect(page.getByTestId('cost-funds')).toHaveText(reply.cost.funds_available ?? 'Not available from Zerodha')
     if (reply.cost.charges === null) await expect(page.getByTestId('cost-charges-note')).toHaveText(reply.cost.charges_note)
     else await expect(page.getByTestId('cost-charges')).toHaveText(reply.cost.charges)
     expect(kite).toHaveLength(0) // the reply alone sends nothing to Kite

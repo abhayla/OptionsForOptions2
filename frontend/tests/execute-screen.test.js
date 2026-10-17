@@ -197,6 +197,17 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     }
   })
 
+  it('AC-1: a null Zerodha figure is labelled not available, never shown blank', async () => {
+    answers['POST /strategies/1/execute'] = ok({ ...REPLY, cost: { ...REPLY.cost, funds_available: null, margin_required: null } })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(text(w, 'cost-funds')).toBe('Not available from Zerodha')
+    expect(text(w, 'cost-margin')).toBe('Not available from Zerodha')
+  })
+
   it('AC-1: charges absent -> the server note is shown, no number claims to include charges', async () => {
     answers['POST /strategies/1/execute'] = ok({ ...REPLY, cost: { ...REPLY.cost, charges: null, charges_note: 'Charges are not included.' } })
     const w = await openExecute('1', 10000)

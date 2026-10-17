@@ -3,6 +3,7 @@
      number. Funds and margin are Zerodha's figures (the planning estimate is not shown on this screen). New file. -->
 <script setup>
 import { istTime } from '@/lib/displayFormat'
+import { NOT_READ } from '@/lib/execute'
 
 defineProps({ cost: { type: Object, required: true } })
 </script>
@@ -13,8 +14,8 @@ defineProps({ cost: { type: Object, required: true } })
     <dt>Charges</dt>
     <dd v-if="cost.charges != null" data-testid="cost-charges">{{ cost.charges }}</dd>
     <dd v-else data-testid="cost-charges-note">{{ cost.charges_note }}</dd>
-    <dt>Funds available (Zerodha)</dt><dd data-testid="cost-funds">{{ cost.funds_available }}</dd>
-    <dt>Margin required (Zerodha)</dt><dd data-testid="cost-margin">{{ cost.margin_required }}</dd>
+    <dt>Funds available (Zerodha)</dt><dd data-testid="cost-funds">{{ cost.funds_available ?? NOT_READ }}</dd>
+    <dt>Margin required (Zerodha)</dt><dd data-testid="cost-margin">{{ cost.margin_required ?? NOT_READ }}</dd>
     <dt>Figures read at</dt><dd data-testid="cost-read-at">{{ istTime(cost.figures_read_at) }}</dd>
   </dl>
 </template>

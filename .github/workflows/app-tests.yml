@@ -350,3 +350,121 @@ jobs:
       - name: Server logs on failure
         if: failure()
         run: tail -n 50 "${RUNNER_TEMP}"/uvicorn.log "${RUNNER_TEMP}"/uvicorn-pinned.log "${RUNNER_TEMP}"/preview-pinned.log "${RUNNER_TEMP}"/preview.log "${RUNNER_TEMP}"/preview-down.log || true
+
+  # W-104 core proof (REQ-056 AC-1, REQ-073 AC-1/AC-3): the Execute screen in a browser against W-101's TEST-ONLY
+  # Execute replay API. Its own job and its own throwaway PostgreSQL, so the replay's strategy id 1 and its 2026-10-16
+  # catalogue never share a database with the frontend job's seeded 2026-10-08 catalogue or its Save Draft e2e.
+  # Kite is never reached: the spec intercepts and aborts every request to Kite's host. Both servers stop by PID.
+  execute-screen-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres_ci_dummy_pw
+      PGDATABASE: ofo_test
+      APP_ROLE_PW: ofo_app_test_pw
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci_dummy_pw
+          POSTGRES_DB: ofo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements-app.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Throwaway broker settings (as in the frontend job)
+        run: |
+          echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
+          echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
+          echo "KITE_REDIRECT_URL=http://127.0.0.1:8011/kite/callback" >> "$GITHUB_ENV"
+          echo "FRONTEND_ORIGIN=http://127.0.0.1:4177" >> "$GITHUB_ENV"
+          echo "KITE_EXPECTED_USER_ID=ZZ0000" >> "$GITHUB_ENV"
+          echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-app.txt
+
+      - name: Create the application role and run migrations (as in the api job)
+        env:
+          ALEMBIC_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+        run: |
+          psql -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE ofo_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 5 PASSWORD '${APP_ROLE_PW}'" \
+            -c "REVOKE CONNECT ON DATABASE ofo_test FROM PUBLIC" \
+            -c "GRANT CONNECT ON DATABASE ofo_test TO ofo_app"
+          alembic -c backend/ofo_app/alembic.ini upgrade head
+
+      - name: Install frontend dependencies and build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright Chromium (cache miss, browser and system deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 12
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 12
+        working-directory: frontend
+        run: npx playwright install-deps chromium
+
+      - name: Execute screen e2e on the Execute replay API (API 8011, preview 4177)
+        env:
+          APP_ENV: test
+          EXECUTE_REPLAY: '1'
+          TEST_CATALOGUE_DATE: '2026-10-16'
+          PYTHONPATH: backend
+          EXECUTE_REPLAY_URL: http://127.0.0.1:4177
+        run: |
+          DATABASE_URL="postgresql+asyncpg://postgres:${PGPASSWORD}@localhost:5432/ofo_test" python -m ofo_app.seed_execute_replay
+          DATABASE_URL="postgresql+asyncpg://ofo_app:${APP_ROLE_PW}@localhost:5432/ofo_test" nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8011 > "${RUNNER_TEMP}/uvicorn-execute-screen.log" 2>&1 &
+          API_PID=$!
+          (cd frontend && OFO_API_TARGET=http://127.0.0.1:8011 nohup npx vite preview --port 4177 --strictPort > "${RUNNER_TEMP}/preview-execute-screen.log" 2>&1) &
+          PREVIEW_PID=$!
+          trap 'kill "$API_PID" "$PREVIEW_PID" 2>/dev/null || true; pkill -P "$PREVIEW_PID" 2>/dev/null || true; tail -n 40 "${RUNNER_TEMP}/uvicorn-execute-screen.log" "${RUNNER_TEMP}/preview-execute-screen.log"' EXIT
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4177/api/health > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:4177/api/health
+          cd frontend && npx playwright test e2e/execute-screen.spec.ts --project=desktop-1280

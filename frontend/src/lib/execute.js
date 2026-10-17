@@ -6,6 +6,9 @@
 /** localStorage key holding the id of the strategy whose basket the owner last sent to Kite (read by the landing page). */
 export const LAST_EXECUTED_KEY = 'ofo.lastExecutedStrategy'
 
+/** Shown for a Zerodha figure the Execute reply carries as null (W-102: funds_available / margin_required are optional). */
+export const NOT_READ = 'Not available from Zerodha'
+
 /** How long the screen waits for the strategy's live socket to deliver its first live outcome before it gives up. */
 export const LIVE_WAIT_MS = 15000
 
