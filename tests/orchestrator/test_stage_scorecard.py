@@ -79,11 +79,12 @@ def test_empty_gh_list_is_unmeasured(monkeypatch):
 
 
 def test_truncated_fetch_is_unmeasured():
-    """A fetch at its limit whose oldest row is newer than since may be missing rows; below limit or reaching back is fine."""
+    """A fetch at its limit with oldest row newer than since may lack rows; below limit or reaching back is fine."""
     rows = [{"createdAt": "2026-10-17T00:00:00Z"}] * sc.RUN_LIMIT
     assert sc._truncated(rows, "createdAt", SINCE, sc.RUN_LIMIT)
     assert not sc._truncated(rows[:-1], "createdAt", SINCE, sc.RUN_LIMIT)
-    assert not sc._truncated(rows + [{"createdAt": "2026-10-16T00:00:00Z"}], "createdAt", SINCE, sc.RUN_LIMIT)
+    older = [*rows, {"createdAt": "2026-10-16T00:00:00Z"}]
+    assert not sc._truncated(older, "createdAt", SINCE, sc.RUN_LIMIT)
 
 
 def test_naive_time_rejected():

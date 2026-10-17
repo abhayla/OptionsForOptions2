@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 LIMIT = 400
 RUN_LIMIT = 1000  # runs are far more numerous than merged PRs; 400 did not reach back to 2026-10-16T17:52Z
@@ -38,7 +38,7 @@ def parse_time(text: str) -> datetime:
     value = datetime.fromisoformat(text.replace("Z", "+00:00"))
     if value.tzinfo is None:
         raise ValueError(f"time without timezone: {text!r}")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 def in_window(stamp: str, since: datetime, until: datetime) -> bool:
@@ -93,7 +93,7 @@ def round_commits(subjects: list[str]) -> list[str]:
 def _run(cmd: list[str]) -> tuple[str | None, str]:
     """(stdout, reason). stdout is None when the command is missing, fails or prints nothing."""
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        done = subprocess.run(cmd, capture_output=True, text=True, timeout=180, check=False)  # noqa: S603
     except (OSError, subprocess.TimeoutExpired) as exc:
         return None, f"{cmd[0]} unavailable ({exc.__class__.__name__})"
     if done.returncode != 0:
@@ -121,7 +121,9 @@ def _truncated(rows: list[dict], key: str, since: datetime, limit: int = LIMIT) 
     return len(rows) >= limit and min(parse_time(r[key]) for r in rows if r.get(key)) > since
 
 
-def render(since: datetime, until: datetime, prs, prs_why, runs, runs_why, subjects, subj_why) -> str:
+def render(since: datetime, until: datetime, data: dict) -> str:
+    """data maps prs, runs, subjects to (rows-or-None, reason)."""
+    (prs, prs_why), (runs, runs_why), (subjects, subj_why) = data["prs"], data["runs"], data["subjects"]
     rows = [f"Scorecard {since:%Y-%m-%dT%H:%MZ} .. {until:%Y-%m-%dT%H:%MZ} (since inclusive, until exclusive)", "",
             "| Measure | Value |", "|---|---|"]
     if prs is None:
@@ -181,7 +183,8 @@ def main(argv: list[str]) -> int:
     out, subj_why = _run(["git", "-C", args.repo_root, "log", "--all", f"--since={args.since}",
                           f"--until={args.until}", "--format=%s"])
     subjects = out.splitlines() if out is not None else None
-    print(render(since, until, prs, prs_why, runs, runs_why, subjects, subj_why))
+    data = {"prs": (prs, prs_why), "runs": (runs, runs_why), "subjects": (subjects, subj_why)}
+    print(render(since, until, data))
     return 0
 
 
