@@ -644,3 +644,30 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   returns `status=success`. The return route never reads `status` as proof of placement (it reads Zerodha's book by tag).
 - Bears on: REQ-073 AC-3, ADR-097 (2). Status: **documented + code read; live shape unmeasured**. Fixed by W-105 (a
   no-state hit lands on a page with only "Check with Zerodha"); registry: `shared-callback-treats-every-return-as-login`.
+
+## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-basket routes never call
+- Measured 2026-10-17 (GC-3 P0 item 7, fresh Opus verifiers on main 85e38e0, current criterion text against the code
+  users reach): the Execute and return routes (W-095, W-096) decide reconciliation per request with
+  `ofo_app/execute_plan.strategy_blocked` and `ofo_app/execution_return.reconcile`, and partial execution as a plan state
+  word; no `backend/ofo_app` module imports `ofo.reconciliation.compare`/`resolution` or `ofo.execution.partial`.
+- Result: REQ-060 AC-1..AC-7 fail on the live path; REQ-058 AC-1, AC-2, AC-4, AC-6 fail (AC-3, AC-5 pass); REQ-073
+  AC-5 fails (the basket form `{url, api_key, data}` is placed on whichever account is logged in on Kite's page; the
+  owner-id check guards only the stored read token); REQ-057 AC-1..AC-3 pass. Real cases: broker 150 vs platform 75 on
+  the strategy's own contract -> not blocked; a mismatch that later agrees -> unblocked with nothing recorded (Q222);
+  a REJECTED row with `RMS:Margin Exceeds` -> `nothing_placed`, no reason.
+- On the real 2026-10-16 replies the live path still closes 0 mismatches and the exit on the flat row is clean.
+- Bears on: REQ-058, REQ-060, REQ-073 AC-5, ADR-106 item 3. Status: **measured**; REQ-058/REQ-060 set back to
+  Approved; the drift half of REQ-060 AC-6 is W-107; the rest is open for the next contract (wire or re-specify -
+  **open for owner decision** where it changes what a user sees: the four partial choices under ADR-105, a manual
+  reconcile screen). Registry: `verified-on-a-module-the-product-does-not-call`.
+
+## F-43 - On Mon 2026-10-19 the nearest NIFTY weekly contract expires the same day
+- Read 2026-10-17 from the instrument subset recorded 2026-10-16 (`ofo-kite-ticks/2026-10-16/instruments.json`, the
+  live recorder's NIFTY options): expiries 2026-10-19 (Mon, 208 contracts, e.g. `NIFTY26O1923000CE`) and 2026-10-27
+  (Tue, 288): the weekly expiry sits on Monday ahead of the Tue 2026-10-20 holiday (ADR-050:
+  "Some NIFTY expiries fall on Mondays, so expiry is read from the master, never computed from a weekday").
+- Consequence for GC-3 step 5 ("the nearest-expiry NIFTY CE"): an EXIT LIMIT that does not fill by 15:30 leaves the
+  leg to exchange settlement, which the live path does not handle (#279 settle-before-reconcile; an expired held leg
+  blocks as a missing position, F-42) and the plan stays open into the next day (#352).
+- Bears on: GC-3 step 5, ADR-097 (1), ADR-083. Status: **measured from the master; open for owner decision** (which
+  expiry the live test trades - asked at L1).

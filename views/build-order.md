@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (13): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-058, REQ-059, REQ-060, REQ-070, REQ-072
+Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-070, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -25,6 +25,8 @@ Done (13): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
 | REQ-055 | Margin checks | foundation | normal | next |
 | REQ-056 | Multi-leg execution plan and review | foundation | normal | next |
+| REQ-058 | Partial execution and no automatic retry | foundation | normal | next |
+| REQ-060 | Reconciliation with Zerodha | foundation | normal | next |
 | REQ-063 | Security boundaries | foundation | normal | next |
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: #200 remainder (fix (1) and (2), one bounded round, ADR-074) built on branch fix/200-door-remainder: rebinding + ASGI send-path CI scans, seal recorded in the door send path; awaiting the independent verifier |

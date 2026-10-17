@@ -1,17 +1,20 @@
 ---
 work_item: W-021
 ac: AC-5
-result: pass
-verified_by: "verifier (opus, fresh context; rounds W-021 to W-021g)"
-builder: "builder (sonnet)"
-date: '2026-09-29'
-commands: "python -m pytest -q -p no:cacheprovider tests/reconciliation/test_resolution.py; attack scripts (verifier W-021g); mutants M1-M5"
+requirement: REQ-060
+ac_fp: "3618bbeb3d81"
+result: fail
+verified_by: "verifier (opus, fresh context, GC-3 P0 item 7, main 85e38e0, 2026-10-17)"
+builder: "builders (W-021, W-037, W-085; live path W-095, W-096)"
+date: '2026-10-17'
+commands: "same pytest run; scratch attack.py, ev.py; grep backend/ofo_app for adopt_broker, mark_requires_attention, standalone"
 ---
 
 AC: AC-5
-result: pass
-commands: python -m pytest -q -p no:cacheprovider tests/reconciliation/test_resolution.py; attack scripts (verifier W-021g); mutants M1-M5
-observed: every resolution checks its premise against the latest recorded report; exit while the broker holds, stale adopt, other-account report, resolution after a new fill all refused; shared contract (A,B x50) with broker 0 or -50: adopt, prepared closing order and broker-flat exit refused for every holder, both stay blocked, no order proposed; three holders and proposal holders covered; no over-refusal on a separate single-holder contract; mutants killed
-attack: verifier W-021g passed the code and failed AC-5 only because the Q198 narrowing for shared contracts was not recorded in the spec; recorded in this PR as Q224 (delegated overnight, ADR-045, reversible) together with Q222, and noted in REQ-060
+result: fail
+commands: same pytest run; scratch attack.py, ev.py; grep backend/ofo_app for adopt_broker, mark_requires_attention, standalone
+observed: Domain refuses an empty reason, a blank actor and an adopt on an older report; adopt writes RECONCILIATION_RECORDED and clears the flag. Live app: no route calls any resolution function (0 call sites), so a product user cannot reconcile manually at all.
+attack: empty reason, whitespace actor and an older report are all refused by the domain; no app path offers manual reconciliation
 
+GC-3 P0 item 7: re-verification on main of criteria whose evidence predated fingerprints.
 Recorded by the orchestrator from the verifier's returned block.

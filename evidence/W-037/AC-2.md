@@ -1,17 +1,20 @@
 ---
 work_item: W-037
 ac: AC-2
-result: pass
-verified_by: "verifier (opus, fresh context)"
-builder: "builder (opus)"
-date: '2026-09-29'
-commands: "python -m pytest -q -p no:cacheprovider tests/reconciliation; python -m pytest -q -p no:cacheprovider; own python stdin scripts (random equivalence vs git show origin/main compare.py; AST compare of compare_reference.py; 6 source mutants via pytest.main; sys.setprofile call counts 100/200 and wall time 800; builder scaling test against origin/main code)"
+requirement: REQ-060
+ac_fp: "d4b747da20aa"
+result: fail
+verified_by: "verifier (opus, fresh context, GC-3 P0 item 7, main 85e38e0, 2026-10-17)"
+builder: "builders (W-021, W-037, W-085; live path W-095, W-096)"
+date: '2026-10-17'
+commands: "same pytest run; scratch attack.py and attack2.py on tests/fixtures/kite_replies/positions-151006.json, positions-122104.json, instruments-2026-10-16-slice.json"
 ---
 
 AC: AC-2
-result: pass
-commands: python -m pytest -q -p no:cacheprovider tests/reconciliation; python -m pytest -q -p no:cacheprovider; own python stdin scripts (random equivalence vs git show origin/main compare.py; AST compare of compare_reference.py; 6 source mutants via pytest.main; sys.setprofile call counts 100/200 and wall time 800; builder scaling test against origin/main code)
-observed: 103 passed; 1307 passed; equal on 2212 reports + 788 identical refusals, all 9 kinds, 438 multi-holder mismatches; 9/9 reference functions AST-identical to origin/main; mutants killed 3/4/1/12/5/5; call ratio 1.985/1.997 new vs 3.537/3.604 old; wall800 30ms/24ms new vs 491ms/402ms old; scaling test red on origin/main (2 failed)
-attack: moved leg with two candidate holders, held leg with multiple unheld candidates, FUT expiry moves, contracts shared by up to 5 holders (Q224), exited/proposal-only/never-active strategies, standalone on held contracts, pairing/holders/others/share mutants: all identical to origin/main or caught
+result: fail
+commands: same pytest run; scratch attack.py and attack2.py on tests/fixtures/kite_replies/positions-151006.json, positions-122104.json, instruments-2026-10-16-slice.json
+observed: Domain compare(): flat row dropped (0 mismatches); a position in no strategy is an unexpected broker position blocking no one; a 10-27 leg vs broker 10-19 is an expiry mismatch; an expired leg is awaiting_settlement (ADR-083). Live er.reconcile returns only missing_platform_position, side_mismatch, quantity_mismatch: no strike/expiry kind, no unexpected-position kind for contracts the strategy did not trade, no expiry input, so an expired held leg gone at Zerodha blocks as recon_missing_platform_position (contradicts ADR-083).
+attack: real flat row after the exit (qty 0, unrealised -130): both paths 0 mismatches, exit clean; a non-flat row not in the instrument index (INFY CNC 5) refuses the whole read (fails closed); expired leg: domain awaiting_settlement, live path a blocking missing
 
+GC-3 P0 item 7: re-verification on main of criteria whose evidence predated fingerprints.
 Recorded by the orchestrator from the verifier's returned block.

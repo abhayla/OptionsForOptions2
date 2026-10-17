@@ -264,6 +264,8 @@ issues:
   "#352": 4b  # An execution plan open at the end of the trading day cannot be read back the next day
   "#353": 4b  # Kite allow-list is checked per call, not per calling module (any door may make any listed read)
   "#370": 4a  # Intermittent e2e: strategy-save-draft cannot find the saved draft after reload
+  "#380": 4b  # Live Kite-basket routes re-implement reconciliation and partial handling: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6 fail on the path users reach (F-42)
+  "#381": 4b  # Return route reads orders before trades: an order appearing between the reads loses its trade and closes nothing_placed
 
 # Work items whose status is not done.
 work_items:
@@ -336,6 +338,8 @@ findings:
   F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
   F-40: 4b        # 4b domain chain right on the real order; no Kite reply -> domain adapter (GC-1 core proof)
   F-41: 4b        # Kite basket return lands on the shared login redirect URL (W-105; live shape at GC-3)
+  F-42: 4b        # REQ-058/060 verified on domain modules the Kite-basket routes never call (#380)
+  F-43: 4b        # Mon 2026-10-19 is the nearest NIFTY expiry (GC-3 expiry choice, OQ-15)
 
 hypotheses:
   H1: done

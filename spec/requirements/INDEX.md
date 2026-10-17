@@ -33,7 +33,7 @@ Requirements: 75; sections: 18
 | REQ-055 | Margin checks | foundation | Approved |
 | REQ-056 | Multi-leg execution plan and review | foundation | Approved |
 | REQ-057 | Order lifecycle | foundation | Verified |
-| REQ-058 | Partial execution and no automatic retry | foundation | Verified |
+| REQ-058 | Partial execution and no automatic retry | foundation | Approved |
 | REQ-059 | Pre-execution safety checks and validation | foundation | Verified |
 | REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | Approved |
 
@@ -121,7 +121,7 @@ Requirements: 75; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-060 | Reconciliation with Zerodha | foundation | Verified |
+| REQ-060 | Reconciliation with Zerodha | foundation | Approved |
 | REQ-061 | Existing positions on connect | feature | Approved |
 
 ## Rules and automation (2)

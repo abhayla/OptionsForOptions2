@@ -1,17 +1,20 @@
 ---
 work_item: W-036
 ac: AC-6
-result: pass
-verified_by: "verifier (opus, fresh context)"
-builder: "builder (opus)"
-date: '2026-09-29'
-commands: "git worktree add --detach <SCRATCH>/verify/W-036 origin/build/W-036-close-refusal; python -m pytest -q -p no:cacheprovider tests/execution/test_close_refusals.py tests/execution/test_close_slices.py; python -m pytest -q -p no:cacheprovider; git show origin/main:backend/ofo/execution/partial.py executed in memory against both test files; python stdin probes (reasons, scenarios A-D); python -c mutants M1-M3"
+requirement: REQ-058
+ac_fp: "9e4db8068e48"
+result: fail
+verified_by: "verifier (opus, fresh context, GC-3 P0 item 7, main 85e38e0, 2026-10-17)"
+builder: "builders (W-023, W-028, W-036, W-043)"
+date: '2026-10-17'
+commands: "python -m pytest -q -p no:cacheprovider tests/execution/test_close_refusals.py tests/execution/test_complete_refusals.py tests/execution/test_no_retry.py; scratch app_attack.py; grep status_message in backend/ofo_app and status_message, rejection, nothing_placed, choices in frontend/src; read routes/execution_return.py ReturnPlanOut and _plan_out"
 ---
 
 AC: AC-6
-result: pass
-commands: git worktree add --detach <SCRATCH>/verify/W-036 origin/build/W-036-close-refusal; python -m pytest -q -p no:cacheprovider tests/execution/test_close_refusals.py tests/execution/test_close_slices.py; python -m pytest -q -p no:cacheprovider; git show origin/main:backend/ofo/execution/partial.py executed in memory against both test files; python stdin probes (reasons, scenarios A-D); python -c mutants M1-M3
-observed: 33 passed; 1305 passed in 153.17s; on main code: 11 failed, 22 passed; reasons 'Nothing prepared: NIFTY26O0623000PE: the freeze quantity is below one lot of 65.' / 'Nothing prepared: freeze quantity of NIFTY26O0623000PE must be a positive integer, got 0.'; Complete on a later read prepares and clears the marker; gate-blocked Complete keeps marker, later Retry ready and clears it; Close after refused Close ready; M2 and M3 each killed by 1 targeted test, M1 survived (near-equivalent)
-attack: Every Close refusal path (missing LTP, exits in flight, freeze < lot NIFTY/SENSEX, non-whole lots, freeze 0, gate block, stale read mid-prepare): no mark_closing, no held preparation, Complete/Retry usable. Stuck-marker sequence Close -> Complete refused -> Close again -> Complete on fresh read: not stuck. Changed close_slices tests are stronger (prefix + reason + marker None), red on main. Gaps (non-blocking): Complete/Retry slicing refusal still raises ValueError rather than returning a reason (no state change); mutant M1 survives but is near-equivalent; a docstring says +100 s vs asserted +70 s.
+result: fail
+commands: python -m pytest -q -p no:cacheprovider tests/execution/test_close_refusals.py tests/execution/test_complete_refusals.py tests/execution/test_no_retry.py; scratch app_attack.py; grep status_message in backend/ofo_app and status_message, rejection, nothing_placed, choices in frontend/src; read routes/execution_return.py ReturnPlanOut and _plan_out
+observed: Domain passes: a transport timeout gives exactly 1 send with failed 'outcome unknown: read timed out'; a second submit of the same preparation raises; assess() shows the RMS text with the four choices. Live path: a Kite row REJECTED with status_message 'RMS:Margin Exceeds...' is classified nothing_placed with reason None, the same as a basket the user closed; ReturnPlanOut's reason may only be 'plan_from_earlier_session'; audit_allowlist.py:39-40 drops status_message; frontend/src has no hit for status_message. The no-resubmission half holds (the platform sends no order, ADR-054).
+attack: fed a REJECTED-with-reason row through the live classify(): the user gets nothing_placed and no reason and cannot tell a margin rejection from an abandoned basket; resend attacks (unknown outcome, double submit) held
 
+GC-3 P0 item 7: re-verification on main of criteria whose evidence predated fingerprints.
 Recorded by the orchestrator from the verifier's returned block.
