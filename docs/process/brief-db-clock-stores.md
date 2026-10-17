@@ -26,8 +26,9 @@ Tests: python -m pytest -q -p no:cacheprovider tests/test_*.py tests/errors/test
 ## Build
 1. `backend/ofo_app/audit_store.py` `append`: drop the `timestamp` parameter; after `_take_lock`, read
    `clock_timestamp()` (timezone-aware) and use it. Keep the READ COMMITTED check.
-2. Update every caller (grep `audit_store.append`); remove now-unused clock plumbing only where it existed solely for
-   this call.
+2. Update every caller (grep `audit_store.append`): catalogue_store, entitlement_store, and W-103's
+   `backend/ofo_app/order_audit.py` (merged #367; it reads `clock_timestamp()` itself and passes it in - that read
+   moves into the store). Remove now-unused clock plumbing only where it existed solely for this call.
 3. `entitlement_store.append`: confirm in the report whether any time it stores comes from the caller; if one does,
    apply the same rule; if none, say so with the line numbers.
 4. Tests: the far-request-clock case above; a call with `timestamp=` raises TypeError; the chain verifies across all
