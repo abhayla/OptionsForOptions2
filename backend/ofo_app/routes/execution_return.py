@@ -49,14 +49,14 @@ _RECORDED = text("SELECT 1 FROM public.audit_events WHERE event_type = :t AND co
 PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required"]
 
 
-class PlanOut(ApiModel):
+class ReturnPlanOut(ApiModel):
     plan_number: int
     action: Literal["ENTRY", "EXIT"]
     state: PlanState
     choices: list[Identifier]  # REQ-058 AC-2's four choices for a partial plan, in order; empty otherwise
 
 
-class ContractOut(ApiModel):
+class ReturnContractOut(ApiModel):
     tradingsymbol: Identifier
     platform_units: int
     zerodha_units: int
@@ -66,7 +66,7 @@ class ContractOut(ApiModel):
                                "recon_quantity_mismatch"]]
 
 
-class ExternalOut(ApiModel):
+class ReturnExternalOut(ApiModel):
     tag: Identifier
     order_id: Identifier
     tradingsymbol: Identifier
@@ -80,11 +80,11 @@ class ReturnOut(ApiModel):
     strategy_id: int
     read_at: datetime.datetime
     strategy_state: Literal["exited", "plan_open", "holding", "flat"]
-    plans: list[PlanOut]
-    contracts: list[ContractOut]
+    plans: list[ReturnPlanOut]
+    contracts: list[ReturnContractOut]
     mismatches: int
     blocked: bool
-    external_orders: list[ExternalOut]
+    external_orders: list[ReturnExternalOut]
     realised_pnl: Optional[Money]  # noqa: UP045 - the fills' P&L when they leave every contract flat (ADR-102)
 
 
