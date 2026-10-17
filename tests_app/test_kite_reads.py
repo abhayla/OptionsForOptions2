@@ -4,6 +4,7 @@ No network, no database. A replay transport serves the recorded reply files byte
 door's output into ``ofo_app.kite_replies`` and expects the owner's real order: tag OFS1V1L0 filled 65, trade 4484194,
 a 65-unit NIFTY26O1923650CE position.
 """
+import dataclasses
 import json
 import logging
 import re
@@ -17,7 +18,7 @@ from ofo.engine import Instrument
 from ofo.execution.basket import TagParts, parse_tag
 from ofo_app import kite_reads
 from ofo_app.kite_margin import KiteMarginError
-from ofo_app.kite_reads import KiteReadError, KiteReads
+from ofo_app.kite_reads import Holding, HoldingChange, KiteReadError, KiteReads, holdings_unchanged
 from ofo_app.kite_replies import ContractIndex, fills_from_reply, orders_from_reply, positions_from_reply
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
@@ -110,12 +111,15 @@ def test_requests_are_exactly_the_allow_listed_reads() -> None:
 
 def test_allow_list_entry_is_exactly_the_three_reads() -> None:
     """AC-4: the module's ALLOWED_CALLS entry is the three reads and nothing else."""
-    assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == READS | {("GET", "/quote")}  # W-099 added the quote read
+    # W-099 added the quote read, W-106 the holdings read
+    assert ALLOWED_CALLS["ofo_app/kite_reads.py"] == READS | {("GET", "/quote"), ("GET", "/portfolio/holdings")}
 
 
 @pytest.mark.parametrize("method,path", [("POST", "/orders"), ("POST", "/orders/regular"), ("DELETE", "/orders/1"),
                                          ("GET", "/orders/regular"), ("GET", "/orders/"), ("GET", "/orders/123"),
-                                         ("PUT", "/trades"), ("GET", "/portfolio/holdings")])
+                                         ("PUT", "/trades"), ("POST", "/portfolio/holdings"),
+                                         ("DELETE", "/portfolio/holdings"), ("GET", "/portfolio/holdings/x"),
+                                         ("GET", "/portfolio/auctions")])
 def test_door_refuses_anything_else_before_the_transport(method, path) -> None:
     """AC-4: a method or path outside the allow-list is refused and the transport is never called."""
     fake = entry_replay()
@@ -237,3 +241,141 @@ def test_error_is_closed_shape() -> None:
     """AC-3: an error carries a code and nothing else."""
     err = KiteReadError("kite_read_bad_reply")
     assert err.code == "kite_read_bad_reply" and err.args == ("kite_read_bad_reply",)
+
+
+# ---- W-106: GET /portfolio/holdings and the ADR-097 (4) before/after comparison -----------------------------------
+QUANTITIES = ("quantity", "t1_quantity", "used_quantity", "authorised_quantity", "collateral_quantity")
+HOLDINGS_FIELDS = ("tradingsymbol", "exchange", "isin", *QUANTITIES)
+HOLDINGS_URL = "/portfolio/holdings"
+
+
+def holdings_replay(reply: object | None = None) -> Replay:
+    text = recorded_text("holdings-documented") if reply is None else json.dumps(reply)
+    return Replay({HOLDINGS_URL: text})
+
+
+def documented_rows() -> list[dict]:
+    return json.loads(recorded_text("holdings-documented"))["data"]
+
+
+def holding(symbol="INFY", exchange="NSE", isin="INE009A01021", quantity=10, t1=3) -> Holding:
+    return Holding(symbol, exchange, isin, quantity, t1, 0, 0, 0)
+
+
+def test_core_documented_holdings_reply_through_the_door() -> None:
+    """AC-4 core: the documented reply, through the door, becomes exactly the eight fields per row; nothing more."""
+    fake = holdings_replay()
+    rows = client(fake).fetch_holdings()
+    assert rows == (Holding("GOLDBEES", "BSE", "INF204KB17I5", 2, 0, 0, 0, 0),
+                    Holding("INFY", "NSE", "INE009A01021", 10, 3, 0, 0, 0))
+    assert [f.name for f in dataclasses.fields(Holding)] == list(HOLDINGS_FIELDS)  # no price / P&L field exists
+    assert [(m, u, b) for m, u, _, b in fake.calls] == [("GET", BASE + HOLDINGS_URL, None)]
+
+
+@pytest.mark.parametrize("field", HOLDINGS_FIELDS)
+def test_a_row_missing_any_one_field_is_refused(field) -> None:
+    """AC-4: every one of the eight fields removed in turn -> the whole read fails."""
+    rows = documented_rows()
+    del rows[1][field]
+    with pytest.raises(KiteReadError) as raised:
+        client(holdings_replay({"status": "success", "data": rows})).fetch_holdings()
+    assert raised.value.code == "kite_read_bad_reply"
+
+
+WRONG_TYPES = [None, -1, True, False, 10.5, 10.0, "10", "", "  ", [], {}, [10]]
+
+
+@pytest.mark.parametrize("field", HOLDINGS_FIELDS)
+@pytest.mark.parametrize("wrong", WRONG_TYPES, ids=repr)
+def test_every_field_given_a_wrong_type_is_refused(field, wrong) -> None:
+    """AC-4: allow-list of types (text for the three names, a JSON integer for the two quantities); everything else,
+    including 10.5, 10.0, the string "10" and a bool, refuses."""
+    if wrong == "10" and field not in QUANTITIES:
+        return  # text is the right type for a name
+    rows = documented_rows()
+    rows[1][field] = wrong
+    with pytest.raises(KiteReadError) as raised:
+        client(holdings_replay({"status": "success", "data": rows})).fetch_holdings()
+    assert raised.value.code == "kite_read_bad_reply"
+
+
+@pytest.mark.parametrize("data", [None, {}, {"net": []}, "x", 5, [None], [[]], ["INFY"]], ids=repr)
+def test_a_data_that_is_not_a_list_of_objects_is_refused(data) -> None:
+    """AC-4: a non-list data (or non-object rows) raises; never an empty tuple."""
+    with pytest.raises(KiteReadError) as raised:
+        client(holdings_replay({"status": "success", "data": data})).fetch_holdings()
+    assert raised.value.code == "kite_read_bad_reply"
+
+
+def test_two_rows_with_one_key_are_refused() -> None:
+    """AC-4: the same (exchange, tradingsymbol, isin) twice is ambiguous; the read fails."""
+    row = documented_rows()[1]
+    with pytest.raises(KiteReadError) as raised:
+        client(holdings_replay({"status": "success", "data": [row, dict(row, quantity=11)]})).fetch_holdings()
+    assert raised.value.code == "kite_read_bad_reply"
+
+
+def test_an_empty_list_is_no_holdings_and_a_failed_read_is_an_error() -> None:
+    """AC-4: [] is a valid answer (an empty tuple); a 500, a 403 or a non-success status raises instead."""
+    assert client(holdings_replay({"status": "success", "data": []})).fetch_holdings() == ()
+    for fake in (Replay(status=500, text="x"), Replay(status=403, text="x"),
+                 holdings_replay({"status": "error", "data": []})):
+        with pytest.raises(KiteReadError):
+            client(fake).fetch_holdings()
+
+
+@pytest.mark.parametrize("target", [HOLDINGS_URL + "?x=1", HOLDINGS_URL + "?", HOLDINGS_URL + "#f",
+                                    "/portfolio/holdings%2Fx", "/portfolio%2Fholdings"])
+def test_door_refuses_a_query_or_fragment_on_holdings(target) -> None:
+    """AC-4: GET /portfolio/holdings?x=1 (and a fragment / escaped variant) is refused before the transport."""
+    fake = holdings_replay()
+    with pytest.raises(KiteReadError) as raised:
+        client(fake)._data("GET", target)
+    assert raised.value.code == "kite_read_refused" and fake.calls == []
+
+
+def test_holdings_is_allow_listed_for_the_read_module_only() -> None:
+    """AC-4: ("GET", "/portfolio/holdings") is in kite_reads' entry and in no other module's."""
+    owners = [m for m, calls in ALLOWED_CALLS.items() if ("GET", HOLDINGS_URL) in calls]
+    assert owners == ["ofo_app/kite_reads.py"]
+    assert not any(method != "GET" and path.startswith("/portfolio")
+                   for calls in ALLOWED_CALLS.values() for method, path in calls)
+
+
+def test_a_changed_holdings_path_constant_is_refused_before_the_transport(monkeypatch) -> None:
+    """AC-4: if HOLDINGS_PATH drifts off the allow-list, fetch_holdings refuses without sending."""
+    monkeypatch.setattr(kite_reads, "HOLDINGS_PATH", "/portfolio/holdings/all")
+    fake = holdings_replay()
+    with pytest.raises(KiteReadError) as raised:
+        client(fake).fetch_holdings()
+    assert raised.value.code == "kite_read_refused" and fake.calls == []
+
+
+def test_unchanged_holdings_compare_equal_whatever_the_order() -> None:
+    """AC-4: the same rows in another order -> no differences."""
+    a, b = holding(), holding("GOLDBEES", "BSE", "INF204KB17I5", 2, 0)
+    assert holdings_unchanged((a, b), (b, a)) == ()
+    assert holdings_unchanged((), ()) == ()
+
+
+@pytest.mark.parametrize("field,value", [(f, 7) for f in QUANTITIES])
+def test_a_changed_quantity_is_reported(field, value) -> None:
+    """AC-4: a differing quantity or t1_quantity names the row, with both versions."""
+    before = holding()
+    after = dataclasses.replace(before, **{field: value})
+    assert holdings_unchanged((before,), (after,)) == (HoldingChange(before.key, before, after),)
+
+
+def test_an_added_and_a_removed_row_are_reported() -> None:
+    """AC-4: a row only in `after` has before=None; a row only in `before` has after=None."""
+    kept, gone, new = holding(), holding("TCS", "NSE", "INE467B01029"), holding("SBIN", "NSE", "INE062A01020")
+    changes = holdings_unchanged((kept, gone), (kept, new))
+    assert changes == (HoldingChange(new.key, None, new), HoldingChange(gone.key, gone, None))  # sorted by key
+
+
+def test_holdings_unchanged_refuses_duplicate_keys() -> None:
+    """AC-4: two rows with one key make the comparison ambiguous -> ValueError, not a silent last-one-wins."""
+    with pytest.raises(ValueError):
+        holdings_unchanged((holding(), holding(quantity=1)), ())
+    with pytest.raises(ValueError):
+        holdings_unchanged((), (holding(), holding(quantity=1)))
