@@ -56,7 +56,7 @@ def test_ac4_switch_outside_test_is_refused_at_start_up(monkeypatch, env):
     """AC-4: EXECUTE_REPLAY=1 under any APP_ENV but exactly "test" -> create_app raises; nothing is installed."""
     monkeypatch.setenv(er.ENV_NAME, "1")
     monkeypatch.setenv("APP_ENV", env)
-    monkeypatch.setattr(er, "install", lambda app: pytest.fail("installed outside APP_ENV=test"))
+    monkeypatch.setattr(er, "overrides", lambda: pytest.fail("installed outside APP_ENV=test"))
     with pytest.raises(er.ExecuteReplayRefused):
         main.create_app()
 
@@ -64,9 +64,9 @@ def test_ac4_switch_outside_test_is_refused_at_start_up(monkeypatch, env):
 def test_ac4_switch_on_in_test_installs_the_recorded_session_after_the_egress_gate(monkeypatch):
     """AC-4: on + test -> the three seams are overridden; the egress gate is installed first and stays installed."""
     order: list[str] = []
-    real_install = er.install
+    real_overrides = er.overrides
     monkeypatch.setattr(main._egress, "install", lambda: order.append("egress"))
-    monkeypatch.setattr(er, "install", lambda app: (order.append("replay"), real_install(app)))
+    monkeypatch.setattr(er, "overrides", lambda: (order.append("replay"), real_overrides())[1])
     monkeypatch.setenv(er.ENV_NAME, "1")
     monkeypatch.setenv("APP_ENV", "test")
     app = main.create_app()
@@ -102,13 +102,14 @@ def test_ac4_return_reads_the_122104_book_and_refuses_every_write():
     (order,) = session.reads.fetch_orders()
     assert (order["tag"], order["status"], order["filled_quantity"]) == ("OFS1V1L0", "COMPLETE", 65)
     assert len(session.reads.fetch_trades()) == 1
-    with pytest.raises(AssertionError):
-        er.return_replay()("POST", "https://api.kite.trade/orders/regular", {}, "x")
+    for url in ("https://api.kite.trade/orders/regular", "https://api.kite.trade/orders"):
+        with pytest.raises(AssertionError):
+            er.return_replay()("POST", url, {}, "x")  # /orders would otherwise answer
     assert er.entry_replay()("POST", "https://api.kite.trade/margins/basket", {}, "x")[0] == 200
 
 
 ALLOWED_IMPORT_ROOTS = {"__future__", "datetime", "json", "os", "pathlib", "decimal", "typing", "fastapi", "ofo",
-                        "ofo_app", "sqlalchemy", "asyncio", "sys"}
+                        "ofo_app", "sqlalchemy", "asyncio", "sys", "collections", "dataclasses"}
 
 
 @pytest.mark.parametrize("module", [er, seed])
@@ -129,7 +130,7 @@ def test_ac4_replay_modules_import_no_network_client(module):
 def test_ac4_seed_refuses_outside_test(monkeypatch, env):
     """AC-4: the seed command refuses outside APP_ENV=test before any connection is opened."""
     monkeypatch.setenv("APP_ENV", env)
-    import ofo_app.db as db  # noqa: PLC0415
+    from ofo_app import db  # noqa: PLC0415
 
     monkeypatch.setattr(db, "get_engine", lambda: pytest.fail("connected outside APP_ENV=test"))
     with pytest.raises(er.ExecuteReplayRefused):
@@ -157,3 +158,12 @@ def test_ac4_seed_is_idempotent_and_never_takes_another_users_strategy_one(monke
     with pytest.raises(seed.SeedRefused):
         seed.check_database("postgresql+asyncpg://localhost:5432/ofo_dev")
     seed.check_database("postgresql+asyncpg://localhost:5432/ofo_test")
+
+
+def test_ac4_a_frame_without_the_contracts_depth_is_refused_never_invented(monkeypatch, tmp_path):
+    """AC-4: no depth for the replay contract in the recorded frame -> the replay refuses (no made-up quote)."""
+    empty = tmp_path / "no-frame.bin"
+    empty.write_bytes(b"\x00\x00")  # a Kite binary message holding 0 packets
+    monkeypatch.setattr(er, "DEPTH_FRAME", empty)
+    with pytest.raises(er.ExecuteReplayRefused):
+        er.frame_quote()

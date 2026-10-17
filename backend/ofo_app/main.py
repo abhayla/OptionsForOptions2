@@ -92,7 +92,8 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         app.dependency_overrides[outcome.get_streaming] = lambda: feeds.streaming  # REST not live after a socket drop
     if execute_replay.replay_requested():  # W-101 test-only; refused outside APP_ENV=test, before anything is served
         execute_replay.require_test_env(app_env() or "")
-        execute_replay.install(app)  # Execute + return answer from the recorded 2026-10-16 Kite replies, no live session
+        # Execute + return answer from the recorded 2026-10-16 replies, no live session
+        app.dependency_overrides.update(execute_replay.overrides())
     app.include_router(health.router)
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket

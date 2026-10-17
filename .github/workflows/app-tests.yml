@@ -138,6 +138,29 @@ jobs:
           OFO_HISTORY_SCALE_BATCH_BOUND_S: '45'
         run: python -m pytest -c pytest-app.ini -q -rs -p no:cacheprovider
 
+      # W-101 core proof (REQ-073 AC-3, AC-4): a TEST-ONLY API (APP_ENV=test + EXECUTE_REPLAY=1, port 8011) answers
+      # Execute and the return from the recorded 2026-10-16 Kite replies (no live session, no live feed). Runs AFTER the
+      # app suite: the seed commits strategy id 1, which the route tests need free. The seed runs as the owner role (it
+      # sets id 1, as the route tests do), the API as ofo_app. The server is stopped by PID when the step ends.
+      - name: Execute replay API - ENTRY then return over HTTP (port 8011)
+        env:
+          APP_ENV: test
+          EXECUTE_REPLAY: '1'
+          TEST_CATALOGUE_DATE: '2026-10-16'
+          PYTHONPATH: backend
+          EXECUTE_REPLAY_URL: http://127.0.0.1:8011
+        run: |
+          DATABASE_URL="postgresql+asyncpg://postgres:${PGPASSWORD}@localhost:5432/ofo_test" python -m ofo_app.seed_execute_replay
+          DATABASE_URL="postgresql+asyncpg://ofo_app:${APP_ROLE_PW}@localhost:5432/ofo_test" nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8011 > "${RUNNER_TEMP}/uvicorn-execute-replay.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; tail -n 40 "${RUNNER_TEMP}/uvicorn-execute-replay.log"' EXIT
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8011/health && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8011/health
+          python -m pytest -c pytest-app.ini -q -rs -p no:cacheprovider tests_app/test_execute_replay_api.py
+
   # W-054: frontend skeleton. Core proof: browser -> Vite preview /api proxy -> FastAPI (ofo_app) -> PostgreSQL.
   frontend:
     runs-on: ubuntu-latest

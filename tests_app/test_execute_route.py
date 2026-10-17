@@ -191,7 +191,7 @@ def _rows_of(replay: _Replay, *, orders: list | None = None, positions: list | N
     return replay
 
 
-def _Quotes() -> DepthQuotes:  # noqa: N802 - the quote seam the route tests install
+def _Quotes() -> DepthQuotes:  # the quote seam the route tests install
     """The depth source: depth and last price only, NO band (as the live feed). The band comes from Zerodha's quote."""
     return DepthQuotes(ep.quote_from_kite(_live_quote()))
 

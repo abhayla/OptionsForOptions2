@@ -16,14 +16,17 @@ import datetime
 import json
 import os
 import pathlib
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Request
 from ofo.engine import Action
 from ofo.instruments import NSE_FO, InstrumentId
 from ofo.instruments.parser import parse_instruments_csv, zerodha_listed
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.timeutil import IST_UNNAMED
 
 from ofo_app import execute_plan as ep
 from ofo_app.kite_margin import KiteMargin
@@ -44,7 +47,7 @@ _REPLAY_TOKEN = "tok"  # noqa: S105 - not a secret: the recorded transport never
 TOKEN = "12080386"
 CORE_ID = InstrumentId(NSE_FO, 47189)
 #: the market-hours instant of the real 2026-10-16 entry (the pinned request clock)
-AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=IST_UNNAMED)
 FRAME_AT = datetime.datetime.fromtimestamp(1792143440, IST)  # the depth frame's exchange time, 15:07:20 IST
 #: fetch.json's NIFTY spot and its own time (the recorder's index read, README there)
 SPOT = (Decimal("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))
@@ -90,7 +93,7 @@ class RecordedKite:
     order_rows: list | None = None  # rows derived from the real replies, else the named fixture
     position_rows: list | None = None
 
-    def __init__(self, *, funds: str, basket_total: str, orders: str | None, positions: str,
+    def __init__(self, *, funds: str, basket_total: str, orders: str | None, positions: str,  # noqa: PLR0913
                  trades: str | None = None, reads_only: bool = False) -> None:
         self.funds, self.basket_total, self.orders, self.positions = funds, basket_total, orders, positions
         self.trades, self.reads_only = trades, reads_only
@@ -98,7 +101,7 @@ class RecordedKite:
     def _reply(self, name: str) -> Any:
         return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=Decimal)
 
-    def __call__(self, method: str, url: str, headers: Any, body: Any) -> tuple[int, str]:  # noqa: ARG002
+    def __call__(self, method: str, url: str, headers: Any, body: Any) -> tuple[int, str]:
         if self.reads_only and method != "GET":
             raise AssertionError(f"the return replay answers reads only, not {method} {url}")
         if "/quote?i=" in url:
@@ -123,11 +126,19 @@ class RecordedKite:
         raise AssertionError(f"no recorded reply for {method} {url}")
 
 
-def session_for(replay: RecordedKite) -> Any:
-    """A Kite session (``execute.KiteSession``) whose two clients speak only to ``replay``."""
+@dataclass(frozen=True)
+class ReplaySession:
+    """An ``execute.KiteSession`` whose two clients speak only to a ``RecordedKite``."""
+
+    api_key: str
+    reads: KiteReads
+    margin: KiteMargin
+
+
+def session_for(replay: RecordedKite) -> ReplaySession:
     reads = KiteReads(api_key=REPLAY_API_KEY, access_token=_REPLAY_TOKEN, transport=replay)
     margin = KiteMargin(api_key=REPLAY_API_KEY, access_token=_REPLAY_TOKEN, transport=replay)
-    return execute._Session(REPLAY_API_KEY, reads, margin)  # noqa: SLF001 - the route's own session shape
+    return ReplaySession(REPLAY_API_KEY, reads, margin)
 
 
 def entry_replay() -> RecordedKite:
@@ -141,7 +152,7 @@ def return_replay() -> RecordedKite:
                         trades="trades-122104", reads_only=True)
 
 
-# ---- quotes ------------------------------------------------------------------------------------------------------------
+# ---- quotes ----------------------------------------------------------------------------------------------------------
 
 def _live(value: object) -> object:
     if isinstance(value, dict):
@@ -162,10 +173,10 @@ class DepthQuotes:
     def __init__(self, quote: ep.LegQuote) -> None:
         self.quote = ep.LegQuote(quote.depth, quote.at, quote.last_price, None)
 
-    def leg_quote(self, instrument_id: InstrumentId, token: str) -> ep.LegQuote | None:  # noqa: ARG002
+    def leg_quote(self, instrument_id: InstrumentId, token: str) -> ep.LegQuote | None:
         return self.quote if token == TOKEN else None
 
-    def underlying_price(self, underlying: str) -> tuple[Decimal, datetime.datetime] | None:  # noqa: ARG002
+    def underlying_price(self, underlying: str) -> tuple[Decimal, datetime.datetime] | None:
         return SPOT
 
 
@@ -183,24 +194,24 @@ def frame_quote() -> ep.LegQuote:
     return ep.LegQuote(depth, priced[1], priced[0], None)
 
 
-# ---- the app overrides -------------------------------------------------------------------------------------------------
+# ---- the app overrides -----------------------------------------------------------------------------------------------
 
-def _replay_session(request: Request) -> Any:
+def _replay_session(request: Request) -> ReplaySession:
     """The return route reads the 12:21:04 book; every other route (Execute) the book before the entry."""
     if request.url.path.endswith("/execution/return"):
         return session_for(return_replay())
     return session_for(entry_replay())
 
 
-def install(app: FastAPI) -> None:
-    """Overrides the Execute (and so the return) route's session, quote reader and clock with the recording."""
+def overrides() -> dict[Callable[..., Any], Callable[..., Any]]:
+    """The Execute (and so the return) route's session, quote reader and clock, answered from the recording;
+    ``create_app`` installs them (the one app-assembly file)."""
     quotes = DepthQuotes(frame_quote())
-    app.dependency_overrides[execute.get_kite_session] = _replay_session
-    app.dependency_overrides[execute.get_quote_reader] = lambda: quotes
-    app.dependency_overrides[execute.get_execute_clock] = lambda: (lambda: AT)
+    return {execute.get_kite_session: _replay_session, execute.get_quote_reader: lambda: quotes,
+            execute.get_execute_clock: lambda: (lambda: AT)}
 
 
-# ---- the stored strategy (route tests and the seed command) -----------------------------------------------------------
+# ---- the stored strategy (route tests and the seed command) ----------------------------------------------------------
 
 def listed_contract() -> Any:
     """NIFTY26O1923650CE as Zerodha listed it on 2026-10-16 (the eligibility slice)."""
