@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (106)
+## Decisions (107)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -112,6 +112,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instrument list as the product's own download loaded it… [applies ADR-016, ADR-057, ADR-058, REQ-053]
 - ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2, OFS{strategy}V{plan}L{leg}) is a PLAN NUMBER minted for each Execute of a strategy (entry, exit… [applies ADR-050, ADR-054, REQ-073]
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
+- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
 
 ## Requirements (75)
 

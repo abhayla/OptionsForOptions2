@@ -121,7 +121,7 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
      attack cases, `Findings checked:` ids (grep the registry first), a `Threat model:` for any guard.
   5. At most 2 review rounds per item. Red CI or a failed core proof is never deferred; after round 2 a CRITICAL or
      MAJOR on Tier A code -> independent redesign or park unmerged; only MINOR/Tier B findings become deferred issues.
-     Before any live run: open Tier A deferred findings block it, and a verifier passes on main for every money/order AC.
+     Before any live run: open Tier A deferred issues triaged per ADR-107; a verifier passes on main per money/order AC.
   6. Batch: one docs PR per contract; a decision a build needs rides in that build's PR. Dependent items are stacked PRs
      (Tier A ~1,000 product lines, a migration its own PR); main merged in once, before the gate.
   7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
