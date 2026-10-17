@@ -10,9 +10,10 @@ One request = one transaction, in this order (any refusal rolls back: nothing st
 1. the strategy (404 for a missing or another user's one); 2. Zerodha's order book: the floor plan number of THIS
 strategy's tags and any still-open order (refused); ``next_plan_number`` (its lock is held to commit); 2b. W-107: that
 same order book (no second Zerodha read) as THIS strategy's ``TodaysBook`` (``return_book.read_book``):
-``execution_return.drifted`` on the stored plans marks the strategy reconciliation-blocked, ENTRY, EXIT and adjustment
-alike (REQ-060 AC-6); untagged rows are never read as drift (AC-7); 3. what the strategy holds = ``ep.held_units``
-(ADR-105: the net of filled units over ALL its plans), the one source of the exit
+``execution_return.drifted`` on the stored plans refuses with ``gate_reconciliation_mismatch`` before any other check
+(``_executable``, positions), ENTRY, EXIT and adjustment alike (REQ-060 AC-6); untagged rows are never read as
+drift (AC-7); 3. what the strategy holds = ``ep.held_units`` (ADR-105: the net of filled units over ALL its plans),
+the one source of the exit
 legs (exactly the net, opposite side), the active legs + hash, the version state and the reconciliation platform side;
 an EXIT at net 0 and an ENTRY while held are refused (``_executable``); 4. each leg priced
 from its depth; 5. the ``ExecutionContext`` from real sources only; 6. the fresh eligibility registry straight into
@@ -360,15 +361,15 @@ class _Held:
     state: VersionState
     plan_number: int | None
     history: tuple[plans.StoredPlan, ...]
-    drifted: bool = False  # W-107: a closed plan of this strategy differs from today's book (REQ-060 AC-6)
 
 
 async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     plan_number, order_rows = await _reserve_number(req)
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     units = ep.held_units(history)
-    drift = _plan_drift(req, history, order_rows)
-    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history, drift)
+    if _plan_drift(req, history, order_rows):  # W-107: before any other refusal, so the owner sees the true reason
+        raise _refuse("gate_reconciliation_mismatch")
+    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history)
     catalogue = await load_catalogue(req.db)
     underlying = stored.saved.definition.underlying
     try:
@@ -501,7 +502,7 @@ def _reconciliation(req: _Request, held: _Held, positions: PositionsRead | None,
     for contract, units in held.units.items():
         key = ep.contract_key(catalogue, _iid(contract), underlying)
         platform[key] = platform.get(key, 0) + units
-    blocked = held.drifted or ep.strategy_blocked(positions.net, platform)
+    blocked = ep.strategy_blocked(positions.net, platform)
     return frozenset({str(req.strategy_id)}) if blocked else frozenset()
 
 

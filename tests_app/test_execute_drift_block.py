@@ -94,8 +94,7 @@ async def test_ac6_nothing_placed_plan_whose_order_later_filled_blocks_entry_and
             app, sid, use, stored):
         use(_replay(_real_rows()))
         await _refused_with(app, sid, "ENTRY", RECONCILE_PHRASE)
-        resp = await _post(app, sid, "EXIT")
-        assert resp.status_code == HTTP_CONFLICT, resp.text
+        await _refused_with(app, sid, "EXIT", RECONCILE_PHRASE)  # not "an exit would open a position"
         assert await stored() == 1  # nothing stored, no plan number consumed
 
 
@@ -158,3 +157,15 @@ async def test_ac7_an_untagged_surplus_at_zerodha_blocks_nothing(app_engine, adm
         use(_replay([*_real_rows(), untagged], held=130))
         resp = await _post(app, sid, "EXIT")
         assert resp.status_code == HTTP_OK, resp.text
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_ac6_an_unreadable_row_of_ours_is_the_catalogued_refusal_never_a_500(app_engine, admin_engine,
+                                                                                    monkeypatch):
+    """Our tag's row is a mapping but ``order_from_row`` rejects it (filled_quantity "x"): broker unconfirmed (409)."""
+    async with _world(app_engine, admin_engine, monkeypatch, close="filled", filled={TAG: 65}) as (
+            app, sid, use, stored):
+        use(_replay(_book(status="COMPLETE", filled_quantity="x")))
+        for action in ("ENTRY", "EXIT"):
+            await _refused_with(app, sid, action, "Zerodha")
+        assert await stored() == 1
