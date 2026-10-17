@@ -271,7 +271,7 @@ work_items:
   W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
   W-091: 4b           # GC-2b: Kite orders/trades/positions -> domain types (F-40)
   W-092: 4b           # GC-2b: eligibility registry filled from Zerodha data (REQ-053 AC-3)
-
+  W-093: 4b           # GC-2c: Kite read door - GET orders / trades / positions (REQ-073 AC-3/AC-4)
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
   F-01: done
