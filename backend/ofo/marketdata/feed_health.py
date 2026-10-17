@@ -17,6 +17,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 
+from ofo.engine.executable_price import Depth
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
@@ -98,6 +99,9 @@ def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuot
 class BookEntry:
     quote: NormalizedQuote
     last_changed_at: datetime.datetime  # information only; never a health input
+    # the 5+5 levels of the SAME full frame as ``quote`` (its exchange time is ``quote.timestamp``); None when the last
+    # packet carried no depth (quote / ltp mode) - never an empty Depth, which would read as "no liquidity"
+    depth: Depth | None = None
 
 
 class QuoteBook:
@@ -150,18 +154,18 @@ class QuoteBook:
         """The time of the last quote held for an instrument whose subscription ended; None if none was kept."""
         return self._ended_times.get(instrument_id)
 
-    def update_parked(self, quote: NormalizedQuote) -> bool:
+    def update_parked(self, quote: NormalizedQuote, depth: Depth | None = None) -> bool:
         """A tick for a released instrument whose unsubscribe is not out yet: kept for ``restore``, never readable.
         False when the instrument is not parked."""
         if quote.instrument_id not in self._parked:
             return False
-        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp)
+        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp, depth)
         return True
 
-    def update(self, quote: NormalizedQuote) -> None:
+    def update(self, quote: NormalizedQuote, depth: Depth | None = None) -> None:
         self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
-        self._entries[instrument_id] = BookEntry(quote, quote.timestamp)
+        self._entries[instrument_id] = BookEntry(quote, quote.timestamp, depth)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -173,6 +177,17 @@ class QuoteBook:
     def get(self, instrument_id: str, now: datetime.datetime) -> NormalizedQuote | None:
         e = self._entries.get(instrument_id)
         return with_feed_health(e.quote, self.feed.health(now)) if e else None
+
+    def latest_depth(self, instrument_id: str, now: datetime.datetime) -> Depth | None:
+        """The 5-level depth of the instrument's latest packet, or None: not held (never seen, removed or parked), the
+        latest packet was not a full frame, or the quote is not AVAILABLE (feed stale / disconnected / ended, or the
+        quote itself invalid or delayed). Staleness is the feed's (``FeedState``), the one limit the quote already
+        uses; a contract's own age is never a limit (a quiet contract keeps its depth, F-32)."""
+        e = self._entries.get(instrument_id)
+        if e is None or e.depth is None:
+            return None
+        quote = with_feed_health(e.quote, self.feed.health(now))
+        return e.depth if quote.health is DataHealth.AVAILABLE else None
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
         health = self.feed.health(now)
