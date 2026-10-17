@@ -93,20 +93,23 @@ def extended_allowlist_sql() -> str:
     return previous.replace(f"'{old_pin}'", f"'{new_pin}'", 1)
 
 
-def _apply(allowed: dict, chain_sql: str) -> None:
+def _statements(allowed: dict, chain_sql: str) -> list[str]:
+    """Pre-check, the CHECK, the payload allowlist function, the chain text with its pins, then the post-check."""
     role = _BASE._app_role()
     allowlist = _BASE.ALLOWLIST_FUNCTION
-    op.execute(f"SELECT {allowlist}('{role}', 'pre')")
-    for statement in check_sql(allowed):
-        op.execute(statement)
-    op.execute(allowed_function_sql(allowed))
-    op.execute(chain_sql)
-    op.execute(f"REVOKE ALL ON FUNCTION {allowlist}(TEXT, TEXT) FROM PUBLIC")
-    op.execute(f"SELECT {allowlist}('{role}', 'post')")
+    return [
+        f"SELECT {allowlist}('{role}', 'pre')",
+        *check_sql(allowed),
+        allowed_function_sql(allowed),
+        chain_sql,
+        f"REVOKE ALL ON FUNCTION {allowlist}(TEXT, TEXT) FROM PUBLIC",
+        f"SELECT {allowlist}('{role}', 'post')",
+    ]
 
 
 def upgrade() -> None:
-    _apply(AFTER, extended_allowlist_sql())
+    for statement in _statements(AFTER, extended_allowlist_sql()):
+        op.execute(statement)
 
 
 def downgrade() -> None:
@@ -127,4 +130,5 @@ def downgrade() -> None:
         $down$;
         """  # noqa: S608 constant table name
     )
-    _apply(BEFORE, previous_allowlist_sql())
+    for statement in _statements(BEFORE, previous_allowlist_sql()):
+        op.execute(statement)
