@@ -146,7 +146,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
   })
 
   it('AC-1: the form carries api_key and data verbatim and is submitted only by the click, once', async () => {
-    const w = mount(BasketForm, { props: { reply: REPLY, strategyId: 1 } })
+    const w = mount(BasketForm, { props: { reply: REPLY, strategyId: '1' } })
     await flushPromises()
     const form = w.get('[data-testid="basket-form"]').element
     expect(form.getAttribute('method')).toBe('post')
@@ -160,6 +160,33 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     expect(submitSpy).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem(LAST_EXECUTED_KEY)).toBe('1')
     expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(false) // never a second post of the same basket
+  })
+
+  it('AC-1: two clicks before the page re-renders still post the basket once', async () => {
+    const w = mount(BasketForm, { props: { reply: REPLY, strategyId: '1' } })
+    const button = w.get('[data-testid="place-on-kite"]').element
+    button.click()
+    button.click()
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC-1: a live push for other legs never opens Execute', async () => {
+    const w = await openExecute('1', 10000)
+    live.onPush({ ...LIVE_PUSH, legs: [{ ...LIVE_PUSH.legs[0], instrument_id: 'NSE_FO:44624' }] })
+    await flushPromises()
+    expect(w.find('[data-testid="prepare-entry"]').exists()).toBe(false)
+  })
+
+  it('AC-1: an Execute reply with an unreadable basket shows the neutral message and no form', async () => {
+    answers['POST /strategies/1/execute'] = ok({ ...REPLY, basket: { ...REPLY.basket, data: '' } })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+    expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
+    expect(text(w, 'execute-error-what')).toBe('The page could not get an answer from the server.')
   })
 
   it('AC-1: a reply whose basket is not exactly {url, api_key, data} gets no form', () => {
@@ -201,7 +228,7 @@ describe('AC-3: Check with Zerodha and the basket-return landing page', () => {
   })
 
   it('AC-3: the landing page makes no request on load and checks only on the click', async () => {
-    rememberExecuted(1)
+    rememberExecuted('1')
     const w = mount(ExecutionReturnedPage, { global: { stubs: { RouterLink: true } } })
     await flushPromises()
     expect(w.text()).toContain("Your orders were handled on Kite's page.")
@@ -220,14 +247,16 @@ describe('AC-3: Check with Zerodha and the basket-return landing page', () => {
     expect(calls).toEqual([])
   })
 
-  it('AC-3: the stored id reads back only as a positive integer; storage failures never throw', () => {
+  it('AC-3: the stored id reads back only as a positive whole-number string; storage failures never throw', () => {
+    localStorage.setItem(LAST_EXECUTED_KEY, '12')
+    expect(readLastExecuted()).toBe('12')
     for (const bad of ['0', '-1', '1.5', 'abc', '', '01']) {
       localStorage.setItem(LAST_EXECUTED_KEY, bad)
       expect(readLastExecuted()).toBeNull()
     }
     const broken = { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('denied') } }
     expect(readLastExecuted(broken)).toBeNull()
-    expect(rememberExecuted(3, broken)).toBe(false)
+    expect(rememberExecuted('3', broken)).toBe(false)
   })
 })
 

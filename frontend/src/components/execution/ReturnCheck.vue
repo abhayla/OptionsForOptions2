@@ -8,7 +8,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 
-const props = defineProps({ strategyId: { type: Number, required: true } })
+const props = defineProps({ strategyId: { type: String, required: true } })
 
 const busy = ref(false)
 const result = ref(null)

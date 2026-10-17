@@ -47,7 +47,7 @@ export function rememberExecuted(strategyId, storage = globalThis.localStorage) 
   }
 }
 
-/** The stored strategy id as a positive integer, or null (nothing stored, unreadable, or storage unavailable). */
+/** The stored strategy id as a string of decimal digits (an id, never parsed into a number), or null (nothing stored, unreadable, or storage unavailable). */
 export function readLastExecuted(storage = globalThis.localStorage) {
   let raw
   try {
@@ -56,5 +56,5 @@ export function readLastExecuted(storage = globalThis.localStorage) {
     return null
   }
   if (typeof raw !== 'string' || !/^[1-9]\d{0,17}$/.test(raw)) return null
-  return Number(raw) // an id, not money
+  return raw
 }

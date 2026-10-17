@@ -9,7 +9,7 @@ import { basketFields, rememberExecuted } from '@/lib/execute'
 
 const props = defineProps({
   reply: { type: Object, required: true },
-  strategyId: { type: Number, required: true },
+  strategyId: { type: String, required: true },
 })
 const emit = defineEmits(['sent'])
 

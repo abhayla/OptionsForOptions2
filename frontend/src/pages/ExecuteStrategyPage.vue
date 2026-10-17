@@ -23,7 +23,7 @@ import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
 const route = useRoute()
-const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? Number(route.params.id) : null))
+const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? String(route.params.id) : null)) // an id string, never parsed
 const phase = ref('loading') // loading | waiting-live | live | not-live | executing | prepared | error
 const liveNow = ref(false)
 const reply = ref(null)
