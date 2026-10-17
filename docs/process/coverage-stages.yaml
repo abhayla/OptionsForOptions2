@@ -267,6 +267,8 @@ issues:
   "#370": 4a  # Intermittent e2e: strategy-save-draft cannot find the saved draft after reload
   "#380": 4b  # Live Kite-basket routes re-implement reconciliation and partial handling: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6 fail on the path users reach (F-42)
   "#381": 4b  # Return route reads orders before trades: an order appearing between the reads loses its trade and closes nothing_placed
+  "#385": 4b  # GC-3 live steps L1-L4 parked: need the owner on a trading day (carried as GC-3L)
+  "#386": 4b  # GC-3 P0 review MINORs: probe script private attributes and fail-open recorder compare; W-107 test pins
 
 # Work items whose status is not done.
 work_items:
