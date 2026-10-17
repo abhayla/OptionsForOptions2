@@ -257,7 +257,7 @@ def test_missing_or_unknown_fields_fail_closed():
 def test_fixtures_hold_no_client_id():
     client_id = "DA" + "1707"
     files = sorted(FIXTURES.iterdir())
-    assert len(files) == 8
+    assert len(files) == 12
     for path in files:
         assert client_id not in path.read_text(encoding="utf-8"), path.name
 

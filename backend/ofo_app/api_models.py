@@ -11,7 +11,8 @@ and a plain `str` (or anything not listed below) raises TypeError. Allowed leave
   carry a sentence;
 - `Literal[...]` of Identifier-pattern strings, `bool` and `int` (no Enum: its values are free text), `Decimal`
   (written as a plain string, project rule), timezone-aware `datetime`, `date`, nested `ApiModel`s, `dict[Identifier, X]`
-  and `list`/`tuple`/`Optional` of those.
+  and `list`/`tuple`/`Optional` of those;
+- `BasketPost` (W-095): the exact Kite basket form text, made only from the sealed basket (`basket_post.py`).
 So string building in route code is harmless: it cannot reach a response body.
 
 The class check above is an early warning, not the guarantee (W-069, issue #148). The guarantee is `emit`: the ONE
@@ -35,6 +36,7 @@ from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, Str
 
 from ofo.errors import UserFacingError
 from ofo.errors.explanations import ExplanationText
+from ofo_app.basket_post import BasketPost
 from ofo_app.closed_namespace import own_names
 
 log = logging.getLogger("ofo_app.main")
@@ -68,7 +70,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9_\-.]{1,%d}" % IDENTIFIER_MAX)  # the same 
 _INSTRUMENT_ID = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")  # InstrumentId's pattern, re-checked at the door
 _FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
 
-_LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date)
+_LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date, BasketPost)
 
 
 def _closed_literal(tp: Any) -> bool:
@@ -240,6 +242,10 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
         raise _refuse(path, value, "Money")
+    if tp is BasketPost:  # W-095: the exact Kite form text, only from the sealed basket (basket_post.py)
+        if type(value) is BasketPost:
+            return value.as_form()
+        raise _refuse(path, value, "BasketPost")
     origin = typing.get_origin(tp)
     if origin is Literal:
         if any(type(a) is type(value) and a == value for a in typing.get_args(tp)) and (
