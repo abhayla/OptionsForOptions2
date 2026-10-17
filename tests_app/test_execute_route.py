@@ -250,11 +250,13 @@ def _rows(reply):
     return reply["data"] if isinstance(reply, dict) and "data" in reply else reply
 
 
+#: Zerodha's basket-margin reply per basket: the EXIT reply is the REAL one (fetch.json ``margin_raw``, SELL 65 @ 3.30,
+#: final.total -214.5); the ENTRY reply is DERIVED from it with the recorder's entry total 354.25 (README there).
+_BASKET_REPLIES = {"354.25": "margins-basket-entry-derived.json", "-214.5": "margins-basket-exit-150717.json"}
+
+
 def _basket_reply(total: str) -> str:
-    """The shape of the real 15:07 basket-margin reply (fetch.json margin_raw), with ``final.total`` set to the
-    recorded figure of the basket in question (entry 354.25 from basket-121848.json; exit -214.5 as recorded)."""
-    return ('{"status":"success","data":{"initial":{"total":0},"final":{"option_premium":0,"total":%s},'  # noqa: UP031
-            '"orders":[{"total":0}],"charges":{"total":0}}}' % total)
+    return (REPLIES / _BASKET_REPLIES[total]).read_text(encoding="utf-8")
 
 
 def _session_for(replay):
@@ -276,7 +278,7 @@ class _Quotes:
         return (D("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))  # fetch.json spot
 
 
-async def _strategy_one(conn, user: str, app_role: str) -> int:
+async def _strategy_one(conn, user: str, app_role: str, units: int = 65) -> int:
     """Strategy id 1 (the real tags OFS1V1...): saved through the store, then given id 1 as the owner role (the
     application role cannot write ``id``), then the transaction continues as the application role."""
     from ofo.strategy import stored_form as sf  # noqa: PLC0415
@@ -291,7 +293,7 @@ async def _strategy_one(conn, user: str, app_role: str) -> int:
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
                               {"s": REAL_ORDER["tradingsymbol"]})).scalar_one()
-    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, 65, None)],
+    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, None)],
                                    rules_ref=None, risk_limits={}, preferences={})
     made = await save_draft(conn, user, saved)
     await conn.execute(text("SET LOCAL session_replication_role = replica"))
@@ -300,7 +302,22 @@ async def _strategy_one(conn, user: str, app_role: str) -> int:
                        {"s": made.id})
     await conn.execute(text("SET LOCAL session_replication_role = origin"))
     await conn.execute(text(f'SET LOCAL ROLE "{app_role}"'))
+    await _pro_grant(conn, user)
     return 1
+
+
+async def _pro_grant(conn, user: str) -> None:
+    """A real Pro grant through the entitlement store, as the application role, ``granted_at`` = the database's own
+    clock (ADR-023: the database refuses a date more than 60 s off its clock; no trigger disabled, nothing
+    backdated). It lives inside the test's rolled-back transaction."""
+    from ofo.entitlements.events import NewGrant, Source  # noqa: PLC0415
+    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+    from ofo_app import entitlement_store  # noqa: PLC0415
+    from test_entitlement_store import note  # noqa: PLC0415
+
+    now = await elig.database_now(conn)
+    await entitlement_store.append(conn, user, NewGrant("pro-core", Source.PAID_MONTHLY, now,
+                                                        datetime.timedelta(days=30), "pay-core", note("core test")))
 
 
 async def _post(app, strategy_id: int, action: str):
@@ -348,14 +365,14 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "OFS1V1L0")
 
-            again = await _post(app, sid, "ENTRY")  # one open plan per strategy
-            assert again.status_code == 409, again.text
+            # one open plan per strategy: the open-plan refusal
+            await _refused_with(app, sid, "ENTRY", "An order this execution depends on is not in place yet")
 
             await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(flat)
-            short = await _post(app, sid, "EXIT")  # Zerodha holds 0 of the strategy's 65: blocked (AC-7)
-            assert short.status_code == 409, short.text
+            # Zerodha holds 0 of the strategy's 65: blocked (AC-7), by the reconciliation-mismatch refusal
+            await _refused_with(app, sid, "EXIT", "do not match what we recorded")
             assert len(await plans.plans_for(conn, user, sid)) == 1  # nothing stored, no number consumed
 
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
@@ -372,6 +389,12 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             await _third_exit_refused(app, conn, user, sid)
         finally:
             await trans.rollback()
+
+
+async def _refused_with(app, sid: int, action: str, phrase: str) -> None:
+    resp = await _post(app, sid, action)
+    assert resp.status_code == 409, resp.text
+    assert phrase in resp.text, resp.text
 
 
 async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
@@ -405,10 +428,11 @@ def _position_rows(**changes) -> list:
 
 @pytest.mark.usefixtures("app_engine")
 async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine, admin_engine, monkeypatch):
-    """Plan 1 filled 30 of 65 (partial). Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
+    """A 2-lot strategy (130 units); plan 1 filled 65 of 130 (partial; NFO fills whole lots).
+    Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
     EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
     (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
-    exactly the net 30 (review MAJOR 2: round 2 refused it)."""
+    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it)."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
@@ -420,14 +444,14 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
         trans = await conn.begin()
         try:
             user = _user()
-            sid = await _strategy_one(conn, user, app_engine.url.username)
+            sid = await _strategy_one(conn, user, app_engine.url.username, units=130)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 30})
+            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65})
 
             def _with(**kw):
                 replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
@@ -454,7 +478,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
             (sell,) = resp.json()["orders"]
-            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 30, "OFS1V2L0")
+            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 65, "OFS1V2L0")
         finally:
             await trans.rollback()
 
@@ -574,7 +598,8 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
 
             async def _second_press_first(*args, **kwargs):
                 if not inner:  # the first press, between its number and its store: the second press runs whole
-                    inner.append(await _post(app, sid, "EXIT"))
+                    inner.append(None)  # marked BEFORE the second press, whose own store must not recurse
+                    inner[0] = await _post(app, sid, "EXIT")
                 return await real_record(*args, **kwargs)
 
             monkeypatch.setattr(plans, "record_plan", _second_press_first)
@@ -585,3 +610,52 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
             assert [(p.plan_number, p.action) for p in stored] == [(1, "ENTRY"), (2, "EXIT")]
         finally:
             await trans.rollback()
+
+
+# ---- database-stamped facts are judged on the database clock (round 4, ADR-023) ------------------------------------
+
+DB_NOW = datetime.datetime(2026, 10, 17, 7, 50, tzinfo=AT.tzinfo)  # database clock; route clock AT
+
+
+async def test_a_grant_stamped_on_the_database_clock_is_pro_while_the_route_clock_is_pinned_to_a_past_day(monkeypatch):
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo.entitlements.engine import access_at  # noqa: PLC0415
+    from ofo.entitlements.events import AccessLevel, NewGrant, Source  # noqa: PLC0415
+    from ofo_app import entitlement_store  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_entitlement_store import note  # noqa: PLC0415
+
+    stamp = entitlement_store.DatabaseStamp()
+    stamp.recorded_at = DB_NOW
+    ledger = entitlement_store.ledger_from_rows("u", [], clock=stamp).append(
+        NewGrant("p", Source.PAID_MONTHLY, DB_NOW, datetime.timedelta(days=30), "pay", note()))
+    assert access_at(ledger, AT).level is not AccessLevel.PRO  # the round-3 defect: judged on the pinned clock
+
+    async def _load(conn, user_ref):
+        return ledger
+
+    monkeypatch.setattr(entitlement_store, "load", _load)
+    req = SimpleNamespace(db=None, user_ref="u", now=AT)
+    assert await route._pro_entitled(req, DB_NOW) is True
+
+
+async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_route_clock_is_pinned_to_yesterday(
+        monkeypatch):
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo.execution.context import DataHealth, DataInput  # noqa: PLC0415
+    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    loaded = DB_NOW - datetime.timedelta(minutes=30)  # stamped by clock_timestamp() this morning
+
+    async def _loaded_at(conn):
+        return loaded
+
+    monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
+    req = SimpleNamespace(db=None, now=AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
+    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
+    assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
+    assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
+    assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE

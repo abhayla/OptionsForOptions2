@@ -61,6 +61,11 @@ def _state(row: Any) -> ListState:
     return list_state_from_row(row)
 
 
+async def database_now(conn: Any) -> datetime.datetime:
+    """The database's own clock (``clock_timestamp()``, ADR-023): the clock that stamps grants and list loads."""
+    return (await conn.execute(_NOW)).scalar_one()
+
+
 async def _loaded_at(conn: Any) -> datetime.datetime | None:
     return (await conn.execute(_LOADED_AT, {"broker": ZERODHA})).scalar_one()
 
@@ -98,7 +103,7 @@ async def fresh_registry(conn: Any, *, underlying: str | None = None,
     eligibility = registry_from_list((_state(r) for r in rows), today=today, loaded_at=loaded_at)
     if not margin_refusals:
         return eligibility
-    refused_at = (await conn.execute(_NOW)).scalar_one()
+    refused_at = await database_now(conn)
     return apply_margin_refusals(eligibility, margin_refusals, refused_at=refused_at)
 
 

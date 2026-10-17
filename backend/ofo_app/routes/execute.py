@@ -26,7 +26,6 @@ an unreadable entitlement history -> ``pro_entitled`` None (the gate blocks wher
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -81,7 +80,7 @@ router = APIRouter(route_class=ClosedRoute)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
-BASKET_PRODUCT = Product(next(f.default for f in dataclasses.fields(KiteOrder) if f.name == "product"))
+BASKET_PRODUCT = Product(KiteOrder.__dataclass_fields__["product"].default)
 _IDS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
             "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 
@@ -428,22 +427,30 @@ async def _zerodha_margin(req: _Request, priced: ep.PricedPlan,
     return available, basket.required_total
 
 
-async def _pro_entitled(req: _Request) -> bool | None:
+async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None:
+    """Pro at the DATABASE clock (ADR-023): a grant's ``granted_at`` is stamped by the database, so it is judged on
+    that clock, never on the request's market clock ``req.now`` (a pinned or skewed request clock would read a grant
+    made moments ago as "not yet")."""
     try:
         ledger = await entitlement_store.load(req.db, req.user_ref)
     except entitlement_store.EntitlementStoreError:
         return None
-    return access_at(ledger, req.now).level is AccessLevel.PRO
+    return access_at(ledger, db_now).level is AccessLevel.PRO
 
 
-async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str) -> dict[DataInput, DataHealth]:
-    spot = req.quotes.underlying_price(underlying)
-    loaded = await elig.list_loaded_at(req.db)
+def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
+    """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
+    ``clock_timestamp()``, so both sides of the comparison come from the same clock."""
     if loaded is None:
-        listing = DataHealth.UNAVAILABLE
-    else:
-        same_day = loaded.astimezone(IST).date() == req.now.astimezone(IST).date()
-        listing = DataHealth.HEALTHY if same_day else DataHealth.STALE
+        return DataHealth.UNAVAILABLE
+    same_day = loaded.astimezone(IST).date() == db_now.astimezone(IST).date()
+    return DataHealth.HEALTHY if same_day else DataHealth.STALE
+
+
+async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,
+                       db_now: datetime.datetime) -> dict[DataInput, DataHealth]:
+    spot = req.quotes.underlying_price(underlying)
+    listing = _list_health(await elig.list_loaded_at(req.db), db_now)
     return {DataInput.LEG_PRICES: _health(priced.quote_times, req.now),
             DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), req.now),
             DataInput.INSTRUMENT_LIST: listing}
@@ -496,17 +503,18 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     available, required = await _zerodha_margin(req, priced, catalogue)
     positions = await _positions(req, catalogue)
     is_exit = req.action == EXIT
+    db_now = await elig.database_now(req.db)  # the clock that stamped the grants and the list load (ADR-023)
     return ExecutionContext(
         strategy_id=sid, version_id=f"revision-{stored.revision}", actor="user", underlying=underlying,
         action=ExecutionAction.EXIT if is_exit else ExecutionAction.NEW_ENTRY, as_of=req.now,
         market_open=market_open(req.now),
         broker_connected=True,  # today's order book was just read with the stored session (else refused above)
         session_valid=True,  # the same read: Zerodha accepted the session's token
-        pro_entitled=await _pro_entitled(req),
+        pro_entitled=await _pro_entitled(req, db_now),
         version_state=held.state,  # derived from the net of all plans (ep.version_state), never hard-coded
         rules_valid=True if stored.saved.definition.rules_ref is None else None,  # no rules: nothing to validate
         dependencies_satisfied=True,  # no open basket at Zerodha and no open stored plan (both refused above)
-        data_health=await _data_health(req, priced, underlying),
+        data_health=await _data_health(req, priced, underlying, db_now),
         margin_available=available, margin_required=required,
         reconciliation_blocked_strategy_ids=_reconciliation(req, held, positions, catalogue, underlying),
         price_bands=priced.price_bands,
