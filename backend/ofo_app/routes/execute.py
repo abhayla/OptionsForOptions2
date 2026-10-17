@@ -3,35 +3,40 @@
 Spec basis: REQ-073 AC-1 ("Execute Strategy turns the execution plan (REQ-056) into one Kite basket of LIMIT orders
 marked read-only"); REQ-073 AC-4 (no order-placement call: nothing here places an order, the user's browser posts the
 basket to Kite's page); ADR-050 item 4 "(b) persist the order intent before sending"; ADR-080 (3) (each LIMIT from the
-5-level depth); REQ-055 AC-3 (Zerodha's margin figure is authoritative).
+5-level depth); REQ-055 AC-3 (Zerodha's margin figure is authoritative); REQ-060 AC-7 (a position in no strategy blocks
+no strategy; a mismatch blocks only the strategy whose contract quantity disagrees).
 
 One request = one transaction, in this order (any refusal rolls back: nothing stored, no plan number consumed):
 1. the strategy (404 for a missing or another user's one); 2. Zerodha's order book: the floor plan number of THIS
 strategy's tags and any still-open order (refused); ``next_plan_number`` (its lock is held to commit); 3. EXIT: the
 held legs = the orders of the latest plan closed ``filled`` when it is an ENTRY (none -> refused); 4. each leg priced
-from its depth quote; 5. the ``ExecutionContext`` from real sources only (table in the W-095 report); 6. the fresh
-eligibility registry straight into ``check_pre_execution``; 7. freeze limits; 8. ``checked_basket`` (Zerodha's margin
-again, inside the basket); 9. ``record_plan`` with the basket's own tags, commit, return.
+from its depth; 5. the ``ExecutionContext`` from real sources only; 6. the fresh eligibility registry straight into
+``check_pre_execution``; 7. freeze limits; 8. ``checked_basket`` (Zerodha's margin again, inside the basket);
+9. ``record_plan`` with the basket's own tags, commit, return the exact form text (``BasketPost``).
 
 Answer states of each outside system (B4 (d)): Zerodha session absent -> 409 broker unconfirmed; any Zerodha read
-error (orders, positions, funds, basket margin) -> 409, nothing stored; an order status word not in the terminal
-allow-list -> treated as open (refused); a positions reply the W-091 adapter refuses -> reconciliation unknown
-(blocks); no quote / thin depth / off-tick depth / outside the band -> that leg refused; no list load -> every leg
-unconfirmed (the gate's own message).
+error (orders, positions, funds, basket margin) -> 409 / the gate's None, nothing stored; an order status word not in
+the terminal allow-list -> treated as open (refused); a positions reply the W-091 adapter refuses -> reconciliation
+unknown (blocks); no depth / thin depth / off-tick depth / outside a known band -> that leg refused; no band known ->
+the gate's own band-unknown block (entry) or exit confirmation (refused here); no list load -> the gate's message;
+an unreadable entitlement history -> ``pro_entitled`` None (the gate blocks where it asks).
 """
 from __future__ import annotations
 
 import datetime
 import functools
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
 
 from fastapi import APIRouter, Depends
 from ofo.engine import Action, Instrument, Leg
 from ofo.engine.product import Product
+from ofo.entitlements.engine import access_at
+from ofo.entitlements.events import AccessLevel
 from ofo.errors import UserFacingError, render
-from ofo.execution.basket import BasketRefused, KiteBasket, zerodha_exchange
+from ofo.execution.basket import BasketRefused, KiteBasket, parse_tag, zerodha_exchange
 from ofo.execution.context import (
     DataHealth,
     DataInput,
@@ -45,16 +50,19 @@ from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
+from ofo.money import PAISE
 from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
+from ofo_app import entitlement_store
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import live_market
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
+from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket
 from ofo_app.db import get_db
@@ -70,6 +78,7 @@ from ofo_app.routes.strategies import StrategyRefused
 router = APIRouter(route_class=ClosedRoute)
 
 FILLED = "filled"
+ENTRY, EXIT = "ENTRY", "EXIT"
 _IDS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
             "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 
@@ -88,7 +97,7 @@ class BasketOrderOut(ApiModel):
     product: Literal["NRML"]
     variety: Literal["regular"]
     quantity: int
-    price: Money  # 2-decimal string ("3.35")
+    price: Money  # 2-decimal string ("3.35"), display only
     readonly: bool
     tag: Identifier
 
@@ -96,8 +105,8 @@ class BasketOrderOut(ApiModel):
 class ExecuteOut(ApiModel):
     plan_number: int
     tags: list[Identifier]
-    api_key: Identifier
-    orders: list[BasketOrderOut]
+    basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
+    orders: list[BasketOrderOut]  # display only
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -108,9 +117,11 @@ class KiteSession(Protocol):
     margin: KiteMargin
 
 
+@dataclass(frozen=True)
 class _Session:
-    def __init__(self, api_key: str, reads: KiteReads, margin: KiteMargin) -> None:
-        self.api_key, self.reads, self.margin = api_key, reads, margin
+    api_key: str
+    reads: KiteReads
+    margin: KiteMargin
 
 
 async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
@@ -123,30 +134,46 @@ async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
     if token is None:
         return None
     transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
-    return _Session(market._config.api_key,
-                    KiteReads(api_key=market._config.api_key, access_token=token, transport=transport),
-                    margin)
+    api_key = market._config.api_key
+    return _Session(api_key, KiteReads(api_key=api_key, access_token=token, transport=transport), margin)
 
 
 class QuoteReader(Protocol):
-    def leg_quote(self, broker_token: str) -> Mapping[str, object] | None: ...
+    def leg_quote(self, instrument_id: InstrumentId, broker_token: str) -> ep.LegQuote | None: ...
 
     def underlying_price(self, underlying: str) -> tuple[Decimal, datetime.datetime] | None: ...
 
 
-class _NoQuotes:
-    """Production today: the live feed keeps best bid/ask only, never Kite's 5-level depth (kite_provider F-29), and
-    no REST quote call is on the allow-list, so there is no depth source: every leg is refused (never a made-up price)."""
+def _feed_key(instrument_id: InstrumentId) -> str:
+    return f"{instrument_id.exchange_segment}:{instrument_id.exchange_token}"  # the live feed's key (kite_provider)
 
-    def leg_quote(self, broker_token: str) -> None:
-        return None
+
+class LiveDepthQuotes:
+    """Production: ``live_market.latest_depth`` (W-097; None unless the feed is healthy and the last packet was a full
+    frame), read at the server clock, with the feed's last price when it holds one. The live feed carries no circuit
+    band, so ``band`` is None and the gate blocks an entry leg as band-unknown (reported gap, never a made-up band)."""
+
+    def __init__(self, clock: Callable[[], datetime.datetime]) -> None:
+        self._clock = clock
+
+    def leg_quote(self, instrument_id: InstrumentId, broker_token: str) -> ep.LegQuote | None:
+        key = _feed_key(instrument_id)
+        depth = live_market.latest_depth(key)
+        if depth is None:
+            return None
+        now = self._clock()
+        return ep.LegQuote(depth, now, _feed_last_price(key, now), None)
 
     def underlying_price(self, underlying: str) -> None:
-        return None
+        return None  # no spot reader for this route yet: the gate sees UNAVAILABLE (reported gap)
 
 
-def get_quote_reader() -> QuoteReader:
-    return _NoQuotes()
+def _feed_last_price(key: str, now: datetime.datetime) -> Decimal | None:
+    ctx = live_market.current_context()
+    getter = getattr(getattr(getattr(ctx, "provider", None), "book", None), "get", None)
+    quote = None if getter is None else getter(key, now)
+    ltp = getattr(quote, "ltp", None)
+    return ltp if type(ltp) is Decimal else None
 
 
 def server_clock() -> datetime.datetime:
@@ -155,6 +182,10 @@ def server_clock() -> datetime.datetime:
 
 def get_execute_clock() -> Callable[[], datetime.datetime]:
     return server_clock
+
+
+def get_quote_reader() -> QuoteReader:
+    return LiveDepthQuotes(server_clock)
 
 
 # ---- helpers --------------------------------------------------------------------------------------------------------
@@ -178,33 +209,45 @@ def _health(times: tuple[datetime.datetime, ...], now: datetime.datetime) -> Dat
     if not times:
         return DataHealth.UNAVAILABLE
     stale_after = HealthThresholds().stale_after
-    return DataHealth.HEALTHY if all(datetime.timedelta(0) <= now - t <= stale_after for t in times) \
-        else DataHealth.STALE
+    fresh = all(datetime.timedelta(0) <= now - t <= stale_after for t in times)
+    return DataHealth.HEALTHY if fresh else DataHealth.STALE
 
 
-async def _instrument_ids(db: Any, contract_ids: list[int]) -> dict[int, InstrumentId]:
-    rows = (await db.execute(_IDS, {"ids": sorted(set(contract_ids))})).all()
-    return {int(r.id): InstrumentId(r.exchange_segment, int(r.exchange_token)) for r in rows}
+def _iid(text_id: str) -> InstrumentId:
+    segment, token = text_id.split(":")
+    return InstrumentId(segment, int(token))
 
 
-def _held(stored: list[Any]) -> list[Any]:
-    """The orders the strategy holds: those of the latest plan closed ``filled``, when that plan is an ENTRY."""
-    filled = [p for p in stored if p.closed_reason == FILLED]
+def _held_plan(history: tuple[plans.StoredPlan, ...]) -> plans.StoredPlan | None:
+    """The latest plan closed ``filled``, when it is an ENTRY: its orders are what the strategy holds."""
+    filled = [p for p in history if p.close_reason == FILLED]
     if not filled:
-        return []
+        return None
     latest = max(filled, key=lambda p: p.plan_number)
-    return list(latest.orders) if latest.action == "ENTRY" else []
+    return latest if latest.action == ENTRY else None
 
 
-def _plan_orders(basket: KiteBasket) -> list[Any]:
-    return [plans.PlanOrder(tag=o.tag, exchange=o.exchange, tradingsymbol=o.tradingsymbol, side=o.transaction_type,
-                            quantity=o.quantity, price=o.price) for o in basket.orders]
+def _plan_orders(basket: KiteBasket) -> tuple[plans.PlanOrder, ...]:
+    return tuple(plans.PlanOrder(leg_index=parse_tag(o.tag).leg_index, tag=o.tag, instrument_id=_feed_key(o.instrument_id),
+                                 tradingsymbol=o.tradingsymbol, transaction_type=o.transaction_type,
+                                 quantity=o.quantity, price=o.price) for o in basket.orders)
 
 
 # ---- the route ------------------------------------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class _Request:
+    db: Any
+    user_ref: str
+    strategy_id: int
+    action: str
+    session: KiteSession
+    quotes: QuoteReader
+    now: datetime.datetime
+
+
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
-async def execute_strategy(
+async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     strategy_id: int, body: ExecuteIn,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     quotes: Annotated[QuoteReader, Depends(get_quote_reader)],
@@ -212,7 +255,10 @@ async def execute_strategy(
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
 ) -> ExecuteOut:
     try:
-        out = await _execute(db, user_ref, strategy_id, body.action, session, quotes, clock)
+        stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
+        if session is None:
+            raise _refuse("gate_broker_unconfirmed")
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock()), stored)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -225,144 +271,112 @@ async def execute_strategy(
     return out
 
 
-async def _execute(db: Any, user_ref: str, strategy_id: int, action: str, session: KiteSession | None,
-                   quotes: QuoteReader, clock: Callable[[], datetime.datetime]) -> ExecuteOut:
-    stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
-    sid = str(strategy_id)
-    if session is None:
-        raise _refuse("gate_broker_unconfirmed")
+async def _reserve_number(req: _Request) -> int:
+    """Zerodha's book first (floor + still-open refusal), then the store's number under the strategy lock."""
     try:
-        book = session.reads.fetch_orders()
-        floor, still_open = ep.book_floor(book, strategy_id)
+        floor, still_open = ep.book_floor(req.session.reads.fetch_orders(), req.strategy_id)
     except (KiteReadError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
     if still_open:
         raise _refuse("gate_dependencies_unsatisfied")
     try:
-        plan_number = await plans.next_plan_number(db, user_ref, strategy_id, floor=floor)
-        history = await plans.plans_for(db, user_ref, strategy_id)
+        return await plans.next_plan_number(req.db, req.user_ref, req.strategy_id, floor=floor)
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
 
-    catalogue = await load_catalogue(db)
-    underlying = stored.saved.definition.underlying
-    held_orders = _held(history)
-    if action == "ENTRY":
-        ids = await _instrument_ids(db, list(stored.saved.contract_ids))
-        entries = stored.saved.entries or (None,) * len(stored.saved.contract_ids)
-        wanted = [ep.LegToPrice(ids[cid], leg.action, leg.quantity, None if e is None else e.price)
-                  for cid, leg, e in zip(stored.saved.contract_ids, stored.saved.definition.legs, entries,
-                                         strict=True)]
-    else:
-        if not held_orders:
+
+async def _wanted(req: _Request, stored: Any, held: plans.StoredPlan | None) -> list[ep.LegToPrice]:
+    if req.action == EXIT:
+        if held is None:
             raise _refuse("gate_exit_unverified")
-        wanted = []
-        for o in held_orders:
-            (entry,) = catalogue.entries_for_broker_symbol(ZERODHA, o.tradingsymbol)
-            wanted.append(ep.LegToPrice(entry.id, Action.SELL if o.side == "BUY" else Action.BUY, o.quantity, None))
+        return [ep.LegToPrice(_iid(o.instrument_id), Action.SELL if o.transaction_type == "BUY" else Action.BUY,
+                              o.filled_quantity or 0, None) for o in held.orders]
+    rows = (await req.db.execute(_IDS, {"ids": sorted(set(stored.saved.contract_ids))})).all()
+    ids = {int(r.id): InstrumentId(r.exchange_segment, int(r.exchange_token)) for r in rows}
+    entries = stored.saved.entries or (None,) * len(stored.saved.contract_ids)
+    return [ep.LegToPrice(ids[cid], leg.action, leg.quantity, None if e is None else e.price)
+            for cid, leg, e in zip(stored.saved.contract_ids, stored.saved.definition.legs, entries, strict=True)]
+
+
+async def _execute(req: _Request, stored: Any) -> ExecuteOut:
+    plan_number = await _reserve_number(req)
+    history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
+    catalogue = await load_catalogue(req.db)
+    underlying = stored.saved.definition.underlying
+    held = _held_plan(history)
+    sid = str(req.strategy_id)
     try:
-        priced = ep.price_legs(sid, underlying, wanted, catalogue, quotes.leg_quote)
+        priced = ep.price_legs(sid, underlying, await _wanted(req, stored, held), catalogue, req.quotes.leg_quote)
     except ep.LegRefused as refused:
         raise _refuse_with(refused.message) from None
+    context = await _context(req, stored, priced, held, history, catalogue)
+    await _gate(req, priced, context, catalogue, underlying)
+    basket = await _basket(req, priced, catalogue, plan_number)
+    try:
+        await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action, _plan_orders(basket))
+    except plans.PlanStoreError:
+        raise _refuse("gate_dependencies_unsatisfied") from None
+    return _answer(plan_number, basket, req.session.api_key)
 
-    now = clock()
-    context = await _context(db, sid, stored, action, priced, held_orders, history, catalogue, session, quotes, now)
-    eligibility = await elig.fresh_registry(db, underlying=underlying)
-    result = check_pre_execution(priced.strategy, context, catalogue, eligibility, strategy_id=sid)
+
+async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext, catalogue: Any,
+                underlying: str) -> None:
+    eligibility = await elig.fresh_registry(req.db, underlying=underlying)
+    result = check_pre_execution(priced.strategy, context, catalogue, eligibility, strategy_id=str(req.strategy_id))
     if result.blocked:
         raise _refuse_with(result.failures[0].message)
-    if result.requires_confirmation:  # an exit on stale data: no confirmation step exists yet, so refuse (fail closed)
+    if result.requires_confirmation:  # an exit on unchecked data: no confirmation step exists yet (fail closed)
         raise _refuse("gate_data_unhealthy", data_input=DataInput.LEG_PRICES, state=DataHealth.STALE)
-    limits = await review_freeze_limits(db, priced.plan)
-    today = now.astimezone(IST).date()
+
+
+async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> KiteBasket:
+    limits = await review_freeze_limits(req.db, priced.plan)
+    today = req.now.astimezone(IST).date()
     frozen = freeze_check(priced.plan, limits, today=today)
     if frozen.blocks:
         raise _refuse_with(frozen.blocks[0].message)
     try:
-        basket = checked_basket(priced.plan, catalogue, plan_number, margin_client=session.margin,
+        basket = checked_basket(priced.plan, catalogue, plan_number, margin_client=req.session.margin,
                                 freeze_check=lambda p: freeze_check(p, limits, today=today))
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
-    assert type(basket) is KiteBasket  # noqa: S101 - the one production path to a basket
-    try:
-        await plans.record_plan(db, user_ref, strategy_id, plan_number, action, _plan_orders(basket))
-    except plans.PlanStoreError:
-        raise _refuse("gate_dependencies_unsatisfied") from None
+    if type(basket) is not KiteBasket:  # the one production path to a basket
+        raise TypeError("checked_basket returned something other than a KiteBasket")
+    return basket
+
+
+def _answer(plan_number: int, basket: KiteBasket, api_key: str) -> ExecuteOut:
     return ExecuteOut.model_validate({
-        "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "api_key": session.api_key,
+        "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
-                    "price": o.price.quantize(Decimal("0.01")), "readonly": o.readonly, "tag": o.tag}
+                    "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
                    for o in basket.orders]})
 
 
-async def _context(db: Any, sid: str, stored: Any, action: str, priced: ep.PricedPlan, held_orders: list[Any],
-                   history: list[Any], catalogue: Any, session: KiteSession, quotes: QuoteReader,
-                   now: datetime.datetime) -> ExecutionContext:
-    underlying = stored.saved.definition.underlying
-    # Reconciliation: Zerodha's positions vs what the stored filled plans say this strategy holds.
-    held_legs, held_units = [], {}
-    for o in held_orders:
-        (entry,) = catalogue.entries_for_broker_symbol(ZERODHA, o.tradingsymbol)
-        c = entry.contract
-        leg = Leg(Action(o.side), Instrument(c.instrument_type), c.strike, c.expiry, o.quantity, o.price)
-        held_legs.append(leg)
-    # Orchestrator decision (GC-2c step 6): the PLATFORM side comes from the database only - over every stored plan of
-    # this strategy, each order's ``filled_quantity`` (W-094, set by ``close_plan(..., filled=...)``), BUY + / SELL -,
-    # per contract; an open plan's order (None until closed) counts 0. Units on the same contract that no stored plan
-    # explains are a mismatch, as ``compare`` attributes them to the holding strategy (no standalone record here).
+# ---- the ExecutionContext, one real source per field ---------------------------------------------------------------
+
+def _held_units(history: tuple[plans.StoredPlan, ...], catalogue: Any, underlying: str) -> dict[tuple, int]:
+    """PLATFORM side, from the database only: every stored plan's filled quantities, BUY + / SELL -, per contract
+    (an open plan's orders are None until closed and count 0)."""
+    units: dict[tuple, int] = {}
     for stored_plan in history:
         for o in stored_plan.orders:
             filled = o.filled_quantity or 0
-            (entry,) = catalogue.entries_for_broker_symbol(ZERODHA, o.tradingsymbol)
-            key = ep.contract_key(catalogue, entry.id, underlying)
-            held_units[key] = held_units.get(key, 0) + (filled if o.side == "BUY" else -filled)
-    contracts = [(underlying, leg.instrument, None if leg.strike is None else leg.strike, leg.expiry)
-                 for leg in priced.strategy.legs]
+            key = ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
+            units[key] = units.get(key, 0) + (filled if o.transaction_type == "BUY" else -filled)
+    return units
+
+
+def _reconciliation(req: _Request, history: tuple[plans.StoredPlan, ...], catalogue: Any,
+                    underlying: str) -> frozenset[str] | None:
+    """REQ-060 AC-7 through ``ep.strategy_blocked``; an unreadable positions reply is unknown (None blocks)."""
     try:
-        positions = positions_from_reply(session.reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
-        blocked: frozenset[str] | None = frozenset({sid}) if ep.broker_mismatch(positions.net, held_units,
-                                                                                 contracts) else frozenset()
+        positions = positions_from_reply(req.session.reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
-        blocked = None  # unknown: the gate blocks
-    try:
-        available = KiteMargin.fetch_available_funds(session.margin)
-        required = KiteMargin.fetch_basket_margin(session.margin, _margin_orders(priced, catalogue)).required_total
-    except Exception:  # noqa: BLE001 - any failure to read Zerodha's figures is "not confirmed" (None blocks)
-        available = required = None
-    spot = quotes.underlying_price(underlying)
-    loaded = await elig._loaded_at(db)
-    is_exit = action == "EXIT"
-    active_version = None
-    if is_exit:
-        filled = max((p for p in history if p.closed_reason == FILLED), key=lambda p: p.plan_number)
-        active_version = f"plan-{filled.plan_number}"
-    products = {product_key(leg): Product.NRML for leg in held_legs} if is_exit else None
-    return ExecutionContext(
-        strategy_id=sid, version_id=f"revision-{stored.revision}", actor="user", underlying=underlying,
-        action=ExecutionAction.EXIT if is_exit else ExecutionAction.NEW_ENTRY, as_of=now,
-        market_open=market_open(now),
-        broker_connected=True,  # today's order book was just read with the stored session (else refused above)
-        session_valid=True,  # the same read: Zerodha accepted the session's token
-        pro_entitled=None,  # no entitlement source wired here; the gate asks it only for a risk-adding adjustment
-        version_state=VersionState.ACTIVE,  # the strategy's current stored revision is the version executed
-        rules_valid=True if stored.saved.definition.rules_ref is None else None,  # no rules: nothing to validate
-        dependencies_satisfied=True,  # no open basket at Zerodha and no open stored plan (both refused above)
-        data_health={
-            DataInput.LEG_PRICES: _health(priced.quote_times, now),
-            DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), now),
-            DataInput.INSTRUMENT_LIST: DataHealth.UNAVAILABLE if loaded is None
-            else (DataHealth.HEALTHY if loaded.astimezone(IST).date() == now.astimezone(IST).date()
-                  else DataHealth.STALE),
-        },
-        margin_available=available, margin_required=required,
-        reconciliation_blocked_strategy_ids=blocked,
-        active_legs=tuple(held_legs) if is_exit else None,
-        active_version_id=active_version,
-        active_legs_hash=active_legs_hash(sid, active_version, tuple(held_legs)) if is_exit else None,
-        active_products=products, exit_products=products,
-        price_bands=priced.price_bands,
-    )
+        return None
+    blocked = ep.strategy_blocked(positions.net, _held_units(history, catalogue, underlying))
+    return frozenset({str(req.strategy_id)}) if blocked else frozenset()
 
 
 def _margin_orders(priced: ep.PricedPlan, catalogue: Any) -> list[BasketOrder]:
@@ -374,5 +388,74 @@ def _margin_orders(priced: ep.PricedPlan, catalogue: Any) -> list[BasketOrder]:
     return out
 
 
-__all__ = ["ExecuteIn", "ExecuteOut", "get_execute_clock", "get_kite_session", "get_quote_reader",
+def _zerodha_margin(req: _Request, priced: ep.PricedPlan, catalogue: Any) -> tuple[Decimal | None, Decimal | None]:
+    try:
+        available = KiteMargin.fetch_available_funds(req.session.margin)
+        required = KiteMargin.fetch_basket_margin(req.session.margin, _margin_orders(priced, catalogue)).required_total
+    except Exception:  # noqa: BLE001 - any failure to read Zerodha's figures is "not confirmed" (None blocks)
+        return None, None
+    return available, required
+
+
+async def _pro_entitled(req: _Request) -> bool | None:
+    try:
+        ledger = await entitlement_store.load(req.db, req.user_ref)
+    except entitlement_store.EntitlementStoreError:
+        return None
+    return access_at(ledger, req.now).level is AccessLevel.PRO
+
+
+async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str) -> dict[DataInput, DataHealth]:
+    spot = req.quotes.underlying_price(underlying)
+    loaded = await elig._loaded_at(req.db)
+    if loaded is None:
+        listing = DataHealth.UNAVAILABLE
+    else:
+        same_day = loaded.astimezone(IST).date() == req.now.astimezone(IST).date()
+        listing = DataHealth.HEALTHY if same_day else DataHealth.STALE
+    return {DataInput.LEG_PRICES: _health(priced.quote_times, req.now),
+            DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), req.now),
+            DataInput.INSTRUMENT_LIST: listing}
+
+
+def _exit_fields(sid: str, held: plans.StoredPlan | None, catalogue: Any) -> dict[str, Any]:
+    if held is None:
+        return {"active_legs": None, "active_version_id": None, "active_legs_hash": None, "active_products": None,
+                "exit_products": None}
+    legs = []
+    for o in held.orders:
+        c = catalogue.get(_iid(o.instrument_id)).contract
+        legs.append(Leg(Action(o.transaction_type), Instrument(c.instrument_type), c.strike, c.expiry,
+                        o.filled_quantity or 0, o.price))
+    version = f"plan-{held.plan_number}"
+    products = {product_key(leg): Product.NRML for leg in legs}
+    return {"active_legs": tuple(legs), "active_version_id": version,
+            "active_legs_hash": active_legs_hash(sid, version, tuple(legs)), "active_products": products,
+            "exit_products": products}
+
+
+async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: plans.StoredPlan | None,
+                   history: tuple[plans.StoredPlan, ...], catalogue: Any) -> ExecutionContext:
+    sid, underlying = str(req.strategy_id), stored.saved.definition.underlying
+    available, required = _zerodha_margin(req, priced, catalogue)
+    is_exit = req.action == EXIT
+    return ExecutionContext(
+        strategy_id=sid, version_id=f"revision-{stored.revision}", actor="user", underlying=underlying,
+        action=ExecutionAction.EXIT if is_exit else ExecutionAction.NEW_ENTRY, as_of=req.now,
+        market_open=market_open(req.now),
+        broker_connected=True,  # today's order book was just read with the stored session (else refused above)
+        session_valid=True,  # the same read: Zerodha accepted the session's token
+        pro_entitled=await _pro_entitled(req),
+        version_state=VersionState.ACTIVE,  # the strategy's current stored revision is the version executed
+        rules_valid=True if stored.saved.definition.rules_ref is None else None,  # no rules: nothing to validate
+        dependencies_satisfied=True,  # no open basket at Zerodha and no open stored plan (both refused above)
+        data_health=await _data_health(req, priced, underlying),
+        margin_available=available, margin_required=required,
+        reconciliation_blocked_strategy_ids=_reconciliation(req, history, catalogue, underlying),
+        price_bands=priced.price_bands,
+        **_exit_fields(sid, held if is_exit else None, catalogue),
+    )
+
+
+__all__ = ["ExecuteIn", "ExecuteOut", "LiveDepthQuotes", "get_execute_clock", "get_kite_session", "get_quote_reader",
            "market_open", "router"]
