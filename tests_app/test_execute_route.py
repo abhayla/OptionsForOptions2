@@ -365,16 +365,14 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "OFS1V1L0")
 
-            again = await _post(app, sid, "ENTRY")  # one open plan per strategy
-            assert again.status_code == 409, again.text
-            assert "An order this execution depends on is not in place yet" in again.text, again.text
+            # one open plan per strategy: the open-plan refusal
+            await _refused_with(app, sid, "ENTRY", "An order this execution depends on is not in place yet")
 
             await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(flat)
-            short = await _post(app, sid, "EXIT")  # Zerodha holds 0 of the strategy's 65: blocked (AC-7)
-            assert short.status_code == 409, short.text
-            assert "do not match what we recorded" in short.text, short.text
+            # Zerodha holds 0 of the strategy's 65: blocked (AC-7), by the reconciliation-mismatch refusal
+            await _refused_with(app, sid, "EXIT", "do not match what we recorded")
             assert len(await plans.plans_for(conn, user, sid)) == 1  # nothing stored, no number consumed
 
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
@@ -391,6 +389,12 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             await _third_exit_refused(app, conn, user, sid)
         finally:
             await trans.rollback()
+
+
+async def _refused_with(app, sid: int, action: str, phrase: str) -> None:
+    resp = await _post(app, sid, action)
+    assert resp.status_code == 409, resp.text
+    assert phrase in resp.text, resp.text
 
 
 async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
@@ -608,7 +612,7 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
 
 # ---- database-stamped facts are judged on the database clock (round 4, ADR-023) ------------------------------------
 
-DB_NOW = datetime.datetime(2026, 10, 17, 7, 50, tzinfo=AT.tzinfo)  # the database clock; the route clock is AT (a day before)
+DB_NOW = datetime.datetime(2026, 10, 17, 7, 50, tzinfo=AT.tzinfo)  # database clock; route clock AT
 
 
 async def test_a_grant_stamped_on_the_database_clock_is_pro_while_the_route_clock_is_pinned_to_a_past_day(monkeypatch):
