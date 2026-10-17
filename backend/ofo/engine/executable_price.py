@@ -16,6 +16,7 @@ Standard library only, exact ``Decimal``, no float anywhere (a float price or ti
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from itertools import pairwise
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
@@ -85,12 +86,24 @@ def _levels(rows: object, name: str) -> tuple[DepthLevel, ...]:
     return tuple(out)
 
 
+def _book(bids: tuple[DepthLevel, ...], asks: tuple[DepthLevel, ...]) -> Depth:
+    """Both sides, refused unless best first and uncrossed: ``executable_limit`` takes the LAST walked level as the
+    worst, so an unsorted side would send a limit below a price the order must buy from."""
+    if any(later.price >= earlier.price for earlier, later in pairwise(bids)):
+        raise ValueError("depth bids must be strictly descending (best first)")
+    if any(later.price <= earlier.price for earlier, later in pairwise(asks)):
+        raise ValueError("depth asks must be strictly ascending (best first)")
+    if bids and asks and bids[0].price >= asks[0].price:
+        raise ValueError("depth is crossed: best bid >= best ask")
+    return Depth(bids=bids, asks=asks)
+
+
 def depth_from_quote(quote: Mapping[str, object]) -> Depth:
     """Read ``depth`` of one instrument's quote reply (parsed with ``parse_float=Decimal``)."""
     depth = quote.get("depth") if isinstance(quote, Mapping) else None
     if not isinstance(depth, Mapping):
         raise ValueError("quote has no depth mapping")
-    return Depth(bids=_levels(depth.get("buy", []), "buy"), asks=_levels(depth.get("sell", []), "sell"))
+    return _book(_levels(depth.get("buy", []), "buy"), _levels(depth.get("sell", []), "sell"))
 
 
 def depth_from_levels(bids: Iterable[tuple[Decimal, int]], asks: Iterable[tuple[Decimal, int]]) -> Depth:
@@ -98,7 +111,7 @@ def depth_from_levels(bids: Iterable[tuple[Decimal, int]], asks: Iterable[tuple[
     padding rule as ``depth_from_quote`` (price 0 / quantity 0 is absent, never a level)."""
     def rows(pairs: Iterable[tuple[Decimal, int]]) -> list[dict[str, object]]:
         return [{"price": price, "quantity": quantity} for price, quantity in pairs]
-    return Depth(bids=_levels(rows(bids), "buy"), asks=_levels(rows(asks), "sell"))
+    return _book(_levels(rows(bids), "buy"), _levels(rows(asks), "sell"))
 
 
 @dataclass(frozen=True)

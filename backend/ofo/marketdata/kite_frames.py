@@ -50,6 +50,7 @@ class RawTick:
     # index / quote); an EMPTY tuple = a full packet whose side is empty. The two never read alike.
     depth_bids: tuple[tuple[Decimal, int], ...] | None = None
     depth_asks: tuple[tuple[Decimal, int], ...] | None = None
+    depth_unusable: bool = False  # full packet with a negative depth quantity: depth None, counted by the caller
 
 
 @dataclass(frozen=True)
@@ -85,18 +86,23 @@ def _decode(p: bytes, divisor: int, token: int) -> RawTick | None:
         oi, ts = struct.unpack(">i", p[48:52])[0], struct.unpack(">i", p[60:64])[0]
         bid = struct.unpack(">i", p[_BID0 + 4:_BID0 + 8])[0]
         ask = struct.unpack(">i", p[_ASK0 + 4:_ASK0 + 8])[0]
+        bids, asks = _levels(p, _BID0, divisor), _levels(p, _ASK0, divisor)
+        bad = bids is None or asks is None  # one untrustworthy side: no depth at all (never half a book)
         return RawTick(token, "full", _money(ltp, divisor), volume=volume, oi=oi,
                        bid=_price_or_none(bid, divisor), ask=_price_or_none(ask, divisor), exchange_ts=ts,
-                       depth_bids=_levels(p, _BID0, divisor), depth_asks=_levels(p, _ASK0, divisor))
+                       depth_bids=None if bad else bids, depth_asks=None if bad else asks, depth_unusable=bad)
     return None
 
 
-def _levels(p: bytes, start: int, divisor: int) -> tuple[tuple[Decimal, int], ...]:
-    """Five (price, quantity) entries from ``start``, best first; a price-0 entry is absent (F-29), dropped."""
+def _levels(p: bytes, start: int, divisor: int) -> tuple[tuple[Decimal, int], ...] | None:
+    """Five (price, quantity) entries from ``start``, best first; a price-0 entry is absent (F-29), dropped.
+    ``None`` when an entry with a price has a negative quantity: the side cannot be trusted, so it is not offered."""
     out = []
     for i in range(_DEPTH_LEVELS):
         qty, paise = struct.unpack(">ii", p[start + 12 * i:start + 12 * i + 8])
         if paise > 0:
+            if qty < 0:
+                return None
             out.append((_money(paise, divisor), qty))
     return tuple(out)
 

@@ -5,16 +5,18 @@ exchange time 15:07:20 IST); its ten levels equal Zerodha's REST quote of that s
 (docs/research/depth-proof-2026-10-17).
 Expected values below are the REST quote's, typed once from real-order/fetch.json, not read back from the parser.
 """
+import dataclasses
 import datetime
 import struct
 from decimal import Decimal
 
 import pytest
 from _kite_fixture import FIXTURES, Clock, listed
-from ofo.engine.executable_price import Depth, DepthLevel, depth_from_levels, executable_limit
+from ofo.engine.executable_price import Depth, DepthLevel, depth_from_levels, depth_from_quote, executable_limit
 from ofo.engine.legs import Action
 from ofo.marketdata.kite_frames import parse_frame
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.marketdata.quote import SourceMetadata
 
 FRAME = (FIXTURES / "full-frame-12080386-150720.bin").read_bytes()
 TOKEN = 12080386
@@ -210,10 +212,10 @@ def test_a_later_quote_packet_clears_the_older_depth():
 
 
 def test_newer_full_frame_replaces_the_depth():
-    """AC-1: the latest full frame wins (bid level 0 changed 3.30 -> 3.25 in the new frame)."""
+    """AC-1: the latest full frame wins (bid level 0 changed 3.30 -> 3.32 in the new frame)."""
     provider, _ = _fed()
-    provider.on_frame(_with_price(FRAME, 0, 325), AT)
-    assert provider.latest_depth(INSTRUMENT_ID, AT).bids[0].price == D("3.25")
+    provider.on_frame(_with_price(FRAME, 0, 332), AT)
+    assert provider.latest_depth(INSTRUMENT_ID, AT).bids[0].price == D("3.32")
 
 
 @pytest.mark.parametrize("bad", ["x", 1.5, None])
@@ -228,3 +230,84 @@ def test_depth_from_levels_drops_a_price_zero_or_quantity_zero_level():
     depth = depth_from_levels([(D("0"), 10), (D("3.3"), 0), (D("3.25"), 5)], [(D("0"), 7)])
     assert depth.bids == (DepthLevel(D("3.25"), 5),)
     assert depth.asks == ()
+
+
+def _with_quantity(frame: bytes, entry: int, qty: int) -> bytes:
+    at = _level_at(0, entry)
+    return frame[:at] + struct.pack(">i", qty) + frame[at + 4:]
+
+
+def test_negative_quantity_level_never_crashes_the_frame():
+    """AC-1: a priced level with a negative quantity: that instrument's depth is None (the whole depth, never half a
+    book), its quote and every LATER tick of the frame still land, and the 'unmappable' counter moves."""
+    bad = _with_quantity(FRAME, 6, -5)  # ask level 1 of the real fixture
+    ltp_packet = (8).to_bytes(2, "big") + FRAME[4:8] + FRAME[12:16]  # a second packet, same token
+    frame = (2).to_bytes(2, "big") + bad[2:] + ltp_packet
+    provider, _ = _provider()
+    out = provider.on_frame(frame, AT)
+    assert [q.ask for q in out] == [D("3.35"), None]  # the damaged packet's quote landed, then the later packet
+    assert provider.latest_depth(INSTRUMENT_ID, AT) is None
+    assert provider.counters["unmappable"] == 1
+    assert parse_frame(bad).ticks[0].depth_unusable is True
+
+
+def test_good_frame_does_not_move_the_unmappable_counter():
+    """AC-1: the clean fixture counts nothing."""
+    provider, _ = _fed()
+    assert provider.counters["unmappable"] == 0
+
+
+@pytest.mark.parametrize(("bids", "asks"), [
+    ([(D("3.25"), 10), (D("3.3"), 10)], [(D("3.35"), 10)]),  # bids ascending
+    ([(D("3.3"), 10), (D("3.3"), 10)], [(D("3.35"), 10)]),  # bids repeated (not strictly descending)
+    ([(D("3.3"), 10)], [(D("3.45"), 10), (D("3.35"), 100)]),  # asks descending
+    ([(D("3.3"), 10)], [(D("3.35"), 10), (D("3.35"), 10)]),  # asks repeated
+    ([(D("3.35"), 10)], [(D("3.35"), 10)]),  # best bid == best ask
+    ([(D("3.4"), 10)], [(D("3.35"), 10)]),  # crossed
+])
+def test_unsorted_or_crossed_depth_is_refused(bids, asks):
+    """AC-1: a side not best-first, or a crossed book, is refused (ValueError) - never walked."""
+    with pytest.raises(ValueError):
+        depth_from_levels(bids, asks)
+
+
+def test_unsorted_quote_reply_depth_is_refused_too():
+    """AC-1: depth_from_quote shares the rule (REST replies)."""
+    reply = {"depth": {"buy": [{"price": D("3.3"), "quantity": 5}],
+                       "sell": [{"price": D("3.45"), "quantity": 10}, {"price": D("3.35"), "quantity": 100}]}}
+    with pytest.raises(ValueError):
+        depth_from_quote(reply)
+
+
+def test_a_book_with_one_empty_side_is_still_a_depth():
+    """AC-1: an empty side is not a crossing; the other side is still walkable."""
+    assert depth_from_levels([], [(D("3.35"), 10)]).asks[0].price == D("3.35")
+
+
+def test_provider_counts_and_drops_an_unsorted_full_frame():
+    """AC-1: a real frame with ask 0 patched to 3.40 (= ask 1, not strictly ascending): depth None, counter moves,
+    the quote still lands."""
+    bad = _with_price(FRAME, 5, 340)
+    provider, _ = _provider()
+    assert len(provider.on_frame(bad, AT)) == 1
+    assert provider.latest_depth(INSTRUMENT_ID, AT) is None
+    assert provider.counters["unmappable"] == 1
+
+
+def _book_depth(provider, mutate):
+    entry = provider.book._entries[INSTRUMENT_ID]
+    provider.book.update(mutate(entry.quote), entry.depth)
+    return provider.latest_depth(INSTRUMENT_ID, AT)
+
+
+def test_quote_with_validation_errors_gives_no_depth():
+    """AC-1: a quote that records a validation error (crossed bid/ask) is UNHEALTHY -> no depth."""
+    provider, _ = _fed()
+    assert _book_depth(provider, lambda q: dataclasses.replace(q, bid=D("4"), ask=D("3"))) is None
+
+
+def test_quote_with_declared_delay_gives_no_depth():
+    """AC-1: a delayed source (declared delay > 0) is DELAYED, not AVAILABLE -> no depth for an order price."""
+    provider, _ = _fed()
+    delayed = SourceMetadata(provider="zerodha-kite", feed_id="kite-ws-full", declared_delay_seconds=D("900"))
+    assert _book_depth(provider, lambda q: dataclasses.replace(q, source=delayed)) is None

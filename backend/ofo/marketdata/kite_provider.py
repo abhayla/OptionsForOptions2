@@ -96,7 +96,7 @@ class KiteProvider(MarketDataProvider):
             if quote is None:
                 self.counters["unmapped_token"] += 1
                 continue
-            depth = self._depth_of(tick)
+            depth = self._depth_of(tick)  # never raises: a bad depth is counted and the quote still lands
             if tick.token not in self._wanted:  # fail closed: a token nobody holds never reaches the book or a listener
                 if not self.book.update_parked(quote, depth):  # parked: kept only for a re-take before the send
                     self.counters["unwanted_tick"] += 1
@@ -108,12 +108,19 @@ class KiteProvider(MarketDataProvider):
                 self._listener(self._with_health(quote, received_at))
         return out
 
-    @staticmethod
-    def _depth_of(tick: RawTick) -> Depth | None:
-        """The full frame's depth; None for a packet without one (a quote / ltp packet is not 'no liquidity')."""
+    def _depth_of(self, tick: RawTick) -> Depth | None:
+        """The full frame's depth; None for a packet without one (a quote / ltp packet is not 'no liquidity').
+        Never raises: unusable, unsorted or crossed depth is counted (``unmappable``), the quote still lands."""
+        if tick.depth_unusable:
+            self.counters["unmappable"] += 1
+            return None
         if tick.depth_bids is None or tick.depth_asks is None:
             return None
-        return depth_from_levels(tick.depth_bids, tick.depth_asks)
+        try:
+            return depth_from_levels(tick.depth_bids, tick.depth_asks)
+        except ValueError:
+            self.counters["unmappable"] += 1
+            return None
 
     def latest_depth(self, instrument_id: str, now: datetime.datetime | None = None) -> Depth | None:
         """ADR-080 (3): the 5-level depth the Execute price walks, or None (see ``QuoteBook.latest_depth``)."""
