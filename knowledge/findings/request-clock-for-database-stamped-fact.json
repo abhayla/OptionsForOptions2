@@ -10,9 +10,11 @@
  },
  "fix": "Applied per instance: Pro and list freshness on the database clock (W-095 r4); the external-order audit stamp on the database clock (W-096 r3). Class rule: the request clock is for MARKET data only (quotes, depth, market open, freeze freshness); anything the database stamps is judged and written on the database clock, read once per request. Mechanism (proposed, the next contract): a repo test over backend/ofo_app/routes/ that refuses passing the request-clock value into entitlement_store, audit_store or catalogue-freshness calls.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Found only by DB tests that pin the request clock to a recorded day. A mechanism is due (3 occurrences)."
+  "status": "guarded",
+  "checks": [
+   "audit_store.append takes no time from its caller; it reads clock_timestamp() after the lock (a caller passing timestamp= is a TypeError) - GC-2e item 8, PR #373; tests_app/test_audit_store.py::test_event_time_is_the_clock_read_after_the_lock_and_before_the_anchor (sentinel clock; red if the app clock is used or the read moves before the lock)"
+  ],
+  "note": "Found only by DB tests that pin the request clock to a recorded day. A mechanism is due (3 occurrences). Guarded for the audit store by #373 (structural: no parameter to pass a request clock). The entitlement store's only caller time is event_at, a business date checked within 60 s of the database stamp."
  },
  "spec_ref": [
   "spec/decisions/ADR-023.md"
