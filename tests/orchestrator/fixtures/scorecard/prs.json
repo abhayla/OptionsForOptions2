@@ -1,0 +1,14 @@
+[
+ {"number":1,"createdAt":"2026-10-16T18:00:00Z","mergedAt":"2026-10-16T19:00:00Z","headRefName":"build/W-1",
+  "files":[{"path":"backend/ofo/a.py","additions":10,"deletions":1},{"path":"tests/ofo/test_a.py","additions":5,"deletions":0},
+           {"path":"frontend/src/x.vue","additions":3,"deletions":0},{"path":"frontend/e2e/y.spec.ts","additions":2,"deletions":0}]},
+ {"number":2,"createdAt":"2026-10-16T18:00:00Z","mergedAt":"2026-10-16T20:00:00Z","headRefName":"docs/batch",
+  "files":[{"path":"docs/process/p.md","additions":7,"deletions":0},{"path":"spec/decisions/ADR-1.md","additions":4,"deletions":0},
+           {"path":"scripts/s.py","additions":6,"deletions":0},{"path":"README.md","additions":1,"deletions":0}]},
+ {"number":3,"createdAt":"2026-10-16T18:00:00Z","mergedAt":"2026-10-17T12:00:00Z","headRefName":"fix/edge",
+  "files":[{"path":"backend/ofo/b.py","additions":100,"deletions":0}]},
+ {"number":4,"createdAt":"2026-10-16T10:00:00Z","mergedAt":"2026-10-16T17:51:59Z","headRefName":"build/old",
+  "files":[{"path":"backend/ofo/c.py","additions":100,"deletions":0}]},
+ {"number":5,"createdAt":"2026-10-16T18:00:00Z","mergedAt":"2026-10-17T01:00:00Z","headRefName":"solo",
+  "files":[{"path":"evidence/W-1/AC-1.md","additions":9,"deletions":0}]}
+]
