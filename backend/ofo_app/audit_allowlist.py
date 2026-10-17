@@ -144,6 +144,25 @@ ALLOWLIST: Mapping[EventType, Mapping[str, FieldSpec]] = MappingProxyType(
 #: ``allowlist_spec(through_revision=N)``, so each revision's database state is fixed and its downgrade is real.
 BASE_REVISION = 16
 DECLARED_IN_REVISION: Mapping[EventType, int] = MappingProxyType({EventType.ORDER_PREPARED: 17})
+#: The types every database at 0016 holds (frozen: never edited; a new type gets a DECLARED_IN_REVISION entry).
+BASE_TYPES = frozenset({
+    "entitlement_changed", "trial_started", "trial_expired", "direct_customer_eligibility_granted",
+    "direct_customer_eligibility_revoked", "referral_reward_granted", "subscription_started", "subscription_expired",
+    "broker_response_recorded", "execution_recorded", "admin_change_recorded",
+})
+
+
+def check_revisions(allowlist: Mapping[EventType, Any], declared_in: Mapping[EventType, int]) -> None:
+    """Fail closed: each declared type is a base type or names its migration revision (> BASE_REVISION), never both."""
+    for event_type in allowlist:
+        base = event_type.value in BASE_TYPES
+        revision = declared_in.get(event_type)
+        if base == (revision is not None) or (revision is not None and revision <= BASE_REVISION):
+            raise ValueError(f"{event_type.value}: not a base type, so it needs a DECLARED_IN_REVISION entry above "
+                             f"{BASE_REVISION} (and a base type must have none)")
+
+
+check_revisions(ALLOWLIST, DECLARED_IN_REVISION)
 
 
 class UndeclaredEventType(ValueError):

@@ -68,6 +68,12 @@ DECLARED = {
     EventType.ORDER_PREPARED,
 }
 UNDECLARED = sorted(set(EventType) - DECLARED, key=lambda e: e.value)
+#: Frozen: the types 0002 renders (every database at 0016). Never derived from the live allowlist.
+PRE_0017_TYPES = {
+    "entitlement_changed", "trial_started", "trial_expired", "direct_customer_eligibility_granted",
+    "direct_customer_eligibility_revoked", "referral_reward_granted", "subscription_started", "subscription_expired",
+    "broker_response_recorded", "execution_recorded", "admin_change_recorded",
+}
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -174,7 +180,7 @@ def test_exactly_the_nine_non_broker_two_broker_reply_and_order_prepared_types_a
 
 def test_database_event_type_check_equals_the_python_allowlist() -> None:
     """0002 renders the 0016 state (every type but those a later revision declares); 0017 renders the full list."""
-    assert set(_migration().DECLARED_EVENT_TYPES) == {e.value for e in ALLOWLIST} - {"order_prepared"}
+    assert set(_migration().DECLARED_EVENT_TYPES) == PRE_0017_TYPES
     assert set(_order_prepared_migration().AFTER) == {e.value for e in ALLOWLIST}
 
 
@@ -848,6 +854,22 @@ async def test_ac5_0017_downgrade_is_refused_while_an_order_prepared_event_is_st
             assert await _db_allowlist(conn) == allowlist_spec()
         finally:
             await trans.rollback()
+
+
+def test_ac5_the_0016_render_is_frozen_and_a_new_type_without_a_revision_is_refused() -> None:
+    """AC-5: 0002 renders exactly the 11 pre-0017 types (a frozen literal, not "all minus order_prepared"); a type
+    added to the allowlist without a DECLARED_IN_REVISION entry is refused at import (fail closed), as is a base type
+    given a revision or a revision at or below 16."""
+    from ofo_app import audit_allowlist as al  # noqa: PLC0415
+
+    assert set(allowlist_spec(through_revision=16)) == PRE_0017_TYPES == al.BASE_TYPES
+    fake = {**ALLOWLIST, EventType.ORDER_SUBMITTED: {"order_id": "scalar"}}
+    with pytest.raises(ValueError, match="order_submitted"):
+        al.check_revisions(fake, al.DECLARED_IN_REVISION)
+    al.check_revisions(fake, {**al.DECLARED_IN_REVISION, EventType.ORDER_SUBMITTED: 18})
+    for bad in ({**al.DECLARED_IN_REVISION, EventType.TRIAL_STARTED: 18}, {EventType.ORDER_PREPARED: 16}):
+        with pytest.raises(ValueError, match="DECLARED_IN_REVISION"):
+            al.check_revisions(ALLOWLIST, bad)
 
 
 def test_ac5_0017_pin_swap_fails_closed_and_through_revision_is_checked() -> None:
