@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 5507f68
+Generated from commit c16cc78
 
 ## Stage S0
 
@@ -183,6 +183,7 @@ Generated from commit 5507f68
 | 4b | decision | ADR-103 | - | An out-of-order fill is never read as a side flip; it is refused and blocks until the missing fill arrives |
 | 4b | decision | ADR-104 | - | What "Zerodha data allows" means for a leg - the current instrument list, the expiry date and the margin reply |
 | 4b | decision | ADR-105 | - | The basket tag's plan version is a per-strategy plan number, stored before the basket is handed out, one open plan at a time |
+| 4b | decision | ADR-107 | - | Before a live run, each open Tier A deferred issue is triaged against the run's path; only a 'yes' blocks |
 | 4b | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
 | 4b | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | 4b | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
@@ -527,7 +528,7 @@ Generated from commit 5507f68
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
 | 4a | 7 | 0 | 42 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 3 | 100 |
-| 4b | 1 | 0 | 29 | 10 | 0 | 18 | 9 | 3 | 13 | 0 | 19 | 102 |
+| 4b | 1 | 0 | 30 | 10 | 0 | 18 | 9 | 3 | 13 | 0 | 19 | 103 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 7 | 0 | 0 | 13 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 19 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 |

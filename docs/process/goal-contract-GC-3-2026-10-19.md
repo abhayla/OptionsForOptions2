@@ -1,10 +1,12 @@
 # Goal contract GC-3 (a trading day, from Mon 2026-10-19): the 4b live gate - one real 1-lot ENTRY and EXIT through the product path
 
-Chain: `goal-chain.md` (rules, process rules 1-8, scorecard). Written by GC-2e from its results (2026-10-17). Shaped
+Chain: `goal-chain.md` (rules, process rules 1-9, scorecard). Written by GC-2e from its results (2026-10-17). Shaped
 by the GC-3 draft review (`gc-3-draft-review-2026-10-17.md`: preparation moved to GC-2e) and this contract's own
-review (`gc-3-contract-review-2026-10-17.md`).
+review (`gc-3-contract-review-2026-10-17.md`). Trimmed to ADR-106/ADR-107 on 2026-10-17 (lock, pre-live checks P0
+6-7, generated scorecard); nothing in L1-L4 changed.
 **Owner needed: YES** - the Kite login, the typed "go", and every click on Kite's page (ADR-097 (2), (3)). Unattended,
-this contract does only P0 and stops at L1.
+this contract does only P0 and stops at L1. **Run P0 on Sunday 2026-10-18** (unattended; it holds the lock and stops
+at L1), so Monday starts at L1 with every pre-live check already green.
 **Cap: ~2 h of owner time in market hours; L2 starts no later than 13:30 IST** (so the EXIT can be placed before
 15:00). Tail reserve: 1 h after L4 (docs, the next contract, merge).
 
@@ -41,6 +43,16 @@ Proof: L1-L4 below, each step's output read back and written as an evidence row 
    screen builds its live request from planned entry prices and dead-ends without one, for ENTRY and EXIT alike
    (review finding 1, CRITICAL; the general fix is OQ-13). Before the owner is asked to act, open the Execute screen
    and see it reach "live".
+6. **Deferred-issue triage (ADR-107).** `gh issue list --state open --label deferred`; for every issue touching Tier
+   A code (CLAUDE.md Fast delivery point 3) write one line in the handover: "bears on this run (1-lot NRML LIMIT
+   basket ENTRY + EXIT on the owner's account): yes/no + reason". A fresh Opus reviewer checks every "no". Any "yes"
+   is fixed (Tier A, before L1) or put to the owner at L1 to accept in writing; an issue nobody can classify is a
+   "yes". #338 (negative balance blocks a closing basket) is re-checked against L1's real funds figure before L3.
+7. **Verifier on main for every money/order AC the run relies on (ADR-106 item 3).** REQ-073 AC-1..AC-5 and the
+   REQ-057 / REQ-058 / REQ-060 criteria the Execute and return routes use: `python tools/trace_check.py .` must show
+   each fresh, or a fresh verifier (Opus) passes it on main and the evidence is recorded. State on 2026-10-17 20:00 IST:
+   REQ-073 INCOMPLETE - AC-3 has no evidence file (W-105), AC-5 is named in no work item's `tests_required`. A gap that
+   needs code is built and Tier A reviewed in P0; if it cannot be done before L1, L1 does not start (stop, report).
 
 ## Live steps (owner present)
 - **L1 login + no-order probe.** The owner logs in to Kite in a private window -> `/broker/connected`. Then a
@@ -74,9 +86,10 @@ Proof: L1-L4 below, each step's output read back and written as an evidence row 
 1. P0 complete (evidence rows).
 2. L1-L4 as above, each with an evidence row; F-41 updated with the measured return shape.
 3. Findings from the live run registered the same turn (spec findings list + registry where a defect class).
-4. Docs batch; write the next contract (GC-4 if L4 passes, otherwise a fix contract built around the failure); get
-   it independently reviewed (record verbatim); mark NEXT; merge with the handover; print the prompt, the 5-line
-   summary and the scorecard.
+4. Docs batch; write the next contract on one page (GC-4 if L4 passes, otherwise a fix contract built around the
+   failure); check it per chain rule 3 - GC-4 builds alerts and a prepared basket (order behaviour), so a full fresh
+   Opus review (record verbatim); mark NEXT; merge with the handover (<= ~40 lines); delete the lock; print the
+   prompt, the 5-line summary and the scorecard from `scripts/orchestrator/stage_scorecard.py`.
 
 ## Stops
 - The owner's login, the typed "go", every click on Kite's page. Never an API order (ADR-100); never a sale of
@@ -91,6 +104,9 @@ Proof: L1-L4 below, each step's output read back and written as an evidence row 
   no order today; record the raw key list (P0 1b (a)); the next contract fixes the reader (review finding 7).
 
 ## Process rules
-- Chain rule 2: pull main, refuse if a row is RUNNING, set this row RUNNING in the first commit.
+- Chain rule 2 (ADR-106 item 6): pull main; refuse if a `lock/*` branch exists or a row is RUNNING; take
+  `lock/gc-3` with the one push in goal-chain.md (session, start, cap in its message); the close-out deletes it. The
+  lock stays held from Sunday's P0 to Monday's close-out, so its message names the cap `Mon 2026-10-19 16:30 IST`
+  (not stale before then).
 - Live runs on ofo_dev only (`dev_run.py`), never ofo_test.
 - The owner's clicks and "go" are quoted with their time in the handover.
