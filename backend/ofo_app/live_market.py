@@ -25,9 +25,11 @@ from decimal import Decimal
 from typing import Callable, Optional  # noqa: UP035
 
 from ofo.broker.kite_endpoints import KITE_WS_HOST
+from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
+
 from ofo_app.config import app_env, get_settings
 from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.live_push import LiveFeed
@@ -229,6 +231,16 @@ def set_current(market: Optional[LiveMarket]) -> None:  # noqa: UP045
 
 def current_context() -> Optional[MarketContext]:  # noqa: UP045
     return None if _current is None else _current.context()
+
+
+def latest_depth(instrument_id: str) -> Depth | None:
+    """ADR-080 (3): the live 5-level depth of one instrument for the Execute price, or None when there is no live
+    market, no full frame, or the feed is not healthy. The live socket subscribes in ``full`` mode (kite_ws.py)."""
+    ctx = current_context()
+    if ctx is None:
+        return None
+    reader = getattr(ctx.provider, "latest_depth", None)  # a provider without depth (the test replay) has none
+    return None if reader is None else reader(instrument_id, ctx.clock())
 
 
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045

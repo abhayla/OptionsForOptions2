@@ -28,6 +28,7 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 from ofo.instruments.models import INDEX_TYPE, ZERODHA, Contract, InstrumentId, ListedContract
+from ofo.sealed import SealedTuple
 
 
 @dataclass(frozen=True)
@@ -68,17 +69,11 @@ def _strict_bool(value: object, name: str) -> bool:
     return value
 
 
-class ListState(tuple):
+class ListState(SealedTuple, made_by="list_state_from_row,states_from_parsed_list"):
     """One catalogue contract as Zerodha's latest instrument-list load left it (ADR-104 (a)). Sealed: made only by
     ``list_state_from_row`` (a store row) or ``states_from_parsed_list`` (Zerodha's parsed list), never by hand."""
 
     __slots__ = ()
-
-    def __new__(cls, *_args: object, **_kwargs: object) -> ListState:
-        raise TypeError("a ListState comes only from list_state_from_row or states_from_parsed_list")
-
-    def __init_subclass__(cls, **_kwargs: object) -> None:
-        raise TypeError("ListState cannot be subclassed")
 
     @property
     def instrument_id(self) -> InstrumentId:
@@ -107,18 +102,6 @@ class ListState(tuple):
     @property
     def has_zerodha_row(self) -> bool:
         return self[7]
-
-    def __copy__(self) -> ListState:
-        raise TypeError("a ListState cannot be copied; read the row again")
-
-    def __deepcopy__(self, _memo: object) -> ListState:
-        raise TypeError("a ListState cannot be copied; read the row again")
-
-    def __reduce_ex__(self, _protocol: object) -> object:
-        raise TypeError("a ListState cannot be pickled; read the row again")
-
-    def __reduce__(self) -> object:
-        raise TypeError("a ListState cannot be pickled; read the row again")
 
 
 def list_state_from_row(row: Any) -> ListState:
@@ -182,18 +165,12 @@ def _entry_key(entry: tuple) -> tuple[str, int]:
     return entry[0], entry[1]
 
 
-class ZerodhaEligibility(tuple):
+class ZerodhaEligibility(SealedTuple, made_by="registry_from_list,apply_margin_refusals"):
     """The eligibility the pre-execution gate trusts. Each entry is a plain ``(segment, token, tradable, checked_at,
     reason)`` tuple. Sealed (see the module docstring): made only by ``registry_from_list`` and
     ``apply_margin_refusals``; there is no way to record, overwrite or remove an entry afterwards."""
 
     __slots__ = ()
-
-    def __new__(cls, *_args: object, **_kwargs: object) -> ZerodhaEligibility:
-        raise TypeError("a ZerodhaEligibility comes only from registry_from_list or apply_margin_refusals")
-
-    def __init_subclass__(cls, **_kwargs: object) -> None:
-        raise TypeError("ZerodhaEligibility cannot be subclassed")
 
     def _entry(self, instrument_id: object) -> tuple | None:
         if not isinstance(instrument_id, InstrumentId):
@@ -212,18 +189,6 @@ class ZerodhaEligibility(tuple):
         """Fail closed: an instrument with no recorded eligibility check is not tradable."""
         entry = self._entry(instrument_id)
         return entry is not None and entry[2] is True
-
-    def __copy__(self) -> ZerodhaEligibility:
-        raise TypeError("a ZerodhaEligibility cannot be copied; build it again from the list")
-
-    def __deepcopy__(self, _memo: object) -> ZerodhaEligibility:
-        raise TypeError("a ZerodhaEligibility cannot be copied; build it again from the list")
-
-    def __reduce_ex__(self, _protocol: object) -> object:
-        raise TypeError("a ZerodhaEligibility cannot be pickled; build it again from the list")
-
-    def __reduce__(self) -> object:
-        raise TypeError("a ZerodhaEligibility cannot be pickled; build it again from the list")
 
     def __repr__(self) -> str:
         return f"ZerodhaEligibility({len(self)} contracts)"
