@@ -28,6 +28,7 @@ vi.mock('@/composables/useStrategyLive', () => ({
   },
 }))
 
+import { matchesLegs } from '@/lib/liveMatch'
 import ExecuteStrategyPage from '@/pages/ExecuteStrategyPage.vue'
 import ExecutionReturnedPage from '@/pages/ExecutionReturnedPage.vue'
 import BasketForm from '@/components/execution/BasketForm.vue'
@@ -327,6 +328,23 @@ describe('AC-3: Check with Zerodha and the basket-return landing page', () => {
     const broken = { getItem: () => { throw new Error('denied') }, setItem: () => { throw new Error('denied') } }
     expect(readLastExecuted(broken)).toBeNull()
     expect(rememberExecuted('3', broken)).toBe(false)
+  })
+})
+
+describe('AC-1: the live matcher on the server\'s own recorded outcome answers (not a shape typed here)', () => {
+  const load = (f) => JSON.parse(readFileSync(resolve(__dirname, 'fixtures', f), 'utf8'))
+  const draftOf = (body) => ({ underlying: body.underlying, legs: body.legs.map((l) => ({ instrument_id: l.instrument_id,
+    action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })) })
+  it('AC-1: a recorded COMPUTED answer matches the draft it was asked for and reads as live', () => {
+    const body = load('outcome-condor-advanced.json')
+    expect(body.state).toBe('COMPUTED')
+    expect(matchesLegs(body, draftOf(body))).toBe(true)
+    expect(isLiveOutcome(body)).toBe(true)
+  })
+  it('AC-1: a recorded answer without a quote never reads as live', () => {
+    const body = load('outcome-condor-guided-no-quote.json')
+    expect(matchesLegs(body, draftOf(body))).toBe(true)
+    expect(isLiveOutcome(body)).toBe(false)
   })
 })
 

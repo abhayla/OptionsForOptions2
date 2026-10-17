@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import text
@@ -38,6 +39,15 @@ def check_database(database_url: str) -> None:
         raise SeedRefused(f"refused: the replay seed writes only to {TEST_DATABASE_NAME}, not {name!r}")
 
 
+def planned_entry() -> Any:
+    """W-104: the leg's ADR-075 planned entry, as a strategy saved from the Strategy Builder carries it: the recorded
+    LIMIT price 3.35 captured at the recorded market instant. Without it the Execute screen cannot follow the strategy
+    on the live socket (the outcome request needs each leg's planned entry) and never offers Execute."""
+    from ofo.strategy.stored_form import LegEntry  # noqa: PLC0415
+
+    return LegEntry(Decimal("3.35"), execute_replay.AT)
+
+
 async def seed(conn: Any, app_env: str, user: str = V1_OWNER_REF) -> bool:
     """Seeds on ``conn`` (never commits); True when it wrote, False when strategy 1 is already the owner's."""
     execute_replay.require_test_env(app_env)
@@ -46,7 +56,7 @@ async def seed(conn: Any, app_env: str, user: str = V1_OWNER_REF) -> bool:
         if held[0] != user:
             raise SeedRefused(f"strategy id 1 already belongs to {held[0]!r}; the replay needs it for {user!r}")
         return False
-    await execute_replay.store_strategy_one(conn, user, APP_ROLE)
+    await execute_replay.store_strategy_one(conn, user, APP_ROLE, entry=planned_entry())
     return True
 
 

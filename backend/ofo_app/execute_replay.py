@@ -236,10 +236,12 @@ def listed_contract() -> Any:
         exchange="NFO")
 
 
-async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 65) -> int:
+async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 65, entry: Any = None) -> int:
     """Strategy id 1 (the real tags OFS1V1...): saved through the store, then given id 1 as the owner role (the
     application role cannot write ``id``), then the transaction continues as the application role and a Pro grant is
-    added. The caller owns the transaction (the route tests roll it back; the seed commits it)."""
+    added. The caller owns the transaction (the route tests roll it back; the seed commits it). ``entry`` is the leg's
+    ADR-075 planned entry (``stored_form.LegEntry``): the route tests store none; the seed stores the recorded one, as
+    a strategy saved from the Strategy Builder carries it (W-104: the Execute screen follows only a priced strategy)."""
     from ofo.strategy import stored_form as sf  # noqa: PLC0415
     from sqlalchemy import text  # noqa: PLC0415
 
@@ -250,7 +252,7 @@ async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 6
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
                               {"s": real_order()["tradingsymbol"]})).scalar_one()
-    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, None)],
+    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, entry)],
                                    rules_ref=None, risk_limits={}, preferences={})
     made = await save_draft(conn, user, saved)
     await conn.execute(text("SET LOCAL session_replication_role = replica"))

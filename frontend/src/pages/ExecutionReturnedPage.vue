@@ -10,7 +10,8 @@ const strategyId = readLastExecuted()
 
 <template>
   <section class="p-4" data-testid="execution-returned">
-    <p>Your orders were handled on Kite's page.</p>
+    <h1 class="text-xl font-semibold" data-testid="page-title">Back from Kite</h1>
+    <p class="mt-2">Your orders were handled on Kite's page.</p>
     <ReturnCheck v-if="strategyId !== null" :strategy-id="strategyId" />
     <p v-else class="mt-2" data-testid="returned-no-strategy">
       <RouterLink to="/strategies" class="underline">Back to your strategies</RouterLink>

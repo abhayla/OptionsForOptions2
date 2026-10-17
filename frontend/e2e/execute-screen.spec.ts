@@ -22,7 +22,15 @@ test.describe('Execute screen on the Execute replay API', () => {
     await page.routeWebSocket('**/api/strategies/live', (ws) => {
       ws.onMessage((message) => {
         const body = JSON.parse(String(message))
-        ws.send(JSON.stringify({ state: 'COMPUTED', legs: body.legs.map((l: object) => ({ ...l, label: null })) }))
+        // the server's outcome push shape (routes/outcome.py LegOut): every leg key, echoed values, no label = live
+        ws.send(JSON.stringify({
+          state: 'COMPUTED',
+          legs: body.legs.map((l: { instrument_id: string, action: string, lots: number, planned_entry: string, captured_at: string }) => ({
+            instrument_id: l.instrument_id, symbol: 'NIFTY26O1923650CE', action: l.action, instrument: 'CE', strike: '23650.00',
+            expiry: '2026-10-19', lots: l.lots, lot_size: 65, quantity: 65, planned_entry: l.planned_entry,
+            captured_at: l.captured_at, ltp: '3.35', iv: null, health: null, label: null,
+          })),
+        }))
       })
     })
     const kite: Request[] = []
@@ -39,7 +47,15 @@ test.describe('Execute screen on the Execute replay API', () => {
 
     await page.goto(`${EXECUTE_REPLAY_URL}/strategy/1/execute`)
     const entry = page.getByTestId('prepare-entry')
-    await expect(entry).toBeVisible()
+    const screen = page.getByTestId('execute-screen')
+    try {
+      await expect(entry).toBeVisible()
+    } catch (e) {
+      // say WHY on a red: the screen's phase and its visible text (waiting, not-live message, refusal)
+      const phase = await screen.getAttribute('data-phase').catch(() => null)
+      const shown = await screen.innerText().catch(() => '(no execute screen)')
+      throw new Error(`no Execute action: phase=${phase}; screen text: ${shown}\n${e}`)
+    }
     const executed = page.waitForResponse((r) => r.url().endsWith('/api/strategies/1/execute') && r.request().method() === 'POST')
     await entry.click()
     const res = await executed
