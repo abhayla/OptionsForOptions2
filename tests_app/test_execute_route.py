@@ -334,10 +334,10 @@ async def _post(app, strategy_id: int, action: str):
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeypatch):
+async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeypatch):  # noqa: PLR0915
     """AC-1 core: ENTRY -> BUY 65 LIMIT 3.35 tagged OFS1V1L0 (plan 1 stored open, one ``order_prepared`` audited,
-    W-103); a re-press is refused (one open plan, no audit row); plan 1 closed filled 65 -> EXIT on the real FLAT 15:10 book is refused (AC-7 shortfall); EXIT on the real
-    +65 book -> SELL 65 LIMIT 3.30 tagged OFS1V2L0 (plan 2 stored open). Every other field equals the real basket."""
+    W-103); a re-press is refused (one open plan, no audit row); plan 1 closed filled 65 -> EXIT on the real FLAT
+    15:10 book is refused (AC-7 shortfall); EXIT on the real +65 book -> SELL 65 LIMIT 3.30 tagged OFS1V2L0 (plan 2 stored open). Every other field equals the real basket."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415

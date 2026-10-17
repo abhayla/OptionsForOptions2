@@ -398,7 +398,7 @@ async def test_ac3_external_order_recorded_once_and_closed_basket_is_nothing_pla
                                                                                     monkeypatch):
     """AC-3 / ADR-050 4(d): the book shows only OFS1V9L0 (no plan 9): plan 1 closes nothing_placed (its tag never
     reached Kite), the external order is listed and written to the audit log once across two returns."""
-    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_execute_route import _strategy_one, audit_head, audit_since  # noqa: PLC0415
     from test_strategy_store import _user  # noqa: PLC0415
 
     monkeypatch.setenv("APP_ENV", "test")
@@ -412,11 +412,15 @@ async def test_ac3_external_order_recorded_once_and_closed_basket_is_nothing_pla
             orders = [{**_data("orders-122104")[0], "tag": "OFS1V9L0"}]
             app = _app_for(conn, user, _Reads("122104", orders=orders))
             before = await _audit_count(conn)
+            head = await audit_head(conn)
             body = (await _post(app, sid)).json()
             assert body["plans"][0]["state"] == "nothing_placed"
             assert [(o["tag"], o["filled_quantity"]) for o in body["external_orders"]] == [("OFS1V9L0", 65)]
             await _post(app, sid)
             assert await _audit_count(conn) == before + 1
+            # W-103: the external order is not one of the plan's orders, so neither it nor its trade is recorded as ours
+            assert [(t, c) for t, c, _ in await audit_since(conn, head)] == [
+                ("broker_response_recorded", "external:1:261016170576173:COMPLETE:65")]
         finally:
             await trans.rollback()
 
