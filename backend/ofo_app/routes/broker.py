@@ -73,7 +73,7 @@ STATE_TTL_SECONDS = 600
 MAX_LIVE_STATES = 20
 STATE_COOKIE = "ofo_kite_login"
 #: Query keys whose presence makes an access-log line drop its whole query string.
-SECRET_QUERY_KEYS = frozenset({"request_token", "state", "access_token"})
+SECRET_QUERY_KEYS = frozenset({"request_token", "request_key", "state", "access_token"})
 #: ADR-051 V1 is single-user: the owner. Platform login replaces this dependency later.
 V1_OWNER_REF = "owner"
 
@@ -273,13 +273,18 @@ async def kite_callback(  # noqa: PLR0911, PLR0913
 
 
 class CallbackQueryFilter(logging.Filter):
-    """Drops the query string of any uvicorn access record whose query carries request_token, state or access_token,
-    on any path (uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with args (client, method, path-with-query, http version,
-    status)). Key-based, so a trailing slash or a root_path prefix cannot route around it."""
+    """Drops query strings from uvicorn access records (uvicorn logs ``'%s - "%s %s HTTP/%s" %d'`` with args (client,
+    method, path-with-query, http version, status)), in two layers:
+
+    1. On a callback path in ``paths`` the WHOLE query is dropped whatever its keys (W-105: Kite's basket return
+       carries a request_key, and any key Kite adds later is covered without a list). Matched case-insensitively on
+       the path's end, so a trailing slash or a root_path prefix cannot route around it.
+    2. On any path, a query carrying a key in SECRET_QUERY_KEYS is dropped (key-based second layer)."""
 
     def __init__(self, paths: tuple[str, ...] = ()) -> None:
         super().__init__()
-        self.paths = paths  # kept for the record; matching is by query key, not by path
+        self.paths = paths
+        self._ends = tuple(p.rstrip("/").lower() for p in paths if p.rstrip("/"))
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
@@ -292,6 +297,8 @@ class CallbackQueryFilter(logging.Filter):
     def _strip(self, value: object) -> object:
         if isinstance(value, str) and "?" in value:
             path, query = value.split("?", 1)
+            if self._ends and path.rstrip("/").lower().endswith(self._ends):
+                return path
             keys = {k.lower() for k, _ in parse_qsl(query, keep_blank_values=True)}
             if keys & SECRET_QUERY_KEYS or any(k in query.lower() for k in SECRET_QUERY_KEYS):
                 return path
