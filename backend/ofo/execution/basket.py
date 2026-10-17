@@ -40,10 +40,9 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Protocol
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
@@ -52,6 +51,7 @@ from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
+from ofo.sealed import SealedTuple
 
 KITE_BASKET_URL: Final = "https://kite.zerodha.com/connect/basket"
 MAX_TAG_LENGTH: Final = 20
@@ -133,32 +133,14 @@ class KiteOrder:
         return "{" + ", ".join(json.dumps(k) + ": " + v for k, v in parts) + "}"
 
 
-class KiteBasket(tuple):
+class KiteBasket(SealedTuple, made_by="build_basket"):
     """The basket of orders ``build_basket`` decided may be sent; sealed (see the module rules)."""
 
     __slots__ = ()
 
-    def __new__(cls, *_args: object, **_kwargs: object) -> KiteBasket:
-        raise TypeError("a KiteBasket comes only from build_basket")
-
-    def __init_subclass__(cls, **_kwargs: object) -> None:
-        raise TypeError("KiteBasket cannot be subclassed")
-
     @property
     def orders(self) -> tuple[KiteOrder, ...]:
         return tuple(self)
-
-    def __copy__(self) -> KiteBasket:
-        raise TypeError("a KiteBasket cannot be copied; build it again")
-
-    def __deepcopy__(self, _memo: object) -> KiteBasket:
-        raise TypeError("a KiteBasket cannot be copied; build it again")
-
-    def __reduce_ex__(self, _protocol: object) -> object:
-        raise TypeError("a KiteBasket cannot be pickled; build it again")
-
-    def __reduce__(self) -> object:
-        raise TypeError("a KiteBasket cannot be pickled; build it again")
 
     def __repr__(self) -> str:
         return f"KiteBasket(orders={self.orders!r})"
