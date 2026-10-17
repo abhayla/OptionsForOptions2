@@ -34,6 +34,7 @@ _egress.install()
 _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 #: One instrument as Kite's quote takes it: ``EXCHANGE:TRADINGSYMBOL``, plain ASCII only (W-099).
 QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
+_BARE_TARGETS: _Final = frozenset({"/portfolio/holdings"})  # calls sent with no query, no fragment (W-106)
 _QUOTE_TARGET: _Final = re.compile(rf"/quote(\?i={QUOTE_INSTRUMENT}(&i={QUOTE_INSTRUMENT})*)?", re.ASCII)
 _PLAIN_WS_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:[0-9]{1,5})?", re.ASCII)  # a local test fake carries a port
 
@@ -76,6 +77,8 @@ def check_call(method: str, url: str) -> None:
     verb = str(method).upper()
     if not any(m == verb and rx.fullmatch(path) for m, rx in _ALLOWED):
         raise KiteCallRefused(f"{verb} {path} is not an allow-listed Kite call; nothing was sent")
+    if path in _BARE_TARGETS and str(url).partition("//")[2][len(parts.netloc):] != path:
+        raise KiteCallRefused(f"{verb} {path}: no query or fragment is sent on this call; nothing was sent")
     if path == "/quote":  # the one call with a query: the repeated ``i=`` and nothing else, judged on the RAW text
         target = str(url).partition("//")[2][len(parts.netloc):]
         if not _QUOTE_TARGET.fullmatch(target):
