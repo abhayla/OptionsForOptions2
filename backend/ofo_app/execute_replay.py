@@ -13,10 +13,10 @@ The route tests (tests_app/test_execute_route.py, test_execution_return.py) impo
 from __future__ import annotations
 
 import datetime
+import functools
 import json
-import os
 import pathlib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -28,12 +28,13 @@ from ofo.instruments.parser import parse_instruments_csv, zerodha_listed
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.timeutil import IST_UNNAMED
 
+from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import execute_plan as ep
+from ofo_app.execute_replay_switch import ENV_NAME, ExecuteReplayRefused, replay_requested, require_test_env
 from ofo_app.kite_margin import KiteMargin
 from ofo_app.kite_reads import KiteReads
 from ofo_app.routes import execute
 
-ENV_NAME = "EXECUTE_REPLAY"
 _ROOT = pathlib.Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
 REPLIES = _ROOT / "kite_replies"
 _KITE_WS = _ROOT / "kite_ws"
@@ -51,29 +52,26 @@ AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=IST_UNNAMED)
 FRAME_AT = datetime.datetime.fromtimestamp(1792143440, IST)  # the depth frame's exchange time, 15:07:20 IST
 #: fetch.json's NIFTY spot and its own time (the recorder's index read, README there)
 SPOT = (Decimal("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))
-REAL_BASKET = json.loads((REPLIES / "basket-121848.json").read_text(encoding="utf-8"))
-(REAL_ORDER,) = json.loads(REAL_BASKET["data"], parse_float=Decimal)
 
 #: Zerodha's basket-margin reply per basket total: the EXIT reply is the REAL one (fetch.json ``margin_raw``, SELL 65
 #: @ 3.30, final.total -214.5); the ENTRY reply is DERIVED from it with the recorder's entry total 354.25 (README).
 _BASKET_REPLIES = {"354.25": "margins-basket-entry-derived.json", "-214.5": "margins-basket-exit-150717.json"}
 _MONEY_KEYS = {"last_price", "average_price", "lower_circuit_limit", "upper_circuit_limit", "price", "open", "high",
                "low", "close", "low_limit_price_protection", "high_limit_price_protection"}
-_TRUE = {"1", "true", "yes", "on"}
+__all__ = ["ENV_NAME", "ExecuteReplayRefused", "replay_requested", "require_test_env"]  # the switch, re-exported
 
 
-class ExecuteReplayRefused(RuntimeError):
-    """The Execute replay was requested outside APP_ENV=test."""
+# ---- every fixture is read lazily (inside a function): importing this module reads no file ---------------------------
+
+@functools.cache
+def real_basket() -> dict:
+    """The entry basket the owner sent on 2026-10-16 (basket-121848.json)."""
+    return json.loads((REPLIES / "basket-121848.json").read_text(encoding="utf-8"))
 
 
-def replay_requested() -> bool:
-    return os.environ.get(ENV_NAME, "").strip().lower() in _TRUE
-
-
-def require_test_env(app_env: str) -> None:
-    """Allow-list: exactly ``test``; every other value (empty, production, a case or space variant) is refused."""
-    if app_env != "test":
-        raise ExecuteReplayRefused(f"{ENV_NAME} is a test-only setting: it needs APP_ENV=test")
+def real_order() -> dict:
+    (order,) = json.loads(real_basket()["data"], parse_float=Decimal)
+    return order
 
 
 # ---- the recorded replies --------------------------------------------------------------------------------------------
@@ -203,12 +201,25 @@ def _replay_session(request: Request) -> ReplaySession:
     return session_for(entry_replay())
 
 
+async def database_clock_today(conn: Any) -> datetime.date:
+    """India date of the DATABASE clock (the clock that stamps a plan's ``created_at``), never the test-only pin."""
+    return (await elig.database_now(conn)).astimezone(IST).date()
+
+
+def _today_reader(request: Request) -> Callable[[Any], Awaitable[datetime.date]]:
+    """The return route judges "today's session" on the database clock, so plan 1 (stamped by that clock) is today's
+    on any date; every other route keeps the eligibility reader (the TEST_CATALOGUE_DATE pin, contract expiry)."""
+    if request.url.path.endswith("/execution/return"):
+        return database_clock_today
+    return elig.get_eligibility_today()
+
+
 def overrides() -> dict[Callable[..., Any], Callable[..., Any]]:
-    """The Execute (and so the return) route's session, quote reader and clock, answered from the recording;
+    """The Execute (and so the return) route's session, quote reader and clocks, answered from the recording;
     ``create_app`` installs them (the one app-assembly file)."""
     quotes = DepthQuotes(frame_quote())
     return {execute.get_kite_session: _replay_session, execute.get_quote_reader: lambda: quotes,
-            execute.get_execute_clock: lambda: (lambda: AT)}
+            execute.get_execute_clock: lambda: (lambda: AT), elig.get_eligibility_today: _today_reader}
 
 
 # ---- the stored strategy (route tests and the seed command) ----------------------------------------------------------
@@ -236,7 +247,7 @@ async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 6
     await apply_update(conn, [listed_contract()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo))
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
-                              {"s": REAL_ORDER["tradingsymbol"]})).scalar_one()
+                              {"s": real_order()["tradingsymbol"]})).scalar_one()
     saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, None)],
                                    rules_ref=None, risk_limits={}, preferences={})
     made = await save_draft(conn, user, saved)
@@ -252,7 +263,9 @@ async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 6
 
 async def pro_grant(conn: Any, user: str) -> None:
     """A real Pro grant through the entitlement store, ``granted_at`` = the database's own clock (ADR-023: the
-    database refuses a date more than 60 s off its clock; no trigger disabled, nothing backdated)."""
+    database refuses a date more than 60 s off its clock; nothing backdated). ``store_strategy_one`` disables
+    triggers (``session_replication_role = replica``) only for the id-1 renumbering and restores them before this
+    grant, so the grant runs with every trigger on."""
     from ofo.entitlements.events import AuditNote, NewGrant, Source  # noqa: PLC0415
 
     from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415

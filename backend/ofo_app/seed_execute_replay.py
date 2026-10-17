@@ -5,7 +5,7 @@
 Stores strategy id 1 for the v1 owner exactly as the route tests store it (``execute_replay.store_strategy_one``: the
 real contract through the guarded catalogue loader, the strategy through the store, id 1 set as the owner role, then the
 application role) and a Pro grant through ``entitlement_store.append`` stamped by the DATABASE clock (never a request
-clock). Refused unless APP_ENV is exactly ``test`` (the replay's own guard), and for a DATABASE_URL naming ofo_dev.
+clock). Refused unless APP_ENV is exactly ``test`` (the replay's own guard), and for any database but the test one.
 Idempotent: when strategy 1 already belongs to the owner, nothing is written; when it belongs to anyone else, refused.
 Do NOT run this locally.
 """
@@ -30,10 +30,12 @@ class SeedRefused(RuntimeError):
 
 
 def check_database(database_url: str) -> None:
-    from ofo_app.config import database_name  # noqa: PLC0415
+    """Allow-list: only the test database (``config.TEST_DATABASE_NAME``); any other name, or none, is refused."""
+    from ofo_app.config import TEST_DATABASE_NAME, database_name  # noqa: PLC0415
 
-    if database_name(database_url) == "ofo_dev":
-        raise SeedRefused("refused: DATABASE_URL names ofo_dev, the owner's live-run database")
+    name = database_name(database_url)
+    if name != TEST_DATABASE_NAME:
+        raise SeedRefused(f"refused: the replay seed writes only to {TEST_DATABASE_NAME}, not {name!r}")
 
 
 async def seed(conn: Any, app_env: str, user: str = V1_OWNER_REF) -> bool:

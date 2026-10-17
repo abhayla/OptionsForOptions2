@@ -25,13 +25,15 @@ import pytest
 from ofo.engine import Action, Instrument
 from ofo.instruments import Catalogue
 from ofo_app import execute_plan as ep
-from ofo_app.execute_replay import AT, CORE_ID, REAL_BASKET, REAL_ORDER, REPLIES, TOKEN  # noqa: F401 - shared seams
+from ofo_app.execute_replay import AT, CORE_ID, REPLIES, TOKEN, real_basket, real_order
 from ofo_app.execute_replay import DepthQuotes, RecordedKite, live_quote, session_for
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
 from ofo_app.execute_replay import store_strategy_one
 
 ROOT = Path(__file__).resolve().parents[1]
+REAL_BASKET = real_basket()
+REAL_ORDER = real_order()
 KEY = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))
 _live_quote = live_quote
 _Replay = RecordedKite

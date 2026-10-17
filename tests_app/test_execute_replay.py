@@ -9,6 +9,9 @@ from __future__ import annotations
 import ast
 import asyncio
 import datetime
+import os
+import subprocess
+import sys
 from decimal import Decimal as D
 from types import SimpleNamespace
 
@@ -16,14 +19,16 @@ import pytest
 from ofo.broker import egress
 from ofo.engine import Action
 from ofo.instruments import Catalogue
+from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import execute_plan as ep
 from ofo_app import execute_replay as er
+from ofo_app import execute_replay_switch as er_switch
 from ofo_app import main
 from ofo_app import seed_execute_replay as seed
 from ofo_app.routes import execute
 from starlette.requests import Request
 
-SEAMS = (execute.get_kite_session, execute.get_quote_reader, execute.get_execute_clock)
+SEAMS = (execute.get_kite_session, execute.get_quote_reader, execute.get_execute_clock, elig.get_eligibility_today)
 
 
 def _refused_envs() -> list[str]:
@@ -109,10 +114,10 @@ def test_ac4_return_reads_the_122104_book_and_refuses_every_write():
 
 
 ALLOWED_IMPORT_ROOTS = {"__future__", "datetime", "json", "os", "pathlib", "decimal", "typing", "fastapi", "ofo",
-                        "ofo_app", "sqlalchemy", "asyncio", "sys", "collections", "dataclasses"}
+                        "ofo_app", "sqlalchemy", "asyncio", "sys", "collections", "dataclasses", "functools"}
 
 
-@pytest.mark.parametrize("module", [er, seed])
+@pytest.mark.parametrize("module", [er, seed, er_switch])
 def test_ac4_replay_modules_import_no_network_client(module):
     """AC-4: an allow-list of import roots: anything else (an HTTP client, a socket) fails this test."""
     with open(module.__file__, encoding="utf-8") as f:
@@ -149,14 +154,15 @@ class _Conn:
 
 
 def test_ac4_seed_is_idempotent_and_never_takes_another_users_strategy_one(monkeypatch):
-    """AC-4: strategy 1 already the owner's -> nothing written; someone else's -> refused; ofo_dev -> refused."""
+    """AC-4: strategy 1 already the owner's -> nothing written; someone else's -> refused; only ofo_test is seeded."""
     monkeypatch.setattr(er, "store_strategy_one", lambda *a, **k: pytest.fail("wrote on a re-run"))
     mine = _Conn(("owner",))
     assert asyncio.run(seed.seed(mine, "test")) is False and len(mine.sql) == 1
     with pytest.raises(seed.SeedRefused):
         asyncio.run(seed.seed(_Conn(("someone",)), "test"))
-    with pytest.raises(seed.SeedRefused):
-        seed.check_database("postgresql+asyncpg://localhost:5432/ofo_dev")
+    for other in ("ofo_dev", "ofo_test2", "postgres", "OFO_TEST", ""):
+        with pytest.raises(seed.SeedRefused):
+            seed.check_database(f"postgresql+asyncpg://localhost:5432/{other}")
     seed.check_database("postgresql+asyncpg://localhost:5432/ofo_test")
 
 
@@ -167,3 +173,62 @@ def test_ac4_a_frame_without_the_contracts_depth_is_refused_never_invented(monke
     monkeypatch.setattr(er, "DEPTH_FRAME", empty)
     with pytest.raises(er.ExecuteReplayRefused):
         er.frame_quote()
+
+
+def test_ac4_the_return_judges_today_on_the_database_clock_and_execute_keeps_the_pin(monkeypatch):
+    """AC-4 (W-101 review MAJOR 1): with the pin at 2026-10-16, the return's "today" is the database clock's India date
+    (2026-11-03 18:45 UTC = 2026-11-04 00:15 IST, by hand), the date that stamped plan 1; Execute keeps the pin."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+
+    async def _db_now(conn):
+        return datetime.datetime(2026, 11, 3, 18, 45, tzinfo=datetime.UTC)
+
+    monkeypatch.setattr(elig, "database_now", _db_now)
+    back = er._today_reader(_request("/strategies/1/execution/return"))
+    assert asyncio.run(back(None)) == datetime.date(2026, 11, 4)
+    entry = er._today_reader(_request("/strategies/1/execute"))
+    assert asyncio.run(entry(None)) == datetime.date(2026, 10, 16)
+
+
+_NO_FIXTURES = """
+import os, pathlib, sys
+real_text, real_bytes = pathlib.Path.read_text, pathlib.Path.read_bytes
+def _guard(real):
+    def read(self, *a, **k):
+        if "fixtures" in pathlib.Path(self).parts:
+            raise OSError(f"test fixture read at import: {self}")
+        return real(self, *a, **k)
+    return read
+pathlib.Path.read_text, pathlib.Path.read_bytes = _guard(real_text), _guard(real_bytes)
+from ofo_app import main
+assert "ofo_app.execute_replay" not in sys.modules, "create_app's module imported the replay"
+main.create_app()
+os.environ["EXECUTE_REPLAY"] = "1"
+os.environ["APP_ENV"] = "production"
+try:
+    main.create_app()
+except Exception as exc:
+    assert type(exc).__name__ == "ExecuteReplayRefused", exc
+else:
+    raise AssertionError("not refused")
+assert "ofo_app.execute_replay" not in sys.modules, "the replay was imported before the refusal"
+import ofo_app.execute_replay
+print("OK")
+"""
+
+
+def test_ac4_production_start_up_reads_no_test_fixture_and_refuses_before_importing_the_replay():
+    """AC-4 (W-101 review MAJOR 2): with every tests/fixtures read failing, importing ofo_app.main, building the app
+    and even importing ofo_app.execute_replay succeed; the refusal comes before the replay module is imported."""
+    env = {k: v for k, v in os.environ.items() if k not in {"EXECUTE_REPLAY", "OUTCOME_REPLAY", "APP_ENV"}}
+    env["PYTHONPATH"] = os.pathsep.join([str(pathlib_backend()), env.get("PYTHONPATH", "")])
+    run = subprocess.run([sys.executable, "-c", _NO_FIXTURES], env=env,  # noqa: S603 - our own interpreter
+                         capture_output=True, text=True, timeout=120, check=False)
+    assert run.returncode == 0 and run.stdout.strip().endswith("OK"), run.stderr[-2000:]
+
+
+def pathlib_backend():
+    import pathlib  # noqa: PLC0415
+
+    return pathlib.Path(er.__file__).resolve().parent.parent
