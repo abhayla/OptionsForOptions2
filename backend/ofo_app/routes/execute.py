@@ -8,8 +8,12 @@ no strategy; a mismatch blocks only the strategy whose contract quantity disagre
 
 One request = one transaction, in this order (any refusal rolls back: nothing stored, no plan number consumed):
 1. the strategy (404 for a missing or another user's one); 2. Zerodha's order book: the floor plan number of THIS
-strategy's tags and any still-open order (refused); ``next_plan_number`` (its lock is held to commit); 3. what the
-strategy holds = ``ep.held_units`` (ADR-105: the net of filled units over ALL its plans), the one source of the exit
+strategy's tags and any still-open order (refused); ``next_plan_number`` (its lock is held to commit); 2b. W-107: that
+same order book (no second Zerodha read) as THIS strategy's ``TodaysBook`` (``return_book.read_book``):
+``execution_return.drifted`` on the stored plans refuses with ``gate_reconciliation_mismatch`` before any other check
+(``_executable``, positions), ENTRY, EXIT and adjustment alike (REQ-060 AC-6); untagged rows are never read as
+drift (AC-7); 3. what the strategy holds = ``ep.held_units`` (ADR-105: the net of filled units over ALL its plans),
+the one source of the exit
 legs (exactly the net, opposite side), the active legs + hash, the version state and the reconciliation platform side;
 an EXIT at net 0 and an ENTRY while held are refused (``_executable``); 4. each leg priced
 from its depth; 5. the ``ExecutionContext`` from real sources only; 6. the fresh eligibility registry straight into
@@ -74,10 +78,12 @@ from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, positions_from_reply
+from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
@@ -297,8 +303,9 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     return out
 
 
-async def _reserve_number(req: _Request) -> int:
-    """Zerodha's book first (floor + still-open refusal), then the store's number under the strategy lock."""
+async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
+    """Zerodha's book first (floor + still-open refusal), then the store's number under the strategy lock. Returns the
+    number and the order rows it read (W-107: the drift check reuses them, no second read)."""
     try:
         book = await asyncio.to_thread(req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
@@ -307,9 +314,20 @@ async def _reserve_number(req: _Request) -> int:
     if still_open:
         raise _refuse("gate_dependencies_unsatisfied")
     try:
-        return await plans.next_plan_number(req.db, req.user_ref, req.strategy_id, floor=floor)
+        return await plans.next_plan_number(req.db, req.user_ref, req.strategy_id, floor=floor), book
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
+
+
+def _plan_drift(req: _Request, history: tuple[plans.StoredPlan, ...], order_rows: list[object]) -> bool:
+    """W-107: True when a closed plan of THIS strategy differs from today's book (still working, or filled other than
+    stored at close). Only the strategy's own tags are read; an unreadable row is the broker-unconfirmed refusal."""
+    tags = frozenset(o.tag for p in history for o in p.orders)
+    try:
+        book = read_book(order_rows, (), req.strategy_id, tags)  # drift reads order rows only: no trades needed
+    except ValueError:  # KiteReplyError included
+        raise _refuse("gate_broker_unconfirmed") from None
+    return bool(drifted(history, book))
 
 
 def _executable(action: str, held: Mapping[str, int]) -> VersionState:
@@ -346,9 +364,11 @@ class _Held:
 
 
 async def _execute(req: _Request, stored: Any) -> ExecuteOut:
-    plan_number = await _reserve_number(req)
+    plan_number, order_rows = await _reserve_number(req)
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     units = ep.held_units(history)
+    if _plan_drift(req, history, order_rows):  # W-107: before any other refusal, so the owner sees the true reason
+        raise _refuse("gate_reconciliation_mismatch")
     held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history)
     catalogue = await load_catalogue(req.db)
     underlying = stored.saved.definition.underlying

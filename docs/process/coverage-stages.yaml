@@ -294,6 +294,7 @@ work_items:
   W-103: 4b           # GC-2e: audit events on both order routes (order_prepared, broker replies, fills; REQ-063 AC-5)
   W-105: 4b           # GC-2e: a basket return (no state) on the shared redirect URL lands on /execution/returned
   W-106: 4b           # GC-2e: holdings read on the Kite read door (ADR-097 (4) before/after check)
+  W-107: 4b           # GC-3: Execute refuses while the strategy's own closed plan has drifted at Zerodha (REQ-060 AC-6)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
