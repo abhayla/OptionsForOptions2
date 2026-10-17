@@ -597,7 +597,8 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
 
             async def _second_press_first(*args, **kwargs):
                 if not inner:  # the first press, between its number and its store: the second press runs whole
-                    inner.append(await _post(app, sid, "EXIT"))
+                    inner.append(None)  # marked BEFORE the second press, whose own store must not recurse
+                    inner[0] = await _post(app, sid, "EXIT")
                 return await real_record(*args, **kwargs)
 
             monkeypatch.setattr(plans, "record_plan", _second_press_first)
