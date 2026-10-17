@@ -362,7 +362,7 @@ async def test_a_closed_plan_cannot_be_reopened_and_closed_at_is_the_database_cl
 
 
 _ORDER_INSERT = ("INSERT INTO public.execution_plan_orders (strategy_id, plan_number, leg_index, tag, instrument_id, "
-                 "tradingsymbol, transaction_type, quantity, price) VALUES (:s, :p, :l, :tag, 'NSE_FO:47189', 'X', "
+                 "transaction_type, quantity, price) VALUES (:s, :p, :l, :tag, 'NSE_FO:47189', "
                  ":side, :q, :price)")
 
 
