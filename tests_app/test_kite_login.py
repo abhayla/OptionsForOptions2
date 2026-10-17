@@ -200,12 +200,11 @@ async def test_a_submitted_password_is_ignored_and_never_echoed():
 # ---- the state: random, single use, 10-minute life ----
 
 
-@pytest.mark.parametrize("state", [None, "", "never-issued"])
-async def test_missing_or_unknown_state_is_refused_without_an_exchange(state):
+@pytest.mark.parametrize("state", ["", "never-issued"])
+async def test_empty_or_unknown_state_is_refused_without_an_exchange(state):
+    """An EMPTY state= is present, so it is a login hit and refused (W-105); an absent state is a basket return."""
     kite = FakeKite()
-    params = {"status": "success", "request_token": REQUEST_TOKEN}
-    if state is not None:
-        params["state"] = state
+    params = {"status": "success", "request_token": REQUEST_TOKEN, "state": state}
     async with AsyncClient(transport=ASGITransport(app=_app(kite, RecordingDB())), base_url="http://t") as ac:
         response = await ac.get(CALLBACK, params=params)
     _redirected(response, "broker_state_invalid")
@@ -518,7 +517,12 @@ def test_create_app_fails_without_the_key(monkeypatch):
 # ---- the access log never records the callback's query string (real uvicorn) ----
 
 
-async def test_uvicorn_access_log_drops_the_callback_query():
+@pytest.mark.parametrize(("params", "landing"), [
+    ({"status": "success", "request_token": REQUEST_TOKEN, "state": "x"}, "/broker/refused?code=broker_state_invalid"),
+    ({"status": "success", "request_token": REQUEST_TOKEN, "type": "basket"}, "/execution/returned"),
+], ids=["login", "basket_return"])
+async def test_uvicorn_access_log_drops_the_callback_query(params, landing):
+    """AC-3 (W-105): the basket-return hit carries request_token too; its access-log line drops the query as well."""
     import uvicorn  # noqa: PLC0415
 
     records: list[logging.LogRecord] = []
@@ -544,9 +548,8 @@ async def test_uvicorn_access_log_drops_the_callback_query():
         assert server.started
         port = server.servers[0].sockets[0].getsockname()[1]
         async with httpx.AsyncClient() as ac:
-            response = await ac.get(f"http://127.0.0.1:{port}{CALLBACK}",
-                                    params={"status": "success", "request_token": REQUEST_TOKEN, "state": "x"})
-        _redirected(response, "broker_state_invalid")
+            response = await ac.get(f"http://127.0.0.1:{port}{CALLBACK}", params=params)
+        assert (response.status_code, response.headers["location"]) == (302, FRONTEND + landing)
     finally:
         server.should_exit = True
         await task
@@ -943,3 +946,102 @@ def test_the_door_origin_is_write_once_and_validated_inside_the_setter():
     with pytest.raises(ValueError):
         errors_module.typed_redirect(out, other + "/steal?x=1")  # the refused value never became allowed
     assert errors_module.typed_redirect(out, FRONTEND + "/broker/connected").headers["location"].startswith(FRONTEND)
+
+
+# ---- W-105 (REQ-073 AC-3): Kite's basket return on the shared redirect URL ----
+# https://kite.trade/docs/connect/v3/basket/: "the basket will redirect back to your registered `redirect_login`
+# along with a `request_key`, exactly like login." Only a login carries our redirect_params (the state).
+
+BASKET_RETURNS = [
+    {"status": "success", "request_token": REQUEST_TOKEN, "type": "basket"},
+    {"status": "success", "request_token": REQUEST_TOKEN},
+    {"status": "cancelled"},
+    {},
+]
+
+
+class CountingDB:
+    """Counts every use of the session without failing, so a test can assert the count is exactly 0."""
+
+    def __init__(self) -> None:
+        self.uses: list[str] = []
+
+    async def execute(self, *args, **kwargs) -> None:
+        self.uses.append("execute")
+
+    def begin(self) -> _Begin:
+        self.uses.append("begin")
+        return _Begin()
+
+
+@pytest.mark.parametrize("params", BASKET_RETURNS, ids=["basket", "no_type", "cancelled", "bare"])
+async def test_ac3_a_basket_return_lands_on_the_returned_page_with_no_exchange_store_or_state(params, monkeypatch):
+    """AC-3: a callback hit with NO state parameter is a basket return: 302 to FRONTEND/execution/returned, the
+    exchange called 0 times, the DB used 0 times, nothing stored or picked up, the state store not touched."""
+    stored: list[object] = []
+    picked: list[object] = []
+
+    async def _stored(*args, **kwargs) -> None:
+        stored.append(args)
+
+    async def _picked_up(config) -> None:
+        picked.append(config)
+
+    monkeypatch.setattr(broker_routes, "store_session", _stored)
+    monkeypatch.setattr(broker_routes.live_market, "pick_up_login", _picked_up)
+    kite, db = FakeKite(), CountingDB()
+    app = _app(kite, db, _owner_config())  # type: ignore[arg-type]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        issued = await _state(ac)  # a live login state exists; the basket return must leave it alone
+        store = app.state.broker.states
+        before = (dict(store._states), store.ops)
+        response = await ac.get(CALLBACK, params=params, headers={"host": "evil.example"})
+        after = (dict(store._states), store.ops)
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.headers["location"] == FRONTEND + "/execution/returned"
+    assert _browser_next_url(response) == FRONTEND + broker_routes.BASKET_RETURN_FRONTEND_PATH
+    assert response.content == b""
+    assert kite.calls == [] and db.uses == [] and stored == [] and picked == []
+    assert before == after and issued in after[0]
+    assert "set-cookie" not in response.headers  # an in-flight login's cookie is not cleared either
+
+
+async def test_ac3_the_basket_return_location_carries_none_of_the_incoming_query():
+    """AC-3: the request_token (and every other incoming key) never reaches the browser's address bar."""
+    app = _app(FakeKite(), CountingDB(), _owner_config())  # type: ignore[arg-type]
+    params = {"status": "success", "request_token": REQUEST_TOKEN, "type": "basket", "request_key": "RK_fake_77"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        response = await ac.get(CALLBACK, params=params)
+    location = response.headers["location"]
+    assert location == FRONTEND + "/execution/returned"
+    assert "?" not in location and REQUEST_TOKEN not in location and "RK_fake_77" not in location
+
+
+async def test_ac3_an_empty_state_is_a_login_hit_refused_not_a_basket_return():
+    """AC-3: state= (present, empty) is not absent: refused broker_state_invalid, no exchange, no landing page."""
+    kite = FakeKite()
+    app = _app(kite, RecordingDB(), _owner_config())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        response = await ac.get(CALLBACK + "?state=&status=success&request_token=" + REQUEST_TOKEN)
+    _redirected(response, "broker_state_invalid")
+    assert kite.calls == []
+
+
+async def test_ac3_a_forged_state_with_a_request_token_is_still_refused_as_today():
+    """AC-3: a hit WITH a state keeps the login path: a forged state is refused broker_state_invalid, no exchange."""
+    kite = FakeKite()
+    app = _app(kite, RecordingDB(), _owner_config())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        await _state(ac)
+        response = await ac.get(CALLBACK, params={"state": "forged-" + "x" * 40, "status": "success",
+                                                  "request_token": REQUEST_TOKEN})
+    _redirected(response, "broker_state_invalid")
+    assert kite.calls == []
+
+
+async def test_ac3_a_real_login_round_trip_still_connects(monkeypatch):
+    """AC-3: a login with its issued state still exchanges once and lands on /broker/connected."""
+    kite = FakeKite()
+    response = await _callback(kite, _CommitDB(), monkeypatch, status="success", request_token=REQUEST_TOKEN)
+    assert _browser_next_url(response) == FRONTEND + broker_routes.CONNECTED_FRONTEND_PATH
+    assert kite.calls == [REQUEST_TOKEN]
