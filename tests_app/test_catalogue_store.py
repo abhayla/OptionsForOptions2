@@ -425,7 +425,9 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
     assert payload["action"] == "catalogue_force_update" and payload["dropped_tradingsymbols"] == [["zerodha", "NIFTY26O1325050CE"]]
-    assert calls[0][2]["actor"] == "admin-1" and calls[0][2]["timestamp"] == AS_OF
+    assert calls[0][2]["actor"] == "admin-1"
+    # the store stamps the database clock itself: the domain's as_of is never forwarded as the event time
+    assert set(calls[0][2]) == {"actor", "correlation_id", "payload"}
 
     # a failed catalogue write leaves no audit event
     calls.clear()
@@ -660,9 +662,12 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
         try:
             await apply_update(conn, _fixture(), as_of=AS_OF)
             head = await read_anchor(conn)
-            now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            # as_of is the fixture's fixed download day, far from now: the audit event still stores, because the
+            # store stamps the database clock itself (finding request-clock-for-database-stamped-fact)
+            before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
-            await apply_update(conn, truncated, as_of=now, force=True, reason="broker delisted", actor="admin-1")
+            await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+            after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             listed = (await conn.execute(text(
                 f"SELECT currently_listed FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26O1325050CE')"))).scalar_one()
             assert listed is False
@@ -673,6 +678,7 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
 
             assert event.event_type is EventType.ADMIN_CHANGE_RECORDED
             assert event.payload["action"] == "catalogue_force_update" and event.actor == "admin-1"
+            assert before <= event.timestamp <= after and event.timestamp != AS_OF
         finally:
             await trans.rollback()
 
