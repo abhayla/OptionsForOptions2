@@ -26,16 +26,16 @@ the audit table holds `order_prepared` for plan 1 and `broker_response_recorded`
 order and trade ids (they carry order / trade ids, not plan numbers - the link to the plan is the order id).
 
 ## Why (GC-2c results + the two reviews)
-- Merged in GC-2c: W-093 (#354), W-094 (#357), W-095 (#359), W-097 (#356), W-098 (#355), W-099 (#360); W-096 (#358)
-  and W-100 - their state at GC-2c's close is in the GC-2c handover; item 1 covers either case.
+- Merged in GC-2c: W-093 (#354), W-094 (#357), W-095 (#359), W-096 (#358), W-097 (#356), W-098 (#355), W-099 (#360),
+  W-100 (#361).
 - Missing for a live order: no replay that drives the Execute and return routes outside a live Kite session; no
   cost in the Execute reply; no audit writer on the execute path (and the event a stored plan needs, `order_prepared`,
   is undeclared in the W-017 allow-list); no screen; no live subscription while a screen is open (the route refuses
   a leg without a live full frame); no holdings read; where Kite returns the browser after a basket is unverified.
 
 ## Done list
-1. **Land what GC-2c left open**: W-096 (#358) and W-100 (`brief-W-100.md`) if either is not on main. Proof: merged
-   (`gh pr view`), their route tests green in CI.
+1. **Confirm the GC-2c base**: W-096 (#358) and W-100 (#361) were both merged in GC-2c's close-out; confirm with
+   `gh pr view` and `git log origin/main` and start from there (nothing to land).
 2. **W-101 - test-only Execute/return replay** (Tier A: test code inside the order path): refused outside
    `APP_ENV=test` (the `replay_mode.require_test_env` pattern); serves the recorded Kite replies to both routes
    (orders/trades/positions 122104 and 151006, funds, the basket-margin replies, the quote), depth for the leg
