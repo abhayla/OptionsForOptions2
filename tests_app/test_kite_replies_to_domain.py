@@ -39,6 +39,8 @@ from ofo_app.kite_replies import (
     positions_from_reply,
 )
 
+pytestmark = pytest.mark.repo_scan
+
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
 SYMBOL = "NIFTY26O1923650CE"
 CONTRACT = ("NIFTY", Instrument.CE, Decimal("23650.00"), datetime.date(2026, 10, 19))

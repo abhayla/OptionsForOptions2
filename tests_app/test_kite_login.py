@@ -34,6 +34,8 @@ API_SECRET = "kite_fake_secret_value"  # noqa: S105
 REQUEST_TOKEN = "RQtok_fake_9f2c1a7e5b3d4c6a"  # noqa: S105
 ACCESS_TOKEN = "ACtok_fake_5e8d7c6b5a4f3e2d1c"  # noqa: S105
 CALLBACK = "/kite/callback"
+REQUEST_KEY = "RKkey_fake_3c1d9e7a"
+UNKNOWN_SECRET = "zz_unlisted_secret_42"
 USER_ID = "AB1234"
 FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest (the vite preview origin); the API's host differs
 CREDENTIAL_WORDS = ("password", "pin", "otp", "totp", "twofa", "2fa")
@@ -520,9 +522,12 @@ def test_create_app_fails_without_the_key(monkeypatch):
 @pytest.mark.parametrize(("params", "landing"), [
     ({"status": "success", "request_token": REQUEST_TOKEN, "state": "x"}, "/broker/refused?code=broker_state_invalid"),
     ({"status": "success", "request_token": REQUEST_TOKEN, "type": "basket"}, "/execution/returned"),
-], ids=["login", "basket_return"])
+    ({"status": "success", "request_key": REQUEST_KEY, "type": "basket"}, "/execution/returned"),
+    ({"foo_secret": UNKNOWN_SECRET}, "/execution/returned"),
+], ids=["login", "basket_return", "basket_request_key", "unknown_key"])
 async def test_uvicorn_access_log_drops_the_callback_query(params, landing):
-    """AC-3 (W-105): the basket-return hit carries request_token too; its access-log line drops the query as well."""
+    """AC-3 (W-105): every callback hit's access-log line drops the WHOLE query, whatever its keys: a basket return's
+    request_token or request_key (Kite's basket docs), and a key no list names."""
     import uvicorn  # noqa: PLC0415
 
     records: list[logging.LogRecord] = []
@@ -558,6 +563,7 @@ async def test_uvicorn_access_log_drops_the_callback_query(params, landing):
     lines = [r.getMessage() for r in records]
     assert any(CALLBACK in line for line in lines), lines
     assert all(REQUEST_TOKEN not in line and "request_token" not in line for line in lines), lines
+    assert all(REQUEST_KEY not in line and UNKNOWN_SECRET not in line and "?" not in line for line in lines), lines
 
 
 def _access_record(path: str) -> logging.LogRecord:
@@ -577,6 +583,22 @@ def test_the_access_log_filter_redacts_by_query_key_on_any_path(path):
     broker_routes.CallbackQueryFilter().filter(record)
     message = record.getMessage()
     assert "?" not in message and REQUEST_TOKEN not in message and ACCESS_TOKEN not in message
+    assert path.split("?")[0] in message
+
+
+@pytest.mark.parametrize("path", [
+    CALLBACK + "?foo_secret=" + UNKNOWN_SECRET,
+    CALLBACK + "/?status=success&type=basket&x=" + UNKNOWN_SECRET,
+    "/api" + CALLBACK.upper() + "?foo_secret=" + UNKNOWN_SECRET,
+    "/anything?request_key=" + REQUEST_KEY,
+])
+def test_the_access_log_filter_drops_any_query_on_the_callback_path_and_a_request_key_anywhere(path):
+    """AC-3 (W-105): on the callback path the whole query goes, unknown keys included (structural layer); the
+    request_key is also in the key list (second layer, any path)."""
+    record = _access_record(path)
+    broker_routes.CallbackQueryFilter((CALLBACK,)).filter(record)
+    message = record.getMessage()
+    assert "?" not in message and UNKNOWN_SECRET not in message and REQUEST_KEY not in message
     assert path.split("?")[0] in message
 
 

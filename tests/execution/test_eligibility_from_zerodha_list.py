@@ -32,6 +32,8 @@ from ofo.instruments import NSE_FO, Catalogue, EligibilityStatus, InstrumentId, 
 from ofo.instruments import eligibility as el
 from ofo.instruments.parser import zerodha_listed
 
+pytestmark = pytest.mark.repo_scan
+
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "eligibility" / "instruments-2026-10-16-slice.json"
 DATA = json.loads(FIXTURE.read_text(encoding="utf-8"), parse_float=D)
 LOADED_AT = datetime.datetime.fromisoformat(DATA["list_loaded_at"])

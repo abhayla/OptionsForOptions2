@@ -70,6 +70,10 @@ import re
 from datetime import date
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 TESTS_DIR = Path(__file__).resolve().parent
 CATALOGUE_CSV = TESTS_DIR / "fixtures" / "instruments" / "instruments_slice.csv"
 THIS_FILE = Path(__file__).resolve()

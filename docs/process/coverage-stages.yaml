@@ -285,6 +285,7 @@ work_items:
   W-104: 4b           # GC-2e: the Execute screen - orders, cost, the owner's Kite click, Check with Zerodha
   W-105: 4b           # GC-2e: a basket return (no state) on the shared redirect URL lands on /execution/returned
   W-102: 4b           # GC-2e: the full cost (premium, charges, funds, margin) in the Execute reply (ADR-097)
+  W-106: 4b           # GC-2e: holdings read on the Kite read door (ADR-097 (4) before/after check)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
