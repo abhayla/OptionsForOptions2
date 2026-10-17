@@ -20,3 +20,10 @@ Redaction: the owner's client id in `placed_by` and `account_id` (orders files) 
 carry no user name, email or user id field. Nothing else is changed (byte-identical otherwise; the money strings such
 as `"5.1"` are the recorder's shape, live Kite REST sends JSON numbers). `tests_app/test_kite_replies_to_domain.py`
 asserts the client id appears nowhere in this folder.
+
+## W-099 quote fixture
+
+`quote-150720.json`: the `quote` object (the owner's real REST quote of NIFTY26O1923650CE, token 12080386, 2026-10-16
+15:07:20) from `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/fetch.json`, unchanged. The envelope
+`{"status": "success", "data": {"NFO:NIFTY26O1923650CE": ...}}` is OURS (the recorder kept only the inner object); the
+money strings such as `"0.05"` are the recorder's shape, live Kite REST sends JSON numbers (tests cover both).

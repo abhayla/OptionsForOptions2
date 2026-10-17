@@ -1,6 +1,7 @@
 """Zerodha's orders, trades and positions over HTTP for the owner's own connection (W-093, REQ-073 AC-3, ADR-054).
 
-Three reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions`` (the module's entry in
+Four reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
+(W-099) (the module's entry in
 ``ALLOWED_CALLS``). Every request goes through ``check_call`` first, so a method or path outside the allow-list is
 refused BEFORE the transport is called, and the urllib door checks it again. No call here can place, change or cancel
 an order (REQ-073 AC-4).
@@ -17,16 +18,22 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Final
 
-from ofo.broker.kite_http import KiteCallRefused, check_call
+from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
 
 log = logging.getLogger("ofo_app.kite_reads")
 ORDERS_PATH: Final = "/orders"
 TRADES_PATH: Final = "/trades"
 POSITIONS_PATH: Final = "/portfolio/positions"
+QUOTE_PATH: Final = "/quote"
+QUOTE_LIMIT: Final = 500  # Kite's cap on instruments per quote call
+_INSTRUMENT: Final = re.compile(QUOTE_INSTRUMENT, re.ASCII)
+_PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
 _OK: Final = 200
 _BUSY: Final = 429
 _DENIED: Final = 403
@@ -45,6 +52,29 @@ def _rows(data: object) -> list[object]:
     if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
         raise KiteReadError("kite_read_bad_reply")
     return data
+
+
+def _limit(value: object) -> Decimal | None:
+    """A circuit limit as an exact Decimal, or None. JSON numbers arrive as int / Decimal (parse_float=Decimal); the
+    recorders' plain numeric strings are read exactly. A float, bool, NaN, text or anything else is not a limit."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        return Decimal(value) if _PLAIN_NUMBER.fullmatch(value) else None
+    if isinstance(value, int):
+        return Decimal(value)
+    if isinstance(value, Decimal) and value.is_finite():
+        return value
+    return None
+
+
+def _band(quote: object) -> tuple[Decimal, Decimal] | None:
+    if not isinstance(quote, dict):
+        return None
+    lower, upper = _limit(quote.get("lower_circuit_limit")), _limit(quote.get("upper_circuit_limit"))
+    if lower is None or upper is None or lower <= 0 or upper <= 0 or lower > upper:
+        return None
+    return lower, upper
 
 
 class KiteReads:
@@ -101,3 +131,20 @@ class KiteReads:
         if not isinstance(data, dict):
             raise KiteReadError("kite_read_bad_reply")
         return {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
+
+    def fetch_circuit_bands(self, instruments: Sequence[str]) -> dict[str, tuple[Decimal, Decimal]]:
+        """``GET /quote?i=...``: ``{EXCHANGE:SYMBOL: (lower, upper)}`` circuit limits, exact Decimal (ADR-080).
+
+        Only the instruments asked for, only those whose band is present, numeric, positive and ordered; any other is
+        ABSENT (the gate then blocks an ENTRY leg as band-unknown), never a guessed band. A whole-reply failure raises
+        ``KiteReadError``."""
+        asked = list(dict.fromkeys(instruments))
+        if len(asked) > QUOTE_LIMIT or not all(isinstance(i, str) and _INSTRUMENT.fullmatch(i) for i in asked):
+            raise KiteReadError("kite_read_refused")
+        if not asked:
+            return {}
+        data = self._data("GET", QUOTE_PATH + "?" + "&".join(f"i={i}" for i in asked))
+        if not isinstance(data, dict):
+            raise KiteReadError("kite_read_bad_reply")
+        bands = {i: _band(data.get(i)) for i in asked}
+        return {i: b for i, b in bands.items() if b is not None}
