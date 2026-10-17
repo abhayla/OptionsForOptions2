@@ -69,15 +69,16 @@ def _migration():
 
 def _head_pins() -> dict[str, str]:
     """The pins of the HIGHEST-numbered migration that publishes ``PINNED_BODIES`` (W-103: 0017 moved the payload
-    allowlist body, so the head database's pins are no longer 0006's). Found by scanning, never a fixed path."""
-    versions = ROOT / "backend" / "ofo_app" / "alembic" / "versions"
-    publishers = sorted(p for p in versions.glob("[0-9][0-9][0-9][0-9]_*.py")
-                        if re.search(r"^PINNED_BODIES\b", p.read_text(encoding="utf-8"), re.MULTILINE))
-    path = publishers[-1]
-    spec = importlib.util.spec_from_file_location(f"ofo_migration_pins_{path.stem}_test", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return dict(module.PINNED_BODIES)
+    allowlist body, so the head database's pins are no longer 0006's). Found by walking alembic's revision chain down
+    from head, never a fixed path."""
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    scripts = ScriptDirectory.from_config(Config(str(ROOT / "backend" / "ofo_app" / "alembic.ini")))
+    revision = scripts.get_revision(scripts.get_current_head())
+    while not hasattr(revision.module, "PINNED_BODIES"):
+        revision = scripts.get_revision(revision.down_revision)
+    return dict(revision.module.PINNED_BODIES)
 
 
 def _fixture_text() -> str:
