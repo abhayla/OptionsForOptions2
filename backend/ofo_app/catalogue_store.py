@@ -400,15 +400,17 @@ def _see_params(row: ListedContract, ref: BrokerRef) -> dict[str, Any]:
 
 class _BufferedAuditLog:
     """Collects the domain's forced-update audit event(s); apply_update writes them through the W-052 store only after
-    the catalogue write succeeded."""
+    the catalogue write succeeded. The domain's ``timestamp`` is not kept: the store stamps the database clock
+    (finding request-clock-for-database-stamped-fact)."""
 
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
 
     def append(self, event_type: Any, *, actor: str, timestamp: datetime, correlation_id: str,
                payload: Any = None) -> None:
-        self.events.append({"event_type": event_type, "actor": actor, "timestamp": timestamp,
-                            "correlation_id": correlation_id, "payload": payload})
+        del timestamp  # the audit store reads the database clock itself
+        self.events.append({"event_type": event_type, "actor": actor, "correlation_id": correlation_id,
+                            "payload": payload})
 
 
 def _keys(ids: Iterable[InstrumentId]) -> dict[str, list]:

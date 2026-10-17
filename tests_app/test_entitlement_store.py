@@ -269,7 +269,10 @@ async def test_store_append_stamps_the_database_time_and_writes_the_audit_event(
         audit = (await conn.execute(
             text('SELECT event_type, "timestamp" FROM public.audit_events WHERE correlation_id = :c'),
             {"c": f"ledger:{row_id}"})).one()
-        assert (audit.event_type, audit.timestamp) == (EventType.TRIAL_STARTED.value, stored)
+        after = await _db_now(conn)
+        # the audit store reads clock_timestamp() itself, after the ledger row was stamped (no caller time)
+        assert audit.event_type == EventType.TRIAL_STARTED.value
+        assert stored <= audit.timestamp <= after, (stored, audit.timestamp, after)
 
 
 async def test_store_refuses_a_grant_dated_2020_with_nothing_written(app_engine: AsyncEngine) -> None:

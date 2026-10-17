@@ -8,8 +8,8 @@ record).
 - ``record_prepared``: one ``order_prepared`` per stored plan, built from the STORED plan only (never a request field).
 - ``record_once``: an event is written at most once per correlation id (a replayed return writes nothing new). The
   check and the write run in the caller's transaction, under the strategy row lock the return route holds.
-- Every event's time is the database clock (``clock_timestamp()``, ADR-023), never a route's request clock (finding
-  request-clock-for-database-stamped-fact): the audit trigger judges the time against its own ``recorded_at``.
+- Every event's time is the database clock (``clock_timestamp()``, ADR-023), read by ``audit_store.append`` itself,
+  never a route's request clock (finding request-clock-for-database-stamped-fact): no caller can pass a time.
 """
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from ofo.audit.catalogue import EventType
 from sqlalchemy import text
 
 from ofo_app import audit_store
-from ofo_app.eligibility_from_zerodha import database_now
 from ofo_app.execution_plan_store import StoredPlan
 
 SYSTEM_ACTOR = "system"
@@ -37,7 +36,7 @@ def prepared_payload(plan: StoredPlan) -> dict[str, object]:
 
 async def record_prepared(conn: Any, plan: StoredPlan, *, actor: str) -> None:
     """Writes ``order_prepared`` for a plan just stored by ``record_plan`` in the same transaction."""
-    await audit_store.append(conn, EventType.ORDER_PREPARED, actor=actor, timestamp=await database_now(conn),
+    await audit_store.append(conn, EventType.ORDER_PREPARED, actor=actor,
                              correlation_id=f"plan:{plan.strategy_id}:{plan.plan_number}",
                              payload=prepared_payload(plan))
 
@@ -46,7 +45,7 @@ async def record_once(conn: Any, kind: EventType, correlation: str, row: Mapping
     """Appends ``row`` as ``kind`` unless an event of that kind with that correlation id is stored. True if written."""
     if (await conn.execute(_RECORDED, {"t": kind.value, "c": correlation})).first() is not None:
         return False
-    await audit_store.append(conn, kind, actor=SYSTEM_ACTOR, timestamp=await database_now(conn),
+    await audit_store.append(conn, kind, actor=SYSTEM_ACTOR,
                              correlation_id=correlation, payload=dict(row))
     return True
 
