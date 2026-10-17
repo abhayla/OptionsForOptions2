@@ -5,12 +5,16 @@ Stateless per call: everything is rebuilt from the database (stored plans and th
 Zerodha read (orders, trades, positions). One request = one transaction, in this order (any refusal rolls back):
 1. the strategy (404 for a missing or another user's one) and its row lock (two returns never close a plan twice);
 2. Zerodha's orders, trades and positions (any read or reply error -> 409, nothing changed);
-3. the open plan classified (``execution_return.classify``); a close reason closes it with Zerodha's filled
-   quantities, an EXIT reading ``exited`` only when the strategy is flat and Zerodha agrees; ``waiting`` and
-   ``reconciliation_required`` leave it open; nothing is ever sent to Zerodha (no Kite write exists here);
+3. the open plan classified (``execution_return.classify``; a plan created before today's session, on the database's
+   India date - the eligibility code's "today" - is never closed from the book); a close reason closes it with
+   Zerodha's filled quantities, an EXIT reading ``exited`` only when the strategy is flat and Zerodha agrees;
+   ``waiting`` and ``reconciliation_required`` leave it open; nothing is ever sent to Zerodha (no Kite write exists
+   here);
 4. orders tagged for the strategy with no stored plan: listed and written to the audit log once per (order, status,
    filled) as ``broker_response_recorded``;
-5. the reconciliation rows from the final stored state; the strategy's state and the fills' realised P&L.
+5. the reconciliation rows from the final stored state; the strategy's state and the fills' realised P&L. Other
+   strategies are keyed by THEIR own underlying; a contract one of them touches through an open or drifted plan is
+   undecidable here (reconciliation required, reason named).
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ from ofo.instruments.models import InstrumentId
 from sqlalchemy import text
 
 from ofo_app import audit_store
+from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
@@ -54,6 +59,7 @@ class ReturnPlanOut(ApiModel):
     action: Literal["ENTRY", "EXIT"]
     state: PlanState
     choices: list[Identifier]  # REQ-058 AC-2's four choices for a partial plan, in order; empty otherwise
+    reason: Optional[Literal["plan_from_earlier_session"]]  # noqa: UP045 - why reconciliation, beyond the book
 
 
 class ReturnContractOut(ApiModel):
@@ -64,6 +70,7 @@ class ReturnContractOut(ApiModel):
     unexplained_units: int  # beyond every stored strategy: listed, blocking nothing (REQ-060 AC-7)
     mismatch: Optional[Literal["recon_missing_platform_position", "recon_side_mismatch",  # noqa: UP045
                                "recon_quantity_mismatch"]]
+    reconciliation_reason: Optional[Literal["another_strategy_plan_unsettled"]]  # noqa: UP045 - undecidable here
 
 
 class ReturnExternalOut(ApiModel):
@@ -95,17 +102,32 @@ class _Request:
     strategy_id: int
     session: KiteSession
     now: datetime.datetime
+    today: datetime.date  # the database's India date: the session a plan must belong to, to close from the book
 
 
 def _refuse(template: str) -> StrategyRefused:
     return StrategyRefused(template, Failure.CONFLICT, message=render(template))
 
 
+@dataclasses.dataclass(frozen=True)
+class _Clocks:
+    now: Callable[[], datetime.datetime]
+    today_of: elig.TodayReader
+
+
+def get_return_clocks(
+    clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+    today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+) -> _Clocks:
+    """The request clock and the eligibility code's "today" (the database's India date), one seam each."""
+    return _Clocks(clock, today_of)
+
+
 @router.post("/strategies/{strategy_id}/execution/return", response_model=ReturnOut)
 async def return_from_kite(
     strategy_id: int,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
-    clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+    clocks: Annotated[_Clocks, Depends(get_return_clocks)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
 ) -> ReturnOut:
     try:
@@ -113,7 +135,8 @@ async def return_from_kite(
         if session is None:
             raise _refuse("gate_broker_unconfirmed")
         await store.lock_strategy(db, user_ref, strategy_id)  # held to commit: one return closes a plan once
-        out = await _return(_Request(db, user_ref, strategy_id, session, clock()), stored.saved.definition.underlying)
+        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db))
+        out = await _return(req, stored.saved.definition.underlying)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -158,15 +181,26 @@ def _keyed(units: Mapping[str, int], catalogue: Any, underlying: str) -> dict[tu
     return out
 
 
-async def _others(req: _Request, catalogue: Any, underlying: str) -> dict[tuple, int]:
-    """Units every OTHER stored strategy of this user holds, per contract (the same ``held_units``)."""
+async def _others(req: _Request, catalogue: Any, zerodha: _Read) -> tuple[dict[tuple, int], frozenset]:
+    """Units every OTHER stored strategy of this user holds, per contract (the same ``held_units``, keyed by THAT
+    strategy's underlying), and the contracts it touches through an open or drifted plan (undecidable here: its
+    filled units are not known, so they are never counted as 0)."""
     total: dict[tuple, int] = {}
+    unknown: set[tuple] = set()
     ids = [int(r[0]) for r in (await req.db.execute(_OTHER_STRATEGIES, {"u": req.user_ref, "s": req.strategy_id}))]
     for other in ids:
-        held = _keyed(ep.held_units(await plans.plans_for(req.db, req.user_ref, other)), catalogue, underlying)
-        for key, n in held.items():
+        underlying = (await store.load(req.db, req.user_ref, other)).saved.definition.underlying
+        history = await plans.plans_for(req.db, req.user_ref, other)
+        tags = frozenset(o.tag for p in history for o in p.orders)
+        try:
+            book = er.read_book(zerodha.orders, zerodha.trades, other, tags)
+        except ValueError:  # that strategy's rows unreadable: never guessed
+            raise _refuse("gate_broker_unconfirmed") from None
+        unknown.update(ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
+                       for o in er.unsettled_orders(history, book))
+        for key, n in _keyed(ep.held_units(history), catalogue, underlying).items():
             total[key] = total.get(key, 0) + n
-    return total
+    return total, frozenset(unknown)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -175,6 +209,7 @@ class _World:
     underlying: str
     zerodha: _Read
     others: Mapping[tuple, int]
+    undecidable: frozenset  # contracts another strategy's open or drifted plan touches
 
 
 def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, str]:
@@ -184,7 +219,8 @@ def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, 
 
 def _checks(history: Sequence[plans.StoredPlan], world: _World) -> tuple[er.ContractCheck, ...]:
     held = _keyed(ep.held_units(history), world.catalogue, world.underlying)
-    return er.reconcile(sorted(_symbols(history, world), key=repr), held, world.others, world.zerodha.net)
+    return er.reconcile(sorted(_symbols(history, world), key=repr), held, world.others, world.zerodha.net,
+                        world.undecidable)
 
 
 def _as_closed(plan: plans.StoredPlan, filled: Mapping[str, int]) -> plans.StoredPlan:
@@ -203,14 +239,14 @@ def _final_reason(history: Sequence[plans.StoredPlan], plan: plans.StoredPlan, a
 
 
 async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...], book: er.TodaysBook,
-                            world: _World) -> dict[int, str]:
+                            world: _World) -> dict[int, er.PlanAnswer]:
     open_plans = [p for p in history if p.status == "open"]
     if not open_plans:
         return {}
     plan = open_plans[0]
-    answer = er.classify(plan, book)
+    answer = er.classify(plan, book, req.today)
     if answer.state in (er.WAITING, er.RECONCILE):
-        return {plan.plan_number: answer.state}  # stays open: nothing changes (REQ-057 AC-2)
+        return {plan.plan_number: answer}  # stays open: nothing changes (REQ-057 AC-2)
     reason = _final_reason(history, plan, answer, world)
     await plans.close_plan(req.db, req.user_ref, req.strategy_id, plan.plan_number, reason=reason,
                            filled=dict(answer.filled))
@@ -232,10 +268,12 @@ async def _record_externals(req: _Request, book: er.TodaysBook) -> None:
                                  payload=dict(row))
 
 
-def _plan_out(plan: plans.StoredPlan, live: Mapping[int, str]) -> dict[str, object]:
-    state = live.get(plan.plan_number, plan.close_reason or er.WAITING)
+def _plan_out(plan: plans.StoredPlan, live: Mapping[int, er.PlanAnswer]) -> dict[str, object]:
+    now = live.get(plan.plan_number)
+    state = now.state if now is not None else plan.close_reason or er.WAITING
     return {"plan_number": plan.plan_number, "action": plan.action, "state": state,
-            "choices": list(er.PARTIAL_CHOICES) if state == er.PARTIAL else []}
+            "choices": list(er.PARTIAL_CHOICES) if state == er.PARTIAL else [],
+            "reason": now.reason if now is not None else None}
 
 
 def _strategy_state(history: Sequence[plans.StoredPlan], checks: Sequence[er.ContractCheck]) -> str:
@@ -255,19 +293,21 @@ def _external_out(book: er.TodaysBook) -> list[dict[str, object]]:
             for r in book.external]
 
 
-def _answer(req: _Request, history: tuple[plans.StoredPlan, ...], live: Mapping[int, str], book: er.TodaysBook,
-            world: _World) -> ReturnOut:
+def _answer(req: _Request, history: tuple[plans.StoredPlan, ...], live: Mapping[int, er.PlanAnswer],
+            book: er.TodaysBook, world: _World) -> ReturnOut:
     checks = _checks(history, world)
     symbols = _symbols(history, world)
     drift = er.drifted(history, book)
-    blocked = bool(drift) or any(c.kind for c in checks) or er.RECONCILE in live.values()
+    blocked = bool(drift) or any(c.blocks for c in checks) or any(a.state == er.RECONCILE for a in live.values())
+    drifted_answer = er.PlanAnswer(er.RECONCILE, {})
     return ReturnOut.model_validate({
         "strategy_id": req.strategy_id, "read_at": req.now, "strategy_state": _strategy_state(history, checks),
-        "plans": [_plan_out(p, {**live, **dict.fromkeys(drift, er.RECONCILE)}) for p in history],
+        "plans": [_plan_out(p, {**live, **dict.fromkeys(drift, drifted_answer)}) for p in history],
         "contracts": [{"tradingsymbol": symbols[c.key], "platform_units": c.platform_units,
                        "zerodha_units": c.zerodha_units, "other_strategies_units": c.other_units,
-                       "unexplained_units": c.unexplained, "mismatch": c.kind} for c in checks],
-        "mismatches": sum(1 for c in checks if c.kind) + len(drift), "blocked": blocked,
+                       "unexplained_units": c.unexplained, "mismatch": c.kind,
+                       "reconciliation_reason": c.undecidable} for c in checks],
+        "mismatches": sum(1 for c in checks if c.blocks) + len(drift), "blocked": blocked,
         "external_orders": _external_out(book), "realised_pnl": er.pnl_or_none(book.fills)})
 
 
@@ -280,7 +320,7 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
         book = er.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
     except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
         raise _refuse("gate_broker_unconfirmed") from None
-    world = _World(catalogue, underlying, zerodha, await _others(req, catalogue, underlying))
+    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))
     live = await _settle_open_plan(req, history, book, world)
     await _record_externals(req, book)
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)

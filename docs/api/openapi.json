@@ -1266,6 +1266,18 @@
             "title": "Platform Units",
             "type": "integer"
           },
+          "reconciliation_reason": {
+            "anyOf": [
+              {
+                "const": "another_strategy_plan_unsettled",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation Reason"
+          },
           "tradingsymbol": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Tradingsymbol",
@@ -1286,7 +1298,8 @@
           "zerodha_units",
           "other_strategies_units",
           "unexplained_units",
-          "mismatch"
+          "mismatch",
+          "reconciliation_reason"
         ],
         "title": "ReturnContractOut",
         "type": "object"
@@ -1442,6 +1455,18 @@
             "title": "Plan Number",
             "type": "integer"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "const": "plan_from_earlier_session",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
           "state": {
             "enum": [
               "waiting",
@@ -1459,7 +1484,8 @@
           "plan_number",
           "action",
           "state",
-          "choices"
+          "choices",
+          "reason"
         ],
         "title": "ReturnPlanOut",
         "type": "object"

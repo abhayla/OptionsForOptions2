@@ -19,15 +19,24 @@ recorded, never dropped).
   order that appeared or filled after the close) needs reconciliation (design review finding 5).
 - ``reconcile``: per contract the strategy traded, Zerodha's net minus the units every OTHER stored strategy holds is
   this strategy's share; ``execute_plan.strategy_blocked`` decides the block (one copy of REQ-060 AC-7). Units beyond
-  the strategy are unexplained: listed, blocking nothing.
+  the strategy are unexplained: listed, blocking nothing. A contract another strategy touches through an OPEN plan or
+  a DRIFTED closed plan (``unsettled_orders``) is undecidable for this one: reconciliation required, never a pass (its
+  units at Zerodha may be the other strategy's; review round 1 MAJOR 1).
+- ``classify`` never closes a plan created before today's trading session (IST date on the database clock): Kite's book
+  holds only today's orders, so "no tag today" says nothing about it (review round 1 MAJOR 2).
+
+Documented limits (review round 1 MINOR 4-6): an unrelated standalone position on the same contract keeps ``exited``
+from being reached; the realised P&L is from today's fills only; an external order is marked only by its correlation id.
 """
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ofo.execution.basket import parse_tag
 from ofo.orders.model import FillEvent, realised_pnl
+from ofo.timeutil import IST
 
 from ofo_app import execute_plan as ep
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
@@ -43,6 +52,9 @@ RECONCILE = "reconciliation_required"
 PARTIAL_CHOICES = ("complete_strategy", "retry_failed_leg", "review_manually", "close_partial_strategy")
 #: Mismatch kinds, named by their catalogue template (ofo.reconciliation.compare's ids; the screen renders the text).
 MISSING, SIDE, QUANTITY = "recon_missing_platform_position", "recon_side_mismatch", "recon_quantity_mismatch"
+#: Why reconciliation is required where no quantity can be compared (named in the reply).
+EARLIER_SESSION = "plan_from_earlier_session"
+OTHER_UNSETTLED = "another_strategy_plan_unsettled"
 
 
 @dataclass(frozen=True)
@@ -109,6 +121,7 @@ def read_book(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[M
 class PlanAnswer:
     state: str  # WAITING | RECONCILE (plan stays open) or FILLED | NOTHING_PLACED | PARTIAL (a close reason)
     filled: Mapping[str, int]  # tag -> Zerodha's filled quantity (empty while the plan stays open)
+    reason: str | None = None  # why reconciliation is required when it is not a disagreement in the book
 
 
 def _agrees(order: PlanOrder, row: BrokerOrderRow, book: TodaysBook) -> bool:
@@ -125,8 +138,17 @@ def _close_reason(plan: StoredPlan, filled: Mapping[str, int]) -> str:
     return PARTIAL
 
 
-def classify(plan: StoredPlan, book: TodaysBook) -> PlanAnswer:
-    """Zerodha's answer for one OPEN plan. Nothing here is resent or retried (REQ-058 AC-6)."""
+def from_earlier_session(plan: StoredPlan, today: datetime.date) -> bool:
+    """The plan was not created in today's trading session (IST date); an unreadable stamp counts as earlier."""
+    created = plan.created_at
+    return created is None or created.tzinfo is None or created.astimezone(IST).date() != today
+
+
+def classify(plan: StoredPlan, book: TodaysBook, today: datetime.date) -> PlanAnswer:
+    """Zerodha's answer for one OPEN plan. Nothing here is resent or retried (REQ-058 AC-6). A plan from an earlier
+    session is never closed from today's book: it stays open, reconciliation required."""
+    if from_earlier_session(plan, today):
+        return PlanAnswer(RECONCILE, {}, EARLIER_SESSION)
     rows = {o.tag: book.ours.get(o.tag, ()) for o in plan.orders}
     if any(r.status not in ep.TERMINAL_ORDER_STATUSES for found in rows.values() for r in found):
         return PlanAnswer(WAITING, {})  # REQ-057 AC-2: an order still working changes nothing
@@ -157,6 +179,14 @@ def drifted(history: Sequence[StoredPlan], book: TodaysBook) -> tuple[int, ...]:
     return tuple(out)
 
 
+def unsettled_orders(history: Sequence[StoredPlan], book: TodaysBook) -> tuple[PlanOrder, ...]:
+    """Another strategy's orders whose units cannot be counted: every order of an OPEN plan (Zerodha may have filled
+    it; its stored filled quantity is not known yet) and of a closed plan that has drifted in ``book`` (that
+    strategy's own rows of today's book)."""
+    moved = set(drifted(history, book))
+    return tuple(o for p in history if p.status != "closed" or p.plan_number in moved for o in p.orders)
+
+
 @dataclass(frozen=True)
 class ContractCheck:
     key: tuple
@@ -164,6 +194,11 @@ class ContractCheck:
     zerodha_units: int  # Zerodha's account-wide net
     other_units: int  # what every other stored strategy holds
     kind: str | None  # a blocking mismatch's catalogue id, else None
+    undecidable: str | None = None  # OTHER_UNSETTLED: another strategy's units here are unknown -> reconcile
+
+    @property
+    def blocks(self) -> bool:
+        return self.kind is not None or self.undecidable is not None
 
     @property
     def unexplained(self) -> int:
@@ -180,19 +215,21 @@ def _kind(share: int, units: int) -> str | None:
 
 
 def reconcile(keys: Sequence[tuple], held: Mapping[tuple, int], others: Mapping[tuple, int],
-              broker_net: Mapping[tuple, int]) -> tuple[ContractCheck, ...]:
-    """One row per contract the strategy traded (``keys``)."""
+              broker_net: Mapping[tuple, int], undecidable: frozenset = frozenset()) -> tuple[ContractCheck, ...]:
+    """One row per contract the strategy traded (``keys``). A key in ``undecidable`` (another strategy's open or
+    drifted plan touches it) is never decided: reconciliation required, whatever the numbers say."""
     rows = []
     for key in keys:
         units, other, net = held.get(key, 0), others.get(key, 0), broker_net.get(key, 0)
-        rows.append(ContractCheck(key, units, net, other, _kind(net - other, units)))
+        unknown = OTHER_UNSETTLED if key in undecidable else None
+        rows.append(ContractCheck(key, units, net, other, _kind(net - other, units), unknown))
     return tuple(rows)
 
 
 def exit_is_clean(checks: Sequence[ContractCheck]) -> bool:
     """An EXIT reads ``exited`` only when the strategy holds 0 on every contract AND Zerodha agrees: no mismatch and
     no units left beyond the other strategies (Zerodha still holding them is not an exit)."""
-    return all(c.platform_units == 0 and c.kind is None and c.unexplained == 0 for c in checks)
+    return all(c.platform_units == 0 and not c.blocks and c.unexplained == 0 for c in checks)
 
 
 def pnl_or_none(fills: Sequence[FillEvent]):
@@ -203,6 +240,7 @@ def pnl_or_none(fills: Sequence[FillEvent]):
         return None
 
 
-__all__ = ["EXITED", "FILLED", "NOTHING_PLACED", "PARTIAL", "PARTIAL_CHOICES", "RECONCILE", "WAITING",
-           "ContractCheck", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean", "pnl_or_none",
-           "read_book", "reconcile"]
+__all__ = ["EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
+           "RECONCILE", "WAITING",
+           "ContractCheck", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
+           "from_earlier_session", "pnl_or_none", "read_book", "reconcile", "unsettled_orders"]
