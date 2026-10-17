@@ -227,7 +227,7 @@ def _cost_body(rates, funds=D("1003"), required=D("572.00")) -> dict:
 
 
 def test_ac1_cost_of_the_real_entry_basket_is_strings_from_the_one_calculator():
-    """AC-1 (W-102): the real sealed ENTRY basket (BUY 65 @ 3.35): 65 x 3.35 = 217.75 paid -> "-217.75"; charges
+    """AC-8 (W-102): the real sealed ENTRY basket (BUY 65 @ 3.35): 65 x 3.35 = 217.75 paid -> "-217.75"; charges
     23.6980820035 (hand computation in tests/execution/test_execute_cost.py) -> "23.70"; funds and margin exactly as
     handed in from the gate's read, each a 2-decimal string, never a JSON number."""
     assert _cost_body(RATES) == {"net_premium": "-217.75", "charges": "23.70", "charges_note": None,
@@ -236,14 +236,14 @@ def test_ac1_cost_of_the_real_entry_basket_is_strings_from_the_one_calculator():
 
 
 def test_ac1_no_rates_gives_null_charges_and_the_catalogue_note_never_a_number():
-    """AC-1 (W-102): no rate set -> charges null and the note saying charges are not included; the premium stays."""
+    """AC-8 (W-102): no rate set -> charges null and the note saying charges are not included; the premium stays."""
     body = _cost_body(None)
     assert body["charges"] is None and body["net_premium"] == "-217.75"
     assert body["charges_note"] == "Charges and taxes are not included: the charge rates could not be read."
 
 
 def test_ac1_zerodha_figures_not_confirmed_stay_null_never_zero():
-    """AC-1 (W-102): a failed Zerodha read gives None for both (the gate blocks it anyway); the reply never shows 0."""
+    """AC-8 (W-102): a failed Zerodha read gives None for both (the gate blocks it anyway); the reply never shows 0."""
     body = _cost_body(RATES, funds=None, required=None)
     assert (body["funds_available"], body["margin_required"]) == (None, None)
 
