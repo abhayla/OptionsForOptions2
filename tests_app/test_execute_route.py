@@ -398,10 +398,11 @@ async def _post(app, strategy_id: int, action: str):
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeypatch):
-    """AC-1 core: ENTRY -> BUY 65 LIMIT 3.35 tagged OFS1V1L0 (plan 1 stored open); a re-press is refused (one open
-    plan); plan 1 closed filled 65 -> EXIT on the real FLAT 15:10 book is refused (AC-7 shortfall); EXIT on the real
-    +65 book -> SELL 65 LIMIT 3.30 tagged OFS1V2L0 (plan 2 stored open). Every other field equals the real basket."""
+async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeypatch):  # noqa: PLR0915
+    """AC-1 core: ENTRY -> BUY 65 LIMIT 3.35 tagged OFS1V1L0 (plan 1 stored open, one ``order_prepared`` audited,
+    W-103); a re-press is refused (one open plan, no audit row); plan 1 closed filled 65 -> EXIT on the real FLAT
+    15:10 book is refused (AC-7 shortfall); EXIT on the real +65 book -> SELL 65 LIMIT 3.30 tagged OFS1V2L0 (plan 2
+    stored open). Every other field equals the real basket."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
@@ -420,8 +421,12 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             app.dependency_overrides[route.load_charge_rates] = lambda: RATES
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
+            head = await audit_head(conn)
             resp = await _post(app, sid, "ENTRY")
             assert resp.status_code == 200, resp.text
+            # W-103: ONE order_prepared, built from the stored plan, in the plan's transaction
+            assert await audit_since(conn, head) == [("order_prepared", "plan:1:1", {
+                "strategy_id": 1, "plan_number": 1, "action": "ENTRY", "tags": "OFS1V1L0"})]
             body = resp.json()
             (order,) = body["orders"]
             assert body["plan_number"] == 1 and body["tags"] == [REAL_ORDER["tag"]]
@@ -440,8 +445,10 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "OFS1V1L0")
 
-            # one open plan per strategy: the open-plan refusal
+            # one open plan per strategy: the open-plan refusal, and a refused press writes no audit event
+            head = await audit_head(conn)
             await _refused_with(app, sid, "ENTRY", "An order this execution depends on is not in place yet")
+            assert await audit_since(conn, head) == []
 
             await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
@@ -452,8 +459,14 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
 
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(held)
+            head = await audit_head(conn)
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
+            assert await audit_since(conn, head) == [("order_prepared", "plan:1:2", {
+                "strategy_id": 1, "plan_number": 2, "action": "EXIT", "tags": "OFS1V2L0"})]
+            from ofo_app.audit_store import load_log  # noqa: PLC0415
+            _, anchor = await load_log(conn)  # the hash chain verifies with the new events in it
+            assert anchor.count == head + 1
             (sell,) = resp.json()["orders"]
             assert (sell["transaction_type"], sell["quantity"], sell["price"], sell["tag"]) == ("SELL", 65, "3.30",
                                                                                               "OFS1V2L0")
@@ -510,6 +523,22 @@ async def test_w100_entry_band_comes_from_zerodhas_quote_and_an_unknown_one_refu
             assert (await _post(app, sid, "ENTRY")).status_code == 200
         finally:
             await trans.rollback()
+
+
+async def audit_since(conn, after_seq: int) -> list[tuple[str, str, dict]]:
+    """W-103: the audit rows appended after ``after_seq`` as (event_type, correlation_id, decoded payload)."""
+    from ofo_app.audit_store import decode_payload  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+
+    rows = (await conn.execute(text("SELECT event_type, correlation_id, payload::text AS p FROM public.audit_events "
+                                    "WHERE seq > :s ORDER BY seq"), {"s": after_seq})).all()
+    return [(r.event_type, r.correlation_id, decode_payload(json.loads(r.p))) for r in rows]
+
+
+async def audit_head(conn) -> int:
+    from ofo_app.audit_store import read_anchor  # noqa: PLC0415
+
+    return (await read_anchor(conn)).count
 
 
 async def _refused_with(app, sid: int, action: str, phrase: str) -> None:
