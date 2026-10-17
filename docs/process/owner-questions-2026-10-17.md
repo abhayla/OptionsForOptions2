@@ -63,6 +63,8 @@ next owner-present session; the answer becomes a decision row the same turn.
 
 ## OQ-14 (GC-3 P0 item 7): start the live run (L1) while order criteria fail on main, under written operating rules?
 
+**ANSWERED 2026-10-17 ~23:10 IST (owner, question tool): "Start under the 8 rules (Recommended)" -> ADR-108 (1).**
+
 - **What was found:** fresh verifiers on main 85e38e0 failed 13 of 18 money/order criteria on the Kite-basket path
   (F-42: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6, REQ-073 AC-5); the tested domain modules are not what the routes call.
   The independent go/no-go review (fresh Opus) found one reachable harm - Check pressed before Kite's book shows the
@@ -81,6 +83,8 @@ next owner-present session; the answer becomes a decision row the same turn.
 - **Business call:** relaxing an owner-set safety gate before a real-money run.
 
 ## OQ-15 (GC-3 step 5, F-43): which expiry does the live test trade?
+
+**ANSWERED 2026-10-17 ~23:15 IST (owner, question tool): "Next expiry, 2026-10-27 (Recommended)" -> ADR-108 (2).**
 
 - **What was found:** Monday 2026-10-19 IS the nearest NIFTY weekly expiry (recorded master: 10-19 Mon, 10-27 Tue). An
   EXIT that does not fill by 15:30 goes to exchange settlement, which the live path does not handle (#279, #352).
