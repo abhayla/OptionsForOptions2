@@ -26,7 +26,6 @@ an unreadable entitlement history -> ``pro_entitled`` None (the gate blocks wher
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import datetime
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -81,7 +80,7 @@ router = APIRouter(route_class=ClosedRoute)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
-BASKET_PRODUCT = Product(next(f.default for f in dataclasses.fields(KiteOrder) if f.name == "product"))
+BASKET_PRODUCT = Product(KiteOrder.__dataclass_fields__["product"].default)
 _IDS = text("SELECT id, exchange_segment, exchange_token FROM public.catalogue_contracts "
             "WHERE id = ANY(CAST(:ids AS BIGINT[]))")
 

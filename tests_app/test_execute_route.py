@@ -428,7 +428,8 @@ def _position_rows(**changes) -> list:
 
 @pytest.mark.usefixtures("app_engine")
 async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine, admin_engine, monkeypatch):
-    """A 2-lot strategy (130 units); plan 1 filled 65 of 130 (partial; NFO fills whole lots). Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
+    """A 2-lot strategy (130 units); plan 1 filled 65 of 130 (partial; NFO fills whole lots).
+    Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
     EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
     (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
     exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it)."""
