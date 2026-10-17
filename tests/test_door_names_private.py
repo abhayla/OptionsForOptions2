@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 DOOR_MODULE = BACKEND / "ofo_app" / "errors.py"
 DOOR_NAMES = frozenset({"_freeze", "_frozen", "_SEAL", "_REDIRECT_MINT", "_verify"})

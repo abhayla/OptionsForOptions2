@@ -154,7 +154,7 @@ def check_text(brief: str, root: Path) -> list[Result]:
 
 
 GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py",
-               "tests/errors/test_producer_inventory.py")
+               "tests/errors/test_producer_inventory.py", "-m repo_scan")
 GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
 
@@ -165,7 +165,7 @@ def check_guard_set(brief: str, root: Path) -> list[str]:
     if not any(all(g in line for g in GUARD_TESTS) for line in brief.splitlines()):
         misses.append("MISSING guard tests: no line names all of `tests/test_*.py`, "
                       "`tests/errors/test_write_allowlist.py` and "
-                      "`tests/errors/test_producer_inventory.py` in its test commands")
+                      "`tests/errors/test_producer_inventory.py` and `-m repo_scan` in its test commands")
     lines = brief.splitlines()
     if any("Tier A" in line for line in lines) and any(GUARD_WORD_RE.search(x) for x in lines[:10]):
         m = FINDINGS_RE.search(brief)
