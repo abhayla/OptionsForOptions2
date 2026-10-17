@@ -19,14 +19,16 @@
 from __future__ import annotations
 
 import datetime
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Protocol
 
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.engine.executable_price import Depth, depth_from_quote, executable_limit
 from ofo.errors import LegValue, UserFacingError, render
 from ofo.execution.basket import parse_tag
+from ofo.execution.context import VersionState
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.price_check import circuit_block
 from ofo.instruments.catalogue import Catalogue
@@ -172,6 +174,53 @@ def price_legs(strategy_id: str, underlying: str, legs: Sequence[LegToPrice], ca
                       tuple(times))
 
 
+class _StoredOrder(Protocol):
+    instrument_id: str
+    transaction_type: str
+    filled_quantity: int | None
+
+
+class _StoredPlan(Protocol):
+    plan_number: int
+    orders: Sequence[_StoredOrder]
+
+
+def held_units(history: Iterable[_StoredPlan]) -> dict[str, int]:
+    """ADR-105: what the strategy holds = the net of Zerodha's filled quantities over ALL its stored plans, per
+    contract (the plan order's ``instrument_id``), BUY + / SELL -; an order not yet closed (None) counts 0. Contracts
+    that net to zero are dropped. The ONE source the route reads for exit legs, the active legs and their hash, the
+    version state and the reconciliation platform side (round 2 review CRITICAL: one plan was read, never the net)."""
+    units: dict[str, int] = {}
+    for stored in history:
+        for order in stored.orders:
+            filled = order.filled_quantity or 0
+            signed = filled if order.transaction_type == Action.BUY.value else -filled
+            units[order.instrument_id] = units.get(order.instrument_id, 0) + signed
+    return {contract: net for contract, net in units.items() if net != 0}
+
+
+def latest_filled_plan(history: Iterable[_StoredPlan]) -> int | None:
+    """The number of the latest plan any of whose orders filled (the held position's version), or None."""
+    numbers = [p.plan_number for p in history if any(o.filled_quantity for o in p.orders)]
+    return max(numbers) if numbers else None
+
+
+def version_state(action: str, held: Mapping[str, int]) -> VersionState:
+    """Derived, never hard-coded: a flat strategy (no fills ever, or every fill closed) executes its stored definition
+    as an ENTRY; a held net is the ACTIVE version an EXIT closes. A new ENTRY while units are held would add to the
+    position (an adjustment, PROPOSED only), and an EXIT with nothing held would open one: both are not executable."""
+    holding = any(held.values())
+    if action == "EXIT":
+        return VersionState.ACTIVE if holding else VersionState.SUPERSEDED
+    return VersionState.SUPERSEDED if holding else VersionState.ACTIVE
+
+
+def exit_legs(held: Mapping[str, int], instrument_of: Callable[[str], InstrumentId]) -> list[LegToPrice]:
+    """ADR-105: an exit closes exactly the net, opposite side, per contract (sorted for a stable basket order)."""
+    return [LegToPrice(instrument_of(contract), Action.SELL if net > 0 else Action.BUY, abs(net), None)
+            for contract, net in sorted(held.items()) if net != 0]
+
+
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the W-091 reconcile key
 
 
@@ -195,4 +244,5 @@ def strategy_blocked(broker_net: Mapping[ContractKey, int], held: Mapping[Contra
 
 
 __all__ = ["TERMINAL_ORDER_STATUSES", "LegQuote", "LegRefused", "LegToPrice", "PricedPlan", "book_floor",
-           "contract_key", "price_legs", "quote_from_kite", "quote_time", "strategy_blocked"]
+           "contract_key", "exit_legs", "held_units", "latest_filled_plan", "price_legs", "quote_from_kite",
+           "quote_time", "strategy_blocked", "version_state"]
