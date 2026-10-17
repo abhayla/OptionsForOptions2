@@ -42,8 +42,17 @@ CHECK_VIOLATION = "23514"
 UNIQUE_VIOLATION = "23505"
 INSUFFICIENT_PRIVILEGE = "42501"
 PLAN_GUARD_SQLSTATE = "OF016"
-REAL_SYMBOL = "NIFTY26O1923650CE"  # basket-121848.json
-REAL_INSTRUMENT = "NSE_FO:47189"  # orders-122104.json instrument_token 12080386 >> 8
+REAL_SYMBOL = SYMBOLS[0]  # a catalogue contract of the recorded fixture (the plan checks its symbol against it)
+
+
+def _instrument_of(symbol: str) -> str:
+    """The plan's instrument_id ("<segment>:<exchange token>") of a fixture contract, as the catalogue stores it."""
+    with FIXTURE.open(encoding="utf-8", newline="") as stream:
+        row = next(r for r in parse_rows_naming_the_row(stream) if r.ref("zerodha").broker_symbol == symbol)
+    return f"{row.id.exchange_segment}:{row.id.exchange_token}"
+
+
+REAL_INSTRUMENT = _instrument_of(REAL_SYMBOL)
 
 
 def _user() -> str:
@@ -284,6 +293,24 @@ async def test_a_multi_leg_plan_keeps_its_order_and_exact_prices(app_engine):
         assert [(o.leg_index, o.tag, o.price) for o in stored.orders] == [
             (i, f"OFS{sid}V1L{i}", Decimal(p)) for i, p in enumerate(["101.05", "12.30", "99.00", "0.05"])]
         assert (await plans.open_plan(tx.conn, tx.user, sid)).orders == stored.orders
+
+
+async def test_the_symbol_is_checked_against_and_read_back_from_the_catalogue(app_engine):
+    """No symbol column on the plan (identity rule): a wrong symbol or an unknown instrument is bad_plan, nothing is
+    stored, and the stored plan's symbol is the catalogue's ZERODHA symbol for the instrument_id."""
+    async with _Tx(app_engine) as tx:
+        sid = tx.strategy_id
+        number = await plans.next_plan_number(tx.conn, tx.user, sid)
+        for over in ({"tradingsymbol": SYMBOLS[1]}, {"tradingsymbol": "NOSUCH"}, {"instrument_id": "NSE_FO:1"},
+                     {"instrument_id": "garbage"}, {"instrument_id": "NSE_FO:x"}):
+            await _refused(plans.BAD_PLAN, plans.record_plan(tx.conn, tx.user, sid, number, "ENTRY",
+                                                             (_order(sid, number, "BUY", "5.45", **over),)))
+        assert await plans.plans_for(tx.conn, tx.user, sid) == ()
+        stored = await plans.record_plan(tx.conn, tx.user, sid, number, "ENTRY", (_order(sid, number, "BUY", "5.45"),))
+        assert [(o.instrument_id, o.tradingsymbol) for o in stored.orders] == [(REAL_INSTRUMENT, REAL_SYMBOL)]
+        columns = {r[0] for r in await tx.conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'execution_plan_orders'"))}
+        assert "tradingsymbol" not in columns
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -569,10 +596,9 @@ async def test_a_foreign_tag_or_impossible_quantity_is_refused(app_engine, fills
                                                         filled=fills))
 
 
-async def test_the_database_guards_the_filled_quantity(app_engine):
+async def test_the_database_guards_the_filled_quantity(app_engine, admin_engine):
     async with _Tx(app_engine) as tx:
         a, _b = await _two_leg_plan(tx)
-        s = tx.strategy_id
         set_fill = "UPDATE public.execution_plan_orders SET filled_quantity = :f WHERE tag = :t"
         await _refused_sql(tx.conn, set_fill, CHECK_VIOLATION, {"f": 66, "t": a})  # above quantity
         await _refused_sql(tx.conn, set_fill, CHECK_VIOLATION, {"f": -1, "t": a})
@@ -581,6 +607,11 @@ async def test_the_database_guards_the_filled_quantity(app_engine):
         await tx.conn.execute(text(set_fill), {"f": 10, "t": a})
         await _refused_sql(tx.conn, set_fill, PLAN_GUARD_SQLSTATE, {"f": 20, "t": a})  # written once
         insert_filled = _ORDER_INSERT.replace("price)", "price, filled_quantity)", 1).replace(":price)", ":price, 1)")
-        await _refused_sql(tx.conn, insert_filled, PLAN_GUARD_SQLSTATE,
-                           {"s": s, "p": 1, "l": 2, "tag": f"OFS{s}V1L2", "side": "BUY", "q": 65,
-                            "price": Decimal("5.45")})
+        params = {"s": tx.strategy_id, "p": 1, "l": 2, "tag": f"OFS{tx.strategy_id}V1L2", "side": "BUY", "q": 65,
+                  "price": Decimal("5.45")}
+        # the application role has no INSERT grant on filled_quantity: PostgreSQL refuses before the guard runs
+        await _refused_sql(tx.conn, insert_filled, INSUFFICIENT_PRIVILEGE, params)
+    async with _Tx(admin_engine) as owner:  # the owner role reaches the guard itself
+        await _two_leg_plan(owner)
+        params = {**params, "s": owner.strategy_id, "tag": f"OFS{owner.strategy_id}V1L2"}
+        await _refused_sql(owner.conn, insert_filled, PLAN_GUARD_SQLSTATE, params)

@@ -14,8 +14,9 @@ Changes (owner-run, one transaction):
   columns unchanged; closed_at is set from the database clock, never from the application; a plan is only ever
   INSERTed open.
 - public.execution_plan_orders: tag UNIQUE, CHECK 1..20 ASCII alphanumerics AND equal to OFS<strategy>V<plan>L<leg>;
-  quantity > 0; price NUMERIC(14,2) > 0. Guard trigger (OF016): insert-only (only filled_quantity is set, once,
-  at close), and only into an open plan.
+  quantity > 0; price NUMERIC(14,2) > 0. No trading-symbol column: a broker's symbol lives only in
+  broker_instruments (ADR-050 item 2); the store reads it back from there by instrument_id.
+  Guard trigger (OF016): insert-only (only filled_quantity is set, once, at close), and only into an open plan.
 - Grants (column-limited, like 0013): the application role gets SELECT on both tables; INSERT (strategy_id,
   plan_number, action) on the plans (status defaults to open, timestamps come from the database clock) and INSERT on
   every order column but filled_quantity; UPDATE (status, close_reason) on the plans and UPDATE (filled_quantity) on
@@ -76,7 +77,7 @@ ORDER_TRIGGER = "execution_plan_orders_guard"
 REASONS = ("filled", "exited", "nothing_placed", "partial")
 PLAN_INSERT_COLUMNS = ("strategy_id", "plan_number", "action")
 PLAN_UPDATE_COLUMNS = ("status", "close_reason")
-ORDER_INSERT_COLUMNS = ("strategy_id", "plan_number", "leg_index", "tag", "instrument_id", "tradingsymbol",
+ORDER_INSERT_COLUMNS = ("strategy_id", "plan_number", "leg_index", "tag", "instrument_id",
                         "transaction_type", "quantity", "price")  # every column but filled_quantity
 ORDER_UPDATE_COLUMNS = ("filled_quantity",)
 ALLOWLIST_BLOCK_MARKER = "-- 15. execution plans"
@@ -122,7 +123,7 @@ def _order_guard_sql() -> str:
                 IF OLD.filled_quantity IS NOT NULL OR NEW.filled_quantity IS NULL
                    OR NEW.strategy_id <> OLD.strategy_id OR NEW.plan_number <> OLD.plan_number
                    OR NEW.leg_index <> OLD.leg_index OR NEW.tag <> OLD.tag
-                   OR NEW.instrument_id <> OLD.instrument_id OR NEW.tradingsymbol <> OLD.tradingsymbol
+                   OR NEW.instrument_id <> OLD.instrument_id
                    OR NEW.transaction_type <> OLD.transaction_type OR NEW.quantity <> OLD.quantity
                    OR NEW.price <> OLD.price THEN
                     RAISE EXCEPTION 'execution plan orders only gain a filled quantity, once'
@@ -222,7 +223,6 @@ def upgrade() -> None:
             leg_index        INTEGER       NOT NULL CHECK (leg_index >= 0),
             tag              TEXT          NOT NULL UNIQUE CHECK (tag ~ '^[0-9A-Za-z]{{1,20}}$'),
             instrument_id    TEXT          NOT NULL CHECK (instrument_id <> ''),
-            tradingsymbol    TEXT          NOT NULL CHECK (tradingsymbol <> ''),
             transaction_type TEXT          NOT NULL CHECK (transaction_type IN ('BUY', 'SELL')),
             quantity         INTEGER       NOT NULL CHECK (quantity > 0),
             price            NUMERIC(14,2) NOT NULL CHECK (price > 0),
