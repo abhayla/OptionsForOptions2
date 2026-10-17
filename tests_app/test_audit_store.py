@@ -1019,7 +1019,7 @@ async def test_event_time_is_the_clock_read_after_the_lock_and_before_the_anchor
     """The stored time is exactly what SELECT clock_timestamp() returned (a sentinel no Python clock can produce),
     it reaches the hash input, and the clock is read after the lock and before the anchor (a time read before the
     lock can be stale by the lock wait and trip the trigger's 60 s window, OF001)."""
-    sentinel = datetime(2001, 1, 1, tzinfo=timezone.utc)
+    sentinel = datetime(2001, 1, 1, tzinfo=timezone(timedelta(0)))
     conn = _RecordingConn(sentinel)
     stored = await append(conn, EventType.TRIAL_STARTED, actor="system", correlation_id="c-1",
                           payload={"platform_user_id": "u-1"})
