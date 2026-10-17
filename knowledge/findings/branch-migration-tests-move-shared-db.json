@@ -8,11 +8,13 @@
     "where": "GC-2b item 4, W-017 (branch build/W-017-allowlist), local CI mirror",
     "evidence": "atool: 'migration tests (14 files) rc 1 | 0015_audit_broker_allowlist.py:86: RuntimeError / 6 failed, 894 passed in 2128.45s'; then `alembic current` on ofo_test -> '0013_exchange_freeze_limits' (main head 0014); restored with `alembic upgrade head` from main -> '0014_charge_rates_caps (head)'"
   },
-  "fix": "Habit until structural: after any local run of a branch's migration tests, check `alembic current` on the shared test DB and restore main's head. Structural option (open): the mirror runs migration replay tests in a throwaway database (CREATE DATABASE ... TEMPLATE, dropped after) or leaves them to CI only.",
+  "fix": "Mechanism (GC-2c docs batch, after the 2nd occurrence): atool.py's migration-tests step is followed, always (try/finally), by restore_main_head: read main's head from the main checkout, `alembic downgrade <main head>` from the branch checkout (which knows the newer revision), then `alembic current` from the main checkout must equal main's head or the step is red with both revisions named. Unit-tested with a fake runner (tests/orchestrator/test_atool_restore.py). Brief rule meanwhile: DB commands through the main checkout's db_run.py with the worktree as cwd, ending with `alembic current` read from the main checkout; never copy .env into a worktree. Throwaway-database replay stays an open option.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Found by checking `alembic current` after the failing mirror run."
+    "status": "guarded",
+    "checks": [
+      "scripts/orchestrator/atool.py restore_main_head (red when the shared DB is left off main's head)"
+    ],
+    "note": "Guards runs that go through atool. A builder running alembic by hand can still move the DB; briefs require the closing `alembic current` from the main checkout."
   },
   "spec_ref": [
     "spec/testing/core-invariants.md"
@@ -22,6 +24,16 @@
       "date": "2026-10-17",
       "where": "W-017 migration 0015 (downgrade raised)",
       "evidence": "shared ofo_test left at 0013; restored to 0014"
+    },
+    {
+      "date": "2026-10-17",
+      "where": "GC-2c W-094 (migration 0016_execution_plans), the builder's atool.py --no-tests run",
+      "evidence": "the builder reported `alembic current` 0015 after its own downgrade, then its atool run (still going after 20 min, route + migration tests over the tunnel) upgraded the shared DB again; orchestrator read `FAILED: Can't locate revision identified by '0016_execution_plans'` from the main checkout at ~06:50 IST, stopped the run by PID (15024, 19184, 20916) and downgraded from the branch checkout -> '0015_audit_broker_allowlist (head)'"
+    },
+    {
+      "date": "2026-10-17",
+      "where": "GC-2c, two DB runs started by the orchestrator side by side (W-094 store tests from one checkout, W-095 round 4's core test from a builder) at ~07:45 IST",
+      "evidence": "each run upgraded/downgraded the shared DB with its own copy of 0016 (one with, one without the tradingsymbol column) while the other's tests ran: W-094's run -> '15 failed, 93 passed' (noise), the builder saw 'an older version of 0016'. Re-run strictly one checkout at a time. Third shape of the class: not a branch-vs-main gap but two branches at once. Rule applied for the rest of GC-2c: one DB holder at a time, named in the brief ('your DB run is the last step; another run may hold the DB')."
     }
   ]
 }

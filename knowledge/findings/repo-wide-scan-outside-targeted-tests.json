@@ -1,0 +1,50 @@
+{
+ "id": "repo-wide-scan-outside-targeted-tests",
+ "scope": "generic",
+ "class": "A repo-wide scan test (one that inspects every module's source, not the module under test) fails on new code that its author never ran it against, because local runs are targeted at the changed area and the scan lives in another folder; the failure surfaces only in CI, one round later, every time a new module is added.",
+ "mechanism": "tests/errors/test_producer_inventory.py::test_every_producer_in_scope_is_routed_through_render scans every backend module for sentence-shaped literals built outside render(). Builder briefs list targeted tests plus the two guard literals check_brief.py requires (tests/test_*.py, tests/errors/test_write_allowlist.py); the producer scan is in neither, and atool.py --no-tests skips the domain suite that would run it. W-098 (PR #355) moved seal refusal text to class-definition keywords at module level: CI run 38989215685 -> 1 failed, 5291 passed ('execution/basket.py:136 build it again', 'execution/margin_gate.py:40 ...', 'instruments/eligibility.py:169 ...'), while the local mirror said 850 passed.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2b W-091 (PR #343) - the first CI red on the producer inventory",
+  "evidence": "session-handover-2026-10-17-gc2b.md: W-091 CI reds 'producer inventory'; 'Briefs did not warn builders about the producer-inventory scan (sentence-shaped text) after W-091 hit it -> W-092 hit it too.'"
+ },
+ "fix": "Mechanism (GC-2c docs batch): check_brief.py GUARD_TESTS gains 'tests/errors/test_producer_inventory.py', so a brief whose test-command line does not name it fails before dispatch; tests/orchestrator/test_check_brief.py proves red (a brief with only the old two literals) then green. builder-brief.md's guard line names it. Orchestrator habit: before pushing a builder branch, run `python -m pytest -q -p no:cacheprovider tests/errors/` (10 s, no database).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "scripts/orchestrator/check_brief.py GUARD_TESTS (brief refused without the scan in its test line)",
+   "CI lint-and-test (the scan itself)"
+  ],
+  "note": "Guards the producer scan only. Two more scans of the same class hit W-094 the same day (the pricing-name scan in tests/engine/, the broker-identifier column rule in tests_app/ that needs a database). Partial: the integrator runs the full domain suite once (3-4 min, no DB) before pushing a builder branch; the DB-backed scans stay CI-only. Open: a `repo_scan` marker on every repo-wide scan test so one fast command runs them all."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-086.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "GC-2b W-091 (PR #343)",
+   "evidence": "CI red: producer inventory (GC-2b scorecard row 1)"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2b W-092 (PR #346)",
+   "evidence": "GC-2b handover Misses: 'W-092 hit it too'"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c W-098 (PR #355)",
+   "evidence": "CI run 38989215685: 1 failed (test_producer_inventory), 5291 passed; the local mirror (atool --no-tests) reported 850 passed"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c W-094 (PR #357), CI round 1",
+   "evidence": "CI run 38991684486: tests/engine/test_pricing_scan.py::test_no_product_module_reaches_a_pricing_function - 'ofo_app/execution_plan_store.py:102 names _price' (a closed list of engine pricing names banned outside the engine); fixed by renaming to _limit_price; the integrator then ran the full domain suite once locally: 5326 passed"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c W-094 (PR #357), CI round 2 - the DB-backed variant",
+   "evidence": "CI run 38992320936 (api job): tests_app/test_broker_instruments.py::test_ac3_no_table_but_broker_instruments_has_a_zerodha_id_column - 'execution_plan_orders.tradingsymbol' (only broker_instruments may hold a broker identifier). This scan reads information_schema, so no local non-DB run can catch it; the brief named neither the rule nor the finding instrument-identity-keyed-on-one-broker."
+  }
+ ]
+}

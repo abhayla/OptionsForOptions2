@@ -7,9 +7,10 @@ a quote has no citation (UNCITED).  Exit 2: bad usage.
 Citation = the nearest REQ-### [AC-n] / ADR-### / Q### id in front of the quote, within the same paragraph;
 when a REQ+AC cite and another id both precede the quote, the REQ+AC cite wins.
 A Q### quote passes if the id's open-questions section or any spec/ file mentioning the id contains it.
-Also (guard-set checks, exit 1): (a) some line must name both literals `tests/test_*.py` and
-`tests/errors/test_write_allowlist.py` (the repo-wide guard tests); (b) a Tier A brief whose first 10 lines mention a
-guard/door/gate/scan needs a `Findings checked:` line whose ids each exist as knowledge/findings/<id>.json.
+Also (guard-set checks, exit 1): (a) some line must name all three literals `tests/test_*.py`,
+`tests/errors/test_write_allowlist.py` and `tests/errors/test_producer_inventory.py` (the repo-wide guard tests);
+(b) a Tier A brief whose first 10 lines mention a guard/door/gate/scan needs a `Findings checked:` line whose ids
+each exist as knowledge/findings/<id>.json.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
@@ -152,7 +153,8 @@ def check_text(brief: str, root: Path) -> list[Result]:
     return results
 
 
-GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py")
+GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py",
+               "tests/errors/test_producer_inventory.py")
 GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
 
@@ -161,8 +163,9 @@ def check_guard_set(brief: str, root: Path) -> list[str]:
     """One-line reasons a brief misses the repo-wide guard tests or (Tier A guard work) the findings ids."""
     misses: list[str] = []
     if not any(all(g in line for g in GUARD_TESTS) for line in brief.splitlines()):
-        misses.append("MISSING guard tests: no line names both `tests/test_*.py` and "
-                      "`tests/errors/test_write_allowlist.py` in its test commands")
+        misses.append("MISSING guard tests: no line names all of `tests/test_*.py`, "
+                      "`tests/errors/test_write_allowlist.py` and "
+                      "`tests/errors/test_producer_inventory.py` in its test commands")
     lines = brief.splitlines()
     if any("Tier A" in line for line in lines) and any(GUARD_WORD_RE.search(x) for x in lines[:10]):
         m = FINDINGS_RE.search(brief)

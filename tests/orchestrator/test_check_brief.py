@@ -10,7 +10,8 @@ check_brief = importlib.util.module_from_spec(_spec)
 sys.modules["check_brief"] = check_brief
 _spec.loader.exec_module(check_brief)
 
-GUARD_LINE = "Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.py`\n"
+GUARD_LINE = ("Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.py "
+              "tests/errors/test_producer_inventory.py`\n")
 
 
 def run(tmp_path, text, *extra):
@@ -162,3 +163,15 @@ def test_guard_set_missing_guard_tests_line_fails(tmp_path, capsys):
     brief.write_text("Tests: tests/test_*.py only\n", encoding="utf-8")
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 1
     assert "MISSING guard tests" in capsys.readouterr().out
+
+
+def test_guard_set_needs_producer_inventory_literal(tmp_path, capsys):
+    """GC-2c: two literals without the producer scan fail; all three pass."""
+    two = "Tests: `pytest tests/test_*.py tests/errors/test_write_allowlist.py`\n"  # old two literals
+    three = two.rstrip("`\n") + " tests/errors/test_producer_inventory.py`\n"
+    brief = tmp_path / "b.md"
+    brief.write_text(two, encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(ROOT)]) == 1
+    assert "test_producer_inventory.py" in capsys.readouterr().out
+    brief.write_text(three, encoding="utf-8")
+    assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0

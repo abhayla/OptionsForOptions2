@@ -182,8 +182,8 @@ def test_agent_gate_refuses_on_missing_line_from_the_checker(tmp_path):
 def test_agent_gate_allows_a_good_brief_and_a_prompt_without_one(tmp_path):
     good = tmp_path / "docs" / "process" / "brief-ok.md"
     good.parent.mkdir(parents=True)
-    good.write_text("# Brief\nTests: python -m pytest tests/test_*.py tests/errors/test_write_allowlist.py\n",
-                    encoding="utf-8")
+    good.write_text("# Brief\nTests: python -m pytest tests/test_*.py tests/errors/test_write_allowlist.py "
+                    "tests/errors/test_producer_inventory.py\n", encoding="utf-8")
     assert abg.decide("Agent", {"prompt": f"Brief: {good}"}) is None
     assert run_hook("agent_brief_gate.py", agent(f"Brief: {good}")).returncode == 0
     assert run_hook("agent_brief_gate.py", agent("Review the diff of PR 5. No brief file.")).returncode == 0
