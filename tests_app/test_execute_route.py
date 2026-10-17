@@ -24,24 +24,21 @@ from pathlib import Path
 import pytest
 from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument
-from ofo.instruments import NSE_FO, Catalogue, InstrumentId
-from ofo.instruments.parser import zerodha_listed
+from ofo.instruments import Catalogue
 from ofo_app import execute_plan as ep
-from ofo_app.kite_margin import KiteMargin
-from ofo_app.kite_reads import KiteReads
+from ofo_app.execute_replay import AT, CORE_ID, REPLIES, TOKEN, real_basket, real_order
+from ofo_app.execute_replay import DepthQuotes, RecordedKite, live_quote, session_for
+from ofo_app.execute_replay import listed_contract as _listed
+from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
+from ofo_app.execute_replay import store_strategy_one
 
 ROOT = Path(__file__).resolve().parents[1]
-REPLIES = ROOT / "tests" / "fixtures" / "kite_replies"
-SLICE = json.loads((ROOT / "tests/fixtures/eligibility/instruments-2026-10-16-slice.json").read_text(encoding="utf-8"),
-                   parse_float=D)
-REAL_BASKET = json.loads((REPLIES / "basket-121848.json").read_text(encoding="utf-8"))
-(REAL_ORDER,) = json.loads(REAL_BASKET["data"], parse_float=D)
-TOKEN = "12080386"
-CORE_ID = InstrumentId(NSE_FO, 47189)
-AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+REAL_BASKET = real_basket()
+REAL_ORDER = real_order()
 KEY = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))
-_MONEY_KEYS = {"last_price", "average_price", "lower_circuit_limit", "upper_circuit_limit", "price", "open", "high",
-               "low", "close", "low_limit_price_protection", "high_limit_price_protection"}
+_live_quote = live_quote
+_Replay = RecordedKite
+_session_for = session_for
 #: W-102: the stored seed rate set (migration 0012, read 2026-10-15), handed to the route in place of the database read
 RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -50,28 +47,8 @@ RATES = ChargeRates(
     source_url="https://zerodha.com/charges (F&O options), read 2026-10-15; F-35")
 
 
-def _live(value: object) -> object:
-    if isinstance(value, dict):
-        return {k: (D(v) if k in _MONEY_KEYS and isinstance(v, str) else _live(v)) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_live(v) for v in value]
-    return value
-
-
-def _live_quote() -> dict:
-    return _live(json.loads((REPLIES / "quote-151720.json").read_text(encoding="utf-8"), parse_float=D))
-
-
 def _quotes(quote: object):
     return lambda iid, token: ep.quote_from_kite(quote) if token == TOKEN else None
-
-
-def _listed():
-    row = SLICE["list"][TOKEN]
-    return zerodha_listed(
-        instrument_token=int(TOKEN), exchange_token=int(TOKEN) >> 8, tradingsymbol=row["symbol"],
-        name=row["group"].split()[0], expiry=datetime.date.fromisoformat(row["expiry"]), strike=D(row["strike"]),
-        tick_size=D("0.05"), lot_size=int(row["lot"]), instrument_type=row["type"], segment="NFO-OPT", exchange="NFO")
 
 
 def _catalogue() -> Catalogue:
@@ -250,41 +227,6 @@ def test_ac1_zerodha_figures_not_confirmed_stay_null_never_zero():
 
 # ---- the route on the database (core proof) -------------------------------------------------------------------------
 
-class _Replay:
-    """Fake transport for both Zerodha clients, answering with recorded replies."""
-
-    quote_text: str | None = None  # a /quote body to serve instead of the recorded quote-150720.json
-    order_rows: list | None = None  # rows derived from the real replies (``_rows_of``), else the named fixture
-    position_rows: list | None = None
-
-    def __init__(self, *, funds: str, basket_total: str, orders: str | None, positions: str) -> None:
-        self.funds, self.basket_total, self.orders, self.positions = funds, basket_total, orders, positions
-        self.calls: list[str] = []  # every Kite URL asked (W-102: the cost adds no Zerodha read)
-
-    def _reply(self, name: str) -> dict:
-        return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=D)
-
-    def __call__(self, method, url, headers, body):
-        self.calls.append(url)
-        if "/quote?i=" in url:
-            return 200, self.quote_text or (REPLIES / "quote-150720.json").read_text(encoding="utf-8")
-        if url.endswith("/user/margins"):
-            return 200, '{"status": "success", "data": {"equity": {"enabled": true, "net": %s}}}' % self.funds  # noqa: UP031
-        if "/margins/basket" in url:
-            return 200, _basket_reply(self.basket_total)
-        if url.endswith("/orders"):
-            data = self.order_rows if self.order_rows is not None else (
-                [] if self.orders is None else _rows(self._reply(self.orders)))
-            return 200, json.dumps({"status": "success", "data": data}, default=str)
-        if url.endswith("/portfolio/positions"):
-            data = self._reply(self.positions)
-            data = data.get("data", data)
-            if self.position_rows is not None:
-                data = {**data, "net": self.position_rows}
-            return 200, json.dumps({"status": "success", "data": data}, default=str)
-        raise AssertionError(url)
-
-
 #: Zerodha reads of one accepted Execute press, as on main before W-102 (read from the code: the order book, the
 #: circuit-band quote, funds + basket margin in ``_zerodha_margin``, positions, funds + basket margin again inside
 #: ``checked_basket``). The cost reuses the first funds/margin read and adds none.
@@ -313,81 +255,19 @@ def _rows_of(replay: _Replay, *, orders: list | None = None, positions: list | N
     return replay
 
 
-def _rows(reply):
-    return reply["data"] if isinstance(reply, dict) and "data" in reply else reply
-
-
-#: Zerodha's basket-margin reply per basket: the EXIT reply is the REAL one (fetch.json ``margin_raw``, SELL 65 @ 3.30,
-#: final.total -214.5); the ENTRY reply is DERIVED from it with the recorder's entry total 354.25 (README there).
-_BASKET_REPLIES = {"354.25": "margins-basket-entry-derived.json", "-214.5": "margins-basket-exit-150717.json"}
-
-
-def _basket_reply(total: str) -> str:
-    return (REPLIES / _BASKET_REPLIES[total]).read_text(encoding="utf-8")
-
-
-def _session_for(replay):
-    class _S:
-        api_key = "kitekey"
-        reads = KiteReads(api_key="kitekey", access_token="tok", transport=replay)  # noqa: S106
-        margin = KiteMargin(api_key="kitekey", access_token="tok", transport=replay)  # noqa: S106
-    return _S()
-
-
-class _Quotes:
+def _Quotes() -> DepthQuotes:  # the quote seam the route tests install
     """The depth source: depth and last price only, NO band (as the live feed). The band comes from Zerodha's quote."""
-
-    def __init__(self) -> None:
-        live = ep.quote_from_kite(_live_quote())
-        self.quote = ep.LegQuote(live.depth, live.at, live.last_price, None)
-
-    def leg_quote(self, instrument_id, token):
-        return self.quote if token == TOKEN else None
-
-    def underlying_price(self, underlying):
-        return (D("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))  # fetch.json spot
+    return DepthQuotes(ep.quote_from_kite(_live_quote()))
 
 
 async def _strategy_one(conn, user: str, app_role: str, units: int = 65) -> int:
-    """Strategy id 1 (the real tags OFS1V1...): saved through the store, then given id 1 as the owner role (the
-    application role cannot write ``id``), then the transaction continues as the application role."""
-    from ofo.strategy import stored_form as sf  # noqa: PLC0415
-    from ofo_app.catalogue_store import apply_update  # noqa: PLC0415
-    from ofo_app.strategy_store import build_definition, save_draft  # noqa: PLC0415
+    """Strategy id 1 (the real tags OFS1V1...), stored by the replay module's one copy; fails when id 1 is taken."""
     from sqlalchemy import text  # noqa: PLC0415
 
     taken = (await conn.execute(text("SELECT user_ref FROM public.strategies WHERE id = 1"))).first()
     if taken is not None:
         pytest.fail(f"strategy id 1 is already stored in the shared test DB (user {taken[0]!r}); the core needs it")
-    await apply_update(conn, [_listed()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo))
-    cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
-                                   "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
-                              {"s": REAL_ORDER["tradingsymbol"]})).scalar_one()
-    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, None)],
-                                   rules_ref=None, risk_limits={}, preferences={})
-    made = await save_draft(conn, user, saved)
-    await conn.execute(text("SET LOCAL session_replication_role = replica"))
-    await conn.execute(text("UPDATE public.strategies SET id = 1 WHERE id = :s"), {"s": made.id})
-    await conn.execute(text("UPDATE public.strategy_history SET strategy_id = 1 WHERE strategy_id = :s"),
-                       {"s": made.id})
-    await conn.execute(text("SET LOCAL session_replication_role = origin"))
-    await conn.execute(text(f'SET LOCAL ROLE "{app_role}"'))
-    await _pro_grant(conn, user)
-    return 1
-
-
-async def _pro_grant(conn, user: str) -> None:
-    """A real Pro grant through the entitlement store, as the application role, ``granted_at`` = the database's own
-    clock (ADR-023: the database refuses a date more than 60 s off its clock; no trigger disabled, nothing
-    backdated). It lives inside the test's rolled-back transaction."""
-    from ofo.entitlements.events import NewGrant, Source  # noqa: PLC0415
-    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
-    from ofo_app import entitlement_store  # noqa: PLC0415
-    from test_entitlement_store import note  # noqa: PLC0415
-
-    now = await elig.database_now(conn)
-    await entitlement_store.append(conn, user, NewGrant("pro-core", Source.PAID_MONTHLY, now,
-                                                        datetime.timedelta(days=30), "pay-core", note("core test")))
+    return await store_strategy_one(conn, user, app_role, units)
 
 
 async def _post(app, strategy_id: int, action: str):

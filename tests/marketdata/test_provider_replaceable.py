@@ -79,6 +79,9 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/routes/broker.py": "composition root wiring the Kite login port to its HTTP client - REQ-063 AC-1",
     "ofo_app/replay_mode.py": "test-only composition root: feeds the Kite market-data provider from the recorded "
                               "frames for the outcome route (APP_ENV=test only, W-064) - REQ-063 AC-1",
+    "ofo_app/execute_replay.py": "test-only composition root (the Execute/return twin of replay_mode.py): builds the "
+                                 "Kite read and margin clients on a recorded-files transport and the Kite market-data "
+                                 "provider on the recorded depth frame (APP_ENV=test only, W-101) - REQ-063 AC-1",
     "ofo_app/broker_token_store.py": "the broker adapter's token store: ends a session on Kite's TokenException "
                                      "(adapter error type) - REQ-063 AC-1",
     "ofo_app/live_market.py": "live composition root: wires the Kite market-data provider and socket to the owner's "

@@ -61,3 +61,16 @@ export function legsFromSaved(definition, contracts) {
   }
   return out
 }
+
+/** Load saved strategy `id` (GET /strategies/{id}) and rebuild its legs from the catalogue contracts of its expiries.
+ *  `client` is the api module. Throws on a request failure (its mapped error) or when the legs will not rebuild. */
+export async function fetchSavedLegs(client, id) {
+  const def = (await client.get(`/strategies/${id}`)).data.definition
+  const contracts = []
+  for (const expiry of expiriesOf(def)) {
+    contracts.push(...(await client.get(`/catalogue/${def.underlying}/contracts?expiry=${expiry}`)).data.contracts)
+  }
+  const legs = legsFromSaved(def, contracts)
+  if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
+  return legs
+}
