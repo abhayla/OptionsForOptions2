@@ -1,7 +1,7 @@
 # Process lessons (reviewed weekly)
 
 Process misses that did not let a defect reach main go here, one line each, instead of the findings registry
-(owner decision 2026-10-17, ADR-1NN item 5). A miss that let a defect reach main is a finding in
+(owner decision 2026-10-17, ADR-106 item 5). A miss that let a defect reach main is a finding in
 `knowledge/findings/`. Review this list once a week; a lesson seen twice becomes a mechanism (a check, a hook, a
 template line), then its line is deleted.
 

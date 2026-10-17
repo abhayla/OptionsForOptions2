@@ -3,7 +3,7 @@
 Why this file exists: the owner asked (2026-10-17) that what this project learned about wasted delivery time goes back
 to Startup-Factory, so the kit and every project built on it improves. It is filed as one `harvest` issue on
 `abhayla/Startup-Factory` that links here; each row was reviewed by three independent reviewers (delivery process,
-trading safety, platform feasibility) and checked against open harvest issues. Project-side decisions: ADR-1NN.
+trading safety, platform feasibility) and checked against open harvest issues. Project-side decisions: ADR-106.
 
 ## What was measured (2026-09-28 .. 2026-10-17, from git and GitHub)
 - 272 merged PRs: 102 on `docs/` branches (about 60 by title), 95 build, 36 fix, 29 spec.

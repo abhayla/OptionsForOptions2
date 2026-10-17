@@ -5,7 +5,7 @@ added it; keep adding lines when a verifier finds a new class (knowledge/finding
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
 tier, and the literal `Budget:` / `Report:` / `Tests:` lines, which the dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
-attack list, not a rewrite (ADR-1NN item 9).
+attack list, not a rewrite (ADR-106 item 9).
 
 You build ONE work item in your own git worktree of github.com/abhayla/OptionsForOptions2 (branch from origin/main).
 Read first, in order: your `work/W-###.md`; its requirement `spec/requirements/REQ-###.md` (acceptance criteria);
@@ -47,7 +47,7 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   `Findings checked: <id>, <id>` where each id is a file `knowledge/findings/<id>.json` (W-080 round 10 was designed
   without reading `guard-by-banned-shapes`). Grep the registry first; "grep findings" is not a list.
 - A brief that adds or changes a guard carries `Threat model: in scope <...>; out of scope <...>` BEFORE round 1
-  (ADR-1NN item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
+  (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
   what is in scope; a finding outside it is recorded, not a new round.
 
 ## Quality bar (the reviewer will check exactly this)
@@ -93,7 +93,7 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - Type hints on public functions; small modules; no dead code; no print statements.
 
 ## Before you finish
-Run from your worktree root, each as its own command (the fast pre-push set, ADR-1NN item 12; CI runs the full
+Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 12; CI runs the full
 suites): your brief's `Tests:` line (guard tests + `-m repo_scan` + your changed files' tests) ·
 `python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
