@@ -27,6 +27,7 @@ from decimal import Decimal
 from typing import Any, Literal, Mapping, Optional, Sequence
 
 from ofo.execution.basket import make_tag
+from ofo.money import PAISE
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -42,7 +43,6 @@ SIDES = ("BUY", "SELL")
 CLOSE_REASONS = ("filled", "exited", "nothing_placed", "partial")
 INTEGER_MAX = 2**31 - 1  # plan_number, leg_index, quantity (INTEGER)
 PRICE_LIMIT = Decimal(10) ** 12  # NUMERIC(14,2)
-_CENT = Decimal("0.01")
 _UNIQUE_VIOLATION = "23505"
 _CHECK_VIOLATION = "23514"
 _OPEN_INDEX = "execution_plans_one_open"
@@ -69,7 +69,7 @@ def _text(value: Any, what: str) -> str:
 
 def _price(value: Any) -> Decimal:
     if (not isinstance(value, Decimal) or not value.is_finite() or value <= 0 or value >= PRICE_LIMIT
-            or value != value.quantize(_CENT)):
+            or value != value.quantize(PAISE)):
         raise PlanStoreError(BAD_PLAN, f"price must be a positive Decimal with at most 2 decimals, got {value!r}")
     return value
 
