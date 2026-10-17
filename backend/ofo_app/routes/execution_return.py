@@ -52,6 +52,9 @@ _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
     "WHERE s.user_ref = :u AND p.strategy_id <> :s ORDER BY p.strategy_id")
 _RECORDED = text("SELECT 1 FROM public.audit_events WHERE event_type = :t AND correlation_id = :c")
+# The audit event's time is the database's clock (the trigger's own reference, ADR-023 Q256: +/- 60 s of recorded_at),
+# never the injectable request clock: a skewed request clock must not refuse the record (like entitlement_store).
+_DB_NOW = text("SELECT clock_timestamp()")
 PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required"]
 
 
@@ -265,7 +268,8 @@ async def _record_externals(req: _Request, book: er.TodaysBook) -> None:
         correlation = _correlation(req.strategy_id, row)
         if (await req.db.execute(_RECORDED, {"t": kind.value, "c": correlation})).first() is not None:
             continue
-        await audit_store.append(req.db, kind, actor="system", timestamp=req.now, correlation_id=correlation,
+        at = (await req.db.execute(_DB_NOW)).scalar_one()
+        await audit_store.append(req.db, kind, actor="system", timestamp=at, correlation_id=correlation,
                                  payload=dict(row))
 
 
