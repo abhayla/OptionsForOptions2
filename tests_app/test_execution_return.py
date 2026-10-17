@@ -11,6 +11,7 @@ import copy
 import datetime
 import json
 from decimal import Decimal as D
+from http import HTTPStatus
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 AT = datetime.datetime(2026, 10, 16, 12, 21, 4, tzinfo=IST)
+ENTRY_PLAN, EXIT_PLAN = 1, 2  # the real tags OFS1V1L0 / OFS1V2L0 (ADR-105)
 KEY = ("NIFTY", "CE", D("23650"), datetime.date(2026, 10, 19))
 
 
@@ -30,15 +32,18 @@ def _data(name: str) -> list:
     return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=D)["data"]
 
 
-def _plan(number: int, action: str, sides: tuple[str, ...], *, status: str = "open", filled=None,
-          reason: str | None = None, quantity: int = 65) -> StoredPlan:
-    orders = tuple(PlanOrder(i, make_tag(1, number, i), IID, SYMBOL, side, quantity, D("5.45"),
-                             None if filled is None else filled[i]) for i, side in enumerate(sides))
-    return StoredPlan(1, number, action, status, orders, AT, None if status == "open" else AT, reason)
+def _plan(number: int, action: str, sides: tuple[str, ...], closed: tuple[tuple[int, ...], str] | None = None,
+          ) -> StoredPlan:
+    """An open plan, or (``closed`` = (filled per leg, reason)) a closed one; 65 units per leg."""
+    filled, reason = closed if closed is not None else ((None,) * len(sides), None)
+    orders = tuple(PlanOrder(i, make_tag(1, number, i), IID, SYMBOL, side, 65, D("5.45"), filled[i])
+                   for i, side in enumerate(sides))
+    status = "open" if closed is None else "closed"
+    return StoredPlan(1, number, action, status, orders, AT, None if closed is None else AT, reason)
 
 
 ENTRY_OPEN = _plan(1, "ENTRY", ("BUY",))
-ENTRY_DONE = _plan(1, "ENTRY", ("BUY",), status="closed", filled=(65,), reason="filled")
+ENTRY_DONE = _plan(1, "ENTRY", ("BUY",), ((65,), "filled"))
 EXIT_OPEN = _plan(2, "EXIT", ("SELL",))
 
 
@@ -131,7 +136,7 @@ def test_ac3_zerodha_disagreeing_with_itself_or_the_plan_needs_reconciliation(ch
 
 def test_ac3_a_closed_plan_whose_order_filled_after_the_close_has_drifted():
     """AC-3 / design review 5: plan 1 closed nothing_placed, then Kite shows its tag filled 65 -> drift (blocks)."""
-    closed = _plan(1, "ENTRY", ("BUY",), status="closed", filled=(0,), reason="nothing_placed")
+    closed = _plan(1, "ENTRY", ("BUY",), ((0,), "nothing_placed"))
     book = _book(_data("orders-122104"), _data("trades-122104"), (closed,))
     assert er.drifted((closed,), book) == (1,)
     assert er.drifted((ENTRY_DONE,), book) == ()
@@ -196,10 +201,12 @@ async def _post(app, strategy_id: int):
         return await ac.post(f"/strategies/{strategy_id}/execution/return")
 
 
-async def _store_plan(conn, user, sid, action, side, price) -> int:
+async def _store_plan(conn, user, sid, order_shape: tuple[str, str, str]) -> int:
+    """Stores the next plan through the W-094 store: (action, side, LIMIT price), 65 units of the real contract."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from test_execute_route import CORE_ID  # noqa: PLC0415
 
+    action, side, price = order_shape
     number = await plans.next_plan_number(conn, user, sid)
     order = PlanOrder(0, make_tag(sid, number, 0), f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", SYMBOL,
                       side, 65, D(price))
@@ -241,10 +248,10 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
         try:
             user = _user()
             sid = await _strategy_one(conn, user, app_engine.url.username)
-            assert await _store_plan(conn, user, sid, "ENTRY", "BUY", "5.45") == 1
+            assert await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45")) == ENTRY_PLAN
             entry = _Reads("122104")
             resp = await _post(_app_for(conn, user, entry), sid)
-            assert resp.status_code == 200, resp.text
+            assert resp.status_code == HTTPStatus.OK, resp.text
             body = resp.json()
             assert body["plans"] == [{"plan_number": 1, "action": "ENTRY", "state": "filled", "choices": []}]
             assert body["contracts"] == [{"tradingsymbol": SYMBOL, "platform_units": 65, "zerodha_units": 65,
@@ -254,7 +261,7 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             (stored,) = await plans.plans_for(conn, user, sid)
             assert (stored.close_reason, stored.orders[0].filled_quantity) == ("filled", 65)
 
-            assert await _store_plan(conn, user, sid, "EXIT", "SELL", "3.10") == 2
+            assert await _store_plan(conn, user, sid, ("EXIT", "SELL", "3.10")) == EXIT_PLAN
             exit_reads = _Reads("151006")
             app = _app_for(conn, user, exit_reads)
             first = (await _post(app, sid)).json()
@@ -289,7 +296,7 @@ async def test_ac3_external_order_recorded_once_and_closed_basket_is_nothing_pla
         try:
             user = _user()
             sid = await _strategy_one(conn, user, app_engine.url.username)
-            await _store_plan(conn, user, sid, "ENTRY", "BUY", "5.45")
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
             orders = [{**_data("orders-122104")[0], "tag": "OFS1V9L0"}]
             app = _app_for(conn, user, _Reads("122104", orders=orders))
             before = await _audit_count(conn)

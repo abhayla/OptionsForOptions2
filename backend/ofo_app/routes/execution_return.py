@@ -102,7 +102,7 @@ def _refuse(template: str) -> StrategyRefused:
 
 
 @router.post("/strategies/{strategy_id}/execution/return", response_model=ReturnOut)
-async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies
+async def return_from_kite(
     strategy_id: int,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
