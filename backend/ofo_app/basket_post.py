@@ -3,10 +3,10 @@
 Spec basis: REQ-073 AC-1 ("one Kite basket of LIMIT orders marked read-only, in the plan's order; the user cannot
 change a price, quantity or contract on Kite's page"); AC-2 (every order carries our own tag).
 
-The browser must POST exactly ``KiteBasket.form_fields(api_key)`` to ``KITE_BASKET_URL``: a client that rebuilt the
+The browser must POST exactly the basket's ``form_fields(api_key)`` to ``KITE_BASKET_URL``: a client that rebuilt the
 JSON could drop ``readonly`` or a tag. So the response carries the exact ``data`` string, and the API door
 (``api_models``) writes it only from this type, which:
-- is made only by ``BasketPost.of(basket, api_key)`` from a real ``KiteBasket`` (``type(basket) is KiteBasket``; the
+- is made only by ``BasketPost.of(basket, api_key)`` from the sealed basket (``checked_basket.is_checked_basket``; the
   constructor refuses any other caller);
 - re-parses its own ``data`` and refuses unless it is exactly the basket's orders, each LIMIT and ``readonly`` true,
   each tag the basket's own tag, so a text that would let Kite's page edit an order can never be emitted.
@@ -17,7 +17,11 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
-from ofo.execution.basket import KITE_BASKET_URL, KiteBasket
+from typing import Any
+
+from ofo.execution.basket import KITE_BASKET_URL
+
+from ofo_app.checked_basket import is_checked_basket
 
 _TOKEN = object()
 _FIELDS = ("variety", "tradingsymbol", "exchange", "transaction_type", "order_type", "product", "price", "quantity",
@@ -28,13 +32,13 @@ class BasketPostRefused(ValueError):
     """The basket's form text does not parse back to its own read-only orders (never emitted)."""
 
 
-def _expected(basket: KiteBasket) -> list[dict[str, object]]:
+def _expected(basket: Any) -> list[dict[str, object]]:
     return [{"variety": o.variety, "tradingsymbol": o.tradingsymbol, "exchange": o.exchange,
              "transaction_type": o.transaction_type, "order_type": "LIMIT", "product": o.product,
              "price": o.price, "quantity": o.quantity, "readonly": True, "tag": o.tag} for o in basket.orders]
 
 
-def _check(data: str, basket: KiteBasket) -> None:
+def _check(data: str, basket: Any) -> None:
     try:
         parsed = json.loads(data, parse_float=Decimal)
     except ValueError as exc:
@@ -63,9 +67,9 @@ class BasketPost:
         raise AttributeError("a BasketPost is read-only")
 
     @classmethod
-    def of(cls, basket: KiteBasket, api_key: str) -> BasketPost:
-        if type(basket) is not KiteBasket:
-            raise TypeError(f"a BasketPost is made from a KiteBasket, got {type(basket).__name__}")
+    def of(cls, basket: Any, api_key: str) -> BasketPost:
+        if not is_checked_basket(basket):
+            raise TypeError(f"a BasketPost is made from the sealed basket, got {type(basket).__name__}")
         fields = basket.form_fields(api_key)
         _check(fields["data"], basket)
         return cls(fields["api_key"], fields["data"], tuple(o.tag for o in basket.orders), _token=_TOKEN)

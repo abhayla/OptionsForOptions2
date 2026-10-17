@@ -12,7 +12,7 @@ and a plain `str` (or anything not listed below) raises TypeError. Allowed leave
 - `Literal[...]` of Identifier-pattern strings, `bool` and `int` (no Enum: its values are free text), `Decimal`
   (written as a plain string, project rule), timezone-aware `datetime`, `date`, nested `ApiModel`s, `dict[Identifier, X]`
   and `list`/`tuple`/`Optional` of those;
-- `BasketPost` (W-095): the exact Kite basket form text, made only from a real `KiteBasket` (`basket_post.py`).
+- `BasketPost` (W-095): the exact Kite basket form text, made only from the sealed basket (`basket_post.py`).
 So string building in route code is harmless: it cannot reach a response body.
 
 The class check above is an early warning, not the guarantee (W-069, issue #148). The guarantee is `emit`: the ONE
@@ -242,7 +242,7 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
         raise _refuse(path, value, "Money")
-    if tp is BasketPost:  # W-095: the exact Kite form text, only from a real KiteBasket (basket_post.py)
+    if tp is BasketPost:  # W-095: the exact Kite form text, only from the sealed basket (basket_post.py)
         if type(value) is BasketPost:
             return value.as_form()
         raise _refuse(path, value, "BasketPost")

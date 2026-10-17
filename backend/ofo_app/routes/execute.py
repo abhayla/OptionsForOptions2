@@ -24,7 +24,6 @@ an unreadable entitlement history -> ``pro_entitled`` None (the gate blocks wher
 from __future__ import annotations
 
 import datetime
-import functools
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -36,7 +35,7 @@ from ofo.engine.product import Product
 from ofo.entitlements.engine import access_at
 from ofo.entitlements.events import AccessLevel
 from ofo.errors import UserFacingError, render
-from ofo.execution.basket import BasketRefused, KiteBasket, parse_tag, zerodha_exchange
+from ofo.execution.basket import BasketRefused, parse_tag, zerodha_exchange
 from ofo.execution.context import (
     DataHealth,
     DataInput,
@@ -64,14 +63,13 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_store import load_catalogue
-from ofo_app.checked_basket import checked_basket
+from ofo_app.checked_basket import checked_basket, is_checked_basket
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.freeze_store import review_freeze_limits
-from ofo_app.kite_margin import BasketOrder, KiteMargin, urllib_transport
+from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, positions_from_reply
-from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.strategies import StrategyRefused
 
@@ -127,15 +125,10 @@ class _Session:
 async def get_kite_session() -> Optional[KiteSession]:  # noqa: UP045
     """The owner's Zerodha session (the stored token, as ``owner_margin_client``), or None (not connected)."""
     margin = await live_market.owner_margin_client()
-    market = live_market._current
-    if margin is None or market is None or market._config is None:
+    reads = await live_market.owner_kite_reads()
+    if margin is None or reads is None:
         return None
-    token = await market._stored_token(market._config)
-    if token is None:
-        return None
-    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
-    api_key = market._config.api_key
-    return _Session(api_key, KiteReads(api_key=api_key, access_token=token, transport=transport), margin)
+    return _Session(reads[0], reads[1], margin)
 
 
 class QuoteReader(Protocol):
@@ -227,10 +220,11 @@ def _held_plan(history: tuple[plans.StoredPlan, ...]) -> plans.StoredPlan | None
     return latest if latest.action == ENTRY else None
 
 
-def _plan_orders(basket: KiteBasket) -> tuple[plans.PlanOrder, ...]:
-    return tuple(plans.PlanOrder(leg_index=parse_tag(o.tag).leg_index, tag=o.tag, instrument_id=_feed_key(o.instrument_id),
-                                 tradingsymbol=o.tradingsymbol, transaction_type=o.transaction_type,
-                                 quantity=o.quantity, price=o.price) for o in basket.orders)
+def _plan_orders(basket: Any) -> tuple[plans.PlanOrder, ...]:
+    return tuple(plans.PlanOrder(leg_index=parse_tag(o.tag).leg_index, tag=o.tag,
+                                 instrument_id=_feed_key(o.instrument_id), tradingsymbol=o.tradingsymbol,
+                                 transaction_type=o.transaction_type, quantity=o.quantity, price=o.price)
+                 for o in basket.orders)
 
 
 # ---- the route ------------------------------------------------------------------------------------------------------
@@ -329,7 +323,7 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
         raise _refuse("gate_data_unhealthy", data_input=DataInput.LEG_PRICES, state=DataHealth.STALE)
 
 
-async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> KiteBasket:
+async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> Any:
     limits = await review_freeze_limits(req.db, priced.plan)
     today = req.now.astimezone(IST).date()
     frozen = freeze_check(priced.plan, limits, today=today)
@@ -340,12 +334,12 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
                                 freeze_check=lambda p: freeze_check(p, limits, today=today))
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
-    if type(basket) is not KiteBasket:  # the one production path to a basket
-        raise TypeError("checked_basket returned something other than a KiteBasket")
+    if not is_checked_basket(basket):  # the one production path to a basket
+        raise TypeError("checked_basket returned something other than its sealed basket")
     return basket
 
 
-def _answer(plan_number: int, basket: KiteBasket, api_key: str) -> ExecuteOut:
+def _answer(plan_number: int, basket: Any, api_key: str) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
@@ -407,7 +401,7 @@ async def _pro_entitled(req: _Request) -> bool | None:
 
 async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str) -> dict[DataInput, DataHealth]:
     spot = req.quotes.underlying_price(underlying)
-    loaded = await elig._loaded_at(req.db)
+    loaded = await elig.list_loaded_at(req.db)
     if loaded is None:
         listing = DataHealth.UNAVAILABLE
     else:
@@ -458,4 +452,4 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: plan
 
 
 __all__ = ["ExecuteIn", "ExecuteOut", "LiveDepthQuotes", "get_execute_clock", "get_kite_session", "get_quote_reader",
-           "market_open", "router"]
+           "market_open"]

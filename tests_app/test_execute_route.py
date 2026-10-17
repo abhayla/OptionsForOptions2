@@ -274,7 +274,7 @@ async def _strategy_one(conn, user: str, app_role: str) -> int:
 
     taken = (await conn.execute(text("SELECT user_ref FROM public.strategies WHERE id = 1"))).first()
     if taken is not None:
-        pytest.fail(f"strategy id 1 is already stored in the shared test DB (user {taken[0]!r}); the core proof needs it")
+        pytest.fail(f"strategy id 1 is already stored in the shared test DB (user {taken[0]!r}); the core needs it")
     await apply_update(conn, [_listed()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo))
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
