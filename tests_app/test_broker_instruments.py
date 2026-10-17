@@ -75,6 +75,7 @@ async def _scalar(conn: AsyncConnection, sql: str, params: dict | None = None):
 # ---------------------------------------------------------------------------------------------------------------
 
 
+@pytest.mark.repo_scan  # reads information_schema for EVERY table, so no file walker can find it
 async def test_ac3_no_table_but_broker_instruments_has_a_zerodha_id_column(app_engine: AsyncEngine) -> None:
     async with app_engine.connect() as conn:
         rows = (await conn.execute(text(

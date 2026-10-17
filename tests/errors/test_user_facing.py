@@ -17,6 +17,8 @@ import pytest
 
 from ofo.errors import UserFacing, UserFacingError, render, user_message_of
 
+pytestmark = pytest.mark.repo_scan
+
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo"
 PARTS = ("what_happened", "impact", "what_is_blocked", "next_action")
 AT = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=datetime.timezone.utc)

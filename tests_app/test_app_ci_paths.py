@@ -8,7 +8,10 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.repo_scan
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "app-tests.yml"
