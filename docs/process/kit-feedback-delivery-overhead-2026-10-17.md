@@ -31,6 +31,8 @@ trading safety, platform feasibility) and checked against open harvest issues. P
 | 10 | The kit guard blocks read-only actions by text match: `git ls-remote`, `cmp`, loops, the kit repo name in `-R`, the word "spec" inside a grep pattern, the word "tools" in a user-level tool path (`~/.claude/tools/wt-new.ps1`, the sanctioned worktree tool). Each forced a rewrite through a script file. | Block writes to kit paths and reads of secret files only; allow plain reads and user-level paths outside the project. | #89, #40 |
 | 11 | A process recommendation silently narrowed a safety rule (dropped "live-data liveness" from Tier A) and over-claimed savings; it was approved before any review. Finding `process-change-narrows-safety-rule` (scope generic). | A process change that touches review tiers, rounds, verifiers or guards gets role reviewers (safety, delivery, platform) before the owner sees it; the current rule is quoted next to the proposed one. | new |
 
+| 12 | The kit's rule copies lag the owner's user-level rules, and both load in every kit project (about 10 KB twice): kit `run-discipline` 1.0.0 lacks user-level 1.1.0's B4 standing brief items (a)-(d) and B8 "prefer a structural guarantee over a detector"; kit `spec-first` 1.4.0 is ahead of user-level 1.2.0. | Bring the kit copies level with the user-level versions (add B4 (a)-(d) and B8 to kit run-discipline), so a project can drop the user-level duplicate with the documented `claudeMdExcludes` setting (code.claude.com/docs/en/memory.md) without losing a rule. | new |
+
 Not sent to the kit: the coverage check's grace window (project-owned `coverage.py`); the laptop-sleep loss (owner
 setting).
 
