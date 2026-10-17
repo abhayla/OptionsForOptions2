@@ -22,6 +22,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -31,7 +32,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditChainError
 from ofo.audit.models import GENESIS_HASH, AuditEvent, canonical_json
-from ofo_app import audit_store
+from ofo.entitlements.engine import trial_grant
+from ofo.entitlements.events import AuditNote
+from ofo_app import audit_store, entitlement_store, order_audit
 from ofo_app.audit_allowlist import (
     ALLOWLIST,
     PayloadShapeError,
@@ -947,7 +950,7 @@ async def test_database_clock_that_is_not_an_aware_time_is_refused(monkeypatch: 
     naive = datetime(2026, 10, 17, 10, 0)  # noqa: DTZ001 - the naive value under test
     for bad in (None, "2026-10-17T10:00:00+05:30", naive):
         with pytest.raises(AuditStoreError, match="database clock"):
-            await audit_store._database_now(_Conn(bad))  # noqa: SLF001
+            await audit_store._database_now(_Conn(bad))
 
 
 async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitlement_store(
@@ -956,12 +959,6 @@ async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitl
     """The Execute route's order_prepared, the return route's broker response, the entitlement store and a direct
     append share one chain; each event's time is the database clock of its own transaction. (The catalogue store's
     forced update is proven on the real write in test_catalogue_store.py with a fixed as_of far from now.)"""
-    from types import SimpleNamespace  # noqa: PLC0415
-
-    from ofo.entitlements.engine import trial_grant  # noqa: PLC0415
-    from ofo.entitlements.events import AuditNote  # noqa: PLC0415
-    from ofo_app import entitlement_store, order_audit  # noqa: PLC0415
-
     plan = SimpleNamespace(strategy_id=1, plan_number=1, action="ENTRY", orders=(SimpleNamespace(tag="OFS1V1L0"),))
     async with app_engine.connect() as conn:
         trans = await conn.begin()
