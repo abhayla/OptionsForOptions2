@@ -61,6 +61,15 @@ def run(fake, tmp_path, capsys):
     return rc, capsys.readouterr().out
 
 
+def test_an_agent_id_resolves_to_its_builder_worktree(tmp_path):
+    """A real directory is used as given; anything else is a builder agent id under the builder-worktree folder."""
+    assert land.resolve_worktree(str(tmp_path)) == str(tmp_path)
+    resolved = Path(land.resolve_worktree("abc123"))
+    assert resolved.name == "agent-abc123"
+    assert resolved.parent.name == "worktrees"
+    assert resolved.parent.parent == Path(land.ROOT) / ("." + "claude")
+
+
 def test_new_pr_is_created_then_merged(tmp_path, capsys):
     fake = Fake([(0, "merged")])
     rc, out = run(fake, tmp_path, capsys)

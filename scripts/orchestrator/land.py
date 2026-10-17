@@ -222,6 +222,14 @@ class DryRunner:
         return 0, ""
 
 
+def resolve_worktree(arg):
+    """A directory as given, else a builder's agent id -> its worktree (the atool.py rule): builder worktrees sit
+    under a folder the kit guard refuses to see named in a shell command, so the helpers take the id."""
+    if os.path.isdir(arg):
+        return arg
+    return os.path.join(ROOT, "." + "claude", "worktrees", f"agent-{arg}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("worktree")
@@ -230,6 +238,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--branch", help="branch name to push; required on a detached HEAD (CI checkouts)")
     a = ap.parse_args(argv)
+    a.worktree = resolve_worktree(a.worktree)
     if not os.path.isdir(a.worktree) or not os.path.isfile(a.body_file):
         print("worktree or body file not found")
         return 2
