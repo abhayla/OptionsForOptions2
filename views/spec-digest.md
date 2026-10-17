@@ -173,9 +173,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-055 [Approved]: Margin checks
 - REQ-056 [Approved]: Multi-leg execution plan and review
 - REQ-057 [Verified]: Order lifecycle
-- REQ-058 [Verified]: Partial execution and no automatic retry
+- REQ-058 [Approved]: Partial execution and no automatic retry
 - REQ-059 [Verified]: Pre-execution safety checks and validation
-- REQ-060 [Verified]: Reconciliation with Zerodha
+- REQ-060 [Approved]: Reconciliation with Zerodha
 - REQ-061 [Approved]: Existing positions on connect
 - REQ-062 [Approved]: Notifications
 - REQ-063 [Approved]: Security boundaries
@@ -192,7 +192,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (200)
+## Spec sections (202)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -294,6 +294,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-39 - Kite's basket margin for an option BUY is quantity x the LOWER…
 - ## F-40 - The 4b domain chain (fill ledger, reconcile, P&L) is right on…
 - ## F-41 - Kite returns the browser from a basket to the SAME registered…
+- ## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-b…
+- ## F-43 - On Mon 2026-10-19 the nearest NIFTY weekly contract expires th…
 
 ### spec/open-questions.md
 

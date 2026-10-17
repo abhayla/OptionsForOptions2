@@ -1,0 +1,30 @@
+{
+ "id": "verified-on-a-module-the-product-does-not-call",
+ "scope": "generic",
+ "class": "A requirement is marked Verified on evidence about a domain module, and a later product path (a new route, a new integration) re-implements a smaller version of the same behaviour instead of calling that module; the requirement stays Verified while what users reach no longer meets it. Any evidence that names a test file but not the user-facing path that must call the tested code can go stale this way, silently.",
+ "mechanism": "REQ-057/058/060 were verified 2026-09-29 on backend/ofo/orders, ofo/execution/partial.py and ofo/reconciliation (stdlib domain, fakes). The Kite-basket product path built 2026-10-16/17 (W-095 Execute route, W-096 return route, ofo_app/execute_plan.py and ofo_app/execution_return.py) re-implemented reconciliation as a per-request, one-strategy check (execute_plan.strategy_blocked) and partial handling as a plan state word; no file under backend/ofo_app imports ofo.reconciliation.compare/resolution or ofo.execution.partial (execute_plan.py:15-17 says so on purpose). Fresh Opus verifiers on main 85e38e0 (GC-3 P0 item 7, 2026-10-17) re-checked the current criterion text against the code users reach: REQ-060 AC-1..AC-7 fail (no automatic triggers, no strike/expiry/unexpected kinds, expired held leg blocks against ADR-083, no mismatch record, no sticky Reconciliation Required so a mismatch that later agrees unblocks unrecorded (Q222), two strategies on one contract both execute (Q224), no manual reconcile), REQ-058 AC-1/2/4/6 fail (no recalculated risk/P&L/margin for a partial, the four choices never shown, Complete Strategy wired to no route, a REJECTED order shows nothing_placed with no reason), REQ-073 AC-5 fails (the basket form carries only api_key and data, so Kite places it on whichever account is logged in on Kite's page). The tests stayed green throughout: 102 + 44 + 10 reconciliation tests and 115 execution tests pass.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-3 P0 item 7 verifier pass on main 85e38e0 (contract goal-contract-GC-3-2026-10-19.md)",
+  "evidence": "evidence/W-021/AC-1..7.md, evidence/W-023/AC-1,2,4,6.md, evidence/W-105/AC-5.md (result: fail, ac_fp pinned); trace_check before: REQ-058 VERIFIED (6 unpinned), REQ-060 VERIFIED (1 fresh, 6 unpinned); after: both INCOMPLETE; grep 'from ofo.reconciliation' in backend/ofo_app -> only delisted, positions, catalogue imports"
+ },
+ "fix": "Instance: REQ-058 and REQ-060 set back to Approved with fail evidence in every owning work item; W-107 blocks Execute while the strategy's own closed plan has drifted at Zerodha (the one gap the GC-3 go/no-go review showed reachable in the live run); the rest is the next contract's core (wire the domain reconciler and partial handling into the routes, or re-specify). Class fix proposed: a work item whose requirement is already Verified and whose `affected` paths re-implement that requirement's behaviour must name the requirement's ACs in its own tests_required, so a fresh verifier checks the new path; a verifier brief always asks 'which user-facing path calls the code this test exercises?'.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Caught only by a fresh verifier asked to check the CURRENT text against the path users reach. A check could list, per Verified requirement, the modules its evidence's test files import and fail when no route/app module imports them; not built. A related kit gap (harvest issue): trace_check counts an AC complete when ANY owning work item holds a passing file, so a fresh fail written into one item is hidden by an old pass in another (worked around here by writing the verdict into every owning item)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-058.md",
+  "spec/requirements/REQ-060.md",
+  "spec/requirements/REQ-073.md",
+  "spec/decisions/ADR-106.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "REQ-057/058/060 + REQ-073 on main 85e38e0, before the GC-3 live run",
+   "evidence": "13 of 18 re-verified criteria fail on the live path; REQ-057 AC-1..3 and REQ-058 AC-3/AC-5 and REQ-073 AC-3 pass"
+  }
+ ]
+}

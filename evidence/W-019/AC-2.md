@@ -1,17 +1,20 @@
 ---
 work_item: W-019
 ac: AC-2
+requirement: REQ-057
+ac_fp: "7f475588405f"
 result: pass
-verified_by: "verifier (opus, fresh context; round 3 after independent review)"
-builder: "builder (sonnet)"
-date: '2026-09-29'
-commands: "python -m pytest -q -p no:cacheprovider tests/orders/test_no_state_before_fill.py; python -m pytest -q -p no:cacheprovider tests/orders/test_ledger_property.py; attack script"
+verified_by: "verifier (opus, fresh context, GC-3 P0 item 7, main 85e38e0, 2026-10-17)"
+builder: "builder (W-019)"
+date: '2026-10-17'
+commands: "python -m pytest -q -p no:cacheprovider tests/orders/test_no_state_before_fill.py; scratch attack script; python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_execution_return.py -k \"not app_engine and not core_real_order_return and not recorded_once and not core_another_strategys_open_plan and not plan_from_yesterday\" (31 passed, 4 DB tests deselected - run in CI)"
 ---
 
 AC: AC-2
 result: pass
-commands: python -m pytest -q -p no:cacheprovider tests/orders/test_no_state_before_fill.py; python -m pytest -q -p no:cacheprovider tests/orders/test_ledger_property.py; attack script
-observed: 23 + 5 passed; submitted order position 0, after a 10-unit fill Executed/10/pos 10; identical replay keeps 1 ledger row; replay with different qty/contract/side/price -> FillConflictError; unknown order / wrong contract / wrong side / over-quantity refused; trade id T1 reused on another order fills under its own key; 1000 fills 0.073s; reconcile equal ok, higher blocks that strategy only, lower raises
-attack: rounds 1-2 reds all refused or no-op; key lookup before validation judged safe (a new key always runs full order validation). Residuals (deferred issue): a lower broker count raises but does not block submit (core invariant 6 / ADR-018); a trade id with trailing space is a second key
+commands: python -m pytest -q -p no:cacheprovider tests/orders/test_no_state_before_fill.py; scratch attack script; python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_execution_return.py -k "not app_engine and not core_real_order_return and not recorded_once and not core_another_strategys_open_plan and not plan_from_yesterday" (31 passed, 4 DB tests deselected - run in CI)
+observed: Submitted/Pending leave position 0, no fills; a broker EXECUTED/PARTIALLY_EXECUTED status without a fill leaves Submitted and position {}. Live return path on the real replies orders-122104 + trades-122104: COMPLETE order with its trade -> filled {'OFS1V1L0': 65}; OPEN 30 of 65 -> waiting {} (nothing stored); unknown status 'TRIGGER PENDING' -> waiting {}; REJECTED 0 filled -> nothing_placed {0}.
+attack: partial then CANCELLED with a 30-unit trade -> partial {30}; CANCELLED showing 30 filled with no trade row -> reconciliation_required {}; REJECTED 0 filled with a 65-unit trade row -> reconciliation_required {}; fill with an unknown broker order id -> ValueError, fill count unchanged
 
+GC-3 P0 item 7: re-verification on main of criteria whose evidence predated fingerprints.
 Recorded by the orchestrator from the verifier's returned block.

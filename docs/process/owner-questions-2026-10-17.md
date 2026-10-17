@@ -60,3 +60,33 @@ next owner-present session; the answer becomes a decision row the same turn.
 - **Spec basis:** ADR-075 (planned entry captured with the leg); REQ-056 AC-1. The spec says nothing on executing a
   draft with no planned entry (searched: planned_entry, reprice, Execute).
 - **Business call:** whether such drafts may be executed at all.
+
+## OQ-14 (GC-3 P0 item 7): start the live run (L1) while order criteria fail on main, under written operating rules?
+
+- **What was found:** fresh verifiers on main 85e38e0 failed 13 of 18 money/order criteria on the Kite-basket path
+  (F-42: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6, REQ-073 AC-5); the tested domain modules are not what the routes call.
+  The independent go/no-go review (fresh Opus) found one reachable harm - Check pressed before Kite's book shows the
+  order, plan closes "nothing placed", the order fills, a second ENTRY is allowed (130 long) - fixed by W-107 (Execute
+  blocked while the strategy's own closed plan has drifted). The rest needs a manual Kite action or a second strategy,
+  which the run does not have.
+- **Recommended: start L1 under the eight operating rules** in `docs/process/gc-3-p0-results-2026-10-17.md` (Check only
+  after Kite shows the order COMPLETE/CANCELLED/REJECTED; Check twice; nothing_placed while Kite shows a fill = STOP;
+  Kite's user id on the basket page = the connected one; net 0 on the chosen contract before L2; no edit on Kite's
+  page; record Kite's rejection text by hand; STOP on any mismatch). Cost: the run proves the product path for this
+  shape only; the failing criteria become the next contract's core.
+- **Alternative:** do not start L1 until the routes call the domain reconciler (a multi-day Tier A item with a
+  migration and a manual-reconcile screen).
+- **Spec basis:** ADR-106 item 3 (a verifier passes on main for every money/order AC); the GC-3 contract P0 7 narrows it
+  to the criteria the Execute and return routes use; ADR-107 (pre-live triage; the owner accepts any "yes" in writing).
+- **Business call:** relaxing an owner-set safety gate before a real-money run.
+
+## OQ-15 (GC-3 step 5, F-43): which expiry does the live test trade?
+
+- **What was found:** Monday 2026-10-19 IS the nearest NIFTY weekly expiry (recorded master: 10-19 Mon, 10-27 Tue). An
+  EXIT that does not fill by 15:30 goes to exchange settlement, which the live path does not handle (#279, #352).
+- **Recommended: the next expiry (2026-10-27),** strike chosen at L1 so premium x 65 fits the funds read then (Rs 873
+  in the 2026-10-16 recording; a ~Rs 10 premium = ~Rs 650 leaves room for charges, #338). Cost: a slightly dearer option.
+- **Alternative:** the same-day expiry with a hard rule: EXIT placed by 14:00 at a marketable LIMIT.
+- **Spec basis:** GC-3 contract step 5 (the nearest-expiry NIFTY CE); ADR-097 (1); ADR-050 (expiry read from the
+  master). **SPEC CHANGE** to the contract's "nearest-expiry" if the recommendation is taken.
+- **Business call:** which real contract the owner's money buys.
