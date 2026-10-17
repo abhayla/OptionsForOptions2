@@ -307,8 +307,16 @@ async def _context(db: Any, sid: str, stored: Any, action: str, priced: ep.Price
         c = entry.contract
         leg = Leg(Action(o.side), Instrument(c.instrument_type), c.strike, c.expiry, o.quantity, o.price)
         held_legs.append(leg)
-        key = ep.contract_key(catalogue, entry.id, underlying)
-        held_units[key] = held_units.get(key, 0) + (o.quantity if o.side == "BUY" else -o.quantity)
+    # Orchestrator decision (GC-2c step 6): the PLATFORM side comes from the database only - over every stored plan of
+    # this strategy, each order's ``filled_quantity`` (W-094, set by ``close_plan(..., filled=...)``), BUY + / SELL -,
+    # per contract; an open plan's order (None until closed) counts 0. Units on the same contract that no stored plan
+    # explains are a mismatch, as ``compare`` attributes them to the holding strategy (no standalone record here).
+    for stored_plan in history:
+        for o in stored_plan.orders:
+            filled = o.filled_quantity or 0
+            (entry,) = catalogue.entries_for_broker_symbol(ZERODHA, o.tradingsymbol)
+            key = ep.contract_key(catalogue, entry.id, underlying)
+            held_units[key] = held_units.get(key, 0) + (filled if o.side == "BUY" else -filled)
     contracts = [(underlying, leg.instrument, None if leg.strike is None else leg.strike, leg.expiry)
                  for leg in priced.strategy.legs]
     try:
