@@ -13,6 +13,8 @@ import pytest
 
 from ofo.safe_compare import equal_secret
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 ALLOWED = BACKEND / "ofo" / "safe_compare.py"
 

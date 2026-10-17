@@ -11,6 +11,10 @@ import importlib.util
 import re
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
 THIS = "0016_execution_plans"
 
