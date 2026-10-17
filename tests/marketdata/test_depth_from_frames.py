@@ -10,13 +10,11 @@ import struct
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import FIXTURES, Clock, listed
 from ofo.engine.executable_price import Depth, DepthLevel, depth_from_levels, executable_limit
 from ofo.engine.legs import Action
 from ofo.marketdata.kite_frames import parse_frame
 from ofo.marketdata.kite_provider import IST, KiteProvider
-
-from _kite_fixture import FIXTURES, Clock, listed
 
 FRAME = (FIXTURES / "full-frame-12080386-150720.bin").read_bytes()
 TOKEN = 12080386

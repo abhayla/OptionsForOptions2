@@ -29,6 +29,7 @@ from ofo.engine.executable_price import Depth
 from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
+
 from ofo_app.config import app_env, get_settings
 from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.live_push import LiveFeed

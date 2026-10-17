@@ -18,7 +18,7 @@ from typing import Callable, Iterable, Sequence
 
 from ofo.engine.executable_price import Depth, depth_from_levels
 from ofo.engine.legs import Instrument
-from ofo.instruments.models import (BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX, ZERODHA, ListedContract)
+from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX, ZERODHA, ListedContract
 from ofo.marketdata.feed_health import FeedState, QuoteBook
 from ofo.marketdata.kite_frames import RawTick, parse_frame
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus, QuoteListener
