@@ -214,6 +214,9 @@ def test_ac1_basket_post_is_the_real_basket_text_and_nothing_else():
 class _Replay:
     """Fake transport for both Zerodha clients, answering with recorded replies."""
 
+    order_rows: list | None = None  # rows derived from the real replies (``_rows_of``), else the named fixture
+    position_rows: list | None = None
+
     def __init__(self, *, funds: str, basket_total: str, orders: str | None, positions: str) -> None:
         self.funds, self.basket_total, self.orders, self.positions = funds, basket_total, orders, positions
 
@@ -226,12 +229,21 @@ class _Replay:
         if "/margins/basket" in url:
             return 200, _basket_reply(self.basket_total)
         if url.endswith("/orders"):
-            data = [] if self.orders is None else _rows(self._reply(self.orders))
+            data = self.order_rows if self.order_rows is not None else (
+                [] if self.orders is None else _rows(self._reply(self.orders)))
             return 200, json.dumps({"status": "success", "data": data}, default=str)
         if url.endswith("/portfolio/positions"):
             data = self._reply(self.positions)
-            return 200, json.dumps({"status": "success", "data": data.get("data", data)}, default=str)
+            data = data.get("data", data)
+            if self.position_rows is not None:
+                data = {**data, "net": self.position_rows}
+            return 200, json.dumps({"status": "success", "data": data}, default=str)
         raise AssertionError(url)
+
+
+def _rows_of(replay: _Replay, *, orders: list | None = None, positions: list | None = None) -> _Replay:
+    replay.order_rows, replay.position_rows = orders, positions
+    return replay
 
 
 def _rows(reply):
@@ -356,14 +368,186 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             stored = await plans.plans_for(conn, user, sid)
             assert [(p.plan_number, p.action, p.status) for p in stored] == [(1, "ENTRY", "closed"),
                                                                              (2, "EXIT", "open")]
+
+            await _third_exit_refused(app, conn, user, sid)
         finally:
             await trans.rollback()
+
+
+async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
+    """Round 2 review CRITICAL: plan 2 closed exited -> net 0 -> a THIRD EXIT press is refused (no SELL 65 short on
+    a flat account) and nothing is stored."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    await plans.close_plan(conn, user, sid, 2, reason="exited", filled={"OFS1V2L0": 65})
+    done = _rows_of(_Replay(funds="1003", basket_total="-214.5", orders=None, positions="positions-151006"),
+                    orders=_book("COMPLETE") + _book("COMPLETE", "OFS1V2L0"))
+    app.dependency_overrides[route.get_kite_session] = lambda: _session_for(done)
+    third = await _post(app, sid, "EXIT")
+    assert third.status_code == 409, third.text
+    assert "would open or add to a position" in third.text
+    assert [p.plan_number for p in await plans.plans_for(conn, user, sid)] == [1, 2]  # nothing stored
+
+
+def _no_band_quotes():
+    live = ep.quote_from_kite(_live_quote())
+    quotes = _Quotes()
+    quotes.quote = ep.LegQuote(live.depth, live.at, live.last_price, None)
+    return quotes
+
+
+def _position_rows(**changes) -> list:
+    data = json.loads((REPLIES / "positions-122104.json").read_text(encoding="utf-8"), parse_float=D)
+    rows = data.get("data", data)["net"]
+    return [{k: v for k, v in {**r, **changes}.items() if v is not None} for r in rows]
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine, admin_engine, monkeypatch):
+    """Plan 1 filled 30 of 65 (partial). Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
+    EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
+    (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
+    exactly the net 30 (review MAJOR 2: round 2 refused it)."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_strategy_followups import _ConnMaker  # noqa: PLC0415
+    from test_strategy_store import _app, _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            app = _app(_ConnMaker(conn), user)
+            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
+            app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
+            assert (await _post(app, sid, "ENTRY")).status_code == 200
+            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 30})
+
+            def _with(**kw):
+                replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
+                                          positions="positions-122104"), **kw)
+                app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
+
+            async def _refused(action: str, phrase: str) -> None:
+                resp = await _post(app, sid, action)
+                assert resp.status_code == 409, resp.text
+                assert phrase in resp.text, resp.text
+                assert len(await plans.plans_for(conn, user, sid)) == 1
+
+            _with()
+            await _refused("ENTRY", "executes only a version that is")
+            for status in ("OPEN", "SOMETHING NEW"):
+                _with(orders=_book(status))
+                await _refused("EXIT", "is not in place yet")
+            _with(positions=_position_rows(product=None))
+            await _refused("EXIT", "differs from the product")
+            _with()
+            app.dependency_overrides[route.get_quote_reader] = _no_band_quotes
+            await _refused("EXIT", "Market data needed for execution")
+            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            resp = await _post(app, sid, "EXIT")
+            assert resp.status_code == 200, resp.text
+            (sell,) = resp.json()["orders"]
+            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 30, "OFS1V2L0")
+        finally:
+            await trans.rollback()
+
+
+# ---- ADR-105: one held-position function over every plan (no database) ---------------------------------------------
+
+class _O:
+    def __init__(self, side: str, filled: int | None, iid: str = "NFO-OPT:47189") -> None:
+        self.instrument_id, self.transaction_type, self.filled_quantity = iid, side, filled
+
+
+class _P:
+    def __init__(self, number: int, *orders: _O) -> None:
+        self.plan_number, self.orders = number, orders
+
+
+def test_held_units_nets_every_plan_entry_plus_exit_minus():
+    k = "NFO-OPT:47189"
+    assert ep.held_units([_P(1, _O("BUY", 65))]) == {k: 65}
+    assert ep.held_units([_P(1, _O("BUY", 65)), _P(2, _O("SELL", 65))]) == {}  # exited: flat
+    assert ep.held_units([_P(1, _O("BUY", 30))]) == {k: 30}  # partial
+    assert ep.held_units([_P(1, _O("BUY", 65)), _P(2, _O("SELL", 40)), _P(3, _O("SELL", None))]) == {k: 25}
+    assert ep.held_units([_P(1, _O("SELL", 65))]) == {k: -65}
+    assert ep.latest_filled_plan([_P(1, _O("BUY", 65)), _P(2, _O("SELL", 40)), _P(3, _O("SELL", None))]) == 2
+    assert ep.latest_filled_plan([_P(1, _O("BUY", None))]) is None
+
+
+def test_version_state_is_derived_from_the_net():
+    from ofo.execution.context import VersionState  # noqa: PLC0415
+
+    held, flat = {"NFO-OPT:47189": 65}, {}
+    assert ep.version_state("ENTRY", flat) is VersionState.ACTIVE
+    assert ep.version_state("ENTRY", held) is VersionState.SUPERSEDED
+    assert ep.version_state("EXIT", held) is VersionState.ACTIVE
+    assert ep.version_state("EXIT", flat) is VersionState.SUPERSEDED
+
+
+def test_exit_legs_close_exactly_the_net_opposite_side():
+    legs = ep.exit_legs({"NFO-OPT:47189": 30, "NFO-OPT:1": -65}, lambda t: t)
+    assert [(leg.instrument_id, leg.action, leg.quantity) for leg in legs] == [("NFO-OPT:1", Action.BUY, 65),
+                                                                                ("NFO-OPT:47189", Action.SELL, 30)]
+    assert ep.exit_legs({}, lambda t: t) == []
+
+
+def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():
+    from ofo.engine import Leg  # noqa: PLC0415
+    from ofo.engine.product import Product  # noqa: PLC0415
+    from ofo.execution.context import product_key  # noqa: PLC0415
+    from ofo_app.kite_replies import ContractIndex, positions_from_reply  # noqa: PLC0415
+    from ofo_app.routes.execute import held_products  # noqa: PLC0415
+
+    leg = Leg(Action.BUY, Instrument.CE, D("23650"), datetime.date(2026, 10, 19), 65, D("3.35"))
+    symbols = {product_key(leg): REAL_ORDER["tradingsymbol"]}
+    index = ContractIndex.from_catalogue(_catalogue())
+
+    def read(rows):
+        return positions_from_reply({"net": rows, "day": []}, index)
+
+    assert held_products((leg,), symbols, read(_position_rows())) == {product_key(leg): Product.NRML}
+    assert held_products((leg,), symbols, read(_position_rows(product=None))) == {}
+    assert held_products((leg,), symbols, read(_position_rows() + _position_rows(product="MIS"))) == {}
+    assert held_products((leg,), symbols, None) == {}
+
+
+def test_live_quotes_use_the_frames_own_time_and_the_underlying_quote(monkeypatch):
+    """Review MINOR 6: the leg's health is judged on the quote's own time, never the read time; the underlying's
+    price and time come from the live context's ``underlying_quote``."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app import live_market  # noqa: PLC0415
+    from ofo_app.routes.execute import LiveDepthQuotes  # noqa: PLC0415
+
+    live = ep.quote_from_kite(_live_quote())
+    frame_at = datetime.datetime(2026, 10, 16, 15, 0, tzinfo=AT.tzinfo)
+    spot = SimpleNamespace(ltp=D("23094.95"), timestamp=frame_at)
+    book = SimpleNamespace(get=lambda key, now: SimpleNamespace(ltp=D("3.30"), timestamp=frame_at))
+    ctx = SimpleNamespace(provider=SimpleNamespace(book=book, underlying_quote=lambda u: spot))
+    monkeypatch.setattr(live_market, "current_context", lambda: ctx)
+    monkeypatch.setattr(live_market, "latest_depth", lambda key: live.depth)
+    quotes = LiveDepthQuotes(lambda: AT)
+    got = quotes.leg_quote(CORE_ID, TOKEN)
+    assert (got.at, got.last_price, got.band) == (frame_at, D("3.30"), None)
+    assert quotes.underlying_price("NIFTY") == (D("23094.95"), frame_at)
+    monkeypatch.setattr(live_market, "current_context", lambda: None)
+    assert quotes.leg_quote(CORE_ID, TOKEN) is None and quotes.underlying_price("NIFTY") is None
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_engine, admin_engine, monkeypatch):
     """Two EXIT presses that BOTH pass ``next_plan_number`` before either stores (the interleaving the strategy row
-    lock prevents across connections): exactly one basket is answered and stored; the other is refused 409."""
+    lock prevents across connections): exactly one basket is answered and stored; the other is refused 409. Both
+    presses share ONE connection here (the rolled-back transaction), so this proves the route's refusal path, not the
+    lock: the lock across two connections is proven by the store's own two-connection test (W-094)."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
