@@ -250,11 +250,13 @@ def _rows(reply):
     return reply["data"] if isinstance(reply, dict) and "data" in reply else reply
 
 
+#: Zerodha's basket-margin reply per basket: the EXIT reply is the REAL one (fetch.json ``margin_raw``, SELL 65 @ 3.30,
+#: final.total -214.5); the ENTRY reply is DERIVED from it with the recorder's entry total 354.25 (README there).
+_BASKET_REPLIES = {"354.25": "margins-basket-entry-derived.json", "-214.5": "margins-basket-exit-150717.json"}
+
+
 def _basket_reply(total: str) -> str:
-    """The shape of the real 15:07 basket-margin reply (fetch.json margin_raw), with ``final.total`` set to the
-    recorded figure of the basket in question (entry 354.25 from basket-121848.json; exit -214.5 as recorded)."""
-    return ('{"status":"success","data":{"initial":{"total":0},"final":{"option_premium":0,"total":%s},'  # noqa: UP031
-            '"orders":[{"total":0}],"charges":{"total":0}}}' % total)
+    return (REPLIES / _BASKET_REPLIES[total]).read_text(encoding="utf-8")
 
 
 def _session_for(replay):
@@ -300,7 +302,22 @@ async def _strategy_one(conn, user: str, app_role: str) -> int:
                        {"s": made.id})
     await conn.execute(text("SET LOCAL session_replication_role = origin"))
     await conn.execute(text(f'SET LOCAL ROLE "{app_role}"'))
+    await _pro_grant(conn, user)
     return 1
+
+
+async def _pro_grant(conn, user: str) -> None:
+    """A real Pro grant through the entitlement store, as the application role, ``granted_at`` = the database's own
+    clock (ADR-023: the database refuses a date more than 60 s off its clock; no trigger disabled, nothing
+    backdated). It lives inside the test's rolled-back transaction."""
+    from ofo.entitlements.events import NewGrant, Source  # noqa: PLC0415
+    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+    from ofo_app import entitlement_store  # noqa: PLC0415
+    from test_entitlement_store import note  # noqa: PLC0415
+
+    now = await elig.database_now(conn)
+    await entitlement_store.append(conn, user, NewGrant("pro-core", Source.PAID_MONTHLY, now,
+                                                        datetime.timedelta(days=30), "pay-core", note("core test")))
 
 
 async def _post(app, strategy_id: int, action: str):
@@ -350,12 +367,14 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
 
             again = await _post(app, sid, "ENTRY")  # one open plan per strategy
             assert again.status_code == 409, again.text
+            assert "An order this execution depends on is not in place yet" in again.text, again.text
 
             await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(flat)
             short = await _post(app, sid, "EXIT")  # Zerodha holds 0 of the strategy's 65: blocked (AC-7)
             assert short.status_code == 409, short.text
+            assert "do not match what we recorded" in short.text, short.text
             assert len(await plans.plans_for(conn, user, sid)) == 1  # nothing stored, no number consumed
 
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
@@ -585,3 +604,52 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
             assert [(p.plan_number, p.action) for p in stored] == [(1, "ENTRY"), (2, "EXIT")]
         finally:
             await trans.rollback()
+
+
+# ---- database-stamped facts are judged on the database clock (round 4, ADR-023) ------------------------------------
+
+DB_NOW = datetime.datetime(2026, 10, 17, 7, 50, tzinfo=AT.tzinfo)  # the database clock; the route clock is AT (a day before)
+
+
+async def test_a_grant_stamped_on_the_database_clock_is_pro_while_the_route_clock_is_pinned_to_a_past_day(monkeypatch):
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo.entitlements.engine import access_at  # noqa: PLC0415
+    from ofo.entitlements.events import AccessLevel, NewGrant, Source  # noqa: PLC0415
+    from ofo_app import entitlement_store  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_entitlement_store import note  # noqa: PLC0415
+
+    stamp = entitlement_store.DatabaseStamp()
+    stamp.recorded_at = DB_NOW
+    ledger = entitlement_store.ledger_from_rows("u", [], clock=stamp).append(
+        NewGrant("p", Source.PAID_MONTHLY, DB_NOW, datetime.timedelta(days=30), "pay", note()))
+    assert access_at(ledger, AT).level is not AccessLevel.PRO  # the round-3 defect: judged on the pinned clock
+
+    async def _load(conn, user_ref):
+        return ledger
+
+    monkeypatch.setattr(entitlement_store, "load", _load)
+    req = SimpleNamespace(db=None, user_ref="u", now=AT)
+    assert await route._pro_entitled(req, DB_NOW) is True
+
+
+async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_route_clock_is_pinned_to_yesterday(
+        monkeypatch):
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo.execution.context import DataHealth, DataInput  # noqa: PLC0415
+    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    loaded = DB_NOW - datetime.timedelta(minutes=30)  # stamped by clock_timestamp() this morning
+
+    async def _loaded_at(conn):
+        return loaded
+
+    monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
+    req = SimpleNamespace(db=None, now=AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
+    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
+    assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
+    assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
+    assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE
