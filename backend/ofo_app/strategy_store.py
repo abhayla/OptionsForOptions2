@@ -202,6 +202,12 @@ async def _locked(conn: Any, user_ref: str, strategy_id: int) -> Any:
     return row
 
 
+async def lock_strategy(conn: Any, user_ref: str, strategy_id: int) -> None:
+    """Takes the strategy's row lock until the caller's transaction ends (W-094: one writer per strategy at a time).
+    Another user's strategy answers NOT_FOUND exactly like a missing one."""
+    await _locked(conn, user_ref, strategy_id)
+
+
 async def _summary(conn: Any, current_text: str, new: sf.SavedDefinition) -> str:
     try:
         old = await _read(conn, current_text)
