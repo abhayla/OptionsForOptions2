@@ -1004,6 +1004,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     ExplanationTemplate("cell_charges_row_label", "values_seen", "Charges and taxes (estimate)"),
+    # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
+    ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
+                        "Charges and taxes are not included: the charge rates could not be read."),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 
