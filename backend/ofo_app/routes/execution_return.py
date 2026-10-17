@@ -34,6 +34,7 @@ from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
+from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
@@ -193,7 +194,7 @@ async def _others(req: _Request, catalogue: Any, zerodha: _Read) -> tuple[dict[t
         history = await plans.plans_for(req.db, req.user_ref, other)
         tags = frozenset(o.tag for p in history for o in p.orders)
         try:
-            book = er.read_book(zerodha.orders, zerodha.trades, other, tags)
+            book = rb.read_book(zerodha.orders, zerodha.trades, other, tags)
         except ValueError:  # that strategy's rows unreadable: never guessed
             raise _refuse("gate_broker_unconfirmed") from None
         unknown.update(ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
@@ -317,7 +318,7 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
     zerodha = _read_zerodha(req, catalogue)
     tags = frozenset(o.tag for p in history for o in p.orders)
     try:
-        book = er.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
+        book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
     except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
         raise _refuse("gate_broker_unconfirmed") from None
     world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))

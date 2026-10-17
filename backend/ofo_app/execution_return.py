@@ -7,10 +7,8 @@ broker confirms execution); REQ-058 AC-2 (the four choices, in order) and AC-6 (
 in no strategy block no strategy; a shortfall or the wrong side blocks this one); ADR-050 item 4(d) (external orders
 recorded, never dropped).
 
-- ``read_book``: today's orders and trades -> THIS strategy's rows only (``parse_tag`` decodes exactly to its id).
-  A tag in a stored plan is ours; a tag for this strategy in no stored plan is EXTERNAL (kept, never dropped). Trades
-  are taken for our orders only and de-duplicated by (order id, trade id): the same key twice with other content is a
-  conflict (that order cannot be trusted), never a second fill.
+- ``TodaysBook``: THIS strategy's rows of today's book, built by ``ofo_app.return_book.read_book`` (the one place Kite's
+  reply rows are read; this module imports no Kite module, REQ-063 AC-1).
 - ``classify``: one open plan against the book. The status word is kept as read and only asked "terminal?" against
   ``execute_plan.TERMINAL_ORDER_STATUSES`` (an allow-list; any other or unknown word is still working, finding
   trust-broker-status-word); quantities come from ``filled_quantity``, which must equal the sum of today's trades for
@@ -33,14 +31,13 @@ from __future__ import annotations
 import datetime
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
-from ofo.execution.basket import parse_tag
 from ofo.orders.model import FillEvent, realised_pnl
 from ofo.timeutil import IST
 
 from ofo_app import execute_plan as ep
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
-from ofo_app.kite_replies import BrokerOrderRow, fill_from_trade_row, order_from_row
 
 WAITING = "waiting"
 FILLED = "filled"
@@ -57,64 +54,34 @@ EARLIER_SESSION = "plan_from_earlier_session"
 OTHER_UNSETTLED = "another_strategy_plan_unsettled"
 
 
+class _Side(Protocol):
+    @property
+    def value(self) -> str: ...
+
+
+class OrderRow(Protocol):
+    """What the matching reads from one parsed broker order row (built by ``return_book``, the Kite reply reader;
+    this module imports no Kite module, REQ-063 AC-1)."""
+
+    @property
+    def order_id(self) -> str: ...
+    @property
+    def status(self) -> str: ...
+    @property
+    def tradingsymbol(self) -> str: ...
+    @property
+    def side(self) -> _Side: ...
+    @property
+    def filled_quantity(self) -> int: ...
+
+
 @dataclass(frozen=True)
 class TodaysBook:
-    ours: Mapping[str, tuple[BrokerOrderRow, ...]]  # stored tag -> its rows (a basket posted twice -> two rows)
+    ours: Mapping[str, tuple[OrderRow, ...]]  # stored tag -> its rows (a basket posted twice -> two rows)
     external: tuple[Mapping[str, object], ...]  # rows tagged for this strategy with no stored plan, as read
     traded: Mapping[str, int]  # order id -> today's traded units (de-duplicated)
     fills: tuple[FillEvent, ...]  # our orders' fills, each (order id, trade id) once
     conflicting: frozenset[str]  # order ids whose trades repeat a key with other content
-
-
-def _ours(row: Mapping[str, object], strategy_id: int) -> bool:
-    try:
-        return parse_tag(row.get("tag")).strategy_id == strategy_id
-    except ValueError:
-        return False  # no tag, or not a basket tag of ours
-
-
-def _split_orders(order_rows: Sequence[Mapping[str, object]], strategy_id: int,
-                  stored_tags: frozenset[str]) -> tuple[dict[str, tuple[BrokerOrderRow, ...]], list]:
-    ours: dict[str, tuple[BrokerOrderRow, ...]] = {}
-    external = []
-    for row in order_rows:
-        if not isinstance(row, Mapping):
-            raise ValueError("an order row must be a mapping")  # an unreadable book never passes
-        if not _ours(row, strategy_id):
-            continue
-        if row["tag"] in stored_tags:
-            ours[row["tag"]] = (*ours.get(row["tag"], ()), order_from_row(row))
-        else:
-            order_from_row(row)  # an external row is read as strictly as ours (fail closed), then kept as read
-            external.append(row)
-    return ours, external
-
-
-def _fills(trade_rows: Sequence[Mapping[str, object]], order_ids: frozenset[str]):
-    seen: dict[tuple[str, str], FillEvent] = {}
-    conflicting = set()
-    for row in trade_rows:
-        if not isinstance(row, Mapping):
-            raise ValueError("a trade row must be a mapping")
-        if row.get("order_id") not in order_ids:
-            continue
-        fill = fill_from_trade_row(row)
-        key = (fill.broker_order_id, fill.trade_id)
-        if key in seen and seen[key] != fill:
-            conflicting.add(fill.broker_order_id)
-        seen.setdefault(key, fill)
-    traded: dict[str, int] = {}
-    for fill in seen.values():
-        traded[fill.broker_order_id] = traded.get(fill.broker_order_id, 0) + fill.quantity
-    return tuple(seen.values()), traded, frozenset(conflicting)
-
-
-def read_book(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[Mapping[str, object]],
-              strategy_id: int, stored_tags: frozenset[str]) -> TodaysBook:
-    ours, external = _split_orders(order_rows, strategy_id, stored_tags)
-    order_ids = frozenset(r.order_id for rows in ours.values() for r in rows)
-    fills, traded, conflicting = _fills(trade_rows, order_ids)
-    return TodaysBook(ours, tuple(external), traded, fills, conflicting)
 
 
 @dataclass(frozen=True)
@@ -124,7 +91,7 @@ class PlanAnswer:
     reason: str | None = None  # why reconciliation is required when it is not a disagreement in the book
 
 
-def _agrees(order: PlanOrder, row: BrokerOrderRow, book: TodaysBook) -> bool:
+def _agrees(order: PlanOrder, row: OrderRow, book: TodaysBook) -> bool:
     """The row is the planned order (same contract, same side) and Zerodha's fill count equals its trades."""
     return (row.tradingsymbol == order.tradingsymbol and row.side.value == order.transaction_type
             and row.order_id not in book.conflicting and book.traded.get(row.order_id, 0) == row.filled_quantity)
@@ -242,5 +209,5 @@ def pnl_or_none(fills: Sequence[FillEvent]):
 
 __all__ = ["EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
            "RECONCILE", "WAITING",
-           "ContractCheck", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
-           "from_earlier_session", "pnl_or_none", "read_book", "reconcile", "unsettled_orders"]
+           "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
+           "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]

@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from ofo.execution.basket import make_tag
 from ofo_app import execution_return as er
+from ofo_app import return_book as rb
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
 REPLIES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
@@ -50,7 +51,7 @@ EXIT_OPEN = _plan(2, "EXIT", ("SELL",))
 
 
 def _book(orders: list, trades: list, plans: tuple[StoredPlan, ...]) -> er.TodaysBook:
-    return er.read_book(orders, trades, 1, frozenset(o.tag for p in plans for o in p.orders))
+    return rb.read_book(orders, trades, 1, frozenset(o.tag for p in plans for o in p.orders))
 
 
 def test_ac3_core_real_replies_close_entry_filled_then_exit_with_pnl_once():
@@ -197,7 +198,7 @@ def _other_book(filled: int, plans: tuple[StoredPlan, ...]) -> er.TodaysBook:
     """Strategy 2's own rows of today's book: the real 12:21:04 order and trade, re-tagged to OFS2V1L0."""
     orders = [{**_data("orders-122104")[0], "tag": "OFS2V1L0", "filled_quantity": filled}]
     trades = [{**_data("trades-122104")[0], "quantity": filled}] if filled else []
-    return er.read_book(orders, trades, 2, frozenset(o.tag for p in plans for o in p.orders))
+    return rb.read_book(orders, trades, 2, frozenset(o.tag for p in plans for o in p.orders))
 
 
 @pytest.mark.parametrize(("status", "stored", "at_kite", "unsettled"), [
@@ -238,12 +239,15 @@ class _Reads:
         raise AssertionError(url)
 
 
-def _session(reads: _Reads):
+def _session(transport: _Reads):
     from ofo_app.kite_reads import KiteReads  # noqa: PLC0415
+
+    # Built outside the class body: a class body that assigns ``reads`` cannot see the function's own ``reads``.
+    kite_reads = KiteReads(api_key="kitekey", access_token="tok", transport=transport)  # noqa: S106
 
     class _S:
         api_key = "kitekey"
-        reads = KiteReads(api_key="kitekey", access_token="tok", transport=reads)  # noqa: S106
+        reads = kite_reads
         margin = None  # the return never asks for margin; nothing here can place an order
     return _S()
 
