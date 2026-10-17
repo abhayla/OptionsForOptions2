@@ -10,12 +10,13 @@
  },
  "fix": "Mechanism (GC-2c docs batch): check_brief.py GUARD_TESTS gains 'tests/errors/test_producer_inventory.py', so a brief whose test-command line does not name it fails before dispatch; tests/orchestrator/test_check_brief.py proves red (a brief with only the old two literals) then green. builder-brief.md's guard line names it. Orchestrator habit: before pushing a builder branch, run `python -m pytest -q -p no:cacheprovider tests/errors/` (10 s, no database).",
  "detection": {
-  "status": "unguarded",
+  "status": "guarded",
   "checks": [
-   "scripts/orchestrator/check_brief.py GUARD_TESTS (brief refused without the scan in its test line)",
-   "CI lint-and-test (the scan itself)"
+   "pytest marker `repo_scan` on every repo-wide scan test + `tests/test_repo_scan_marked.py` (named list of the finding's scans + shape check) - PR #364",
+   "scripts/orchestrator/check_brief.py requires `-m repo_scan` on a brief's test line - PR #364",
+   "CI lint-and-test (the scans themselves)"
   ],
-  "note": "Guards the producer scan only. Two more scans of the same class hit W-094 the same day (the pricing-name scan in tests/engine/, the broker-identifier column rule in tests_app/ that needs a database). Partial: the integrator runs the full domain suite once (3-4 min, no DB) before pushing a builder branch; the DB-backed scans stay CI-only. Open: a `repo_scan` marker on every repo-wide scan test so one fast command runs them all."
+  "note": "Guarded 2026-10-17 (GC-2e item 9, #364): one command `python -m pytest -q -p no:cacheprovider -m repo_scan tests` (909 tests, 60-117 s) runs every domain scan before a push. First catch the same evening: a scan-shaped helper in W-103's test_catalogue_store.py found locally before CI. Blind spots (named in the check's docstring): inspect.getsource, ast.parse via a helper, '/'-joins over a fixed list, schema queries - covered only by the named list."
  },
  "spec_ref": [
   "spec/decisions/ADR-086.md"
@@ -45,6 +46,11 @@
    "date": "2026-10-17",
    "where": "GC-2c W-094 (PR #357), CI round 2 - the DB-backed variant",
    "evidence": "CI run 38992320936 (api job): tests_app/test_broker_instruments.py::test_ac3_no_table_but_broker_instruments_has_a_zerodha_id_column - 'execution_plan_orders.tradingsymbol' (only broker_instruments may hold a broker identifier). This scan reads information_schema, so no local non-DB run can catch it; the brief named neither the rule nor the finding instrument-identity-keyed-on-one-broker."
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2e W-101 (PR #365), branch built before #364 merged",
+   "evidence": "CI lint-and-test: tests/marketdata/test_provider_replaceable.py::test_nothing_outside_the_kite_adapter_imports_the_kite_modules -> ofo_app/execute_replay.py imports KiteReads; 1 failed, 5334 passed."
   }
  ]
 }
