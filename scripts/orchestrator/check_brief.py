@@ -159,16 +159,20 @@ GUARD_TESTS = ("tests/test_*.py", "tests/errors/test_write_allowlist.py",
                "tests/errors/test_producer_inventory.py", "-m repo_scan")
 GUARD_WORD_RE = re.compile(r"\b(guards?|doors?|gates?|scans?)\b", re.I)
 FINDINGS_RE = re.compile(r"^\W*Findings checked:(.*)$", re.I | re.M)
-THREAT_RE = re.compile(r"^Threat model:(.*)$")
+THREAT_RE = re.compile(r"^\W*Threat model:(.*)$", re.I)
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def _threat_model_lines(lines: list[str]) -> list[str]:
-    """Lines starting `Threat model:` that are not inside a ``` code fence."""
-    out, fenced = [], False
+    """Lines starting `Threat model:` (case-insensitive, leading punctuation ok) outside a ``` or ~~~ fence."""
+    out, fence = [], None
     for line in lines:
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-        elif not fenced and THREAT_RE.match(line):
+        m = FENCE_RE.match(line)
+        if m and fence is None:
+            fence = m.group(1)
+        elif m and m.group(1) == fence:
+            fence = None
+        elif fence is None and THREAT_RE.match(line):
             out.append(line)
     return out
 

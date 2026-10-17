@@ -228,3 +228,18 @@ def test_threat_model_good_fixture_plus_line_passes(tmp_path):
     assert check_brief.main([str(brief), "--root", str(ROOT)]) == 0
 
 
+
+
+def test_threat_model_inside_tilde_fence_does_not_count(tmp_path):
+    """Dies if only ``` fences are tracked."""
+    text = "# Brief (Tier B)\nA new guard.\n~~~\n" + THREAT_LINE + "~~~\n"
+    assert run(tmp_path, text) == 1
+    assert run(tmp_path, text + THREAT_LINE) == 0
+
+
+def test_threat_model_bullet_and_lowercase_forms_pass(tmp_path):
+    """Dies if THREAT_RE goes back to a case-sensitive, column-0 match."""
+    base = "# Brief (Tier B)\nA new guard.\n"
+    assert run(tmp_path, base + "- " + THREAT_LINE) == 0
+    assert run(tmp_path, base + THREAT_LINE.replace("Threat model", "threat model")) == 0
+    assert run(tmp_path, base + "- Threat model: in scope only.\n") == 1
