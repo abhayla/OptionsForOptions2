@@ -22,6 +22,7 @@ from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
 from ofo.money import PAISE as _PAISE
 from ofo.money import zerodha_paise
+from ofo.sealed import SealedTuple
 
 class MarginReplyError(ValueError):
     """Zerodha's basket-margin reply has no usable ``final.total``: the basket must not be built."""
@@ -35,7 +36,7 @@ def _amount(value: object, name: str, *, signed: bool = False) -> Decimal:
     return value
 
 
-class MarginVerdict(tuple):
+class MarginVerdict(SealedTuple, made_by="check_margin", again="call check_margin again"):
     """The gate's answer. Only the two amounts (None when unknown) are inputs: `allowed` and the four-part `message`
     are derived from them by `check_margin`. `available` is Zerodha's signed ``equity.net`` (a negative balance always
     blocks).
@@ -46,12 +47,6 @@ class MarginVerdict(tuple):
     the basket builder takes no verdict, it reads Zerodha's two figures and calls `check_margin` itself."""
 
     __slots__ = ()
-
-    def __new__(cls, *_args: object, **_kwargs: object) -> MarginVerdict:
-        raise TypeError("a MarginVerdict comes only from check_margin")
-
-    def __init_subclass__(cls, **_kwargs: object) -> None:
-        raise TypeError("MarginVerdict cannot be subclassed")
 
     @property
     def available(self) -> Decimal | None:
@@ -68,18 +63,6 @@ class MarginVerdict(tuple):
     @property
     def message(self) -> UserFacingError | None:
         return self[3]
-
-    def __copy__(self) -> MarginVerdict:
-        raise TypeError("a MarginVerdict cannot be copied; call check_margin again")
-
-    def __deepcopy__(self, _memo: object) -> MarginVerdict:
-        raise TypeError("a MarginVerdict cannot be copied; call check_margin again")
-
-    def __reduce_ex__(self, _protocol: object) -> object:
-        raise TypeError("a MarginVerdict cannot be pickled; call check_margin again")
-
-    def __reduce__(self) -> object:
-        raise TypeError("a MarginVerdict cannot be pickled; call check_margin again")
 
     def __repr__(self) -> str:
         return f"MarginVerdict(available={self.available!r}, required={self.required!r}, allowed={self.allowed!r})"
