@@ -1,0 +1,37 @@
+{
+ "id": "request-clock-for-database-stamped-fact",
+ "scope": "generic",
+ "class": "A route writes, or compares against, a fact the DATABASE clock stamps (a grant's granted_at, an instrument load's last_seen_at, an audit event's time) using the request's own clock instead of the database's. In production the two agree, so the defect is invisible; whenever the request clock is pinned, replayed or skewed it refuses valid facts (a fresh grant reads 'not yet active', a fresh load reads 'stale') or the database refuses the write (ADR-023: more than 60 s off its clock).",
+ "mechanism": "The Execute and return routes take a request clock seam (`get_execute_clock`, tests pin it to the recorded 2026-10-16 15:07:20 so live-data freshness can be judged on the recordings) and passed that same value to every time-dependent decision, including ones whose other side the database had stamped with clock_timestamp().",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2c W-095 rounds 2-3 (Execute route)",
+  "evidence": "core test 409 ENTITLEMENT_ACCESS_102 twice: a real Pro grant stamped 2026-10-17 by the database vs access_at(ledger, req.now = 2026-10-16) (routes/execute.py:431-436); DATA_UNHEALTHY: list_loaded_at = max(last_seen_at) stamped by clock_timestamp() (0004:156-157) vs req.now's date. Diagnosed by an independent Opus investigation; fixed in round 4 by reading clock_timestamp() once per request."
+ },
+ "fix": "Applied per instance: Pro and list freshness on the database clock (W-095 r4); the external-order audit stamp on the database clock (W-096 r3). Class rule: the request clock is for MARKET data only (quotes, depth, market open, freeze freshness); anything the database stamps is judged and written on the database clock, read once per request. Mechanism (proposed, the next contract): a repo test over backend/ofo_app/routes/ that refuses passing the request-clock value into entitlement_store, audit_store or catalogue-freshness calls.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Found only by DB tests that pin the request clock to a recorded day. A mechanism is due (3 occurrences)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-023.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "W-095 Pro entitlement check",
+   "evidence": "ENTITLEMENT_ACCESS_102 with a real grant (rounds 2-3)"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "W-095 instrument-list freshness",
+   "evidence": "DATA_UNHEALTHY: load stamped today vs pinned yesterday"
+  },
+  {
+   "date": "2026-10-17",
+   "where": "W-096 external-order audit event",
+   "evidence": "first DB run of test_execution_return.py: the audit store refused the request-clock stamp (ADR-023 60 s rule) -> 500; fixed to the database clock in round 3"
+  }
+ ]
+}

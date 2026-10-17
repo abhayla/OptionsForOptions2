@@ -29,6 +29,11 @@
       "date": "2026-10-17",
       "where": "GC-2c W-094 (migration 0016_execution_plans), the builder's atool.py --no-tests run",
       "evidence": "the builder reported `alembic current` 0015 after its own downgrade, then its atool run (still going after 20 min, route + migration tests over the tunnel) upgraded the shared DB again; orchestrator read `FAILED: Can't locate revision identified by '0016_execution_plans'` from the main checkout at ~06:50 IST, stopped the run by PID (15024, 19184, 20916) and downgraded from the branch checkout -> '0015_audit_broker_allowlist (head)'"
+    },
+    {
+      "date": "2026-10-17",
+      "where": "GC-2c, two DB runs started by the orchestrator side by side (W-094 store tests from one checkout, W-095 round 4's core test from a builder) at ~07:45 IST",
+      "evidence": "each run upgraded/downgraded the shared DB with its own copy of 0016 (one with, one without the tradingsymbol column) while the other's tests ran: W-094's run -> '15 failed, 93 passed' (noise), the builder saw 'an older version of 0016'. Re-run strictly one checkout at a time. Third shape of the class: not a branch-vs-main gap but two branches at once. Rule applied for the rest of GC-2c: one DB holder at a time, named in the brief ('your DB run is the last step; another run may hold the DB')."
     }
   ]
 }

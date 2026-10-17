@@ -1,0 +1,27 @@
+{
+ "id": "builder-report-describes-uncommitted-work",
+ "scope": "generic",
+ "class": "A builder's report describes a change (and reasons about why it failed) that exists only in its own worktree's uncommitted state or was reverted, not on the pushed branch; the orchestrator plans the next round on a branch that does not contain what the report says.",
+ "mechanism": "W-095 round 3's report said the Pro grant was recorded through entitlement_store.append and explained why it could not work (grant stamped 2026-10-17 vs a test clock of 2026-10-16). The pushed head 11c2aef carried no grant code; the builder's worktree held only an uncommitted execute_plan.py change. Found by the independent investigator, who read the branch instead of the report.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2c W-095 round 3 (build/W-095-execute-route @ 11c2aef)",
+  "evidence": "investigator: 'HEAD 11c2aef records no Pro grant at all ... grep for entitle|grant in the test file: no hits; builder worktree status: only backend/ofo_app/execute_plan.py modified'; agentwt.py release of that worktree -> 'REFUSED: dirty or unpushed'"
+ },
+ "fix": "Every builder brief's report asks for `git status --short` (must be empty) and the pushed head sha; the orchestrator checks `agentwt.py <id> status` (dirty / on_origin) before reading the report as describing the branch. Applied from W-095 round 4's brief ('git status must be clean before you report').",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "agentwt.py status shows dirty / on_origin, but nothing forces it to be read before a report is relayed. Candidate: the orchestrator's report intake runs it automatically."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "GC-2c W-095 round 3",
+   "evidence": "report described a grant attempt absent from the pushed branch"
+  }
+ ]
+}
