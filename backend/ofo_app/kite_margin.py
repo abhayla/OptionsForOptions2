@@ -139,7 +139,7 @@ def _money(value: object) -> Decimal:
 class KiteMargin:
     def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
                  base_url: str = KITE_API_URL) -> None:
-        self._headers = {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}  # never logged
+        self._headers = kite_headers(api_key, access_token)  # never logged
         self._call = transport
         self._base = base_url
 
@@ -154,8 +154,7 @@ class KiteMargin:
             raise KiteMarginError("kite_margin_unavailable") from None
         if status != 200:  # noqa: PLR2004
             log.warning("kite margin HTTP status %s", status)
-            error_type = _error_type(text)
-            if status == 403 or error_type == "TokenException":  # noqa: PLR2004
+            if status == 403 or error_type(text) == "TokenException":  # noqa: PLR2004
                 raise KiteMarginError("kite_margin_token")
             if status == 429:  # noqa: PLR2004
                 raise KiteMarginError("kite_margin_busy")
@@ -199,7 +198,13 @@ class KiteMargin:
         return BasketMargin(zerodha_total, required_total, _money(initial.get("total")), per_order)
 
 
-def _error_type(text: str) -> str | None:
+def kite_headers(api_key: str, access_token: str) -> dict[str, str]:
+    """The headers every Kite REST call carries. The token lives only here; never log or repr the result."""
+    return {"X-Kite-Version": "3", "Authorization": f"token {api_key}:{access_token}"}
+
+
+def error_type(text: str) -> str | None:
+    """Kite's ``error_type`` from an error body (e.g. ``TokenException``), or None when the body has none."""
     try:
         body = json.loads(text)
     except (ValueError, RecursionError):

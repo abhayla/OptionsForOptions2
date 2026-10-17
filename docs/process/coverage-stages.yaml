@@ -257,6 +257,8 @@ issues:
   "#318": 4b  # W-080: clean up the # noqa markers added in rounds 7-9 (462 at bd19ba7)
   "#344": 4b  # History finalize scale test times out at batch 6 intermittently on CI (5 slow batches, then asyncpg TimeoutError)
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
+  "#352": 4b  # An execution plan open at the end of the trading day cannot be read back the next day
+  "#353": 4b  # Kite allow-list is checked per call, not per calling module (any door may make any listed read)
 
 # Work items whose status is not done.
 work_items:
@@ -271,7 +273,8 @@ work_items:
   W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
   W-091: 4b           # GC-2b: Kite orders/trades/positions -> domain types (F-40)
   W-092: 4b           # GC-2b: eligibility registry filled from Zerodha data (REQ-053 AC-3)
-
+  W-093: 4b           # GC-2c: Kite read door - GET orders / trades / positions (REQ-073 AC-3/AC-4)
+  W-097: 4b           # GC-2c: live 5-level depth for the Execute price (ADR-080 (3))
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
   F-01: done
