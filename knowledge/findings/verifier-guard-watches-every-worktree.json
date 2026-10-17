@@ -32,6 +32,11 @@
    "date": "2026-10-16",
    "where": "GC-2a scratchpad worktree wt-w080, 22:35 IST: `git merge origin/main` into land/W-080 while the Tier A egress reviewer (verifier type) ran its 874-test pytest call",
    "evidence": "quarantine 20261016-223531-1792170331599040800: 18 entries, all action 'copied' (merge-written tracked files: evidence/W-087, work/W-087..092, spec/findings.md, REQ-001/035/038/054); nothing moved; branch diff vs main afterwards = W-080's own files only. Third occurrence: the prose rule (GC-2a contract line) did not hold - the merge was not seen as a 'card write'. Mechanism: issue filed this turn - a project PreToolUse hook that refuses main-session git merge/checkout/pull/rebase/switch/reset and Write/Edit under work/, spec/, evidence/ while a fresh verifier-write-guard snapshot exists (a verifier tool call in flight)."
+  },
+  {
+   "date": "2026-10-17",
+   "where": "GC-2e, 17:46 IST: the W-106 Tier A reviewer ran as the `verifier` agent type while five builders worked in parallel worktrees",
+   "evidence": "quarantine 20261017-174616-1792239376776635900: work/W-103.md (sha256 b20b1a24...) MOVED out of the W-103 builder's worktree agent-a092609fff34ea9ed; the orchestrator's restore was then refused by verifier_inflight_gate while the W-105 reviewer (also `verifier` type) ran. Fourth occurrence, new shape: parallel BUILDERS' new cards, not the orchestrator's. Run decision: Tier A reviewers dispatched as the read-only `Explore` type for the rest of GC-2e (no write-guard); the structural fix stays kit issue 110."
   }
  ]
 }
