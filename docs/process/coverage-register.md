@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 42c9450
+Generated from commit 5507f68
 
 ## Stage S0
 
@@ -104,7 +104,6 @@ Generated from commit 42c9450
 | 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
 | 4a | issue | #126 | - |  |
 | 4a | issue | #148 | - |  |
-| 4a | issue | #154 | - |  |
 | 4a | issue | #159 | - |  |
 | 4a | issue | #191 | - |  |
 | 4a | issue | #199 | - |  |
@@ -113,7 +112,7 @@ Generated from commit 42c9450
 | 4a | issue | #234 | - |  |
 | 4a | issue | #247 | - |  |
 | 4a | issue | #297 | - |  |
-| 4a | issue | #30 | - |  |
+| 4a | issue | #370 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
 | 4a | requirement | REQ-001 | - | V1 scope: underlyings, leg types, broker |
 | 4a | requirement | REQ-015 | AC-4 | Settings → Broker & Market Data → Zerodha shows four separate statuses — account connection, live market data, position/account sync, order-execution readiness — as Connected, Partially connected (naming what to fix) or Disconnected (with the guide); Connected shows 'Last successful sync' time and Reconnect / Disconnect actions (Q181; T2 #124). |
@@ -176,8 +175,14 @@ Generated from commit 42c9450
 | 4b | decision | ADR-095 | - | Price protection splits the strategy-level tolerance across legs in proportion to each leg's planned value |
 | 4b | decision | ADR-096 | - | A held Zerodha position is added to an existing strategy order-free, as a new strategy version with no order |
 | 4b | decision | ADR-097 | - | Real test orders on the owner's account are options only, 1 lot, placed by the owner, and never touch holdings |
+| 4b | decision | ADR-098 | - | REQ-073 AC-4 treats deliberately forged code objects as out of scope; W-080 merges on the runtime gate plus the scan |
 | 4b | decision | ADR-099 | - | The strategy outcome screen shows Zerodha's margin for the planned basket when the user is connected |
 | 4b | decision | ADR-100 | - | No static IP is registered for the Kite app; API order placement stays impossible |
+| 4b | decision | ADR-101 | - | Money figures read from a Zerodha reply are rounded half-up to the paisa where they are parsed |
+| 4b | decision | ADR-102 | - | Realised P&L from fills is exact Decimal, quantized to the paisa for output |
+| 4b | decision | ADR-103 | - | An out-of-order fill is never read as a side flip; it is refused and blocks until the missing fill arrives |
+| 4b | decision | ADR-104 | - | What "Zerodha data allows" means for a leg - the current instrument list, the expiry date and the margin reply |
+| 4b | decision | ADR-105 | - | The basket tag's plan version is a per-strategy plan number, stored before the basket is handed out, one open plan at a time |
 | 4b | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
 | 4b | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | 4b | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
@@ -187,6 +192,7 @@ Generated from commit 42c9450
 | 4b | finding | F-38 | - | Index freeze limits are revised several times a year, not once in years; the NIFTY limit changed 11 days before this was written |
 | 4b | finding | F-39 | - | Kite's basket margin for an option BUY is quantity x the LOWER of the limit price and the live price, not the limit |
 | 4b | finding | F-40 | - | The 4b domain chain (fill ledger, reconcile, P&L) is right on the real order, but no code turns Kite's orders/trades/positions replies into its input |
+| 4b | finding | F-41 | - | Kite returns the browser from a basket to the SAME registered redirect URL the login uses, and our login callback would show a login error |
 | 4b | issue | #115 | - |  |
 | 4b | issue | #240 | - |  |
 | 4b | issue | #255 | - |  |
@@ -198,6 +204,10 @@ Generated from commit 42c9450
 | 4b | issue | #279 | - |  |
 | 4b | issue | #313 | - |  |
 | 4b | issue | #318 | - |  |
+| 4b | issue | #338 | - |  |
+| 4b | issue | #344 | - |  |
+| 4b | issue | #352 | - |  |
+| 4b | issue | #353 | - |  |
 | 4b | issue | #43 | - |  |
 | 4b | issue | #45 | - |  |
 | 4b | issue | #63 | - |  |
@@ -212,6 +222,7 @@ Generated from commit 42c9450
 | 4b | open area | OA-15 | - | final cloud/stack |
 | 4b | question | Q258 | - | Does the platform count as an "algo provider" under SEBI's 2025 framework? |
 | 4b | question | Q259 | - | How do the platform's prepared orders reach Zerodha, given that every API order is an algo order? |
+| 4b | question | Q271 | - | Are the trades of orders placed outside the platform written to the audit log? |
 | 4b | requirement | REQ-036 | - | Strategy-only execution |
 | 4b | requirement | REQ-039 | - | Strategy state machine and exception states |
 | 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
@@ -226,11 +237,24 @@ Generated from commit 42c9450
 | 4b | requirement | REQ-063 | AC-5 | Vendor credentials never reach the browser; broker credentials are never stored beyond the official secure-token mechanism. Audit and other stored payloads use a per-event-type field ALLOWLIST (each event type declares the fields it may carry; anything else is dropped before storage), never a list of forbidden key names - a denylist failed twice (W-015 - over-blocked instrument_token, under-blocked X-Api-Key and Kite's enctoken). Delegated overnight after an independent review (ADR-045); work item W-017, blocked until real Kite responses exist. |
 | 4b | requirement | REQ-073 | - | Orders reach Zerodha as a read-only basket the user places on Kite's own page |
 | 4b | work item | W-017 | - | Per-event-type payload allowlist for stored audit/broker data (no stored credentials) |
-| 4b | work item | W-080 | - | Read-only Kite basket from the execution plan - LIMIT orders in plan order, one tag per order, keyed by InstrumentId, no order-placement path (REQ-073 AC-1/2/4, |
 | 4b | work item | W-081 | - | Margin check with Zerodha before the basket is built - available funds vs the basket's required margin, insufficient blocks the basket (REQ-055 AC-1/3/4) |
 | 4b | work item | W-083 | - | Existing Zerodha positions on connect - suggested groups per underlying and expiry, resemblance names, user moves, adoption with Zerodha's average price, every choice audited (REQ-061, ADR-084) |
 | 4b | work item | W-091 | - | Kite orders / trades / positions replies -> domain types (fills, broker position lines, contract keys) - the 4b boundary F-40 found missing |
 | 4b | work item | W-092 | - | Fill the eligibility registry from Zerodha's data - the builder blocks unavailable legs, and the check repeats just before execution |
+| 4b | work item | W-093 | - | Kite read door - GET orders / trades / positions through one allow-listed client (REQ-073 AC-3/AC-4) |
+| 4b | work item | W-094 | - | Persisted execution-plan intent: plan number per strategy, one open plan, tags unique (ADR-050 4b) |
+| 4b | work item | W-095 | - | Execute route: saved strategy -> gate -> read-only Kite basket, plan intent stored first (REQ-073 AC-1/AC-2, REQ-055 AC-1) |
+| 4b | work item | W-096 | - | Return from Kite: read back by tag, close the plan from Zerodha's answer, reconcile per strategy (REQ-073 AC-3) |
+| 4b | work item | W-097 | - | Live 5-level depth kept from Kite full frames and readable for the Execute price (ADR-080 (3)) |
+| 4b | work item | W-098 | - | One seal for proof objects and a repo test that every gate proof type refuses forgery (finding caller-supplied-verdict-trusted) |
+| 4b | work item | W-099 | - | Circuit bands from Zerodha's quote for the pre-execution gate (ADR-080; GET /quote door) |
+| 4b | work item | W-100 | - | Circuit bands into the Execute route - the last production input ENTRY lacked (ADR-080) |
+| 4b | work item | W-101 | - | Test-only Execute/return replay - the recorded Kite session behind both order routes |
+| 4b | work item | W-102 | - | The full cost in the Execute reply - net premium, charges, Zerodha funds and margin |
+| 4b | work item | W-103 | - | Audit events on both order routes - order_prepared declared, broker replies and fills recorded |
+| 4b | work item | W-104 | - | The Execute screen - exact orders and full cost, the owner's two clicks, a basket-return landing page |
+| 4b | work item | W-105 | - | A basket return on the shared redirect URL lands on the "returned" page, never a login error |
+| 4b | work item | W-106 | - | Holdings read on the Kite read door - ADR-097 (4)'s before/after check |
 
 ## Stage 4c
 
@@ -422,6 +446,7 @@ Generated from commit 42c9450
 | all | decision | ADR-070 | - | The repository is public so that main can require every pull request to be up to date before it merges |
 | all | decision | ADR-078 | - | Live runs use a separate development database, ofo_dev; the test database stays empty for the test suites |
 | all | decision | ADR-093 | - | Coding standards are enforced by automatic checks or marked review-only; a check is adopted only when it guards something real or costs no new CI job |
+| all | decision | ADR-106 | - | Delivery process - safeguards run where they catch defects, not on every small unit |
 | all | requirement | REQ-054 | AC-2 | Only the Zerodha implementation exists in V1; no unused broker implementations are built. |
 | all | requirement | REQ-067 | AC-1 | Data is proven first (owner T1 #175: an earlier attempt failed on live data): the Phase-0 tests — reliable live ticks, full chain rebuilt, own Greeks, stale/missing detection, reconnect survival, one normalised feed serving many users, licence permits the use — run on real input before product screens. The core (Zerodha login → live NIFTY/SENSEX quotes → margin) is proven on real input before other work; then the core domain and one vertical slice (Create Strategy → Configure Legs → Calculate → Save Draft → Connect Zerodha → Validate → Prepare Execution Plan → Review → Execute → Confirm Broker Execution → Reconcile → Active Monitoring) before broad UI work. |
 | all | requirement | REQ-067 | AC-2 | Every domain invariant in spec/testing/core-invariants.md has an automated test. |
@@ -501,8 +526,8 @@ Generated from commit 42c9450
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 42 | 5 | 0 | 12 | 0 | 1 | 31 | 0 | 3 | 101 |
-| 4b | 1 | 0 | 23 | 9 | 0 | 14 | 9 | 2 | 13 | 0 | 6 | 77 |
+| 4a | 7 | 0 | 42 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 3 | 100 |
+| 4b | 1 | 0 | 29 | 10 | 0 | 18 | 9 | 3 | 13 | 0 | 19 | 102 |
 | 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 7 | 0 | 0 | 13 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 19 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 |
@@ -515,5 +540,5 @@ Generated from commit 42c9450
 | S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 3 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
 | S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
-| all | 0 | 0 | 13 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 23 |
+| all | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 24 |
 | done | 5 | 4 | 0 | 23 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 56 |

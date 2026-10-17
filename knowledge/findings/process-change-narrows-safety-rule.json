@@ -1,0 +1,27 @@
+{
+ "id": "process-change-narrows-safety-rule",
+ "scope": "generic",
+ "class": "A recommendation to change the delivery process (review tiers, round caps, verifier timing, guard scope) narrows an existing safety rule without saying so, and the owner approves it before any independent review; past real catches would then reach main.",
+ "mechanism": "2026-10-17: 11 time-saving recommendations were approved one by one. Three role reviewers then found that 5, as worded, would have let real past catches through: Tier A 'by code type' dropped CLAUDE.md's 'live-data liveness' (W-097's negative-depth crash, and depth/bands decide leg refusal in backend/ofo_app/routes/execute.py), dropping contract review lost GC-2a's rounding-reversal catch and GC-3's false 'merged' claim, and the round cap deferred a round-10 token-leak fix (W-024). Two savings were also over-claimed (the cap would not have stopped W-080's order-guard rounds).",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "orchestrator session, process-cuts plan (docs/process/kit-feedback-delivery-overhead-2026-10-17.md)",
+  "evidence": "CLAUDE.md Fast delivery point 3 lists 'live-data liveness'; the approved option said 'Market-data reads, display and plumbing get Tier B'; trading-safety reviewer: 'W-097 MAJOR ... No - depth is a data read -> Tier B'"
+ },
+ "fix": "Every process-change recommendation quotes the current rule next to the proposed one and labels any narrowing; recommendations touching review or safety rules get independent role reviewers (safety, delivery, platform) before they reach the owner; the revised decisions were re-checked against every past real catch.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Prose only. Candidate: the owner-question hook requires a 'Current rule:' quote on any question whose options change a review or safety rule."
+ },
+ "spec_ref": [
+  "spec/testing/core-invariants.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "process-cuts recommendations, items 1-4 and 10",
+   "evidence": "5 of 11 approved options unsafe as worded (three independent reviews)"
+  }
+ ]
+}

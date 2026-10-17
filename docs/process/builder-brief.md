@@ -2,6 +2,10 @@
 
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
+A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
+tier, and the literal `Budget:` / `Report:` / `Tests:` lines, which the dispatch hooks read from the prompt text) and
+says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
+attack list, not a rewrite (ADR-106 item 9).
 
 You build ONE work item in your own git worktree of github.com/abhayla/OptionsForOptions2 (branch from origin/main).
 Read first, in order: your `work/W-###.md`; its requirement `spec/requirements/REQ-###.md` (acceptance criteria);
@@ -42,6 +46,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - A Tier A brief about a guard/door/gate/scan (one of those words in its first 10 lines) carries
   `Findings checked: <id>, <id>` where each id is a file `knowledge/findings/<id>.json` (W-080 round 10 was designed
   without reading `guard-by-banned-shapes`). Grep the registry first; "grep findings" is not a list.
+- A brief that adds or changes a guard carries `Threat model: in scope <...>; out of scope <...>` BEFORE round 1
+  (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
+  what is in scope; a finding outside it is recorded, not a new round.
 
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
@@ -91,8 +98,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - Type hints on public functions; small modules; no dead code; no print statements.
 
 ## Before you finish
-Run from your worktree root, each as its own command:
-`python -m pytest -q -p no:cacheprovider` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
+Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 11; CI runs the full
+suites): your brief's `Tests:` line (guard tests + `-m repo_scan` + your changed files' tests) ·
+`python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
 test files your brief names plus `python scripts/orchestrator/atool.py <worktree> <W-id> --no-tests` (every ci.yml
 lint step); CI runs the full suites. Before the targeted run, grep `tests/` and `tests_app/` for every route, status,
@@ -102,6 +110,7 @@ Commit (WIP commits are fine as you go) and `git push -u origin <your-branch>`. 
 does that after independent verification.
 
 ## Report (under 300 words)
-Branch name and head SHA; files changed; the exact test command and its result line; which AC each test file covers;
+Branch name and the PUSHED head SHA; `git status --short` output (must be empty: finding
+`builder-report-describes-uncommitted-work`); files changed; the exact test command and its result line; which AC each test file covers;
 anything not done and why; an evidence table `| Claim | Evidence (tool call this run) |`.
 Report: evidence-table
