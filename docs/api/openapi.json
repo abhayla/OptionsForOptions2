@@ -73,6 +73,75 @@
         "title": "AdvancedLegOut",
         "type": "object"
       },
+      "BasketOrderOut": {
+        "additionalProperties": false,
+        "properties": {
+          "exchange": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Exchange",
+            "type": "string"
+          },
+          "order_type": {
+            "const": "LIMIT",
+            "title": "Order Type",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "product": {
+            "const": "NRML",
+            "title": "Product",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "tag": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tag",
+            "type": "string"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "transaction_type": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Transaction Type",
+            "type": "string"
+          },
+          "variety": {
+            "const": "regular",
+            "title": "Variety",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exchange",
+          "tradingsymbol",
+          "transaction_type",
+          "order_type",
+          "product",
+          "variety",
+          "quantity",
+          "price",
+          "readonly",
+          "tag"
+        ],
+        "title": "BasketOrderOut",
+        "type": "object"
+      },
       "BrokerRedirectOut": {
         "additionalProperties": false,
         "description": "Names the redirect a broker route answers with (the 302 itself has no body).",
@@ -412,6 +481,79 @@
           "definition"
         ],
         "title": "EntryOut",
+        "type": "object"
+      },
+      "ExecuteIn": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "ENTRY",
+              "EXIT"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "ExecuteIn",
+        "type": "object"
+      },
+      "ExecuteOut": {
+        "additionalProperties": false,
+        "properties": {
+          "basket": {
+            "properties": {
+              "api_key": {
+                "title": "Api Key",
+                "type": "string"
+              },
+              "data": {
+                "title": "Data",
+                "type": "string"
+              },
+              "url": {
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url",
+              "api_key",
+              "data"
+            ],
+            "title": "Basket",
+            "type": "object"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/BasketOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "plan_number": {
+            "title": "Plan Number",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plan_number",
+          "tags",
+          "basket",
+          "orders"
+        ],
+        "title": "ExecuteOut",
         "type": "object"
       },
       "ExpiriesOut": {
@@ -2533,6 +2675,55 @@
           }
         },
         "summary": "Update Strategy"
+      }
+    },
+    "/strategies/{strategy_id}/execute": {
+      "post": {
+        "operationId": "execute_strategy_strategies__strategy_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Strategy"
       }
     },
     "/strategies/{strategy_id}/history": {
