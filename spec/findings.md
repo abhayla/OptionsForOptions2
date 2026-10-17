@@ -669,5 +669,5 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Consequence for GC-3 step 5 ("the nearest-expiry NIFTY CE"): an EXIT LIMIT that does not fill by 15:30 leaves the
   leg to exchange settlement, which the live path does not handle (#279 settle-before-reconcile; an expired held leg
   blocks as a missing position, F-42) and the plan stays open into the next day (#352).
-- Bears on: GC-3 step 5, ADR-097 (1), ADR-083. Status: **measured from the master; open for owner decision** (which
-  expiry the live test trades - asked at L1).
+- Bears on: GC-3 step 5, ADR-097 (1), ADR-083. Status: **measured from the master; decided by ADR-108 (2)** (owner
+  2026-10-17: the live test trades the 2026-10-27 expiry).
