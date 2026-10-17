@@ -64,8 +64,16 @@ DECLARED = {
     EventType.ADMIN_CHANGE_RECORDED,
     # W-017: the two broker-reply types (declared from the real replies of 2026-10-16)
     EventType.BROKER_RESPONSE_RECORDED, EventType.EXECUTION_RECORDED,
+    # W-103: the Execute route's stored plan (migration 0017)
+    EventType.ORDER_PREPARED,
 }
 UNDECLARED = sorted(set(EventType) - DECLARED, key=lambda e: e.value)
+#: Frozen: the types 0002 renders (every database at 0016). Never derived from the live allowlist.
+PRE_0017_TYPES = {
+    "entitlement_changed", "trial_started", "trial_expired", "direct_customer_eligibility_granted",
+    "direct_customer_eligibility_revoked", "referral_reward_granted", "subscription_started", "subscription_expired",
+    "broker_response_recorded", "execution_recorded", "admin_change_recorded",
+}
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,6 +81,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def _migration():
     path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0002_audit_store.py"
     spec = importlib.util.spec_from_file_location("ofo_migration_0002_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def _order_prepared_migration():
+    path = ROOT / "backend" / "ofo_app" / "alembic" / "versions" / "0017_audit_order_prepared.py"
+    spec = importlib.util.spec_from_file_location("ofo_migration_0017_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -157,13 +173,15 @@ async def _next_event(
 # ---------------------------------------------------------------------------------------------------------------
 
 
-def test_exactly_the_nine_non_broker_and_two_broker_reply_types_are_declared() -> None:
+def test_exactly_the_nine_non_broker_two_broker_reply_and_order_prepared_types_are_declared() -> None:
     assert set(ALLOWLIST) == DECLARED
-    assert len(DECLARED) == 11 and len(UNDECLARED) == 22 and len(EventType) == 33
+    assert len(DECLARED) == 12 and len(UNDECLARED) == 21 and len(EventType) == 33
 
 
 def test_database_event_type_check_equals_the_python_allowlist() -> None:
-    assert set(_migration().DECLARED_EVENT_TYPES) == {e.value for e in ALLOWLIST}
+    """0002 renders the 0016 state (every type but those a later revision declares); 0017 renders the full list."""
+    assert set(_migration().DECLARED_EVENT_TYPES) == PRE_0017_TYPES
+    assert set(_order_prepared_migration().AFTER) == {e.value for e in ALLOWLIST}
 
 
 def test_migration_genesis_equals_ofo_audit_genesis() -> None:
@@ -738,3 +756,135 @@ async def test_real_log_still_verifies_after_all_mutations(app_engine: AsyncEngi
     async with app_engine.connect() as conn:
         log, anchor = await load_log(conn)
     assert log.verify(anchor).ok and anchor.count == len(log.events)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# W-103: order_prepared (REQ-063 AC-5) and migration 0017
+# ---------------------------------------------------------------------------------------------------------------
+
+PREPARED = {"strategy_id": 1, "plan_number": 1, "action": "ENTRY", "tags": "OFS1V1L0"}
+
+
+async def _prepared(conn: AsyncConnection, payload: dict) -> audit_store.StoredEvent:
+    return await append(conn, EventType.ORDER_PREPARED, actor="u-1", timestamp=await _db_clock(conn),
+                        correlation_id=_cid(), payload=payload)
+
+
+async def _stored_payload(conn: AsyncConnection, seq: int) -> dict:
+    raw = (await conn.execute(text("SELECT payload::text FROM public.audit_events WHERE seq = :s"), {"s": seq}))
+    return json.loads(raw.scalar_one())
+
+
+async def test_ac5_order_prepared_keeps_its_four_fields_drops_an_extra_and_refuses_bad_payloads(
+    app_engine: AsyncEngine,
+) -> None:
+    """AC-5: {strategy_id, plan_number, action, tags, x} is stored WITHOUT x; {x} alone is refused
+    (PayloadShapeError); plan_number 1.0 is refused by the store's float rule; neither refusal writes a row."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            stored = await _prepared(conn, {**PREPARED, "x": 1})
+            assert stored.event.payload == PREPARED and await _stored_payload(conn, stored.seq) == PREPARED
+            anchor = await audit_store.read_anchor(conn)
+            with pytest.raises(PayloadShapeError, match="none is declared"):
+                await _prepared(conn, {"x": 1})
+            with pytest.raises(AuditStoreError, match="float"):
+                await _prepared(conn, {**PREPARED, "plan_number": 1.0})
+            assert await audit_store.read_anchor(conn) == anchor
+            log, head = await load_log(conn)
+            assert log.verify(head).ok
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_live_event_type_check_names_exactly_the_declared_types(admin_engine: AsyncEngine) -> None:
+    """AC-5: the database's event-type CHECK and the code's allowlist agree at head (both copies, not only one)."""
+    async with admin_engine.connect() as conn:
+        definition = (await conn.execute(text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'audit_events_event_type_check'"
+        ))).scalar_one()
+    assert set(re.findall(r"'([a-z_]+)'::text", definition)) == {e.value for e in ALLOWLIST}
+
+
+async def _db_allowlist(conn: AsyncConnection) -> dict:
+    return json.loads((await conn.execute(text("SELECT public.ofo_audit_payload_allowlist()::text"))).scalar_one())
+
+
+async def test_ac5_0017_downgrade_removes_order_prepared_and_upgrade_restores_it(admin_engine: AsyncEngine) -> None:
+    """AC-5: 0017 down -> the database allowlist and CHECK are 0016's (no order_prepared; an order_prepared append is
+    refused by the database), the allowlist function's 'post' check passes; up -> equal to the code again and the
+    append stores. Rolled back."""
+    from _migration_replay import round_trip_sql  # noqa: PLC0415
+
+    own_down, own_up, down, up = round_trip_sql("0017_audit_order_prepared.py")
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
+    migration = _order_prepared_migration()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            assert await _db_allowlist(conn) == allowlist_spec()
+            for sql in down:
+                await conn.execute(text(sql))
+            assert await _db_allowlist(conn) == migration.BEFORE
+            assert "order_prepared" not in migration.BEFORE
+            with pytest.raises(DBAPIError):
+                async with conn.begin_nested():
+                    await _prepared(conn, PREPARED)
+            for sql in up:
+                await conn.execute(text(sql))
+            assert await _db_allowlist(conn) == allowlist_spec()
+            assert (await _prepared(conn, PREPARED)).event.payload == PREPARED
+        finally:
+            await trans.rollback()
+
+
+async def test_ac5_0017_downgrade_is_refused_while_an_order_prepared_event_is_stored(admin_engine: AsyncEngine) -> None:
+    """AC-5: the audit store is append-only, so the downgrade refuses (nothing changes) once a row of the type
+    exists."""
+    from _migration_replay import recorded  # noqa: PLC0415
+
+    own_down = recorded("0017_audit_order_prepared.py", "downgrade")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await _prepared(conn, PREPARED)
+            with pytest.raises(DBAPIError, match="order_prepared events"):
+                async with conn.begin_nested():
+                    await conn.execute(text(own_down[0]))
+            assert await _db_allowlist(conn) == allowlist_spec()
+        finally:
+            await trans.rollback()
+
+
+def test_ac5_the_0016_render_is_frozen_and_a_new_type_without_a_revision_is_refused() -> None:
+    """AC-5: 0002 renders exactly the 11 pre-0017 types (a frozen literal, not "all minus order_prepared"); a type
+    added to the allowlist without a DECLARED_IN_REVISION entry is refused at import (fail closed), as is a base type
+    given a revision or a revision at or below 16."""
+    from ofo_app import audit_allowlist as al  # noqa: PLC0415
+
+    assert set(allowlist_spec(through_revision=16)) == PRE_0017_TYPES == al.BASE_TYPES
+    fake = {**ALLOWLIST, EventType.ORDER_SUBMITTED: {"order_id": "scalar"}}
+    with pytest.raises(ValueError, match="order_submitted"):
+        al.check_revisions(fake, al.DECLARED_IN_REVISION)
+    al.check_revisions(fake, {**al.DECLARED_IN_REVISION, EventType.ORDER_SUBMITTED: 18})
+    for bad in ({**al.DECLARED_IN_REVISION, EventType.TRIAL_STARTED: 18}, {EventType.ORDER_PREPARED: 16}):
+        with pytest.raises(ValueError, match="DECLARED_IN_REVISION"):
+            al.check_revisions(ALLOWLIST, bad)
+
+
+def test_ac5_0017_pin_swap_fails_closed_and_through_revision_is_checked() -> None:
+    """AC-5: the chain text must pin the 0016 allowlist body exactly once, else the migration refuses to render;
+    ``allowlist_spec(through_revision=...)`` refuses a revision before the base and a non-int."""
+    migration = _order_prepared_migration()
+    good = migration.previous_allowlist_sql()
+    assert migration.extended_allowlist_sql() != good
+    old_pin = migration._M4._md5_body(migration.allowed_function_sql(migration.BEFORE))
+    for broken in (good.replace(f"'{old_pin}'", "'0'"), good + f"'{old_pin}'"):
+        migration.previous_allowlist_sql = lambda text=broken: text
+        with pytest.raises(RuntimeError, match="exactly once"):
+            migration.extended_allowlist_sql()
+    for bad in (15, True, "17", 16.0):
+        with pytest.raises(ValueError, match="through_revision"):
+            allowlist_spec(through_revision=bad)
+    assert "order_prepared" not in allowlist_spec(through_revision=16)
+    assert allowlist_spec(through_revision=17) == allowlist_spec()

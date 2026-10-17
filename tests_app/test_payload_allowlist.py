@@ -116,10 +116,11 @@ def test_session_types_stay_undeclared_and_refused(event_type: EventType) -> Non
     )
 
 
-def test_exactly_eleven_types_are_declared_and_the_others_still_refuse() -> None:
+def test_exactly_twelve_types_are_declared_and_the_others_still_refuse() -> None:
+    """W-017's eleven plus W-103's order_prepared."""
     declared = {e for e in EventType if audit_allowlist.is_declared(e)}
     assert {e.value for e in declared} >= {t[0].value for t in TYPES}
-    assert len(declared) == 11
+    assert len(declared) == 12 and EventType.ORDER_PREPARED in declared
     assert EventType.RECONCILIATION_RECORDED not in declared
     for event_type in set(EventType) - declared:
         with pytest.raises(UndeclaredEventType):
