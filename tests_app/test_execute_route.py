@@ -278,7 +278,7 @@ class _Quotes:
         return (D("23094.95"), datetime.datetime(2026, 10, 16, 15, 7, 17, tzinfo=AT.tzinfo))  # fetch.json spot
 
 
-async def _strategy_one(conn, user: str, app_role: str) -> int:
+async def _strategy_one(conn, user: str, app_role: str, units: int = 65) -> int:
     """Strategy id 1 (the real tags OFS1V1...): saved through the store, then given id 1 as the owner role (the
     application role cannot write ``id``), then the transaction continues as the application role."""
     from ofo.strategy import stored_form as sf  # noqa: PLC0415
@@ -293,7 +293,7 @@ async def _strategy_one(conn, user: str, app_role: str) -> int:
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
                               {"s": REAL_ORDER["tradingsymbol"]})).scalar_one()
-    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, 65, None)],
+    saved = await build_definition(conn, "NIFTY", [sf.LegChoice(int(cid), Action.BUY, units, None)],
                                    rules_ref=None, risk_limits={}, preferences={})
     made = await save_draft(conn, user, saved)
     await conn.execute(text("SET LOCAL session_replication_role = replica"))
@@ -428,10 +428,10 @@ def _position_rows(**changes) -> list:
 
 @pytest.mark.usefixtures("app_engine")
 async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine, admin_engine, monkeypatch):
-    """Plan 1 filled 30 of 65 (partial). Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
+    """A 2-lot strategy (130 units); plan 1 filled 65 of 130 (partial; NFO fills whole lots). Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
     EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
     (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
-    exactly the net 30 (review MAJOR 2: round 2 refused it)."""
+    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it)."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
@@ -443,14 +443,14 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
         trans = await conn.begin()
         try:
             user = _user()
-            sid = await _strategy_one(conn, user, app_engine.url.username)
+            sid = await _strategy_one(conn, user, app_engine.url.username, units=130)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 30})
+            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65})
 
             def _with(**kw):
                 replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
@@ -477,7 +477,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
             (sell,) = resp.json()["orders"]
-            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 30, "OFS1V2L0")
+            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 65, "OFS1V2L0")
         finally:
             await trans.rollback()
 
