@@ -26,7 +26,7 @@ ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
     "ofo/instruments/downloader.py": frozenset({("GET", "/instruments")}),
     "ofo_app/kite_margin.py": frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
     "ofo_app/kite_reads.py": frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"),
-                                        ("GET", "/quote")}),
+                                        ("GET", "/portfolio/holdings"), ("GET", "/quote")}),
 }
 
 #: door module -> the network-capable modules (and their submodules) that door alone may import.
