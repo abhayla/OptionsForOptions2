@@ -244,7 +244,8 @@ def test_error_is_closed_shape() -> None:
 
 
 # ---- W-106: GET /portfolio/holdings and the ADR-097 (4) before/after comparison -----------------------------------
-HOLDINGS_FIELDS = ("tradingsymbol", "exchange", "isin", "quantity", "t1_quantity")
+QUANTITIES = ("quantity", "t1_quantity", "used_quantity", "authorised_quantity", "collateral_quantity")
+HOLDINGS_FIELDS = ("tradingsymbol", "exchange", "isin", *QUANTITIES)
 HOLDINGS_URL = "/portfolio/holdings"
 
 
@@ -258,21 +259,22 @@ def documented_rows() -> list[dict]:
 
 
 def holding(symbol="INFY", exchange="NSE", isin="INE009A01021", quantity=10, t1=3) -> Holding:
-    return Holding(symbol, exchange, isin, quantity, t1)
+    return Holding(symbol, exchange, isin, quantity, t1, 0, 0, 0)
 
 
 def test_core_documented_holdings_reply_through_the_door() -> None:
-    """AC-4 core: the documented reply, through the door, becomes exactly the five fields per row; nothing else kept."""
+    """AC-4 core: the documented reply, through the door, becomes exactly the eight fields per row; nothing more."""
     fake = holdings_replay()
     rows = client(fake).fetch_holdings()
-    assert rows == (Holding("GOLDBEES", "BSE", "INF204KB17I5", 2, 0), Holding("INFY", "NSE", "INE009A01021", 10, 3))
+    assert rows == (Holding("GOLDBEES", "BSE", "INF204KB17I5", 2, 0, 0, 0, 0),
+                    Holding("INFY", "NSE", "INE009A01021", 10, 3, 0, 0, 0))
     assert [f.name for f in dataclasses.fields(Holding)] == list(HOLDINGS_FIELDS)  # no price / P&L field exists
     assert [(m, u, b) for m, u, _, b in fake.calls] == [("GET", BASE + HOLDINGS_URL, None)]
 
 
 @pytest.mark.parametrize("field", HOLDINGS_FIELDS)
 def test_a_row_missing_any_one_field_is_refused(field) -> None:
-    """AC-4: every one of the five fields removed in turn -> the whole read fails."""
+    """AC-4: every one of the eight fields removed in turn -> the whole read fails."""
     rows = documented_rows()
     del rows[1][field]
     with pytest.raises(KiteReadError) as raised:
@@ -280,7 +282,7 @@ def test_a_row_missing_any_one_field_is_refused(field) -> None:
     assert raised.value.code == "kite_read_bad_reply"
 
 
-WRONG_TYPES = [None, True, False, 10.5, 10.0, "10", "", "  ", [], {}, [10]]
+WRONG_TYPES = [None, -1, True, False, 10.5, 10.0, "10", "", "  ", [], {}, [10]]
 
 
 @pytest.mark.parametrize("field", HOLDINGS_FIELDS)
@@ -288,7 +290,7 @@ WRONG_TYPES = [None, True, False, 10.5, 10.0, "10", "", "  ", [], {}, [10]]
 def test_every_field_given_a_wrong_type_is_refused(field, wrong) -> None:
     """AC-4: allow-list of types (text for the three names, a JSON integer for the two quantities); everything else,
     including 10.5, 10.0, the string "10" and a bool, refuses."""
-    if wrong == "10" and field not in ("quantity", "t1_quantity"):
+    if wrong == "10" and field not in QUANTITIES:
         return  # text is the right type for a name
     rows = documented_rows()
     rows[1][field] = wrong
@@ -356,7 +358,7 @@ def test_unchanged_holdings_compare_equal_whatever_the_order() -> None:
     assert holdings_unchanged((), ()) == ()
 
 
-@pytest.mark.parametrize("field,value", [("quantity", 9), ("t1_quantity", 0)])
+@pytest.mark.parametrize("field,value", [(f, 7) for f in QUANTITIES])
 def test_a_changed_quantity_is_reported(field, value) -> None:
     """AC-4: a differing quantity or t1_quantity names the row, with both versions."""
     before = holding()
