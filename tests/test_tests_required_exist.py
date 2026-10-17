@@ -8,7 +8,10 @@ items that claim the tests exist are checked (status in_review or done); a todo/
 import pathlib
 import re
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.repo_scan
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENTRY = re.compile(r"^AC-\d+:\s*(?P<paths>.+)$")

@@ -7,11 +7,14 @@ import datetime
 import pathlib
 from decimal import Decimal
 
+import pytest
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FeedState, QuoteBook
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+
+pytestmark = pytest.mark.repo_scan
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 T0 = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)

@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
 ENGINE = BACKEND / "ofo" / "engine"
 FORBIDDEN = {"bs_price", "implied_volatility", "bs_greeks", "bs_greeks_unrounded", "forward_price", "estimate_now",

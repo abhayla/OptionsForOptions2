@@ -32,6 +32,8 @@ from ofo.rules import (
     snapshot_from_strategy,
 )
 
+pytestmark = pytest.mark.repo_scan
+
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 AS_OF = datetime.datetime(2026, 10, 20, 11, 15, tzinfo=IST)
 EXPIRY = datetime.date(2026, 10, 27)
