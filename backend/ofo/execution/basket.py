@@ -133,7 +133,7 @@ class KiteOrder:
         return "{" + ", ".join(json.dumps(k) + ": " + v for k, v in parts) + "}"
 
 
-class KiteBasket(SealedTuple, made_by="build_basket", again="build it again"):
+class KiteBasket(SealedTuple, made_by="build_basket"):
     """The basket of orders ``build_basket`` decided may be sent; sealed (see the module rules)."""
 
     __slots__ = ()

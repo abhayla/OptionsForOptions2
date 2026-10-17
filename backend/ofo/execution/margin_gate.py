@@ -37,7 +37,7 @@ def _amount(value: object, name: str, *, signed: bool = False) -> Decimal:
     return value
 
 
-class MarginVerdict(SealedTuple, made_by="check_margin", again="call check_margin again"):
+class MarginVerdict(SealedTuple, made_by="check_margin"):
     """The gate's answer. Only the two amounts (None when unknown) are inputs: `allowed` and the four-part `message`
     are derived from them by `check_margin`. `available` is Zerodha's signed ``equity.net`` (a negative balance always
     blocks).

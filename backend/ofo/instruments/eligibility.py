@@ -69,7 +69,7 @@ def _strict_bool(value: object, name: str) -> bool:
     return value
 
 
-class ListState(SealedTuple, made_by="list_state_from_row or states_from_parsed_list", again="read the row again"):
+class ListState(SealedTuple, made_by="list_state_from_row,states_from_parsed_list"):
     """One catalogue contract as Zerodha's latest instrument-list load left it (ADR-104 (a)). Sealed: made only by
     ``list_state_from_row`` (a store row) or ``states_from_parsed_list`` (Zerodha's parsed list), never by hand."""
 
@@ -165,8 +165,7 @@ def _entry_key(entry: tuple) -> tuple[str, int]:
     return entry[0], entry[1]
 
 
-class ZerodhaEligibility(SealedTuple, made_by="registry_from_list or apply_margin_refusals",
-                         again="build it again from the list"):
+class ZerodhaEligibility(SealedTuple, made_by="registry_from_list,apply_margin_refusals"):
     """The eligibility the pre-execution gate trusts. Each entry is a plain ``(segment, token, tradable, checked_at,
     reason)`` tuple. Sealed (see the module docstring): made only by ``registry_from_list`` and
     ``apply_margin_refusals``; there is no way to record, overwrite or remove an entry afterwards."""
