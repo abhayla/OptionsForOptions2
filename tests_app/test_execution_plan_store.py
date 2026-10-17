@@ -104,6 +104,13 @@ async def _refused_sql(conn, sql: str, sqlstate: str, params: dict | None = None
     assert getattr(err.value.orig, "sqlstate", None) == sqlstate, err.value
 
 
+async def _close(conn, user: str, strategy_id: int, number: int, reason: str) -> plans.StoredPlan:
+    """Closes a ONE-leg plan the way the caller must: a close that changes position carries the filled quantities."""
+    tag = make_tag(strategy_id, number, 0)
+    fills = {"filled": {tag: LOT}, "exited": {tag: LOT}, "partial": {tag: LOT // 2}, "nothing_placed": None}[reason]
+    return await plans.close_plan(conn, user, strategy_id, number, reason=reason, filled=fills)
+
+
 async def _refused(code: str, awaitable) -> None:
     with pytest.raises(plans.PlanStoreError) as err:
         await awaitable
@@ -129,7 +136,7 @@ async def test_core_real_order_plan_numbers(app_engine):
         # a second Execute while plan 1 is open is refused, and nothing is minted
         await _refused(plans.PLAN_OPEN, plans.next_plan_number(tx.conn, tx.user, sid))
         assert (await plans.open_plan(tx.conn, tx.user, sid)).plan_number == 1
-        closed = await plans.close_plan(tx.conn, tx.user, sid, 1, reason="filled")
+        closed = await _close(tx.conn, tx.user, sid, 1, "filled")
         assert (closed.status, closed.close_reason) == ("closed", "filled") and closed.closed_at is not None
         assert await plans.open_plan(tx.conn, tx.user, sid) is None
         exit_plan = await tx.enter("EXIT", "SELL", "3.10")
@@ -151,7 +158,7 @@ async def test_floor_is_honoured(app_engine, floor, stored, expected):
     async with _Tx(app_engine) as tx:
         if stored:
             await tx.enter("ENTRY", "BUY", "5.45")
-            await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled")
+            await _close(tx.conn, tx.user, tx.strategy_id, 1, "filled")
         assert await plans.next_plan_number(tx.conn, tx.user, tx.strategy_id, floor=floor) == expected
 
 
@@ -225,9 +232,9 @@ async def test_a_plan_number_that_was_already_used_is_tag_taken_and_one_below_th
     async with _Tx(app_engine) as tx:
         sid = tx.strategy_id
         await tx.enter("ENTRY", "BUY", "5.45")
-        await plans.close_plan(tx.conn, tx.user, sid, 1, reason="filled")
+        await _close(tx.conn, tx.user, sid, 1, "filled")
         await tx.enter("EXIT", "SELL", "3.10")
-        await plans.close_plan(tx.conn, tx.user, sid, 2, reason="exited")
+        await _close(tx.conn, tx.user, sid, 2, "exited")
         again = (_order(sid, 2, "SELL", "3.10"),)
         await _refused(plans.TAG_TAKEN, plans.record_plan(tx.conn, tx.user, sid, 2, "EXIT", again))
         await _refused(plans.BAD_PLAN, plans.record_plan(tx.conn, tx.user, sid, 0, "EXIT", again))
@@ -253,7 +260,7 @@ async def test_closing_rules(app_engine):
         for reason in ("done", "", None, "FILLED", 1):
             await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, sid, 1, reason=reason))
         assert (await plans.open_plan(tx.conn, tx.user, sid)).plan_number == 1
-        await plans.close_plan(tx.conn, tx.user, sid, 1, reason="nothing_placed")
+        await _close(tx.conn, tx.user, sid, 1, "nothing_placed")
         await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, sid, 1, reason="filled"))
         stored = (await plans.plans_for(tx.conn, tx.user, sid))[0]
         assert stored.close_reason == "nothing_placed"  # the second close changed nothing
@@ -263,7 +270,7 @@ async def test_closing_rules(app_engine):
 async def test_every_close_reason_is_accepted(app_engine, reason):
     async with _Tx(app_engine) as tx:
         await tx.enter("ENTRY", "BUY", "5.45")
-        assert (await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason=reason)).close_reason == reason
+        assert (await _close(tx.conn, tx.user, tx.strategy_id, 1, reason)).close_reason == reason
 
 
 async def test_a_multi_leg_plan_keeps_its_order_and_exact_prices(app_engine):
@@ -291,7 +298,7 @@ async def test_the_database_refuses_a_second_open_plan_by_raw_sql(app_engine):
         await _refused_sql(tx.conn, "INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                                     "VALUES (:s, 2, 'EXIT')", UNIQUE_VIOLATION, {"s": tx.strategy_id})
         # once closed, the same insert is fine
-        await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled")
+        await _close(tx.conn, tx.user, tx.strategy_id, 1, "filled")
         await tx.conn.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                                    "VALUES (:s, 2, 'EXIT')"), {"s": tx.strategy_id})
 
@@ -318,7 +325,7 @@ async def test_the_database_refuses_deleting_or_rewriting_a_plan(app_engine, sql
 async def test_a_closed_plan_cannot_be_reopened_and_closed_at_is_the_database_clock(app_engine):
     async with _Tx(app_engine) as tx:
         await tx.enter("ENTRY", "BUY", "5.45")
-        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled")
+        closed = await _close(tx.conn, tx.user, tx.strategy_id, 1, "filled")
         now = (await tx.conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
         assert closed.created_at <= closed.closed_at <= now
         await _refused_sql(tx.conn, "UPDATE public.execution_plans SET status = 'open', close_reason = NULL "
@@ -358,7 +365,7 @@ async def test_the_database_refuses_an_order_added_to_a_closed_plan(app_engine):
     async with _Tx(app_engine) as tx:
         s = tx.strategy_id
         await tx.enter("ENTRY", "BUY", "5.45")
-        await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled")
+        await _close(tx.conn, tx.user, s, 1, "filled")
         await _refused_sql(tx.conn, _ORDER_INSERT, PLAN_GUARD_SQLSTATE,
                            {"s": s, "p": 1, "l": 1, "tag": f"OFS{s}V1L1", "side": "BUY", "q": 65,
                             "price": Decimal("5.45")})
@@ -378,27 +385,81 @@ async def test_a_duplicate_tag_across_strategies_is_impossible(app_engine):
                             "q": 65, "price": Decimal("5.45")})
 
 
+async def test_the_application_role_cannot_insert_a_closed_plan_or_a_backdated_one(app_engine):
+    """The INSERT grants are column-limited (status, closed_at, close_reason, created_at are not insertable)."""
+    async with _Tx(app_engine) as tx:
+        s = tx.strategy_id
+        await _refused_sql(tx.conn, "INSERT INTO public.execution_plans (strategy_id, plan_number, action, status, "
+                                    "closed_at, close_reason) VALUES (:s, 1, 'ENTRY', 'closed', now(), 'filled')",
+                           INSUFFICIENT_PRIVILEGE, {"s": s})
+        await _refused_sql(tx.conn, "INSERT INTO public.execution_plans (strategy_id, plan_number, action, created_at) "
+                                    "VALUES (:s, 1, 'ENTRY', now())", INSUFFICIENT_PRIVILEGE, {"s": s})
+
+
+async def test_the_owner_role_cannot_insert_a_closed_plan_either(admin_engine):
+    """The guard (not only the grants) refuses a plan INSERTed closed. Mutation 'drop the INSERT branch of the plan
+    guard' makes this insert succeed for the owner."""
+    async with _Tx(admin_engine) as tx:
+        await _refused_sql(tx.conn, "INSERT INTO public.execution_plans (strategy_id, plan_number, action, status, "
+                                    "closed_at, close_reason) VALUES (:s, 1, 'ENTRY', 'closed', now(), 'filled')",
+                           PLAN_GUARD_SQLSTATE, {"s": tx.strategy_id})
+
+
+@pytest.mark.parametrize("column, value", [("plan_number", "9"), ("strategy_id", "strategy_id + 1000000"),
+                                           ("action", "'EXIT'"), ("created_at", "now()")])
+async def test_the_plan_guard_refuses_an_identity_change_even_by_the_owner(admin_engine, column, value):
+    """The identity checks in the plan guard are unreachable for the application role (no UPDATE grant on those
+    columns) but not for the owner: mutation 'drop that check' lets the owner rewrite a plan's identity."""
+    async with _Tx(admin_engine) as tx:
+        await tx.enter("ENTRY", "BUY", "5.45")
+        await _refused_sql(tx.conn, "UPDATE public.execution_plans SET status = 'closed', closed_at = now(), "  # noqa: S608 test-constant column names
+                                    f"close_reason = 'filled', {column} = {value} WHERE strategy_id = :s",
+                           PLAN_GUARD_SQLSTATE, {"s": tx.strategy_id})
+
+
+def test_only_the_tag_constraint_maps_to_tag_taken():
+    """A plan primary-key clash is bad_plan with its own message (never tag_taken); the open index is plan_open."""
+    clash = plans._unique_violation('duplicate key value violates unique constraint "execution_plans_pkey"')
+    assert (clash.code, "plan number already stored" in clash.detail) == (plans.BAD_PLAN, True)
+    tag = plans._unique_violation('duplicate key value violates unique constraint "execution_plan_orders_tag_key"')
+    assert tag.code == plans.TAG_TAKEN
+    assert plans._unique_violation('... "execution_plans_one_open"').code == plans.PLAN_OPEN
+    assert plans._unique_violation('... "something_else"').code == plans.BAD_PLAN
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Two connections (commits; removes its own rows)
 # ---------------------------------------------------------------------------------------------------------------
 
 
 async def _remove_own_rows(admin_engine, contract_ids: list[int], user_ref: str) -> None:
+    """Removes exactly this test's committed rows as the OWNER role (no superuser needed): the table owner may disable
+    the USER triggers (the append-only guards) of the tables it deletes from, inside one transaction that re-enables
+    them before it commits; foreign-key triggers are internal and stay on, so the order below is the one the keys
+    allow. A row left behind fails the test loudly (a leftover plan would make a later replay downgrade refuse)."""
     async with admin_engine.connect() as conn:  # noqa: SIM117
         async with conn.begin():
-            await conn.execute(text("SET LOCAL session_replication_role = replica"))
             mine = "(SELECT id FROM public.strategies WHERE user_ref = :u)"
-            for table in ("execution_plan_orders", "execution_plans", "strategy_history"):
-                await conn.execute(text(f"DELETE FROM public.{table} WHERE strategy_id IN {mine}"), {"u": user_ref})  # noqa: S608
-            await conn.execute(text("DELETE FROM public.strategies WHERE user_ref = :u"), {"u": user_ref})
             tables = [r[0] for r in await conn.execute(text(
                 "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' "
                 "AND column_name = 'contract_id' ORDER BY 1"))]
+            touched = ["execution_plan_orders", "execution_plans", "strategy_history", "strategies", *tables,
+                       "catalogue_contracts"]
+            for table in touched:
+                await conn.execute(text(f'ALTER TABLE public."{table}" DISABLE TRIGGER USER'))
+            for table in ("execution_plan_orders", "execution_plans", "strategy_history"):
+                await conn.execute(text(f"DELETE FROM public.{table} WHERE strategy_id IN {mine}"), {"u": user_ref})  # noqa: S608
+            await conn.execute(text("DELETE FROM public.strategies WHERE user_ref = :u"), {"u": user_ref})
             for table in tables:
                 await conn.execute(text(f'DELETE FROM public."{table}" WHERE contract_id = ANY(:ids)'),  # noqa: S608
                                    {"ids": contract_ids})
             await conn.execute(text("DELETE FROM public.catalogue_contracts WHERE id = ANY(:ids)"),
                                {"ids": contract_ids})
+            for table in touched:
+                await conn.execute(text(f'ALTER TABLE public."{table}" ENABLE TRIGGER USER'))
+            left = (await conn.execute(text("SELECT count(*) FROM public.strategies WHERE user_ref = :u"),
+                                       {"u": user_ref})).scalar_one()
+            assert left == 0, f"{left} strategies of this test could not be removed"
 
 
 async def test_two_connections_cannot_both_pass_next_plan_number(app_engine, admin_engine):
@@ -450,11 +511,22 @@ async def test_closing_with_every_order_filled_stores_the_quantities(app_engine)
         assert [o.filled_quantity for o in again.orders] == [65, 65]
 
 
-async def test_a_plan_closed_without_fills_stores_none(app_engine):
+async def test_nothing_placed_without_fills_stores_zero(app_engine):
     async with _Tx(app_engine) as tx:
         await tx.enter("ENTRY", "BUY", "5.45")
-        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled")
-        assert [o.filled_quantity for o in closed.orders] == [None]
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="nothing_placed")
+        assert [o.filled_quantity for o in closed.orders] == [0]
+
+
+@pytest.mark.parametrize("reason", ["filled", "exited", "partial"])
+async def test_a_position_changing_close_without_fills_is_refused(app_engine, reason):
+    """Mutation 'allow filled=None': the plan would close with no quantities and a restart could not rebuild the
+    position."""
+    async with _Tx(app_engine) as tx:
+        await tx.enter("ENTRY", "BUY", "5.45")
+        await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason=reason))
+        stored = (await plans.plans_for(tx.conn, tx.user, tx.strategy_id))[0]
+        assert (stored.status, [o.filled_quantity for o in stored.orders]) == ("open", [None])
 
 
 @pytest.mark.parametrize("reason", ["filled", "exited"])
