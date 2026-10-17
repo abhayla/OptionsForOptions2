@@ -60,7 +60,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import entitlement_store, live_market
+from ofo_app import entitlement_store, live_market, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import strategy_store as store
@@ -342,9 +342,11 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
     try:
-        await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action, _plan_orders(basket))
+        plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
+                                       _plan_orders(basket))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
+    await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
     return _answer(plan_number, basket, req.session.api_key)
 
 

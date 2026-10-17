@@ -44,6 +44,9 @@ Declared types and their fields (where the fields come from):
 - ``execution_recorded`` (W-017): one Kite TRADE record of ``GET /trades``, flat: trade_id, order_id,
   exchange_order_id, instrument_token, tradingsymbol, exchange, transaction_type, product, quantity, average_price,
   order_timestamp, fill_timestamp, exchange_timestamp (all fields of the real trade record; it carries no identity).
+- ``order_prepared`` (W-103): strategy_id, plan_number, action, tags - the Execute route's stored plan (REQ-073 AC-2:
+  every order carries our own tag). ``tags`` is ONE string, the plan's tags joined by "," (tags are alphanumeric, so
+  the join is unambiguous; the allowlist has no list type). Declared in migration 0017 (``DECLARED_IN_REVISION``).
 - ``reconciliation_recorded`` stays UNDECLARED and refused. The domain writes it with its own payloads
   (``ofo.reconciliation.resolution``: kind / strategy_ids / broker_state ... and strategy_id / resolution /
   still_blocked ...; ``grouping``: action / groups / unresolved / hidden). They have no real recorded reply and share
@@ -55,7 +58,7 @@ Declared types and their fields (where the fields come from):
 A payload that has fields but keeps none of its type's declared fields is REFUSED (:class:`PayloadShapeError`), never
 stored as ``{}``. An empty payload (or None) stays allowed, as before.
 
-Every other ``ofo.audit.catalogue.EventType`` member (22 of 33) is undeclared and refused.
+Every other ``ofo.audit.catalogue.EventType`` member (21 of 33) is undeclared and refused.
 """
 
 from __future__ import annotations
@@ -128,12 +131,19 @@ ALLOWLIST: Mapping[EventType, Mapping[str, FieldSpec]] = MappingProxyType(
         EventType.SUBSCRIPTION_EXPIRED: _SUBSCRIPTION,
         EventType.BROKER_RESPONSE_RECORDED: _BROKER_ORDER,
         EventType.EXECUTION_RECORDED: _BROKER_TRADE,
+        EventType.ORDER_PREPARED: _fields("strategy_id", "plan_number", "action", "tags"),
         EventType.ADMIN_CHANGE_RECORDED: _fields(
             "action", "reason", "client_id", "import_id", "dropped_instrument_tokens", "dropped_tradingsymbols",
             before=QUALIFYING_SNAPSHOT, after=QUALIFYING_SNAPSHOT,
         ),
     }
 )
+
+#: The migration revision number that declared a type in the DATABASE copy, for types declared after 0016. Every type
+#: not listed here is rendered by migration 0002 (the state every database at 0016 already holds). A migration renders
+#: ``allowlist_spec(through_revision=N)``, so each revision's database state is fixed and its downgrade is real.
+BASE_REVISION = 16
+DECLARED_IN_REVISION: Mapping[EventType, int] = MappingProxyType({EventType.ORDER_PREPARED: 17})
 
 
 class UndeclaredEventType(ValueError):
@@ -178,13 +188,22 @@ def _spec_json(spec: Mapping[str, FieldSpec]) -> dict[str, Any]:
     return {name: (SCALAR if field == SCALAR else _spec_json(field)) for name, field in spec.items()}  # type: ignore[arg-type]
 
 
-def allowlist_spec() -> dict[str, Any]:
+def allowlist_spec(through_revision: int | None = None) -> dict[str, Any]:
     """The allowlist as plain JSON: ``{event_type: {field: "scalar" | {sub_field: "scalar"}}}``.
 
-    The single source the database copy is generated from (migration 0002 embeds it in
-    ``public.ofo_audit_payload_allowlist()``; a head test asserts the two are equal).
+    The single source the database copy is generated from (migration 0002 embeds the ``BASE_REVISION`` form in
+    ``public.ofo_audit_payload_allowlist()``, a later migration its own revision's form; a head test asserts the
+    database equals the full form). ``through_revision`` keeps only the types declared at or before that revision.
     """
-    return {event_type.value: _spec_json(spec) for event_type, spec in ALLOWLIST.items()}
+    if through_revision is not None and (
+        isinstance(through_revision, bool) or not isinstance(through_revision, int) or through_revision < BASE_REVISION
+    ):
+        raise ValueError(f"through_revision must be an int >= {BASE_REVISION}, got {through_revision!r}")
+    return {
+        event_type.value: _spec_json(spec)
+        for event_type, spec in ALLOWLIST.items()
+        if through_revision is None or DECLARED_IN_REVISION.get(event_type, BASE_REVISION) <= through_revision
+    }
 
 
 def filter_payload(event_type: EventType, payload: Mapping[str, Any] | None) -> dict[str, Any]:
