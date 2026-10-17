@@ -630,3 +630,17 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   ledger). Open for owner decision only if quantizing realised P&L to paise changes what a user sees (ADR-101,
   2026-10-17, rounds Zerodha's margin and funds figures half-up to the paisa at parse - ADR-099 is the margin display;
   P&L rounding is not stated).
+
+## F-41 - Kite returns the browser from a basket to the SAME registered redirect URL the login uses, and our login callback would show a login error
+- Read 2026-10-17 (GC-2e item 6, W-105), no basket placed: https://kite.trade/docs/connect/v3/basket/ - "Once the user
+  is done placing orders, the basket will redirect back to your registered `redirect_login` along with a
+  `request_key`, exactly like login." and "in the end, you will receive `status` and `request_token` at your
+  `redirect_url` like in the login flow." The basket form carries only `api_key` and `data` (same page;
+  `backend/ofo_app/basket_post.py` sends exactly those). The publisher docs mention a `redirect_url` override on the
+  same domain; a 2021 forum reply says to pass `redirect_url` in the post body - unconfirmed for a plain form POST.
+- Our `kite_callback` consumes `state` first; a basket return has no state we issued, so it goes to the refusal page
+  `broker_state_invalid`: the owner would see a login error right after placing real orders (REQ-073 AC-3 return).
+- Unverified until GC-3's first basket: whether `state` is absent on the return, and whether a closed/cancelled basket
+  returns `status=success`. The return route never reads `status` as proof of placement (it reads Zerodha's book by tag).
+- Bears on: REQ-073 AC-3, ADR-097 (2). Status: **documented + code read; live shape unmeasured**. Fixed by W-105 (a
+  no-state hit lands on a page with only "Check with Zerodha"); registry: `shared-callback-treats-every-return-as-login`.
