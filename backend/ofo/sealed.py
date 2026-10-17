@@ -8,14 +8,16 @@ because ordinary code cannot make one. ``SealedTuple`` gives every proof type th
   nothing to write (setting or deleting any attribute raises ``AttributeError``);
 - calling the class raises (there is no token to borrow); the owning module's one maker builds it with the tuple
   base class's own constructor, which ``tests/test_door_names_private.py`` allows only in the owning files;
-- ``copy`` / ``deepcopy`` / ``pickle`` (``__reduce__`` and ``__reduce_ex__``) raise;
-- the class cannot be subclassed again (``__init_subclass__``), so no subclass can reopen it by overriding
-  ``__setattr__``, ``__new__`` or a property.
+- ``copy`` / ``deepcopy`` / ``pickle`` raise (both fall back to ``__reduce_ex__``, which raises, as does
+  ``__reduce__``);
+- a DIRECT subclass of a proof type is refused at class creation (``__init_subclass__``).
 
 A proof type is declared ``class X(SealedTuple, made_by="its maker", again="what to do instead of copying")``.
 ``tests/test_sealed_proof_objects.py`` discovers the gates' proof types from their signatures and fails for any
-that is not sealed this way. Not proof against deliberate tricks (``copyreg``, a ``__class__`` swap, a lying source
-object): those are out of scope (ADR-003 Q235).
+that is not sealed this way. Not proof against deliberate tricks, out of scope (ADR-003 Q235): a mixin-first
+subclass whose own ``__init_subclass__`` skips this one (``class Evil(Mixin, MarginVerdict)`` is created), the tuple
+base class's own constructor, a ``__class__`` swap, ``copyreg``, a lying source object. Making an instance still
+needs a constructor call the door-name scan (``tests/test_door_names_private.py``) flags outside the owning files.
 """
 from __future__ import annotations
 
@@ -40,12 +42,6 @@ class SealedTuple(tuple):
         super().__init_subclass__(**kwargs)
         cls._made_by = made_by
         cls._again = again
-
-    def __copy__(self) -> NoReturn:
-        raise TypeError(f"a {type(self).__name__} cannot be copied; {self._again}")
-
-    def __deepcopy__(self, _memo: object) -> NoReturn:
-        raise TypeError(f"a {type(self).__name__} cannot be copied; {self._again}")
 
     def __reduce_ex__(self, _protocol: object) -> NoReturn:
         raise TypeError(f"a {type(self).__name__} cannot be pickled; {self._again}")

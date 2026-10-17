@@ -40,14 +40,17 @@ PLAIN_VALUE_TYPES = (str, int, bool, Decimal, datetime.date, datetime.datetime, 
 #: the discovery red (test_deleting_an_allow_entry_is_red).
 RECHECKED_INPUTS: dict[type, str] = {
     Strategy: "the strategy under test: the gate only reads it and recomputes every check from its legs",
-    ExecutionContext: "plain inputs (versions, data health, legs hash): check_pre_execution validates and recomputes",
+    ExecutionContext: "TRUSTED, not re-derived: margin_available, margin_required, session_valid, market_open and "
+                      "reconciliation_blocked_strategy_ids are filled by callers from Zerodha reads; it is not a proof "
+                      "object because the order send still needs a sealed KiteBasket built by checked_basket",
     Catalogue: "the instrument catalogue: contract facts are read from it, it holds no verdict",
     ExecutionPlan: "the plan: build_basket isinstance-checks it and resolves every leg against the catalogue itself",
     InstrumentId: "an exchange identity (segment, token) used only as a lookup key: it carries no verdict",
     basket.MarginSource: "a source of Zerodha's two figures: build_basket reads them and calls check_margin itself",
 }
 
-REFUSED = (TypeError, AttributeError, ValueError)
+#: The exceptions the seal raises: TypeError (constructor, subclass, copy, pickle) and AttributeError (setattr).
+REFUSED = (TypeError, AttributeError)
 
 
 def _leaf_types(hint: object) -> list[object]:
@@ -123,8 +126,6 @@ def _raises(call: typing.Callable[[], object]) -> bool:
     try:
         call()
     except REFUSED:
-        return True
-    except Exception:  # noqa: BLE001 - any other failure is also a refusal to hand back a usable object
         return True
     return False
 
@@ -240,3 +241,19 @@ def test_an_unknown_type_added_to_a_gate_is_red() -> None:
 def test_every_allow_entry_states_a_reason() -> None:
     """AC-1: the allow list is explicit: one non-empty reason per entry."""
     assert all(isinstance(reason, str) and len(reason) > 20 for reason in RECHECKED_INPUTS.values())
+
+
+class _SkipsTheSeal:
+    """A mixin whose own __init_subclass__ does not call the seal's."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        pass
+
+
+def test_a_mixin_first_subclass_is_a_documented_out_of_scope_gap() -> None:
+    """AC-1: ``class Evil(Mixin, MarginVerdict)`` IS created (the mixin's __init_subclass__ shadows the seal's): a
+    deliberate trick, out of scope (ADR-003 Q235). What still holds is asserted: calling it still refuses, so an
+    instance needs the tuple base constructor, which tests/test_door_names_private.py flags outside the owning files."""
+    evil = type("Evil", (_SkipsTheSeal, margin_gate.MarginVerdict), {})
+    with pytest.raises(TypeError):
+        evil()
