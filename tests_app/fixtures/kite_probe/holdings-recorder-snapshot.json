@@ -1,0 +1,12 @@
+{
+ "BSE:AAAHOLD": {
+  "quantity": "100",
+  "t1": "0",
+  "collateral": "0"
+ },
+ "NSE:BBBHOLD": {
+  "quantity": "7",
+  "t1": "0",
+  "collateral": "0"
+ }
+}
