@@ -40,10 +40,9 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Protocol
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck

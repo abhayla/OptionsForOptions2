@@ -22,14 +22,13 @@ from decimal import Decimal
 from enum import Enum
 
 import pytest
-
+from ofo.engine import Strategy
 from ofo.execution import basket, margin_gate, safety
+from ofo.execution.context import ExecutionContext
+from ofo.execution.planned import ExecutionPlan
 from ofo.instruments import eligibility
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import InstrumentId
-from ofo.engine import Strategy
-from ofo.execution.context import ExecutionContext
-from ofo.execution.planned import ExecutionPlan
 
 #: The gates, and the functions that mint or consume what they trust. Found by name so a rename fails loudly.
 GATES = (safety.check_pre_execution, basket.build_basket, margin_gate.check_margin,

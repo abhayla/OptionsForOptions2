@@ -24,6 +24,7 @@ from ofo.money import PAISE as _PAISE
 from ofo.money import zerodha_paise
 from ofo.sealed import SealedTuple
 
+
 class MarginReplyError(ValueError):
     """Zerodha's basket-margin reply has no usable ``final.total``: the basket must not be built."""
 
