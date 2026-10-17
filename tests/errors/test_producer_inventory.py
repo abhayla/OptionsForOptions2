@@ -38,6 +38,8 @@ from collections import defaultdict
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "backend" / "ofo"
 CATALOGUE_FILE = "errors/templates.py"
 #: The door's own slot formatters: they print typed slot values that only render() places into catalogue text.

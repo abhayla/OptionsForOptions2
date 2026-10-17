@@ -5,7 +5,10 @@ Guards knowledge/findings/duplicate-acceptance-criterion-id.json.
 import pathlib
 import re
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.repo_scan
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 

@@ -22,6 +22,8 @@ from ofo.strategy.matching import match
 from ofo.strategy.model import TemplateError, resolve_template
 from ofo.strategy.wording import find_banned_phrases, find_position_words
 
+pytestmark = pytest.mark.repo_scan
+
 CATALOGUE = load_templates()
 BY_ID = {t.id: t for t in CATALOGUE}
 NEAR = datetime.date(2026, 10, 30)

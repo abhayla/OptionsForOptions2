@@ -31,6 +31,8 @@ from ofo.wording import (
     normalise_for_duplicate_check,
 )
 
+pytestmark = pytest.mark.repo_scan
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REQ_065_PATH = REPO_ROOT / "spec" / "requirements" / "REQ-065.md"
 BACKEND_OFO_DIR = REPO_ROOT / "backend" / "ofo"
