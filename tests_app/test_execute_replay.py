@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 from decimal import Decimal as D
+from http import HTTPStatus
 from types import SimpleNamespace
 
 import pytest
@@ -110,7 +111,7 @@ def test_ac4_return_reads_the_122104_book_and_refuses_every_write():
     for url in ("https://api.kite.trade/orders/regular", "https://api.kite.trade/orders"):
         with pytest.raises(AssertionError):
             er.return_replay()("POST", url, {}, "x")  # /orders would otherwise answer
-    assert er.entry_replay()("POST", "https://api.kite.trade/margins/basket", {}, "x")[0] == 200
+    assert er.entry_replay()("POST", "https://api.kite.trade/margins/basket", {}, "x")[0] == HTTPStatus.OK
 
 
 ALLOWED_IMPORT_ROOTS = {"__future__", "datetime", "json", "os", "pathlib", "decimal", "typing", "fastapi", "ofo",

@@ -197,6 +197,7 @@ questions:
   Q259: 4b              # external: Zerodha confirms basket orders are non-algo (owner action)
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
+  Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -260,6 +261,7 @@ issues:
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
   "#352": 4b  # An execution plan open at the end of the trading day cannot be read back the next day
   "#353": 4b  # Kite allow-list is checked per call, not per calling module (any door may make any listed read)
+  "#370": 4a  # Intermittent e2e: strategy-save-draft cannot find the saved draft after reload
 
 # Work items whose status is not done.
 work_items:
@@ -285,6 +287,7 @@ work_items:
   W-104: 4b           # GC-2e: the Execute screen - orders, cost, the owner's Kite click, Check with Zerodha
   W-101: 4b           # GC-2e: test-only Execute/return replay behind both order routes (REQ-073)
   W-102: 4b           # GC-2e: the full cost (premium, charges, funds, margin) in the Execute reply (ADR-097)
+  W-103: 4b           # GC-2e: audit events on both order routes (order_prepared, broker replies, fills; REQ-063 AC-5)
   W-105: 4b           # GC-2e: a basket return (no state) on the shared redirect URL lands on /execution/returned
   W-106: 4b           # GC-2e: holdings read on the Kite read door (ADR-097 (4) before/after check)
 
@@ -330,6 +333,7 @@ findings:
   F-39: 4b        # Kite basket margin for an option BUY = qty x min(limit, live price) (REQ-055, open technical decision)
   F-38: 4b        # index freeze limits revised several times a year (NIFTY 1,800 -> 3,510 on 5 Oct 2026); weekly refresh (ADR-091)
   F-40: 4b        # 4b domain chain right on the real order; no Kite reply -> domain adapter (GC-1 core proof)
+  F-41: 4b        # Kite basket return lands on the shared login redirect URL (W-105; live shape at GC-3)
 
 hypotheses:
   H1: done

@@ -10,6 +10,7 @@ book (OFS1V1L0 COMPLETE 65, +65 held: plan 1 filled, platform 65 = Zerodha 65, n
 from __future__ import annotations
 
 import os
+from http import HTTPStatus
 
 import httpx
 import pytest
@@ -23,7 +24,7 @@ def test_ac3_execute_entry_then_return_closes_plan_1_filled_with_no_mismatch():
     -> plan 1 filled, 0 mismatches, platform 65 = Zerodha 65."""
     with httpx.Client(base_url=URL, timeout=30) as client:
         entry = client.post("/strategies/1/execute", json={"action": "ENTRY"})
-        assert entry.status_code == 200, entry.text
+        assert entry.status_code == HTTPStatus.OK, entry.text
         body = entry.json()
         assert body["plan_number"] == 1 and body["tags"] == ["OFS1V1L0"]
         assert [(o["transaction_type"], o["quantity"], o["tradingsymbol"], o["order_type"], o["price"], o["tag"])
@@ -31,7 +32,7 @@ def test_ac3_execute_entry_then_return_closes_plan_1_filled_with_no_mismatch():
         assert body["basket"]["api_key"] == "kitekey"
 
         back = client.post("/strategies/1/execution/return")
-        assert back.status_code == 200, back.text
+        assert back.status_code == HTTPStatus.OK, back.text
         ret = back.json()
         assert [(p["plan_number"], p["action"], p["state"]) for p in ret["plans"]] == [(1, "ENTRY", "filled")]
         assert ret["mismatches"] == 0 and ret["blocked"] is False
