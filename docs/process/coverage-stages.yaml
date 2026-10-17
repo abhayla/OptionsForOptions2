@@ -276,6 +276,7 @@ work_items:
   W-093: 4b           # GC-2c: Kite read door - GET orders / trades / positions (REQ-073 AC-3/AC-4)
   W-097: 4b           # GC-2c: live 5-level depth for the Execute price (ADR-080 (3))
   W-098: 4b           # GC-2c: one seal for proof objects + repo test that every gate proof type refuses forgery
+  W-099: 4b           # GC-2c: circuit bands from GET /quote for the pre-execution gate (ADR-080)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
