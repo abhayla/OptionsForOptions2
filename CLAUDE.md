@@ -98,7 +98,7 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
 - Every PR body carries the Spec-deviation block (`Class: none` is valid); CI fails without it.
 - Never put fix/close/resolve (any form, even with a colon) directly before `#N` in a PR body or commit message,
   except as a whole body line `Fixes #N` when ALL of the issue is done. For part of an issue, write "addresses item 1 of
-  #N". GitHub closes the whole issue otherwise (3 wrong closes on 2026-10-16). Enforced by the `pr-close-check` workflow
+  #N". GitHub closes the whole issue otherwise. Enforced by the `pr-close-check` workflow
   (`scripts/orchestrator/pr_close_check.py --pr N` to check before pushing).
 - Coding standards (REQ-075, ADR-093): a standard is an automatic check or marked review-only; real-world values have
   one home module (a repo test fails on a retyped literal); reuse helpers, never copy them. Per-technology rules load
@@ -107,28 +107,28 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   regenerated files in the PR".
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
-- Fast delivery (owner, 2026-10-16: "go ahead with these changes ... followed across all the sessions"). Measured that
-  day: CI took 2-6 min per PR; the time went to redo rounds (W-080: 6) and to local runs CI repeats (full suite 2-5 min,
-  DB tests over the tunnel up to 12 min). So:
-  1. Before a push run only the fast checks (spec tools below, `python scripts/ruff_ratchet.py`,
-     `scripts/orchestrator/pr_close_check.py`) and the tests for the files you changed. The full domain suite, the app
-     suite and every DB test run in CI (its own PostgreSQL); `merge_when_green.py` blocks a red PR. Exceptions: a new
-     migration or a change to a DB store runs that one store's test file locally; a regenerated file runs its `--check`.
-     This project rule overrides the kit's "run CI's checks locally before every push" (run-discipline C3).
+- Fast delivery (owner 2026-10-16, revised by ADR-106; reasons there and in `docs/process/goal-chain.md`):
+  1. Before a push: the fast checks (spec tools below, `scripts/ruff_ratchet.py`, `pr_close_check.py`), the guard tests
+     + `pytest -m repo_scan tests` (~75 s) and the changed files' tests. Full suites and DB tests run in CI; exceptions:
+     a migration or DB store runs its own test file, a regenerated file its `--check`. Overrides kit run-discipline C3.
   2. Red CI: read the failed job log (`gh run view <id> --log-failed`), fix, push again - no local full-suite re-run.
-  3. Review once: Tier A (fresh Opus, adversarial) only for money maths, order safety, live-data liveness, auth, secrets,
-     migrations and hooks; Tier B (Sonnet, diff only, one round) for other code; Tier C (none) for docs. A second round
-     only for a CRITICAL/MAJOR finding.
-  4. Aim the first round: every builder brief carries the reviewer's checklist and the attack cases up front, and names
-     the `knowledge/findings/` classes it was checked against (grep the registry before designing any guard).
-  5. Two failed rounds of one class = stop patching: an independent re-design first; a third failure parks the item.
-  6. Batch: fixes in the same area go in one PR; docs, findings and decision rows go in one batched docs PR.
+  3. Tier by DATA FLOW. Tier A (fresh Opus, adversarial, per-PR verifier): order building/sending/state,
+     reconciliation, money maths, live-data liveness, migrations, auth/tokens/secrets, hooks, and any read feeding a
+     price, quantity, band, margin, fill, position or tag (any module the Execute/return routes import). Tier B (Sonnet,
+     diff only; verified at requirement close): display that computes no money, history/timeline/table/catalogue/
+     admin/wording. Tier C: docs. A change takes its highest-risk file's tier.
+  4. Aim the first round: briefs use `docs/process/builder-brief.md` and add only the item part - reviewer checklist,
+     attack cases, `Findings checked:` ids (grep the registry first), a `Threat model:` for any guard.
+  5. At most 2 review rounds per item. Red CI or a failed core proof is never deferred; after round 2 a CRITICAL or
+     MAJOR on Tier A code -> independent redesign or park unmerged; only MINOR/Tier B findings become deferred issues.
+     Before any live run: open Tier A deferred findings block it, and a verifier passes on main for every money/order AC.
+  6. Batch: one docs PR per contract; a decision a build needs rides in that build's PR. Dependent items are stacked PRs
+     (Tier A ~1,000 product lines, a migration its own PR); main merged in once, before the gate.
   7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
      `python scripts/orchestrator/land.py <worktree> --title T --body-file F` (close check, push, PR, merge gate, updates
      a BEHIND branch; `--dry-run` shows the commands); `gh_issue.py app ... --stage <stage>` also stages the new issue.
-  8. Orchestrator lessons (2026-10-16, owner: "update the learning so that even the future sessions ... do not repeat
-     that mistake"): never idle while a ready item waits - after each result start the next independent item, then
-     report; run `gh pr update-branch N` before `merge_when_green.py N` (4 green PRs refused as BEHIND, kit #104); file
+  8. Orchestrator lessons (2026-10-16): never idle while a ready item waits - after each result start the next
+     independent item, then report; run `gh pr update-branch N` before `merge_when_green.py N`; file
      issues only with `gh_issue.py --stage` and commit the row the same turn; READ the findings a guard brief cites
      before designing it; merge main into a parked branch before any new round; reviewer briefs are narrow and say
      "hands-on attacks first"; before any live Kite action load the `zerodha-expert` skill (API orders need a static
@@ -150,7 +150,7 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)
 - Merge a PR: `python tools/merge_when_green.py <pr>`
 - Before merging a branch: merge `main` into it, run the changed files' tests, then
-  `python scripts/orchestrator/merge_audit.py` (checks nothing was lost; three PRs went green alone and red together);
+  `python scripts/orchestrator/merge_audit.py` (checks nothing was lost);
   CI re-runs both full suites on the merged result.
 
 App layer (only when `backend/ofo_app`, `tests_app`, `frontend` or the domain changes; install `requirements-app.txt`):

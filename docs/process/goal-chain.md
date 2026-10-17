@@ -6,16 +6,17 @@ Owner-approved 2026-10-16 19:30 IST (plan rev 2 after an independent Opus review
 ## The one prompt (paste into every new session)
 
 > Run the goal chain for this repo: git pull main, read docs/process/goal-chain.md, and run the contract marked NEXT
-> to completion under its rules. Refuse to start if any row is RUNNING. In your first commit set the row RUNNING and
-> replace the prompt in goal-chain.md with this /goal text. The goal is MET only when the transcript shows all of:
+> to completion under its rules (ADR-106). Refuse to start if a lock/* branch exists on origin or any row is RUNNING.
+> First take the lock (chain rule 2). The goal is MET only when the transcript shows all of:
 > (1) a merged PR number on main whose goal-chain.md marks this contract DONE or PARTIAL (parked items named) and the
-> next contract NEXT; (2) the next contract file reviewed by an independent reviewer, with its findings accepted or
-> rejected; (3) a final message with the 5-line summary, the scorecard and the evidence table. The goal is IMPOSSIBLE
-> (stop) only when a named stop in the contract needs the owner, or another row is RUNNING. Never stop for a status
-> report. At the contract's 8-hour cap: park the unfinished items, then still do the handover step, which meets the
-> goal as PARTIAL.
+> next contract NEXT; (2) the next contract checked per chain rule 3, with its findings accepted or rejected; (3) a
+> final message with the 5-line summary, the generated scorecard and the evidence table; (4) the lock deleted. The goal
+> is IMPOSSIBLE (stop) only when a named stop in the contract needs the owner, or another run holds the lock. Never
+> stop for a status report. At the contract's cap: park the unfinished items, then still do the handover step, which
+> meets the goal as PARTIAL.
 
-Use it as `/goal <the text above>`. (GC-2e started 2026-10-17 17:25 IST with exactly this /goal text.)
+Use it as `/goal <the text above>`. (Changed 2026-10-17 by ADR-106: the lock replaces the RUNNING-row PR; GC-2e ran
+on the previous text.)
 
 ## Chain
 
@@ -34,37 +35,52 @@ Use it as `/goal <the text above>`. (GC-2e started 2026-10-17 17:25 IST with exa
 ## Chain rules
 
 1. **One contract at a time.** Statuses: NEXT / RUNNING / DONE / PARTIAL (parked items named in the row).
-2. **Start:** `git pull` main; if any row is RUNNING, do not start - report it (ask the owner if present). Set your row
-   RUNNING in your first commit.
-3. **Only the next contract is written in full.** Each contract's last item writes the next contract from its own
-   results, gets it independently reviewed, marks it NEXT here, and merges both (with the handover) on main. A
+2. **Start = take the lock, no PR (ADR-106 item 6):** `git pull` main; `git ls-remote origin 'refs/heads/lock/*'`
+   must be empty (a lock older than its cap + 1 h is reported as stale to the owner, never taken over silently). Take
+   it with one push: `git push origin $(git commit-tree origin/main^{tree} -p origin/main -m "lock GC-<id> session
+   <session id> start <IST time> cap <IST time>"):refs/heads/lock/gc-<id>` - a second push of a different commit is
+   rejected, so two sessions cannot both hold it. The row's status changes only in the close-out PR; the close-out
+   deletes the lock (`git push origin --delete lock/gc-<id>`).
+3. **Only the next contract is written in full, on one page** (items, core proof, stops). Each contract's last item
+   writes the next one from its own results and checks it (ADR-106 item 4): always a short precondition check (a
+   fresh Sonnet: each "merged"/"exists"/"returns" claim checked against GitHub and main) plus a wiring map; a full
+   fresh Opus review when the next contract adds or changes order, money, rounding, cost or reconciliation behaviour,
+   or comes before a live real-money run. It marks it NEXT here and merges both (with the handover) on main. A
    contract is DONE only when that PR is merged; a docs PR that will not go green is a stop, reported.
 4. **A PARTIAL contract or a failed core proof still writes the next contract**, built around the failure (example:
    the 4b core proof fails on Kite's real fields -> GC-2b becomes "redesign reconcile for the real fields").
 5. **End of every contract:** print the prompt above, a 5-line summary (done / parked / what NEXT does) and the
-   scorecard.
+   scorecard from `python scripts/orchestrator/stage_scorecard.py --since <start> --until <end>`. The handover is at
+   most about 40 lines: DONE / PENDING / BLOCKED / PARKED / NEXT (ADR-106 item 5); process lessons go to
+   `docs/process/lessons.md`.
 6. A contract that needs the owner says so at its top; unattended, it does only the preparation and stops at the
    owner step.
 7. GC-2a re-creates its W-080 worktree from `origin/land/W-080` (the old one is in an earlier session's scratchpad).
 
 ## Process rules (every contract carries these as checkable lines)
 
-1. Local before push = the fast spec checks, `scripts/ruff_ratchet.py`, `scripts/orchestrator/pr_close_check.py`, and
-   the changed files' tests only. Full domain and app suites run in CI only (measured 2026-10-16: CI 2-4 min with
-   both suites side by side vs about 17-20 min locally over the tunnel). Exception: a migration or store change runs
-   that one DB test file.
+1. Local before push = the fast spec checks, `scripts/ruff_ratchet.py`, `scripts/orchestrator/pr_close_check.py`, the
+   repo-wide guard tests + `python -m pytest -q -m repo_scan tests` (about 75 s), and the changed files' tests only.
+   Full domain and app suites run in CI only (measured 2026-10-16: CI 2-4 min with both suites side by side vs about
+   17-20 min locally over the tunnel). Exception: a migration or store change runs that one DB test file.
 2. One test layer per role: builder = targeted tests; reviewer = hands-on attacks, no suite re-run; CI = full suites
    once; `merge_audit.py` after merge.
-3. Every brief passes `check_brief.py` and carries the reviewer checklist, attack cases, `Findings checked:` ids,
-   `Copy from:`, `Budget:` and `Report: evidence-table`.
-4. One review round by tier (Opus only for money, orders, auth, secrets, migrations, hooks); a 2nd round only on a
-   CRITICAL/MAJOR; two failed rounds -> independent redesign; a third -> park.
+3. Every brief passes `check_brief.py`, says `Common brief: docs/process/builder-brief.md`, and carries only the item
+   part: reviewer checklist, attack cases, `Findings checked:` ids, `Threat model:` for a guard, `Copy from:`,
+   `Budget:` and `Report: evidence-table`. A fix-round brief = the findings + the original attack list.
+4. Tier by data flow and at most 2 review rounds per item - CLAUDE.md "Fast delivery" points 3 and 5 (ADR-106 items
+   1-3).
 5. Never idle on CI: start the next independent item; `gh pr update-branch N` before the merge gate.
-6. Batch: same-area fixes in one PR; docs, findings and decision rows in one docs PR per contract; no generated files
-   in feature PRs.
+6. Batch: same-area fixes in one PR; docs, findings, handover and decision rows in one docs PR per contract; a
+   decision a build needs rides in that build's PR with its regenerated spec files; no other generated files in
+   feature PRs.
 7. Linux-only behaviour is proven on CI early (no WSL on the laptop).
 8. One real-data proof per item, on the 2026-10-16 recordings (`D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/`).
+9. Plan by user step, land in small stacked PRs (ADR-106 items 8, 10): an item that needs another item's code is a PR
+   based on that item's branch; Tier A PRs stay at about 1,000 lines of product code; a migration is its own PR; the
+   step's replay e2e on the recordings is a CI gate.
 
-**Scorecard** (in the handover, one row per item): review rounds, CI runs, local full-suite runs (target 0),
-check_brief before dispatch (y/n), idle gaps over 10 min, budget overruns. A broken rule is recorded as a finding the
-same turn.
+**Scorecard** (generated, never hand-typed): `stage_scorecard.py` for the run's window - PRs by kind, lines by area,
+CI runs and reds, merge-only and round commits - plus one line per item for review rounds and budget overruns. A
+broken rule that let a defect reach main is a finding the same turn; any other miss is a line in
+`docs/process/lessons.md`.

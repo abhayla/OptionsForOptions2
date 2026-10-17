@@ -2,7 +2,7 @@
 
 # Findings index
 
-72 finding(s), generated from `knowledge/findings/*.json`.
+73 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -55,6 +55,7 @@
 | pre-existing-failure-claim-not-checked-on-base | Any claim that a failing test is 'pre-existing' or 'unrelated' that is not proven by running it on a clean checkout of the base branch can hide a regression the change itself caused, and turns it into a deferred issue nobody fixes. | unguarded | occurrences, scope, spec_ref |
 | prefilter-narrower-than-parser | A cheap pre-filter placed in front of a parser (skip rows whose exchange, type or kind is not in a short list) silently drops rows the parser itself was later taught to accept. The parser's tests pass, the caller's tests pass on data without those rows, and the loss shows only when the dropped rows are needed downstream. The accept rule must live in one place: the pre-filter asks the parser's own accept test, or there is no pre-filter. | guarded | occurrences, scope, spec_ref |
 | privilege-guard-as-denylist | Any guard that protects data by refusing a list of forbidden privilege paths (superuser, a named role membership, table ownership) misses every path not on the list, because a database grants power through many routes (database ownership, schema ownership, role membership, default PUBLIC grants); the guard must instead assert that the role's effective privileges are exactly an allowed set. Wider shape of secret-filter-by-key-name: a denylist over an open-ended space is never complete. | guarded | scope, spec_ref |
+| process-change-narrows-safety-rule | A recommendation to change the delivery process (review tiers, round caps, verifier timing, guard scope) narrows an existing safety rule without saying so, and the owner approves it before any independent review; past real catches would then reach main. | unguarded | occurrences, scope, spec_ref |
 | redirect-bare-path-lands-on-callback-host | A backend redirect to a frontend page written as a bare path ('/broker/connected') resolves against the host the request came in on; when a third party (an OAuth provider) calls the API's own host directly, the browser lands on the API, which serves no pages, so every success and refusal shows a 404 - and tests that assert the bare Location string, or open the page directly, confirm the bug instead of catching it. | unguarded | occurrences, scope, spec_ref |
 | remote-shell-read-transcodes-file | Reading a file through a remote shell command (ssh host 'type file', 'cat' in a PowerShell default shell, Get-Content) returns the shell's re-encoded text, not the file's bytes - the byte-order mark is dropped, line endings are converted and non-ASCII characters are replaced by the console code page; editing that text and writing it back silently rewrites every such line. | unguarded | occurrences, scope, spec_ref |
 | repo-wide-scan-outside-targeted-tests | A repo-wide scan test (one that inspects every module's source, not the module under test) fails on new code that its author never ran it against, because local runs are targeted at the changed area and the scan lives in another folder; the failure surfaces only in CI, one round later, every time a new module is added. | guarded | occurrences, scope, spec_ref |
