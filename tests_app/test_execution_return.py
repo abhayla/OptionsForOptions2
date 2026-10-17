@@ -13,15 +13,14 @@ import datetime
 import json
 from decimal import Decimal as D
 from http import HTTPStatus
-from pathlib import Path
 
 import pytest
 from ofo.execution.basket import make_tag
 from ofo_app import execution_return as er
 from ofo_app import return_book as rb
+from ofo_app.execute_replay import REPLIES
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
-REPLIES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
 SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
