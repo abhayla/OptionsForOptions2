@@ -1,6 +1,8 @@
 <!-- Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/components/strategy/StrategyActions.vue (ADR-047).
      Changed: only ReCalculate is kept. Add Row, Delete Selected, Import/Update Positions, Save, Share and Buy Basket
-     Order are not in this slice (leg picker and Save Draft come with W-061; no standalone order entry, ADR-002). -->
+     Order are not in this slice (leg picker and Save Draft come with W-061; no standalone order entry, ADR-002).
+     W-104 (REQ-056 AC-1): "Execute Strategy" opens the Execute screen, only for a saved strategy (every order belongs
+     to a strategy, ADR-002); an unsaved or edited-since-save draft shows no Execute action. -->
 <template>
   <div class="p-4 bg-gray-50 border-t flex flex-wrap items-center justify-between gap-4" data-testid="strategy-actions">
     <div class="flex items-center gap-2">
@@ -16,6 +18,14 @@
       >
         {{ isLoading ? 'Calculating...' : 'ReCalculate' }}
       </button>
+      <RouterLink
+        v-if="savedId"
+        :to="`/strategy/${savedId}/execute`"
+        data-testid="execute-strategy"
+        class="px-4 py-2 text-sm font-medium rounded-lg border border-line"
+      >
+        Execute Strategy
+      </RouterLink>
     </div>
   </div>
 </template>
@@ -24,6 +34,7 @@
 defineProps({
   hasLegs: { type: Boolean, default: false },
   isLoading: { type: Boolean, default: false },
+  savedId: { type: Number, default: null },
 })
 
 defineEmits(['recalculate'])

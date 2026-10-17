@@ -88,6 +88,11 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - **Money and order checks are tested with closing shapes too** (finding `margin-gate-blocks-closing-basket`, #321:
   Kite gives an exit basket a negative margin and the gate blocked every exit): every check that reads a broker figure
   gets an entry case AND a closing/position-reducing case from a real reply.
+- **A change to any API request/response model regenerates `docs/api/openapi.json`** (`python
+  scripts/generate_openapi.py`) in the same PR: `test_committed_openapi_matches_the_app` fails otherwise. This is the
+  one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it).
+- **A migration's `upgrade()`/`downgrade()` call `op.*` directly** (`scripts/alembic_migration_guard.py`), and a
+  migration that changes a pinned function body publishes its own `PINNED_BODIES` (GC-2e W-103: two CI reds).
 - **After merging main into your branch, re-run `python scripts/ruff_ratchet.py`** (E501 rose twice on 2026-10-16 only
   after the merge).
 - Type hints on public functions; small modules; no dead code; no print statements.
