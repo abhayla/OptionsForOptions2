@@ -130,7 +130,7 @@ def price_legs(strategy_id: str, underlying: str, legs: Sequence[LegToPrice], ca
         planned.append(PlannedLeg(f"L{number}", ref.broker_symbol, leg))
         bands[(leg.expiry, leg.instrument.value, leg.strike)] = (lower, upper)
         times.append(when)
-    return PricedPlan(Strategy(tuple(engine_legs), underlying), ExecutionPlan(strategy_id, tuple(planned)), bands,
+    return PricedPlan(Strategy(tuple(engine_legs)), ExecutionPlan(strategy_id, tuple(planned)), bands,
                       tuple(times))
 
 
