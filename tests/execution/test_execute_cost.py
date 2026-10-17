@@ -1,8 +1,8 @@
 """W-102 the cost of the real 2026-10-16 baskets (REQ-056 AC-8; ADR-097), no database.
 
-Real legs (tests_app/test_execute_route.py core): ENTRY BUY 65 NIFTY26O1923650CE LIMIT 3.35 on NSE_FO; EXIT SELL 65
-LIMIT 3.30. Rates = the stored seed set (migration 0012, read 2026-10-15): brokerage 20, STT sell 0.0015, NSE
-transaction 0.0003553, SEBI 0.000001, stamp buy 0.00003, GST 0.18.
+Real legs (tests_app/test_execute_route.py core): ENTRY BUY 65 NIFTY 23650 CE (expiry 2026-10-19) LIMIT 3.35 on
+NSE_FO; EXIT SELL 65 LIMIT 3.30. Rates = the stored seed set (migration 0012, read 2026-10-15): brokerage 20,
+STT sell 0.0015, NSE transaction 0.0003553, SEBI 0.000001, stamp buy 0.00003, GST 0.18.
 
 Hand computation, ENTRY (premium 65 x 3.35 = 217.75, paid -> -217.75):
   transaction 217.75 x 0.0003553 = 0.077366575; SEBI 217.75 x 0.000001 = 0.00021775; stamp 217.75 x 0.00003 = 0.0065325;
@@ -70,8 +70,9 @@ def test_ac8_a_float_price_an_empty_basket_and_a_foreign_order_are_refused() -> 
     """AC-8: float money, no orders, an object that is not a ChargeOrder, and rates of another type all raise."""
     with pytest.raises(ValueError, match="Decimal"):
         ChargeOrder(NSE_FO, "BUY", 65, 3.35)  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="no orders"):
-        basket_cost([], RATES)
+    for rates in (RATES, None):  # without rates the calculator never runs, so the cost's own check must refuse
+        with pytest.raises(ValueError, match="no orders"):
+            basket_cost([], rates)
     with pytest.raises(ValueError, match="ChargeOrder"):
         basket_cost([("NSE_FO", "BUY", 65, D("3.35"))], RATES)  # type: ignore[list-item]
     with pytest.raises(ValueError, match="rates"):

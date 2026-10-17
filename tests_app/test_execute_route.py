@@ -22,6 +22,7 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
+from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument
 from ofo.instruments import NSE_FO, Catalogue, InstrumentId
 from ofo.instruments.parser import zerodha_listed
@@ -41,6 +42,12 @@ AT = datetime.datetime(2026, 10, 16, 15, 7, 21, tzinfo=datetime.timezone(datetim
 KEY = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))
 _MONEY_KEYS = {"last_price", "average_price", "lower_circuit_limit", "upper_circuit_limit", "price", "open", "high",
                "low", "close", "low_limit_price_protection", "high_limit_price_protection"}
+#: W-102: the stored seed rate set (migration 0012, read 2026-10-15), handed to the route in place of the database read
+RATES = ChargeRates(
+    brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+    transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+    stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
+    source_url="https://zerodha.com/charges (F&O options), read 2026-10-15; F-35")
 
 
 def _live(value: object) -> object:
@@ -209,6 +216,38 @@ def test_ac1_basket_post_is_the_real_basket_text_and_nothing_else():
             _check(tampered, basket)
 
 
+# ---- W-102: the cost in the reply, from the sealed basket's own orders ---------------------------------------------
+
+def _cost_body(rates, funds=D("1003"), required=D("572.00")) -> dict:
+    from ofo_app.api_models import emit  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    cost = route.cost_out(_real_basket().orders, rates, route.Figures(funds, required, AT))
+    return json.loads(emit(cost))
+
+
+def test_ac1_cost_of_the_real_entry_basket_is_strings_from_the_one_calculator():
+    """AC-1 (W-102): the real sealed ENTRY basket (BUY 65 @ 3.35): 65 x 3.35 = 217.75 paid -> "-217.75"; charges
+    23.6980820035 (hand computation in tests/execution/test_execute_cost.py) -> "23.70"; funds and margin exactly as
+    handed in from the gate's read, each a 2-decimal string, never a JSON number."""
+    assert _cost_body(RATES) == {"net_premium": "-217.75", "charges": "23.70", "charges_note": None,
+                                 "funds_available": "1003.00", "margin_required": "572.00",
+                                 "figures_read_at": "2026-10-16T15:07:21+05:30"}
+
+
+def test_ac1_no_rates_gives_null_charges_and_the_catalogue_note_never_a_number():
+    """AC-1 (W-102): no rate set -> charges null and the note saying charges are not included; the premium stays."""
+    body = _cost_body(None)
+    assert body["charges"] is None and body["net_premium"] == "-217.75"
+    assert body["charges_note"] == "Charges and taxes are not included: the charge rates could not be read."
+
+
+def test_ac1_zerodha_figures_not_confirmed_stay_null_never_zero():
+    """AC-1 (W-102): a failed Zerodha read gives None for both (the gate blocks it anyway); the reply never shows 0."""
+    body = _cost_body(RATES, funds=None, required=None)
+    assert (body["funds_available"], body["margin_required"]) == (None, None)
+
+
 # ---- the route on the database (core proof) -------------------------------------------------------------------------
 
 class _Replay:
@@ -220,11 +259,13 @@ class _Replay:
 
     def __init__(self, *, funds: str, basket_total: str, orders: str | None, positions: str) -> None:
         self.funds, self.basket_total, self.orders, self.positions = funds, basket_total, orders, positions
+        self.calls: list[str] = []  # every Kite URL asked (W-102: the cost adds no Zerodha read)
 
     def _reply(self, name: str) -> dict:
         return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=D)
 
     def __call__(self, method, url, headers, body):
+        self.calls.append(url)
         if "/quote?i=" in url:
             return 200, self.quote_text or (REPLIES / "quote-150720.json").read_text(encoding="utf-8")
         if url.endswith("/user/margins"):
@@ -242,6 +283,29 @@ class _Replay:
                 data = {**data, "net": self.position_rows}
             return 200, json.dumps({"status": "success", "data": data}, default=str)
         raise AssertionError(url)
+
+
+#: Zerodha reads of one accepted Execute press, as on main before W-102 (read from the code: the order book, the
+#: circuit-band quote, funds + basket margin in ``_zerodha_margin``, positions, funds + basket margin again inside
+#: ``checked_basket``). The cost reuses the first funds/margin read and adds none.
+KITE_READS_PER_EXECUTE = {"orders": 1, "quote": 1, "funds": 2, "basket_margin": 2, "positions": 1}
+
+
+def _kite_reads(replay: _Replay) -> dict[str, int]:
+    kinds = {"orders": "/orders", "quote": "/quote?i=", "funds": "/user/margins", "basket_margin": "/margins/basket",
+             "positions": "/portfolio/positions"}
+    counts = {kind: sum(1 for url in replay.calls if part in url) for kind, part in kinds.items()}
+    assert sum(counts.values()) == len(replay.calls), replay.calls  # a read of any other kind fails here
+    return counts
+
+
+def _assert_cost(body: dict, replay: _Replay, expected: tuple[str, str, str, str]) -> None:
+    """W-102: the reply's cost (net premium, charges, funds, margin), every money field a 2-decimal string, read at the
+    pinned route clock, and the press asked Zerodha exactly what it asked before W-102 (the cost adds no read)."""
+    net, charges, funds, margin = expected
+    assert body["cost"] == {"net_premium": net, "charges": charges, "charges_note": None, "funds_available": funds,
+                            "margin_required": margin, "figures_read_at": AT.isoformat()}
+    assert _kite_reads(replay) == KITE_READS_PER_EXECUTE
 
 
 def _rows_of(replay: _Replay, *, orders: list | None = None, positions: list | None = None) -> _Replay:
@@ -353,6 +417,7 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides[route.load_charge_rates] = lambda: RATES
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             resp = await _post(app, sid, "ENTRY")
@@ -368,6 +433,10 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             assert {k: v for k, v in sent.items() if k != "price"} == {k: v for k, v in REAL_ORDER.items()
                                                                         if k != "price"}
             assert sent["price"] == D("3.35") and body["basket"]["api_key"] == "kitekey"
+            # W-102 cost: 65 x 3.35 = 217.75 paid; charges 23.6980820035 -> 23.70 (tests/execution/test_execute_cost.py
+            # docstring); funds 1003 and margin 354.25 + (217.75 - option_premium 0) = 572.00 (ADR-094 top-up) from the
+            # gate's one read; read at the pinned route clock
+            _assert_cost(body, entry, ("-217.75", "23.70", "1003.00", "572.00"))
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "OFS1V1L0")
 
@@ -388,6 +457,10 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             (sell,) = resp.json()["orders"]
             assert (sell["transaction_type"], sell["quantity"], sell["price"], sell["tag"]) == ("SELL", 65, "3.30",
                                                                                               "OFS1V2L0")
+            # W-102: 65 x 3.30 = 214.50 received; charges 24.011933093 -> 24.01 (= Zerodha's own figure in the real
+            # exit reply); the real exit reply's final.total -214.5 is a closing basket, so the gate's margin is 0.00
+            # (ADR-094 / #321: a release is never a credit); funds 671.5 from the same read
+            _assert_cost(resp.json(), held, ("214.50", "24.01", "671.50", "0.00"))
             stored = await plans.plans_for(conn, user, sid)
             assert [(p.plan_number, p.action, p.status) for p in stored] == [(1, "ENTRY", "closed"),
                                                                              (2, "EXIT", "open")]
