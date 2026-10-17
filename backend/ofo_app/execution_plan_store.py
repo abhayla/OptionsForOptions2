@@ -27,6 +27,7 @@ from decimal import Decimal
 from typing import Any, Literal, Mapping, Optional, Sequence
 
 from ofo.execution.basket import make_tag
+from ofo.instruments.models import ZERODHA
 from ofo.money import PAISE
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -121,19 +122,48 @@ _HIGHEST = text("SELECT coalesce(max(plan_number), 0) FROM public.execution_plan
 _OPEN = text("SELECT plan_number FROM public.execution_plans WHERE strategy_id = :s AND status = 'open'")
 _INSERT_PLAN = text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) VALUES (:s, :p, :a)")
 _INSERT_ORDER = text(
-    "INSERT INTO public.execution_plan_orders (strategy_id, plan_number, leg_index, tag, instrument_id, tradingsymbol, "
-    "transaction_type, quantity, price) VALUES (:s, :p, :l, :tag, :iid, :sym, :side, :q, :price)")
+    "INSERT INTO public.execution_plan_orders (strategy_id, plan_number, leg_index, tag, instrument_id, "
+    "transaction_type, quantity, price) VALUES (:s, :p, :l, :tag, :iid, :side, :q, :price)")
 _TAGS_TAKEN = text("SELECT tag FROM public.execution_plan_orders WHERE tag = ANY(:tags)")
 _PLANS = text("SELECT plan_number, action, status, created_at, closed_at, close_reason FROM public.execution_plans "
               "WHERE strategy_id = :s ORDER BY plan_number")
-_ORDERS = text("SELECT plan_number, leg_index, tag, instrument_id, tradingsymbol, transaction_type, quantity, price, "
+_ORDERS = text("SELECT plan_number, leg_index, tag, instrument_id, transaction_type, quantity, price, "
                "filled_quantity "
                "FROM public.execution_plan_orders WHERE strategy_id = :s ORDER BY plan_number, leg_index")
+# The Zerodha trading symbol is NOT stored on the plan (identity rule: broker identifiers live only in
+# broker_instruments, ADR-050 item 2). It is checked against, and read back from, the catalogue by instrument_id.
+_SYMBOLS = text(
+    "SELECT b.broker_symbol, (NOT c.retired AND NOT c.delisted) AS live FROM public.catalogue_contracts AS c "
+    "JOIN public.broker_instruments AS b ON b.contract_id = c.id "
+    "WHERE c.exchange_segment = :seg AND c.exchange_token = :tok AND b.broker = :broker")
 _LOCK_PLAN = text("SELECT status FROM public.execution_plans WHERE strategy_id = :s AND plan_number = :p FOR UPDATE")
 _SET_FILLED = text("UPDATE public.execution_plan_orders SET filled_quantity = :f "
                    "WHERE strategy_id = :s AND plan_number = :p AND tag = :tag")
 _CLOSE = text("UPDATE public.execution_plans SET status = 'closed', close_reason = :r "
               "WHERE strategy_id = :s AND plan_number = :p AND status = 'open'")
+
+
+async def _zerodha_symbol(conn: Any, instrument_id: str) -> str:
+    """The catalogue's ZERODHA trading symbol for ``instrument_id`` ("<segment>:<exchange token>"); no row, or two
+    different symbols with none of them live, is ``bad_plan`` (no symbol guessing, ADR-050 item 2)."""
+    segment, _, token = instrument_id.rpartition(":")
+    if not segment or not token.isascii() or not token.isdigit() or int(token) > 2**63 - 1:
+        raise PlanStoreError(BAD_PLAN, f"instrument_id {instrument_id!r} is not <segment>:<exchange token>")
+    rows = (await conn.execute(_SYMBOLS, {"seg": segment, "tok": int(token), "broker": ZERODHA})).all()
+    live = {r.broker_symbol for r in rows if r.live}
+    found = live or {r.broker_symbol for r in rows}
+    if len(found) != 1:
+        raise PlanStoreError(BAD_PLAN, f"instrument {instrument_id!r} has {len(found)} {ZERODHA} symbols in the "
+                                       f"catalogue; a plan needs exactly one")
+    return next(iter(found))
+
+
+async def _check_symbols(conn: Any, orders: tuple[PlanOrder, ...]) -> None:
+    for o in orders:
+        symbol = await _zerodha_symbol(conn, o.instrument_id)
+        if o.tradingsymbol != symbol:
+            raise PlanStoreError(BAD_PLAN, f"leg {o.leg_index}: tradingsymbol {o.tradingsymbol!r} is not the "
+                                           f"catalogue's {ZERODHA} symbol {symbol!r} for {o.instrument_id}")
 
 
 async def _lock(conn: Any, user_ref: str, strategy_id: Any) -> int:
@@ -218,6 +248,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
     if action not in ACTIONS:
         raise PlanStoreError(BAD_PLAN, f"action must be ENTRY or EXIT, got {action!r}")
     checked = _checked_orders(strategy_id, number, orders)
+    await _check_symbols(conn, checked)
     taken = (await conn.execute(_TAGS_TAKEN, {"tags": [o.tag for o in checked]})).all()
     if taken:
         raise PlanStoreError(TAG_TAKEN, f"tag {taken[0][0]!r} is already stored")
@@ -230,7 +261,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
             await conn.execute(_INSERT_PLAN, {"s": strategy_id, "p": number, "a": action})
             for o in checked:
                 await conn.execute(_INSERT_ORDER, {"s": strategy_id, "p": number, "l": o.leg_index, "tag": o.tag,
-                                                   "iid": o.instrument_id, "sym": o.tradingsymbol,
+                                                   "iid": o.instrument_id,
                                                    "side": o.transaction_type, "q": o.quantity, "price": o.price})
     except DBAPIError as exc:
         state = _sqlstate(exc)
@@ -251,9 +282,13 @@ def _one(found: tuple[StoredPlan, ...], number: int) -> StoredPlan:
 
 async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
     by_plan: dict[int, list[PlanOrder]] = {}
+    symbols: dict[str, str] = {}
     for r in (await conn.execute(_ORDERS, {"s": strategy_id})).all():
+        if r.instrument_id not in symbols:
+            symbols[r.instrument_id] = await _zerodha_symbol(conn, r.instrument_id)
         by_plan.setdefault(int(r.plan_number), []).append(PlanOrder(
-            leg_index=int(r.leg_index), tag=r.tag, instrument_id=r.instrument_id, tradingsymbol=r.tradingsymbol,
+            leg_index=int(r.leg_index), tag=r.tag, instrument_id=r.instrument_id,
+            tradingsymbol=symbols[r.instrument_id],
             transaction_type=r.transaction_type, quantity=int(r.quantity), price=Decimal(r.price),
             filled_quantity=None if r.filled_quantity is None else int(r.filled_quantity)))
     return tuple(
