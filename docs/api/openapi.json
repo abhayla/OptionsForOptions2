@@ -150,7 +150,8 @@
             "enum": [
               "zerodha_login",
               "connected",
-              "refused"
+              "refused",
+              "basket_returned"
             ],
             "title": "Redirect",
             "type": "string"
