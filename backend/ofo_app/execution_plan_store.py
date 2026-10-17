@@ -46,6 +46,8 @@ PRICE_LIMIT = Decimal(10) ** 12  # NUMERIC(14,2)
 _UNIQUE_VIOLATION = "23505"
 _CHECK_VIOLATION = "23514"
 _OPEN_INDEX = "execution_plans_one_open"
+_PLAN_KEY = "execution_plans_pkey"
+_TAG_KEY = "execution_plan_orders_tag_key"
 
 
 class PlanStoreError(ValueError):
@@ -67,7 +69,7 @@ def _text(value: Any, what: str) -> str:
     return value
 
 
-def _price(value: Any) -> Decimal:
+def _limit_price(value: Any) -> Decimal:
     if (not isinstance(value, Decimal) or not value.is_finite() or value <= 0 or value >= PRICE_LIMIT
             or value != value.quantize(PAISE)):
         raise PlanStoreError(BAD_PLAN, f"price must be a positive Decimal with at most 2 decimals, got {value!r}")
@@ -97,7 +99,7 @@ class PlanOrder:
         if self.transaction_type not in SIDES:
             raise PlanStoreError(BAD_PLAN, f"transaction_type must be BUY or SELL, got {self.transaction_type!r}")
         _int(self.quantity, "quantity", 1)
-        _price(self.price)
+        _limit_price(self.price)
         if self.filled_quantity is not None and _int(self.filled_quantity, "filled_quantity", 0) > self.quantity:
             raise PlanStoreError(BAD_PLAN, f"filled_quantity {self.filled_quantity} is above {self.quantity}")
 
@@ -196,6 +198,17 @@ def _sqlstate(exc: DBAPIError) -> Optional[str]:
     return getattr(exc.orig, "sqlstate", None)
 
 
+def _unique_violation(message: str) -> PlanStoreError:
+    """Maps the constraint named in the database's message; an unknown unique constraint is never called a tag clash."""
+    if _OPEN_INDEX in message:
+        return PlanStoreError(PLAN_OPEN, message)
+    if _TAG_KEY in message:
+        return PlanStoreError(TAG_TAKEN, message)
+    if _PLAN_KEY in message:
+        return PlanStoreError(BAD_PLAN, f"plan number already stored for this strategy: {message}")
+    return PlanStoreError(BAD_PLAN, f"unexpected unique violation: {message}")
+
+
 async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: int,  # noqa: PLR0913 fixed API
                       action: str, orders: Sequence[PlanOrder]) -> StoredPlan:
     """Stores the plan open, with its orders. The caller commits (and has called ``next_plan_number`` in the same
@@ -222,7 +235,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
     except DBAPIError as exc:
         state = _sqlstate(exc)
         if state == _UNIQUE_VIOLATION:
-            raise PlanStoreError(PLAN_OPEN if _OPEN_INDEX in str(exc.orig) else TAG_TAKEN, str(exc.orig)) from exc
+            raise _unique_violation(str(exc.orig)) from exc
         if state == _CHECK_VIOLATION:
             raise PlanStoreError(BAD_PLAN, str(exc.orig)) from exc
         raise
@@ -287,7 +300,8 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
                      filled: Optional[Mapping[str, int]] = None) -> StoredPlan:
     """Open -> closed, once. Closing a closed plan is ``bad_plan``; no plan number is ever reused or reopened.
     ``filled`` (tag -> Zerodha's filled quantity at close) is stored on the orders, so a restart can rebuild the
-    position from the database; with None nothing is stored."""
+    position from the database. A close that changes position (``filled``, ``exited``, ``partial``) must carry it:
+    ``filled=None`` is ``bad_plan`` for those; ``nothing_placed`` with None stores 0 for every order."""
     strategy_id = await _lock(conn, user_ref, strategy_id)
     if not isinstance(reason, str) or reason not in CLOSE_REASONS:
         raise PlanStoreError(BAD_PLAN, f"reason must be one of {CLOSE_REASONS}, got {reason!r}")
@@ -298,10 +312,13 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
         raise PlanStoreError(NOT_FOUND, f"plan {plan_number}")
     if status != "open":
         raise PlanStoreError(BAD_PLAN, f"plan {plan_number} is already closed")
-    if filled is not None:
-        orders = _one(await _read(conn, strategy_id), plan_number).orders
-        for tag, quantity in _checked_fills(reason, orders, filled).items():
-            await conn.execute(_SET_FILLED, {"s": strategy_id, "p": plan_number, "tag": tag, "f": quantity})
+    if filled is None:
+        if reason != "nothing_placed":
+            raise PlanStoreError(BAD_PLAN, f"reason {reason!r} changes position and needs the filled quantities")
+        filled = {}
+    orders = _one(await _read(conn, strategy_id), plan_number).orders
+    for tag, quantity in _checked_fills(reason, orders, filled).items():
+        await conn.execute(_SET_FILLED, {"s": strategy_id, "p": plan_number, "tag": tag, "f": quantity})
     await conn.execute(_CLOSE, {"s": strategy_id, "p": plan_number, "r": reason})
     return _one(await _read(conn, strategy_id), plan_number)
 
