@@ -106,6 +106,12 @@ class Lander:
     def push(self):
         target = f"HEAD:refs/heads/{self.branch}" if self.given_branch else self.branch
         rc, text = self.git("push", "-u", "origin", target)
+        if rc != 0 and ("non-fast-forward" in text or "fetch first" in text):
+            # an earlier run's `gh pr update-branch` put a merge commit on origin only: take it (fast-forward only,
+            # so a real divergence still stops) and push again (GC-2e W-102)
+            rc, text = self.git("pull", "--ff-only", "origin", self.branch)
+            if rc == 0:
+                rc, text = self.git("push", "-u", "origin", target)
         if rc != 0:
             raise Stop("push failed\n" + text.strip())
 

@@ -70,6 +70,27 @@ def test_an_agent_id_resolves_to_its_builder_worktree(tmp_path):
     assert resolved.parent.parent == Path(land.ROOT) / ("." + "claude")
 
 
+def test_a_push_behind_origin_fast_forwards_then_pushes_again(tmp_path, capsys):
+    """GC-2e W-102: an earlier run's update-branch left a merge commit on origin only; the next push is refused as
+    non-fast-forward. The tool takes origin's commits with --ff-only and pushes again; a refused fast-forward stops."""
+    fake = Fake(gate=[(0, "merged")])
+    pushes = []
+    plain = fake.__call__
+
+    def runner(cmd, cwd=None):
+        if "push" in cmd:
+            pushes.append(cmd)
+            if len(pushes) == 1:
+                fake.calls.append(cmd)
+                return 1, " ! [rejected] feat/x -> feat/x (non-fast-forward)"
+        return plain(cmd, cwd)
+
+    rc, _ = run(runner, tmp_path, capsys)
+    assert rc == 0
+    assert len(pushes) == 2
+    assert fake.ran("pull", "--ff-only", "origin", "feat/x")
+
+
 def test_new_pr_is_created_then_merged(tmp_path, capsys):
     fake = Fake([(0, "merged")])
     rc, out = run(fake, tmp_path, capsys)
