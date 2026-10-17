@@ -19,7 +19,17 @@ from ofo_app import errors, event_loop, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db
-from ofo_app.routes import broker, catalogue, execute, health, live, outcome, planned_entry, strategies
+from ofo_app.routes import (
+    broker,
+    catalogue,
+    execute,
+    execution_return,
+    health,
+    live,
+    outcome,
+    planned_entry,
+    strategies,
+)
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +96,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     broker.mount(app, config)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
+    app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     return app
