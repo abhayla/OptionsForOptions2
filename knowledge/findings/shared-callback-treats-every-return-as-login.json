@@ -1,0 +1,28 @@
+{
+ "id": "shared-callback-treats-every-return-as-login",
+ "scope": "generic",
+ "class": "When a third party sends the browser back to ONE registered redirect URL for more than one flow (login, and a later action such as placing an order basket), a callback written for the first flow treats every arrival as that flow: a return from the other flow fails the first flow's checks (no state we issued) and the user sees that flow's error - here a login error right after placing real orders - or, if a check happens to pass, the handler runs the first flow's side effects (token exchange, session replace) on the wrong event.",
+ "mechanism": "Kite's basket docs (https://kite.trade/docs/connect/v3/basket/, read 2026-10-17): 'Once the user is done placing orders, the basket will redirect back to your registered `redirect_login` along with a `request_key`, exactly like login.' backend/ofo_app/routes/broker.py kite_callback (lines ~229-262 on main at eb38b14): `user_ref = rt.states.consume(state, request.cookies.get(STATE_COOKIE))` then `if user_ref is None: return _refused_redirect(request, rt, \"broker_state_invalid\")` - a basket return carries no state we issued, so it is refused to the login-refusal page.",
+ "first_seen": {
+  "date": "2026-10-17",
+  "where": "GC-2e item 6 (W-105) research, before any real basket return",
+  "evidence": "W-105 research agent: WebFetch of the Kite basket docs page + Read of broker.py kite_callback; the live return shape (whether state is absent, whether a cancelled basket returns status=success) is unverified until GC-3's first basket."
+ },
+ "fix": "W-105: a callback hit with NO state query parameter is a basket return -> redirect to the frontend page /execution/returned (shows only 'Check with Zerodha'), never exchanging request_token, never touching the state store; a hit with any state value keeps the login path. Live confirmation at GC-3's first basket.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Becomes guarded when W-105's callback tests (no-state hit -> landing, exchange count 0, rows unchanged; empty state= still refused) merge. Sweep: the only shared-redirect handler in this repo is kite_callback (grep of backend for redirect handlers, 2026-10-17)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-073.md",
+  "spec/findings.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-17",
+   "where": "GC-2e W-105 research",
+   "evidence": "broker.py kite_callback refuses a no-state return with broker_state_invalid; Kite docs say the basket returns to the registered redirect URL"
+  }
+ ]
+}
