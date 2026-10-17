@@ -69,7 +69,7 @@ def _text(value: Any, what: str) -> str:
     return value
 
 
-def _price(value: Any) -> Decimal:
+def _limit_price(value: Any) -> Decimal:
     if (not isinstance(value, Decimal) or not value.is_finite() or value <= 0 or value >= PRICE_LIMIT
             or value != value.quantize(PAISE)):
         raise PlanStoreError(BAD_PLAN, f"price must be a positive Decimal with at most 2 decimals, got {value!r}")
@@ -99,7 +99,7 @@ class PlanOrder:
         if self.transaction_type not in SIDES:
             raise PlanStoreError(BAD_PLAN, f"transaction_type must be BUY or SELL, got {self.transaction_type!r}")
         _int(self.quantity, "quantity", 1)
-        _price(self.price)
+        _limit_price(self.price)
         if self.filled_quantity is not None and _int(self.filled_quantity, "filled_quantity", 0) > self.quantity:
             raise PlanStoreError(BAD_PLAN, f"filled_quantity {self.filled_quantity} is above {self.quantity}")
 
