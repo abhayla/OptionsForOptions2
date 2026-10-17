@@ -1,7 +1,7 @@
 """Zerodha's orders, trades and positions over HTTP for the owner's own connection (W-093, REQ-073 AC-3, ADR-054).
 
-Four reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
-(W-099) (the module's entry in
+Five reads, nothing else: ``GET /orders``, ``GET /trades``, ``GET /portfolio/positions``, ``GET /quote``
+(W-099), ``GET /portfolio/holdings`` (W-106, ADR-097 (4)) (the module's entry in
 ``ALLOWED_CALLS``). Every request goes through ``check_call`` first, so a method or path outside the allow-list is
 refused BEFORE the transport is called, and the urllib door checks it again. No call here can place, change or cancel
 an order (REQ-073 AC-4).
@@ -20,6 +20,7 @@ import json
 import logging
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
@@ -31,6 +32,8 @@ ORDERS_PATH: Final = "/orders"
 TRADES_PATH: Final = "/trades"
 POSITIONS_PATH: Final = "/portfolio/positions"
 QUOTE_PATH: Final = "/quote"
+HOLDINGS_PATH: Final = "/portfolio/holdings"
+QUANTITY_FIELDS: Final = ("quantity", "t1_quantity", "used_quantity", "authorised_quantity", "collateral_quantity")
 QUOTE_LIMIT: Final = 500  # Kite's cap on instruments per quote call
 _INSTRUMENT: Final = re.compile(QUOTE_INSTRUMENT, re.ASCII)
 _PLAIN_NUMBER: Final = re.compile(r"[0-9]+(\.[0-9]+)?", re.ASCII)
@@ -75,6 +78,68 @@ def _band(quote: object) -> tuple[Decimal, Decimal] | None:
     if lower is None or upper is None or lower <= 0 or upper <= 0 or lower > upper:
         return None
     return lower, upper
+
+
+@dataclass(frozen=True)
+class Holding:
+    """One holding as ADR-097 (4) compares it: these eight fields only. Prices and P&L move all day and are not kept.
+    ``used_quantity`` (sold out of the holding today) can move while ``quantity`` stays until settlement."""
+
+    tradingsymbol: str
+    exchange: str
+    isin: str
+    quantity: int
+    t1_quantity: int
+    used_quantity: int
+    authorised_quantity: int
+    collateral_quantity: int
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        return self.exchange, self.tradingsymbol, self.isin
+
+
+@dataclass(frozen=True)
+class HoldingChange:
+    """A key whose rows differ: ``before`` is None when the row was added, ``after`` None when it went missing."""
+
+    key: tuple[str, str, str]
+    before: Holding | None
+    after: Holding | None
+
+
+def _text(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise KiteReadError("kite_read_bad_reply")
+    return value
+
+
+def _units(value: object) -> int:
+    """A held quantity: a JSON integer only. A float (10.5, or 10.0 which parses to Decimal), a numeric string, a bool
+    or a missing value is a reply we do not understand, so the read fails rather than guessing (fail closed)."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:  # a negative quantity is never valid
+        raise KiteReadError("kite_read_bad_reply")
+    return value
+
+
+def _holding(row: dict) -> Holding:  # ``_rows`` has already refused any non-object row
+    return Holding(_text(row.get("tradingsymbol")), _text(row.get("exchange")), _text(row.get("isin")),
+                   *(_units(row.get(name)) for name in QUANTITY_FIELDS))
+
+
+def _by_key(rows: Sequence[Holding]) -> dict[tuple[str, str, str], Holding]:
+    keyed = {r.key: r for r in rows}
+    if len(keyed) != len(rows):
+        raise ValueError("two holdings share one (exchange, tradingsymbol, isin) key")
+    return keyed
+
+
+def holdings_unchanged(before: Sequence[Holding], after: Sequence[Holding]) -> tuple[HoldingChange, ...]:
+    """ADR-097 (4): the rows whose eight fields differ between two reads, added or missing included. Empty = unchanged.
+    Ordered by key so the answer does not depend on the order Kite listed the rows."""
+    old, new = _by_key(before), _by_key(after)
+    return tuple(HoldingChange(k, old.get(k), new.get(k)) for k in sorted(old.keys() | new.keys())
+                 if old.get(k) != new.get(k))
 
 
 class KiteReads:
@@ -131,6 +196,14 @@ class KiteReads:
         if not isinstance(data, dict):
             raise KiteReadError("kite_read_bad_reply")
         return {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
+
+    def fetch_holdings(self) -> tuple[Holding, ...]:
+        """``GET /portfolio/holdings``: the eight compared fields per row (ADR-097 (4)). An empty tuple is a valid
+        answer (no holdings); a failed or malformed read raises ``KiteReadError``, never an empty tuple."""
+        rows = tuple(_holding(r) for r in _rows(self._data("GET", HOLDINGS_PATH)))
+        if len({r.key for r in rows}) != len(rows):
+            raise KiteReadError("kite_read_bad_reply")
+        return rows
 
     def fetch_circuit_bands(self, instruments: Sequence[str]) -> dict[str, tuple[Decimal, Decimal]]:
         """``GET /quote?i=...``: ``{EXCHANGE:SYMBOL: (lower, upper)}`` circuit limits, exact Decimal (ADR-080).

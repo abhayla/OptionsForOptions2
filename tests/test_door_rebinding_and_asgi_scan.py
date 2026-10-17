@@ -23,6 +23,8 @@ import pytest
 
 from test_door_names_private import _fold
 
+pytestmark = pytest.mark.repo_scan
+
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 
 #: Files allowed to assign to / delete an attribute of an import-bound name: path -> (dotted targets, reason).

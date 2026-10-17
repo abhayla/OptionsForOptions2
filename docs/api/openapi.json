@@ -150,7 +150,8 @@
             "enum": [
               "zerodha_login",
               "connected",
-              "refused"
+              "refused",
+              "basket_returned"
             ],
             "title": "Redirect",
             "type": "string"
@@ -397,6 +398,73 @@
         "title": "ContractsOut",
         "type": "object"
       },
+      "CostOut": {
+        "additionalProperties": false,
+        "description": "W-102 (ADR-097 \"a final yes on the exact contract, side, quantity, limit price and cost\"): what the basket costs,\nevery figure computed on the server (one engine, ADR-008); the browser only shows it.",
+        "properties": {
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Note"
+          },
+          "figures_read_at": {
+            "format": "date-time",
+            "title": "Figures Read At",
+            "type": "string"
+          },
+          "funds_available": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funds Available"
+          },
+          "margin_required": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Required"
+          },
+          "net_premium": {
+            "title": "Net Premium",
+            "type": "string"
+          }
+        },
+        "required": [
+          "net_premium",
+          "charges",
+          "charges_note",
+          "funds_available",
+          "margin_required",
+          "figures_read_at"
+        ],
+        "title": "CostOut",
+        "type": "object"
+      },
       "DefinitionOut": {
         "additionalProperties": false,
         "properties": {
@@ -527,6 +595,9 @@
             "title": "Basket",
             "type": "object"
           },
+          "cost": {
+            "$ref": "#/components/schemas/CostOut"
+          },
           "orders": {
             "items": {
               "$ref": "#/components/schemas/BasketOrderOut"
@@ -551,7 +622,8 @@
           "plan_number",
           "tags",
           "basket",
-          "orders"
+          "orders",
+          "cost"
         ],
         "title": "ExecuteOut",
         "type": "object"
