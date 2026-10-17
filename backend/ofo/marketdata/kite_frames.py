@@ -30,7 +30,8 @@ PACKET_FULL = 184
 
 _DEPTH_AT = 64
 _BID0 = _DEPTH_AT  # buy[0]
-_ASK0 = _DEPTH_AT + 5 * 12  # sell[0]: ten entries of 12 bytes, buys first
+_DEPTH_LEVELS = 5
+_ASK0 = _DEPTH_AT + _DEPTH_LEVELS * 12  # sell[0]: ten entries of 12 bytes, buys first
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,10 @@ class RawTick:
     bid: Decimal | None = None
     ask: Decimal | None = None
     exchange_ts: int | None = None  # epoch seconds, as Kite sends it
+    # (price, quantity) per level, best first, price-0 entries dropped. ``None`` = the packet carries no depth (ltp /
+    # index / quote); an EMPTY tuple = a full packet whose side is empty. The two never read alike.
+    depth_bids: tuple[tuple[Decimal, int], ...] | None = None
+    depth_asks: tuple[tuple[Decimal, int], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -81,8 +86,19 @@ def _decode(p: bytes, divisor: int, token: int) -> RawTick | None:
         bid = struct.unpack(">i", p[_BID0 + 4:_BID0 + 8])[0]
         ask = struct.unpack(">i", p[_ASK0 + 4:_ASK0 + 8])[0]
         return RawTick(token, "full", _money(ltp, divisor), volume=volume, oi=oi,
-                       bid=_price_or_none(bid, divisor), ask=_price_or_none(ask, divisor), exchange_ts=ts)
+                       bid=_price_or_none(bid, divisor), ask=_price_or_none(ask, divisor), exchange_ts=ts,
+                       depth_bids=_levels(p, _BID0, divisor), depth_asks=_levels(p, _ASK0, divisor))
     return None
+
+
+def _levels(p: bytes, start: int, divisor: int) -> tuple[tuple[Decimal, int], ...]:
+    """Five (price, quantity) entries from ``start``, best first; a price-0 entry is absent (F-29), dropped."""
+    out = []
+    for i in range(_DEPTH_LEVELS):
+        qty, paise = struct.unpack(">ii", p[start + 12 * i:start + 12 * i + 8])
+        if paise > 0:
+            out.append((_money(paise, divisor), qty))
+    return tuple(out)
 
 
 def parse_frame(data: bytes) -> FrameResult:

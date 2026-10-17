@@ -93,6 +93,14 @@ def depth_from_quote(quote: Mapping[str, object]) -> Depth:
     return Depth(bids=_levels(depth.get("buy", []), "buy"), asks=_levels(depth.get("sell", []), "sell"))
 
 
+def depth_from_levels(bids: Iterable[tuple[Decimal, int]], asks: Iterable[tuple[Decimal, int]]) -> Depth:
+    """A ``Depth`` from (price, quantity) pairs, best first (a live full frame's ten entries): same checks and the same
+    padding rule as ``depth_from_quote`` (price 0 / quantity 0 is absent, never a level)."""
+    def rows(pairs: Iterable[tuple[Decimal, int]]) -> list[dict[str, object]]:
+        return [{"price": price, "quantity": quantity} for price, quantity in pairs]
+    return Depth(bids=_levels(rows(bids), "buy"), asks=_levels(rows(asks), "sell"))
+
+
 @dataclass(frozen=True)
 class ExecutablePrice:
     side: Action

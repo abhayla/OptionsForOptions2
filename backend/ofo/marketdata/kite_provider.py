@@ -16,6 +16,7 @@ from collections import Counter
 from decimal import Decimal
 from typing import Callable, Iterable, Sequence
 
+from ofo.engine.executable_price import Depth, depth_from_levels
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import (BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX, ZERODHA, ListedContract)
 from ofo.marketdata.feed_health import FeedState, QuoteBook
@@ -95,16 +96,28 @@ class KiteProvider(MarketDataProvider):
             if quote is None:
                 self.counters["unmapped_token"] += 1
                 continue
+            depth = self._depth_of(tick)
             if tick.token not in self._wanted:  # fail closed: a token nobody holds never reaches the book or a listener
-                if not self.book.update_parked(quote):  # parked: kept only for a re-take before the send
+                if not self.book.update_parked(quote, depth):  # parked: kept only for a re-take before the send
                     self.counters["unwanted_tick"] += 1
                 continue
             self.counters["ticks"] += 1
-            self.book.update(quote)
+            self.book.update(quote, depth)
             out.append(quote)
             if self._listener is not None:
                 self._listener(self._with_health(quote, received_at))
         return out
+
+    @staticmethod
+    def _depth_of(tick: RawTick) -> Depth | None:
+        """The full frame's depth; None for a packet without one (a quote / ltp packet is not 'no liquidity')."""
+        if tick.depth_bids is None or tick.depth_asks is None:
+            return None
+        return depth_from_levels(tick.depth_bids, tick.depth_asks)
+
+    def latest_depth(self, instrument_id: str, now: datetime.datetime | None = None) -> Depth | None:
+        """ADR-080 (3): the 5-level depth the Execute price walks, or None (see ``QuoteBook.latest_depth``)."""
+        return self.book.latest_depth(instrument_id, self._now() if now is None else now)
 
     def on_text(self, message: str) -> None:
         """A text message (order update or error): counted by type only, nothing stored."""

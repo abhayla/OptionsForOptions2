@@ -1,0 +1,14 @@
+$ python docs/research/depth-proof-2026-10-17/proof.py tests/fixtures/kite_ws/full-frame-12080386-150720.bin
+frames scanned 53165
+frame index 46750 recv_ns 1792143439922205200 exchange_ts 1792143440 2026-10-16T15:07:20+05:30
+BID 0 frame 3.3 55250 32 | rest 3.3 55250 32 MATCH
+BID 1 frame 3.25 67535 37 | rest 3.25 67535 37 MATCH
+BID 2 frame 3.2 57330 28 | rest 3.2 57330 28 MATCH
+BID 3 frame 3.15 51025 28 | rest 3.15 51025 28 MATCH
+BID 4 frame 3.1 47515 24 | rest 3.1 47515 24 MATCH
+ASK 0 frame 3.35 56810 36 | rest 3.35 56810 36 MATCH
+ASK 1 frame 3.4 53755 37 | rest 3.4 53755 37 MATCH
+ASK 2 frame 3.45 76050 32 | rest 3.45 76050 32 MATCH
+ASK 3 frame 3.5 41860 24 | rest 3.5 41860 24 MATCH
+ASK 4 frame 3.55 35945 15 | rest 3.55 35945 15 MATCH
+cut frame written tests/fixtures/kite_ws/full-frame-12080386-150720.bin 188 bytes
