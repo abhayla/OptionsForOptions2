@@ -983,3 +983,46 @@ async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitl
             assert [e.timestamp for e in new] == sorted(e.timestamp for e in new)
         finally:
             await trans.rollback()
+
+
+class _RecordingConn:
+    """A fake connection: answers the store's statements, records their order and the INSERT's parameters."""
+
+    def __init__(self, clock: datetime) -> None:
+        self.clock = clock
+        self.order: list[str] = []
+        self.inserted: dict = {}
+
+    async def execute(self, stmt: object, params: object = None) -> SimpleNamespace:
+        sql = str(stmt)
+        if "transaction_isolation" in sql:
+            self.order.append("isolation")
+            return SimpleNamespace(scalar_one=lambda: "read committed")
+        if "pg_advisory_xact_lock" in sql:
+            self.order.append("lock")
+            return SimpleNamespace()
+        if "clock_timestamp" in sql:
+            self.order.append("clock")
+            return SimpleNamespace(scalar_one=lambda: self.clock)
+        if "audit_anchor" in sql:
+            self.order.append("anchor")
+            row = SimpleNamespace(event_count=0, last_hash=GENESIS_HASH)
+            return SimpleNamespace(one_or_none=lambda: row)
+        if "INSERT INTO public.audit_events" in sql:
+            self.order.append("insert")
+            self.inserted = dict(params)  # type: ignore[call-overload]
+            return SimpleNamespace()
+        raise AssertionError(f"unexpected statement: {sql}")
+
+
+async def test_event_time_is_the_clock_read_after_the_lock_and_before_the_anchor() -> None:
+    """The stored time is exactly what SELECT clock_timestamp() returned (a sentinel no Python clock can produce),
+    it reaches the hash input, and the clock is read after the lock and before the anchor (a time read before the
+    lock can be stale by the lock wait and trip the trigger's 60 s window, OF001)."""
+    sentinel = datetime(2001, 1, 1, tzinfo=timezone.utc)
+    conn = _RecordingConn(sentinel)
+    stored = await append(conn, EventType.TRIAL_STARTED, actor="system", correlation_id="c-1",
+                          payload={"platform_user_id": "u-1"})
+    assert stored.event.timestamp == sentinel and conn.inserted["ts"] == sentinel
+    assert "2001-01-01T00:00:00+00:00" in conn.inserted["canonical"]
+    assert conn.order == ["isolation", "lock", "clock", "anchor", "insert"]
