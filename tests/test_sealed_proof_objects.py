@@ -137,7 +137,7 @@ def forgery_problems(t: type) -> list[str]:
     except TypeError as exc:
         return [f"cannot be checked as a sealed tuple ({exc})"]
     routes: dict[str, typing.Callable[[], object]] = {
-        "called with no arguments": lambda: t(),
+        "called with no arguments": t,
         "called with arguments": lambda: t(1, 2),
         "t.__new__ with arguments": lambda: t.__new__(t, 1),
         "object.__new__": lambda: object.__new__(t),
@@ -147,6 +147,9 @@ def forgery_problems(t: type) -> list[str]:
         "object.__setattr__": lambda: object.__setattr__(obj, "forged", True),
         "plain attribute assignment": lambda: setattr(obj, "forged", True),
         "subclass": lambda: type("Sub", (t,), {}),
+        "subclass declaring its own maker": lambda: type("Sub3", (t,), {}, made_by="x", again="y"),
+        "__reduce__ called directly": obj.__reduce__,
+        "__reduce_ex__ called directly": lambda: obj.__reduce_ex__(2),
         "subclass overriding __setattr__": lambda: type("Sub2", (t,), {"__setattr__": object.__setattr__}),
     }
     for protocol in range(pickle.HIGHEST_PROTOCOL + 1):
@@ -223,7 +226,7 @@ def test_a_planted_open_tuple_subclass_is_red() -> None:
 
 
 def test_deleting_an_allow_entry_is_red() -> None:
-    """AC-1: with any one allow-list entry removed, some real gate reports a violation (and none of the entries is stale)."""
+    """AC-1: with any one allow-list entry removed, some real gate reports a violation (none is stale)."""
     for entry in RECHECKED_INPUTS:
         smaller = {k: v for k, v in RECHECKED_INPUTS.items() if k is not entry}
         assert any(violations(fn, smaller) for fn in GATES), f"allow-list entry {entry.__name__} is unused"

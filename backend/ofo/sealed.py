@@ -5,7 +5,7 @@ A proof object (a basket the margin gate allowed, a margin verdict, Zerodha's el
 because ordinary code cannot make one. ``SealedTuple`` gives every proof type the same closed shape:
 
 - an immutable tuple with no attribute storage (``__slots__ = ()``): ``object.__setattr__`` and ``setattr`` have
-  nothing to write, and ``__setattr__`` / ``__delattr__`` raise ``AttributeError``;
+  nothing to write (setting or deleting any attribute raises ``AttributeError``);
 - calling the class raises (there is no token to borrow); the owning module's one maker builds it with the tuple
   base class's own constructor, which ``tests/test_door_names_private.py`` allows only in the owning files;
 - ``copy`` / ``deepcopy`` / ``pickle`` (``__reduce__`` and ``__reduce_ex__``) raise;
@@ -40,12 +40,6 @@ class SealedTuple(tuple):
         super().__init_subclass__(**kwargs)
         cls._made_by = made_by
         cls._again = again
-
-    def __setattr__(self, name: str, value: object) -> NoReturn:
-        raise AttributeError(f"a {type(self).__name__} cannot be changed")
-
-    def __delattr__(self, name: str) -> NoReturn:
-        raise AttributeError(f"a {type(self).__name__} cannot be changed")
 
     def __copy__(self) -> NoReturn:
         raise TypeError(f"a {type(self).__name__} cannot be copied; {self._again}")
