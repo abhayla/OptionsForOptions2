@@ -9,7 +9,8 @@ when a REQ+AC cite and another id both precede the quote, the REQ+AC cite wins.
 A Q### quote passes if the id's open-questions section or any spec/ file mentioning the id contains it.
 Also (guard-set checks, exit 1): (a) some line must name all three literals `tests/test_*.py`,
 `tests/errors/test_write_allowlist.py` and `tests/errors/test_producer_inventory.py` (the repo-wide guard tests);
-(b) a Tier A brief whose first 10 lines mention a guard/door/gate/scan needs a `Findings checked:` line whose ids each exist as knowledge/findings/<id>.json.
+(b) a Tier A brief whose first 10 lines mention a guard/door/gate/scan needs a `Findings checked:` line whose ids
+each exist as knowledge/findings/<id>.json.
 A quote under 12 characters is TOO-SHORT (exit 1 only with --strict); "..." fragments must occur in order.
 """
 from __future__ import annotations
