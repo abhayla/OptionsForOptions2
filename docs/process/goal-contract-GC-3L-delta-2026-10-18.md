@@ -28,7 +28,9 @@ Owner runbook for the same day: `gc-3l-runbook-2026-10-19.md`.
   the file holds account data, and `dev_run.py .` runs from the repo root). The Sunday file is NEVER Monday's baseline.
 - **09:00 funds hard gate (F-44, owner 2026-10-18 "Re-check Mon 09:00")**: `probe.py contract` prints
   `available_funds`; it must be >= Rs 425 (Rs 5 x 65 + Rs 100) before the strike pick, else STOP before any click
-  and the owner adds funds. Kite read Rs 0 (net, cash, opening balance) on Sunday.
+  and the owner adds funds. Kite read Rs 0 (net, cash, opening balance) on Sunday. Resume: after the deposit, run
+  `probe.py contract` again and continue once `available_funds` >= Rs 425; if it is still below by 12:00, park L2-L4
+  (GC-3L review 2026-10-18, MINOR 5).
 - **09:20** contract probe on 2-3 candidate 2026-10-27 CEs + strike pick: premium Rs 5-11 (owner 2026-10-18; prefer <= Rs 10: ADR-108 (2) "about Rs 650 or less", Rs 11 x 65 = Rs 715), price
   from the 5-level depth (the probe prints no last price); `premium x 65 + Rs 100 <= funds` (GC-3L L1) re-checked
   against the picked premium. ADR-108 rule 5 ("net 0 on the chosen contract"): `probe.py` has no positions command, so
@@ -40,15 +42,26 @@ Owner runbook for the same day: `gc-3l-runbook-2026-10-19.md`.
   ENTRY reply is on the page (`ExecuteStrategyPage.vue:104`). F-41: capture the `/kite/callback` query keys with the
   browser's Network panel ("Preserve log"), since the forward drops the query (`routes/broker.py`).
 - **~10:00** L2 ENTRY (deadline 13:30). **EXIT soon after the fill** (deadline 14:30). **~12:00** L4 (or right after
-  the EXIT fills).
+  the EXIT fills); L4 also saves the three raw replies with `probe.py pnl --tag-prefix OFS<id>V --save-dir
+  D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit` (GC-3F's proof reads them; review MAJOR 1).
+- **Check with Zerodha errors or Kite is unreachable** (any Kite read error answers 409, `routes/execution_return.py:7`):
+  no click on Kite; press Check again (it only reads) up to 3 times a minute apart; if the session dropped, log in once
+  more in the same private window; else follow the carry-over branch (review MINOR 4).
+- **EXIT partly filled:** the unfilled remainder follows the carry-over branch; Check closes the plan `partial` and the
+  held quantity is what remains (review MINOR 6; a 1-lot ENTRY fills in whole lots, so the ENTRY partial branch is not
+  expected).
+- **Carry-over branch after Monday (ADR-111, owner 2026-10-18):** GC-3F fixes #352 first and exits through the Execute
+  screen; if that fix is not merged by Mon 2026-10-26 12:00 IST, the owner sells the lot by hand on Kite that day and
+  the app records the mismatch. Never held to expiry (2026-10-27 15:30).
 
 ## 2. Step 0.1 on a docs-only head
 When main's head commit changed only docs (true after GC-3P's close-out), step 0.1's "CI green on the head" reads:
 CI green on the newest commit that changed product code, `execute-screen-e2e` named in that run's jobs, AND
 `git diff --stat <that sha> HEAD` lists only `docs/`, `spec/`, `knowledge/`, `views/` or `work/` paths - or, after
 GC-2g, also the orchestrator-hook files of #412 (`scripts/hooks/`, `tests/hooks/`, the project hook addendum and the
-generated Claude settings file it regenerates), which no app process imports; then also read that merge's own `ci`
-run green.
+generated Claude settings file it regenerates) and the root `CLAUDE.md` (GC-2g's close-out), which no app process
+imports; then also read that merge's own `ci` run green. Measured 2026-10-18: #412's merge 5e5230f has CI and App
+tests green with `execute-screen-e2e` (review MINOR 3).
 
 ## 3. Start recipe (measured working on 2026-10-18)
 The kit guard refuses a Bash command containing the word in uvicorn's app-factory flag; start the API from a small
