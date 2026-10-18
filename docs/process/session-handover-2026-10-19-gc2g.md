@@ -29,11 +29,13 @@ None.
 - Paste the Startup-Factory prompt (`D:\Abhay\Ventures\handoff-ofo2-kit-fixes-2026-10-18.md`).
 - Carried: #394's message text; Q272 after GC-3L; 09:00 Monday funds gate (F-44).
 
-## Chain rule 3 check of GC-3L: READY
-Fresh Sonnet precondition check + wiring map (~20:32): every named file, helper, merged/held PR and issue state true on
-main; no GC-3L step needs a HOLD PR. Finding ACCEPTED and fixed here: the delta's 08:30 fallback named GC-2f. Delta
-section 2 now also allows #412's hook-only paths on the head. No new Opus review: the delta had one on 2026-10-18 and
-no product path changed since.
+## Chain rule 3 check of GC-3L: READY, then GO WITH FIXES (all fixed)
+Fresh Sonnet precondition check + wiring map (~20:32): READY; finding accepted (the delta named GC-2f) and fixed.
+Full fresh Opus review (~22:10; first skipped as "not needed" - wrong, chain rule 3 requires it before a live
+real-money run): GO WITH FIXES, money safety holds. All 6 findings ACCEPTED: MAJOR 1 replies never saved -> `probe.py
+pnl --save-dir` (branch `build/probe-save-replies`); MAJOR 2 unfilled EXIT had no product path -> owner decision ADR-111 (#352 fix in GC-3F, owner
+sells on Kite by Mon 10-26 12:00 as backstop); MINOR 3-6 (CLAUDE.md on the head, Check/Kite errors, funds-gate
+resume, EXIT partial) -> delta + runbook.
 
 ## NEXT
 GC-3L (Mon 2026-10-19 08:30, owner present). GC-3F notes: both routes pass Zerodha's order book and use

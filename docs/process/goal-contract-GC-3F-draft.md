@@ -24,6 +24,11 @@ Order (each: `gh pr update-branch N`, `python tools/merge_when_green.py N` in th
    on `strategy-save-draft`, W-090's new controls are the suspect: fix before merge).
 Each PR's description says HOLD; remove the draft flag only at merge time.
 
+## Step 0.5 - only if GC-3L ended with a carried-over position (ADR-111): fix #352 first
+An execution plan left open at the end of a trading day is read back the next day, so the carried-over lot is exited
+through the strategy's Execute screen (next session Wed 2026-10-21). Deadline: merged by Mon 2026-10-26 12:00 IST,
+else the owner sells the lot on Kite that day and the app records the mismatch. Tier A (order state).
+
 ## Step 1 - merge #398 (W-108) then W-111
 GC-2g did the W-108 redesign (ADR-110 pending state, closed-plan drift; two fresh Opus rounds, round 2 PASS at
 05ae2c5) and W-111's rebase + review (see `session-handover-2026-10-19-gc2g.md`). Merge #398 after #395 (its frontend
