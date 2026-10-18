@@ -89,12 +89,12 @@ def test_four_part_messages_and_codes() -> None:
     assert "Reduce this leg to 54 lots or fewer" in blocked.next_action
 
 
-def test_blocked_review_is_not_executable_and_slicing_is_left_as_it_was() -> None:
-    """AC-4: ADR-081 'never split' - a blocked leg makes the review not executable. The existing entry sequence
-    (REQ-058, unchanged by this item) still shows 3,575 units as slices of the 1,755 default; reported, not edited."""
+def test_blocked_review_is_not_executable_and_lists_the_leg_once() -> None:
+    """AC-4: ADR-081 'never split' and ADR-092 ("never lists freeze slices"): a blocked leg makes the review not
+    executable and the sequence lists the 3,575 units as ONE line (was 1,755 / 1,755 / 65)."""
     r = review(55 * 65, {SYMBOL: REAL})
     assert r.can_execute is False
-    assert [ln.quantity for ln in r.sequence] == [1755, 1755, 65]
+    assert [ln.quantity for ln in r.sequence] == [3575]
 
 
 def test_stored_freeze_refuses_non_positive_and_bool() -> None:

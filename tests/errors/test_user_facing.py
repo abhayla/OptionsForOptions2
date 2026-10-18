@@ -56,6 +56,12 @@ def _slice_refused() -> object:
     return SliceRefused(detail="lots=0 for leg 2", message=render("send_choice_unknown"))
 
 
+def _freeze_refused() -> object:
+    from ofo.execution.freeze import FreezeRefused
+
+    return FreezeRefused(detail="3575 units is not below 3511", message=render("send_choice_unknown"))
+
+
 def _preparation() -> object:
     from ofo.execution.partial import PartialChoice, _not_prepared
 
@@ -99,6 +105,7 @@ EXAMPLES: dict[str, Callable[[], object]] = {
     "ofo.execution.safety.CheckFailure": _check_failure,
     "ofo.execution.send_guard.SendRefused": _send_refused,
     "ofo.execution.sequence.SliceRefused": _slice_refused,
+    "ofo.execution.freeze.FreezeRefused": _freeze_refused,
     "ofo.execution.partial.Preparation": _preparation,
     "ofo.strategy.guard.GuardRefused": _guard_refused,
     "ofo.strategy.model.TemplateError": _template_error,
@@ -132,6 +139,7 @@ def test_every_user_facing_subclass_renders_four_parts(name: str) -> None:
     lambda: __import__("ofo.execution.send_guard", fromlist=["x"]).SendRefused("Leg 1 has already expired."),
     lambda: __import__("ofo.strategy.guard", fromlist=["x"]).GuardRefused("The risk changed."),
     lambda: __import__("ofo.execution.sequence", fromlist=["x"]).SliceRefused(detail="d", message="Lots wrong."),
+    lambda: __import__("ofo.execution.freeze", fromlist=["x"]).FreezeRefused(detail="d", message="Too many."),
     lambda: __import__("ofo.strategy.model", fromlist=["x"]).TemplateError("d", message="The template is bad."),
     lambda: __import__("ofo.reconciliation.compare", fromlist=["x"]).ReconciliationError("d", message="Mismatch."),
 ])

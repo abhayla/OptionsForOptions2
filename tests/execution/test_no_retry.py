@@ -33,7 +33,7 @@ from ofo.execution.partial import (
 
 def _prep(catalogue, eligibility, fn=complete_strategy, *extra):  # noqa: ANN001, ANN202
     return fn(plan(), *extra, FakeBroker(three_positions(), statuses()), book_with_three_filled(), FakePlanner(),
-              entry_context(), catalogue, eligibility)
+              entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
 
 
 def test_ac6_failure_shown_with_reason_and_nothing_sent() -> None:

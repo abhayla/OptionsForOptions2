@@ -70,7 +70,7 @@ PENDING: dict[str, dict[str, int]] = {
     'errors/classes.py': {'<module>': 9},
     'execution/partial.py': {'assess': 3, 'submit_confirmed': 2},
     'execution/safety.py': {'__post_init__': 1},
-    'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1, 'slice_quantity': 1},
+    'execution/sequence.py': {'<module>': 1, '_lot_sizes': 1, '_quantities': 1, 'sequence_plan': 1},
     'marketdata/health.py': {'evaluate_health': 1},
     'marketdata/quote.py': {'__post_init__': 3},
     'orders/model.py': {'<module>': 1},
