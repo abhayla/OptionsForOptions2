@@ -214,7 +214,8 @@ def _contract_cat(*symbols: str) -> Catalogue:
     return cat
 
 
-def _leg(cat: Catalogue, ref: str, symbol: str, side: Action, units: int, price: str) -> PlannedLeg:
+def _leg(cat: Catalogue, ref: str, symbol: str, side: Action, units: int,  # noqa: PLR0913 - one leg's fields
+         price: str) -> PlannedLeg:
     (entry,) = cat.entries_for_broker_symbol(ZERODHA, symbol)
     c = entry.contract
     return PlannedLeg(ref, symbol, Leg(side, Instrument(c.instrument_type), c.strike, c.expiry, units, D(price)))

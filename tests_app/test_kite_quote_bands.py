@@ -8,8 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from ofo.broker.kite_endpoints import ALLOWED_CALLS
-from ofo.broker.kite_endpoints import CALLER_KITE_READS
+from ofo.broker.kite_endpoints import ALLOWED_CALLS, CALLER_KITE_READS
 from ofo.broker.kite_http import KiteCallRefused, check_call
 from ofo_app.kite_reads import KiteReadError, KiteReads
 

@@ -20,8 +20,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from ofo.broker import kite_endpoints  # noqa: E402
-from ofo.broker.kite_endpoints import ALLOWED_CALLS, NETWORK_DOORS  # noqa: E402
+from ofo.broker import kite_endpoints
+from ofo.broker.kite_endpoints import ALLOWED_CALLS, NETWORK_DOORS
 
 pytestmark = pytest.mark.repo_scan
 
@@ -93,7 +93,7 @@ def _enclosing_functions(tree: ast.Module) -> dict[int, ast.FunctionDef | ast.As
     return owner
 
 
-def _caller_ok(rel: str, call: ast.Call, imports: dict[str, str], function) -> str | None:
+def _caller_ok(rel: str, call: ast.Call, imports: dict[str, str], function) -> str | None:  # noqa: PLR0911 - one reason each
     """None when the call passes this file's own identity; otherwise why not."""
     if any(k.arg is None for k in call.keywords):
         return "a **kwargs door call cannot be resolved"

@@ -14,7 +14,6 @@ import re
 from decimal import Decimal
 
 import pytest
-
 from ofo.execution import margin_gate
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 

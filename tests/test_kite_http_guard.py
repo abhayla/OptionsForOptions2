@@ -209,7 +209,7 @@ def test_353_a_call_listed_only_for_another_module_is_refused() -> None:
     existing refusal - generated over the whole map, never hand-listed (GET /orders from the margin module included)."""
     pairs = 0
     for caller in ALLOWED_CALLS:
-        for other, calls in ALLOWED_CALLS.items():
+        for calls in ALLOWED_CALLS.values():
             for method, template in calls - ALLOWED_CALLS[caller]:
                 with pytest.raises(kite_http.KiteCallRefused, match="is not an allow-listed Kite call"):
                     kite_http.check_call(method, _sample(template), caller=caller)

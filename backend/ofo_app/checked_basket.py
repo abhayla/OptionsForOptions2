@@ -56,7 +56,7 @@ def _zerodha_margin_source(client: KiteMargin) -> _ZerodhaMargin:
     return _ZerodhaMargin(client)
 
 
-def checked_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *, margin_client: KiteMargin,
+def checked_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *, margin_client: KiteMargin,  # noqa: PLR0913
                    freeze_check: Callable[[ExecutionPlan], FreezeCheck],
                    held: Mapping[InstrumentId, int] | None = None) -> KiteBasket:
     """Build the read-only Kite basket for ``plan`` only if Zerodha says the funds cover the margin these exact orders

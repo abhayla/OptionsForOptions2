@@ -19,13 +19,13 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.broker.kite_auth import KiteSession
+from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT
 from ofo.errors import CATALOGUE, render
 from ofo_app import errors as errors_module
 from ofo_app.broker_config import BrokerConfig, BrokerConfigError, BrokerSettings, load_broker_config
 from ofo_app.db import get_db
 from ofo_app.errors import STATUS_BY_CLASS
 from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
-from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT
 from ofo_app.kite_http import KiteAsyncClient
 from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes

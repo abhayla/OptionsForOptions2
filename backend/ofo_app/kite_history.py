@@ -30,7 +30,8 @@ class CandleFetchError(RuntimeError):
 
 def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
     try:
-        with kite_open_url(url, caller=CALLER_KITE_HISTORY, headers=headers, timeout=20) as response:  # checked against ALLOWED_CALLS first
+        # checked against this module's ALLOWED_CALLS entry first
+        with kite_open_url(url, caller=CALLER_KITE_HISTORY, headers=headers, timeout=20) as response:
             return response.status, response.read().decode("utf-8")
     except HTTPError as exc:
         return exc.code, ""

@@ -21,13 +21,13 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT
 from ofo.broker.session import EndReason, expected_expiry
 from ofo_app import broker_token_store as store
 from ofo_app.broker_config import BrokerSettings, load_broker_config
 from ofo_app.broker_crypto import NONCE_BYTES, TokenCipher, TokenDecryptError, associated_data
 from ofo_app.db import get_db
 from ofo_app.kite_client import HttpKiteAuth, KiteTokenException
-from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT
 from ofo_app.kite_http import KiteAsyncClient
 from ofo_app.main import create_app
 from ofo_app.routes import broker as broker_routes
@@ -244,7 +244,8 @@ def _app(maker, user_ref: str, kite_handler):
             yield session
 
     async def _kite():
-        async with KiteAsyncClient(caller=CALLER_KITE_CLIENT, _test_transport=httpx.MockTransport(kite_handler)) as client:
+        door = KiteAsyncClient(caller=CALLER_KITE_CLIENT, _test_transport=httpx.MockTransport(kite_handler))
+        async with door as client:
             yield HttpKiteAuth(API_KEY, API_SECRET, client)
 
     app.dependency_overrides[get_db] = _db

@@ -97,7 +97,8 @@ def test_closed_constructor_arguments() -> None:
 def test_the_test_seam_is_refused_outside_test_mode(monkeypatch) -> None:
     monkeypatch.setitem(egress._state, "test", False)
     with pytest.raises(EgressRefused):
-        kite_http.KiteClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+        kite_http.KiteClient(caller=CALLER_KITE_READS,
+                             _test_transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     with pytest.raises(EgressRefused):
         kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
                            connect=lambda *a, **k: None)
@@ -183,7 +184,8 @@ async def test_the_async_http_door_reaches_an_allowed_path_inside_door_context_o
         seen.append(egress._in_door())
         return httpx.Response(200, json={})
 
-    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_CLIENT, _test_transport=httpx.MockTransport(handler)) as client:
+    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_CLIENT,
+                                         _test_transport=httpx.MockTransport(handler)) as client:
         assert (await client.post(KITE + "/session/token", data={"a": "b"})).status_code == 200  # noqa: PLR2004
     assert seen == [True] and not egress._in_door()
 
@@ -240,14 +242,16 @@ def door_entries(monkeypatch) -> list[int]:
 
 def test_r8_kite_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
     from ofo.broker.kite_http import KiteCallRefused
-    with kite_http.kite_client(caller=CALLER_KITE_READS, base_url=f"http://{TEST_NET}", timeout=2) as client, pytest.raises(KiteCallRefused):
+    with kite_http.kite_client(caller=CALLER_KITE_READS,
+                               base_url=f"http://{TEST_NET}", timeout=2) as client, pytest.raises(KiteCallRefused):
         client.post("/x")
     assert door_entries == []
 
 
 async def test_r8_kite_async_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
     from ofo.broker.kite_http import KiteCallRefused
-    async with kite_http.kite_async_client(caller=CALLER_KITE_READS, base_url=f"http://{TEST_NET}", timeout=2) as client:
+    async with kite_http.kite_async_client(caller=CALLER_KITE_READS,
+                                           base_url=f"http://{TEST_NET}", timeout=2) as client:
         with pytest.raises(KiteCallRefused):
             await client.get("/x")
     assert door_entries == []
@@ -281,7 +285,8 @@ def test_r9_a_trace_extension_is_refused_at_the_door_signature() -> None:
 def test_r9_a_hand_built_request_with_a_trace_is_refused_at_the_last_hop() -> None:
     seen: list[str] = []
     request = httpx.Request("GET", KITE + "/user/margins", extensions={"trace": _trace_attack(seen)})
-    with kite_http.KiteClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client,             pytest.raises(kite_http.KiteCallRefused):
+    with kite_http.KiteClient(caller=CALLER_KITE_READS,
+                              _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client,             pytest.raises(kite_http.KiteCallRefused):
         httpx.Client.send(client, request)
     assert seen == []
 
@@ -289,7 +294,8 @@ def test_r9_a_hand_built_request_with_a_trace_is_refused_at_the_last_hop() -> No
 async def test_r9_a_hand_built_async_request_with_a_trace_is_refused_at_the_last_hop() -> None:
     seen: list[str] = []
     request = httpx.Request("POST", KITE + "/session/token", extensions={"trace": _trace_attack(seen)})
-    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
+    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_READS,
+                                         _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
         with pytest.raises(kite_http.KiteCallRefused):
             await httpx.AsyncClient.send(c, request)
     assert seen == []

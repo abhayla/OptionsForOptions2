@@ -367,7 +367,7 @@ def test_transport_goes_through_the_kite_door_and_a_refusal_fails_closed(monkeyp
         def __exit__(self, *a):
             return False
 
-    def fake_open(url, *, caller, method="GET", data=None, headers=None, timeout=20):
+    def fake_open(url, *, caller, method="GET", data=None, headers=None, timeout=20):  # noqa: PLR0913 - open_url's
         seen.append((caller, method, url, data, timeout))
         return _Ok()
 

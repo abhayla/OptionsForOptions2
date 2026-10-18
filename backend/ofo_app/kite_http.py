@@ -9,7 +9,8 @@ closed. The constructor takes only ``caller``, ``base_url``, ``timeout`` and ``h
 
 Each client is built for ONE calling module (``caller``: its ``kite_endpoints.CALLER_*`` constant, #353) and may make
 only that module's calls. At the LAST hop (``_send_single_request``: after redirects, to the absolute URL httpx merged
-with ``base_url``) the door applies ``ofo.broker.kite_http.check_call`` for that caller, reads the body, refuses any request extension but a plain timeout,
+with ``base_url``) the door applies ``ofo.broker.kite_http.check_call`` for that caller, reads the body, refuses any
+request extension but a plain timeout,
 and builds a FRESH request from plain bytes. Only then does it open the egress gate's door permission
 (``ofo.broker.egress``), around the transport call alone: cookies, logging and the response wrapping run after it.
 The permission holds only for the door's own call chain (its thread, task and frame, through trusted libraries), so

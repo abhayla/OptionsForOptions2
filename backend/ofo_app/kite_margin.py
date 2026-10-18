@@ -107,10 +107,11 @@ class BasketMargin:
     orders: tuple[OrderMargin, ...]
 
 
-def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *, caller: str,
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *, caller: str,  # noqa: PLR0913 - the transport shape plus the #353 identity
                      timeout: float = 20) -> tuple[int, str]:
     """One request through the urllib door for ``caller`` (a ``kite_endpoints.CALLER_*`` constant, #353): only that
-    module's calls are allowed. Clients use their own transport (``margin_transport``, ``kite_reads.reads_transport``)."""
+    module's calls are allowed. Each client uses its own transport (``margin_transport``,
+    ``kite_reads.reads_transport``)."""
     data = None if body is None else body.encode("utf-8")
     try:
         with kite_open_url(url, caller=caller, method=method, data=data, headers=headers,

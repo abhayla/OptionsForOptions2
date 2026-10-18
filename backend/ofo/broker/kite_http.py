@@ -173,7 +173,7 @@ def plain_timeout(timeout: object) -> float:
     return float(timeout)  # type: ignore[arg-type]
 
 
-def open_url(url: str, *, caller: str, method: str = "GET", data: bytes | None = None,
+def open_url(url: str, *, caller: str, method: str = "GET", data: bytes | None = None,  # noqa: PLR0913 - keyword-only, plain data
              headers: _Mapping[str, str] | None = None, timeout: float = 20):
     """``urllib`` request through the door: plain data only (exact types, checked before anything else), then the
     URL check for ``caller`` (its ``kite_endpoints.CALLER_*`` constant), then sent inside the egress gate's door

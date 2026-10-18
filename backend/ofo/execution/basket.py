@@ -227,7 +227,7 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
     return out
 
 
-def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,
+def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,  # noqa: PLR0913 - #338 held net
                  freeze_check: FreezeGate, margin_source: MarginSource,
                  held: Mapping[InstrumentId, int] | None = None) -> KiteBasket:
     """Turn ``plan`` into a basket of read-only LIMIT orders in plan order, or refuse the whole basket.

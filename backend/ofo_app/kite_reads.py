@@ -26,6 +26,7 @@ from typing import Final
 
 from ofo.broker.kite_endpoints import CALLER_KITE_READS
 from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
+
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
 
 log = logging.getLogger("ofo_app.kite_reads")
