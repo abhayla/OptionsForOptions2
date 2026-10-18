@@ -179,7 +179,8 @@ decisions:
   ADR-106: all          # delivery process: tier by data flow, round cap per item, verifier timing, lock, stacked PRs (owner 2026-10-17)
   ADR-107: 4b           # live-run gate: each open Tier A deferred issue triaged bears-on-run yes/no; only yes blocks (owner 2026-10-17)
   ADR-108: 4b           # GC-3 live test: eight operating rules while F-42's criteria fail; trades the 2026-10-27 expiry (owner 2026-10-17)
-  ADR-109: 4b           # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
+  ADR-110: 4b           # open plan on Positions: waiting for Check, strategy blocked until the plan's orders are final at Zerodha (owner 2026-10-18)
+  ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
