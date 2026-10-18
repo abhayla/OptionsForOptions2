@@ -16,8 +16,17 @@ const SYMBOL = 'NIFTY26O1923650CE'
 const reply = (zerodha, outside, blocked = false) => ({
   read_at: '2026-10-16T12:21:04+05:30',
   blocked,
-  contracts: [{ tradingsymbol: SYMBOL, zerodha_units: zerodha, outside_units: outside, blocked, own_units: 65, own: [{ strategy_id: 1, units: 65, blocked }] }],
+  blocked_strategy_ids: blocked ? [1] : [],
+  contracts: [{ tradingsymbol: SYMBOL, zerodha_units: zerodha, outside_units: outside, blocked, own_units: 65, pending: false, pending_plans: [], own: [{ strategy_id: 1, units: 65, blocked }] }],
 })
+// ADR-110's example: strategy 1 BUY 65 placed on Kite's page, Zerodha 65, Check not pressed (the route's pending shape).
+const pendingReply = () => ({
+  read_at: '2026-10-16T12:21:04+05:30',
+  blocked: true,
+  blocked_strategy_ids: [1],
+  contracts: [{ tradingsymbol: SYMBOL, zerodha_units: 65, own: [], own_units: null, outside_units: null, pending: true, pending_plans: [{ strategy_id: 1, plan_number: 1 }], blocked: true }],
+})
+const WAITING = 'Order placed - waiting for Check with Zerodha'
 
 async function show(view) {
   const router = createRouter({
@@ -59,9 +68,35 @@ describe('Positions pages', () => {
   it('AC-3: Zerodha 0 against own 65 shows the blocked notice', async () => {
     answer = () => Promise.resolve({ data: reply(0, 0, true) })
     const w = await show('linked')
-    expect(w.find('[data-testid=position-own-blocked]').exists()).toBe(true)
-    expect(w.find('[data-testid=positions-blocked]').exists()).toBe(true)
+    expect(w.get('[data-testid=position-own-blocked]').text()).toBe('(blocked until its position matches Zerodha)')
+    expect(w.get('[data-testid=positions-blocked]').text()).toBe('A strategy is blocked until its position matches Zerodha.')
     expect(w.find('[data-testid=position-outside-lots]').exists()).toBe(false)
+    expect(w.text()).not.toContain('fewer units')
+  })
+
+  it('ADR-110: current view shows a pending row as waiting, 65 not yet confirmed, a link to Execute, and no split', async () => {
+    answer = () => Promise.resolve({ data: pendingReply() })
+    const w = await show('current')
+    expect(w.get('[data-testid=position-zerodha]').text()).toBe('65')
+    expect(w.get('[data-testid=position-unconfirmed]').text()).toBe('(not yet confirmed)')
+    expect(w.get('[data-testid=position-waiting]').text()).toBe(WAITING)
+    expect(w.get('[data-testid=position-pending-link]').attributes('href')).toBe('/strategy/1/execute')
+    expect(w.find('[data-testid=position-own]').exists()).toBe(false)
+    expect(w.find('[data-testid=position-outside]').exists()).toBe(false)
+    expect(w.get('[data-testid=position-row]').text()).not.toMatch(/\b0\b/)
+  })
+
+  it('ADR-110: linked view shows a pending row as waiting, Zerodha 65 not yet confirmed, the strategy blocked, no split', async () => {
+    answer = () => Promise.resolve({ data: pendingReply() })
+    const w = await show('linked')
+    expect(w.get('[data-testid=position-waiting]').text()).toBe(WAITING)
+    expect(w.get('[data-testid=position-zerodha]').text()).toBe('65')
+    expect(w.get('[data-testid=position-unconfirmed]').text()).toBe('not yet confirmed')
+    expect(w.get('[data-testid=position-pending-link]').attributes('href')).toBe('/strategy/1/execute')
+    expect(w.get('[data-testid=position-pending]').text()).toContain('(blocked until its position matches Zerodha)')
+    expect(w.find('[data-testid=position-own-lots]').exists()).toBe(false)
+    expect(w.find('[data-testid=position-outside-lots]').exists()).toBe(false)
+    expect(w.get('[data-testid=position-row]').text()).not.toMatch(/\b0\b|null/)
   })
 
   it('AC-3: an empty book says so in words', async () => {

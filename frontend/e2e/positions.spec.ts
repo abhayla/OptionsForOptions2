@@ -10,9 +10,9 @@ const READ_AT = '2026-10-16T12:21:04+05:30'
 async function answer(page: Page, zerodha: number, outside: number, blocked = false) {
   await page.route('**/api/positions', (route) => route.fulfill({
     json: {
-      read_at: READ_AT, blocked,
+      read_at: READ_AT, blocked, blocked_strategy_ids: blocked ? [1] : [],
       contracts: [{ tradingsymbol: SYMBOL, zerodha_units: zerodha, outside_units: outside, blocked, own_units: 65,
-        own: [{ strategy_id: 1, units: 65, blocked }] }],
+        pending: false, pending_plans: [], own: [{ strategy_id: 1, units: 65, blocked }] }],
     },
   }))
 }
@@ -61,4 +61,25 @@ test('AC-3: a refused read shows the catalogue message, not an empty list', asyn
   await expect(page.getByTestId('positions-page')).toContainText('Your Zerodha account is not connected')
   await expect(page.getByTestId('positions-empty')).toHaveCount(0)
   await expect(page.getByTestId('position-row')).toHaveCount(0)
+})
+
+test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet confirmed, no split, and the Execute link', async ({ page }) => {
+  await page.route('**/api/positions', (route) => route.fulfill({
+    json: {
+      read_at: READ_AT, blocked: true, blocked_strategy_ids: [1],
+      contracts: [{ tradingsymbol: SYMBOL, zerodha_units: 65, own: [], own_units: null, outside_units: null,
+        pending: true, pending_plans: [{ strategy_id: 1, plan_number: 1 }], blocked: true }],
+    },
+  }))
+  await page.goto('/positions/strategy-linked-positions')
+  await expect(page.getByTestId('position-waiting')).toHaveText('Order placed - waiting for Check with Zerodha')
+  await expect(page.getByTestId('position-zerodha')).toHaveText('65')
+  await expect(page.getByTestId('position-unconfirmed')).toHaveText('not yet confirmed')
+  await expect(page.getByTestId('position-pending-link')).toHaveAttribute('href', '/strategy/1/execute')
+  await expect(page.getByTestId('position-own-lots')).toHaveCount(0)
+  await expect(page.getByTestId('position-outside-lots')).toHaveCount(0)
+  await page.goto('/positions/current-positions')
+  await expect(page.getByTestId('position-waiting')).toBeVisible()
+  await expect(page.getByTestId('position-own')).toHaveCount(0)
+  await expect(page.getByTestId('position-outside')).toHaveCount(0)
 })

@@ -1085,6 +1085,25 @@
         "title": "PayoffOut",
         "type": "object"
       },
+      "PendingPlanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "plan_number": {
+            "title": "Plan Number",
+            "type": "integer"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "plan_number"
+        ],
+        "title": "PendingPlanOut",
+        "type": "object"
+      },
       "PlannedEntriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -1244,8 +1263,15 @@
             "type": "boolean"
           },
           "outside_units": {
-            "title": "Outside Units",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Units"
           },
           "own": {
             "items": {
@@ -1255,8 +1281,26 @@
             "type": "array"
           },
           "own_units": {
-            "title": "Own Units",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Own Units"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "pending_plans": {
+            "items": {
+              "$ref": "#/components/schemas/PendingPlanOut"
+            },
+            "title": "Pending Plans",
+            "type": "array"
           },
           "tradingsymbol": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -1274,6 +1318,8 @@
           "own",
           "own_units",
           "outside_units",
+          "pending",
+          "pending_plans",
           "blocked"
         ],
         "title": "PositionContractOut",
@@ -1285,6 +1331,13 @@
           "blocked": {
             "title": "Blocked",
             "type": "boolean"
+          },
+          "blocked_strategy_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Blocked Strategy Ids",
+            "type": "array"
           },
           "contracts": {
             "items": {
@@ -1302,7 +1355,8 @@
         "required": [
           "read_at",
           "contracts",
-          "blocked"
+          "blocked",
+          "blocked_strategy_ids"
         ],
         "title": "PositionsOut",
         "type": "object"
