@@ -10,8 +10,8 @@ minutes after the verifier has finished (measured 2026-10-18, GC-2g: the W-112 v
                 `snap_path`, imported by file path, never re-derived here) is appended to the per-agent ledger
                 <verifier-write-guard>/owners/<agent_id>.txt (the ledger records its owner, run-discipline D2).
   SubagentStop  a verifier: each ledger line that names a `<16 hex>.json` file directly inside the snap folder is
-                deleted if it is still there; any other line (another folder, `..`, a link) is left alone. Then the
-                ledger is deleted. A ledger that is not valid UTF-8 deletes nothing and is kept.
+                deleted if it is still there; any other line (another folder, `..` out of it, another name) is left
+                alone. Then the ledger is deleted. A ledger that is not valid UTF-8 deletes nothing and is kept.
 
 Only this agent's ledger is read, so a parallel verifier's live snapshot is never touched: its tool_use_ids are in
 its own ledger. A verifier killed without SubagentStop leaves its snapshot; the 15-minute age rule in
@@ -75,16 +75,15 @@ def record(data: dict, kit: ModuleType) -> Path | None:
 
 
 def own_snapshot(line: str) -> Path | None:
-    """The snapshot file a ledger line names, only when it is a `<16 hex>.json` regular file (not a link) directly
-    inside the snap folder; else None."""
+    """The snapshot file a ledger line names, only when its name is `<16 hex>.json` and its folder, resolved, IS the
+    snap folder (allow-list: anything else, `..` or another folder included, is None). A link there is removed as a
+    link; its target is never touched."""
     from verifier_inflight_gate import snap_dir  # noqa: PLC0415
 
     p = Path(line)
-    if not p.is_absolute() or not SNAP_NAME.fullmatch(p.name) or ".." in p.parts:
+    if not SNAP_NAME.fullmatch(p.name):
         return None
     if os.path.normcase(os.path.realpath(p.parent)) != os.path.normcase(os.path.realpath(snap_dir())):
-        return None
-    if p.is_symlink() or not p.is_file():
         return None
     return p
 
@@ -94,10 +93,14 @@ def clean(data: dict, kit: ModuleType) -> list[Path]:
     if not _is_verifier(kit, data):
         return []
     ledger = ledger_path(data.get("agent_id"))
-    if ledger is None or not ledger.is_file():
+    if ledger is None:
         return []
     try:
-        lines = ledger.read_bytes().decode("utf-8").splitlines()
+        raw = ledger.read_bytes()
+    except OSError:
+        return []  # no ledger: this verifier made no shell call
+    try:
+        lines = raw.decode("utf-8").splitlines()
     except UnicodeDecodeError:
         return []  # corrupt: delete nothing, keep the ledger for a human
     deleted = []
@@ -116,9 +119,7 @@ def clean(data: dict, kit: ModuleType) -> list[Path]:
 
 def main() -> int:
     try:
-        data = json.loads(sys.stdin.read())
-        if not isinstance(data, dict):
-            return 0
+        data = json.loads(sys.stdin.read())  # a non-object fails on .get below and exits 0
         event = data.get("hook_event_name")
         if event not in ("PreToolUse", "SubagentStop"):
             return 0
