@@ -999,6 +999,10 @@
           "end": {
             "type": "string",
             "title": "End"
+          },
+          "customised": {
+            "type": "boolean",
+            "title": "Customised"
           }
         },
         "additionalProperties": false,
@@ -1014,7 +1018,8 @@
           "totals",
           "step",
           "start",
-          "end"
+          "end",
+          "customised"
         ],
         "title": "ScenarioOut"
       },

@@ -38,13 +38,20 @@ describe('AC-4: the request fields of a pick', () => {
 })
 
 describe('AC-6: a late answer for another pick is not shown', () => {
-  const sc = { view: 'at_expiry', step: '100', start: '22800', end: '23600' }
+  const sc = { view: 'at_expiry', step: '100', start: '22800', end: '23600', customised: true }
   it('matches the same pick and refuses another view or range', () => {
     const c = { view: 'at_expiry', rangeStart: '22800', rangeEnd: '23600' }
     expect(matchesChoice({ scenario: sc }, c)).toBe(true)
     expect(matchesChoice({ scenario: { ...sc, view: 'estimated_now' } }, c)).toBe(false)
     expect(matchesChoice({ scenario: { ...sc, end: '23700' } }, c)).toBe(false)
     expect(matchesChoice({ scenario: null }, c)).toBe(true)
+  })
+  it('custom then Default range: a late push for the old custom range is dropped', () => {
+    const late = { scenario: { view: 'at_expiry', step: '100', start: '22800', end: '23600', customised: true } }
+    expect(matchesChoice(late, { view: 'at_expiry', rangeStart: '22800', rangeEnd: '23600' })).toBe(true)
+    expect(matchesChoice(late, DEFAULT_CHOICE)).toBe(false)
+    expect(matchesChoice({ scenario: { ...late.scenario, customised: false } }, DEFAULT_CHOICE)).toBe(true)
+    expect(matchesChoice({ scenario: { ...late.scenario, customised: false } }, { view: 'at_expiry', rangeStart: '22800', rangeEnd: '23600' })).toBe(false)
   })
 })
 

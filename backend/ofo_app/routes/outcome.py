@@ -28,7 +28,7 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
-from ofo.scenario.config import ScenarioSettings
+from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.table import UXLevel
@@ -165,11 +165,12 @@ class OutcomeRequest(BaseModel):
         self.scenario_choice()
         return self
 
-    def scenario_choice(self) -> RangeOverride | None:
-        """The range override this request asks for (None: the computed default range). Step: Admin config."""
+    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
+        """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
+        default range). The same pair is checked here and handed to build_outcome."""
         base = ScenarioSettings().for_index(self.underlying)
         pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
-        return resolve_range(base, *pick)
+        return base, resolve_range(base, *pick)
 
 
 async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
@@ -253,6 +254,7 @@ class ScenarioOut(ApiModel):
     step: Money
     start: Money
     end: Money
+    customised: bool  # true when the user's range was used, false for the computed default range
 
 
 class PointOut(ApiModel):
@@ -417,8 +419,9 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:
+            config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
-                                override=req.scenario_choice())
+                                config=config, override=override)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)

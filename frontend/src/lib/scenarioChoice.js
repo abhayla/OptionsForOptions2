@@ -35,6 +35,6 @@ export function matchesChoice(body, choice) {
   if (!sc) return true // no scenario in the answer (not connected / refused): nothing to compare
   if (sc.view !== choice.view) return false
   const want = choiceFields(choice)
-  if (want.range_start && (sc.start !== want.range_start || sc.end !== want.range_end)) return false
-  return true
+  if (!want.range_start) return sc.customised !== true // the default pick never accepts an answer for a custom range
+  return sc.customised === true && sc.start === want.range_start && sc.end === want.range_end
 }

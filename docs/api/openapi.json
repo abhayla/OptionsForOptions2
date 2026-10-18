@@ -1669,6 +1669,10 @@
             "title": "Available",
             "type": "boolean"
           },
+          "customised": {
+            "title": "Customised",
+            "type": "boolean"
+          },
           "end": {
             "title": "End",
             "type": "string"
@@ -1751,7 +1755,8 @@
           "totals",
           "step",
           "start",
-          "end"
+          "end",
+          "customised"
         ],
         "title": "ScenarioOut",
         "type": "object"

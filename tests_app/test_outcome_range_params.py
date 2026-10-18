@@ -26,9 +26,14 @@ def _levels(out: dict) -> list[str]:
 
 async def test_custom_range_gives_exactly_the_hand_computed_grid(replayed):  # noqa: F811
     """AC-4: NIFTY range 22,800-23,600 at the Admin step 100 -> the 9 grid levels 22800 ... 23600 (800 / 100 + 1), plus
-    the live level (AC-2) and any breakeven inside the range (AC-5), nothing else."""
+    the live level (AC-2) and any breakeven inside the range (AC-5), nothing else.
+
+    Breakevens by hand from the four planned entries: SELL 22800CE 39.15 + SELL 22400PE 82.75 - BUY 23000CE 12.95
+    - BUY 22200PE 35.80 = 73.15 net credit per unit; upper breakeven 22800 + 73.15 = 22873.15 (inside the range),
+    lower 22400 - 73.15 = 22326.85 (below 22800, so not a column)."""
     default = (await _post(_body(replayed), replayed)).json()
     assert default["scenario"]["step"] == str(NIFTY_STEP)
+    assert default["scenario"]["customised"] is False
     body = dict(_body(replayed), range_start="22800", range_end="23600")
     resp = await _post(body, replayed)
     assert resp.status_code == HTTPStatus.OK, resp.text
@@ -38,7 +43,9 @@ async def test_custom_range_gives_exactly_the_hand_computed_grid(replayed):  # n
     levels = _levels(out)
     inserted = set(levels) - set(grid)
     assert SPOT in inserted  # the live level is shown even though the range excludes it
-    breakevens = {b for b in default["summary"]["breakevens"] if Decimal("22800") <= Decimal(b) <= Decimal("23600")}
+    assert out["summary"]["breakevens"] == ["22326.85", "22873.15"]
+    assert out["scenario"]["customised"] is True
+    breakevens = {"22873.15"}
     assert inserted == {SPOT} | (breakevens - set(grid))
     assert set(grid) <= set(levels)
     assert levels == sorted(levels, key=Decimal)  # the columns stay in price order
