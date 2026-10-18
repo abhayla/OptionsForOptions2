@@ -340,32 +340,53 @@ def test_ac5_mutant_removing_the_shared_contract_refusal_is_caught():
         resolution_module._joint_holders = original
 
 
-@pytest.mark.parametrize("limit,blocked", [(75, True), (76, False), (None, False)])
-def test_adr092_closing_proposal_is_one_order_and_blocks_at_the_freeze_limit(limit, blocked):
-    """ADR-092 (issue 63): the 75-unit restoring order is ONE order; a stored limit of 75 (units not below it) or no
-    refuses the proposal with the reason, and nothing is recorded; a limit of 76 allows it; no stored limit allows it
-    with the review's warning (ADR-081, ADR-037)."""
+UNKNOWN = "No exchange freeze limit is stored for "
+
+
+@pytest.mark.parametrize("limit,lot,blocked", [(75, 25, True), (76, 75, False), (None, 75, False), (75, 75, False),
+                                               (64, 75, False)])
+def test_adr092_closing_proposal_is_one_order_and_blocks_at_the_freeze_limit(limit, lot, blocked):
+    """ADR-092 (issue 63): the 75-unit restoring order is ONE order. A usable stored limit of 75 with lot 25 (units
+    not below it) refuses the proposal with the reason and the largest allowed order (50 units, 2 lots), and nothing
+    is recorded; 76 allows it; no stored limit, or one that allows no whole lot of 75 (75, 64: bad stored data, round
+    2 finding 2), allows it with the review's warning (ADR-081, ADR-037)."""
     rec, audit, n, report = flagged()
-    stored = None if limit is None else StoredFreeze(limit, 75, FREEZE_DATE)
+    stored = None if limit is None else StoredFreeze(limit, lot, FREEZE_DATE)
     limits = {BC23600: ContractFreeze("NIFTY26O0623600CE", stored)}
     if not blocked:
         res = _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore",
                                      audit=audit, freeze_limits=limits)
         assert res.proposal.orders == (ProposedOrder(Action.BUY, BC23600, 75),)
-        assert [display_text(w).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
-                for w in res.proposal.freeze_warnings] == ([True] if limit is None else [])
+        assert [display_text(w).startswith(UNKNOWN + "NIFTY26O0623600CE,")
+                for w in res.proposal.freeze_warnings] == ([] if limit == 76 else [True])
         return
     with pytest.raises(FreezeRefused) as err:
         _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
                                freeze_limits=limits)
     text = display_text(err.value.message)
-    assert "largest single order allowed is 0 units (0 lots)" in text
+    assert "largest single order allowed is 50 units (2 lots)" in text
     assert len(audit.events) == n  # nothing recorded
 
 
-def test_adr092_closing_proposal_needs_a_symbol_for_every_contract():
-    """A contract with no ContractFreeze entry (no symbol to name it) is a refused input, never a silent pass."""
+@pytest.mark.parametrize("freeze_limits", [{}, None])
+def test_adr092_closing_proposal_without_an_entry_warns_naming_the_contract_from_its_terms(freeze_limits):
+    """Round 2 finding 1 (ADR-081 "the review warns"; ADR-037): a contract with no ContractFreeze entry (or
+    ``freeze_limits=None``) is never a refusal: ONE order and the unknown warning, naming the contract from its terms."""
+    rec, audit, n, report = flagged()
+    res = _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
+                                 freeze_limits=freeze_limits)
+    assert res.proposal.orders == (ProposedOrder(Action.BUY, BC23600, 75),)
+    assert [display_text(w).split(",")[0] for w in res.proposal.freeze_warnings] == [
+        UNKNOWN + "NIFTY-CE-23600-20261027"]
+    assert len(audit.events) == n + 1  # recorded once, as a proposal
+
+
+def test_adr092_closing_proposal_warns_on_a_stale_stored_limit():
+    """Round 2 finding 3: a limit from a file more than 8 days before the proposal's IST day adds the age warning, as
+    the review's freeze_check does; the limit still applies."""
     rec, audit, _, report = flagged()
-    with pytest.raises(ReconciliationError, match="no trading symbol"):
-        _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
-                               freeze_limits={})
+    stale = StoredFreeze(1800, 75, datetime.date(2026, 9, 1))  # 30 days before at(20) = 2026-10-01
+    res = _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
+                                 freeze_limits={BC23600: ContractFreeze("NIFTY26O0623600CE", stale)})
+    assert [display_text(w).startswith("The freeze limit for NIFTY26O0623600CE was last read from the exchange file "
+                                       "of 01 Sep 2026, 30 days ago") for w in res.proposal.freeze_warnings] == [True]

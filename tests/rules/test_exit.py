@@ -156,8 +156,37 @@ def test_adr092_rule_proposal_blocks_55_lots_and_prepares_54_lots_as_one_order()
     missing = _exit_response(55, None)
     assert [o.quantity for o in missing.proposal.orders] == [3575] and missing.blocked == ()
     assert display_text(missing.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O0623400CE")
-    with pytest.raises(ValueError, match="no trading symbol"):
-        leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 65, D("50.00"))
-        rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
-        respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
-                freeze_limits={})
+
+
+@pytest.mark.parametrize("freeze_limits", [{}, None])
+def test_round2_rule_proposal_without_an_entry_warns_naming_the_leg_from_its_terms(freeze_limits):
+    """Round 2 finding 1 (ADR-081 "the review warns"; ADR-037): a leg with no ContractFreeze entry (or
+    ``freeze_limits=None``) still gets its alert and ONE proposed order with the unknown warning, never an exception."""
+    leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 65, D("50.00"))
+    rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
+    response = respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
+                       freeze_limits=freeze_limits)
+    assert response.alert.startswith("Your rule was triggered") and response.blocked == ()
+    assert [o.quantity for o in response.proposal.orders] == [65]
+    assert [display_text(w).split(",")[0] for w in response.warnings] == [
+        "No exchange freeze limit is stored for CE-23400-20261027"]
+
+
+@pytest.mark.parametrize("limit", [64, 65])
+def test_round2_rule_proposal_with_a_limit_below_one_lot_warns_and_proposes(limit):
+    """Round 2 finding 2: a stored limit that allows no whole lot of 65 is bad stored data: one order + the warning."""
+    response = _exit_response(1, StoredFreeze(limit, 65, datetime.date(2026, 10, 15)))
+    assert [o.quantity for o in response.proposal.orders] == [65] and response.blocked == ()
+    assert display_text(response.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O0623400CE,")
+
+
+def test_round2_rule_proposal_warns_on_a_stale_stored_limit():
+    """Round 2 finding 3: a limit read more than 8 days before the evaluation's IST day (2026-10-20) warns its age;
+    the limit still applies (55 lots blocked)."""
+    stale = StoredFreeze(3511, 65, datetime.date(2026, 10, 11))  # 9 days
+    response = _exit_response(54, stale)
+    assert [o.quantity for o in response.proposal.orders] == [3510]
+    assert [display_text(w).startswith("The freeze limit for NIFTY26O0623400CE was last read from the exchange file "
+                                       "of 11 Oct 2026, 9 days ago") for w in response.warnings] == [True]
+    assert _exit_response(55, stale).proposal is None
+    assert _exit_response(54, StoredFreeze(3511, 65, datetime.date(2026, 10, 12))).warnings == ()  # 8 days: fresh

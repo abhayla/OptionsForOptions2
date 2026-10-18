@@ -156,11 +156,11 @@ def test_attack_exactly_at_the_largest_allowed_order_is_one_order_one_lot_more_i
     """Attack 1: 54 lots (3,510) passes; 55 lots (3,575) blocks; the shared check and the review agree."""
     if blocked:
         with pytest.raises(FreezeRefused) as err:
-            require_within_freeze("NIFTY26O0623600CE", units, NIFTY)
+            require_within_freeze("NIFTY26O0623600CE", units, NIFTY, today=TODAY)
         assert LARGEST in display_text(err.value.message)
     else:
-        assert require_within_freeze("NIFTY26O0623600CE", units, NIFTY) is None
-    warning = require_within_freeze("NIFTY26O0623600CE", units, None)
+        assert require_within_freeze("NIFTY26O0623600CE", units, NIFTY, today=TODAY) == ()
+    (warning,) = require_within_freeze("NIFTY26O0623600CE", units, None, today=TODAY)
     assert display_text(warning).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
     assert (exceeded_message("NIFTY26O0623600CE", units, NIFTY) is not None) is blocked
 
@@ -169,8 +169,8 @@ def test_attack_a_unit_count_equal_to_the_limit_is_blocked() -> None:
     """Attack 1 (boundary, F-36): the limit itself is not allowed (allowed exactly when units are BELOW it)."""
     at_limit = StoredFreeze(130, 65, FILE_DATE)
     with pytest.raises(FreezeRefused):
-        require_within_freeze("NIFTY26O0623600CE", 130, at_limit)
-    require_within_freeze("NIFTY26O0623600CE", 65, at_limit)
+        require_within_freeze("NIFTY26O0623600CE", 130, at_limit, today=TODAY)
+    assert require_within_freeze("NIFTY26O0623600CE", 65, at_limit, today=TODAY) == ()
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
@@ -186,12 +186,79 @@ def test_attack_no_stored_limit_warns_and_never_blocks_even_at_55_lots(kind, cat
     assert not with_limit.ready and with_limit.warnings == ()
 
 
+@pytest.mark.parametrize("limit", [64, 65])
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
-def test_attack_a_stored_limit_below_one_lot_blocks_every_order(kind, catalogue, eligibility) -> None:
-    """B4(d) below one lot: a limit of 65 with lot 65 allows no order at all (largest allowed 0 lots)."""
-    prep = _flow(kind, 1, catalogue, eligibility, limit=65)
-    assert not prep.ready and prep.orders == ()
-    assert "the largest single order allowed is 0 units (0 lots)" in prep.text
+def test_attack_a_stored_limit_below_one_lot_warns_as_unknown_and_never_blocks(kind, limit, catalogue,
+                                                                              eligibility) -> None:
+    """Finding 2 (round 2): a stored limit that allows no whole lot (64 or 65 with NIFTY lot 65) is bad stored data;
+    blocking on it would refuse even a 1-lot exit. It is treated as no limit: ONE order plus the unknown warning."""
+    prep = _flow(kind, 1, catalogue, eligibility, limit=limit)
+    assert prep.ready, prep.text
+    assert [o.quantity for o in prep.orders] == [65] * len(prep.orders)
+    assert [display_text(w).startswith(f"No exchange freeze limit is stored for {o.contract}")
+            for w, o in zip(prep.warnings, prep.orders, strict=True)] == [True] * len(prep.orders)
+    usable = _flow(kind, 1, catalogue, eligibility, limit=66)  # the smallest usable limit: one lot allowed, no warning
+    assert usable.ready and usable.warnings == ()
+
+
+@pytest.mark.parametrize("kind", ["complete", "retry", "close"])
+def test_attack_a_zero_stored_limit_warns_as_unknown_and_never_blocks(kind, catalogue, eligibility) -> None:
+    """Zero (bad stored data that cannot be a StoredFreeze): the order is prepared with the unknown warning."""
+    prep = _flow(kind, BLOCKED_LOTS, catalogue, eligibility, limit=0)
+    assert prep.ready, prep.text
+    assert [display_text(w).startswith("No exchange freeze limit is stored for") for w in prep.warnings]         == [True] * len(prep.orders)
+
+
+@pytest.mark.parametrize("kind", ["complete", "retry", "close"])
+def test_attack_a_stale_stored_limit_warns_on_every_path(kind, catalogue, eligibility) -> None:
+    """Finding 3 (round 2): the stale-file warning reaches Complete / Retry / Close, as the review's freeze_check:
+    the limit still applies (55 lots blocked), and a 54-lot order is prepared with the age warning."""
+    stale = datetime.date(2026, 9, 1)  # 28 days before the fake broker read's IST day (more than 8)
+
+    class _StaleStore(_Stored):
+        def __getitem__(self, key: object) -> tuple[int, datetime.date]:
+            return (LIMIT, stale)
+
+    qty = ALLOWED_LOTS * LOT
+    book, broker = _state(qty, (0, 1, 2))
+    args = (_plan(qty), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    if kind == "complete":
+        prep = complete_strategy(*args, stored_freeze=_StaleStore(LIMIT))
+    elif kind == "retry":
+        plan, *rest = args
+        prep = retry_failed_leg(plan, BUY_CE, *rest, stored_freeze=_StaleStore(LIMIT))
+    else:
+        prep = close_partial_strategy(*args, stored_freeze=_StaleStore(LIMIT))
+    assert prep.ready, prep.text
+    texts = [display_text(w) for w in prep.warnings]
+    blocked_book, blocked_broker = _state(BLOCKED_LOTS * LOT, (0, 1, 2))
+    blocked_args = (_plan(BLOCKED_LOTS * LOT), blocked_broker, blocked_book, FakePlanner(), entry_context(), catalogue,
+                    eligibility)
+    if kind == "complete":
+        blocked = complete_strategy(*blocked_args, stored_freeze=_StaleStore(LIMIT))
+    elif kind == "retry":
+        bplan, *brest = blocked_args
+        blocked = retry_failed_leg(bplan, BUY_CE, *brest, stored_freeze=_StaleStore(LIMIT))
+    else:
+        blocked = close_partial_strategy(*blocked_args, stored_freeze=_StaleStore(LIMIT))
+    assert not blocked.ready and LARGEST in blocked.text  # the stale limit still applies
+    assert len(texts) == len(prep.orders)
+    assert all(t.startswith("The freeze limit for ") and "exchange file of 01 Sep 2026, 28 days ago" in t for t in texts), texts
+    fresh = _flow(kind, ALLOWED_LOTS, catalogue, eligibility)
+    assert fresh.ready and fresh.warnings == ()
+
+
+def test_require_within_freeze_warns_stale_exactly_after_eight_days() -> None:
+    """The shared check's age boundary equals freeze_check's: 8 days old is fresh, 9 days warns."""
+    eight = StoredFreeze(LIMIT, 65, TODAY - datetime.timedelta(days=8))
+    nine = StoredFreeze(LIMIT, 65, TODAY - datetime.timedelta(days=9))
+    assert require_within_freeze("NIFTY26O0623600CE", 65, eight, today=TODAY) == ()
+    (warning,) = require_within_freeze("NIFTY26O0623600CE", 65, nine, today=TODAY)
+    assert "9 days ago" in display_text(warning)
+    with pytest.raises(FreezeRefused):  # stale still blocks above the limit
+        require_within_freeze("NIFTY26O0623600CE", 3575, nine, today=TODAY)
+    with pytest.raises(ValueError):  # today is required to be a date
+        require_within_freeze("NIFTY26O0623600CE", 65, eight, today=datetime.datetime(2026, 10, 16))
 
 
 @pytest.mark.parametrize("bad", [0, -1, True, "3511"])
@@ -205,15 +272,16 @@ def test_attack_a_zero_or_malformed_stored_limit_is_refused(bad) -> None:
 def test_attack_units_that_are_not_positive_whole_lots_are_refused(units) -> None:
     """Allow-list: only a positive whole number of lots is checked; anything else is an error, never a pass."""
     with pytest.raises(ValueError):
-        require_within_freeze("NIFTY26O0623600CE", units, NIFTY)
+        require_within_freeze("NIFTY26O0623600CE", units, NIFTY, today=TODAY)
 
 
-def test_attack_a_forged_limit_object_is_refused() -> None:
-    """Allow-list: the limit must be a real StoredFreeze, not any object with ``limit``/``lot`` attributes."""
+def test_attack_a_forged_limit_object_never_passes_silently_and_never_blocks() -> None:
+    """Allow-list: only a real StoredFreeze is a usable limit; any other object (with ``limit``/``lot``) is treated as
+    no limit: the unknown warning, never a silent pass and never a block (ADR-081)."""
     class Forged:
         limit, lot = 10**9, 65
-    with pytest.raises(ValueError):
-        require_within_freeze("NIFTY26O0623600CE", 65, Forged())  # type: ignore[arg-type]
+    (warning,) = require_within_freeze("NIFTY26O0623600CE", 65, Forged(), today=TODAY)  # type: ignore[arg-type]
+    assert display_text(warning).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
 
 
 def test_attack_freeze_check_review_still_warns_without_a_stored_limit() -> None:

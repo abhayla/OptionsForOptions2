@@ -11,15 +11,20 @@ entry gets the warning, never a silent pass and never a block. This module never
 ADR-092: "Complete, Retry and exit orders follow it too." and "The fixed 1,755-unit placeholder used for slicing is
 removed; the stored limit (ADR-081, ADR-091) is the only freeze figure." ``require_within_freeze`` is the ONE check every
 order-preparing path calls (Complete, Retry, exit, the reconciliation closing proposal, the rule-action proposal); the
-review's ``freeze_check`` uses the same ``exceeded_message``. Allow-list: an order is allowed only when a stored limit
-is present, is a ``StoredFreeze``, the units are a positive whole number of its lots and below the limit; anything else
-is refused. A MISSING stored limit never blocks on any path: every path gets the review's warning (ADR-081; ADR-037).
+review's ``freeze_check`` uses the same ``_assess``. Only a USABLE known limit (a ``StoredFreeze`` that allows at
+least one whole lot) the units are not below blocks, with the limit and the largest allowed order. A limit that is
+missing, None, not a ``StoredFreeze``, or allows no whole lot (bad stored data, e.g. 64 for NIFTY lot 65) never blocks
+on any path: every path gets the review's ``freeze_limit_unknown`` warning (ADR-081 "the review warns"; ADR-037). A
+usable limit whose exchange file is more than ``STALE_AFTER_DAYS`` old also warns on every path (the limit still
+applies).
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
 from typing import Final
 
 from ofo.errors import UserFacingError, render
@@ -72,7 +77,11 @@ def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
         if len(entries) != 1 or entries[0].id not in stored:
             continue
         limit, file_date = stored[entries[0].id]
-        out[planned.contract] = StoredFreeze(limit, entries[0].contract.lot_size, file_date)
+        try:
+            found = StoredFreeze(limit, entries[0].contract.lot_size, file_date)
+        except ValueError:  # bad stored data (zero, negative, not a whole number): no entry, so the review warns
+            continue
+        out[planned.contract] = found
     return out
 
 
@@ -118,23 +127,64 @@ class ContractFreeze:
     stored: StoredFreeze | None
 
 
-def require_within_freeze(contract: str, units: int, stored: StoredFreeze | None) -> UserFacingError | None:
-    """THE order check (ADR-092): ``units`` of ``contract`` (its trading symbol) go as ONE order. A KNOWN stored limit
-    the units are not below raises ``FreezeRefused`` (with the limit and the largest allowed order). No stored limit
-    returns the review's warning (ADR-081 "the review warns that Zerodha may reject a large order"; ADR-037: never
-    stop a user getting out of risk), never a block; otherwise None."""
-    if stored is None:
-        return render("freeze_limit_unknown", contract=contract)
-    message = exceeded_message(contract, units, stored)
-    if message is not None:
-        raise FreezeRefused(detail=f"{contract}: {units} units is not below the freeze limit {stored.limit}",
-                            message=message)
-    return None
+def usable(stored: object) -> StoredFreeze | None:
+    """``stored`` when it is a ``StoredFreeze`` that allows at least one whole lot below its limit, else None (bad
+    stored data such as 64 for NIFTY lot 65 would block even a 1-lot exit: it is treated as no limit, so it warns)."""
+    if not isinstance(stored, StoredFreeze) or largest_allowed_units(stored) < stored.lot:
+        return None
+    return stored
+
+
+def terms_symbol(*parts: object) -> str:
+    """A contract named from its terms, for a warning when the caller gave no trading symbol: the parts joined by
+    ``-`` in capitals (``NIFTY-CE-23600-20261027``); a strike's decimal point is written ``-`` (the slot allows no ``.``)."""
+    text = []
+    for part in parts:
+        if part is None:
+            continue
+        if isinstance(part, date):
+            text.append(part.strftime("%Y%m%d"))
+        elif isinstance(part, Enum):  # an Instrument
+            text.append(str(part.value))
+        elif isinstance(part, Decimal):
+            text.append(format(part.normalize(), "f").replace(".", "-"))
+        else:
+            text.append(str(part))
+    return "-".join(text).upper()[:40]
+
+
+def _assess(contract: str, units: int, stored: object, today: date,
+            ) -> tuple[UserFacingError | None, tuple[UserFacingError, ...]]:
+    """(the block message or None, the warnings) for ``units`` of ``contract`` as ONE order: the shared rule of the
+    review and every order-preparing path."""
+    if not isinstance(today, date) or isinstance(today, datetime):
+        raise ValueError(f"today must be a date, got {today!r}")
+    known = usable(stored)
+    if known is None:
+        return None, (render("freeze_limit_unknown", contract=contract),)
+    block = exceeded_message(contract, units, known)
+    age = (today - known.file_date).days
+    if age > STALE_AFTER_DAYS:
+        return block, (render("freeze_limit_stale", contract=contract, file_date=known.file_date, days=age),)
+    return block, ()
+
+
+def require_within_freeze(contract: str, units: int, stored: object, *, today: date) -> tuple[UserFacingError, ...]:
+    """THE order check (ADR-092): ``units`` of ``contract`` (its trading symbol) go as ONE order. A USABLE known stored
+    limit the units are not below raises ``FreezeRefused`` (with the limit and the largest allowed order). Returns the
+    warnings: no usable stored limit (ADR-081 "the review warns that Zerodha may reject a large order"; ADR-037: never
+    stop a user getting out of risk), or a stale one (file more than ``STALE_AFTER_DAYS`` before ``today``)."""
+    block, warnings = _assess(contract, units, stored, today)
+    if block is not None:
+        limit = stored.limit if isinstance(stored, StoredFreeze) else stored
+        raise FreezeRefused(detail=f"{contract}: {units} units is not below the freeze limit {limit}",
+                            message=block)
+    return warnings
 
 
 def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:
-    """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit, and for a
-    stored limit whose file date is more than ``STALE_AFTER_DAYS`` before ``today`` (the stale limit still blocks).
+    """Block each leg whose units are not below its usable stored limit; warn for each leg with no usable stored
+    limit (``usable``), and for a stored limit whose file date is more than ``STALE_AFTER_DAYS`` before ``today`` (the stale limit still blocks).
     ``today`` is required (no default, so the age check cannot be skipped by omission)."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"freeze_check needs an ExecutionPlan, got {plan!r}")
@@ -142,22 +192,13 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None,
     blocks: list[FreezeFinding] = []
     warnings: list[FreezeFinding] = []
     for planned in plan.legs:
-        units = planned.leg.quantity
-        stored = stored_limits.get(planned.contract)
-        if stored is None:
-            warnings.append(FreezeFinding(planned.leg_ref, planned.contract,
-                                          render("freeze_limit_unknown", contract=planned.contract)))
-            continue
-        exceeded = exceeded_message(planned.contract, units, stored)
-        if exceeded is not None:
-            blocks.append(FreezeFinding(planned.leg_ref, planned.contract, exceeded))
-        age = (today - stored.file_date).days
-        if age > STALE_AFTER_DAYS:
-            warnings.append(FreezeFinding(planned.leg_ref, planned.contract, render(
-                "freeze_limit_stale", contract=planned.contract, file_date=stored.file_date, days=age)))
+        block, found = _assess(planned.contract, planned.leg.quantity, stored_limits.get(planned.contract), today)
+        if block is not None:
+            blocks.append(FreezeFinding(planned.leg_ref, planned.contract, block))
+        warnings.extend(FreezeFinding(planned.leg_ref, planned.contract, w) for w in found)
     return FreezeCheck(tuple(blocks), tuple(warnings))
 
 
 __all__ = ["STALE_AFTER_DAYS", "ContractFreeze", "FreezeCheck", "FreezeFinding", "FreezeRefused", "StoredFreeze",
            "exceeded_message", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units",
-           "require_within_freeze"]
+           "require_within_freeze", "terms_symbol", "usable"]

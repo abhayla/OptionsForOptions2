@@ -19,6 +19,7 @@ from partial_inputs import STORED_FREEZE, stored_limit
 from plan_inputs import FakeConstraints
 from test_close_refusals import _state
 
+from ofo.errors import display_text
 from ofo.engine import Action
 from ofo.execution.partial import (
     BrokerOrderStatus,
@@ -54,12 +55,12 @@ def _assert_refused(prep, flow: str, book, *reason_parts: str, prefix: str = "No
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])
 def test_core_freeze_below_one_lot_returns_a_refusal_result_on_nifty(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6 (core, ADR-092): a STORED NIFTY limit of 64 < lot 65 allows no order. Complete and Retry return the block
-    with the limit and the largest allowed order (0 lots), no exception, no state change; the very next call with the
+    """AC-6 (core, ADR-092): a STORED NIFTY limit of 66 allows 1 lot of 65. Complete and Retry return the block for the
+    10-lot leg with the limit and the largest allowed order (1 lot), no exception, no state change; the very next call with the
     real stored limit (3,511) prepares the rejected 24,000 CE's 650 units as one order."""
     plan, book, broker, ctx = _state()
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(64))
-    _assert_refused(prep, flow, book, BELOW + " 64 units", "0 units (0 lots)", prefix=CONTRACTS[3])
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(66))
+    _assert_refused(prep, flow, book, BELOW + " 66 units", "65 units (1 lots)", prefix=CONTRACTS[3])
     ok = _run(flow, plan, book, broker, ctx, catalogue, eligibility)
     assert ok.ready, ok.reason
     assert [(o.leg_ref, o.contract, o.side, o.quantity) for o in ok.orders] == [(BUY_CE, CONTRACTS[3], Action.BUY, 650)]
@@ -67,18 +68,23 @@ def test_core_freeze_below_one_lot_returns_a_refusal_result_on_nifty(flow, catal
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])
 def test_ac6_freeze_below_one_lot_returns_a_refusal_result_on_sensex(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: a stored SENSEX limit of 19 < catalogue lot 20 gives the same block (largest allowed 0 lots)."""
+    """AC-6: a stored SENSEX limit of 21 (1 lot of 20 allowed) gives the same block (largest allowed 1 lot)."""
     plan, book, broker, ctx = _state("SENSEX")
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(19))
-    _assert_refused(prep, flow, book, BELOW + " 19 units", "0 units (0 lots)", prefix="SENSEX")
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(21))
+    _assert_refused(prep, flow, book, BELOW + " 21 units", "20 units (1 lots)", prefix="SENSEX")
 
 
+@pytest.mark.parametrize("limit", [0, 64, 65])
 @pytest.mark.parametrize("flow", ["complete", "retry"])
-def test_ac6_unusable_freeze_value_returns_a_refusal_result(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: a stored limit of 0 (not a positive integer) is a refusal result ("Nothing prepared."), not an exception."""
+def test_round2_unusable_stored_limit_warns_and_prepares_one_order(flow, limit, catalogue, eligibility) -> None:  # noqa: ANN001
+    """Round 2 finding 2 (ADR-081, ADR-037): a stored limit of 0, or one that allows no whole lot of 65, is bad stored
+    data: the rejected 24,000 CE's 650 units are prepared as ONE order with the unknown warning, never a block."""
     plan, book, broker, ctx = _state()
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(0))
-    _assert_refused(prep, flow, book, prefix="Nothing prepared.")
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(limit))
+    assert prep.ready, prep.reason
+    assert [(o.leg_ref, o.quantity) for o in prep.orders] == [(BUY_CE, 650)]
+    assert [display_text(w).startswith(f"No exchange freeze limit is stored for {CONTRACTS[3]}, so Zerodha may reject")
+            for w in prep.warnings] == [True]
 
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])

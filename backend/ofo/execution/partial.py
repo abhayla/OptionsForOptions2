@@ -74,6 +74,7 @@ from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
 from ofo.money import zerodha_paise
+from ofo.timeutil import IST
 from ofo.engine.product import Product
 from ofo.execution.context import (
     ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash, product_key,
@@ -690,7 +691,7 @@ def _prepare_missing(
     missing = {r.planned.leg_ref: r.missing_quantity for r in remaining}
     try:
         seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
-        warnings = _require_freeze(plan, catalogue, stored_freeze, seq.orders)
+        warnings = _require_freeze(plan, catalogue, stored_freeze, seq.orders, a.read_at)
     except ValueError as exc:  # W-043 (#71): a refusal is shown with its reason, never raised (as Close, W-036)
         return _not_prepared(choice, a, _refusal_message(exc))
     legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
@@ -719,17 +720,17 @@ def _prepare_missing(
 
 def _require_freeze(plan: ExecutionPlan, catalogue: Catalogue,
                     stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
-                    orders: Sequence[PlannedOrder]) -> tuple[UserFacingError, ...]:
+                    orders: Sequence[PlannedOrder], read_at: datetime.datetime) -> tuple[UserFacingError, ...]:
     """ADR-092 for Complete / Retry / exit: every order checked against its contract's STORED limit (the lot from the
-    catalogue, ``freeze_limits_for_plan``): a known limit exceeded raises ``FreezeRefused``; no stored limit returns
-    the review's warning (ADR-081, ADR-037: never a block)."""
+    catalogue, ``freeze_limits_for_plan``): a usable known limit exceeded raises ``FreezeRefused``; no usable stored
+    limit returns the review's warning (ADR-081, ADR-037: never a block), and a stale one the age warning, dated by
+    the broker read's IST day."""
     limits = freeze_limits_for_plan(plan, catalogue, {} if stored_freeze is None else stored_freeze)
-    warnings = []
+    today = read_at.astimezone(IST).date()
+    warnings: list[UserFacingError] = []
     for order in orders:
         contract = plan.by_ref(order.leg_ref).contract
-        warning = require_within_freeze(contract, order.quantity, limits.get(contract))
-        if warning is not None:
-            warnings.append(warning)
+        warnings.extend(require_within_freeze(contract, order.quantity, limits.get(contract), today=today))
     return tuple(warnings)
 
 
@@ -856,7 +857,7 @@ def close_partial_strategy(
     groups = [[(p.leg_ref, e.quantity) for p, e in pairs if e.action is side] for side in (Action.BUY, Action.SELL)]
     try:
         slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # one order per leg, whole lots
-        warnings = _require_freeze(plan, catalogue, stored_freeze, slices)  # ADR-092: blocked above a known limit
+        warnings = _require_freeze(plan, catalogue, stored_freeze, slices, a.read_at)  # ADR-092: blocked above a known limit
     except ValueError as exc:  # W-036 (#62): a refusal is shown with its reason, never raised
         return _not_prepared(choice, a, _refusal_message(exc))
     exits = {p.leg_ref: e for p, e in pairs}
