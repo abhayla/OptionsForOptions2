@@ -5,6 +5,10 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 
+const MyStrategies = () => import('../pages/MyStrategiesPage.vue')
+// Pages built so far replace their placeholder by route name (W-109).
+const BUILT = { 'strategies-my-strategies': MyStrategies, 'strategies-completed-strategies': MyStrategies }
+
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
@@ -15,8 +19,8 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
-    meta: { title: label, section: s.key, parent: s.label },
+    component: BUILT[`${s.key}-${slug}`] || Placeholder,
+    meta: { title: label, section: s.key, parent: s.label, ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
   })),
 ])
 
