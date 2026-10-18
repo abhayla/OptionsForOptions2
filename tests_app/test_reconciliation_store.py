@@ -72,7 +72,7 @@ async def test_core_ac6_a_stored_mismatch_blocks_until_a_recorded_resolution(app
         await _refused(rs.BAD_MISMATCH, _mismatch(tx, expected=HELD, zerodha=REAL["quantity"]))
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
         await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid, action="kite_flat_marked_exited",
-                                   note="closed by hand in Kite")
+                                   note="closed by hand in Kite", zerodha_net_now=0)
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is False
         (stored,) = await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)
         assert (stored.id, stored.contract_key, stored.expected_units, stored.zerodha_units, stored.source) == (
@@ -85,16 +85,39 @@ async def test_core_ac6_a_stored_mismatch_blocks_until_a_recorded_resolution(app
 
 
 async def test_ac6_answer_states_none_unresolved_two_with_one_resolved(app_engine):
-    """AC-6: no mismatch -> not blocked; two mismatches, one resolved -> still blocked; both resolved -> not."""
+    """AC-6: two mismatches, one settled -> still blocked; the other only marked "requiring attention" -> still
+    blocked (a mark settles nothing, ADR-018 Q198 / Q222); settled after the mark -> not blocked."""
     async with _Tx(app_engine) as tx:
         first = await _mismatch(tx)
         second = await _mismatch(tx, expected=HELD, zerodha=30)
         await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, first, action="marked_requiring_attention")
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
         await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, second, action="reconciled_by_basket")
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, first, action="reconciled_by_basket")
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is False
-        assert [m.resolution.action for m in await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)] == [
-            "marked_requiring_attention", "reconciled_by_basket"]
+        stored = await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)
+        assert [[r.action for r in m.resolutions] for m in stored] == [
+            ["marked_requiring_attention", "reconciled_by_basket"], ["reconciled_by_basket"]]
+        assert [m.resolution.action for m in stored] == ["reconciled_by_basket", "reconciled_by_basket"]
+
+
+async def test_ac6_requiring_attention_alone_never_lifts_the_block(app_engine):
+    """Design 2026-10-19 (REQ-060, ADR-018 Q198 "no casual 'ignore'"): the real 2026-10-16 shape (expected 65,
+    Zerodha 0) marked "requiring attention" stays blocked; the mark is kept for the audit; a second mark is
+    already_resolved; the mismatch reads as unresolved (no settling resolution)."""
+    async with _Tx(app_engine) as tx:
+        mid = await _mismatch(tx)
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid, action="marked_requiring_attention",
+                                   note="will check in Kite")
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
+        await _refused(rs.ALREADY_RESOLVED, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid,
+                                                                 action="marked_requiring_attention"))
+        (stored,) = await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)
+        assert stored.resolution is None
+        assert [(r.action, r.actor, r.note) for r in stored.resolutions] == [
+            ("marked_requiring_attention", tx.user, "will check in Kite")]
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
 
 
 async def test_ac6_a_block_is_per_strategy(app_engine):
@@ -127,9 +150,11 @@ async def test_ac5_a_second_resolution_and_a_foreign_mismatch_are_refused(app_en
     strategy, and an unknown id -> not_found."""
     async with _Tx(app_engine) as tx:
         mid = await _mismatch(tx)
-        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid, action="marked_requiring_attention")
-        await _refused(rs.ALREADY_RESOLVED, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid,
-                                                                 action="reconciled_by_basket"))
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid, action="reconciled_by_basket")
+        for action, net in (("reconciled_by_basket", None), ("kite_flat_marked_exited", 0),
+                            ("marked_requiring_attention", None)):
+            await _refused(rs.ALREADY_RESOLVED, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid,
+                                                                     action=action, zerodha_net_now=net))
         other = await _new_strategy(tx.conn, tx.user, catalogue=False)
         foreign = await _mismatch(tx, strategy_id=other)
         await _refused(rs.NOT_FOUND, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, foreign,
@@ -142,13 +167,90 @@ async def test_ac5_a_second_resolution_and_a_foreign_mismatch_are_refused(app_en
         assert await rs.is_blocked(tx.conn, tx.user, other) is True
 
 
-async def test_ac5_kite_flat_needs_a_recorded_zerodha_net_of_zero(app_engine):
-    """ADR-109 (4) "Kite flat -> mark exited": refused when the recorded Zerodha net is not 0 (65 vs 30)."""
+async def test_ac5_kite_flat_needs_zerodha_flat_now_not_the_stored_net(app_engine):
+    """ADR-109 (4) "Kite flat -> mark exited" checks the CURRENT net the route read for this action, never the
+    stored one. Real shape: the 2026-10-16 position (expected 65). Stored Zerodha 0 but Kite shows the 65 again now
+    -> refused; no current net -> refused; a malformed one -> refused. Stored 30 (a partial hand close) and Kite
+    now 0 -> accepted, block lifted."""
     async with _Tx(app_engine) as tx:
-        mid = await _mismatch(tx, zerodha=30)
-        await _refused(rs.BAD_RESOLUTION, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid,
-                                                               action="kite_flat_marked_exited"))
+        stale = await _mismatch(tx, zerodha=0)
+        for net in (REAL["quantity"], None, -65, True, 0.0, "0", 1_000_001):
+            await _refused(rs.BAD_RESOLUTION, rs.record_resolution(tx.conn, tx.user, tx.strategy_id, stale,
+                                                                   action="kite_flat_marked_exited",
+                                                                   zerodha_net_now=net))
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, stale, action="reconciled_by_basket")
+        partial = await _mismatch(tx, zerodha=30)
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, partial, action="kite_flat_marked_exited",
+                                   zerodha_net_now=0)
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is False
+
+
+async def test_q224_a_shared_contract_cannot_be_settled_for_one_holder(app_engine):
+    """REQ-060 Q224 ("a contract held by more than one strategy that disagrees with Zerodha blocks every holder and
+    refuses guess-based fixes"): two strategies of one user both mismatch on NFO-OPT:47189 (65 expected each, Zerodha
+    65 in total -> each sees its own shortfall); a basket or Kite-flat settle on either is refused, both stay blocked;
+    the attention mark is still recorded. A different contract of the other strategy is not shared; another user's
+    mismatch on the same contract is not shared either."""
+    async with _Tx(app_engine) as tx:
+        other = await _new_strategy(tx.conn, tx.user, catalogue=False)
+        mine = await _mismatch(tx, zerodha=0)
+        theirs = await _mismatch(tx, zerodha=0, strategy_id=other)
+        for sid, mid in ((tx.strategy_id, mine), (other, theirs)):
+            await _refused(rs.BAD_RESOLUTION, rs.record_resolution(tx.conn, tx.user, sid, mid,
+                                                                   action="reconciled_by_basket"))
+            await _refused(rs.BAD_RESOLUTION, rs.record_resolution(tx.conn, tx.user, sid, mid,
+                                                                   action="kite_flat_marked_exited",
+                                                                   zerodha_net_now=0))
+            await rs.record_resolution(tx.conn, tx.user, sid, mid, action="marked_requiring_attention")
+            assert await rs.is_blocked(tx.conn, tx.user, sid) is True
+        elsewhere = await _mismatch(tx, key="NFO-OPT:47190")
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, elsewhere, action="reconciled_by_basket")
+    async with _Tx(app_engine) as tx:
+        stranger = _user()
+        foreign = await _new_strategy(tx.conn, stranger, catalogue=False)
+        await rs.record_mismatch(tx.conn, stranger, foreign, contract_key=REAL_KEY, expected_units=HELD,
+                                 zerodha_units=0, report=REPORT, source="app_start")
+        mid = await _mismatch(tx)
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, mid, action="reconciled_by_basket")
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is False
+        assert await rs.is_blocked(tx.conn, stranger, foreign) is True
+
+
+async def test_ac6_the_same_unresolved_mismatch_seen_again_is_one_row(app_engine):
+    """The same comparison (65 vs 0 on NFO-OPT:47189) from two trigger runs returns the stored id, not a second row;
+    a different Zerodha net is a new row; once settled, the same comparison seen again is a new mismatch (blocked
+    again)."""
+    async with _Tx(app_engine) as tx:
+        first = await _mismatch(tx)
+        again = await rs.record_mismatch(tx.conn, tx.user, tx.strategy_id, contract_key=REAL_KEY, expected_units=HELD,
+                                         zerodha_units=0, report={"run": 2}, source="periodic")
+        assert again == first
+        assert len(await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)) == 1
+        partial = await _mismatch(tx, zerodha=30)
+        assert partial != first
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, first, action="marked_requiring_attention")
+        assert await _mismatch(tx) == first  # a mark settles nothing: still the same unresolved mismatch
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, first, action="kite_flat_marked_exited",
+                                   zerodha_net_now=0)
+        later = await _mismatch(tx)
+        assert [m.id for m in await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)] == [first, partial, later]
+
+
+async def test_ac6_a_report_over_the_cap_as_stored_is_bad_mismatch_not_a_database_error(app_engine):
+    """The CHECK measures jsonb's own text (", " and ": " separators): 6,000 small keys are about 60 KB compact but
+    about 72 KB as stored -> bad_mismatch, and the transaction stays usable (no aborted CHECK violation)."""
+    report = {f"k{i:04d}": 0 for i in range(6000)}
+    compact = len(json.dumps(report, separators=(",", ":")))
+    assert compact < rs.MAX_REPORT_BYTES
+    async with _Tx(app_engine) as tx:
+        stored_size = (await tx.conn.execute(text("SELECT octet_length(CAST(:r AS jsonb)::text)"),
+                                             {"r": json.dumps(report)})).scalar_one()
+        assert stored_size > rs.MAX_REPORT_BYTES
+        await _refused(rs.BAD_MISMATCH, rs.record_mismatch(tx.conn, tx.user, tx.strategy_id, contract_key=REAL_KEY,
+                                                           expected_units=HELD, zerodha_units=0, report=report,
+                                                           source="app_start"))
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is False
 
 
 @pytest.mark.parametrize("note", ["", " padded", "x" * 501, 5])
@@ -224,7 +326,12 @@ async def test_ac6_the_guards_refuse_even_the_owner_and_stamp_the_clock(admin_en
                     "WHERE mismatch_id = :m"):
             await _refused_sql(tx.conn, sql, GUARD_SQLSTATE, {"m": mid})
         await _refused_sql(tx.conn, "INSERT INTO public.reconciliation_resolutions (mismatch_id, action, actor) "
-                                    "VALUES (:m, 'reconciled_by_basket', 'x')", UNIQUE_VIOLATION, {"m": mid})
+                                    "VALUES (:m, 'marked_requiring_attention', 'x')", UNIQUE_VIOLATION, {"m": mid})
+        await tx.conn.execute(text("INSERT INTO public.reconciliation_resolutions (mismatch_id, action, actor) "
+                                   "VALUES (:m, 'reconciled_by_basket', 'x')"), {"m": mid})
+        for action in ("kite_flat_marked_exited", "attached_outside", "reconciled_by_basket"):
+            await _refused_sql(tx.conn, "INSERT INTO public.reconciliation_resolutions (mismatch_id, action, actor) "
+                                        "VALUES (:m, :a, 'x')", UNIQUE_VIOLATION, {"m": mid, "a": action})
         await _refused_sql(tx.conn, "INSERT INTO public.reconciliation_mismatches (strategy_id, contract_key, "
                                     "expected_units, zerodha_units, report, source) VALUES (:s, 'NFO-OPT:47189', 65, "
                                     "65, '{}', 'app_start')", CHECK_VIOLATION, {"s": tx.strategy_id})
@@ -284,6 +391,35 @@ async def test_ac6_unresolved_from_positions_closes_the_plan_with_zero_and_frees
         assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
 
 
+async def test_ac6_unresolved_from_positions_needs_an_unresolved_mismatch_of_the_strategy(app_engine):
+    """An ENTRY plan closed ``unresolved_from_positions`` with no mismatch would free the plan slot and leave the real
+    lots unaccounted: refused (plan stays open) when the strategy has no mismatch, when its only mismatch is settled,
+    and when only ANOTHER strategy has one; a mismatch marked "requiring attention" still counts (still blocked)."""
+    async with _Tx(app_engine) as tx:
+        plan = await tx.enter("ENTRY", "BUY", "5.45")
+
+        async def refused() -> None:
+            with pytest.raises(plans.PlanStoreError) as err:
+                await plans.close_plan(tx.conn, tx.user, tx.strategy_id, plan.plan_number,
+                                       reason="unresolved_from_positions")
+            assert err.value.code == plans.BAD_PLAN
+            assert [p.status for p in await plans.plans_for(tx.conn, tx.user, tx.strategy_id)] == ["open"]
+
+        await refused()
+        other = await _new_strategy(tx.conn, tx.user, catalogue=False)
+        await _mismatch(tx, expected=0, zerodha=HELD, strategy_id=other, key="NFO-OPT:47190")
+        await refused()
+        settled = await _mismatch(tx, expected=0, zerodha=HELD)
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, settled, action="reconciled_by_basket")
+        await refused()
+        marked = await _mismatch(tx, expected=0, zerodha=30)
+        await rs.record_resolution(tx.conn, tx.user, tx.strategy_id, marked, action="marked_requiring_attention")
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, plan.plan_number,
+                                        reason="unresolved_from_positions")
+        assert closed.close_reason == "unresolved_from_positions"
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Migration round trip
 # ---------------------------------------------------------------------------------------------------------------
@@ -330,3 +466,13 @@ async def test_ac6_downgrade_is_refused_while_a_mismatch_is_stored(admin_engine)
         with pytest.raises(DBAPIError, match="reconciliation records are stored"):
             async with tx.conn.begin_nested():
                 await tx.conn.execute(text(own_down[0]))
+
+
+def test_every_stored_close_reason_is_a_plan_state_the_return_route_can_answer():
+    """Class check (#380-1 review finding 4): the return route answers a closed plan with its stored close reason, so
+    every reason the plan store accepts (``unresolved_from_positions`` included) must be in the route's PlanState."""
+    from typing import get_args  # noqa: PLC0415
+
+    from ofo_app.routes.execution_return import PlanState  # noqa: PLC0415
+
+    assert set(plans.CLOSE_REASONS) <= set(get_args(PlanState))

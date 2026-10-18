@@ -14,9 +14,11 @@ Changes (owner-run, one transaction):
   the app's instrument id "<segment>:<exchange token>"), the expected and Zerodha net units (they differ: an agreeing
   comparison is not a mismatch), the raw report (a JSON object, size-capped), the trigger source from a closed list,
   detected_at from the database clock. Guard trigger (SQLSTATE OF018): insert-only, never updated or deleted.
-- public.reconciliation_resolutions: at most one per mismatch (PRIMARY KEY mismatch_id), the action from a closed list
-  (ADR-109 (4)'s three, plus attach/detach reserved for the later release), the actor, an optional note,
-  resolved_at from the database clock. Guard trigger (OF018): insert-only.
+- public.reconciliation_resolutions: the action from a closed list (ADR-109 (4)'s three, plus attach/detach reserved
+  for the later release), the actor, an optional note, resolved_at from the database clock. One row per mismatch and
+  action (PRIMARY KEY mismatch_id, action) and at most one SETTLING row per mismatch (unique index on mismatch_id for
+  every action but ``marked_requiring_attention``): a mark "requiring attention" settles nothing and does not lift the
+  block (ADR-018 Q198, Q222), so the mismatch can still be settled after it. Guard trigger (OF018): insert-only.
 - public.reconciliation_standalone: per user + contract, the signed units left standalone (0 allowed); the only
   UPDATE changes units (updated_at from the clock); never deleted.
 - public.execution_plans' close-reason CHECK gains ``unresolved_from_positions`` (an earlier-day plan the next-day
@@ -85,6 +87,8 @@ SOURCES = ("after_execution", "after_reconnect", "app_start", "app_resume", "per
 #: ADR-109 (4)'s three first actions, then attach/detach outside lots (ADR-109 (2), a later release).
 ACTIONS = ("reconciled_by_basket", "marked_requiring_attention", "kite_flat_marked_exited", "attached_outside",
            "detached_outside")
+ATTENTION = "marked_requiring_attention"  # recorded, settles nothing: never lifts a block (ADR-018 Q198, Q222)
+SETTLED_INDEX = "reconciliation_resolutions_one_settling"
 MAX_UNITS = 1_000_000  # ofo.strategy.definition.MAX_UNITS (a migration carries its own literal)
 MAX_REPORT_BYTES = 65_536
 MAX_TEXT = 500
@@ -235,14 +239,17 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE TABLE {RESOLUTIONS} (
-            mismatch_id BIGINT      PRIMARY KEY REFERENCES {MISMATCHES} (id),
+            mismatch_id BIGINT      NOT NULL REFERENCES {MISMATCHES} (id),
             action      TEXT        NOT NULL CHECK (action IN ({_quoted(ACTIONS)})),
             actor       TEXT        NOT NULL CHECK (actor <> '' AND length(actor) <= {MAX_TEXT}),
             note        TEXT        CHECK (note IS NULL OR (note <> '' AND length(note) <= {MAX_TEXT})),
-            resolved_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+            resolved_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+            PRIMARY KEY (mismatch_id, action)
         )
         """
     )
+    op.execute(f"CREATE UNIQUE INDEX {SETTLED_INDEX} ON {RESOLUTIONS} (mismatch_id) "
+               f"WHERE action <> '{ATTENTION}'")
     op.execute(
         f"""
         CREATE TABLE {STANDALONE} (

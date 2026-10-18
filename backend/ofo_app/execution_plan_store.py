@@ -32,7 +32,7 @@ from ofo.money import PAISE
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from ofo_app import strategy_store
+from ofo_app import reconciliation_store, strategy_store
 
 PLAN_OPEN = "plan_open"
 NOT_FOUND = "not_found"
@@ -341,7 +341,9 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
     ``filled`` (tag -> Zerodha's filled quantity at close) is stored on the orders, so a restart can rebuild the
     position from the database. A close that changes position (``filled``, ``exited``, ``partial``) must carry it:
     ``filled=None`` is ``bad_plan`` for those; ``nothing_placed`` with None stores 0 for every order;
-    ``unresolved_from_positions`` takes only None and stores 0 for every order."""
+    ``unresolved_from_positions`` takes only None, stores 0 for every order, and is refused unless the strategy
+    has an unresolved reconciliation mismatch (recorded earlier in this same transaction or before): the mismatch
+    carries the block the open plan carried, so the close can never leave the strategy unblocked."""
     strategy_id = await _lock(conn, user_ref, strategy_id)
     if not isinstance(reason, str) or reason not in CLOSE_REASONS:
         raise PlanStoreError(BAD_PLAN, f"reason must be one of {CLOSE_REASONS}, got {reason!r}")
@@ -354,6 +356,9 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
         raise PlanStoreError(BAD_PLAN, f"plan {plan_number} is already closed")
     if reason == UNRESOLVED and filled is not None:
         raise PlanStoreError(BAD_PLAN, f"reason {UNRESOLVED!r} takes no filled quantities (they are unknown)")
+    if reason == UNRESOLVED and not await reconciliation_store.unresolved_locked(conn, strategy_id):
+        raise PlanStoreError(BAD_PLAN, f"reason {UNRESOLVED!r} needs an unresolved reconciliation mismatch of the "
+                                       "strategy recorded first (it carries the block)")
     if filled is None:
         if reason not in _NO_FILLS_REASONS:
             raise PlanStoreError(BAD_PLAN, f"reason {reason!r} changes position and needs the filled quantities")
