@@ -44,7 +44,7 @@ from ofo.money import HUNDREDTH
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.scenario.levels import LevelSet, build_level_set
+from ofo.scenario.levels import LevelSet, RangeOverride, build_level_set
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, ScenarioValues, View, scenario_values
 from ofo.table import ColumnSpec, Table, UXLevel, build_table, visible_columns
@@ -320,7 +320,7 @@ def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
-                  rates: ChargeRates | None = None) -> Outcome:
+                  rates: ChargeRates | None = None, override: RangeOverride | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At
@@ -404,7 +404,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         return _refused(definition, ux_level, render_explanation("outcome_forward_refused"), legs, message)
 
     config = config or ScenarioSettings().for_index(definition.underlying)
-    level_set = build_level_set(model, config)
+    level_set = build_level_set(model, config, override=override)
     charges = None
     if rates is not None:
         try:
