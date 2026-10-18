@@ -13,7 +13,7 @@ _last: datetime.datetime | None = None
 
 def note_read(now: datetime.datetime | None = None) -> None:
     global _last  # noqa: PLW0603
-    _last = now if now is not None else datetime.datetime.now(datetime.timezone.utc)
+    _last = now if now is not None else datetime.datetime.now(datetime.UTC)
 
 
 def last_read() -> datetime.datetime | None:

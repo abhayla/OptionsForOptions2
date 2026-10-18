@@ -34,7 +34,8 @@ const settingsRoutes = [
   ...ACCOUNT_ITEMS.map(([slug, label]) => ({
     path: `/settings/${slug}`,
     name: `settings-${slug}`,
-    component: Placeholder,
+    // W-089: Broker & Market Data is a real page; the other account items are still placeholders
+    component: slug === 'broker-market-data' ? () => import('../pages/BrokerSettingsPage.vue') : Placeholder,
     meta: { title: label, section: 'settings', parent: ACCOUNT_LABEL },
   })),
 ]

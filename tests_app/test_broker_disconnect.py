@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 FRONTEND = os.environ["FRONTEND_ORIGIN"]
 ACCESS_TOKEN = "ACtok_fake_disconnect_8c1e3a5b"  # noqa: S105
+API_SECRET = "kite_fake_secret_value"  # noqa: S105
 STATUS = "/api/broker/status"
 DISCONNECT = "/api/broker/disconnect"
 
@@ -32,7 +33,7 @@ def _user() -> str:
 
 def _app(maker, user_ref: str | None):
     config = load_broker_config(BrokerSettings(
-        KITE_API_KEY="kite_fake_key", KITE_API_SECRET="kite_fake_secret_value",
+        KITE_API_KEY="kite_fake_key", KITE_API_SECRET=API_SECRET,
         KITE_REDIRECT_URL="http://127.0.0.1:8000/kite/callback", FRONTEND_ORIGIN=FRONTEND,
         KITE_EXPECTED_USER_ID="AB1234", BROKER_TOKEN_KEY=base64.urlsafe_b64encode(os.urandom(32)).decode()))
     app = create_app(config)

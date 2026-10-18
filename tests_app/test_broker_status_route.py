@@ -29,7 +29,7 @@ FRONTEND = os.environ["FRONTEND_ORIGIN"]
 ACCESS_TOKEN = "ACtok_fake_status_5d2f4a6c7e"  # noqa: S105
 API_KEY = "kite_fake_status_key"
 API_SECRET = "kite_fake_status_secret_value"  # noqa: S105
-T0 = datetime.datetime(2026, 10, 17, 9, 0, tzinfo=datetime.timezone.utc)
+T0 = datetime.datetime(2026, 10, 17, 9, 0, tzinfo=datetime.UTC)
 LATER = T0 + datetime.timedelta(minutes=5)
 EARLIER = T0 - datetime.timedelta(hours=2)
 #: The only keys a status reply may carry (an allow-list, never a list of banned names).
@@ -52,7 +52,7 @@ def _clean_sync():
 def test_everything_connected_only_with_a_session_a_running_feed_and_a_read_after_login():
     """AC-4: all four Connected, with the last successful sync time."""
     out = build_status((T0, False), LATER, live_market.LIVE, True)
-    assert _states(out) == {n: ("connected", None) for n in FOUR}
+    assert _states(out) == dict.fromkeys(FOUR, ("connected", None))
     assert out.last_successful_sync == LATER and out.historical_data == "not_available"
 
 
@@ -81,14 +81,14 @@ def test_no_read_since_login_is_partial_and_a_read_before_login_does_not_count()
 def test_no_session_is_disconnected_with_the_guide_everywhere():
     """AC-4: Disconnected (with the guide) for all four, even if the feed word says live."""
     out = build_status(None, LATER, live_market.LIVE, True)
-    assert _states(out) == {n: ("disconnected", "connect_zerodha") for n in FOUR}
+    assert _states(out) == dict.fromkeys(FOUR, ("disconnected", "connect_zerodha"))
     assert out.last_successful_sync is None
 
 
 def test_a_stale_session_past_todays_expiry_is_not_connected():
     """AC-4 attack 3: a session older than Kite's expiry reads Disconnected, whatever else is running."""
     out = build_status((T0, True), LATER, live_market.LIVE, True)
-    assert _states(out) == {n: ("disconnected", "session_expired") for n in FOUR}
+    assert _states(out) == dict.fromkeys(FOUR, ("disconnected", "session_expired"))
 
 
 def test_the_reply_model_is_closed_to_unknown_states():
@@ -142,7 +142,7 @@ async def test_core_proof_a_stored_session_reads_connected_and_ending_it_reads_d
     monkeypatch.setattr(live_market, "_current", None)
     async with _client(app) as ac:
         before = (await ac.get("/api/broker/status")).json()
-        assert {n: before[n]["state"] for n in FOUR} == {n: "disconnected" for n in FOUR}
+        assert {n: before[n]["state"] for n in FOUR} == dict.fromkeys(FOUR, "disconnected")
         assert before["account_connection"]["fix"] == "connect_zerodha"
         async with app_engine.begin() as conn:
             await store.store_session(conn, user, ACCESS_TOKEN, TokenCipher(os.urandom(32)))
@@ -157,13 +157,13 @@ async def test_core_proof_a_stored_session_reads_connected_and_ending_it_reads_d
         assert _keys(body, set()) <= REPLY_KEYS
         for secret in (ACCESS_TOKEN, API_KEY, API_SECRET):
             assert secret.encode() not in response.content
-        broker_sync.note_read(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1))
+        broker_sync.note_read(datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=1))
         synced = (await ac.get("/api/broker/status")).json()
         assert synced["position_sync"]["state"] == "connected" and synced["last_successful_sync"] is not None
         async with app_engine.begin() as conn:
             await store.end_session(conn, user, store.EndReason.DISCONNECTED)
         after = (await ac.get("/api/broker/status")).json()
-        assert {n: after[n]["state"] for n in FOUR} == {n: "disconnected" for n in FOUR}
+        assert {n: after[n]["state"] for n in FOUR} == dict.fromkeys(FOUR, "disconnected")
 
 
 async def test_a_session_past_its_expiry_reads_disconnected_through_the_route(app_engine, admin_engine, monkeypatch):
@@ -181,8 +181,8 @@ async def test_a_session_past_its_expiry_reads_disconnected_through_the_route(ap
         await conn.execute(text("ALTER TABLE public.broker_sessions ENABLE TRIGGER broker_sessions_guard"))
     async with _client(app) as ac:
         body = (await ac.get("/api/broker/status")).json()
-    assert {n: (body[n]["state"], body[n]["fix"]) for n in FOUR} == {n: ("disconnected", "session_expired")
-                                                                     for n in FOUR}
+    got = {n: (body[n]["state"], body[n]["fix"]) for n in FOUR}
+    assert got == dict.fromkeys(FOUR, ("disconnected", "session_expired"))
 
 
 async def test_a_database_failure_is_a_typed_error_not_a_connected_page(app_engine, monkeypatch):
