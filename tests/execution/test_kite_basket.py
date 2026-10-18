@@ -258,9 +258,10 @@ def test_a_source_without_the_two_reads_fails_closed(bad) -> None:
 
 def test_build_basket_takes_no_verdict() -> None:
     """Finding caller-supplied-verdict-trusted: no verdict crosses the boundary - the old ``margin_check`` callable that
-    returned a verdict is not a parameter, and the only margin input is the source."""
+    returned a verdict is not a parameter, and the only margin input is the source. #338: ``held`` is the held net
+    (data); whether the orders only close it is computed inside, never passed in."""
     params = inspect.signature(build_basket).parameters
-    assert "margin_check" not in params and list(params)[-1] == "margin_source"
+    assert "margin_check" not in params and list(params)[-2:] == ["margin_source", "held"]
     cat = real_catalogue()
     with pytest.raises(TypeError):
         build_basket(real_plan(cat), cat, 3, freeze_check=FakeFreeze(),  # type: ignore[call-arg]

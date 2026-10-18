@@ -14,7 +14,7 @@ with `BasketRefused`; a shortfall carries Zerodha's available vs required (AC-4)
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -22,7 +22,7 @@ from ofo.execution.basket import KiteBasket, KiteOrder, build_basket, zerodha_ex
 from ofo.execution.freeze import FreezeCheck
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
-from ofo.instruments.models import ZERODHA, MissingBrokerRef
+from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
 from ofo.orders import Order
 
 from ofo_app.kite_margin import BasketOrder, KiteMargin
@@ -57,11 +57,13 @@ def _zerodha_margin_source(client: KiteMargin) -> _ZerodhaMargin:
 
 
 def checked_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *, margin_client: KiteMargin,
-                   freeze_check: Callable[[ExecutionPlan], FreezeCheck]) -> KiteBasket:
+                   freeze_check: Callable[[ExecutionPlan], FreezeCheck],
+                   held: Mapping[InstrumentId, int] | None = None) -> KiteBasket:
     """Build the read-only Kite basket for ``plan`` only if Zerodha says the funds cover the margin these exact orders
-    need; otherwise raise `BasketRefused` (its ``user_message`` shows available vs required)."""
+    need, or (#338) every order closes a ``held`` position and Zerodha says the basket needs 0; otherwise raise
+    `BasketRefused` (its ``user_message`` shows available vs required)."""
     return build_basket(plan, catalogue, plan_version, freeze_check=freeze_check,
-                        margin_source=_zerodha_margin_source(margin_client))
+                        margin_source=_zerodha_margin_source(margin_client), held=held)
 
 
 def is_checked_basket(value: object) -> bool:

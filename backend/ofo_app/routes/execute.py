@@ -382,7 +382,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except (KeyError, ValueError):  # a contract the catalogue cannot resolve: the catalogue refusal, never a 500
         raise _refuse("strategy_contract_not_in_catalogue") from None
     await _gate(req, priced, context, catalogue, underlying)
-    basket = await _basket(req, priced, catalogue, plan_number)
+    basket = await _basket(req, priced, catalogue, plan_number, held.units)
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket))
@@ -426,7 +426,8 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
         raise _refuse("gate_data_unhealthy", data_input=DataInput.LEG_PRICES, state=DataHealth.STALE)
 
 
-async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> Any:
+async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int,
+                  units: Mapping[str, int]) -> Any:
     limits = await review_freeze_limits(req.db, priced.plan)
     today = req.now.astimezone(IST).date()
     frozen = freeze_check(priced.plan, limits, today=today)
@@ -435,7 +436,8 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     try:
         basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
-                                         freeze_check=lambda p: freeze_check(p, limits, today=today))
+                                         freeze_check=lambda p: freeze_check(p, limits, today=today),
+                                         held={_iid(c): n for c, n in units.items()})  # #338: the held net
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket

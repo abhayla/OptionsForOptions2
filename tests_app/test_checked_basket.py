@@ -193,3 +193,115 @@ def test_zerodha_unreadable_shows_could_not_confirm(fail: str) -> None:
     with pytest.raises(BasketRefused) as caught:
         build(Replay(funds_reply("99999999.00"), fail=fail))
     assert caught.value.user_message is not None
+
+
+
+# -- #338: a closing basket is never blocked by a negative balance ---------------------------------------------------
+# Real input: tests/fixtures/kite_replies/margins-basket-exit-150717.json, Zerodha's real POST /margins/basket reply
+# for SELL 65 NIFTY26O1923650CE @ 3.30 against +65 held (final.total -214.5 -> required 0). The funds replies are
+# derived from the real GET /user/margins shape (``equity.net``), with the balance set to each case's value.
+EXIT_REPLY = (ROOT / "tests/fixtures/kite_replies/margins-basket-exit-150717.json").read_text(encoding="utf-8")
+ENTRY_REPLY = (ROOT / "tests/fixtures/kite_replies/margins-basket-entry-derived.json").read_text(encoding="utf-8")
+EXIT_SYMBOL = "NIFTY26O1923650CE"
+OPEN_SYMBOL = CONDOR["request"][0]["tradingsymbol"]  # a contract the strategy does not hold
+
+
+def _contract_cat(*symbols: str) -> Catalogue:
+    with LIST_CSV.open(newline="", encoding="utf-8") as f:
+        rows = [r for r in csv.DictReader(f) if r["tradingsymbol"] in symbols]
+    cat = Catalogue()
+    cat.load(parse_instruments_rows(rows))
+    return cat
+
+
+def _leg(cat: Catalogue, ref: str, symbol: str, side: Action, units: int, price: str) -> PlannedLeg:
+    (entry,) = cat.entries_for_broker_symbol(ZERODHA, symbol)
+    c = entry.contract
+    return PlannedLeg(ref, symbol, Leg(side, Instrument(c.instrument_type), c.strike, c.expiry, units, D(price)))
+
+
+def _iid(cat: Catalogue, symbol: str):
+    (entry,) = cat.entries_for_broker_symbol(ZERODHA, symbol)
+    return entry.id
+
+
+def _two_order_reply(total: str) -> str:
+    reply = json.loads(EXIT_REPLY)
+    row = reply["data"]["orders"][0]
+    reply["data"]["orders"] = [row, {**row, "tradingsymbol": OPEN_SYMBOL}]
+    reply["data"]["final"]["total"] = json.loads(total)
+    return json.dumps(reply)
+
+
+def _exit_build(funds: str, *, held_units: int | None = 65, reply: str = EXIT_REPLY):
+    cat = _contract_cat(EXIT_SYMBOL)
+    held = None if held_units is None else {_iid(cat, EXIT_SYMBOL): held_units}
+    return checked_basket(ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.SELL, 65, "3.30"),)), cat, 2,
+                          margin_client=client(Replay(funds_reply(funds), basket=reply)), freeze_check=no_freeze,
+                          held=held)
+
+
+def test_core_real_exit_reply_with_negative_funds_builds_the_closing_basket() -> None:
+    """REQ-055 AC-1 (#338 core): Zerodha's real exit reply (final.total -214.5 -> needs 0) with funds -120.50 and +65
+    held -> the SELL 65 closing basket is built, its one order exactly the exit."""
+    basket = _exit_build("-120.50")
+    assert [(o.tradingsymbol, o.transaction_type, o.quantity, o.price) for o in basket.orders] == [
+        (EXIT_SYMBOL, "SELL", 65, D("3.30"))]
+
+
+@pytest.mark.parametrize("funds", ["-120.50", "0", "671.50"])
+def test_closing_basket_builds_on_negative_zero_and_positive_funds(funds: str) -> None:
+    """REQ-055 AC-1 (#338, B4 d): funds negative / zero / positive with the real exit reply -> built every time."""
+    assert len(_exit_build(funds).orders) == 1
+
+
+def test_an_entry_basket_with_the_same_negative_funds_is_blocked() -> None:
+    """REQ-055 AC-1/AC-4 (#338 proof): the same SELL with nothing held (an entry) and funds -120.50 against the real
+    exit reply's required 0 -> refused, both amounts shown (Zerodha's 0 is not enough when nothing is closed)."""
+    with pytest.raises(BasketRefused) as caught:
+        _exit_build("-120.50", held_units=None)
+    shown = display_text(caught.value.user_message)
+    assert "needs ₹0.00 of margin; -₹120.50 is available" in shown
+
+
+@pytest.mark.parametrize("held_units", [-65, 64, 0])
+def test_a_sell_that_does_not_reduce_what_is_held_is_checked_as_today(held_units: int) -> None:
+    """REQ-055 AC-1 (#338): held SHORT 65 (the SELL adds), held 64 (the SELL of 65 exceeds it), held 0 -> negative
+    funds refuse the basket."""
+    with pytest.raises(BasketRefused):
+        _exit_build("-120.50", held_units=held_units)
+
+
+def test_zerodha_states_a_positive_required_for_a_closing_basket_checked_as_today() -> None:
+    """REQ-055 AC-1 (#338 attack 2, B4 d 'stated positive'): Zerodha states a positive required (the derived entry
+    reply, 354.25) for a basket that closes +65 held -> checked as today: -120.50 < 354.25 refuses."""
+    with pytest.raises(BasketRefused) as caught:
+        _exit_build("-120.50", reply=ENTRY_REPLY)
+    assert "354.25" in display_text(caught.value.user_message)
+
+
+def test_zerodha_states_a_positive_required_and_funds_cover_it_builds() -> None:
+    """REQ-055 AC-1 (#338): a closing basket Zerodha says needs 354.25, funds 1003 -> built as today."""
+    assert len(_exit_build("1003", reply=ENTRY_REPLY).orders) == 1
+
+
+@pytest.mark.parametrize("total", ["-214.5", "0"])
+def test_a_mixed_basket_close_one_open_another_with_negative_funds_is_blocked(total: str) -> None:
+    """REQ-055 AC-1 (#338 attack 1): close +65 held AND open an unheld contract; Zerodha says the basket needs 0
+    (negative or zero final.total) -> negative funds still refuse it: one leg opens a position."""
+    cat = _contract_cat(EXIT_SYMBOL, OPEN_SYMBOL)
+    legs = (_leg(cat, "L1", EXIT_SYMBOL, Action.SELL, 65, "3.30"),
+            _leg(cat, "L2", OPEN_SYMBOL, Action.SELL, 75, "3.30"))
+    with pytest.raises(BasketRefused):
+        checked_basket(ExecutionPlan("S-9", legs), cat, 2,
+                       margin_client=client(Replay(funds_reply("-120.50"), basket=_two_order_reply(total))),
+                       freeze_check=no_freeze, held={_iid(cat, EXIT_SYMBOL): 65})
+
+
+@pytest.mark.parametrize("total", ['"x"', "null"])
+def test_closing_basket_with_an_unparseable_or_missing_total_is_blocked(total: str) -> None:
+    """REQ-055 AC-1 (#338, B4 d 'missing / unparseable'): no usable final.total -> could not confirm, never built."""
+    reply = json.loads(EXIT_REPLY)
+    reply["data"]["final"]["total"] = json.loads(total)
+    with pytest.raises(BasketRefused):
+        _exit_build("-120.50", reply=json.dumps(reply))

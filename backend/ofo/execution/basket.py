@@ -39,14 +39,14 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, display_text
 from ofo.execution.freeze import FreezeCheck
-from ofo.execution.margin_gate import MarginVerdict, check_margin
+from ofo.execution.margin_gate import MarginVerdict, check_margin, reduces_held_only
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
@@ -228,12 +228,15 @@ def _resolve(plan: ExecutionPlan, catalogue: Catalogue) -> list[tuple[Instrument
 
 
 def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *,
-                 freeze_check: FreezeGate, margin_source: MarginSource) -> KiteBasket:
+                 freeze_check: FreezeGate, margin_source: MarginSource,
+                 held: Mapping[InstrumentId, int] | None = None) -> KiteBasket:
     """Turn ``plan`` into a basket of read-only LIMIT orders in plan order, or refuse the whole basket.
 
     The tag's strategy id is read from ``plan.strategy_id``; ``plan_version`` is the one caller value (the plan holds no
     version). ``freeze_check`` (plan -> ``FreezeCheck``) and ``margin_source`` (Zerodha's two figures) are REQUIRED; the
-    basket asks them itself, decides the margin with ``check_margin`` itself, and never takes a caller's verdict."""
+    basket asks them itself, decides the margin with ``check_margin`` itself, and never takes a caller's verdict.
+    ``held`` is the strategy's held net units per contract (BUY +, SELL -; None = nothing held): the basket decides
+    itself, with ``reduces_held_only``, whether every order closes a held position (#338)."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"build_basket needs an ExecutionPlan, got {plan!r}")
     if not isinstance(catalogue, Catalogue):
@@ -255,7 +258,7 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
         raise BasketRefused("the freeze limit check gave no usable answer; no basket built")
     if freeze.blocks:
         raise BasketRefused("a leg is not below its exchange freeze limit; no basket built")
-    margin = _decide_margin(margin_source, orders)
+    margin = _decide_margin(margin_source, orders, {} if held is None else held)
     if margin.allowed is not True:
         shown = margin.message
         raise BasketRefused("the margin check did not allow this basket; no basket built"
@@ -263,13 +266,16 @@ def build_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *
     return tuple.__new__(KiteBasket, orders)
 
 
-def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> MarginVerdict:
+def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...],
+                   held: Mapping[InstrumentId, int]) -> MarginVerdict:
     """Both of Zerodha's figures, read here, then the gate. A read that raises, or a figure that is not an exact finite
-    Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass."""
+    Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass.
+    Whether the orders only close held positions is computed here from the orders themselves (#338)."""
     try:
         available = source.available_funds()
         required = source.zerodha_required(orders)
-        return check_margin(available, required)
+        closes = reduces_held_only(((o.instrument_id, o.transaction_type, o.quantity) for o in orders), held)
+        return check_margin(available, required, closes_held=closes)
     except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
         return check_margin(None, None)
 

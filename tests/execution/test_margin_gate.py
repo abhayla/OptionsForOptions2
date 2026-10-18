@@ -196,7 +196,8 @@ def test_ac1_replace_cannot_copy_a_verdict() -> None:
 
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
     """AC-3: the gate takes only Zerodha's two figures (no platform estimate parameter) and says Zerodha's figure."""
-    assert list(inspect.signature(check_margin).parameters) == ["available", "required"]
+    # #338: closes_held is a bool the basket builder computes; still no platform estimate parameter
+    assert list(inspect.signature(check_margin).parameters) == ["available", "required", "closes_held"]
     verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.message is not None and verdict.message.what_happened.startswith("Zerodha says")
 
@@ -412,3 +413,71 @@ def test_099_a_float_tail_on_a_buy_legs_premium_uses_the_paisa() -> None:
 
 def test_099_a_negative_total_is_still_zero_after_rounding() -> None:
     assert required_from_basket_reply(_reply(total=Decimal("-214.5")), []) == Decimal("0")
+
+
+# --- #338: a basket that only closes held positions and needs 0 passes whatever the balance -------------------------
+from ofo.execution.margin_gate import reduces_held_only  # noqa: E402
+
+
+@pytest.mark.parametrize("available", [Decimal("-120.50"), Decimal("-0.01"), Decimal("0"), Decimal("671.50")])
+def test_338_closing_basket_needing_zero_passes_on_any_balance(available: Decimal) -> None:
+    """REQ-055 AC-1 (#338, B4 d funds negative / zero / positive): closes_held and required 0 -> allowed, no message."""
+    verdict = check_margin(available, Decimal("0"), closes_held=True)
+    assert (verdict.allowed, verdict.message) == (True, None)
+
+
+def test_338_closing_basket_with_a_positive_required_is_checked_as_today() -> None:
+    """REQ-055 AC-1 (#338 attack 2): Zerodha states a positive figure for a closing basket -> -120.50 < 0.01 blocks."""
+    assert check_margin(Decimal("-120.50"), Decimal("0.01"), closes_held=True).allowed is False
+    assert check_margin(Decimal("354.25"), Decimal("354.25"), closes_held=True).allowed is True
+
+
+def test_338_unknown_figures_block_even_for_a_closing_basket() -> None:
+    """REQ-055 AC-1 (#338, B4 d missing): an unknown balance or required figure is never a pass."""
+    assert check_margin(None, Decimal("0"), closes_held=True).allowed is False
+    assert check_margin(Decimal("-1"), None, closes_held=True).allowed is False
+
+
+@pytest.mark.parametrize("flag", [1, "yes", None, object()])
+def test_338_closes_held_must_be_exactly_a_bool(flag: object) -> None:
+    """REQ-055 AC-1 (#338): a truthy non-bool is refused, never read as 'closes held'."""
+    with pytest.raises(TypeError):
+        check_margin(Decimal("-1"), Decimal("0"), closes_held=flag)  # type: ignore[arg-type]
+
+
+HC, HP = "NFO:12080386", "NFO:12080387"  # held contracts (instrument ids)
+REDUCING = [
+    ([(HC, "SELL", 65)], {HC: 65}),             # close a long
+    ([(HC, "SELL", 30)], {HC: 65}),             # partial exit
+    ([(HC, "BUY", 65)], {HC: -65}),             # buy-back of a short
+    ([(HC, "SELL", 30), (HC, "SELL", 35)], {HC: 65}),  # two orders summing to the held units
+    ([(HC, "SELL", 65), (HP, "BUY", 75)], {HC: 65, HP: -75}),
+]
+NOT_REDUCING = [
+    ([], {HC: 65}),                             # empty basket
+    ([(HC, "SELL", 65)], {}),                   # nothing held
+    ([(HC, "SELL", 65)], {HC: -65}),            # adds to a short
+    ([(HC, "BUY", 65)], {HC: 65}),              # adds to a long
+    ([(HC, "SELL", 66)], {HC: 65}),             # more than held
+    ([(HC, "SELL", 40), (HC, "SELL", 40)], {HC: 65}),  # together more than held
+    ([(HC, "SELL", 30), (HC, "BUY", 30)], {HC: 65}),   # both sides of one contract
+    ([(HC, "SELL", 65), (HP, "SELL", 75)], {HC: 65}),  # mixed: the second leg opens
+    ([(HC, "sell", 65)], {HC: 65}),             # side not exactly SELL
+    ([(HC, "SELL", 0)], {HC: 65}),              # zero units
+    ([(HC, "SELL", True)], {HC: 65}),           # a bool is not units
+    ([(HC, "SELL", 65)], {HC: 0}),              # held 0
+    ([(HC, "SELL", 65)], {HC: 65.0}),           # held not an int
+    ([(HC, "SELL", 65)], {HC: True}),           # held a bool
+]
+
+
+@pytest.mark.parametrize(("orders", "held"), REDUCING)
+def test_338_reduce_only_allowed_shapes(orders, held) -> None:
+    """REQ-055 AC-1 (#338): exit, partial exit, buy-back and split closes are reduce-only."""
+    assert reduces_held_only(orders, held) is True
+
+
+@pytest.mark.parametrize(("orders", "held"), NOT_REDUCING)
+def test_338_every_other_shape_is_not_reduce_only(orders, held) -> None:
+    """REQ-055 AC-1 (#338 attack 1, allow-list): any shape outside the allowed one is False."""
+    assert reduces_held_only(orders, held) is False
