@@ -158,10 +158,13 @@ class _Read:
 
 
 def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
-    """ONE fresh read of each; any failure refuses the whole return (nothing changes on a half read)."""
+    """ONE fresh read of each; any failure refuses the whole return (nothing changes on a half read). Trades are read
+    BEFORE orders (issue 381): a trade exists only for an order that already existed, so every trade read here names an
+    order the later orders read also holds; the reverse order let a new order's trade be dropped."""
     reads = req.session.reads
     try:
-        orders, trades = reads.fetch_orders(), reads.fetch_trades()
+        trades = reads.fetch_trades()
+        orders = reads.fetch_orders()
         net = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue)).net
     except (KiteReadError, KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
