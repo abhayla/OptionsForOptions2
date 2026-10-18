@@ -850,22 +850,6 @@
             ],
             "title": "Range Start"
           },
-          "step": {
-            "anyOf": [
-              {
-                "pattern": "^[1-9]\\d{0,5}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "the column step in index points (REQ-034 AC-4); one of the index's list",
-            "examples": [
-              "50"
-            ],
-            "title": "Step"
-          },
           "underlying": {
             "enum": [
               "NIFTY",

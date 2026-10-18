@@ -625,22 +625,6 @@
             "title": "View",
             "default": "at_expiry"
           },
-          "step": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^[1-9]\\d{0,5}$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Step",
-            "description": "the column step in index points (REQ-034 AC-4); one of the index's list",
-            "examples": [
-              "50"
-            ]
-          },
           "range_start": {
             "anyOf": [
               {

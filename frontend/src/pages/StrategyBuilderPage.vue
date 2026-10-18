@@ -71,7 +71,7 @@ function legsFromQuery() {
   }))
 }
 const legs = ref(legsFromQuery())
-// W-090 (REQ-034 AC-4, AC-6): the scenario column, step and range the user picked; kept across every reload and push.
+// W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
 const choice = ref({ ...DEFAULT_CHOICE })
 if (linkRefused.value) {
   state.value = 'error'
@@ -218,7 +218,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
-    <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :underlying="headerUnderlying" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
+    <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
 
     <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
       Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>

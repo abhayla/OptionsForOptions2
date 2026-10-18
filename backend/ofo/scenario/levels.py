@@ -16,7 +16,6 @@ Breakevens, max loss and every P&L come from the engine (:func:`ofo.engine.strat
 """
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
@@ -27,7 +26,7 @@ from ofo.engine import UNLIMITED, strategy_metrics
 from ofo.engine.metrics import LossRegion
 from ofo.engine.legs import require_price
 from ofo.engine.model import ModelInputs
-from ofo.scenario.config import GRID_POINTS, STEP_CHOICES, ScenarioConfig
+from ofo.scenario.config import ScenarioConfig
 
 DAYS_IN_YEAR: Final = Decimal(365)
 MAX_EXPECTED_MOVE_DAYS: Final = 3660
@@ -161,34 +160,24 @@ def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[De
     return override.start, override.end
 
 
-def resolve_choice(
-    base: ScenarioConfig, step: Decimal | None, start: Decimal | None, end: Decimal | None
-) -> tuple[ScenarioConfig, RangeOverride | None]:
-    """The config and range override for a user's pick (REQ-034 AC-4), refusing anything off the allow-list.
+def resolve_range(
+    config: ScenarioConfig, start: Decimal | None, end: Decimal | None
+) -> RangeOverride | None:
+    """The range override for a user's pick (REQ-034 AC-4), refusing anything off the allow-list.
 
-    ``step`` must be one of STEP_CHOICES for the index; ``start`` and ``end`` come together and are grid levels a whole
-    number of steps apart, with at most ``max_columns`` columns. The grid anchor stays the Admin anchor unless the user
-    picked a range or a step it does not divide, then it is the index's strike gap (every column on a real strike).
+    ``start`` and ``end`` come together; both sit on the Admin anchor grid (AC-5: rounded 100-point levels for NIFTY),
+    a whole number of the Admin step apart, with at most ``max_columns`` columns. The step is never the user's.
     """
     if (start is None) != (end is None):
         raise ValueError("a range needs both its start and its end")
-    if step is not None and step not in STEP_CHOICES.get(base.index, ()):
-        raise ValueError(f"{base.index} step {step} is not one of {STEP_CHOICES.get(base.index, ())}")
-    if step is None and start is None:
-        return base, None
-    chosen = base.step_points if step is None else step
-    anchor = base.anchor_points
-    if start is not None or chosen % anchor != 0:
-        anchor = GRID_POINTS[base.index]
-    config = dataclasses.replace(base, step_points=chosen, anchor_points=anchor)
     if start is None or end is None:
-        return config, None
+        return None
     override = RangeOverride(start, end)
     _check_override(override, config)
-    columns = (end - start) / chosen + 1
+    columns = (end - start) / config.step_points + 1
     if columns > config.max_columns:
         raise ValueError(f"range {start}..{end} needs {columns} columns; the maximum is {config.max_columns}")
-    return config, override
+    return override
 
 
 def build_level_set(

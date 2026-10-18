@@ -124,15 +124,6 @@ DEFAULT_CONFIGS: Final = (
 )
 
 
-#: REQ-034 AC-4 (Q33B = E): the steps a user may pick per index, an allow-list (ADR-042: the Admin default first). Each
-#: is a multiple of GRID_POINTS, the listed strike gap, so a picked step still sits on real strike levels.
-STEP_CHOICES: Final = {
-    "NIFTY": (Decimal("100"), Decimal("50"), Decimal("200"), Decimal("500")),
-    "SENSEX": (Decimal("300"), Decimal("100"), Decimal("500"), Decimal("1000")),
-}
-GRID_POINTS: Final = {"NIFTY": Decimal("50"), "SENSEX": Decimal("100")}
-
-
 class ScenarioSettings:
     """The Admin set of per-index configs. One config per index; a duplicate index is refused."""
 

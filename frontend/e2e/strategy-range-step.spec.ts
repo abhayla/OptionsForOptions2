@@ -1,7 +1,7 @@
-// W-090 core proof (REQ-034 AC-4; ADR-042): on the recorded 2026-10-08 replay the user sets NIFTY step 50 and range
-// 22,800-23,600. The scenario columns on the screen are exactly the levels the outcome API returned for that pick; the
-// 17 grid levels (22800, 22850 ... 23600) are all there, the live level is still inserted (AC-2), and a pick off the
-// server's list is answered with the catalogue error, never a silent default.
+// W-090 core proof (REQ-034 AC-4; ADR-042): on the recorded 2026-10-08 replay the user sets the NIFTY range
+// 22,800-23,600 (the step stays the Admin 100). The scenario columns on the screen are exactly the levels the outcome API
+// returned for that pick; the 9 grid levels (22800, 22900 ... 23600) are all there, the live level is still inserted
+// (AC-2), and a range off the 100-point grid is answered with the catalogue error, never a silent default.
 // REPLAY_URL: a preview whose /api proxy points at an API started with APP_ENV=test and OUTCOME_REPLAY=1.
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { useQuietLiveSocket } from './support/quiet-live'
@@ -39,8 +39,7 @@ async function openCondor(page: Page, request: APIRequestContext) {
 
 const outcomePost = (page: Page) => page.waitForResponse((r) => r.url().includes('/api/strategies/outcome') && r.request().method() === 'POST')
 
-async function applyPick(page: Page, step: string, start: string, end: string) {
-  await page.getByTestId('step-select').selectOption(step)
+async function applyPick(page: Page, start: string, end: string) {
   await page.getByTestId('range-start').fill(start)
   await page.getByTestId('range-end').fill(end)
   const responded = outcomePost(page)
@@ -49,18 +48,18 @@ async function applyPick(page: Page, step: string, start: string, end: string) {
   return { status: res.status(), api: (await res.json()) as Outcome }
 }
 
-test('AC-4: step 50 and range 22,800-23,600 give exactly the grid, with the live level still inserted', async ({ page, request }, info) => {
+test('AC-4: range 22,800-23,600 gives exactly the Admin-step grid, with the live level still inserted', async ({ page, request }, info) => {
   await openCondor(page, request)
-  const { status, api } = await applyPick(page, '50', '22800', '23600')
+  const { status, api } = await applyPick(page, '22800', '23600')
   expect(status).toBe(200)
   const levels: string[] = api.scenario.levels.map((l: { level: string }) => l.level)
-  const grid = Array.from({ length: 17 }, (_, k) => String(22800 + 50 * k)) // 800 / 50 + 1, hand-computed
+  const grid = Array.from({ length: 9 }, (_, k) => String(22800 + 100 * k)) // 800 / 100 + 1 at the NIFTY Admin step 100, hand-computed
   for (const g of grid) expect(levels, `grid level ${g}`).toContain(g)
   expect(levels).toContain(api.spot_level) // AC-2: the live level is shown although 22,800 is above it
-  expect([api.scenario.step, api.scenario.start, api.scenario.end]).toEqual(['50', '22800', '23600'])
+  expect([api.scenario.step, api.scenario.start, api.scenario.end]).toEqual(['100', '22800', '23600'])
 
   // the screen draws exactly those columns, in the API's order, and the TOTAL row shows the API's text for each
-  await expect(page.locator('[data-testid="col-head"][data-col="22850"]')).toHaveCount(1)
+  await expect(page.locator('[data-testid="col-head"][data-col="22900"]')).toHaveCount(1)
   const scenarioCols = api.table.columns.filter((c: { is_scenario_level: boolean; visible: boolean }) => c.is_scenario_level && c.visible).map((c: { id: string }) => c.id)
   expect(scenarioCols).toEqual(levels)
   const heads = await page.locator('[data-testid="col-head"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col))
@@ -72,10 +71,10 @@ test('AC-4: step 50 and range 22,800-23,600 give exactly the grid, with the live
   await page.screenshot({ path: `screenshots/strategy-range-step-${info.project.name}.png`, fullPage: true })
 })
 
-test('AC-4: a range off the strike grid is answered with the catalogue error, not a default', async ({ page, request }) => {
+test('AC-4: a range off the 100-point grid is answered with the catalogue error, not a default', async ({ page, request }) => {
   await openCondor(page, request)
   const responded = outcomePost(page)
-  await page.getByTestId('range-start').fill('22825') // not on the 50-point strike grid
+  await page.getByTestId('range-start').fill('22850') // not on the 100-point grid (AC-5)
   await page.getByTestId('range-end').fill('23600')
   await page.getByTestId('range-apply').click()
   const res = await responded

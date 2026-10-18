@@ -28,8 +28,8 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
-from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.scenario.levels import RangeOverride, resolve_choice
+from ofo.scenario.config import ScenarioSettings
+from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.table import UXLevel
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
@@ -149,12 +149,10 @@ class OutcomeRequest(BaseModel):
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
-    step: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["50"],
-                                description="the column step in index points (REQ-034 AC-4); one of the index's list")
     range_start: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["22800"],
-                                       description="the first scenario level in index points; sent with range_end")
+                                    description="the first scenario level in index points; sent with range_end")
     range_end: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
-                                     description="the last scenario level in index points; sent with range_start")
+                                  description="the last scenario level in index points; sent with range_start")
     fallback: StrictBool = Field(
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
@@ -162,16 +160,16 @@ class OutcomeRequest(BaseModel):
 
     @model_validator(mode="after")
     def _choice_is_allowed(self) -> OutcomeRequest:
-        """REQ-034 AC-4: refuse a step or range off the allow-list (ofo.scenario.levels.resolve_choice) before any
+        """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
         self.scenario_choice()
         return self
 
-    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
-        """The scenario config and range override this request asks for (the default config when it asks for none)."""
+    def scenario_choice(self) -> RangeOverride | None:
+        """The range override this request asks for (None: the computed default range). Step: Admin config."""
         base = ScenarioSettings().for_index(self.underlying)
-        pick = [None if v is None else Decimal(v) for v in (self.step, self.range_start, self.range_end)]
-        return resolve_choice(base, *pick)
+        pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
+        return resolve_range(base, *pick)
 
 
 async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
@@ -419,9 +417,8 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:
-            config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
-                                config=config, override=override)
+                                override=req.scenario_choice())
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)

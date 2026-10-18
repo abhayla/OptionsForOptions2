@@ -1,5 +1,5 @@
-// W-090 (REQ-034 AC-4, AC-6): the scenario pick is sent to the outcome API as given and kept across a column switch;
-// the page computes no level (ADR-008).
+// W-090 (REQ-034 AC-4, AC-6): the range pick is sent to the outcome API as given and kept across a column switch; the
+// step is the Admin setting and is never sent; the page computes no level (ADR-008).
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -19,9 +19,9 @@ describe('AC-4: the request fields of a pick', () => {
   it('an empty pick adds nothing to the request (At Expiry is the server default)', () => {
     expect(choiceFields(DEFAULT_CHOICE)).toEqual({})
   })
-  it('a step and a full range are sent as typed, trimmed', () => {
+  it('a full range is sent as typed, trimmed, and never a step', () => {
     const c = { view: 'estimated_now', step: '50', rangeStart: ' 22800', rangeEnd: '23600 ' }
-    expect(choiceFields(c)).toEqual({ view: 'estimated_now', step: '50', range_start: '22800', range_end: '23600' })
+    expect(choiceFields(c)).toEqual({ view: 'estimated_now', range_start: '22800', range_end: '23600' })
   })
   it('half a range is not sent and is reported incomplete', () => {
     const c = { ...DEFAULT_CHOICE, rangeStart: '22800' }
@@ -32,18 +32,17 @@ describe('AC-4: the request fields of a pick', () => {
   it.each(['0', '-50', '50.5', '1e3', 'abc', '1234567'])('%s is not whole index points', (text) => {
     expect(isPoints(text)).toBe(false)
   })
-  it.each(['', '50', '23600'])('%s is whole index points (or empty)', (text) => {
+  it.each(['', '100', '23600'])('%s is whole index points (or empty)', (text) => {
     expect(isPoints(text)).toBe(true)
   })
 })
 
 describe('AC-6: a late answer for another pick is not shown', () => {
-  const sc = { view: 'at_expiry', step: '50', start: '22800', end: '23600' }
-  it('matches the same pick and refuses another view, step or range', () => {
-    const c = { view: 'at_expiry', step: '50', rangeStart: '22800', rangeEnd: '23600' }
+  const sc = { view: 'at_expiry', step: '100', start: '22800', end: '23600' }
+  it('matches the same pick and refuses another view or range', () => {
+    const c = { view: 'at_expiry', rangeStart: '22800', rangeEnd: '23600' }
     expect(matchesChoice({ scenario: sc }, c)).toBe(true)
     expect(matchesChoice({ scenario: { ...sc, view: 'estimated_now' } }, c)).toBe(false)
-    expect(matchesChoice({ scenario: { ...sc, step: '100' } }, c)).toBe(false)
     expect(matchesChoice({ scenario: { ...sc, end: '23700' } }, c)).toBe(false)
     expect(matchesChoice({ scenario: null }, c)).toBe(true)
   })
@@ -63,29 +62,32 @@ describe('AC-4 and AC-6 on the page', () => {
     await flushPromises()
     return w
   }
-  beforeEach(() => { apiCalls.length = 0 })
-
-  it('the first request is the default one: At Expiry, no step, no range', async () => {
-    await openPage()
-    expect(['view', 'step', 'range_start', 'range_end'].some((k) => k in apiCalls[0].body)).toBe(false)
-  })
-
-  it('a step and a range are sent, and switching the column keeps them', async () => {
-    const w = await openPage()
-    await w.get('[data-testid="step-select"]').setValue('50')
-    await flushPromises()
-    await w.get('[data-testid="range-start"]').setValue('22800')
-    await w.get('[data-testid="range-end"]').setValue('23600')
+  const applyRange = async (w, from, to) => {
+    await w.get('[data-testid="range-start"]').setValue(from)
+    await w.get('[data-testid="range-end"]').setValue(to)
     await w.get('[data-testid="range-apply"]').trigger('click')
     await flushPromises()
-    expect(apiCalls.at(-1).body).toMatchObject({ step: '50', range_start: '22800', range_end: '23600' })
+  }
+  beforeEach(() => { apiCalls.length = 0 })
+
+  it('the first request is the default one: At Expiry, no range, and there is no step control', async () => {
+    const w = await openPage()
+    expect(['view', 'step', 'range_start', 'range_end'].some((k) => k in apiCalls[0].body)).toBe(false)
+    expect(w.find('[data-testid="step-select"]').exists()).toBe(false)
+  })
+
+  it('a range is sent, and switching the column keeps it', async () => {
+    const w = await openPage()
+    await applyRange(w, '22800', '23600')
+    expect(apiCalls.at(-1).body).toMatchObject({ range_start: '22800', range_end: '23600' })
     expect(apiCalls.at(-1).body.view).toBeUndefined()
+    expect('step' in apiCalls.at(-1).body).toBe(false)
     await w.get('[data-testid="view-estimated_now"]').trigger('click')
     await flushPromises()
-    expect(apiCalls.at(-1).body).toMatchObject({ view: 'estimated_now', step: '50', range_start: '22800', range_end: '23600' })
+    expect(apiCalls.at(-1).body).toMatchObject({ view: 'estimated_now', range_start: '22800', range_end: '23600' })
     await w.get('[data-testid="view-at_expiry"]').trigger('click')
     await flushPromises()
-    expect(apiCalls.at(-1).body).toMatchObject({ step: '50', range_start: '22800', range_end: '23600' })
+    expect(apiCalls.at(-1).body).toMatchObject({ range_start: '22800', range_end: '23600' })
     expect(apiCalls.at(-1).body.view).toBeUndefined()
   })
 
@@ -100,17 +102,15 @@ describe('AC-4 and AC-6 on the page', () => {
     expect(w.get('[data-testid="range-hint"]').text()).toContain('both')
   })
 
-  it('Default range clears the range and keeps the step', async () => {
+  it('Default range clears the range and keeps the column', async () => {
     const w = await openPage()
-    await w.get('[data-testid="step-select"]').setValue('200')
-    await w.get('[data-testid="range-start"]').setValue('22800')
-    await w.get('[data-testid="range-end"]').setValue('23600')
-    await w.get('[data-testid="range-apply"]').trigger('click')
+    await w.get('[data-testid="view-estimated_now"]').trigger('click')
     await flushPromises()
+    await applyRange(w, '22800', '23600')
     await w.get('[data-testid="range-reset"]').trigger('click')
     await flushPromises()
     const body = apiCalls.at(-1).body
-    expect(body.step).toBe('200')
+    expect(body.view).toBe('estimated_now')
     expect('range_start' in body).toBe(false)
   })
 

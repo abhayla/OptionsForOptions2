@@ -1,18 +1,16 @@
-<!-- W-090 (REQ-034 AC-4, AC-6): the At Expiry / Estimated Now switch and the step and range pick for the scenario
+<!-- W-090 (REQ-034 AC-4, AC-6): the At Expiry / Estimated Now switch and the range pick (the step is the Admin setting) for the scenario
      columns. It only sends the pick (an event); every level and number comes back from the outcome API. The estimate
      label is the server's own text (scenario.label), shown whenever the Estimated Now column is on. -->
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { STEP_CHOICES, VIEWS, isPoints, rangeIsComplete } from '@/lib/scenarioChoice'
+import { VIEWS, isPoints, rangeIsComplete } from '@/lib/scenarioChoice'
 
 const props = defineProps({
   choice: { type: Object, required: true },
-  underlying: { type: String, default: '' },
   scenarioLabel: { type: String, default: '' },
 })
 const emit = defineEmits(['update:choice'])
 
-const steps = computed(() => STEP_CHOICES[props.underlying] ?? [])
 const start = ref(props.choice.rangeStart)
 const end = ref(props.choice.rangeEnd)
 watch(() => [props.choice.rangeStart, props.choice.rangeEnd], ([s, e]) => {
@@ -54,17 +52,6 @@ const resetRange = () => {
           {{ v.label }}
         </button>
       </div>
-      <label class="flex items-center gap-2">Step (points)
-        <select
-          data-testid="step-select"
-          class="rounded border border-line px-2 py-1"
-          :value="choice.step"
-          @change="set({ step: $event.target.value })"
-        >
-          <option value="">Default</option>
-          <option v-for="s in steps" :key="s" :value="s">{{ s }}</option>
-        </select>
-      </label>
       <label class="flex items-center gap-2">First level
         <input v-model="start" data-testid="range-start" inputmode="numeric" class="w-24 rounded border border-line px-2 py-1" />
       </label>
