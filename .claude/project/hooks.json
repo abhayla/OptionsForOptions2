@@ -20,7 +20,9 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/issue_route_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
           { "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" },
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_snapshot_ledger.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] },
       { "matcher": "Agent|Task",
         "hooks": [
@@ -34,6 +36,12 @@
           { "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/edit_lint.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"",
             "timeout": 15 }
+        ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [
+          { "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_snapshot_ledger.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] }
     ]
   },
