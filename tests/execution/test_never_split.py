@@ -18,22 +18,40 @@ from decimal import Decimal as D
 
 import pytest
 from execution_inputs import condor_legs
-from partial_inputs import (
-    BROKER_IDS, CONTRACTS, FILL_AT, LOT, REFS, REJECT_TEXT, STRATEGY_ID, FakeBroker, FakePlanner, condor_record,
-    entry_context, new_book,
-)
-
 from ofo.engine import Action, Instrument, Leg
 from ofo.errors import display_text
 from ofo.execution.freeze import (
-    FreezeRefused, StoredFreeze, exceeded_message, freeze_check, require_within_freeze,
+    FreezeRefused,
+    StoredFreeze,
+    exceeded_message,
+    freeze_check,
+    require_within_freeze,
 )
 from ofo.execution.partial import (
-    BrokerOrderStatus, BrokerPositionLine, ExecutionPlan, PlannedLeg, close_partial_strategy, complete_strategy,
+    BrokerOrderStatus,
+    BrokerPositionLine,
+    ExecutionPlan,
+    PlannedLeg,
+    close_partial_strategy,
+    complete_strategy,
     retry_failed_leg,
 )
 from ofo.execution.review import execution_review
 from ofo.orders import FillEvent, Order, OrderState
+from partial_inputs import (
+    BROKER_IDS,
+    CONTRACTS,
+    FILL_AT,
+    LOT,
+    REFS,
+    REJECT_TEXT,
+    STRATEGY_ID,
+    FakeBroker,
+    FakePlanner,
+    condor_record,
+    entry_context,
+    new_book,
+)
 
 LIMIT = 3511  # F-36, NIFTY, exchange file of 2026-10-15
 FILE_DATE = datetime.date(2026, 10, 15)
@@ -66,10 +84,11 @@ class _Stored(Mapping):
 
 
 def _plan(qty: int) -> ExecutionPlan:
-    return ExecutionPlan(STRATEGY_ID, tuple(PlannedLeg(r, c, lg) for r, c, lg in zip(REFS, CONTRACTS, condor_legs(qty), strict=True)))
+    return ExecutionPlan(STRATEGY_ID, tuple(PlannedLeg(r, c, lg)
+                                            for r, c, lg in zip(REFS, CONTRACTS, condor_legs(qty), strict=True)))
 
 
-def _state(qty: int, filled: tuple[int, ...]):  # noqa: ANN202
+def _state(qty: int, filled: tuple[int, ...]):
     """Legs at ``filled`` filled in full; every other leg's order REJECTED with nothing filled."""
     book = new_book(record=condor_record(qty))
     positions, sts = [], []
@@ -88,7 +107,7 @@ def _state(qty: int, filled: tuple[int, ...]):  # noqa: ANN202
     return book, FakeBroker(positions, sts)
 
 
-def _flow(kind: str, lots: int, catalogue, eligibility, limit: int | None = LIMIT):  # noqa: ANN001, ANN202
+def _flow(kind: str, lots: int, catalogue, eligibility, limit: int | None = LIMIT):
     qty = lots * LOT
     book, broker = _state(qty, (0, 1, 2))
     args = (_plan(qty), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
@@ -104,7 +123,7 @@ def _flow(kind: str, lots: int, catalogue, eligibility, limit: int | None = LIMI
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
-def test_core_55_lots_blocked_with_the_limit_and_54_lots_is_one_order(kind, catalogue, eligibility) -> None:  # noqa: ANN001
+def test_core_55_lots_blocked_with_the_limit_and_54_lots_is_one_order(kind, catalogue, eligibility) -> None:
     """ADR-092 (core): 55 NIFTY lots (3,575 units) prepares nothing and names the largest allowed order; 54 lots
     (3,510 units) prepares ONE order per leg, never 1,755 / 1,755 / 65."""
     blocked = _flow(kind, BLOCKED_LOTS, catalogue, eligibility)
@@ -155,7 +174,7 @@ def test_attack_a_unit_count_equal_to_the_limit_is_blocked() -> None:
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
-def test_attack_no_stored_limit_warns_and_never_blocks_even_at_55_lots(kind, catalogue, eligibility) -> None:  # noqa: ANN001
+def test_attack_no_stored_limit_warns_and_never_blocks_even_at_55_lots(kind, catalogue, eligibility) -> None:
     """Attack 3 (ADR-081 "the review warns"; ADR-037 never stop a user getting out of risk): no stored limit -> the
     55-lot order is prepared as ONE order with the review's warning for its contract, never blocked."""
     prep = _flow(kind, BLOCKED_LOTS, catalogue, eligibility, limit=None)
@@ -168,7 +187,7 @@ def test_attack_no_stored_limit_warns_and_never_blocks_even_at_55_lots(kind, cat
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
-def test_attack_a_stored_limit_below_one_lot_blocks_every_order(kind, catalogue, eligibility) -> None:  # noqa: ANN001
+def test_attack_a_stored_limit_below_one_lot_blocks_every_order(kind, catalogue, eligibility) -> None:
     """B4(d) below one lot: a limit of 65 with lot 65 allows no order at all (largest allowed 0 lots)."""
     prep = _flow(kind, 1, catalogue, eligibility, limit=65)
     assert not prep.ready and prep.orders == ()
@@ -198,7 +217,7 @@ def test_attack_a_forged_limit_object_is_refused() -> None:
 
 
 def test_attack_freeze_check_review_still_warns_without_a_stored_limit() -> None:
-    """ADR-081 "While no freeze limit is stored for a contract, the review warns": the entry review warns, not blocks."""
+    """ADR-081 "While no freeze limit is stored for a contract, the review warns": warns, never blocks."""
     leg = Leg(Action.BUY, Instrument.CE, D("23600"), datetime.date(2026, 10, 6), 65, D("50.00"))
     plan = ExecutionPlan("S-1", (PlannedLeg("L1", "NIFTY26O0623600CE", leg),))
     check = freeze_check(plan, {}, today=TODAY)

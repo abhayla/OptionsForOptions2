@@ -38,7 +38,7 @@ LEGS = (
 )
 CONDOR = Strategy(LEGS)
 #: Each leg's stored freeze limit (ADR-092): a generous limit so the 75-unit legs are one order each.
-LIMITS = {(lg.instrument, lg.strike, lg.expiry): ContractFreeze("NIFTY26O2723400CE", StoredFreeze(1800, 75, EXPIRY))
+LIMITS = {(lg.instrument, lg.strike, lg.expiry): ContractFreeze("NIFTY26O0623400CE", StoredFreeze(1800, 75, EXPIRY))
           for lg in LEGS}
 
 
@@ -135,12 +135,12 @@ def test_respond_refuses_untriggered_or_unowned():
         respond(adj, evaluate(adj, snap(live_pnl="-1")), strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
 
 
-def _exit_response(lots: int, limits):  # noqa: ANN001, ANN202
+def _exit_response(lots: int, limits):
     leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, lots * 65, D("50.00"))
     rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
     key = (Instrument.CE, D("23400"), EXPIRY)
     return respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
-                   freeze_limits={key: ContractFreeze("NIFTY26O2723400CE", limits)})
+                   freeze_limits={key: ContractFreeze("NIFTY26O0623400CE", limits)})
 
 
 def test_adr092_rule_proposal_blocks_55_lots_and_prepares_54_lots_as_one_order():
@@ -155,7 +155,7 @@ def test_adr092_rule_proposal_blocks_55_lots_and_prepares_54_lots_as_one_order()
     assert [o.quantity for o in allowed.proposal.orders] == [3510] and allowed.blocked == ()
     missing = _exit_response(55, None)
     assert [o.quantity for o in missing.proposal.orders] == [3575] and missing.blocked == ()
-    assert display_text(missing.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O2723400CE")
+    assert display_text(missing.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O0623400CE")
     with pytest.raises(ValueError, match="no trading symbol"):
         leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 65, D("50.00"))
         rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)

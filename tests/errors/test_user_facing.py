@@ -14,8 +14,8 @@ import pathlib
 from collections.abc import Callable
 
 import pytest
-
 from ofo.errors import UserFacing, UserFacingError, render, user_message_of
+from ofo.execution.freeze import FreezeRefused
 
 pytestmark = pytest.mark.repo_scan
 
@@ -57,8 +57,6 @@ def _slice_refused() -> object:
 
 
 def _freeze_refused() -> object:
-    from ofo.execution.freeze import FreezeRefused
-
     return FreezeRefused(detail="3575 units is not below 3511", message=render("send_choice_unknown"))
 
 

@@ -32,7 +32,7 @@ from recon_fixtures import (
 
 #: ADR-092 (issue 63): every condor contract has a stored freeze limit well above its 75 units.
 FREEZE_DATE = datetime.date(2026, 10, 15)
-CLOSE_LIMITS = {k: ContractFreeze("NIFTY26O2723400CE", StoredFreeze(1800, 75, FREEZE_DATE))
+CLOSE_LIMITS = {k: ContractFreeze("NIFTY26O0623400CE", StoredFreeze(1800, 75, FREEZE_DATE))
                 for k in (BC23600, BP22800, SC23400, SP23000)}
 prepare_closing_order = functools.partial(_prepare_closing_order, freeze_limits=CLOSE_LIMITS)
 
@@ -347,12 +347,12 @@ def test_adr092_closing_proposal_is_one_order_and_blocks_at_the_freeze_limit(lim
     with the review's warning (ADR-081, ADR-037)."""
     rec, audit, n, report = flagged()
     stored = None if limit is None else StoredFreeze(limit, 75, FREEZE_DATE)
-    limits = {BC23600: ContractFreeze("NIFTY26O2723600CE", stored)}
+    limits = {BC23600: ContractFreeze("NIFTY26O0623600CE", stored)}
     if not blocked:
         res = _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore",
                                      audit=audit, freeze_limits=limits)
         assert res.proposal.orders == (ProposedOrder(Action.BUY, BC23600, 75),)
-        assert [display_text(w).startswith("No exchange freeze limit is stored for NIFTY26O2723600CE")
+        assert [display_text(w).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
                 for w in res.proposal.freeze_warnings] == ([True] if limit is None else [])
         return
     with pytest.raises(FreezeRefused) as err:
@@ -365,7 +365,7 @@ def test_adr092_closing_proposal_is_one_order_and_blocks_at_the_freeze_limit(lim
 
 def test_adr092_closing_proposal_needs_a_symbol_for_every_contract():
     """A contract with no ContractFreeze entry (no symbol to name it) is a refused input, never a silent pass."""
-    rec, audit, n, report = flagged()
+    rec, audit, _, report = flagged()
     with pytest.raises(ReconciliationError, match="no trading symbol"):
         _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
                                freeze_limits={})

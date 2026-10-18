@@ -188,7 +188,8 @@ def test_ac5_all_orders_submitted_is_not_complete(catalogue, eligibility) -> Non
     positions still show three legs -> not complete. Sending never changes the status; only positions do."""
     book = book_with_three_filled()
     broker = FakeBroker(three_positions(), statuses())
-    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     result = submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-42",
                               submitter=FakeSubmitter())
     assert result.submitted == (("leg-4", "NEW-1"),)

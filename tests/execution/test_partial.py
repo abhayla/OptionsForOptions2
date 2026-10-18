@@ -61,7 +61,8 @@ def test_core_golden_condor_three_filled_fourth_rejected(catalogue, eligibility)
     ]
     assert a.choices == CHOICE_ORDER
 
-    prep = complete_strategy(plan(), broker, book, planner, entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = complete_strategy(plan(), broker, book, planner, entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert broker.calls[:2] == ["positions", "order_statuses"]
     assert prep.gate is not None and not prep.gate.blocked
     assert len(prep.orders) == 1

@@ -82,7 +82,8 @@ def test_a_position_whose_product_was_not_read_blocks_the_exit(catalogue, eligib
     book, broker = _state((QTY, QTY, QTY, 0))
     unread = [dataclasses.replace(p, product=None) for p in broker.positions]  # Zerodha never reported a product
     broker = FakeBroker(unread, broker.order_statuses, default_product=None)
-    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()
 
 

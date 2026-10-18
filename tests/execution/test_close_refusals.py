@@ -119,7 +119,7 @@ def _complete(plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: A
     return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
 
 
-def _assert_blocked(prep, *reason_parts: str) -> None:  # noqa: ANN001
+def _assert_blocked(prep, *reason_parts: str) -> None:
     """ADR-092: the freeze block (above a known stored limit): no order, the limit and largest allowed order named."""
     assert not prep.ready and prep.orders == () and prep.gate is None
     for part in reason_parts:
@@ -165,7 +165,8 @@ def test_ac6_sensex_freeze_below_one_lot_is_a_refusal_without_marking_closing(ca
     prep = _close(plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(19))
     _assert_blocked(prep, "freeze limit of 19 units", "0 units (0 lots)")
     assert book.closing_read_at(STRATEGY_ID) is None
-    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert retry.reason != NEEDS_FRESH_READ
     assert retry.ready, retry.reason
     assert [(o.leg_ref, o.quantity) for o in retry.orders] == [(BUY_CE, 240)]
@@ -281,7 +282,8 @@ def test_ac6_a_read_gone_stale_while_preparing_leaves_no_marker_and_no_held_prep
     back instead of an exception."""
     clock = Clock()
     plan, book, broker, ctx = _state(clock=clock)
-    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert clock() == READ_AT + datetime.timedelta(seconds=70)
     _assert_refused(prep, "stale broker read")
     assert book.closing_read_at(STRATEGY_ID) is None

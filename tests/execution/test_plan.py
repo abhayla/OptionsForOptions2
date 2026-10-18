@@ -291,6 +291,7 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
         [BrokerOrderStatus(ids[0], full[0].contract, OrderState.EXECUTED, LOT),
          BrokerOrderStatus(ids[1], full[1].contract, OrderState.REJECTED, 0, REJECT_TEXT),
          BrokerOrderStatus(ids[2], full[3].contract, OrderState.REJECTED, 0, REJECT_TEXT)])
-    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [
         ("NIFTY26O0623000PE", SELL, LOT), ("NIFTY26O0623600CE", BUY, LOT)]

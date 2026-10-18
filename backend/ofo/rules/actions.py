@@ -83,13 +83,21 @@ def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: S
         orders = tuple(_order(strategy_id, leg, leg.action) for leg in strategy.legs)
     else:
         raise ValueError("adjustment orders depend on the adjustment chosen (ADR-011); not prepared by this module")
-    limits = {} if freeze_limits is None else freeze_limits
+    blocked, warnings = _freeze_findings(orders, {} if freeze_limits is None else freeze_limits)
+    if blocked:
+        return RuleResponse(alert, None, blocked)
+    return RuleResponse(alert, Proposal(strategy_id, rule.rule_id, orders), (), warnings)
+
+
+def _freeze_findings(orders: tuple[ProposedOrder, ...], limits: Mapping[LegKey, ContractFreeze],
+                     ) -> tuple[tuple[UserFacingError, ...], tuple[UserFacingError, ...]]:
+    """ADR-092 per proposed order: (blocks above a known stored limit, warnings for no stored limit)."""
     blocked: list[UserFacingError] = []
     warnings: list[UserFacingError] = []
     for order in orders:
         found = limits.get((order.instrument, order.strike, order.expiry))
         if not isinstance(found, ContractFreeze):
-            raise ValueError(f"no trading symbol given for the leg {order.instrument.value} {order.strike} {order.expiry}")
+            raise ValueError(f"no trading symbol given for {order.instrument.value} {order.strike} {order.expiry}")
         try:
             warning = require_within_freeze(found.symbol, order.quantity, found.stored)
         except FreezeRefused as exc:
@@ -97,6 +105,4 @@ def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: S
             continue
         if warning is not None:
             warnings.append(warning)
-    if blocked:
-        return RuleResponse(alert, None, tuple(blocked))
-    return RuleResponse(alert, Proposal(strategy_id, rule.rule_id, orders), (), tuple(warnings))
+    return tuple(blocked), tuple(warnings)

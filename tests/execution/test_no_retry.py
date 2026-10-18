@@ -92,7 +92,8 @@ def test_ac6_blocked_preparation_cannot_be_sent(catalogue, eligibility) -> None:
     """AC-6: a retry goes through the W-014 gate; a disconnected broker blocks it, no order is prepared, and the
     preparation cannot be sent."""
     prep = retry_failed_leg(plan(), "leg-4", FakeBroker(three_positions(), statuses()), book_with_three_filled(),
-                            FakePlanner(), entry_context(broker_connected=False), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+                            FakePlanner(), entry_context(broker_connected=False), catalogue, eligibility,
+                                    stored_freeze=STORED_FREEZE)
     assert prep.gate is not None and CheckCode.BROKER_NOT_CONNECTED in prep.gate.failed_codes
     assert prep.orders == ()
     with pytest.raises(ValueError):

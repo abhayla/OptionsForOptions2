@@ -162,7 +162,8 @@ def test_ac10_open_entry_orders_are_still_listed_for_cancellation(catalogue, eli
         else:
             sts.append(BrokerOrderStatus(BROKER_IDS[i], contract, OrderState.SUBMITTED, 0))
     prep = close_partial_strategy(big_plan(), FakeBroker(positions, sts), book, FakePlanner(), entry_context(),
-                                  catalogue, eligibility, constraints=FakeConstraints(per_batch=10), stored_freeze=STORED_FREEZE)
+                                  catalogue, eligibility, constraints=FakeConstraints(per_batch=10),
+                                          stored_freeze=STORED_FREEZE)
     assert prep.ready, prep.reason
     (open_view,) = [v for v in book.views_for(STRATEGY_ID) if v.contract == CONTRACTS[3]]
     assert prep.cancels == (open_view.key,)

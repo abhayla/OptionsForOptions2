@@ -5,9 +5,13 @@ Expected texts are written from the meaning of the messages they replace, not co
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 import pytest
+from ofo.engine import Action, Instrument, Leg
+from ofo.execution.planned import ExecutionPlan, PlannedLeg
+from ofo.execution.sequence import SliceRefused, _batched
 
 PARTS = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -62,12 +66,6 @@ def test_spec_fixed_choice_labels_are_the_exact_words() -> None:
 
 def test_lot_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
     """ADR-092 removed freeze slicing; the typed refusal that remains is the whole-lots one (``_batched``)."""
-    from ofo.execution.planned import ExecutionPlan, PlannedLeg
-    from ofo.execution.sequence import SliceRefused, _batched
-    from ofo.engine import Action, Instrument, Leg
-    import datetime
-    from decimal import Decimal
-
     leg = Leg(Action.BUY, Instrument.CE, Decimal("24000"), datetime.date(2026, 9, 30), 65, Decimal("50.00"))
     plan = ExecutionPlan("S-1", (PlannedLeg("L1", "NIFTY2693024000CE", leg),))
 
@@ -78,7 +76,8 @@ def test_lot_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
     with pytest.raises(SliceRefused) as info:
         _batched(plan, [["L1"]], Constraints(), {"L1": 100}, {"L1": 65})
     err = info.value
-    assert err.message.what_happened == "Nothing prepared: 100 units of NIFTY2693024000CE is not a whole number of lots of 65."
+    assert err.message.what_happened == (
+        "Nothing prepared: 100 units of NIFTY2693024000CE is not a whole number of lots of 65.")
     assert isinstance(err, ValueError) and "whole number of lots of 65" in str(err)
     assert err.text.count("\n") == 3
     with pytest.raises(TypeError):
