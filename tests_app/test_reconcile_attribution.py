@@ -32,7 +32,7 @@ from ofo_app import reconcile_attribution as ra
 from ofo_app.execute_replay import CORE_ID
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
-from ofo_app.kite_replies import ContractIndex, orders_from_reply
+from ofo_app.kite_replies import ContractIndex, orders_from_reply, positions_from_reply
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
 KEY = ("NIFTY", Instrument.CE, Decimal("23650.00"), datetime.date(2026, 10, 19))
@@ -51,8 +51,12 @@ def _recorded(name: str) -> object:
 def _sources() -> ra.Sources:
     cat = Catalogue()
     cat.load([_listed()])
+    return ra.Sources(cat, clock)
+
+
+def _index() -> ContractIndex:
     slice_rows = json.loads((FIXTURES / "instruments-2026-10-16-slice.json").read_text(encoding="utf-8"))
-    return ra.Sources(cat, ContractIndex.from_instrument_slice(slice_rows), clock)
+    return ContractIndex.from_instrument_slice(slice_rows)
 
 
 def _plans(orders: str, strategy_id: int = 1, *, side: str | None = None) -> ra.StrategyPlans:
@@ -79,7 +83,9 @@ def _positions(quantity: int | None = 65) -> object:
 
 
 def _run(strategies, positions, standalone=None) -> ra.Attribution:
-    return ra.attribute_and_compare(strategies, standalone or {}, positions, _sources(), at=AT)
+    """The product path: Zerodha's positions reply through the existing reply adapter, then the attribution."""
+    net = positions_from_reply(positions, _index()).net
+    return ra.attribute_and_compare(strategies, standalone or {}, net, _sources(), at=AT)
 
 
 def _blocked(result: ra.Attribution) -> set[str]:
@@ -233,7 +239,8 @@ def _row_without(key: str) -> object:
     pytest.param({"net": {}}, id="net-not-a-list"),
 ])
 def test_ac7_unparseable_positions_fail_closed(positions):
-    """AC-7: an unreadable positions reply raises ValueError; it is never read as Zerodha holding 0."""
+    """AC-7: an unreadable positions reply raises ValueError (in the reply adapter, before the attribution); it is
+    never read as Zerodha holding 0."""
     with pytest.raises(ValueError):
         _run({1: _plans("orders-122104")}, positions)
 
@@ -291,7 +298,15 @@ def test_ac7_duplicate_plans_are_refused():
 def test_ac7_malformed_standalone_is_refused(standalone):
     """AC-7: the recorded standalone map is validated (compare.units_map); a wrong type is refused, never 0."""
     with pytest.raises(ValueError):
-        ra.attribute_and_compare({1: _plans("orders-122104")}, standalone, _positions(90), _sources(), at=AT)
+        ra.attribute_and_compare({1: _plans("orders-122104")}, standalone, {KEY: 90}, _sources(), at=AT)
+
+
+@pytest.mark.parametrize("broker_net", [{KEY: Decimal("65")}, {KEY: True}, {KEY: 65.0}, {("NIFTY",): 65}, [(KEY, 65)]])
+def test_ac7_malformed_broker_net_is_refused(broker_net):
+    """AC-7: Zerodha's net is validated again here (compare.units_map); a non-int quantity or a bad contract key is
+    refused, never read as 0."""
+    with pytest.raises(ValueError):
+        ra.attribute_and_compare({1: _plans("orders-122104")}, {}, broker_net, _sources(), at=AT)
 
 
 def test_ac7_no_verdict_or_held_units_are_accepted_from_the_caller():
@@ -300,7 +315,7 @@ def test_ac7_no_verdict_or_held_units_are_accepted_from_the_caller():
     with pytest.raises(ra.AttributionError):
         _run({1: {KEY: 65}}, _positions(65))
     with pytest.raises(ra.AttributionError):
-        ra.attribute_and_compare({1: _plans("orders-122104")}, {}, _positions(65), object(), at=AT)
+        ra.attribute_and_compare({1: _plans("orders-122104")}, {}, {KEY: 65}, object(), at=AT)
 
 
 def test_ac7_split_outside_rule_by_hand():
