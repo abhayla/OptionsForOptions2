@@ -1,0 +1,48 @@
+// W-090 (REQ-034 AC-4, AC-6): the user's pick of scenario column, step and range. The browser only SENDS the pick and shows
+// what the outcome API returns: it never computes a level or a P&L (ADR-008). The server is the authority and refuses a
+// step or range off its list (422); STEP_CHOICES below is only what the step menu offers, in the same order as the
+// server's list (backend/ofo/scenario/config.py STEP_CHOICES, the Admin default first).
+export const VIEWS = [
+  { key: 'at_expiry', label: 'At Expiry' },
+  { key: 'estimated_now', label: 'Estimated Now' },
+]
+
+export const STEP_CHOICES = {
+  NIFTY: ['100', '50', '200', '500'],
+  SENSEX: ['300', '100', '500', '1000'],
+}
+
+/** The default pick: At Expiry, the server's own step and range. */
+export const DEFAULT_CHOICE = Object.freeze({ view: 'at_expiry', step: '', rangeStart: '', rangeEnd: '' })
+
+/** True for a whole number of index points as typed (digits only, no sign, no decimals), or empty. */
+export function isPoints(text) {
+  return /^$|^[1-9]\d{0,5}$/.test(String(text).trim())
+}
+
+/** The request fields for a pick: only what the user set is sent, so an empty pick is exactly the default request. */
+export function choiceFields(choice) {
+  const out = choice.view === DEFAULT_CHOICE.view ? {} : { view: choice.view } // At Expiry is the server's default
+  if (choice.step) out.step = String(choice.step).trim()
+  if (choice.rangeStart && choice.rangeEnd) {
+    out.range_start = String(choice.rangeStart).trim()
+    out.range_end = String(choice.rangeEnd).trim()
+  }
+  return out
+}
+
+/** A range needs both ends, or neither. */
+export function rangeIsComplete(choice) {
+  return !!choice.rangeStart === !!choice.rangeEnd
+}
+
+/** True when an outcome answer was made for this pick (a late push of the previous pick is dropped, never shown). */
+export function matchesChoice(body, choice) {
+  const sc = body?.scenario
+  if (!sc) return true // no scenario in the answer (not connected / refused): nothing to compare
+  if (sc.view !== choice.view) return false
+  const want = choiceFields(choice)
+  if (want.step && sc.step !== want.step) return false
+  if (want.range_start && (sc.start !== want.range_start || sc.end !== want.range_end)) return false
+  return true
+}
