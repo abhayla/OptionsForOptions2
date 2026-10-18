@@ -16,10 +16,18 @@ in Zerodha's order book (``kite_replies.orders_from_reply``, passed in as ``orde
 - exactly one row, and its status word is in ``execute_plan.TERMINAL_ORDER_STATUSES`` (an allow-list: COMPLETE,
   CANCELLED, REJECTED, exact text; any other or unknown word, lowercase included, is not final): that row's
   ``filled_quantity`` is the order's fill, in memory only (never stored here);
-- a row whose tag is the plan's but whose side, trading symbol or quantity is not the stored order's: refused
-  (``AttributionError``, fail closed: the tag does not identify the order we placed);
+- a row whose tag is the plan's but whose side, trading symbol or quantity is not the stored order's (e.g. the user
+  modified it on Kite): PENDING (``book_row_differs``) for that plan only; ``AttributionError`` stays for unreadable
+  input, so one modified order never fails the whole account;
 - no row (never placed, or placed on an earlier day: Kite's order book holds today's orders only), two rows with one
   tag (never summed), or a row not final: the plan is PENDING.
+
+CLOSED plans count their stored fills, unless today's book contradicts them (fix round 2 MAJOR): a closed plan
+whose tag shows in today's book a status not final or a fill other than the one stored at close
+(``execution_return.drifted``; real case: Check pressed before placing -> closed ``nothing_placed`` with fill 0, then
+placed on Kite and COMPLETE 65) or a row unlike the stored order is PENDING (``closed_plan_drifted`` /
+``book_row_differs``). A closed plan whose tags are absent today (an earlier day's orders) keeps its stored fill.
+Two orders with one tag in one plan are refused.
 
 When every order of an open plan is final, its fills count as the strategy's own and the normal comparison applies,
 even though Check was never pressed ("so a plan the user never returns to cannot hide a shortfall or outside lots for
@@ -40,9 +48,10 @@ Attribution rule, per contract ``c`` that is not pending (``b`` = Zerodha's net,
   ``b - e`` is outside and ``e`` is compared. Anything else (a shortfall, Zerodha flat, the opposite side) is compared
   as read, so compare blocks it (AC-6, Q199). Example: own +65, standalone -25 (``e`` = 40): Zerodha 40 agrees; 65 ->
   25 outside; 130 -> 90 outside; 0 -> blocked.
-- The outside cap (review round 2 MINOR 2): when an opposite standalone outweighs the strategies (``e`` on the other
-  side of ``s``), ``b - e`` would exceed Zerodha's own holding; outside is then only what Zerodha holds beyond the
-  strategies' units (``b`` - own, on side ``s``), so outside never exceeds ``|b|``. Example: own +65, standalone -100,
+- The outside cap (review round 2 MINOR 2): when an opposite standalone equals or outweighs the strategies (``e`` 0
+  or on the other side of ``s``; fix round 2 MINOR 3: 0 takes the same branch as -1), ``b - e`` would reach or
+  exceed Zerodha's own holding; outside is then only what Zerodha holds beyond the strategies' units (``b`` - own,
+  on side ``s``), so outside never exceeds ``|b|``. Example: own +65, standalone -100,
   Zerodha +65 -> 0 outside (not 100), and the standalone short Zerodha does not show is reported in
   ``standalone_unseen`` (-100); compare decides the block.
 - Strategy holders on BOTH sides of ``c``: nothing is stripped. A surplus over the sum is then a shortfall against the
@@ -78,8 +87,9 @@ from ofo.strategy.versions import StrategyRecord
 
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store, strategy_store
+from ofo_app import execution_return as er
 from ofo_app.config import app_env
-from ofo_app.execution_plan_store import StoredPlan
+from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 from ofo_app.strategy_store import StrategySummary
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the reconcile key (execute_plan.contract_key)
@@ -96,6 +106,11 @@ _TEST_ENV = "test"
 PENDING_NOT_FINAL = "order not final at Zerodha"
 PENDING_ABSENT = "order not in Zerodha's order book"
 PENDING_DUPLICATE_TAG = "two order-book rows carry the tag"
+#: A row with the plan's tag whose side, trading symbol or quantity is not the stored order's (e.g. modified on Kite).
+PENDING_ROW_DIFFERS = "book_row_differs"
+#: A CLOSED plan whose tags show, in today's book, a status not final or a fill other than the one stored at close
+#: (``execution_return.drifted``: e.g. Check pressed before placing -> closed "nothing_placed", then placed on Kite).
+PENDING_CLOSED_DRIFTED = "closed_plan_drifted"
 
 
 class AttributionError(ValueError):
@@ -143,7 +158,8 @@ class Sources:
 
 @dataclass(frozen=True)
 class Pending:
-    """Why one contract is pending: whose open plan, which order (tag) and the reason (a ``PENDING_*`` value)."""
+    """Why one contract is pending: whose plan (open, or closed and contradicted by today's book), which order (tag)
+    and the reason (a ``PENDING_*`` value)."""
 
     strategy_id: str
     plan_number: int
@@ -207,6 +223,9 @@ def _check_plans(strategy_id: int, plans: object) -> None:
         if plan.plan_number in numbers:
             raise AttributionError(f"strategy {strategy_id}: plan {plan.plan_number} appears twice")
         numbers.add(plan.plan_number)
+        tags = [order.tag for order in plan.orders]
+        if len(set(tags)) != len(tags):
+            raise AttributionError(f"strategy {strategy_id} plan {plan.plan_number}: two orders carry one tag {tags!r}")
         for order in plan.orders:
             try:
                 tag = parse_tag(order.tag)
@@ -246,6 +265,26 @@ def rows_by_tag(order_book: object) -> dict[str, list[OrderRow]]:
     return by_tag
 
 
+def _row_differs(order: PlanOrder, rows: Sequence[OrderRow]) -> bool:
+    """A row carries the order's tag but not its side, trading symbol or quantity: not the order we stored."""
+    return any((row.side.value, row.tradingsymbol, row.quantity)
+               != (order.transaction_type, order.tradingsymbol, order.quantity) for row in rows)
+
+
+def _read_closed_plan(plan: StoredPlan, book: Mapping[str, Sequence[OrderRow]]) -> list[tuple[str, str]]:
+    """One CLOSED plan against today's book: the (tag, reason) of every order the book contradicts. A tag absent
+    today (an earlier day's order) says nothing: the stored fill stands. The drift rule is
+    ``execution_return.drifted`` (status not final, or a fill other than the one stored at close), asked per order."""
+    today = er.TodaysBook({tag: tuple(rows) for tag, rows in book.items()}, (), {}, (), frozenset())
+    reasons: list[tuple[str, str]] = []
+    for order in plan.orders:
+        if _row_differs(order, book.get(order.tag, ())):
+            reasons.append((order.tag, PENDING_ROW_DIFFERS))
+        elif er.drifted((dataclasses.replace(plan, orders=(order,)),), today):
+            reasons.append((order.tag, PENDING_CLOSED_DRIFTED))
+    return reasons
+
+
 def _read_open_plan(plan: StoredPlan,
                     book: Mapping[str, Sequence[OrderRow]]) -> tuple[StoredPlan, list[tuple[str, str]]]:
     """One OPEN plan against Zerodha's order book (module docstring): the plan with each order's fill from its final
@@ -254,13 +293,9 @@ def _read_open_plan(plan: StoredPlan,
     orders = []
     for order in plan.orders:
         rows = book.get(order.tag, ())
-        for row in rows:
-            if (row.side.value, row.tradingsymbol, row.quantity) != (
-                    order.transaction_type, order.tradingsymbol, order.quantity):
-                raise AttributionError(f"order-book row for tag {order.tag!r} is {row.side.value} {row.quantity} "
-                                       f"{row.tradingsymbol}, not the stored {order.transaction_type} {order.quantity} "
-                                       f"{order.tradingsymbol}")
-        if not rows:
+        if _row_differs(order, rows):
+            reasons.append((order.tag, PENDING_ROW_DIFFERS))
+        elif not rows:
             reasons.append((order.tag, PENDING_ABSENT))
         elif len(rows) > 1:
             reasons.append((order.tag, PENDING_DUPLICATE_TAG))
@@ -276,15 +311,15 @@ def _read_open_plan(plan: StoredPlan,
 def _strategy_units(strategy_id: int, underlying: str, plans: object, book: Mapping[str, Sequence[OrderRow]],
                     catalogue: Catalogue) -> tuple[dict[ContractKey, int], dict[ContractKey, list[Pending]]]:
     """The strategy's held units per contract (closed plans' stored fills, open plans' final fills) and the contracts
-    its pending open plans touch."""
+    its pending plans (open or drifted closed) touch."""
     _check_plans(strategy_id, plans)
     counted: list[StoredPlan] = []
     pending: dict[ContractKey, list[Pending]] = {}
     for plan in plans:  # type: ignore[attr-defined]  # a checked sequence of StoredPlan
         if plan.status == "closed":
-            counted.append(plan)
-            continue
-        read, reasons = _read_open_plan(plan, book)
+            read, reasons = plan, _read_closed_plan(plan, book)
+        else:
+            read, reasons = _read_open_plan(plan, book)
         if not reasons:
             counted.append(read)
             continue
@@ -322,7 +357,7 @@ def split_outside(raw_net: Mapping[ContractKey, int], held: Mapping[str, Mapping
         elif sides == {True, False}:
             surplus = 0  # strategies on both sides: a surplus is a shortfall for one of them (Q224 blocks all)
         elif excess and (excess > 0) in sides:
-            if expected and (expected > 0) not in sides:
+            if not expected or (expected > 0) not in sides:
                 # The outside cap: an opposite standalone outweighs the strategies; only Zerodha's units beyond the
                 # strategies' own can be outside (never more than Zerodha holds).
                 beyond = broker - sum(own)
@@ -431,6 +466,7 @@ async def attribute_and_compare(
         frozenset(report.blocked_strategy_ids) | frozenset(blocked_by_pending))
 
 
-__all__ = ["PENDING_ABSENT", "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL", "Account", "Attribution",
+__all__ = ["PENDING_ABSENT", "PENDING_CLOSED_DRIFTED", "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL",
+           "PENDING_ROW_DIFFERS", "Account", "Attribution",
            "AttributionError", "OrderRow", "Pending", "Sources", "StoreReader", "attribute_and_compare",
            "instrument_key", "rows_by_tag", "split_outside", "standalone_unseen"]
