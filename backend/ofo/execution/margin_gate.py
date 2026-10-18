@@ -76,8 +76,9 @@ def _derive(available: Decimal | None, required: Decimal | None,
     if available >= required:
         return True, None
     if closes_held is True and required == 0:
-        # #338: a basket that only closes or reduces held positions, and that Zerodha says needs nothing, is built
-        # whatever the balance: a negative balance (losses beyond funds) is exactly when the user must get out.
+        # #338 / ADR-113: a basket that only closes or reduces held positions, and whose Zerodha final.total is 0 or
+        # less (no ADR-094 top-up for such a basket), is built whatever the balance: a negative balance (losses
+        # beyond funds) is exactly when the user must get out.
         return True, None
     # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
     try:
@@ -158,9 +159,15 @@ def _premium(value: object) -> Decimal:
     return zerodha_paise(amount)  # ADR-099/ADR-101: rounded half-up to the paisa where it is parsed
 
 
-def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> Decimal:
+def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder], *,
+                               closes_held: bool = False) -> Decimal:
     """The margin the basket needs (ADR-094): ``final.total`` of Zerodha's ``POST /margins/basket`` reply ``data``
     plus, for each option BUY leg, ``max(0, quantity x limit price - that leg's option_premium)``.
+
+    ADR-113 (#338): when ``closes_held`` is exactly True (every order closes or reduces a held position, as
+    ``reduces_held_only`` answered), the figure is Zerodha's ``final.total`` alone, with no BUY top-up: a buy-back of
+    a short at a limit above the live price is not blocked by our top-up; Kite's own check at placement stays the
+    backstop. The request/reply match and each BUY leg's quantity and price are still checked.
 
     Kite prices an option BUY at the lower of the limit and the live price (F-39); the user may pay up to the limit.
     SELL legs and futures add nothing; a negative difference is 0, never a credit, and so is a negative ``final.total``
@@ -168,6 +175,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
     to Kite, in the same order as ``data["orders"]``. The reply must have been parsed with ``parse_float=Decimal``.
     Anything unusable (no final.total, a BUY leg's option_premium missing/not a number/negative, a count or identity
     mismatch between request and reply, a bad quantity or price) raises `MarginReplyError`."""
+    if type(closes_held) is not bool:
+        raise TypeError("closes_held must be exactly a bool")
     required = _final_total(data)
     rows = data.get("orders")
     if not isinstance(rows, list) or len(rows) != len(orders):
@@ -182,6 +191,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
         if (type(quantity) is not int or quantity <= 0 or type(price) is not Decimal or not price.is_finite()
                 or price <= 0):
             raise MarginReplyError("a BUY leg has no usable quantity and limit price")
+        if closes_held is True:
+            continue  # ADR-113: a basket that only closes held positions is decided on Zerodha's figure alone
         required += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))
     return required
 

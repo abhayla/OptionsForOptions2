@@ -45,8 +45,8 @@ class _ZerodhaMargin:
     def available_funds(self) -> Decimal:
         return KiteMargin.fetch_available_funds(self.client)
 
-    def zerodha_required(self, orders: tuple[KiteOrder, ...]) -> Decimal:
-        return KiteMargin.fetch_basket_margin(self.client, basket_orders(orders)).required_total
+    def zerodha_required(self, orders: tuple[KiteOrder, ...], *, closes_held: bool) -> Decimal:
+        return KiteMargin.fetch_basket_margin(self.client, basket_orders(orders), closes_held=closes_held).required_total
 
 
 def _zerodha_margin_source(client: KiteMargin) -> _ZerodhaMargin:

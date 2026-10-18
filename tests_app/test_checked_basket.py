@@ -306,3 +306,61 @@ def test_closing_basket_with_an_unparseable_or_missing_total_is_blocked(total: s
     reply["data"]["final"]["total"] = json.loads(total)
     with pytest.raises(BasketRefused):
         _exit_build("-120.50", reply=json.dumps(reply))
+
+
+# -- ADR-113 (#338 round 2): a buy-back of a short is decided on Zerodha's final.total, no ADR-094 top-up ----------
+
+def _buyback_reply(total: str) -> str:
+    """The real exit reply's shape with the review's buy-back figures: final.total ``total``, option_premium 650."""
+    reply = json.loads(EXIT_REPLY)
+    reply["data"]["final"]["total"] = json.loads(total)
+    reply["data"]["orders"][0]["option_premium"] = 650
+    return json.dumps(reply)
+
+
+def _buyback_build(funds: str, total: str, *, held_units: int | None = -65):
+    cat = _contract_cat(EXIT_SYMBOL)
+    held = None if held_units is None else {_iid(cat, EXIT_SYMBOL): held_units}
+    return checked_basket(ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.BUY, 65, "10.50"),)), cat, 2,
+                          margin_client=client(Replay(funds_reply(funds), basket=_buyback_reply(total))),
+                          freeze_check=no_freeze, held=held)
+
+
+@pytest.mark.parametrize("funds", ["-0.01", "0", "30"])
+@pytest.mark.parametrize("total", ["-500", "0"])
+def test_adr113_buyback_of_a_short_builds_at_any_funds(total: str, funds: str) -> None:
+    """ADR-113 (#338 review finding 1): BUY 65 @ 10.50 buying back -65 held, Zerodha final.total -500 / 0 -> built at
+    funds -0.01 / 0 / 30 (before: required 32.50, blocked)."""
+    basket = _buyback_build(funds, total)
+    assert [(o.tradingsymbol, o.transaction_type, o.quantity, o.price) for o in basket.orders] == [
+        (EXIT_SYMBOL, "BUY", 65, D("10.50"))]
+
+
+@pytest.mark.parametrize("funds", ["-0.01", "0", "30"])
+def test_adr113_buyback_with_a_positive_final_total_is_compared_with_funds(funds: str) -> None:
+    """ADR-113: Zerodha says +200 -> required 200.00 exactly (no top-up), refused at -0.01 / 0 / 30."""
+    with pytest.raises(BasketRefused) as caught:
+        _buyback_build(funds, "200")
+    assert "needs ₹200.00 of margin" in display_text(caught.value.user_message)
+
+
+def test_adr113_the_same_buy_as_an_entry_keeps_the_top_up() -> None:
+    """ADR-094 kept: the same BUY with nothing held (an entry) needs 0 + 32.50 -> funds 30 refused, 32.50 shown."""
+    with pytest.raises(BasketRefused) as caught:
+        _buyback_build("30", "-500", held_units=None)
+    assert "needs ₹32.50 of margin" in display_text(caught.value.user_message)
+
+
+def test_adr113_a_mixed_basket_keeps_the_top_up_and_is_blocked_at_negative_funds() -> None:
+    """ADR-113 applies only when EVERY order closes: buy back -65 held AND buy an unheld contract -> not reduce-only,
+    the top-up stays, negative funds refuse."""
+    cat = _contract_cat(EXIT_SYMBOL, OPEN_SYMBOL)
+    legs = (_leg(cat, "L1", EXIT_SYMBOL, Action.BUY, 65, "10.50"),
+            _leg(cat, "L2", OPEN_SYMBOL, Action.BUY, 75, "10.50"))
+    reply = json.loads(_buyback_reply("-500"))
+    row = reply["data"]["orders"][0]
+    reply["data"]["orders"] = [row, {**row, "tradingsymbol": OPEN_SYMBOL}]
+    with pytest.raises(BasketRefused):
+        checked_basket(ExecutionPlan("S-9", legs), cat, 2,
+                       margin_client=client(Replay(funds_reply("-0.01"), basket=json.dumps(reply))),
+                       freeze_check=no_freeze, held={_iid(cat, EXIT_SYMBOL): -65})

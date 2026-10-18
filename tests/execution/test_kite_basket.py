@@ -237,10 +237,10 @@ class _Raising(OkMargin):
             raise ConnectionError("Zerodha unreachable")
         return super().available_funds()
 
-    def zerodha_required(self, orders):
+    def zerodha_required(self, orders, *, closes_held=False):
         if self.which == "zerodha_required":
             raise ConnectionError("Zerodha unreachable")
-        return super().zerodha_required(orders)
+        return super().zerodha_required(orders, closes_held=closes_held)
 
 
 @pytest.mark.parametrize("which", ["available_funds", "zerodha_required"])

@@ -176,8 +176,9 @@ class MarginSource(Protocol):
         """Zerodha's available funds (``equity.net``, signed), exact Decimal."""
         ...
 
-    def zerodha_required(self, orders: tuple[KiteOrder, ...]) -> Decimal:
-        """Zerodha's required margin for exactly ``orders`` (W-081 ``required_from_basket_reply``), exact Decimal."""
+    def zerodha_required(self, orders: tuple[KiteOrder, ...], *, closes_held: bool) -> Decimal:
+        """Zerodha's required margin for exactly ``orders`` (W-081 ``required_from_basket_reply``), exact Decimal;
+        ``closes_held`` True (ADR-113) means Zerodha's final.total alone, without the ADR-094 BUY top-up."""
         ...
 
 
@@ -272,9 +273,9 @@ def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...],
     Decimal (``check_margin`` raises), is "not confirmed with Zerodha": blocked with that message, never a pass.
     Whether the orders only close held positions is computed here from the orders themselves (#338)."""
     try:
-        available = source.available_funds()
-        required = source.zerodha_required(orders)
         closes = reduces_held_only(((o.instrument_id, o.transaction_type, o.quantity) for o in orders), held)
+        available = source.available_funds()
+        required = source.zerodha_required(orders, closes_held=closes)
         return check_margin(available, required, closes_held=closes)
     except Exception:  # noqa: BLE001 - fail closed: any failure to read either figure blocks the basket
         return check_margin(None, None)

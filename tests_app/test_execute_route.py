@@ -165,7 +165,7 @@ def _real_basket():
         def available_funds(self):
             return D("1003")
 
-        def zerodha_required(self, orders):
+        def zerodha_required(self, orders, *, closes_held=False):
             return D("354.25")
 
     return build_basket(priced.plan, _catalogue(), 1, freeze_check=lambda p: FreezeCheck((), ()),

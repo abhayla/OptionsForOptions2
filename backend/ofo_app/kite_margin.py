@@ -185,14 +185,15 @@ class KiteMargin:
             raise KiteMarginError("kite_margin_no_figure")
         return _money(equity.get("net"))
 
-    def fetch_basket_margin(self, orders: Sequence[BasketOrder]) -> BasketMargin:
-        """``POST /margins/basket?consider_positions=true`` for the planned orders."""
+    def fetch_basket_margin(self, orders: Sequence[BasketOrder], *, closes_held: bool = False) -> BasketMargin:
+        """``POST /margins/basket?consider_positions=true`` for the planned orders. ``closes_held`` (ADR-113): the
+        basket only closes held positions, so ``required_total`` is Zerodha's final.total without the BUY top-up."""
         if not orders or any(type(o) is not BasketOrder for o in orders):
             raise ValueError("fetch_basket_margin needs one or more BasketOrder")
         body = "[" + ", ".join(o.as_json() for o in orders) + "]"
         data = self._data("POST", BASKET_PATH, body, {"Content-Type": "application/json"})
         try:
-            required_total = required_from_basket_reply(data, orders)
+            required_total = required_from_basket_reply(data, orders, closes_held=closes_held)
         except MarginReplyError:
             raise KiteMarginError("kite_margin_no_figure") from None
         final = data.get("final")  # a dict with a numeric total: required_from_basket_reply just read it
