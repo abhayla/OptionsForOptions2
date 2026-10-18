@@ -97,7 +97,7 @@ def _report(decision: ra.EarlierDay, contract: ra.EarlierDayContract, at: dateti
             "tags": list(contract.tags), "at": at.isoformat()}
 
 
-async def resolve_earlier_day_plans(
+async def resolve_earlier_day_plans(  # noqa: PLR0913 the attribution's inputs plus the writer
     account: ra.Account,
     standalone: Mapping[ra.ContractKey, int],
     broker_net: Mapping[ra.ContractKey, int],

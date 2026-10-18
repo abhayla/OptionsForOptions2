@@ -280,7 +280,7 @@ def _signed(order: PlanOrder) -> int:
     return order.quantity if order.transaction_type == Action.BUY.value else -order.quantity
 
 
-def decide_earlier_day(  # noqa: PLR0913 - every input is a separately read fact
+def decide_earlier_day(  # noqa: PLR0913 every input is a separately read fact
     plan: StoredPlan, underlying: str, expected: Mapping[ContractKey, int], raw_net: Mapping[ContractKey, int],
     shared: frozenset, catalogue: Catalogue, at: datetime.datetime,
 ) -> EarlierDay:
@@ -430,8 +430,9 @@ def _read_open_plan(plan: StoredPlan,
     return dataclasses.replace(plan, orders=tuple(orders)), []
 
 
-def _strategy_units(strategy_id: int, underlying: str, plans: object, book: Mapping[str, Sequence[OrderRow]],
-                    catalogue: Catalogue, today: datetime.date,
+def _strategy_units(  # noqa: PLR0913 the strategy's facts plus today's date
+        strategy_id: int, underlying: str, plans: object, book: Mapping[str, Sequence[OrderRow]],
+        catalogue: Catalogue, today: datetime.date,
                     ) -> tuple[dict[ContractKey, int], dict[ContractKey, list[Pending]], list[StoredPlan]]:
     """The strategy's held units per contract (closed plans' stored fills, open plans' final fills), the contracts
     its pending plans (open or drifted closed) touch, and its earlier-day open plans (``earlier_day_open``: counted
@@ -532,7 +533,7 @@ def _check_reader(reader: object) -> StoreReader:
     return reader
 
 
-async def attribute_and_compare(
+async def attribute_and_compare(  # noqa: PLR0913 the account, Zerodha's two replies, standalone, sources
     account: Account,
     standalone: Mapping[ContractKey, int],
     broker_net: Mapping[ContractKey, int],
@@ -593,7 +594,7 @@ class Survey:
     earlier: tuple[EarlierDay, ...]
 
 
-async def survey_account(  # noqa: PLR0913 - the attribution's own inputs
+async def survey_account(  # noqa: PLR0913 the attribution's own inputs
     account: Account,
     standalone: Mapping[ContractKey, int],
     broker_net: Mapping[ContractKey, int],
@@ -639,6 +640,19 @@ async def survey_account(  # noqa: PLR0913 - the attribution's own inputs
         earlier.extend((plan, summary.underlying) for plan in old)
         for key, entries in waiting.items():
             pending.setdefault(key, []).extend(entries)
+    decisions = _decide_all(earlier, alone, raw_net, known, frozenset(pending), catalogue, at)
+    return Survey(MappingProxyType(alone), MappingProxyType(raw_net),
+                  MappingProxyType({sid: MappingProxyType(u) for sid, u in known.items()}),
+                  MappingProxyType(underlyings),
+                  MappingProxyType({key: tuple(entries) for key, entries in pending.items()}), tuple(decisions))
+
+
+def _decide_all(  # noqa: PLR0913 every input is a separately read fact
+    earlier: Sequence[tuple[StoredPlan, str]], alone: Mapping[ContractKey, int], raw_net: Mapping[ContractKey, int],
+    known: Mapping[str, Mapping[ContractKey, int]], pending: frozenset, catalogue: Catalogue, at: datetime.datetime,
+) -> tuple[EarlierDay, ...]:
+    """Every earlier-day plan's decision. The base per contract is the standalone plus every strategy's counted
+    units; a contract is shared when it is pending or two earlier-day plans touch it."""
     expected: dict[ContractKey, int] = dict(alone)
     for units in known.values():
         for key, value in units.items():
@@ -647,14 +661,9 @@ async def survey_account(  # noqa: PLR0913 - the attribution's own inputs
     for plan, underlying in earlier:
         for key in {instrument_key(catalogue, o.instrument_id, underlying) for o in plan.orders}:
             touches[key] = touches.get(key, 0) + 1
-    decisions = []
-    for plan, underlying in earlier:
-        shared = frozenset(pending) | frozenset(k for k, count in touches.items() if count > 1)
-        decisions.append(decide_earlier_day(plan, underlying, expected, raw_net, shared, catalogue, at))
-    return Survey(MappingProxyType(alone), MappingProxyType(raw_net),
-                  MappingProxyType({sid: MappingProxyType(u) for sid, u in known.items()}),
-                  MappingProxyType(underlyings),
-                  MappingProxyType({key: tuple(entries) for key, entries in pending.items()}), tuple(decisions))
+    shared = pending | frozenset(k for k, count in touches.items() if count > 1)
+    return tuple(decide_earlier_day(plan, underlying, expected, raw_net, shared, catalogue, at)
+                 for plan, underlying in earlier)
 
 
 __all__ = ["EARLIER_NOTHING_PLACED", "EARLIER_UNRESOLVED", "PENDING_ABSENT", "PENDING_CLOSED_DRIFTED",
