@@ -523,8 +523,9 @@ def test_ac7_open_plan_not_final_is_pending_and_blocked():
 
 def test_ac7_closed_plan_filled_agrees():
     """AC-7, ADR-110 core proof: the plan CLOSED filled 65 (stored fill), Zerodha 65 -> agrees, nothing outside,
-    nothing pending; a closed plan never reads the order book (an OPEN row for its tag changes nothing)."""
-    for book in ((), _book(status="OPEN")):
+    nothing pending, whether today's book shows the real matching row (COMPLETE, filled 65) or no row for its tag
+    (an earlier day's order: the stored fill stands, NOT pending)."""
+    for book in ((), _book()):
         result = _run({1: _plans("orders-122104")}, _recorded("positions-122104"), order_book=book)
         assert result.report.mismatches == () and dict(result.outside) == {} and dict(result.pending) == {}
         assert result.blocked == frozenset()
@@ -646,12 +647,15 @@ def test_ac7_two_book_rows_with_one_tag_are_pending_never_summed():
     pytest.param({"tradingsymbol": "NIFTY26O1923700CE"}, id="tradingsymbol"),
     pytest.param({"quantity": 130}, id="quantity"),
 ])
-def test_ac7_a_book_row_unlike_the_stored_order_is_refused(changes):
-    """AC-7: a row with the plan's tag but another side, symbol or quantity is not the order we placed -> refused
-    (AttributionError), whether the row is final or not."""
-    for status in ("COMPLETE", "OPEN"):
-        with pytest.raises(ra.AttributionError, match="not the stored"):
-            _run({1: _open_plan()}, _positions(65), order_book=_book(status=status, **changes))
+def test_ac7_a_book_row_unlike_the_stored_order_is_pending(changes):
+    """AC-7, fix round 2 MINOR 4: a row with the plan's tag but another side, symbol or quantity (e.g. modified on
+    Kite) is not the order we stored -> that plan is pending (book_row_differs), its strategy blocked, nothing
+    outside; the account is NOT failed. Open plans (row final or not) and closed plans alike."""
+    for store in ({1: _open_plan()}, {1: _plans("orders-122104")}):
+        for status in ("COMPLETE", "OPEN"):
+            result = _run(store, _positions(130), order_book=_book(status=status, **changes))
+            assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_ROW_DIFFERS),)}
+            assert result.blocked == {"1"} and dict(result.outside) == {}
 
 
 @pytest.mark.parametrize("book", [
@@ -725,3 +729,72 @@ def test_ac7_standalone_unseen_by_hand():
     assert ra.standalone_unseen({KEY: 65}, held, {KEY: -25}, {KEY: 25}) == {}
     assert ra.standalone_unseen({}, {}, {KEY: 25}, {}) == {KEY: 25}
     assert ra.standalone_unseen({KEY: 10}, {}, {KEY: 25}, {}) == {KEY: 15}
+
+
+# ---- fix round 2: closed plans the book contradicts, a tag twice in a plan, the expected == 0 path --------------
+
+def _closed_unplaced() -> _Entry:
+    """Check pressed before placing: plan 1 CLOSED "nothing_placed", OFS1V1L0 BUY 65 stored fill 0
+    (execution_return._close_reason)."""
+    order = _open_plan().plans[0].orders[0]
+    return _Entry("NIFTY", (StoredPlan(1, 1, "ENTRY", "closed", (dataclasses.replace(order, filled_quantity=0),), AT,
+                                       AT, "nothing_placed"),))
+
+
+@pytest.mark.parametrize("zerodha", [65, 130])
+def test_ac7_closed_plan_the_book_contradicts_is_pending(zerodha):
+    """AC-7, fix round 2 MAJOR: plan 1 closed nothing_placed (fill 0), then placed on Kite: the real row OFS1V1L0
+    COMPLETE filled 65 (stored 0 != 65: drifted). Zerodha 65 or 130 -> the contract pending (closed_plan_drifted),
+    strategy 1 blocked, 0 outside (the 65 is the app's own order, never outside)."""
+    result = _run({1: _closed_unplaced()}, _positions(zerodha), order_book=_book())
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_CLOSED_DRIFTED),)}
+    assert result.blocked == {"1"}
+    assert dict(result.outside) == {} and dict(result.held) == {}
+
+
+def test_ac7_closed_plan_with_a_working_row_today_is_pending():
+    """AC-7: a closed plan filled 65 whose row today is still OPEN (drifted: not final) -> pending, blocked."""
+    result = _run({1: _plans("orders-122104")}, _positions(65), order_book=_book(status="OPEN"))
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_CLOSED_DRIFTED),)}
+    assert result.blocked == {"1"}
+
+
+def test_ac7_closed_plan_absent_today_keeps_its_stored_fill():
+    """AC-7: the closed nothing_placed plan (fill 0) with no row today (an earlier day) -> NOT pending; it holds 0,
+    so Zerodha's 65 is outside (no app order of today explains it)."""
+    result = _run({1: _closed_unplaced()}, _positions(65), order_book=())
+    assert dict(result.pending) == {} and dict(result.held) == {}
+    assert dict(result.outside) == {KEY: 65} and result.blocked == frozenset()
+
+
+def test_ac7_two_orders_with_one_tag_in_a_plan_are_refused():
+    """AC-7, fix round 2 MINOR 2: one plan whose two orders carry the same tag cannot be matched to the book ->
+    refused (AttributionError), open or closed."""
+    order = _open_plan().plans[0].orders[0]
+    for status in ("open", "closed"):
+        plan = StoredPlan(1, 1, "ENTRY", status, (order, dataclasses.replace(order, leg_index=1)), AT, None, None)
+        with pytest.raises(ra.AttributionError, match="two orders carry one tag"):
+            _run({1: _Entry("NIFTY", (plan,))}, _positions(65), order_book=_book())
+
+
+@pytest.mark.parametrize("alone", [-65, -66])
+def test_ac7_expected_zero_takes_the_capped_branch(alone):
+    """AC-7, fix round 2 MINOR 3, by hand: own +65, standalone -65 (expected 0) or -66 (expected -1), Zerodha +65.
+    Both take the capped branch: outside = Zerodha beyond the strategy's own = 65 - 65 = 0 (never 65, which would
+    read the app's lots as outside); left for the standalone = 65 - 65 - 0 = 0 -> the whole standalone unseen.
+    Compare (compare.py allocation rule): compared 65 - expected (65 + alone) = -alone = 65 or 66, non-zero on a
+    contract strategy 1 holds -> blocked."""
+    result = _run({1: _plans("orders-122104")}, _positions(65), {KEY: alone})
+    assert dict(result.outside) == {}
+    assert dict(result.standalone_unseen) == {KEY: alone}
+    assert dict(result.compared_net) == {KEY: 65}
+    assert result.blocked == {"1"}
+    assert ra.split_outside({KEY: 65}, {"1": {KEY: 65}}, {KEY: alone}) == {}
+
+
+def test_ac7_open_plan_cancelled_part_filled_holds_the_fill():
+    """AC-7: plan open + order CANCELLED filled 30 of 65 (final), Zerodha 65 -> the strategy holds 30 (the row's
+    fill); 65 - 30 = 35 outside, same side; not blocked."""
+    result = _run({1: _open_plan()}, _positions(65), order_book=_book(status="CANCELLED", filled_quantity=30))
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 30}}
+    assert dict(result.outside) == {KEY: 35} and dict(result.pending) == {} and result.blocked == frozenset()
