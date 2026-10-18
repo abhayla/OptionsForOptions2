@@ -26,12 +26,15 @@ EARLIER-DAY open plans (#352-1; ADR-109 (2), ADR-111, ADR-016): an open plan cre
 tags are all absent from today's book can never end ADR-110's wait, so it is never pending. ``decide_earlier_day``
 settles it from Zerodha's net against the base (every other stored fill of every strategy plus the standalone,
 this strategy's other plans included): ``nothing_placed`` only when on every contract it touches the net equals the
-base, the contract has not expired, no other unsettled plan touches it and its orders there are one side (an
-allow-list); anything else is unresolved (``unresolved``: out of compare, strategy and holders blocked), never
+base, the contract has not expired, no other unsettled plan touches it, no other strategy holds units there (Q224)
+and its orders there are one side (an allow-list); anything else is unresolved (``unresolved``: out of compare,
+strategy and holders blocked; ``next_day_resolution`` stores a mismatch for the plan's strategy AND every holder, so
+``stored`` keeps them all blocked after the plan closes), never
 ``filled`` or ``exited``. Example (real plan OFS1V1L0 BUY 65): base 0, net 0 -> nothing placed; net 65 -> unresolved
 (the 65 cannot be told from outside lots). ``next_day_resolution`` writes these decisions; a plan with a tag in
-today's book stays on the order-book path below. Documented limit: an ENTRY filled and sold by hand on Kite the
-same earlier day leaves the net at the base and reads ``nothing_placed`` (Zerodha's net shows nothing changed).
+today's book stays on the order-book path below. Documented limit: with no other holder on the contract, an ENTRY
+filled and sold by hand on Kite the same earlier day leaves the net at the base and reads ``nothing_placed``
+(Zerodha's net shows nothing changed).
 
 CLOSED plans count their stored fills, unless today's book contradicts them (fix round 2 MAJOR): a closed plan
 whose tag shows in today's book a status not final or a fill other than the one stored at close
@@ -98,15 +101,17 @@ from ofo.strategy.versions import StrategyRecord
 from ofo.timeutil import EXPIRY_CLOSE, IST
 
 from ofo_app import execute_plan as ep
-from ofo_app import execution_plan_store, strategy_store
+from ofo_app import execution_plan_store, reconciliation_store, strategy_store
 from ofo_app import execution_return as er
 from ofo_app.config import app_env
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
+from ofo_app.reconciliation_store import StoredMismatch
 from ofo_app.strategy_store import StrategySummary
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the reconcile key (execute_plan.contract_key)
 ListStrategies = Callable[[object, str], Awaitable[Sequence[StrategySummary]]]
 PlansFor = Callable[[object, str, int], Awaitable[Sequence[StoredPlan]]]
+MismatchesFor = Callable[[object, str, int], Awaitable[Sequence[StoredMismatch]]]
 
 #: The actor recorded on the in-memory record compare reads (never stored; the record lives for one comparison).
 _ACTOR = "reconcile_attribution"
@@ -133,6 +138,9 @@ UNSETTLED_EXPIRED = "contract_expired"
 #: Another plan (an open or drifted plan of any strategy, or another earlier-day plan) touches the contract: its units
 #: are unknown, so "nothing changed" cannot be read (two opposite fills net to nothing).
 UNSETTLED_SHARED = "another_plan_unsettled"
+#: Another strategy holds units on the contract by its stored fills (Q224 shared contract, #352-1 round 2 MINOR 3):
+#: S1's plan filled and S2's lots sold by hand the same day leave the net at the base, so "nothing changed" is unread.
+UNSETTLED_HELD_ELSEWHERE = "another_strategy_holds"
 #: The plan buys AND sells the contract: a net that did not move cannot show that nothing filled.
 UNSETTLED_MIXED_SIDES = "plan_sides_mixed"
 #: The earlier-day outcomes (``EarlierDay.outcome``): the two close reasons of ``execution_plan_store``.
@@ -158,11 +166,13 @@ class OrderRow(Protocol):
 
 @dataclass(frozen=True)
 class StoreReader:
-    """The read seam: every strategy of a user, and every stored plan of one strategy. The defaults are the stores the
-    routes use; a test injects a fake with the same two calls (accepted only under ``APP_ENV=test``)."""
+    """The read seam: every strategy of a user, every stored plan of one strategy and every stored mismatch of one
+    strategy. The defaults are the stores the routes use; a test injects a fake with the same three calls (accepted
+    only under ``APP_ENV=test``)."""
 
     list_strategies: ListStrategies = strategy_store.list_strategies
     plans_for: PlansFor = execution_plan_store.plans_for
+    mismatches_for: MismatchesFor = reconciliation_store.mismatches_for
 
 
 @dataclass(frozen=True)
@@ -220,6 +230,10 @@ class Attribution:
     #: of compare like a pending contract, its strategy and every holder there blocked (a recorded mismatch once
     #: ``next_day_resolution`` writes it).
     unresolved: Mapping[ContractKey, tuple[Pending, ...]] = MappingProxyType({})
+    #: #352-1 round 2: contract -> the strategies with an unresolved STORED mismatch there (``mismatches_for``, no
+    #: settling resolution). Left out of compare like a pending contract, nothing on it is outside, and those
+    #: strategies plus every holder there are blocked (Q224) until a settling resolution is recorded.
+    stored: Mapping[ContractKey, tuple[str, ...]] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -264,7 +278,11 @@ def earlier_day_open(plan: StoredPlan, book: Mapping[str, Sequence[OrderRow]], t
     if not isinstance(created, datetime.datetime) or created.tzinfo is None or created.utcoffset() is None:
         raise AttributionError(f"strategy {plan.strategy_id} plan {plan.plan_number}: created_at must be a "
                                f"time-zone-aware datetime, got {created!r}")
-    if not er.from_earlier_session(plan, today):
+    session = er.created_session(plan, today)
+    if session == er.SESSION_FUTURE:
+        raise AttributionError(f"strategy {plan.strategy_id} plan {plan.plan_number}: created_at {created!r} is after "
+                               f"today's IST session {today}: refused, nothing is decided from a future stamp")
+    if session != er.SESSION_EARLIER:
         return False
     return not any(order.tag in book for order in plan.orders)
 
@@ -282,10 +300,11 @@ def _signed(order: PlanOrder) -> int:
 
 def decide_earlier_day(  # noqa: PLR0913 every input is a separately read fact
     plan: StoredPlan, underlying: str, expected: Mapping[ContractKey, int], raw_net: Mapping[ContractKey, int],
-    shared: frozenset, catalogue: Catalogue, at: datetime.datetime,
+    shared: frozenset, catalogue: Catalogue, at: datetime.datetime, *, held_elsewhere: frozenset = frozenset(),
 ) -> EarlierDay:
     """The allow-list (#352-1, ADR-109 (2), ADR-111): the plan closes ``nothing_placed`` only when, on every contract
-    it touches, the contract has not expired at ``at``, no other unsettled plan touches it (``shared``), the plan's
+    it touches, the contract has not expired at ``at``, no other unsettled plan touches it (``shared``), no other
+    strategy holds units there (``held_elsewhere``), the plan's
     orders there are all one side, and Zerodha's net equals ``expected`` (the base without this plan). Every other
     case is ``unresolved_from_positions``: never ``filled`` or ``exited`` (the next-day net cannot tell the plan's
     fills from outside lots or a hand close on Kite)."""
@@ -299,6 +318,8 @@ def decide_earlier_day(  # noqa: PLR0913 every input is a separately read fact
             reason: str | None = UNSETTLED_EXPIRED
         elif key in shared:
             reason = UNSETTLED_SHARED
+        elif key in held_elsewhere:
+            reason = UNSETTLED_HELD_ELSEWHERE
         elif len({order.transaction_type for order in orders}) != 1:
             reason = UNSETTLED_MIXED_SIDES
         elif net != base:
@@ -330,6 +351,45 @@ def instrument_key(catalogue: Catalogue, instrument_id: str, underlying: str) ->
     if entry.contract.name != underlying:
         raise AttributionError(f"instrument_id {instrument_id!r} is {entry.contract.name}, not {underlying}")
     return ep.contract_key(catalogue, iid, underlying)
+
+
+def key_text(catalogue: Catalogue, key: ContractKey) -> str:
+    """The one stored text of a contract (``reconciliation_store`` contract_key): the smallest ``segment:token`` of
+    every catalogue id whose reconcile key is ``key``, so two stored ids of one contract are one key (#352-1 round 2
+    MINOR 4). Refused: a key no catalogue id has."""
+    underlying, kind, _, expiry = key
+    ids = sorted((c.id.exchange_segment, c.id.exchange_token) for c in catalogue.contracts_for(underlying, expiry,
+                                                                             frozenset({kind.value}))
+                 if ep.contract_key(catalogue, c.id, underlying) == key)
+    if not ids:
+        raise AttributionError(f"contract {key!r} has no instrument in the catalogue")
+    return f"{ids[0][0]}:{ids[0][1]}"
+
+
+async def _stored_unresolved(reader: StoreReader, account: Account, summary: StrategySummary, catalogue: Catalogue,
+                             into: tuple[dict[ContractKey, set[str]], set[str]]) -> None:
+    """Adds the strategy to ``into[0]`` on the contract of each of its unresolved stored mismatches, and to ``into[1]``
+    when one names no catalogue contract (its strategy is blocked all the same; Zerodha's net cannot carry an id the
+    catalogue lacks)."""
+    strategy_id, underlying = summary.id, summary.underlying
+    rows = await reader.mismatches_for(account.conn, account.user_ref, strategy_id)
+    if not isinstance(rows, (list, tuple)):
+        raise AttributionError(f"the store gave {rows!r} for strategy {strategy_id}'s mismatches, not a sequence")
+    keys: set[ContractKey] = set()
+    unmapped = False
+    for row in rows:
+        if type(row) is not StoredMismatch or row.strategy_id != strategy_id:
+            raise AttributionError(f"strategy {strategy_id}: {row!r} is not one of its stored mismatches")
+        if row.resolution is not None:
+            continue
+        try:
+            keys.add(instrument_key(catalogue, row.contract_key, underlying))
+        except AttributionError:
+            unmapped = True
+    for key in keys:
+        into[0].setdefault(key, set()).add(str(strategy_id))
+    if unmapped:
+        into[1].add(str(strategy_id))
 
 
 def _check_plans(strategy_id: int, plans: object) -> None:
@@ -526,7 +586,8 @@ def _check_reader(reader: object) -> StoreReader:
     if type(reader) is not StoreReader:
         raise AttributionError(f"sources must carry a StoreReader, got {reader!r}")
     is_default = (reader.list_strategies is strategy_store.list_strategies
-                  and reader.plans_for is execution_plan_store.plans_for)
+                  and reader.plans_for is execution_plan_store.plans_for
+                  and reader.mismatches_for is reconciliation_store.mismatches_for)
     if not is_default and app_env() != _TEST_ENV:
         raise AttributionError("a store reader other than the plan and strategy stores is accepted only under "
                                "APP_ENV=test")
@@ -559,9 +620,11 @@ async def attribute_and_compare(  # noqa: PLR0913 the account, Zerodha's two rep
                 unresolved.setdefault(contract.key, []).extend(
                     Pending(str(decision.strategy_id), decision.plan_number, tag, contract.reason)
                     for tag in contract.tags)
-    excluded = set(pending) | set(unresolved)
+    stored = survey.stored
+    excluded = set(pending) | set(unresolved) | set(stored)
     blocked_by_pending = {entry.strategy_id for entries in (*pending.values(), *unresolved.values())
                           for entry in entries}
+    blocked_by_pending |= {sid for sids in stored.values() for sid in sids} | set(survey.stored_unmapped)
     blocked_by_pending |= {sid for sid, units in known.items() if any(units.get(key) for key in excluded)}
     held = {sid: {k: u for k, u in units.items() if k not in excluded} for sid, units in known.items()}
     held = {sid: units for sid, units in held.items() if units}
@@ -577,7 +640,7 @@ async def attribute_and_compare(  # noqa: PLR0913 the account, Zerodha's two rep
         MappingProxyType({sid: MappingProxyType(u) for sid, u in held.items()}), MappingProxyType(unseen),
         MappingProxyType({key: tuple(entries) for key, entries in pending.items()}),
         frozenset(report.blocked_strategy_ids) | frozenset(blocked_by_pending),
-        MappingProxyType({key: tuple(entries) for key, entries in unresolved.items()}))
+        MappingProxyType({key: tuple(entries) for key, entries in unresolved.items()}), stored)
 
 
 @dataclass(frozen=True)
@@ -592,6 +655,10 @@ class Survey:
     underlyings: Mapping[str, str]
     pending: Mapping[ContractKey, tuple[Pending, ...]]
     earlier: tuple[EarlierDay, ...]
+    #: contract -> strategies with an unresolved stored mismatch there; strategies whose unresolved mismatch names
+    #: no catalogue contract (blocked, nothing to exclude).
+    stored: Mapping[ContractKey, tuple[str, ...]] = MappingProxyType({})
+    stored_unmapped: frozenset[str] = frozenset()
 
 
 async def survey_account(  # noqa: PLR0913 the attribution's own inputs
@@ -624,6 +691,8 @@ async def survey_account(  # noqa: PLR0913 the attribution's own inputs
     underlyings: dict[str, str] = {}
     pending: dict[ContractKey, list[Pending]] = {}
     earlier: list[tuple[StoredPlan, str]] = []
+    stored: dict[ContractKey, set[str]] = {}
+    unmapped: set[str] = set()
     seen: set[int] = set()
     for summary in summaries:
         if not isinstance(summary, StrategySummary):
@@ -640,11 +709,13 @@ async def survey_account(  # noqa: PLR0913 the attribution's own inputs
         earlier.extend((plan, summary.underlying) for plan in old)
         for key, entries in waiting.items():
             pending.setdefault(key, []).extend(entries)
-    decisions = _decide_all(earlier, alone, raw_net, known, frozenset(pending), catalogue, at)
+        await _stored_unresolved(reader, account, summary, catalogue, (stored, unmapped))
+    decisions = _decide_all(earlier, alone, raw_net, known, frozenset(pending) | frozenset(stored), catalogue, at)
     return Survey(MappingProxyType(alone), MappingProxyType(raw_net),
                   MappingProxyType({sid: MappingProxyType(u) for sid, u in known.items()}),
                   MappingProxyType(underlyings),
-                  MappingProxyType({key: tuple(entries) for key, entries in pending.items()}), tuple(decisions))
+                  MappingProxyType({key: tuple(entries) for key, entries in pending.items()}), tuple(decisions),
+                  MappingProxyType({key: tuple(sorted(sids)) for key, sids in stored.items()}), frozenset(unmapped))
 
 
 def _decide_all(  # noqa: PLR0913 every input is a separately read fact
@@ -652,7 +723,9 @@ def _decide_all(  # noqa: PLR0913 every input is a separately read fact
     known: Mapping[str, Mapping[ContractKey, int]], pending: frozenset, catalogue: Catalogue, at: datetime.datetime,
 ) -> tuple[EarlierDay, ...]:
     """Every earlier-day plan's decision. The base per contract is the standalone plus every strategy's counted
-    units; a contract is shared when it is pending or two earlier-day plans touch it."""
+    units. A contract is shared when it is pending or carries an unresolved stored mismatch (``pending`` here), two
+    earlier-day plans touch it, or ANOTHER strategy holds units on it (Q224, #352-1 round 2 MINOR 3: S1's plan
+    filled and S2's lots sold by hand leave the net at the base, so "nothing changed" cannot be read)."""
     expected: dict[ContractKey, int] = dict(alone)
     for units in known.values():
         for key, value in units.items():
@@ -662,13 +735,26 @@ def _decide_all(  # noqa: PLR0913 every input is a separately read fact
         for key in {instrument_key(catalogue, o.instrument_id, underlying) for o in plan.orders}:
             touches[key] = touches.get(key, 0) + 1
     shared = pending | frozenset(k for k, count in touches.items() if count > 1)
-    return tuple(decide_earlier_day(plan, underlying, expected, raw_net, shared, catalogue, at)
+    return tuple(decide_earlier_day(plan, underlying, expected, raw_net, shared, catalogue, at,
+                                    held_elsewhere=other_holders(known, str(plan.strategy_id)))
                  for plan, underlying in earlier)
+
+
+def other_holders(known: Mapping[str, Mapping[ContractKey, int]], strategy_id: str) -> frozenset:
+    """The contracts on which a strategy other than ``strategy_id`` holds units (its counted stored fills)."""
+    return frozenset(key for sid, units in known.items() if sid != strategy_id for key, value in units.items()
+                     if value)
+
+
+def holders(known: Mapping[str, Mapping[ContractKey, int]], key: ContractKey) -> tuple[int, ...]:
+    """Every strategy holding units on ``key`` by its counted stored fills (read from the stores, never a caller's)."""
+    return tuple(sorted(int(sid) for sid, units in known.items() if units.get(key)))
 
 
 __all__ = ["EARLIER_NOTHING_PLACED", "EARLIER_UNRESOLVED", "PENDING_ABSENT", "PENDING_CLOSED_DRIFTED",
            "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL", "PENDING_ROW_DIFFERS", "UNSETTLED_EXPIRED",
-           "UNSETTLED_MIXED_SIDES", "UNSETTLED_NET_CHANGED", "UNSETTLED_SHARED", "Account", "Attribution",
-           "AttributionError", "EarlierDay", "EarlierDayContract", "OrderRow", "Pending", "Sources", "StoreReader",
-           "Survey", "attribute_and_compare", "decide_earlier_day", "earlier_day_open", "instrument_key",
-           "rows_by_tag", "split_outside", "standalone_unseen", "survey_account"]
+           "UNSETTLED_HELD_ELSEWHERE", "UNSETTLED_MIXED_SIDES", "UNSETTLED_NET_CHANGED", "UNSETTLED_SHARED", "Account",
+           "Attribution", "AttributionError", "EarlierDay", "EarlierDayContract", "OrderRow", "Pending", "Sources",
+           "StoreReader", "Survey", "attribute_and_compare", "decide_earlier_day", "earlier_day_open", "holders",
+           "instrument_key", "key_text", "other_holders", "rows_by_tag", "split_outside", "standalone_unseen",
+           "survey_account"]

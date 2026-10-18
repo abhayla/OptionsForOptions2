@@ -16,7 +16,9 @@ in today's book):
 - ``nothing_placed`` (the allow-list: on every contract the plan touches, Zerodha's net equals the base of every
   other stored fill plus the standalone, the contract has not expired, no other unsettled plan touches it, one side):
   ``close_plan(reason="nothing_placed")`` stores 0 per order. For an EXIT this frees the strategy for a new EXIT.
-- anything else: one mismatch per unsettled contract (``record_mismatch``, source ``next_day_resolution``), then
+- anything else: per unsettled contract, one mismatch for the plan's strategy AND for every strategy holding units
+  there by its stored fills (Q224 "blocks every holder"; the store dedupes a repeat), keyed on the contract's one
+  stored text (``reconcile_attribution.key_text``: two ids of one contract are one key); then
   ``close_plan(reason="unresolved_from_positions")`` (0 stored per order; the mismatch carries the sticky block until
   a recorded resolution, Q222). Never ``filled`` and never ``exited``: an EXIT whose net is 0 is lifted only by
   ``kite_flat_marked_exited`` (the store checks the recorded Zerodha net is 0).
@@ -97,6 +99,13 @@ def _report(decision: ra.EarlierDay, contract: ra.EarlierDayContract, at: dateti
             "tags": list(contract.tags), "at": at.isoformat()}
 
 
+def mismatch_holders(decision: ra.EarlierDay, contract: ra.EarlierDayContract, survey: ra.Survey) -> tuple[int, ...]:
+    """Who gets a stored mismatch for one unsettled contract (Q224 "blocks every holder", #352-1 round 2 MAJOR 1): the
+    plan's strategy and every strategy holding units there by its stored fills (``survey.known``, read from the
+    stores), each once, in id order."""
+    return tuple(sorted({decision.strategy_id, *ra.holders(survey.known, contract.key)}))
+
+
 async def resolve_earlier_day_plans(  # noqa: PLR0913 the attribution's inputs plus the writer
     account: ra.Account,
     standalone: Mapping[ra.ContractKey, int],
@@ -125,10 +134,13 @@ async def resolve_earlier_day_plans(  # noqa: PLR0913 the attribution's inputs p
                 if not contract.reason:
                     continue
                 expected, zerodha = mismatch_numbers(contract)
-                ids.append(await checked.record_mismatch(
-                    account.conn, account.user_ref, decision.strategy_id, contract_key=contract.instrument_ids[0],
-                    expected_units=expected, zerodha_units=zerodha, report=_report(decision, contract, at),
-                    source=SOURCE))
+                key = ra.key_text(sources.catalogue, contract.key)
+                for holder in mismatch_holders(decision, contract, survey):
+                    report = {**_report(decision, contract, at), "strategy_id": holder,
+                              "role": "plan" if holder == decision.strategy_id else "holder"}
+                    ids.append(await checked.record_mismatch(
+                        account.conn, account.user_ref, holder, contract_key=key, expected_units=expected,
+                        zerodha_units=zerodha, report=report, source=SOURCE))
             await checked.close_plan(account.conn, account.user_ref, decision.strategy_id, decision.plan_number,
                                      reason=ra.EARLIER_UNRESOLVED)
         done.append(Resolved(decision.strategy_id, decision.plan_number, decision.action, decision.outcome,
@@ -136,4 +148,4 @@ async def resolve_earlier_day_plans(  # noqa: PLR0913 the attribution's inputs p
     return tuple(done)
 
 
-__all__ = ["SOURCE", "PlanWriter", "Resolved", "mismatch_numbers", "resolve_earlier_day_plans"]
+__all__ = ["SOURCE", "PlanWriter", "Resolved", "mismatch_holders", "mismatch_numbers", "resolve_earlier_day_plans"]

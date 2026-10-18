@@ -96,9 +96,10 @@ def _second_buy(entry: _Entry, strategy_id: int = 1, iid: str = IID) -> _Entry:
     return _Entry(entry.underlying, (entry.plans[0], plan2))
 
 
-def _reader(store: object) -> ra.StoreReader:
-    """A fake of the two store reads; it answers only for this connection and user (the account is passed through).
-    ``store``: strategy id -> _Entry, or a ready-made strategy listing (a list)."""
+def _reader(store: object, mismatches: dict | None = None) -> ra.StoreReader:
+    """A fake of the three store reads; it answers only for this connection and user (the account is passed through).
+    ``store``: strategy id -> _Entry, or a ready-made strategy listing (a list). ``mismatches``: strategy id -> its
+    stored mismatches (``reconciliation_store.StoredMismatch``); none by default."""
 
     async def list_strategies(conn, user_ref):
         assert (conn, user_ref) == (CONN, USER)
@@ -112,7 +113,11 @@ def _reader(store: object) -> ra.StoreReader:
             return _plans("orders-122104", strategy_id).plans if strategy_id > 0 else ()
         return store[strategy_id].plans
 
-    return ra.StoreReader(list_strategies, plans_for)
+    async def mismatches_for(conn, user_ref, strategy_id):
+        assert (conn, user_ref) == (CONN, USER)
+        return tuple((mismatches or {}).get(strategy_id, ()))
+
+    return ra.StoreReader(list_strategies, plans_for, mismatches_for)
 
 
 def _positions(quantity: int | None = 65) -> object:
@@ -414,7 +419,7 @@ def test_ac7_a_store_listing_that_is_not_a_list_is_refused():
     async def listing(conn, user_ref):
         return None
 
-    sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for))
+    sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for, reader.mismatches_for))
     with pytest.raises(ra.AttributionError):
         asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, (), sources, at=AT))
 
@@ -699,6 +704,9 @@ def test_ac7_a_fake_store_reader_is_refused_outside_app_env_test(env, monkeypatc
     half = ra.StoreReader(plans_for=_reader({}).plans_for)  # only one call replaced: still not the stores
     with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
         ra._check_reader(half)
+    no_mismatches = ra.StoreReader(mismatches_for=_reader({}).mismatches_for)  # the mismatch read replaced alone
+    with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
+        ra._check_reader(no_mismatches)
 
 
 def test_ac7_outside_never_exceeds_zerodhas_holding():

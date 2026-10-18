@@ -105,10 +105,28 @@ def _close_reason(plan: StoredPlan, filled: Mapping[str, int]) -> str:
     return PARTIAL
 
 
-def from_earlier_session(plan: StoredPlan, today: datetime.date) -> bool:
-    """The plan was not created in today's trading session (IST date); an unreadable stamp counts as earlier."""
+#: ``created_session``: the plan's IST creation date against today's (strictly before / the same / after).
+SESSION_EARLIER, SESSION_TODAY, SESSION_FUTURE = "earlier", "today", "future"
+
+
+def created_session(plan: StoredPlan, today: datetime.date) -> str:
+    """Which session created the plan: ``SESSION_EARLIER`` only for an IST date strictly before ``today`` (#352-1
+    round 2 MINOR 2), ``SESSION_FUTURE`` for a stamp after it (clock skew: never read as earlier, never decided from
+    a net), ``SESSION_TODAY`` otherwise. An unreadable stamp (missing, no time zone) counts as earlier here; the
+    next-day path refuses it before asking (``reconcile_attribution.earlier_day_open``)."""
     created = plan.created_at
-    return created is None or created.tzinfo is None or created.astimezone(IST).date() != today
+    if created is None or created.tzinfo is None or created.utcoffset() is None:
+        return SESSION_EARLIER
+    day = created.astimezone(IST).date()
+    if day < today:
+        return SESSION_EARLIER
+    return SESSION_FUTURE if day > today else SESSION_TODAY
+
+
+def from_earlier_session(plan: StoredPlan, today: datetime.date) -> bool:
+    """The plan was not created in today's trading session, so today's book cannot close it: an earlier session, a
+    future stamp (clock skew) or an unreadable stamp. ``classify`` then leaves it open (no write)."""
+    return created_session(plan, today) != SESSION_TODAY
 
 
 def classify(plan: StoredPlan, book: TodaysBook, today: datetime.date) -> PlanAnswer:
@@ -208,6 +226,6 @@ def pnl_or_none(fills: Sequence[FillEvent]):
 
 
 __all__ = ["EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
-           "RECONCILE", "WAITING",
-           "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
-           "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]
+           "RECONCILE", "SESSION_EARLIER", "SESSION_FUTURE", "SESSION_TODAY", "WAITING",
+           "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "created_session", "drifted",
+           "exit_is_clean", "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]

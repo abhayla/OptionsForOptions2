@@ -26,6 +26,7 @@ from ofo.instruments.models import NSE_FO
 from ofo.instruments.parser import zerodha_listed
 from ofo.timeutil import IST
 from ofo_app import execution_plan_store as eps
+from ofo_app import execution_return as er
 from ofo_app import next_day_resolution as nd
 from ofo_app import reconcile_attribution as ra
 from ofo_app import reconciliation_store as rs
@@ -102,8 +103,8 @@ def _resolve(store, quantity, *, at=MON, standalone=None, book=(), net=None, cat
     return done, log.calls
 
 
-def _attribute(store, quantity, *, at=MON, standalone=None, book=()):
-    sources = ra.Sources(_catalogue(), lambda: at, _reader(store))
+def _attribute(store, quantity, *, at=MON, standalone=None, book=(), mismatches=None):  # noqa: PLR0913
+    sources = ra.Sources(_catalogue(), lambda: at, _reader(store, mismatches))
     return asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), standalone or {}, _net(quantity), book,
                                                 sources, at=at))
 
@@ -258,11 +259,119 @@ def test_ac4_standalone_is_in_the_base(quantity, outcome):
         assert calls[0] == ("mismatch", 1, IID, 25, 90, ra.UNSETTLED_NET_CHANGED)
 
 
-def test_ac4_other_strategy_closed_plan_is_in_the_base():
-    """AC-4: strategy 2 holds +65 by a closed plan; strategy 1's earlier-day ENTRY; net 65 = base -> nothing_placed."""
+def test_ac6_shared_contract_net_equals_base_is_a_mismatch_for_every_holder():
+    """AC-6 (Q224, round 2 MINOR 3): strategy 2 holds +65 by a closed plan; strategy 1's earlier-day ENTRY BUY 65.
+    Net 65 = base 65, yet S1 filled and S2's lots sold by hand on Kite give the same net: a shared contract, never
+    nothing_placed. By hand: expected = base 65 + planned 65 = 130, Zerodha 65, one row for S1 and one for S2."""
     store = {1: _Entry(_real_plan(1)), 2: _Entry(_real_plan(1, strategy_id=2, status="closed"))}
-    _, calls = _resolve(store, 65)
-    assert calls == [("close", 1, 1, "nothing_placed")]
+    done, calls = _resolve(store, 65)
+    assert calls == [("mismatch", 1, IID, 130, 65, ra.UNSETTLED_HELD_ELSEWHERE),
+                     ("mismatch", 2, IID, 130, 65, ra.UNSETTLED_HELD_ELSEWHERE), ("close", 1, 1, eps.UNRESOLVED)]
+    assert [(r.strategy_id, r.reason, len(r.mismatch_ids)) for r in done] == [(1, eps.UNRESOLVED, 2)]
+
+
+def _stored(calls: list[tuple], *, settled: bool = False) -> dict[int, tuple[rs.StoredMismatch, ...]]:
+    """The writer's mismatch calls as the store would read them back (unresolved, or settled by a basket)."""
+    out: dict[int, list[rs.StoredMismatch]] = {}
+    for number, call in enumerate(calls, start=1):
+        if call[0] != "mismatch":
+            continue
+        resolutions = (rs.StoredResolution(rs.BASKET, USER, None, MON),) if settled else ()
+        out.setdefault(call[1], []).append(rs.StoredMismatch(
+            number, call[1], call[2], call[3], call[4], {"reason": call[5]}, nd.SOURCE, MON, resolutions))
+    return {sid: tuple(rows) for sid, rows in out.items()}
+
+
+def _closed_unresolved(plan: StoredPlan) -> StoredPlan:
+    return dataclasses.replace(plan, status="closed", close_reason=eps.UNRESOLVED, closed_at=MON,
+                               orders=tuple(dataclasses.replace(o, filled_quantity=0) for o in plan.orders))
+
+
+def test_ac6_holder_gets_a_stored_mismatch_and_stays_blocked_after_the_write():
+    """AC-6 (REQ-060 "blocks every holder", round 2 MAJOR 1, the reviewer's HOLDER attack): S1 earlier-day BUY 65,
+    S2 holds 65 (closed plan), Zerodha 130. Before the write both are blocked; the write stores a row for S1 AND S2
+    (expected 65, Zerodha 130); after it (S1's plan closed unresolved, 0 stored) both stay blocked and nothing on the
+    contract is outside or compared. Control: without the stored rows the same books read 65 outside, none blocked."""
+    s2 = _Entry(_real_plan(1, strategy_id=2, status="closed"))
+    store = {1: _Entry(_real_plan(1)), 2: s2}
+    assert _attribute(store, 130).blocked == {"1", "2"}
+    _, calls = _resolve(store, 130)
+    assert calls == [("mismatch", 1, IID, 65, 130, ra.UNSETTLED_HELD_ELSEWHERE),
+                     ("mismatch", 2, IID, 65, 130, ra.UNSETTLED_HELD_ELSEWHERE), ("close", 1, 1, eps.UNRESOLVED)]
+    after = {1: _Entry(_closed_unresolved(_real_plan(1))), 2: s2}
+    post = _attribute(after, 130, mismatches=_stored(calls))
+    assert post.blocked == {"1", "2"}
+    assert dict(post.outside) == {} and KEY not in post.compared_net and dict(post.stored) == {KEY: ("1", "2")}
+    control = _attribute(after, 130)
+    assert dict(control.outside) == {KEY: 65} and control.blocked == frozenset()
+    settled = _attribute(after, 130, mismatches=_stored(calls, settled=True))  # a settling resolution lifts it
+    assert dict(settled.stored) == {} and settled.blocked == frozenset()
+
+
+def test_ac6_a_stored_mismatch_makes_the_contract_shared_for_an_earlier_day_plan():
+    """AC-6: an unresolved stored mismatch on the contract (strategy 2) makes strategy 1's earlier-day plan
+    unresolved even though net 0 = base 0 (another unsettled state touches it); S2 has no units, so S1 only."""
+    stored = _stored([("mismatch", 2, IID, 65, 0, ra.UNSETTLED_NET_CHANGED)])
+    store = {1: _Entry(_real_plan(1)), 2: _Entry()}
+    sources = ra.Sources(_catalogue(), lambda: MON, _reader(store, stored))
+    log = _Writer()
+    asyncio.run(nd.resolve_earlier_day_plans(ra.Account(CONN, USER), {}, {}, (), sources, writer=log.writer()))
+    assert log.calls == [("mismatch", 1, IID, 65, 0, ra.UNSETTLED_SHARED), ("close", 1, 1, eps.UNRESOLVED)]
+
+
+def test_ac7_a_forged_or_foreign_stored_mismatch_is_refused_and_an_unmapped_one_blocks():
+    """AC-7: the mismatch read is checked: not a StoredMismatch, or another strategy's row -> refused; an unresolved
+    row naming no catalogue contract still blocks its strategy (nothing to exclude: Zerodha's net cannot carry it)."""
+    row = _stored([("mismatch", 1, IID, 65, 0, ra.UNSETTLED_NET_CHANGED)])[1][0]
+    store = {1: _Entry(_closed_unresolved(_real_plan(1)))}
+    with pytest.raises(ra.AttributionError, match="stored mismatches"):
+        _attribute(store, None, mismatches={1: (dataclasses.asdict(row),)})
+    with pytest.raises(ra.AttributionError, match="stored mismatches"):
+        _attribute(store, None, mismatches={1: (dataclasses.replace(row, strategy_id=2),)})
+    lost = _attribute(store, None, mismatches={1: (dataclasses.replace(row, contract_key="NSE_FO:999999"),)})
+    assert lost.blocked == {"1"} and dict(lost.stored) == {}
+
+
+def test_ac6_two_stored_ids_of_one_contract_are_one_mismatch_key():
+    """AC-6 (round 2 MINOR 4): the plan's order sits on a twin id of the real contract (same key); the stored key is
+    the contract's smallest catalogue id (the real NSE_FO:47189), never the plan's own id text."""
+    real = _listed()
+    twin_token = (int(TOKEN) >> 8) + 1
+    twin = zerodha_listed(
+        instrument_token=int(TOKEN) + 1, exchange_token=twin_token, tradingsymbol="NIFTY26O1923650CE",
+        name=real.contract.name, expiry=real.contract.expiry, strike=real.contract.strike, tick_size=Decimal("0.05"),
+        lot_size=real.contract.lot_size, instrument_type=real.contract.instrument_type, segment="NFO-OPT",
+        exchange="NFO")
+    plan = _real_plan(1)
+    plan = dataclasses.replace(plan, orders=tuple(dataclasses.replace(o, instrument_id=f"{NSE_FO}:{twin_token}")
+                                                  for o in plan.orders))
+    _, calls = _resolve({1: _Entry(plan)}, 65, catalogue=_catalogue(twin))
+    assert calls == [("mismatch", 1, IID, 0, 65, ra.UNSETTLED_NET_CHANGED), ("close", 1, 1, eps.UNRESOLVED)]
+
+
+def test_ac1_future_created_at_is_refused_with_no_write():
+    """AC-1 (round 2 MINOR 2, the reviewer's FUTURE attack): a plan stamped tomorrow (clock skew) is never read as
+    earlier: refused, nothing written; today's book cannot close it either (from_earlier_session stays True)."""
+    future = _real_plan(1, created=MON + datetime.timedelta(days=1))
+    log = _Writer()
+    sources = ra.Sources(_catalogue(), lambda: MON, _reader({1: _Entry(future)}))
+    with pytest.raises(ra.AttributionError, match="future"):
+        asyncio.run(nd.resolve_earlier_day_plans(ra.Account(CONN, USER), {}, {}, (), sources, writer=log.writer()))
+    assert log.calls == []
+    assert er.created_session(future, MON.date()) == er.SESSION_FUTURE and er.from_earlier_session(future, MON.date())
+
+
+def test_ac1_earlier_means_strictly_before_todays_ist_date():
+    """AC-1: the IST date decides, strictly before today. 18:29 UTC Sun = 23:59 IST Sun -> earlier; 18:31 UTC Sun =
+    00:01 IST Mon -> today (left to the book, no write); FRI -> earlier."""
+    utc = datetime.UTC
+    sun = _real_plan(1, created=datetime.datetime(2026, 10, 18, 18, 29, tzinfo=utc))
+    mon = _real_plan(1, created=datetime.datetime(2026, 10, 18, 18, 31, tzinfo=utc))
+    today = MON.date()
+    assert [er.created_session(p, today) for p in (sun, mon, _real_plan(1))] == [
+        er.SESSION_EARLIER, er.SESSION_TODAY, er.SESSION_EARLIER]
+    assert _resolve({1: _Entry(mon)}, None)[1] == []
+    assert _resolve({1: _Entry(sun)}, None)[1] == [("close", 1, 1, "nothing_placed")]
 
 
 def test_ac6_mixed_sides_plan_is_a_mismatch_with_gross_expected():
