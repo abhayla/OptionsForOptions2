@@ -114,6 +114,21 @@ def test_open_issue_without_row_fails(tmp_path):
     assert out == "#99: open issue has no row in the tracker\n"
 
 
+def test_sub_id_rows_do_not_cover_an_open_issue(tmp_path):
+    issues = [*GH_ISSUES, {"number": 352, "state": "OPEN"}]
+    for sub in ("#352-1", "#352-proof"):
+        code, out = run(tmp_path, rows=with_row(sub, "GC-2h", "todo"), issues=issues)
+        assert code == 1
+        assert out == "#352: open issue has no row in the tracker\n"
+    assert run(tmp_path, rows=with_row("#352", "GC-2h", "todo"), issues=issues)[0] == 0
+
+
+def test_pipe_inside_a_cell_says_to_escape_it(tmp_path):
+    code, out = run(tmp_path, raw=table(CLEAN_ROWS) + "| X-2 | a | b | P1 | GC | A | todo | |\n")
+    assert code == 1
+    assert "escaped as \\|" in out
+
+
 def test_closed_issue_without_row_is_fine(tmp_path):
     assert run(tmp_path, issues=[*GH_ISSUES, {"number": 99, "state": "CLOSED"}])[0] == 0
 

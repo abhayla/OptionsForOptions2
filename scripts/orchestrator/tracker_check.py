@@ -47,7 +47,9 @@ def parse_tracker(text, failures):
     for ln in lines[2:]:
         cells = split_row(ln)
         if len(cells) != len(COLUMNS):
-            failures.append(f"table: row has {len(cells)} columns, expected {len(COLUMNS)}: {ln[:60]}")
+            failures.append(
+                f"table: row has {len(cells)} columns, expected {len(COLUMNS)} "
+                f"(a literal | inside a cell must be escaped as \\|): {ln[:60]}")
             continue
         rows.append(dict(zip(COLUMNS, cells, strict=True)))
     return rows
@@ -108,7 +110,7 @@ def check_issue_row(row, word, issues, failures):
 def check_open_issues_have_rows(rows, issues, failures):
     covered = set()
     for row in rows:
-        m = re.match(r"#(\d+)(?!\d)", row["Id"])
+        m = re.fullmatch(r"#(\d+)", row["Id"])
         if m:
             covered.add(int(m.group(1)))
     for num, state in sorted(issues.items()):
