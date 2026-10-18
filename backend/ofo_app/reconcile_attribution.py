@@ -22,6 +22,17 @@ in Zerodha's order book (``kite_replies.orders_from_reply``, passed in as ``orde
 - no row (never placed, or placed on an earlier day: Kite's order book holds today's orders only), two rows with one
   tag (never summed), or a row not final: the plan is PENDING.
 
+EARLIER-DAY open plans (#352-1; ADR-109 (2), ADR-111, ADR-016): an open plan created before today's IST date whose
+tags are all absent from today's book can never end ADR-110's wait, so it is never pending. ``decide_earlier_day``
+settles it from Zerodha's net against the base (every other stored fill of every strategy plus the standalone,
+this strategy's other plans included): ``nothing_placed`` only when on every contract it touches the net equals the
+base, the contract has not expired, no other unsettled plan touches it and its orders there are one side (an
+allow-list); anything else is unresolved (``unresolved``: out of compare, strategy and holders blocked), never
+``filled`` or ``exited``. Example (real plan OFS1V1L0 BUY 65): base 0, net 0 -> nothing placed; net 65 -> unresolved
+(the 65 cannot be told from outside lots). ``next_day_resolution`` writes these decisions; a plan with a tag in
+today's book stays on the order-book path below. Documented limit: an ENTRY filled and sold by hand on Kite the
+same earlier day leaves the net at the base and reads ``nothing_placed`` (Zerodha's net shows nothing changed).
+
 CLOSED plans count their stored fills, unless today's book contradicts them (fix round 2 MAJOR): a closed plan
 whose tag shows in today's book a status not final or a fill other than the one stored at close
 (``execution_return.drifted``; real case: Check pressed before placing -> closed ``nothing_placed`` with fill 0, then
@@ -84,6 +95,7 @@ from ofo.instruments.models import InstrumentId
 from ofo.reconciliation.compare import MAX_STRATEGIES, ReconciliationReport, compare, units_map
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo.strategy.versions import StrategyRecord
+from ofo.timeutil import EXPIRY_CLOSE, IST
 
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store, strategy_store
@@ -111,6 +123,21 @@ PENDING_ROW_DIFFERS = "book_row_differs"
 #: A CLOSED plan whose tags show, in today's book, a status not final or a fill other than the one stored at close
 #: (``execution_return.drifted``: e.g. Check pressed before placing -> closed "nothing_placed", then placed on Kite).
 PENDING_CLOSED_DRIFTED = "closed_plan_drifted"
+
+#: #352-1: why an EARLIER-DAY open plan cannot be settled on one contract (a closed set; ``EarlierDayContract.reason``).
+#: Zerodha's net is not what the strategies' stored fills and the standalone say without this plan (more, less,
+#: opposite, flat): the plan's orders may have filled, or an outside trade moved it; never guessed (ADR-109 (2)).
+UNSETTLED_NET_CHANGED = "net_changed"
+#: The contract's expiry close has passed: Zerodha's net no longer shows what the plan did (settled, ADR-083).
+UNSETTLED_EXPIRED = "contract_expired"
+#: Another plan (an open or drifted plan of any strategy, or another earlier-day plan) touches the contract: its units
+#: are unknown, so "nothing changed" cannot be read (two opposite fills net to nothing).
+UNSETTLED_SHARED = "another_plan_unsettled"
+#: The plan buys AND sells the contract: a net that did not move cannot show that nothing filled.
+UNSETTLED_MIXED_SIDES = "plan_sides_mixed"
+#: The earlier-day outcomes (``EarlierDay.outcome``): the two close reasons of ``execution_plan_store``.
+EARLIER_NOTHING_PLACED = "nothing_placed"
+EARLIER_UNRESOLVED = execution_plan_store.UNRESOLVED
 
 
 class AttributionError(ValueError):
@@ -188,6 +215,101 @@ class Attribution:
     standalone_unseen: Mapping[ContractKey, int]
     pending: Mapping[ContractKey, tuple[Pending, ...]]
     blocked: frozenset[str]
+    #: #352-1: contract -> each earlier-day open plan that cannot be settled there (``Pending.reason`` is an
+    #: ``UNSETTLED_*`` value). Never pending (its tags are not in today's book, so it would wait forever): left out
+    #: of compare like a pending contract, its strategy and every holder there blocked (a recorded mismatch once
+    #: ``next_day_resolution`` writes it).
+    unresolved: Mapping[ContractKey, tuple[Pending, ...]] = MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class EarlierDayContract:
+    """One contract an earlier-day open plan touches. ``expected_units``: what every strategy's stored fills plus the
+    standalone say Zerodha holds WITHOUT this plan (the base: this strategy's other plans included). ``zerodha_units``:
+    Zerodha's net as read. ``planned_units``: the plan's orders, signed, had they filled in full; ``gross_units``:
+    their quantities, unsigned. ``reason``: None
+    when the contract shows the plan changed nothing, else an ``UNSETTLED_*`` value. ``instrument_ids``: the plan's
+    stored ids on this contract, sorted."""
+
+    key: ContractKey
+    instrument_ids: tuple[str, ...]
+    tags: tuple[str, ...]
+    expected_units: int
+    zerodha_units: int
+    planned_units: int
+    gross_units: int
+    reason: str | None
+
+
+@dataclass(frozen=True)
+class EarlierDay:
+    """The decision for one earlier-day open plan: ``outcome`` is ``EARLIER_NOTHING_PLACED`` only when EVERY contract
+    it touches has no reason (the allow-list); anything else is ``EARLIER_UNRESOLVED``."""
+
+    strategy_id: int
+    plan_number: int
+    action: str
+    outcome: str
+    contracts: tuple[EarlierDayContract, ...]
+
+
+def earlier_day_open(plan: StoredPlan, book: Mapping[str, Sequence[OrderRow]], today: datetime.date) -> bool:
+    """An OPEN plan created before today's IST date whose tags are ALL absent from today's book (Kite's book holds
+    today's orders only, so it can never end ADR-110's wait). A tag present today (e.g. an order placed late the
+    evening before, shown in today's book) keeps the plan on the order-book path. A stamp without a time zone is
+    refused: the day cannot be told, and a same-day plan must never be decided from the net."""
+    if plan.status != "open":
+        return False
+    created = plan.created_at
+    if not isinstance(created, datetime.datetime) or created.tzinfo is None or created.utcoffset() is None:
+        raise AttributionError(f"strategy {plan.strategy_id} plan {plan.plan_number}: created_at must be a "
+                               f"time-zone-aware datetime, got {created!r}")
+    if not er.from_earlier_session(plan, today):
+        return False
+    return not any(order.tag in book for order in plan.orders)
+
+
+def _expired(key: ContractKey, at: datetime.datetime) -> bool:
+    expiry = key[3]
+    if not isinstance(expiry, datetime.date):
+        raise AttributionError(f"contract {key!r} has no expiry date")
+    return at >= datetime.datetime.combine(expiry, EXPIRY_CLOSE)
+
+
+def _signed(order: PlanOrder) -> int:
+    return order.quantity if order.transaction_type == Action.BUY.value else -order.quantity
+
+
+def decide_earlier_day(  # noqa: PLR0913 - every input is a separately read fact
+    plan: StoredPlan, underlying: str, expected: Mapping[ContractKey, int], raw_net: Mapping[ContractKey, int],
+    shared: frozenset, catalogue: Catalogue, at: datetime.datetime,
+) -> EarlierDay:
+    """The allow-list (#352-1, ADR-109 (2), ADR-111): the plan closes ``nothing_placed`` only when, on every contract
+    it touches, the contract has not expired at ``at``, no other unsettled plan touches it (``shared``), the plan's
+    orders there are all one side, and Zerodha's net equals ``expected`` (the base without this plan). Every other
+    case is ``unresolved_from_positions``: never ``filled`` or ``exited`` (the next-day net cannot tell the plan's
+    fills from outside lots or a hand close on Kite)."""
+    by_key: dict[ContractKey, list[PlanOrder]] = {}
+    for order in plan.orders:
+        by_key.setdefault(instrument_key(catalogue, order.instrument_id, underlying), []).append(order)
+    contracts = []
+    for key, orders in sorted(by_key.items(), key=lambda item: repr(item[0])):
+        base, net = expected.get(key, 0), raw_net.get(key, 0)
+        if _expired(key, at):
+            reason: str | None = UNSETTLED_EXPIRED
+        elif key in shared:
+            reason = UNSETTLED_SHARED
+        elif len({order.transaction_type for order in orders}) != 1:
+            reason = UNSETTLED_MIXED_SIDES
+        elif net != base:
+            reason = UNSETTLED_NET_CHANGED
+        else:
+            reason = None
+        contracts.append(EarlierDayContract(
+            key, tuple(sorted({o.instrument_id for o in orders})), tuple(o.tag for o in orders), base, net,
+            sum(_signed(o) for o in orders), sum(o.quantity for o in orders), reason))
+    outcome = EARLIER_UNRESOLVED if any(c.reason for c in contracts) else EARLIER_NOTHING_PLACED
+    return EarlierDay(plan.strategy_id, plan.plan_number, plan.action, outcome, tuple(contracts))
 
 
 def instrument_key(catalogue: Catalogue, instrument_id: str, underlying: str) -> ContractKey:
@@ -309,13 +431,21 @@ def _read_open_plan(plan: StoredPlan,
 
 
 def _strategy_units(strategy_id: int, underlying: str, plans: object, book: Mapping[str, Sequence[OrderRow]],
-                    catalogue: Catalogue) -> tuple[dict[ContractKey, int], dict[ContractKey, list[Pending]]]:
-    """The strategy's held units per contract (closed plans' stored fills, open plans' final fills) and the contracts
-    its pending plans (open or drifted closed) touch."""
+                    catalogue: Catalogue, today: datetime.date,
+                    ) -> tuple[dict[ContractKey, int], dict[ContractKey, list[Pending]], list[StoredPlan]]:
+    """The strategy's held units per contract (closed plans' stored fills, open plans' final fills), the contracts
+    its pending plans (open or drifted closed) touch, and its earlier-day open plans (``earlier_day_open``: counted
+    as 0 here, decided by ``decide_earlier_day``, never pending)."""
     _check_plans(strategy_id, plans)
     counted: list[StoredPlan] = []
     pending: dict[ContractKey, list[Pending]] = {}
+    earlier: list[StoredPlan] = []
     for plan in plans:  # type: ignore[attr-defined]  # a checked sequence of StoredPlan
+        if plan.status not in ("open", "closed"):
+            raise AttributionError(f"strategy {strategy_id} plan {plan.plan_number}: status {plan.status!r}")
+        if earlier_day_open(plan, book, today):
+            earlier.append(plan)
+            continue
         if plan.status == "closed":
             read, reasons = plan, _read_closed_plan(plan, book)
         else:
@@ -330,7 +460,7 @@ def _strategy_units(strategy_id: int, underlying: str, plans: object, book: Mapp
     for instrument_id, units in ep.held_units(counted).items():
         key = instrument_key(catalogue, instrument_id, underlying)
         held[key] = held.get(key, 0) + units  # two stored ids of ONE contract add up: Zerodha nets them as one
-    return {key: units for key, units in held.items() if units}, pending
+    return {key: units for key, units in held.items() if units}, pending, earlier
 
 
 def _record(underlying: str, held: Mapping[ContractKey, int], at: datetime.datetime,
@@ -419,11 +549,70 @@ async def attribute_and_compare(
     before this runs). ``order_book``: today's order book from ``kite_replies.orders_from_reply``. Any malformed
     input raises ``ValueError`` (``AttributionError``, ``ReconciliationError``); a guessed zero never reaches
     compare."""
+    survey = await survey_account(account, standalone, broker_net, order_book, sources, at=at)
+    clock, alone, raw_net, known, pending = sources.clock, survey.alone, survey.raw_net, survey.known, survey.pending
+    unresolved: dict[ContractKey, list[Pending]] = {}
+    for decision in survey.earlier:
+        for contract in decision.contracts:
+            if contract.reason:
+                unresolved.setdefault(contract.key, []).extend(
+                    Pending(str(decision.strategy_id), decision.plan_number, tag, contract.reason)
+                    for tag in contract.tags)
+    excluded = set(pending) | set(unresolved)
+    blocked_by_pending = {entry.strategy_id for entries in (*pending.values(), *unresolved.values())
+                          for entry in entries}
+    blocked_by_pending |= {sid for sid, units in known.items() if any(units.get(key) for key in excluded)}
+    held = {sid: {k: u for k, u in units.items() if k not in excluded} for sid, units in known.items()}
+    held = {sid: units for sid, units in held.items() if units}
+    records = {sid: _record(survey.underlyings[sid], units, at, clock) for sid, units in held.items()}
+    net = {c: u for c, u in raw_net.items() if c not in excluded}
+    alone_cmp = {c: u for c, u in alone.items() if c not in excluded}
+    outside = split_outside(net, held, alone_cmp)
+    unseen = standalone_unseen(net, held, alone_cmp, outside)
+    compared = {c: units - outside.get(c, 0) for c, units in net.items() if units - outside.get(c, 0)}
+    report = compare(compared, records, alone_cmp, at=at, clock=clock)
+    return Attribution(
+        report, MappingProxyType(raw_net), MappingProxyType(compared), MappingProxyType(outside),
+        MappingProxyType({sid: MappingProxyType(u) for sid, u in held.items()}), MappingProxyType(unseen),
+        MappingProxyType({key: tuple(entries) for key, entries in pending.items()}),
+        frozenset(report.blocked_strategy_ids) | frozenset(blocked_by_pending),
+        MappingProxyType({key: tuple(entries) for key, entries in unresolved.items()}))
+
+
+@dataclass(frozen=True)
+class Survey:
+    """What one read of the account gives (``survey_account``): the checked standalone and net maps, each strategy's
+    held units WITHOUT its earlier-day open plans, the pending contracts, and the decision for every earlier-day
+    open plan."""
+
+    alone: Mapping[ContractKey, int]
+    raw_net: Mapping[ContractKey, int]
+    known: Mapping[str, Mapping[ContractKey, int]]
+    underlyings: Mapping[str, str]
+    pending: Mapping[ContractKey, tuple[Pending, ...]]
+    earlier: tuple[EarlierDay, ...]
+
+
+async def survey_account(  # noqa: PLR0913 - the attribution's own inputs
+    account: Account,
+    standalone: Mapping[ContractKey, int],
+    broker_net: Mapping[ContractKey, int],
+    order_book: Sequence[OrderRow],
+    sources: Sources,
+    *,
+    at: datetime.datetime,
+) -> Survey:
+    """Read every strategy and all its plans (the store reader), compute held units and pending contracts, and decide
+    every earlier-day open plan (``decide_earlier_day``) against the base of every OTHER stored fill plus the
+    standalone. ``at`` must be time-zone aware; today's session is its IST date."""
     if not isinstance(account, Account) or not isinstance(account.user_ref, str) or not account.user_ref.strip():
         raise AttributionError(f"account must be an Account with a user, got {account!r}")
     if not isinstance(sources, Sources):
         raise AttributionError(f"sources must be a Sources with a StoreReader, got {sources!r}")
-    catalogue, clock, reader = sources.catalogue, sources.clock, _check_reader(sources.reader)
+    if not isinstance(at, datetime.datetime) or at.tzinfo is None or at.utcoffset() is None:
+        raise AttributionError(f"at must be a time-zone-aware datetime, got {at!r}")
+    today = at.astimezone(IST).date()
+    catalogue, reader = sources.catalogue, _check_reader(sources.reader)
     alone = units_map(standalone, "standalone quantities")
     raw_net = units_map(broker_net, "broker net positions")
     book = rows_by_tag(order_book)
@@ -433,6 +622,7 @@ async def attribute_and_compare(
     known: dict[str, dict[ContractKey, int]] = {}
     underlyings: dict[str, str] = {}
     pending: dict[ContractKey, list[Pending]] = {}
+    earlier: list[tuple[StoredPlan, str]] = []
     seen: set[int] = set()
     for summary in summaries:
         if not isinstance(summary, StrategySummary):
@@ -444,29 +634,32 @@ async def attribute_and_compare(
             raise AttributionError(f"the store listed strategy {strategy_id} twice")
         seen.add(strategy_id)
         plans = await reader.plans_for(account.conn, account.user_ref, strategy_id)
-        units, waiting = _strategy_units(strategy_id, summary.underlying, plans, book, catalogue)
+        units, waiting, old = _strategy_units(strategy_id, summary.underlying, plans, book, catalogue, today)
         known[str(strategy_id)], underlyings[str(strategy_id)] = units, summary.underlying
+        earlier.extend((plan, summary.underlying) for plan in old)
         for key, entries in waiting.items():
             pending.setdefault(key, []).extend(entries)
-    blocked_by_pending = {entry.strategy_id for entries in pending.values() for entry in entries}
-    blocked_by_pending |= {sid for sid, units in known.items() if any(units.get(key) for key in pending)}
-    held = {sid: {k: u for k, u in units.items() if k not in pending} for sid, units in known.items()}
-    held = {sid: units for sid, units in held.items() if units}
-    records = {sid: _record(underlyings[sid], units, at, clock) for sid, units in held.items()}
-    net = {c: u for c, u in raw_net.items() if c not in pending}
-    alone_cmp = {c: u for c, u in alone.items() if c not in pending}
-    outside = split_outside(net, held, alone_cmp)
-    unseen = standalone_unseen(net, held, alone_cmp, outside)
-    compared = {c: units - outside.get(c, 0) for c, units in net.items() if units - outside.get(c, 0)}
-    report = compare(compared, records, alone_cmp, at=at, clock=clock)
-    return Attribution(
-        report, MappingProxyType(raw_net), MappingProxyType(compared), MappingProxyType(outside),
-        MappingProxyType({sid: MappingProxyType(u) for sid, u in held.items()}), MappingProxyType(unseen),
-        MappingProxyType({key: tuple(entries) for key, entries in pending.items()}),
-        frozenset(report.blocked_strategy_ids) | frozenset(blocked_by_pending))
+    expected: dict[ContractKey, int] = dict(alone)
+    for units in known.values():
+        for key, value in units.items():
+            expected[key] = expected.get(key, 0) + value
+    touches: dict[ContractKey, int] = {}  # how many earlier-day plans touch each contract
+    for plan, underlying in earlier:
+        for key in {instrument_key(catalogue, o.instrument_id, underlying) for o in plan.orders}:
+            touches[key] = touches.get(key, 0) + 1
+    decisions = []
+    for plan, underlying in earlier:
+        shared = frozenset(pending) | frozenset(k for k, count in touches.items() if count > 1)
+        decisions.append(decide_earlier_day(plan, underlying, expected, raw_net, shared, catalogue, at))
+    return Survey(MappingProxyType(alone), MappingProxyType(raw_net),
+                  MappingProxyType({sid: MappingProxyType(u) for sid, u in known.items()}),
+                  MappingProxyType(underlyings),
+                  MappingProxyType({key: tuple(entries) for key, entries in pending.items()}), tuple(decisions))
 
 
-__all__ = ["PENDING_ABSENT", "PENDING_CLOSED_DRIFTED", "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL",
-           "PENDING_ROW_DIFFERS", "Account", "Attribution",
-           "AttributionError", "OrderRow", "Pending", "Sources", "StoreReader", "attribute_and_compare",
-           "instrument_key", "rows_by_tag", "split_outside", "standalone_unseen"]
+__all__ = ["EARLIER_NOTHING_PLACED", "EARLIER_UNRESOLVED", "PENDING_ABSENT", "PENDING_CLOSED_DRIFTED",
+           "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL", "PENDING_ROW_DIFFERS", "UNSETTLED_EXPIRED",
+           "UNSETTLED_MIXED_SIDES", "UNSETTLED_NET_CHANGED", "UNSETTLED_SHARED", "Account", "Attribution",
+           "AttributionError", "EarlierDay", "EarlierDayContract", "OrderRow", "Pending", "Sources", "StoreReader",
+           "Survey", "attribute_and_compare", "decide_earlier_day", "earlier_day_open", "instrument_key",
+           "rows_by_tag", "split_outside", "standalone_unseen", "survey_account"]
