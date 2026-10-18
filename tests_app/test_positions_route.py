@@ -299,7 +299,7 @@ async def test_adr110_empty_order_book_with_an_open_plan_is_pending(app_engine, 
 
 
 @pytest.mark.usefixtures("app_engine")
-@pytest.mark.parametrize("failure", ["http_error", "not_a_list", "bad_row"])
+@pytest.mark.parametrize("failure", ["http_error", "not_a_list", "bad_row", "text_row", "null_row", "number_row"])
 async def test_adr110_a_failed_or_unreadable_orders_read_is_refused_never_an_empty_book(app_engine, admin_engine,
                                                                                         monkeypatch, failure):
     """Orders answer state UNREADABLE / FAILED: a Kite error status, a reply that is not a list, or a row Zerodha's
@@ -307,7 +307,8 @@ async def test_adr110_a_failed_or_unreadable_orders_read_is_refused_never_an_emp
     from ofo.errors import render  # noqa: PLC0415
 
     bad_row = [{**_orders()[0], "filled_quantity": 66}]  # filled more than its 65: impossible
-    cases = {"http_error": (None, 403), "not_a_list": ({"orders": []}, 200), "bad_row": (bad_row, 200)}
+    cases = {"http_error": (None, 403), "not_a_list": ({"orders": []}, 200), "bad_row": (bad_row, 200),
+             "text_row": (["x"], 200), "null_row": ([None], 200), "number_row": ([5], 200)}
     orders, status = cases[failure]
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
                             orders=orders, orders_status=status)
@@ -330,6 +331,12 @@ async def test_adr110_two_strategies_on_one_contract_one_pending_blocks_both(app
                                   "pending_plans": [{"strategy_id": ids["second"], "plan_number": 1}],
                                   "blocked": True}]
     assert body["blocked_strategy_ids"] == sorted([1, ids["second"]])
+    # What the page reads (review round 1 MINOR 4): the EXACT key sets of the answer and of a pending row, as literals.
+    # frontend/e2e/positions.spec.ts and frontend/tests/positions-page.test.js mock exactly these keys.
+    assert set(body) == {"read_at", "contracts", "blocked", "blocked_strategy_ids"}
+    assert set(body["contracts"][0]) == {"tradingsymbol", "zerodha_units", "own", "own_units", "outside_units",
+                                         "pending", "pending_plans", "blocked"}
+    assert set(body["contracts"][0]["pending_plans"][0]) == {"strategy_id", "plan_number"}
 
 
 @pytest.mark.usefixtures("app_engine")

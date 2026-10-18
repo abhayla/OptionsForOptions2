@@ -20,6 +20,9 @@ const errorParts = ref(null)
 const WAITING = 'Order placed - waiting for Check with Zerodha'
 const UNCONFIRMED = 'not yet confirmed'
 const BLOCKED = 'blocked until its position matches Zerodha'
+// A pending contract's other holders are blocked too (ADR-110 + Q224); the answer names them only in
+// blocked_strategy_ids (W-108 reports no per-contract holder list for a pending contract), so the row points there.
+const HOLDERS = 'Every other strategy holding units on this contract is blocked too (listed above).'
 
 onMounted(async () => {
   try {
@@ -40,7 +43,14 @@ onMounted(async () => {
     <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="positions-error" />
     <div v-else-if="result" class="mt-2 text-sm">
       <p>Read from Zerodha at <span data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>
-      <p v-if="result.blocked" data-testid="positions-blocked">A strategy is {{ BLOCKED }}.</p>
+      <div v-if="result.blocked" data-testid="positions-blocked">
+        <p>A strategy is {{ BLOCKED }}.</p>
+        <ul>
+          <li v-for="id in result.blocked_strategy_ids" :key="id" data-testid="positions-blocked-strategy" :data-strategy="id">
+            <RouterLink :to="`/strategy/${id}/execute`" class="underline" data-testid="positions-blocked-link">Strategy {{ id }}</RouterLink> ({{ BLOCKED }})
+          </li>
+        </ul>
+      </div>
       <p v-if="!result.contracts.length" class="mt-2" data-testid="positions-empty">
         Zerodha shows no open positions, and none of your strategies holds any.
       </p>
@@ -53,7 +63,10 @@ onMounted(async () => {
             <td v-if="c.pending" colspan="2" data-testid="position-pending">
               <span data-testid="position-unconfirmed">({{ UNCONFIRMED }})</span>
               <span data-testid="position-waiting">{{ WAITING }}</span>:
-              <RouterLink v-for="p in c.pending_plans" :key="`${p.strategy_id}-${p.plan_number}`" :to="`/strategy/${p.strategy_id}/execute`" class="underline" data-testid="position-pending-link">Strategy {{ p.strategy_id }}</RouterLink>
+              <span v-for="p in c.pending_plans" :key="`${p.strategy_id}-${p.plan_number}`">
+                <RouterLink :to="`/strategy/${p.strategy_id}/execute`" class="underline" data-testid="position-pending-link">Strategy {{ p.strategy_id }}</RouterLink> ({{ BLOCKED }})
+              </span>
+              <span data-testid="position-pending-holders">{{ HOLDERS }}</span>
             </td>
             <template v-else>
               <td data-testid="position-own">{{ c.own_units }}</td>
@@ -73,6 +86,7 @@ onMounted(async () => {
                 <RouterLink :to="`/strategy/${p.strategy_id}/execute`" class="underline" data-testid="position-pending-link">Strategy {{ p.strategy_id }}</RouterLink> ({{ BLOCKED }})
               </li>
             </ul>
+            <p data-testid="position-pending-holders">{{ HOLDERS }}</p>
           </div>
           <ul v-else>
             <li v-for="o in c.own" :key="o.strategy_id" data-testid="position-own-lots" :data-strategy="o.strategy_id">

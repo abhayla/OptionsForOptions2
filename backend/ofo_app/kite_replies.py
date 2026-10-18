@@ -272,6 +272,8 @@ class BrokerOrderRow:
 
 
 def order_from_row(row: Mapping[str, object]) -> BrokerOrderRow:
+    if not isinstance(row, Mapping):  # allow-list: only a mapping is a row ('x', None, 5 are refused, never a crash)
+        raise KiteReplyError(f"an orders row must be a mapping, got {row!r}")
     tag = row.get("tag")
     if tag is not None and (not isinstance(tag, str) or not tag):
         raise KiteReplyError(f"tag must be a non-empty string or null, got {tag!r}")

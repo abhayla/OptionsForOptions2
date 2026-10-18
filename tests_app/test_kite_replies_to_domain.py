@@ -256,6 +256,16 @@ def test_missing_or_unknown_fields_fail_closed():
         positions_from_reply({"day": []}, _index())
 
 
+@pytest.mark.parametrize("row", ["x", None, 5, ["OFS1V1L0"]])
+def test_an_orders_row_that_is_not_a_mapping_is_refused_not_a_crash(row):
+    """W-111 round 2 (review MINOR 2): only a mapping is an orders row; anything else raises KiteReplyError (the
+    route's 409), never AttributeError (a 500)."""
+    with pytest.raises(KiteReplyError, match="must be a mapping"):
+        orders_from_reply([row])
+    with pytest.raises(KiteReplyError, match="must be a mapping"):
+        orders_from_reply([*_recorded("orders-122104"), row])
+
+
 def test_fixtures_hold_no_client_id():
     client_id = "DA" + "1707"
     files = sorted(FIXTURES.iterdir())

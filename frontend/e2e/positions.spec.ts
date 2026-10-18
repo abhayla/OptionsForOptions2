@@ -64,6 +64,9 @@ test('AC-3: a refused read shows the catalogue message, not an empty list', asyn
 })
 
 test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet confirmed, no split, and the Execute link', async ({ page }) => {
+  // A browser mock, not the real route: its keys are exactly the set asserted by
+  // tests_app/test_positions_route.py::test_adr110_two_strategies_on_one_contract_one_pending_blocks_both, so a renamed
+  // route key fails there. The pending case is unproven end to end through the real route (work/W-111.md next_action).
   await page.route('**/api/positions', (route) => route.fulfill({
     json: {
       read_at: READ_AT, blocked: true, blocked_strategy_ids: [1],
@@ -76,6 +79,7 @@ test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet 
   await expect(page.getByTestId('position-zerodha')).toHaveText('65')
   await expect(page.getByTestId('position-unconfirmed')).toHaveText('not yet confirmed')
   await expect(page.getByTestId('position-pending-link')).toHaveAttribute('href', '/strategy/1/execute')
+  await expect(page.getByTestId('positions-blocked-link')).toHaveAttribute('href', '/strategy/1/execute')
   await expect(page.getByTestId('position-own-lots')).toHaveCount(0)
   await expect(page.getByTestId('position-outside-lots')).toHaveCount(0)
   await page.goto('/positions/current-positions')
