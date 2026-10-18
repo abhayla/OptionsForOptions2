@@ -225,7 +225,8 @@ def test_381_core_a_trade_whose_order_the_orders_read_missed_refuses_never_nothi
     the orders read but its 65-unit trade is in the trades read -> the read is refused (before this fix the book was
     empty and classify closed the plan nothing_placed with 65 units held)."""
     trades = _data("trades-122104")
-    assert sum(t["quantity"] for t in trades) == 65 and trades[0]["order_id"] == "261016170576173"
+    assert sum(t["quantity"] for t in trades) == ENTRY_OPEN.orders[0].quantity
+    assert trades[0]["order_id"] == "261016170576173"
     with pytest.raises(ValueError, match="trade names an order"):
         _book([], trades, (ENTRY_OPEN,))
     other = {**_data("orders-122104")[0], "order_id": "1", "tag": None}  # an unrelated order present is no excuse

@@ -66,7 +66,8 @@ def _fills(trade_rows: Sequence[Mapping[str, object]],
     return tuple(seen.values()), traded, frozenset(conflicting)
 
 
-def _require_trade_orders(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[Mapping[str, object]]) -> None:
+def _require_trade_orders(order_rows: Sequence[Mapping[str, object]],
+                          trade_rows: Sequence[Mapping[str, object]]) -> None:
     """Issue 381: a trade whose order is in no order row (any strategy, any tag) means the two reads disagree. Dropping
     it would let a plan close ``nothing_placed`` while Zerodha shows its fill, so the whole read is refused."""
     known = {row.get("order_id") for row in order_rows if isinstance(row, Mapping)}
