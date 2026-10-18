@@ -484,12 +484,14 @@ def test_338_every_other_shape_is_not_reduce_only(orders, held) -> None:
 
 # --- ADR-113 (#338 round 2): a reduce-only basket is decided on Zerodha's final.total alone ----------------------
 REAL_EXIT_FILE = ROOT / "tests/fixtures/kite_replies/margins-basket-exit-150717.json"
-EXIT_CE = "NIFTY26O1923650CE"
 
 
 def _real_exit_data() -> dict:
     with REAL_EXIT_FILE.open(encoding="utf-8") as handle:
         return json.load(handle, parse_float=Decimal)["data"]
+
+
+EXIT_CE = _real_exit_data()["orders"][0]["tradingsymbol"]  # the real exit's contract, read from the recorded reply
 
 
 def test_adr113_core_real_exit_reply_needs_zero_and_passes_at_negative_funds() -> None:

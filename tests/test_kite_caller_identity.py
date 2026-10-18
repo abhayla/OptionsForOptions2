@@ -134,13 +134,6 @@ def scan_source(rel: str, source: str) -> list[str]:
     called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     problems: list[str] = []
     for node in ast.walk(tree):
-        # fail closed on imports the scan does not resolve (none exist in backend/ today): a relative import, or a
-        # dynamic import (importlib.import_module / __import__) that could reach a door under another name
-        if isinstance(node, ast.ImportFrom) and node.level:
-            problems.append(f"{rel}:{node.lineno} a relative import cannot be resolved by the scan: import absolutely")
-        if isinstance(node, ast.Call) and (_qualified(node.func, imports) in DYNAMIC_IMPORTS or (
-                isinstance(node.func, ast.Name) and node.func.id == "__import__")):
-            problems.append(f"{rel}:{node.lineno} a dynamic import cannot be resolved by the scan")
         if isinstance(node, ast.Call):
             name = _qualified(node.func, imports)
             if name in DOOR_CALLABLES:
@@ -154,26 +147,39 @@ def scan_source(rel: str, source: str) -> list[str]:
             name = _qualified(node, imports)
             if name in DOOR_CALLABLES and not _is_inner_part(node, tree):
                 problems.append(f"{rel}:{node.lineno} {name} used as a value: its caller cannot be resolved")
-    return problems + _wrapper_misuse(rel, tree, imports)
+    return problems + _unresolved_imports(rel, tree, imports) + _wrapper_misuse(rel, tree, imports)
+
+
+def _unresolved_imports(rel: str, tree: ast.Module, imports: dict[str, str]) -> list[str]:
+    """Fail closed on imports the scan does not resolve (none exist in backend/ today): a relative import, or a
+    dynamic import (importlib.import_module / __import__) that could reach a door under another name."""
+    problems = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level:
+            problems.append(f"{rel}:{node.lineno} a relative import cannot be resolved by the scan: import absolutely")
+        if isinstance(node, ast.Call) and (_qualified(node.func, imports) in DYNAMIC_IMPORTS or (
+                isinstance(node.func, ast.Name) and node.func.id == "__import__")):
+            problems.append(f"{rel}:{node.lineno} a dynamic import cannot be resolved by the scan")
+    return problems
+
+
+def _wrapper_handed_over(keyword: ast.keyword, client: str | None, imports: dict[str, str]) -> int | None:
+    """The node id of an identity wrapper given to its own client as ``transport=`` (bare or partial with only
+    ``timeout=``), else None."""
+    value = keyword.value
+    if (isinstance(value, ast.Call) and _qualified(value.func, imports) == "functools.partial"
+            and len(value.args) == 1 and all(k.arg == "timeout" for k in value.keywords)):
+        value = value.args[0]
+    if (keyword.arg == "transport" and isinstance(value, (ast.Name, ast.Attribute))
+            and IDENTITY_WRAPPERS.get(_qualified(value, imports) or "") == client):
+        return id(value)
+    return None
 
 
 def _wrapper_misuse(rel: str, tree: ast.Module, imports: dict[str, str]) -> list[str]:
     """Every use of an identity wrapper outside its own module that is not its own client's ``transport=``."""
-    allowed: set[int] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        client = _qualified(node.func, imports)
-        for keyword in node.keywords:
-            if keyword.arg != "transport":
-                continue
-            value = keyword.value
-            if (isinstance(value, ast.Call) and _qualified(value.func, imports) == "functools.partial"
-                    and len(value.args) == 1 and all(k.arg == "timeout" for k in value.keywords)):
-                value = value.args[0]
-            if isinstance(value, (ast.Name, ast.Attribute)) and IDENTITY_WRAPPERS.get(
-                    _qualified(value, imports) or "") == client:
-                allowed.add(id(value))
+    allowed = {_wrapper_handed_over(k, _qualified(node.func, imports), imports)
+               for node in ast.walk(tree) if isinstance(node, ast.Call) for k in node.keywords}
     problems = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Name, ast.Attribute)):
@@ -254,7 +260,8 @@ PLANTED = {
     "margin_transport_called": "from ofo_app import kite_margin\n"
                                "kite_margin.margin_transport('GET', 'https://api.kite.trade/user/margins', {}, None)\n",
     "wrapper_as_value": "from ofo_app.kite_reads import reads_transport as t\nsend = t\n",
-    "wrapper_to_another_client": "from ofo_app.kite_margin import KiteMargin\nfrom ofo_app.kite_reads import reads_transport\n"
+    "wrapper_to_another_client": "from ofo_app.kite_margin import KiteMargin\n"
+                                 "from ofo_app.kite_reads import reads_transport\n"
                                  "KiteMargin(api_key='k', access_token='t', transport=reads_transport)\n",
     "wrapper_partial_other_keyword": "import functools\nfrom ofo_app.kite_reads import KiteReads, reads_transport\n"
                                      "KiteReads(api_key='k', access_token='t',\n"
