@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 from partial_inputs import CONTRACTS, FILL_AT, REFS, STRATEGY_ID, FakePlanner
-from partial_inputs import STORED_FREEZE
+from partial_inputs import STORED_FREEZE, stored_limit
 from plan_inputs import FakeConstraints
 from test_close_refusals import _state
 
@@ -30,20 +30,22 @@ from ofo.execution.partial import (
 from ofo.orders import FillEvent, Order, OrderState
 
 BUY_CE = REFS[3]
+BELOW = "is not below the exchange freeze limit of"
 
 
 def _run(flow: str, plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
+    kw.setdefault("stored_freeze", STORED_FREEZE)
     if flow == "complete":
-        return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
-    return retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
+        return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
+    return retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
 
 
-def _assert_refused(prep, flow: str, book, *reason_parts: str) -> None:  # noqa: ANN001
+def _assert_refused(prep, flow: str, book, *reason_parts: str, prefix: str = "Nothing prepared: ") -> None:  # noqa: ANN001
     choice = PartialChoice.COMPLETE_STRATEGY if flow == "complete" else PartialChoice.RETRY_FAILED_LEG
     assert prep.choice is choice
     assert not prep.ready
     assert prep.orders == () and prep.gate is None and prep.cancels == ()
-    assert prep.reason.startswith("Nothing prepared: "), prep.reason
+    assert prep.reason.startswith(prefix), prep.reason
     for part in reason_parts:
         assert part in prep.reason, prep.reason
     assert book.closing_read_at(STRATEGY_ID) is None  # no state change: no Close marker appeared ...
@@ -52,11 +54,12 @@ def _assert_refused(prep, flow: str, book, *reason_parts: str) -> None:  # noqa:
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])
 def test_core_freeze_below_one_lot_returns_a_refusal_result_on_nifty(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6 (core): NIFTY freeze 64 < lot 65. Complete and Retry return "Nothing prepared: <reason>" (no exception)
-    and change no state; the very next call with a usable freeze prepares the rejected 24,000 CE's 650 units."""
+    """AC-6 (core, ADR-092): a STORED NIFTY limit of 64 < lot 65 allows no order. Complete and Retry return the block
+    with the limit and the largest allowed order (0 lots), no exception, no state change; the very next call with the
+    real stored limit (3,511) prepares the rejected 24,000 CE's 650 units as one order."""
     plan, book, broker, ctx = _state()
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
-    _assert_refused(prep, flow, book, "below one lot of 65")
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(64))
+    _assert_refused(prep, flow, book, BELOW + " 64 units", "0 units (0 lots)", prefix=CONTRACTS[3])
     ok = _run(flow, plan, book, broker, ctx, catalogue, eligibility)
     assert ok.ready, ok.reason
     assert [(o.leg_ref, o.contract, o.side, o.quantity) for o in ok.orders] == [(BUY_CE, CONTRACTS[3], Action.BUY, 650)]
@@ -64,18 +67,18 @@ def test_core_freeze_below_one_lot_returns_a_refusal_result_on_nifty(flow, catal
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])
 def test_ac6_freeze_below_one_lot_returns_a_refusal_result_on_sensex(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: SENSEX freeze 19 < catalogue lot 20 gives the same refusal result, naming the lot of 20."""
+    """AC-6: a stored SENSEX limit of 19 < catalogue lot 20 gives the same block (largest allowed 0 lots)."""
     plan, book, broker, ctx = _state("SENSEX")
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=19, per_batch=10))
-    _assert_refused(prep, flow, book, "below one lot of 20")
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(19))
+    _assert_refused(prep, flow, book, BELOW + " 19 units", "0 units (0 lots)", prefix="SENSEX")
 
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])
 def test_ac6_unusable_freeze_value_returns_a_refusal_result(flow, catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: a broker constraint of 0 (not a positive integer) is a refusal result, not an exception."""
+    """AC-6: a stored limit of 0 (not a positive integer) is a refusal result ("Nothing prepared."), not an exception."""
     plan, book, broker, ctx = _state()
-    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=0, per_batch=10))
-    _assert_refused(prep, flow, book, "positive integer")
+    prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(0))
+    _assert_refused(prep, flow, book, prefix="Nothing prepared.")
 
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])

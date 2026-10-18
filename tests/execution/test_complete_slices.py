@@ -6,9 +6,9 @@ remaining strategy, re-checks margin, verifies the missing leg and submits only 
 leg fails, the sell leg that depends on it is not submitted", AC-9 "lot validity"; ADR-017 Q26.
 
 The strategy is the golden Iron Condor on the REAL instrument-list fixture (NIFTY 2026-10-06, lot 65 read from the
-catalogue), at 10 lots = 650 units per leg. Expected slices are hand-computed:
-- fake freeze 200 units -> rounded DOWN to 3 whole lots = 195 units (orchestrator default, W-028);
-- 650 = 195 + 195 + 195 + 65, i.e. 4 slices, each a multiple of 65.
+catalogue), at 10 lots = 650 units per leg. ADR-092 (issue 255) supersedes W-028's freeze slicing: every missing
+leg is ONE order of its whole missing units (the freeze limit itself is tested in test_never_split.py). The sink tests
+below still send several orders of one leg to prove the room counts every earlier order of that leg.
 """
 from __future__ import annotations
 
@@ -54,8 +54,7 @@ from ofo.orders import FillEvent, Order, OrderState
 
 LOTS = 10
 QTY = LOTS * LOT  # 650 units per leg
-SMALL_FREEZE = 200  # not a lot multiple: 3 lots (195) fit under it, 4 lots (260) do not
-SLICES_650_AT_195 = [195, 195, 195, 65]  # hand computation: 3 x 195 + 65 = 650
+SLICES_650_AT_195 = [195, 195, 195, 65]  # several orders of one leg for the sink's room: 650 in total
 BUY_PE, SELL_PE, SELL_CE, BUY_CE = REFS
 
 
@@ -86,8 +85,9 @@ def _state(filled: tuple[int, ...]):  # noqa: ANN202
 
 def _complete(filled, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
     book, broker = _state(filled)
-    kw.setdefault("constraints", FakeConstraints(freeze=SMALL_FREEZE, per_batch=2))
-    return complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
+    kw.setdefault("constraints", FakeConstraints(per_batch=2))
+    kw.setdefault("stored_freeze", STORED_FREEZE)
+    return complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, **kw)
 
 
 def _rows(prep):  # noqa: ANN001, ANN202
@@ -97,59 +97,35 @@ def _rows(prep):  # noqa: ANN001, ANN202
 # -- Core ------------------------------------------------------------------------------------------------------------
 
 
-def test_core_complete_slices_only_the_missing_23600_ce_and_a_refused_first_slice_withholds_the_dependent_sell(
+def test_core_complete_prepares_only_the_missing_23600_ce_as_one_order_and_a_refused_protector_withholds_the_sell(
         catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 (core): with 23,600 CE (650 units) missing and a freeze of 200, Complete prepares exactly four lot-aligned
-    slices of that leg (195, 195, 195, 65), all in step 1, batches of 2 (1, 1, 2, 2), and nothing else. With the
-    23,400 CE sale ALSO missing, a refused FIRST slice of the 23,600 CE sends no slice of the sale that depends on it."""
+    """AC-4 (core, ADR-092 never split): with 23,600 CE (650 units) missing, Complete prepares exactly ONE order of 650
+    for that leg, step 1 batch 1, and nothing else (W-028 listed 195/195/195/65). With the 23,400 CE sale ALSO missing,
+    a refused 23,600 CE order sends nothing of the sale that depends on it."""
     prep = _complete((0, 1, 2), catalogue, eligibility)
     assert prep.ready, prep.reason
-    assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, q) for q in SLICES_650_AT_195]
-    assert [(s.step, s.batch, s.leg_ref, s.slice_no, s.quantity) for s in prep.slices] == [
-        (1, 1, BUY_CE, 1, 195), (1, 1, BUY_CE, 2, 195), (1, 2, BUY_CE, 3, 195), (1, 2, BUY_CE, 4, 65)]
-    assert all(o.quantity % LOT == 0 for o in prep.orders)
+    assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, QTY)]
+    assert [(s.step, s.batch, s.leg_ref, s.quantity) for s in prep.slices] == [(1, 1, BUY_CE, QTY)]
+    assert prep.warnings == ()
 
     both = _complete((0, 1), catalogue, eligibility)
-    assert _rows(both) == ([(BUY_CE, CONTRACTS[3], Action.BUY, q) for q in SLICES_650_AT_195]
-                           + [(SELL_CE, CONTRACTS[2], Action.SELL, q) for q in SLICES_650_AT_195])
+    assert _rows(both) == [(BUY_CE, CONTRACTS[3], Action.BUY, QTY), (SELL_CE, CONTRACTS[2], Action.SELL, QTY)]
     submitter = FakeSubmitter(refuse=1)
     result = submit_confirmed(both, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1",
                               submitter=submitter)
-    assert [(r.leg_ref, r.side, r.quantity) for r in submitter.sent] == [(BUY_CE, Action.BUY, 195)]
+    assert [(r.leg_ref, r.side, r.quantity) for r in submitter.sent] == [(BUY_CE, Action.BUY, QTY)]
     assert result.failed == (BUY_CE, "Order rejected: RMS:Margin Exceeds")
-    assert result.not_sent == (BUY_CE, SELL_CE)
+    assert SELL_CE in result.not_sent
 
 
 # -- Lot alignment ---------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("freeze,expected", [(195, SLICES_650_AT_195), (130, [130] * 5), (650, [650]),
-                                             (1755, [650])])
-def test_ac4_every_slice_quantity_is_a_whole_number_of_catalogue_lots(freeze, expected, catalogue,  # noqa: ANN001
-                                                                      eligibility) -> None:
-    """AC-4: the lot (65) comes from the catalogue; every slice is a multiple of it and the slices sum to the missing
-    650 units (hand computation: 650/130 = 5; 650 <= 650 and 1,755 -> one order)."""
-    prep = _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=freeze, per_batch=10))
-    assert [o.quantity for o in prep.orders] == expected
-    assert all(q % LOT == 0 for q in expected) and sum(expected) == QTY
-
-
-@pytest.mark.parametrize("freeze,expected", [(200, SLICES_650_AT_195), (259, SLICES_650_AT_195),
-                                             (129, [65] * 10), (66, [65] * 10)])
-def test_ac4_a_freeze_limit_that_is_not_a_lot_multiple_is_rounded_down(freeze, expected, catalogue,  # noqa: ANN001
-                                                                       eligibility) -> None:
-    """AC-4 (orchestrator default W-028): a freeze of 200 or 259 units holds 3 whole lots (195), 129 or 66 holds one
-    (65); the slice is never the raw freeze figure (200 is not a multiple of 65)."""
-    prep = _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=freeze, per_batch=10))
-    assert [o.quantity for o in prep.orders] == expected
-
-
-def test_ac4_a_freeze_below_one_lot_is_refused(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 negative (W-043, #71): a freeze of 64 units holds no whole lot of 65, so no order can be sized; refused as
-    a "Nothing prepared: <reason>" result (was a raised ValueError), with no order and no held preparation."""
-    prep = _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
-    assert not prep.ready and prep.orders == () and prep.gate is None
-    assert prep.reason.startswith("Nothing prepared: ") and "below one lot of 65" in prep.reason
+@pytest.mark.parametrize("per_batch", [1, 2, 10])
+def test_ac4_every_order_is_the_whole_missing_leg_in_catalogue_lots(per_batch, catalogue, eligibility) -> None:  # noqa: ANN001
+    """AC-4 / ADR-092: whatever the batch size, the missing 650 units (10 lots of the catalogue's 65) are ONE order."""
+    prep = _complete((0, 1, 2), catalogue, eligibility, constraints=FakeConstraints(per_batch=per_batch))
+    assert [o.quantity for o in prep.orders] == [QTY] and QTY % LOT == 0
 
 
 def test_ac4_a_missing_quantity_that_is_not_a_whole_number_of_lots_is_refused(catalogue) -> None:  # noqa: ANN001
@@ -202,94 +178,89 @@ def test_ac4_bad_remaining_quantities_are_refused(quantities, catalogue) -> None
 def test_ac4_complete_uses_the_plans_margin_planner_within_a_step(catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-4: both wings missing (step 1). With no planner the user's order holds (22,800 PE, then 23,600 CE); with the
     plan's MarginPlanner saying the 23,600 CE frees more margin (impact -5,000 vs +1,000) it goes first."""
-    plain = _complete((1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=1755, per_batch=10))
+    plain = _complete((1, 2), catalogue, eligibility, constraints=FakeConstraints(per_batch=10))
     assert [o.leg_ref for o in plain.orders] == [BUY_PE, BUY_CE]
     legs = condor_legs(QTY)
     margin = FakeMargin({legs[0]: D("1000"), legs[3]: D("-5000")})
-    ordered = _complete((1, 2), catalogue, eligibility, constraints=FakeConstraints(freeze=1755, per_batch=10),
+    ordered = _complete((1, 2), catalogue, eligibility, constraints=FakeConstraints(per_batch=10),
                         margin_planner=margin)
     assert [o.leg_ref for o in ordered.orders] == [BUY_CE, BUY_PE]
     assert margin.asked
 
 
 def test_ac4_batches_never_span_a_step(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4: 23,600 CE (step 1) and 23,400 CE (step 2) missing, freeze 195, 3 per batch: step 1 batches 1,1,1,2;
-    step 2 starts batch 3: 3,3,3,4 (hand computation)."""
-    prep = _complete((0, 1), catalogue, eligibility, constraints=FakeConstraints(freeze=195, per_batch=3))
-    assert [(s.step, s.batch, s.leg_ref) for s in prep.slices] == (
-        [(1, b, BUY_CE) for b in (1, 1, 1, 2)] + [(2, b, SELL_CE) for b in (3, 3, 3, 4)])
+    """AC-4: 22,800 PE and 23,600 CE (step 1) and 23,400 CE (step 2) missing, one order each. Batches of 3: step 1 is
+    batch 1 (two orders), step 2 starts batch 2; batches of 1: 1, 2, 3 (hand computation)."""
+    three = _complete((1,), catalogue, eligibility, constraints=FakeConstraints(per_batch=3))
+    assert [(s.step, s.batch, s.leg_ref) for s in three.slices] == [(1, 1, BUY_PE), (1, 1, BUY_CE), (2, 2, SELL_CE)]
+    one = _complete((1,), catalogue, eligibility, constraints=FakeConstraints(per_batch=1))
+    assert [(s.step, s.batch) for s in one.slices] == [(1, 1), (1, 2), (2, 3)]
 
 
 # -- Withholding at send ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("refused", [1, 2, 3, 4])
-def test_ac4_a_refused_protective_slice_withholds_every_dependent_slice(refused: int, catalogue,  # noqa: ANN001
-                                                                       eligibility) -> None:
-    """AC-4 / invariant 21: whichever 23,600 CE slice is refused, no slice of the 23,400 CE sale is sent; the slices
-    before it were sent, none after it."""
+def test_ac4_a_refused_protective_order_withholds_its_dependent_sell(catalogue, eligibility) -> None:  # noqa: ANN001
+    """AC-4 / invariant 21: the 23,600 CE order refused -> the 23,400 CE sale is never sent."""
     prep = _complete((0, 1), catalogue, eligibility)
-    submitter = FakeSubmitter(refuse=refused)
+    submitter = FakeSubmitter(refuse=1)
     result = submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1",
                               submitter=submitter)
-    assert [(r.leg_ref, r.quantity) for r in submitter.sent] == [(BUY_CE, q) for q in SLICES_650_AT_195[:refused]]
+    assert [(r.leg_ref, r.quantity) for r in submitter.sent] == [(BUY_CE, QTY)]
     assert SELL_CE not in {r.leg_ref for r in submitter.sent}
-    assert len(result.submitted) == refused - 1
-    assert result.failed[0] == BUY_CE
+    assert result.submitted == () and result.failed[0] == BUY_CE
 
 
-def test_ac4_all_slices_accepted_send_every_slice_in_plan_order(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 positive: with no refusal all 8 slices go, protector first, and the book holds 8 platform orders."""
+def test_ac4_all_orders_accepted_send_every_order_in_plan_order(catalogue, eligibility) -> None:  # noqa: ANN001
+    """AC-4 positive: with no refusal both orders go, protector first, each the whole 650 units."""
     prep = _complete((0, 1), catalogue, eligibility)
     submitter = FakeSubmitter()
     result = submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1",
                               submitter=submitter)
-    assert [(r.leg_ref, r.quantity) for r in submitter.sent] == (
-        [(BUY_CE, q) for q in SLICES_650_AT_195] + [(SELL_CE, q) for q in SLICES_650_AT_195])
-    assert result.failed is None and result.not_sent == () and len(result.submitted) == 8
+    assert [(r.leg_ref, r.quantity) for r in submitter.sent] == [(BUY_CE, QTY), (SELL_CE, QTY)]
+    assert result.failed is None and result.not_sent == () and len(result.submitted) == 2
 
 
-def test_ac4_simulate_maps_a_failed_slice_to_a_failed_leg(catalogue) -> None:  # noqa: ANN001
-    """AC-4: in the plan's simulation a failed slice (23,600 CE slice 3) counts as a failed 23,600 CE leg, so the
-    23,400 CE sale is withheld; a failed sale slice withholds nothing."""
-    seq = sequence_plan(big_plan(), constraints=FakeConstraints(freeze=200, per_batch=2), catalogue=catalogue,
+def test_ac4_simulate_maps_a_failed_protector_to_a_withheld_sell(catalogue) -> None:  # noqa: ANN001
+    """AC-4: in the plan's simulation a failed 23,600 CE withholds the 23,400 CE sale; a failed sale withholds nothing."""
+    seq = sequence_plan(big_plan(), constraints=FakeConstraints(per_batch=2), catalogue=catalogue,
                         quantities={SELL_CE: QTY, BUY_CE: QTY})
-    sim = seq.simulate_slices([(BUY_CE, 3)])
+    assert [(o.leg_ref, o.quantity) for o in seq.orders] == [(BUY_CE, QTY), (SELL_CE, QTY)]
+    sim = seq.simulate([BUY_CE])
     assert sim.failed == (BUY_CE,) and sim.withheld == (SELL_CE,)
-    sale = seq.simulate_slices([(SELL_CE, 1)])
+    sale = seq.simulate([SELL_CE])
     assert sale.failed == (SELL_CE,) and sale.withheld == ()
 
 
-@pytest.mark.parametrize("bad", [[(BUY_CE, 5)], [(BUY_PE, 1)], [(BUY_CE, 1), (BUY_CE, 1)], (BUY_CE, 1),
-                                 [("leg-9", 1)], [(BUY_CE, True)]])
-def test_ac4_simulate_slices_refuses_unknown_duplicate_or_malformed_slices(bad, catalogue) -> None:  # noqa: ANN001
-    """AC-4 input domain: a slice number the sequence does not have (23,600 CE has 4), a leg with no orders, a
-    duplicate, a bare tuple instead of a collection, an unknown leg or a boolean slice number is refused."""
-    seq = sequence_plan(big_plan(), constraints=FakeConstraints(freeze=200, per_batch=2), catalogue=catalogue,
+@pytest.mark.parametrize("bad", [[BUY_CE, BUY_CE], BUY_CE, ["leg-9"]])
+def test_ac4_simulate_refuses_unknown_duplicate_or_malformed_failures(bad, catalogue) -> None:  # noqa: ANN001
+    """AC-4 input domain: a duplicate, a bare string instead of a collection, or an unknown leg is refused."""
+    seq = sequence_plan(big_plan(), constraints=FakeConstraints(per_batch=2), catalogue=catalogue,
                         quantities={SELL_CE: QTY, BUY_CE: QTY})
     with pytest.raises(ValueError):
-        seq.simulate_slices(bad)
+        seq.simulate(bad)
 
 
 # -- Retry -----------------------------------------------------------------------------------------------------------
 
 
-def test_ac4_retry_sends_slices_too(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4 (Retry): retrying the failed 23,600 CE prepares the same four lot-aligned slices, sent in order."""
+def test_ac4_retry_sends_one_order_too(catalogue, eligibility) -> None:  # noqa: ANN001
+    """AC-4 (Retry, ADR-092): retrying the failed 23,600 CE prepares ONE order of the missing 650 units."""
     book, broker = _state((0, 1, 2))
-    margin = FakeMargin({})
     prep = retry_failed_leg(big_plan(), BUY_CE, broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                            margin_planner=margin, constraints=FakeConstraints(freeze=SMALL_FREEZE, per_batch=2), stored_freeze=STORED_FREEZE)
-    assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, q) for q in SLICES_650_AT_195]
+                            margin_planner=FakeMargin({}), constraints=FakeConstraints(per_batch=2),
+                            stored_freeze=STORED_FREEZE)
+    assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, QTY)]
     submitter = FakeSubmitter()
     submit_confirmed(prep, choice=PartialChoice.RETRY_FAILED_LEG, confirmed_by="user:U-1", submitter=submitter)
-    assert [r.quantity for r in submitter.sent] == SLICES_650_AT_195
+    assert [r.quantity for r in submitter.sent] == [QTY]
 
 
 def test_ac4_complete_without_constraints_uses_the_labelled_default(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-4: no constraints given -> the labelled UNVERIFIED default (1,755 = 27 lots) still applies: 650 is one order."""
+    """AC-4: no constraints given -> the labelled UNVERIFIED default batch size; 650 is one order."""
     book, broker = _state((0, 1, 2))
-    prep = complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    prep = complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+                             stored_freeze=STORED_FREEZE)
     assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, QTY)]
 
 

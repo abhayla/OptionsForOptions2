@@ -183,11 +183,14 @@ __all__ = ["AS_OF", "LOT"]
 
 
 class _EveryContractStored(Mapping):
-    """The freeze store for the partial-execution tests: every contract has NIFTY's stored limit of 3,511 units from
-    the 2026-10-15 exchange file (F-36); the lot comes from the catalogue (``freeze_limits_for_plan``)."""
+    """The freeze store for the partial-execution tests: every contract has ``limit`` (default NIFTY's 3,511 units from
+    the 2026-10-15 exchange file, F-36); the lot comes from the catalogue (``freeze_limits_for_plan``)."""
 
-    def __getitem__(self, key: object) -> tuple[int, datetime.date]:
-        return (3511, datetime.date(2026, 10, 15))
+    def __init__(self, limit: object = 3511) -> None:
+        self.limit = limit
+
+    def __getitem__(self, key: object) -> tuple[object, datetime.date]:
+        return (self.limit, datetime.date(2026, 10, 15))
 
     def __contains__(self, key: object) -> bool:
         return True
@@ -200,3 +203,8 @@ class _EveryContractStored(Mapping):
 
 
 STORED_FREEZE = _EveryContractStored()
+
+
+def stored_limit(limit: object) -> Mapping:
+    """Every contract stored with ``limit`` units (for the below-one-lot and malformed-limit cases)."""
+    return _EveryContractStored(limit)
