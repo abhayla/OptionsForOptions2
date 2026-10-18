@@ -10,12 +10,15 @@ Derived cases change ONLY the positions row's ``quantity``, an order's side, or 
 Expected values come from the spec by hand, never from running the adapter: ADR-109's consequence ("strategy BUY 65
 NIFTY CE, Kite 130 -> not blocked, 65 outside; strategy 65 + standalone 25, Kite 90 -> no mismatch; Kite 0 ->
 blocked"), REQ-060 AC-6 (a shortfall blocks), AC-7 (a position in no strategy blocks no strategy) and Q224 (a shared
-contract that disagrees blocks every holder). Pure: no database.
+contract that disagrees blocks every holder). No database: the store is an injected fake of the two reads the adapter
+makes itself (every strategy of the user, every plan of each).
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import datetime
+import inspect
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -26,18 +29,22 @@ from ofo.engine import Instrument
 from ofo.execution.basket import parse_tag
 from ofo.instruments import Catalogue
 from ofo.instruments.models import NSE_FO
+from ofo.instruments.parser import zerodha_listed
 from ofo.reconciliation.compare import MismatchKind, ReconciliationReport
 from ofo.timeutil import IST
+from ofo_app import execution_plan_store, strategy_store
 from ofo_app import reconcile_attribution as ra
-from ofo_app.execute_replay import CORE_ID
+from ofo_app.execute_replay import CORE_ID, TOKEN
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 from ofo_app.kite_replies import ContractIndex, orders_from_reply, positions_from_reply
+from ofo_app.strategy_store import StrategySummary
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_replies"
 KEY = ("NIFTY", Instrument.CE, Decimal("23650.00"), datetime.date(2026, 10, 19))
 IID = f"{NSE_FO}:{CORE_ID.exchange_token}"
 AT = datetime.datetime(2026, 10, 16, 15, 10, 8, tzinfo=IST)
+CONN, USER = object(), "user-1"
 
 
 def clock() -> datetime.datetime:
@@ -48,10 +55,10 @@ def _recorded(name: str) -> object:
     return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"), parse_float=Decimal)["data"]
 
 
-def _sources() -> ra.Sources:
+def _catalogue(*rows) -> Catalogue:
     cat = Catalogue()
-    cat.load([_listed()])
-    return ra.Sources(cat, clock)
+    cat.load([_listed(), *rows])
+    return cat
 
 
 def _index() -> ContractIndex:
@@ -59,7 +66,14 @@ def _index() -> ContractIndex:
     return ContractIndex.from_instrument_slice(slice_rows)
 
 
-def _plans(orders: str, strategy_id: int = 1, *, side: str | None = None) -> ra.StrategyPlans:
+class _Entry:
+    """One strategy as the fake store holds it: its underlying and ALL its stored plans."""
+
+    def __init__(self, underlying: str, plans: object) -> None:
+        self.underlying, self.plans = underlying, plans
+
+
+def _plans(orders: str, strategy_id: int = 1, *, side: str | None = None) -> _Entry:
     """The real order rows as this strategy's stored plans (one plan per tag); ``side`` flips every order (derived)."""
     by_plan: dict[int, list[PlanOrder]] = {}
     for row in orders_from_reply(_recorded(orders)):
@@ -67,9 +81,36 @@ def _plans(orders: str, strategy_id: int = 1, *, side: str | None = None) -> ra.
         by_plan.setdefault(number, []).append(PlanOrder(
             0, f"OFS{strategy_id}V{number}L0", IID, row.tradingsymbol, side or row.side.value, row.quantity,
             row.price, row.filled_quantity))
-    return ra.StrategyPlans("NIFTY", tuple(
+    return _Entry("NIFTY", tuple(
         StoredPlan(strategy_id, number, "ENTRY" if number == 1 else "EXIT", "closed", tuple(orders_), AT, AT, "filled")
         for number, orders_ in sorted(by_plan.items())))
+
+
+def _second_buy(entry: _Entry, strategy_id: int = 1, iid: str = IID) -> _Entry:
+    """``entry`` plus a plan 2 that BUYs 65 more (filled) on ``iid``: the strategy holds 130 over two plans."""
+    first = entry.plans[0].orders[0]
+    plan2 = StoredPlan(strategy_id, 2, "ENTRY", "closed", (PlanOrder(
+        0, f"OFS{strategy_id}V2L0", iid, first.tradingsymbol, "BUY", 65, first.price, 65),), AT, AT, "filled")
+    return _Entry(entry.underlying, (entry.plans[0], plan2))
+
+
+def _reader(store: object) -> ra.StoreReader:
+    """A fake of the two store reads; it answers only for this connection and user (the account is passed through).
+    ``store``: strategy id -> _Entry, or a ready-made strategy listing (a list)."""
+
+    async def list_strategies(conn, user_ref):
+        assert (conn, user_ref) == (CONN, USER)
+        if isinstance(store, list):
+            return store
+        return [StrategySummary(sid, e.underlying, "draft", AT, AT) for sid, e in store.items()]
+
+    async def plans_for(conn, user_ref, strategy_id):
+        assert (conn, user_ref) == (CONN, USER)
+        if isinstance(store, list):
+            return _plans("orders-122104", strategy_id).plans if strategy_id > 0 else ()
+        return store[strategy_id].plans
+
+    return ra.StoreReader(list_strategies, plans_for)
 
 
 def _positions(quantity: int | None = 65) -> object:
@@ -82,10 +123,16 @@ def _positions(quantity: int | None = 65) -> object:
     return data
 
 
-def _run(strategies, positions, standalone=None) -> ra.Attribution:
-    """The product path: Zerodha's positions reply through the existing reply adapter, then the attribution."""
-    net = positions_from_reply(positions, _index()).net
-    return ra.attribute_and_compare(strategies, standalone or {}, net, _sources(), at=AT)
+def _attribute(store, broker_net, standalone=None, catalogue=None) -> ra.Attribution:
+    sources = ra.Sources(catalogue or _catalogue(), clock, _reader(store))
+    alone = {} if standalone is None else standalone
+    return asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), alone, broker_net, sources, at=AT))
+
+
+def _run(store, positions, standalone=None) -> ra.Attribution:
+    """The product path: Zerodha's positions reply through the existing reply adapter, then the attribution (which
+    reads every strategy and all its plans from the store itself)."""
+    return _attribute(store, positions_from_reply(positions, _index()).net, standalone)
 
 
 def _blocked(result: ra.Attribution) -> set[str]:
@@ -186,11 +233,8 @@ def test_ac7_g_contract_no_strategy_holds_is_outside():
 def test_ac7_holders_on_both_sides_strip_nothing_and_block_all():
     """AC-7, Q224: strategy 1 +130, strategy 2 -65 (expected +65), Zerodha +130 -> nothing stripped (the 65 is a
     shortfall against strategy 2's own short), both blocked."""
-    long_130 = _plans("orders-122104")
-    doubled = ra.StrategyPlans("NIFTY", (long_130.plans[0], StoredPlan(
-        1, 2, "EXIT", "closed", (PlanOrder(0, "OFS1V2L0", IID, long_130.plans[0].orders[0].tradingsymbol, "BUY", 65,
-                                           long_130.plans[0].orders[0].price, 65),), AT, AT, "filled")))
-    result = _run({1: doubled, 2: _plans("orders-122104", 2, side="SELL")}, _positions(130))
+    result = _run({1: _second_buy(_plans("orders-122104")), 2: _plans("orders-122104", 2, side="SELL")},
+                  _positions(130))
     assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 130}, "2": {KEY: -65}}
     assert _blocked(result) == {"1", "2"}
     assert dict(result.outside) == {}
@@ -214,9 +258,8 @@ def test_ac7_flat_row_with_no_strategy_reports_nothing():
 
 def test_ac7_unfilled_plan_holds_nothing():
     """AC-7, ADR-105: an order not yet filled (filled_quantity None) counts 0, so Zerodha's 65 is outside."""
-    plans = _plans("orders-122104")
-    order = plans.plans[0].orders[0]
-    unfilled = ra.StrategyPlans("NIFTY", (StoredPlan(1, 1, "ENTRY", "open", (PlanOrder(
+    order = _plans("orders-122104").plans[0].orders[0]
+    unfilled = _Entry("NIFTY", (StoredPlan(1, 1, "ENTRY", "open", (PlanOrder(
         0, order.tag, IID, order.tradingsymbol, "BUY", 65, order.price, None),), AT, None, None),))
     result = _run({1: unfilled}, _positions(65))
     assert dict(result.held) == {}
@@ -245,15 +288,14 @@ def test_ac7_unparseable_positions_fail_closed(positions):
         _run({1: _plans("orders-122104")}, positions)
 
 
-# ---- inputs the adapter reads itself (caller-supplied-verdict-trusted) --------------------------------------------
+# ---- the stored plans the adapter reads itself (caller-supplied-verdict-trusted) ----------------------------------
 
-def _one_plan(**changes) -> ra.StrategyPlans:
-    plan = _plans("orders-122104").plans[0]
-    order = plan.orders[0]
+def _one_plan(**changes) -> _Entry:
+    order = _plans("orders-122104").plans[0].orders[0]
     order_fields = {k: changes.pop(k) for k in ("tag", "instrument_id") if k in changes}
     new_order = PlanOrder(0, order_fields.get("tag", order.tag), order_fields.get("instrument_id", IID),
                           order.tradingsymbol, "BUY", 65, order.price, 65)
-    return ra.StrategyPlans(changes.pop("underlying", "NIFTY"), (StoredPlan(
+    return _Entry(changes.pop("underlying", "NIFTY"), (StoredPlan(
         changes.pop("strategy_id", 1), 1, "ENTRY", "closed", (new_order,), AT, AT, "filled"),))
 
 
@@ -277,28 +319,32 @@ def test_ac7_plans_not_this_strategys_are_refused(plans):
 
 
 def test_ac7_a_plan_that_is_not_a_stored_plan_is_refused():
-    """AC-7: plans come from the plan store (StoredPlan); a look-alike object with the same fields is refused, so a
-    caller cannot hand in a made-up history."""
+    """AC-7: plans come from the plan store (StoredPlan); a look-alike object with the same fields is refused."""
     real = _plans("orders-122104").plans[0]
     look_alike = SimpleNamespace(**{f: getattr(real, f) for f in real.__dataclass_fields__})
     with pytest.raises(ra.AttributionError, match="StoredPlan"):
-        _run({1: ra.StrategyPlans("NIFTY", (look_alike,))}, _positions(65))
+        _run({1: _Entry("NIFTY", (look_alike,))}, _positions(65))
 
 
 def test_ac7_duplicate_plans_are_refused():
-    """AC-7: the same plan twice, or one plans object for two strategies, would double the expected units -> refused."""
+    """AC-7: the store returning one plan twice would double the expected units -> refused."""
     once = _plans("orders-122104")
     with pytest.raises(ra.AttributionError, match="appears twice"):
-        _run({1: ra.StrategyPlans("NIFTY", once.plans * 2)}, _positions(130))
-    with pytest.raises(ra.AttributionError, match="same plans object"):
-        _run({1: once, 2: once}, _positions(130))
+        _run({1: _Entry("NIFTY", once.plans * 2)}, _positions(130))
+
+
+@pytest.mark.parametrize("returned", [None, {}, "plans"])
+def test_ac7_a_plans_read_that_is_not_a_sequence_is_refused(returned):
+    """AC-7: the store's plans read must be a sequence of StoredPlan; anything else is refused."""
+    with pytest.raises(ra.AttributionError):
+        _run({1: _Entry("NIFTY", returned)}, _positions(65))
 
 
 @pytest.mark.parametrize("standalone", [{KEY: Decimal("25")}, {KEY: True}, {("NIFTY",): 25}, []])
 def test_ac7_malformed_standalone_is_refused(standalone):
     """AC-7: the recorded standalone map is validated (compare.units_map); a wrong type is refused, never 0."""
     with pytest.raises(ValueError):
-        ra.attribute_and_compare({1: _plans("orders-122104")}, standalone, {KEY: 90}, _sources(), at=AT)
+        _attribute({1: _plans("orders-122104")}, {KEY: 90}, standalone)
 
 
 @pytest.mark.parametrize("broker_net", [{KEY: Decimal("65")}, {KEY: True}, {KEY: 65.0}, {("NIFTY",): 65}, [(KEY, 65)]])
@@ -306,21 +352,107 @@ def test_ac7_malformed_broker_net_is_refused(broker_net):
     """AC-7: Zerodha's net is validated again here (compare.units_map); a non-int quantity or a bad contract key is
     refused, never read as 0."""
     with pytest.raises(ValueError):
-        ra.attribute_and_compare({1: _plans("orders-122104")}, {}, broker_net, _sources(), at=AT)
+        _attribute({1: _plans("orders-122104")}, broker_net)
 
 
-def test_ac7_no_verdict_or_held_units_are_accepted_from_the_caller():
-    """AC-7, finding caller-supplied-verdict-trusted: the only inputs are plans, standalone, the raw reply and the
-    sources; a held-units map passed as the plans is refused, and the report is compare's own."""
+# ---- fix round 1: the adapter reads every strategy and ALL its plans itself (run-discipline B8) -------------------
+
+def test_ac7_the_caller_passes_no_plans_strategies_or_held_units():
+    """AC-7, finding caller-supplied-verdict-trusted: the public signature takes only the account, the standalone map,
+    Zerodha's net, the sources and ``at``; the default reader is the stores the routes use."""
+    assert list(inspect.signature(ra.attribute_and_compare).parameters) == [
+        "account", "standalone", "broker_net", "sources", "at"]
+    assert ra.StoreReader().list_strategies is strategy_store.list_strategies
+    assert ra.StoreReader().plans_for is execution_plan_store.plans_for
+
+
+def test_ac7_a_strategy_with_two_plans_is_fully_counted():
+    """AC-7, ADR-105: plans 1 and 2 BUY 65 each -> the strategy holds 130 (every stored plan read); Zerodha 65 is a
+    shortfall -> blocked (plan 1 read alone would show 65 = 65 and hide it)."""
+    result = _run({1: _second_buy(_plans("orders-122104"))}, _positions(65))
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 130}}
+    assert _blocked(result) == {"1"}
+    assert dict(result.outside) == {}
+
+
+def test_ac7_every_stored_strategy_is_expected():
+    """AC-7: a strategy holding 65 is in the store, Zerodha 0 -> it is read and blocked; with a second, flat strategy
+    (entry and exit filled) in the store, only the holder is blocked."""
+    result = _run({1: _plans("orders-122104"), 2: _plans("orders-151006", 2)}, _positions(0))
+    assert _blocked(result) == {"1"}
+    assert set(result.held) == {"1"}
+
+
+@pytest.mark.parametrize("listing", [
+    pytest.param(lambda: [SimpleNamespace(id=1, underlying="NIFTY")], id="not-a-summary"),
+    pytest.param(lambda: [StrategySummary(1, "NIFTY", "draft", AT, AT)] * 2, id="listed-twice"),
+    pytest.param(lambda: [StrategySummary(True, "NIFTY", "draft", AT, AT)], id="bool-id"),
+    pytest.param(lambda: [StrategySummary(0, "NIFTY", "draft", AT, AT)], id="zero-id"),
+    pytest.param(lambda: [StrategySummary("1", "NIFTY", "draft", AT, AT)], id="text-id"),
+    pytest.param(lambda: [StrategySummary(i, "NIFTY", "draft", AT, AT) for i in range(1, 1002)], id="over-the-cap"),
+])
+def test_ac7_a_store_listing_that_cannot_be_read_is_refused(listing):
+    """AC-7: the store's strategy list is checked (a StrategySummary each, positive int ids, once each, at most
+    compare's cap of 1,000); anything else is refused, never skipped."""
     with pytest.raises(ra.AttributionError):
-        _run({1: {KEY: 65}}, _positions(65))
+        _attribute(listing(), {KEY: 65})
+
+
+def test_ac7_a_store_listing_that_is_not_a_list_is_refused():
+    """AC-7: a store answer that is not a sequence of strategies is refused."""
+    reader = _reader({})
+
+    async def listing(conn, user_ref):
+        return None
+
+    sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for))
     with pytest.raises(ra.AttributionError):
-        ra.attribute_and_compare({1: _plans("orders-122104")}, {}, {KEY: 65}, object(), at=AT)
+        asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, sources, at=AT))
+
+
+def test_ac7_account_and_sources_are_checked():
+    """AC-7: the account needs a user; the sources must be a Sources with a StoreReader (no look-alike reader)."""
+    good = ra.Sources(_catalogue(), clock, _reader({1: _plans("orders-122104")}))
+    for account in (ra.Account(CONN, ""), ra.Account(CONN, None), (CONN, USER)):
+        with pytest.raises(ra.AttributionError):
+            asyncio.run(ra.attribute_and_compare(account, {}, {KEY: 65}, good, at=AT))
+    look_alike = SimpleNamespace(list_strategies=good.reader.list_strategies, plans_for=good.reader.plans_for)
+    for sources in (object(), ra.Sources(_catalogue(), clock, look_alike)):
+        with pytest.raises(ra.AttributionError):
+            asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, sources, at=AT))
+
+
+@pytest.mark.parametrize(("zerodha", "outside", "blocked"), [
+    (40, {}, set()), (65, {KEY: 25}, set()), (130, {KEY: 90}, set()), (0, {}, {"1"})])
+def test_ac7_standalone_on_the_other_side_only_adds_to_expected(zerodha, outside, blocked):
+    """AC-7, ADR-109 (2), Q224 (single-holder contracts unchanged): own +65, standalone -25 -> expected 40. Zerodha 40
+    agrees; 65 and 130 are an outside same-direction surplus (25, 90), not blocked; 0 is a shortfall, blocked."""
+    result = _run({1: _plans("orders-122104")}, _positions(zerodha), {KEY: -25})
+    assert dict(result.outside) == outside
+    assert _blocked(result) == blocked
+
+
+def test_ac7_two_stored_ids_of_one_contract_add_up():
+    """AC-7: two catalogue ids that are the same contract (one key) are one net at Zerodha: plan 1 BUY 65 on one id
+    and plan 2 BUY 65 on the other -> the strategy holds 130 there; Zerodha 65 is a shortfall -> blocked."""
+    real = _listed()
+    twin_token = (int(TOKEN) >> 8) + 1
+    twin = zerodha_listed(
+        instrument_token=int(TOKEN) + 1, exchange_token=twin_token, tradingsymbol="NIFTY26O1923650CE",
+        name=real.contract.name, expiry=real.contract.expiry, strike=real.contract.strike, tick_size=Decimal("0.05"),
+        lot_size=real.contract.lot_size, instrument_type=real.contract.instrument_type, segment="NFO-OPT",
+        exchange="NFO")
+    entry = _second_buy(_plans("orders-122104"), iid=f"{NSE_FO}:{twin_token}")
+    net = positions_from_reply(_positions(65), _index()).net
+    result = _attribute({1: entry}, net, catalogue=_catalogue(twin))
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 130}}
+    assert _blocked(result) == {"1"}
 
 
 def test_ac7_split_outside_rule_by_hand():
-    """AC-7: the pure rule on hand-worked numbers (module docstring): same side beyond expected -> the excess; no
-    holder -> all; shortfall, opposite side or mixed holders -> 0."""
+    """AC-7: the pure rule on hand-worked numbers (module docstring): more than expected in the strategies' direction
+    -> the excess; no holder -> all; shortfall, opposite side or strategies on both sides -> 0; a standalone only
+    adds to expected (and gives the direction when no strategy holds)."""
     held = {"1": {KEY: 65}}
     assert ra.split_outside({KEY: 130}, held, {}) == {KEY: 65}
     assert ra.split_outside({KEY: 90}, held, {KEY: 25}) == {}
@@ -330,18 +462,7 @@ def test_ac7_split_outside_rule_by_hand():
     assert ra.split_outside({KEY: -130}, {"1": {KEY: -65}}, {}) == {KEY: -65}
     assert ra.split_outside({KEY: 65}, {}, {}) == {KEY: 65}
     assert ra.split_outside({KEY: 130}, {"1": {KEY: 130}, "2": {KEY: -65}}, {}) == {}
-    assert ra.split_outside({KEY: 65}, {"1": {KEY: 65}}, {KEY: -25}) == {}
-
-
-@pytest.mark.parametrize("make", [
-    pytest.param(lambda: {"1": _plans("orders-122104")}, id="text-id"),
-    pytest.param(lambda: {True: _plans("orders-122104")}, id="bool-id"),
-    pytest.param(lambda: {0: _plans("orders-122104", 0)}, id="zero-id"),
-    pytest.param(list, id="not-a-mapping"),
-    pytest.param(lambda: dict.fromkeys(range(1, 1002)), id="over-the-cap"),
-])
-def test_ac7_malformed_strategy_ids_are_refused(make):
-    """AC-7: strategy ids are the stored positive ints the tags carry; anything else, or more than compare's cap of
-    1,000 strategies, is refused before any read."""
-    with pytest.raises(ra.AttributionError):
-        _run(make(), _positions(65))
+    assert ra.split_outside({KEY: 65}, held, {KEY: -25}) == {KEY: 25}
+    assert ra.split_outside({KEY: 40}, held, {KEY: -25}) == {}
+    assert ra.split_outside({KEY: 90}, {}, {KEY: 25}) == {KEY: 65}
+    assert ra.split_outside({KEY: -10}, {}, {KEY: 25}) == {}
