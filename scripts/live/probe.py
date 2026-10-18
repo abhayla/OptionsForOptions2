@@ -329,11 +329,23 @@ def _read_exact(path: Path) -> str:
 
 
 def _save_replies(target: Path, raw: dict[str, str]) -> None:
-    """Write each reply text exactly as read, named so ``--replay`` finds it (``<name>-saved.json``)."""
-    target.mkdir(parents=True, exist_ok=True)
-    for name, path in _SAVED_REPLIES.items():
-        with open(target / f"{name}-saved.json", "x", encoding="utf-8", newline="") as out:
-            out.write(raw[path])
+    """Write each reply text exactly as read, named so ``--replay`` finds it (``<name>-saved.json``). A reply never
+    read is named ``not_saved``; files are written as ``.partial`` and renamed only when every write worked, else
+    ``save_incomplete`` is printed and the ``.partial`` files stay."""
+    present = {name: raw[path] for name, path in _SAVED_REPLIES.items() if path in raw}
+    for name in _SAVED_REPLIES:
+        if name not in present:
+            print(f"not_saved {name}")
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        for name, text in present.items():
+            with open(target / f"{name}-saved.json.partial", "x", encoding="utf-8", newline="") as out:
+                out.write(text)
+    except OSError as exc:
+        print(f"save_incomplete {type(exc).__name__}")
+        return
+    for name in present:
+        (target / f"{name}-saved.json.partial").rename(target / f"{name}-saved.json")
         print(f"saved {name}-saved.json")
 
 
@@ -349,10 +361,12 @@ def cmd_pnl(args) -> int:
         reads, _, recorder = _replay_clients(folder, texts)
     else:
         reads, _, recorder = _owner_clients(save_dir is not None)
-    trades, positions = reads.fetch_trades(), reads.fetch_positions()
-    orders = reads.fetch_orders() if need_orders else []
-    if save_dir is not None:
-        _save_replies(save_dir, recorder.raw)
+    try:
+        trades, positions = reads.fetch_trades(), reads.fetch_positions()
+        orders = reads.fetch_orders() if need_orders else []
+    finally:  # keep whatever Kite sent, even when a later read is refused
+        if save_dir is not None:
+            _save_replies(save_dir, recorder.raw)
     if args.tag_prefix:
         ids = {o.get("order_id") for o in orders if str(o.get("tag") or "").startswith(args.tag_prefix)}
         trades = [t for t in trades if t.get("order_id") in ids]

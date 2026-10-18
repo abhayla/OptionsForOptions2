@@ -209,6 +209,38 @@ def test_save_dir_accepts_an_existing_empty_folder_and_saves_orders_without_a_ta
     assert len(os.listdir(target)) == len(SAVED)
 
 
+def test_save_dir_keeps_what_was_read_when_positions_is_bad(folder, capsys, tmp_path) -> None:
+    """A bad positions reply: trades and the bad positions text are saved, exit 2, orders reported not_saved."""
+    bad = '{"status": "success", "data": "garbage"}'
+    (folder / "positions-151006.json").write_text(bad, encoding="utf-8", newline="")
+    target = tmp_path / "kept"
+    code, out = run(capsys, folder, "pnl", "--save-dir", str(target))
+    assert code == REFUSED and "read refused" in out and "not_saved orders" in out
+    assert sorted(os.listdir(target)) == ["positions-saved.json", "trades-saved.json"]
+    assert (target / "positions-saved.json").read_text(encoding="utf-8") == bad
+    assert (target / "trades-saved.json").read_bytes() == (folder / SAVED["trades"]).read_bytes()
+
+
+def test_a_failed_write_prints_save_incomplete_and_leaves_partial_files(folder, capsys, tmp_path, monkeypatch) -> None:
+    """A write that fails part-way: no final file is renamed, save_incomplete is printed, .partial files stay."""
+    real_open = open  # the save uses open(); fail the second open of a .partial file
+    opened: list[str] = []
+
+    def flaky(file, *args, **kwargs):
+        if str(file).endswith(".partial"):
+            opened.append(str(file))
+            if len(opened) == 2:  # noqa: PLR2004
+                raise OSError("disk full")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(probe, "open", flaky, raising=False)
+    target = tmp_path / "half"
+    out = run(capsys, folder, "pnl", "--save-dir", str(target))[1]
+    assert "save_incomplete OSError" in out and "saved " not in out
+    names = os.listdir(target)
+    assert names == ["orders-saved.json.partial"]
+
+
 def test_a_fill_that_leaves_the_contract_open_is_a_stop(folder, capsys) -> None:
     """realised_pnl refuses open fills: only the BUY -> exit 2, no gross figure printed."""
     edit(folder / "trades-151006.json", lambda d: d["data"].pop(1))
