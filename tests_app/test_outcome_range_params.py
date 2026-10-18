@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+from http import HTTPStatus
 from decimal import Decimal
 
 import pytest
@@ -15,6 +16,8 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 from test_outcome_route import _body, _post, replayed  # noqa: E402,F401  (replayed is the module fixture)
 
 SPOT = "22533.25"
+STEP = 200  # a listed NIFTY step, for the step-alone case
+MAX_COLUMNS = 200  # ScenarioConfig.max_columns of the Admin defaults
 
 
 def _levels(out: dict) -> list[str]:
@@ -28,7 +31,7 @@ async def test_custom_range_and_step_give_exactly_the_hand_computed_grid(replaye
     assert default["scenario"]["step"] == "100"  # the Admin default is unchanged when nothing is sent
     body = dict(_body(replayed), step="50", range_start="22800", range_end="23600")
     resp = await _post(body, replayed)
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == HTTPStatus.OK, resp.text
     out = resp.json()
     grid = [str(22800 + 50 * k) for k in range(17)]
     assert grid[0] == "22800" and grid[-1] == "23600"
@@ -46,11 +49,11 @@ async def test_custom_range_and_step_give_exactly_the_hand_computed_grid(replaye
 
 async def test_step_alone_keeps_the_default_range_logic(replayed):  # noqa: F811
     """AC-4: a step without a range keeps the computed range and lays it out at the new step (all on that step)."""
-    out = (await _post(dict(_body(replayed), step="200"), replayed)).json()
-    assert out["scenario"]["step"] == "200"
+    out = (await _post(dict(_body(replayed), step=str(STEP)), replayed)).json()
+    assert out["scenario"]["step"] == str(STEP)
     start, end = Decimal(out["scenario"]["start"]), Decimal(out["scenario"]["end"])
-    assert (end - start) % 200 == 0
-    grid = {str(start + 200 * k) for k in range(int((end - start) / 200) + 1)}
+    assert (end - start) % STEP == 0
+    grid = {str(start + STEP * k) for k in range(int((end - start) / STEP) + 1)}
     assert grid <= set(_levels(out))
 
 
@@ -75,7 +78,7 @@ async def test_switching_the_column_keeps_the_range_and_step(replayed):  # noqa:
 async def test_off_list_step_or_range_is_refused_and_nothing_is_computed(replayed, bad):  # noqa: F811
     """AC-4: an off-list step or range is a 422 (the error boundary's catalogue text), never a silent default."""
     resp = await _post(dict(_body(replayed), **bad), replayed)
-    assert resp.status_code == 422, resp.text
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, resp.text
     assert "scenario" not in resp.json()
 
 
@@ -83,8 +86,8 @@ async def test_the_cap_boundary_is_accepted(replayed):  # noqa: F811
     """AC-4: exactly 200 columns (the configured maximum, (10950 - 1000) / 50 + 1 = 200) is allowed."""
     body = dict(_body(replayed), step="50", range_start="1000", range_end="10950")
     resp = await _post(body, replayed)
-    assert resp.status_code == 200, resp.text
-    assert len(_levels(resp.json())) >= 200
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    assert len(_levels(resp.json())) >= MAX_COLUMNS
 
 
 async def test_sensex_uses_its_own_step_list(replayed):  # noqa: F811
@@ -92,4 +95,4 @@ async def test_sensex_uses_its_own_step_list(replayed):  # noqa: F811
     from ofo.scenario.config import STEP_CHOICES
     assert Decimal("50") not in STEP_CHOICES["SENSEX"] and Decimal("300") in STEP_CHOICES["SENSEX"]
     resp = await _post(dict(_body(replayed), underlying="SENSEX", step="50"), replayed)
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY

@@ -320,7 +320,8 @@ def _refused(definition, ux_level, reason: ExplanationText, legs, message=None) 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
                   ux_level: UXLevel = UXLevel.STANDARD, valuation: datetime.datetime | None = None, *,
                   view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
-                  rates: ChargeRates | None = None, override: RangeOverride | None = None) -> Outcome:
+                  rates: ChargeRates | None = None,
+                  override: RangeOverride | None = None) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``rates`` (ADR-082 (2)): the charge rates in force. Given, the maximum-loss / maximum-profit sentences and the At

@@ -124,7 +124,7 @@ DEFAULT_CONFIGS: Final = (
 )
 
 
-#: REQ-034 AC-4 (Q33B = E): the steps a user may pick per index, an allow-list (ADR-042: the Admin default is first). Each
+#: REQ-034 AC-4 (Q33B = E): the steps a user may pick per index, an allow-list (ADR-042: the Admin default first). Each
 #: is a multiple of GRID_POINTS, the listed strike gap, so a picked step still sits on real strike levels.
 STEP_CHOICES: Final = {
     "NIFTY": (Decimal("100"), Decimal("50"), Decimal("200"), Decimal("500")),

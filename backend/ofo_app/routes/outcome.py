@@ -149,11 +149,11 @@ class OutcomeRequest(BaseModel):
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
-    step: Optional[str] = Field(default=None, pattern=POINTS_PATTERN, examples=["50"],
+    step: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["50"],
                                 description="the column step in index points (REQ-034 AC-4); one of the index's list")
-    range_start: Optional[str] = Field(default=None, pattern=POINTS_PATTERN, examples=["22800"],
+    range_start: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["22800"],
                                        description="the first scenario level in index points; sent with range_end")
-    range_end: Optional[str] = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
+    range_end: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
                                      description="the last scenario level in index points; sent with range_start")
     fallback: StrictBool = Field(
         default=False,
@@ -161,13 +161,13 @@ class OutcomeRequest(BaseModel):
                     "is then the not-live state whoever else subscribes to the same contracts")
 
     @model_validator(mode="after")
-    def _choice_is_allowed(self) -> "OutcomeRequest":
+    def _choice_is_allowed(self) -> OutcomeRequest:
         """REQ-034 AC-4: refuse a step or range off the allow-list (ofo.scenario.levels.resolve_choice) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
         self.scenario_choice()
         return self
 
-    def scenario_choice(self) -> tuple[ScenarioConfig, Optional[RangeOverride]]:
+    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The scenario config and range override this request asks for (the default config when it asks for none)."""
         base = ScenarioSettings().for_index(self.underlying)
         pick = [None if v is None else Decimal(v) for v in (self.step, self.range_start, self.range_end)]
