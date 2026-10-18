@@ -10,11 +10,11 @@ and cleared by Complete/Retry only when their preparation is ready on a strictly
 
 Real input: the golden Iron Condor on the REAL instrument-list fixture (tests/fixtures/instruments/instruments_slice.csv:
 NIFTY 2026-10-06, lot 65; SENSEX 2026-10-01, lot 20). Hand-computed expectations:
-- NIFTY freeze 64 < one lot of 65 -> no whole lot fits -> refused (W-028 "a freeze below one lot is refused");
-- SENSEX freeze 19 < one lot of 20 -> refused;
+- a stored NIFTY limit of 64 < one lot of 65 -> no whole lot fits -> blocked (largest allowed 0 lots, ADR-092);
+- a stored SENSEX limit of 19 < one lot of 20 -> blocked (largest allowed 0 lots, ADR-092);
 - 650 held - 100 already exiting = 550 units = 8.46 lots of 65 -> not whole lots -> refused;
-- Complete after a refused Close on the SAME read: the rejected 24,000 CE's 650 units, one order at the default
-  1,755 freeze (650 < 1,755).
+- Complete after a refused Close on the SAME read: the rejected 24,000 CE's 650 units, one order below the
+  stored 3,511-unit limit (ADR-092: never split).
 """
 from __future__ import annotations
 
