@@ -4,14 +4,14 @@ Applies on top of `goal-contract-GC-3L-2026-10-19.md`, which is not edited. Wher
 Owner runbook for the same day: `gc-3l-runbook-2026-10-19.md`.
 
 ## 1. Monday 2026-10-19 timeline (IST)
-- **08:30** if `lock/gc-2f` or `lock/gc-2g` still exists on origin (that run overran the cap in its lock commit),
-  first stop that session; then the main checkout `git switch main`, clean, HEAD = origin/main, and ports 8765/4173 free (stop by
-  PID) before step 0.5; then the owner may delete that lock (`git push origin --delete lock/gc-2f` or `lock/gc-2g`) and GC-3L starts;
-  the overrunning run's open PRs stay open and unmerged (GC-2f's and GC-2g's HOLD PRs alike). Main may carry
-  that run's docs-only close-out commit (section 2 covers it). If goal-chain.md then still marks GC-2g NEXT, start
-  GC-3L with the chain prompt with "run the contract marked NEXT" replaced by "run GC-3L (GC-2g overran; it is
-  PARTIAL, its unfinished items parked; GC-3L's close-out records that)". (GC-2f closed PARTIAL on 2026-10-18; GC-2g
-  is the run this fallback now covers - corrected by GC-2g's chain rule 3 check.)
+- **08:30** if any `lock/gc-2*` branch (now `lock/gc-2h`) still exists on origin (that run overran the cap in its lock
+  commit), first stop that session; then the main checkout `git switch main`, clean, HEAD = origin/main, and ports
+  8765/4173 free (stop by PID) before step 0.5; then the owner may delete that lock (`git push origin --delete
+  lock/gc-2h`) and GC-3L starts; the overrunning run's open PRs stay open and unmerged (every GC-2x HOLD PR alike).
+  Main may carry that run's docs-only or tooling-only close-out commit (section 2 covers it). If goal-chain.md then
+  still marks GC-2h NEXT, start GC-3L with the chain prompt with "run the contract marked NEXT" replaced by "run GC-3L
+  (GC-2h overran; it is PARTIAL, its unfinished items parked; GC-3L's close-out records that)". (GC-2f and GC-2g are
+  closed; GC-2h, written 2026-10-18 23:05 by ADR-112, is the run this fallback now covers.)
 - **08:30** lock `lock/gc-3l` + step 0 (short: section 2 below replaces step 0.1 on a docs-only head).
 - **08:45 catalogue reload** on ofo_dev: `python scripts/orchestrator/dev_run.py . python -m ofo_app.catalogue_load`.
   Freeze limits: the loaded file is NSE's 2026-10-15 contract file (3511 for all 261 NIFTY 2026-10-27 CEs). A newer

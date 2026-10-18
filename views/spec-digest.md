@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (111)
+## Decisions (112)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -117,6 +117,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [refines REQ-060, REQ-058; approves REQ-044]
 - ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Positions screen shows each contract of that plan as… [refines REQ-044]
 - ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and the position carries over, GC-3F fixes #352 first (… [refines ADR-108]
+- ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-app alerts, REQ-064 stored timeline) is built on t… [none — restates the master plan's existing stage…]
 
 ## Requirements (75)
 
