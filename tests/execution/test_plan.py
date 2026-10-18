@@ -14,6 +14,7 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import CONTRACTS, LOT, REFS, plan
+from partial_inputs import STORED_FREEZE
 from plan_inputs import BUY, CE, EXP, FUT, NEXT, PE, PREV, SELL, FakeConstraints, FakeMargin, leg, mk
 
 from ofo.execution import sequence as sequence_module
@@ -289,6 +290,6 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
         [BrokerOrderStatus(ids[0], full[0].contract, OrderState.EXECUTED, LOT),
          BrokerOrderStatus(ids[1], full[1].contract, OrderState.REJECTED, 0, REJECT_TEXT),
          BrokerOrderStatus(ids[2], full[3].contract, OrderState.REJECTED, 0, REJECT_TEXT)])
-    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [
         ("NIFTY26O0623000PE", SELL, LOT), ("NIFTY26O0623600CE", BUY, LOT)]

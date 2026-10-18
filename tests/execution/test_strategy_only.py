@@ -35,6 +35,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action, Strategy
 from ofo.execution import partial, send_guard
@@ -75,7 +76,7 @@ def _calls(tree: ast.AST, name: str) -> list[ast.Call]:
 
 def _complete(book: OrderBook, catalogue, eligibility, **ctx) -> Preparation:  # noqa: ANN001
     return complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(),
-                             entry_context(**ctx), catalogue, eligibility)
+                             entry_context(**ctx), catalogue, eligibility, stored_freeze=STORED_FREEZE)
 
 
 # -- AC-1 -----------------------------------------------------------------------------------------------------------

@@ -32,6 +32,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action
 from ofo.execution import partial, send_guard
@@ -47,7 +48,7 @@ EXPIRY = datetime.date(2026, 10, 6)
 
 def _complete(book, catalogue, eligibility, **ctx) -> Preparation:  # noqa: ANN001
     return complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(),
-                             entry_context(**ctx), catalogue, eligibility)
+                             entry_context(**ctx), catalogue, eligibility, stored_freeze=STORED_FREEZE)
 
 
 def _sink(book, catalogue, choice: str = "complete", leg_slots=None, transport=None):  # noqa: ANN001, ANN202

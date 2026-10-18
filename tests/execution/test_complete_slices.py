@@ -31,6 +31,7 @@ from partial_inputs import (
     entry_context,
     new_book,
 )
+from partial_inputs import STORED_FREEZE
 from execution_inputs import condor_legs
 from plan_inputs import FakeConstraints, FakeMargin
 
@@ -86,7 +87,7 @@ def _state(filled: tuple[int, ...]):  # noqa: ANN202
 def _complete(filled, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
     book, broker = _state(filled)
     kw.setdefault("constraints", FakeConstraints(freeze=SMALL_FREEZE, per_batch=2))
-    return complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, **kw)
+    return complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
 
 
 def _rows(prep):  # noqa: ANN001, ANN202
@@ -278,7 +279,7 @@ def test_ac4_retry_sends_slices_too(catalogue, eligibility) -> None:  # noqa: AN
     book, broker = _state((0, 1, 2))
     margin = FakeMargin({})
     prep = retry_failed_leg(big_plan(), BUY_CE, broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                            margin_planner=margin, constraints=FakeConstraints(freeze=SMALL_FREEZE, per_batch=2))
+                            margin_planner=margin, constraints=FakeConstraints(freeze=SMALL_FREEZE, per_batch=2), stored_freeze=STORED_FREEZE)
     assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, q) for q in SLICES_650_AT_195]
     submitter = FakeSubmitter()
     submit_confirmed(prep, choice=PartialChoice.RETRY_FAILED_LEG, confirmed_by="user:U-1", submitter=submitter)
@@ -288,7 +289,7 @@ def test_ac4_retry_sends_slices_too(catalogue, eligibility) -> None:  # noqa: AN
 def test_ac4_complete_without_constraints_uses_the_labelled_default(catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-4: no constraints given -> the labelled UNVERIFIED default (1,755 = 27 lots) still applies: 650 is one order."""
     book, broker = _state((0, 1, 2))
-    prep = complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert _rows(prep) == [(BUY_CE, CONTRACTS[3], Action.BUY, QTY)]
 
 

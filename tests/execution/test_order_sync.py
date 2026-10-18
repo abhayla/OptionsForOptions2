@@ -26,6 +26,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action
 from ofo.execution.partial import (
@@ -46,7 +47,7 @@ COMPLETE = PartialChoice.COMPLETE_STRATEGY
 
 
 def _complete(book: OrderBook, broker: FakeBroker, catalogue, eligibility):  # noqa: ANN001, ANN202
-    return complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    return complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
 
 
 def _send_new1(book: OrderBook, catalogue, eligibility) -> FakeSubmitter:  # noqa: ANN001
@@ -83,7 +84,7 @@ def test_core_rejected_new1_mirrors_into_book_then_complete_and_close_work(catal
 
     discard_preparation(prep)
     close = close_partial_strategy(plan(), _read(OrderState.REJECTED), book, FakePlanner(), entry_context(),
-                                   catalogue, eligibility)
+                                   catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert close.ready and len(close.orders) == 3 and close.cancels == ()
 
 
@@ -148,7 +149,7 @@ def test_unknown_broker_order_is_a_mismatch(catalogue, eligibility) -> None:  # 
     book = book_with_three_filled()
     broker = FakeBroker(three_positions(LTPS), statuses() + [ghost])
     prep = _complete(book, broker, catalogue, eligibility)
-    close = close_partial_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    close = close_partial_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.orders == () and prep.assessment.status is ExecutionStatus.RECONCILIATION_REQUIRED
     assert close.orders == ()
 
@@ -258,7 +259,7 @@ def test_close_lists_cancel_requests_for_own_open_entry_orders(catalogue, eligib
     progress; Close is available, prepares exits for the three filled legs, and LISTS BRK-4 for cancellation."""
     book = book_with_three_filled(fourth=OrderState.SUBMITTED)
     broker = FakeBroker(three_positions(LTPS), statuses(OrderState.PENDING, None))
-    close = close_partial_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    close = close_partial_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert close.assessment.status is ExecutionStatus.IN_PROGRESS
     assert close.ready and close.cancels == ("BRK-4",)
     assert sorted((o.contract, o.side) for o in close.orders) == sorted(

@@ -15,6 +15,7 @@ from decimal import Decimal as D
 import pytest
 from execution_inputs import all_true_context, check, condor_legs
 from partial_inputs import FakeBroker, FakePlanner, entry_context
+from partial_inputs import STORED_FREEZE
 from test_close_slices import BUY_PE, QTY, SELL_CE, SELL_PE, _state, big_plan
 
 from ofo.engine import Action, Strategy
@@ -62,7 +63,7 @@ def _close_with(catalogue, eligibility, *, short_product, default_product=Produc
         if held_product.get(order.contract) is not None:
             book._orders[key] = dataclasses.replace(order, product=held_product[order.contract])
     return close_partial_strategy(big_plan(), broker, book, FakePlanner(), context or entry_context(), catalogue,
-                                  eligibility)
+                                  eligibility, stored_freeze=STORED_FREEZE)
 
 
 def test_core_mis_short_positions_are_closed_with_orders_carrying_mis(catalogue, eligibility):
@@ -81,7 +82,7 @@ def test_a_position_whose_product_was_not_read_blocks_the_exit(catalogue, eligib
     book, broker = _state((QTY, QTY, QTY, 0))
     unread = [dataclasses.replace(p, product=None) for p in broker.positions]  # Zerodha never reported a product
     broker = FakeBroker(unread, broker.order_statuses, default_product=None)
-    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()
 
 

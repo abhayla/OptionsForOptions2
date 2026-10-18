@@ -3,10 +3,15 @@ close/reconcile through a prepared order, mark as requiring attention; no casual
 strategy Exited (ADR-019 Q200; deferred issue #19)."""
 from __future__ import annotations
 
+import datetime
+import functools
+
 import pytest
 
 from ofo.audit.catalogue import EventType
 from ofo.engine import Action, Instrument
+from ofo.errors import display_text
+from ofo.execution.freeze import ContractFreeze, FreezeRefused, StoredFreeze
 from ofo.reconciliation.blocking import blocked_strategy_ids
 from ofo.reconciliation.compare import ReconciliationError, compare
 from ofo.reconciliation.resolution import (
@@ -16,7 +21,7 @@ from ofo.reconciliation.resolution import (
     adopt_broker_position,
     mark_exited_broker_flat,
     mark_requires_attention,
-    prepare_closing_order,
+    prepare_closing_order as _prepare_closing_order,
     record_report,
     review_and_modify,
 )
@@ -24,6 +29,12 @@ from ofo.strategy.versions import OutcomeKind, Position, VersionError
 from recon_fixtures import (
     BC23600, BP22800, CONDOR, CONDOR_UNITS, SC23400, SP23000, at, audit_log, c, clock, executed, single_leg,
 )
+
+#: ADR-092 (issue 63): every condor contract has a stored freeze limit well above its 75 units.
+FREEZE_DATE = datetime.date(2026, 10, 15)
+CLOSE_LIMITS = {k: ContractFreeze("NIFTY26O2723400CE", StoredFreeze(1800, 75, FREEZE_DATE))
+                for k in (BC23600, BP22800, SC23400, SP23000)}
+prepare_closing_order = functools.partial(_prepare_closing_order, freeze_limits=CLOSE_LIMITS)
 
 # The user closed the 23600 CE hedge in Kite: broker = condor without it.
 HEDGE_CLOSED = {BP22800: 75, SP23000: -75, SC23400: -75}
@@ -327,3 +338,22 @@ def test_ac5_mutant_removing_the_shared_contract_refusal_is_caught():
         assert res.kind is ResolutionKind.ADOPT_BROKER_POSITION  # the defect reappears under the mutant
     finally:
         resolution_module._joint_holders = original
+
+
+@pytest.mark.parametrize("limit,blocked", [(75, True), (76, False), (None, True)])
+def test_adr092_closing_proposal_is_one_order_and_blocks_at_the_freeze_limit(limit, blocked):
+    """ADR-092 (issue 63): the 75-unit restoring order is ONE order; a stored limit of 75 (units not below it) or no
+    stored limit refuses the proposal with the reason, and nothing is recorded; a limit of 76 allows it."""
+    rec, audit, n, report = flagged()
+    limits = {} if limit is None else {BC23600: ContractFreeze("NIFTY26O2723600CE", StoredFreeze(limit, 75, FREEZE_DATE))}
+    if not blocked:
+        res = _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore",
+                                     audit=audit, freeze_limits=limits)
+        assert res.proposal.orders == (ProposedOrder(Action.BUY, BC23600, 75),)
+        return
+    with pytest.raises(FreezeRefused) as err:
+        _prepare_closing_order("IC-1", rec, report=report, actor="user", at=at(20), reason="restore", audit=audit,
+                               freeze_limits=limits)
+    text = display_text(err.value.message)
+    assert ("largest single order allowed is 0 units (0 lots)" in text) if limit else ("no exchange freeze limit" in text)
+    assert len(audit.events) == n  # nothing recorded

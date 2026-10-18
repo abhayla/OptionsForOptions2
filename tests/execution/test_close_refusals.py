@@ -39,6 +39,7 @@ from partial_inputs import (
     new_book,
     record_for_legs,
 )
+from partial_inputs import STORED_FREEZE
 from plan_inputs import FakeConstraints
 import pytest
 
@@ -109,11 +110,11 @@ def _state(market: str = "NIFTY", clock: Clock | None = None):  # noqa: ANN202
 
 
 def _close(plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
-    return close_partial_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
+    return close_partial_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
 
 
 def _complete(plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
-    return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
+    return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
 
 
 def _assert_refused(prep, *reason_parts: str) -> None:  # noqa: ANN001
@@ -155,7 +156,7 @@ def test_ac6_sensex_freeze_below_one_lot_is_a_refusal_without_marking_closing(ca
     prep = _close(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=19, per_batch=10))
     _assert_refused(prep, "below one lot of 20")
     assert book.closing_read_at(STRATEGY_ID) is None
-    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility)
+    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert retry.reason != NEEDS_FRESH_READ
     assert retry.ready, retry.reason
     assert [(o.leg_ref, o.quantity) for o in retry.orders] == [(BUY_CE, 240)]
@@ -272,7 +273,7 @@ def test_ac6_a_read_gone_stale_while_preparing_leaves_no_marker_and_no_held_prep
     back instead of an exception."""
     clock = Clock()
     plan, book, broker, ctx = _state(clock=clock)
-    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility)
+    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert clock() == READ_AT + datetime.timedelta(seconds=70)
     _assert_refused(prep, "stale broker read")
     assert book.closing_read_at(STRATEGY_ID) is None

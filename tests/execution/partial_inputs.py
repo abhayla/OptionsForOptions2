@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 from decimal import Decimal as D
+from collections.abc import Iterator, Mapping
 from typing import Sequence
 
 from execution_inputs import AS_OF, LOT, all_true_context, condor_legs
@@ -179,3 +180,23 @@ def entry_context(**overrides: object) -> ExecutionContext:
 
 
 __all__ = ["AS_OF", "LOT"]
+
+
+class _EveryContractStored(Mapping):
+    """The freeze store for the partial-execution tests: every contract has NIFTY's stored limit of 3,511 units from
+    the 2026-10-15 exchange file (F-36); the lot comes from the catalogue (``freeze_limits_for_plan``)."""
+
+    def __getitem__(self, key: object) -> tuple[int, datetime.date]:
+        return (3511, datetime.date(2026, 10, 15))
+
+    def __contains__(self, key: object) -> bool:
+        return True
+
+    def __iter__(self) -> Iterator[object]:
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+STORED_FREEZE = _EveryContractStored()

@@ -24,6 +24,7 @@ from partial_inputs import (
     BROKER_IDS, CONTRACTS, FILL_AT, STRATEGY_ID, FakeBroker, FakePlanner, LOT, book_with_three_filled, entry_context,
     new_book, record_for_legs,
 )
+from partial_inputs import STORED_FREEZE
 from test_close_slices import SELL_PE, _state, big_plan
 from test_sink_backup_checks import _CountingTransport, _sink, _tagged
 
@@ -63,7 +64,7 @@ def test_core_nrml_and_mis_rows_of_one_contract_no_longer_break_the_exit(catalog
     """The issue's case: NIFTY SELL leg held -65 NRML (the strategy's own fill) and -65 MIS (the user's own). assess
     used to raise 'duplicate contract'; the exit now reduces the NRML row only, with product NRML."""
     book, broker = _state_two_products()
-    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready, prep.reason
     sells = [o for o in prep.orders if o.leg_ref == SELL_PE]
     assert [(o.quantity, o.product) for o in sells] == [(LOT, Product.NRML)]
@@ -72,7 +73,7 @@ def test_core_nrml_and_mis_rows_of_one_contract_no_longer_break_the_exit(catalog
 @pytest.mark.parametrize("nrml_first", [True, False])
 def test_row_order_never_decides_which_product_is_exited(catalogue, eligibility, nrml_first) -> None:  # noqa: ANN001
     book, broker = _state_two_products(nrml_first=nrml_first)
-    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready and {o.product for o in prep.orders if o.leg_ref == SELL_PE} == {Product.NRML}
 
 
@@ -84,7 +85,7 @@ def test_the_strategy_whose_fills_are_mis_exits_the_mis_row(catalogue, eligibili
         next(o for o in book._orders.values() if o.contract == SHORT), product=Product.MIS)
     rows = [dataclasses.replace(p, product=Product.MIS) if p.contract == SHORT else p for p in broker.positions]
     broker = _with_second_row(FakeBroker(rows, broker.order_statuses), Product.NRML, -LOT)
-    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready, prep.reason
     assert {o.product for o in prep.orders if o.leg_ref == SELL_PE} == {Product.MIS}
 
@@ -101,7 +102,7 @@ def test_two_products_the_ledger_cannot_separate_is_refused_with_four_parts(cata
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
     text = [m for m in a.mismatches if SHORT in m and "more than one product" in m]
     assert len(text) == 1 and "Exit the position in Zerodha yourself" in text[0]
-    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()
 
 
@@ -168,7 +169,7 @@ def test_round2_flat_nrml_row_and_an_unrelated_mis_row_is_refused_not_exited(cat
     a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
     assert any(SHORT in m and "did not place" in m for m in a.mismatches)
-    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()
 
 

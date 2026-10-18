@@ -23,6 +23,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action
 from ofo.execution.partial import (
@@ -46,14 +47,14 @@ def test_double_complete_sends_the_missing_leg_once(catalogue, eligibility) -> N
     """AC-4 attack 1: two Complete presses on the same stale broker state. The second is refused while the first
     preparation waits, and refused again ("orders in flight") after it is sent: 65 units in total, never 130."""
     book, broker, submitter = book_with_three_filled(), FakeBroker(three_positions(), statuses()), FakeSubmitter()
-    first = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
-    second = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    first = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    second = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert first.ready and not second.ready and second.orders == ()
     assert "waiting for your confirmation" in second.reason
 
     submit_confirmed(first, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-42", submitter=submitter)
-    third = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
-    retry = retry_failed_leg(plan(), "leg-4", broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    third = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    retry = retry_failed_leg(plan(), "leg-4", broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     for prep in (third, retry):
         assert prep.orders == () and "in flight" in prep.reason
     assert _units(submitter) == [(CONTRACTS[3], LOT)]
@@ -63,7 +64,7 @@ def test_sent_order_is_registered_in_the_book(catalogue, eligibility) -> None:  
     """Fix (a): each sent order is in the OrderBook as Submitted, with its strategy, leg and version."""
     book = book_with_three_filled()
     prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(),
-                             entry_context(), catalogue, eligibility)
+                             entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-42",
                      submitter=FakeSubmitter())
     view = book.order_for("NEW-1")
@@ -74,10 +75,10 @@ def test_sent_order_is_registered_in_the_book(catalogue, eligibility) -> None:  
 def test_discarded_preparation_frees_the_strategy(catalogue, eligibility) -> None:  # noqa: ANN001
     """Fix (c): the one live preparation is released when the user discards it; a new one can then be made."""
     book, broker = book_with_three_filled(), FakeBroker(three_positions(), statuses())
-    first = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    first = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     discard_preparation(first)
     assert not first.ready
-    again = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    again = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert again.ready and [(o.contract, o.quantity) for o in again.orders] == [(CONTRACTS[3], LOT)]
 
 
@@ -86,15 +87,15 @@ def test_retry_after_close_with_stale_read_prepares_nothing(catalogue, eligibili
     yet must not prepare the 23,600 CE buy. Also refused while the Close preparation is still waiting."""
     book = book_with_three_filled()
     stale = FakeBroker(three_positions(LTPS), statuses())
-    close = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    close = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert close.ready
-    waiting = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    waiting = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert waiting.orders == ()
     submit_confirmed(close, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
                      acknowledgement=close.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=FakeSubmitter())
-    after = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
-    complete = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    after = retry_failed_leg(plan(), "leg-4", stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
+    complete = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert after.orders == () and complete.orders == ()
 
 
@@ -104,11 +105,11 @@ def test_close_then_complete_needs_a_fresh_read(catalogue, eligibility) -> None:
     book = book_with_three_filled()
     stale = FakeBroker(three_positions(LTPS), statuses())
     discard_preparation(close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue,
-                                               eligibility))
-    same = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+                                               eligibility, stored_freeze=STORED_FREEZE))
+    same = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert same.orders == () and "fresh" in same.reason
     fresh = FakeBroker(three_positions(LTPS), statuses(), read_at=READ_AT + datetime.timedelta(seconds=5))
-    later = complete_strategy(plan(), fresh, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    later = complete_strategy(plan(), fresh, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in later.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
 
 
@@ -117,12 +118,12 @@ def test_second_close_on_stale_read_prepares_nothing(catalogue, eligibility) -> 
     leg, so a second Close on the stale read prepares nothing."""
     book = book_with_three_filled()
     stale = FakeBroker(three_positions(LTPS), statuses())
-    first = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    first = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     submitter = FakeSubmitter()
     submit_confirmed(first, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
                      acknowledgement=first.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=submitter)
-    second = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    second = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert second.orders == ()
     assert sorted(_units(submitter)) == sorted((c, LOT) for c in CONTRACTS[:3])
 
@@ -131,5 +132,5 @@ def test_read_without_timezone_is_refused(catalogue, eligibility) -> None:  # no
     """Fix (e) input domain: a broker read with a naive read_at prepares nothing (fail closed)."""
     naive = FakeBroker(three_positions(), statuses(), read_at=datetime.datetime(2026, 9, 29, 10, 0))
     prep = complete_strategy(plan(), naive, book_with_three_filled(), FakePlanner(), entry_context(), catalogue,
-                             eligibility)
+                             eligibility, stored_freeze=STORED_FREEZE)
     assert prep.orders == () and not prep.ready

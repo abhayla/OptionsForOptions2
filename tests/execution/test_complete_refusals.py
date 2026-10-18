@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 from partial_inputs import CONTRACTS, FILL_AT, REFS, STRATEGY_ID, FakePlanner
+from partial_inputs import STORED_FREEZE
 from plan_inputs import FakeConstraints
 from test_close_refusals import _state
 
@@ -33,8 +34,8 @@ BUY_CE = REFS[3]
 
 def _run(flow: str, plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
     if flow == "complete":
-        return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
-    return retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
+        return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
+    return retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw, stored_freeze=STORED_FREEZE)
 
 
 def _assert_refused(prep, flow: str, book, *reason_parts: str) -> None:  # noqa: ANN001

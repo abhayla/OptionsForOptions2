@@ -39,6 +39,7 @@ from partial_inputs import (
     new_book,
     record_for_legs,
 )
+from partial_inputs import STORED_FREEZE
 from plan_inputs import FakeConstraints
 
 from ofo.engine import Action, Instrument, Leg, Strategy
@@ -95,7 +96,7 @@ def _state(filled: tuple[int, int, int, int], qty: int = QTY):  # noqa: ANN202
 def _close(filled, catalogue, eligibility, qty: int = QTY, **kw):  # noqa: ANN001, ANN003, ANN202
     book, broker = _state(filled, qty)
     return close_partial_strategy(big_plan(qty), broker, book, FakePlanner(), entry_context(), catalogue,
-                                  eligibility, **kw)
+                                  eligibility, **kw, stored_freeze=STORED_FREEZE)
 
 
 def _rows(prep):  # noqa: ANN001, ANN202
@@ -167,7 +168,7 @@ def test_ac10_a_freeze_below_one_lot_is_refused(catalogue, eligibility) -> None:
     the refusal is a "Nothing prepared: <reason>" result, not an exception, and the Close is not recorded."""
     book, broker = _state((QTY, QTY, QTY, 0))
     prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                                  constraints=FakeConstraints(freeze=64, per_batch=10))
+                                  constraints=FakeConstraints(freeze=64, per_batch=10), stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()
     assert prep.reason.startswith("Nothing prepared: ") and "below one lot of 65" in prep.reason
     assert not book.has_live_preparation(STRATEGY_ID)
@@ -212,7 +213,7 @@ def test_ac10_open_entry_orders_are_still_listed_for_cancellation(catalogue, eli
         else:
             sts.append(BrokerOrderStatus(BROKER_IDS[i], contract, OrderState.SUBMITTED, 0))
     prep = close_partial_strategy(big_plan(), FakeBroker(positions, sts), book, FakePlanner(), entry_context(),
-                                  catalogue, eligibility, constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10))
+                                  catalogue, eligibility, constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10), stored_freeze=STORED_FREEZE)
     assert prep.ready, prep.reason
     (open_view,) = [v for v in book.views_for(STRATEGY_ID) if v.contract == CONTRACTS[3]]
     assert prep.cancels == (open_view.key,)
@@ -277,7 +278,7 @@ def test_ac10_close_refuses_a_held_quantity_that_is_not_whole_lots(catalogue, el
     book.transition("BRK-X", OrderState.SUBMITTED)
     broker.order_statuses.append(BrokerOrderStatus("BRK-X", CONTRACTS[1], OrderState.SUBMITTED, 0))
     prep = close_partial_strategy(big_plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
-                                  constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10))
+                                  constraints=FakeConstraints(freeze=FREEZE_260, per_batch=10), stored_freeze=STORED_FREEZE)
     assert not prep.ready and prep.orders == ()  # W-036 (#62): a refusal result, not an exception
     assert prep.reason.startswith("Nothing prepared: ") and "whole number of lots" in prep.reason
     assert book.closing_read_at(STRATEGY_ID) is None
@@ -325,7 +326,7 @@ def test_ac10_sensex_close_slices_at_lot_20(freeze: int, catalogue, eligibility)
             sts.append(BrokerOrderStatus(BROKER_IDS[i], contract, OrderState.REJECTED, 0, REJECT_TEXT))
     plan = ExecutionPlan(STRATEGY_ID, tuple(PlannedLeg(r, c, lg) for r, c, lg in zip(REFS, SENSEX_CONTRACTS, legs)))
     prep = close_partial_strategy(plan, FakeBroker(positions, sts), book, FakePlanner(), ctx, catalogue, eligibility,
-                                  constraints=FakeConstraints(freeze=freeze, per_batch=10))
+                                  constraints=FakeConstraints(freeze=freeze, per_batch=10), stored_freeze=STORED_FREEZE)
     assert prep.ready, prep.reason
     assert _rows(prep) == ([(SELL_PE, Action.BUY, q) for q in (100, 100, 40)]
                            + [(SELL_CE, Action.BUY, q) for q in (100, 100, 40)]
