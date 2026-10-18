@@ -124,9 +124,11 @@ def _iid(token: int) -> str:
     return f"{CORE_ID.exchange_segment}:{token}"
 
 
-async def _plan(conn, user, sid: int, number: int, *, symbol: str = SYMBOL, closed: bool = True) -> None:
-    """Plan ``number`` of strategy ``sid``: BUY 65 of ``symbol`` (tag OFS<sid>V<number>L0), closed filled 65 of 65, or
-    left OPEN (placed on Kite's page, Check not pressed: ADR-110)."""
+async def _plan(conn, user, sid: int, number: int, **opts) -> None:
+    """Plan ``number`` of strategy ``sid``: BUY 65 of ``opts['symbol']`` (default the real contract; tag
+    OFS<sid>V<number>L0), closed filled 65 of 65, or with ``closed=False`` left OPEN (placed on Kite's page, Check not
+    pressed: ADR-110)."""
+    symbol, closed = opts.get("symbol", SYMBOL), opts.get("closed", True)
     from ofo.execution.basket import make_tag  # noqa: PLC0415
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.execution_plan_store import PlanOrder  # noqa: PLC0415
@@ -305,7 +307,8 @@ async def test_adr110_a_failed_or_unreadable_orders_read_is_refused_never_an_emp
     from ofo.errors import render  # noqa: PLC0415
 
     bad_row = [{**_orders()[0], "filled_quantity": 66}]  # filled more than its 65: impossible
-    orders, status = {"http_error": (None, 403), "not_a_list": ({"orders": []}, 200), "bad_row": (bad_row, 200)}[failure]
+    cases = {"http_error": (None, 403), "not_a_list": ({"orders": []}, 200), "bad_row": (bad_row, 200)}
+    orders, status = cases[failure]
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
                             orders=orders, orders_status=status)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
