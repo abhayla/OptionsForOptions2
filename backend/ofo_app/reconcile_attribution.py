@@ -18,10 +18,11 @@ Attribution rule, per contract ``c`` (``b`` = Zerodha's net, ``e`` = expected; s
   opposite-side holder's own fills (Kite nets the contract to one number; ADR-109 (2): "sold app lots, or an opposite
   outside trade that nets them away, cannot be told apart"), so it reaches compare and Q224 blocks every holder.
 
-Inputs are read by this module itself (finding ``caller-supplied-verdict-trusted``): the stored plans (held units are
-computed here, never accepted), the positions reply's ``data`` (parsed here by ``kite_replies.positions_from_reply``),
-and the catalogue. A strategy that holds nothing (no fills, or every fill closed) has no active position and is not
-passed to compare. No route is wired here (GC-3F).
+Inputs (finding ``caller-supplied-verdict-trusted``): the stored plans (held units are computed HERE, never accepted),
+Zerodha's net per contract as the existing reply adapter parsed it (``kite_replies.positions_from_reply(...).net``,
+validated again here by ``compare.units_map``; this module imports no Kite module, REQ-063 AC-1), and the catalogue.
+compare is called here; no report or held-units map is ever taken from the caller. A strategy that holds nothing (no
+fills, or every fill closed) has no active position and is not passed to compare. No route is wired here (GC-3F).
 """
 from __future__ import annotations
 
@@ -40,7 +41,6 @@ from ofo.strategy.versions import StrategyRecord
 
 from ofo_app import execute_plan as ep
 from ofo_app.execution_plan_store import StoredPlan
-from ofo_app.kite_replies import ContractIndex, positions_from_reply
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the reconcile key (execute_plan.contract_key)
 
@@ -62,11 +62,10 @@ class StrategyPlans:
 
 @dataclass(frozen=True)
 class Sources:
-    """Where keys and time come from: the catalogue (stored instrument ids), the contract index (Kite's position rows)
-    and the platform clock compare checks ``at`` against."""
+    """Where keys and time come from: the catalogue (stored instrument ids -> contract keys) and the platform clock
+    compare checks ``at`` against."""
 
     catalogue: Catalogue
-    index: ContractIndex
     clock: Callable[[], datetime.datetime]
 
 
@@ -171,24 +170,25 @@ def split_outside(raw_net: Mapping[ContractKey, int], held: Mapping[str, Mapping
 def attribute_and_compare(
     strategies: Mapping[int, StrategyPlans],
     standalone: Mapping[ContractKey, int],
-    positions_data: Mapping[str, object],
+    broker_net: Mapping[ContractKey, int],
     sources: Sources,
     *,
     at: datetime.datetime,
 ) -> Attribution:
-    """Read Zerodha's positions, compute every strategy's held units, set the outside lots apart, then run compare.
+    """Compute every strategy's held units, set the outside lots of Zerodha's net apart, then run compare.
 
     ``strategies``: strategy id -> its plans (every non-exited strategy of the account on these contracts; a strategy
-    left out is not expected). ``standalone``: the recorded standalone units per contract. ``positions_data``: the
-    ``data`` of Kite's positions reply. Any unreadable input raises ``ValueError`` (``AttributionError``,
-    ``KiteReplyError``, ``ReconciliationError``); a guessed zero never reaches compare."""
+    left out is not expected). ``standalone``: the recorded standalone units per contract. ``broker_net``: Zerodha's
+    net units per contract from ``kite_replies.positions_from_reply`` (a flat row is absent: Zerodha holds 0; an
+    unreadable reply raises there, before this runs). Any malformed input raises ``ValueError``
+    (``AttributionError``, ``ReconciliationError``); a guessed zero never reaches compare."""
     if not isinstance(strategies, Mapping) or len(strategies) > MAX_STRATEGIES:
         raise AttributionError(f"strategies must be a mapping of at most {MAX_STRATEGIES} ids, got {strategies!r}")
     if not isinstance(sources, Sources):
         raise AttributionError(f"sources must be a Sources, got {sources!r}")
     catalogue, clock = sources.catalogue, sources.clock
     alone = units_map(standalone, "standalone quantities")
-    raw_net = dict(positions_from_reply(positions_data, sources.index).net)
+    raw_net = units_map(broker_net, "broker net positions")
     seen: set[int] = set()
     held: dict[str, dict[ContractKey, int]] = {}
     records: dict[str, StrategyRecord] = {}
