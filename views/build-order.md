@@ -44,6 +44,7 @@ Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-037 | Strategy modification | feature | normal | next |
 | REQ-041 | Rule engine: entry, exit and rule defaults | feature | normal | next |
 | REQ-042 | Automation: Alert + Prepare Orders | feature | normal | next |
+| REQ-044 | Strategy control center and Positions screen | feature | normal | next |
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
@@ -71,7 +72,6 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-029 (Specified): Option Chain display and live data
 - REQ-030 (Specified): Option Chain leg selection and import
 - REQ-031 (Specified): Option Chain live strategy preview
-- REQ-044 (Specified): Strategy control center and Positions screen
 - REQ-047 (Specified): Adjustment-relevant data collection
 - REQ-050 (Specified): Shared computation and scale
 - REQ-066 (Specified): Compliance gates

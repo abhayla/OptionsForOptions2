@@ -81,7 +81,7 @@ Requirements: 75; sections: 18
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-043 | Live monitoring and status colours | foundation | Approved |
-| REQ-044 | Strategy control center and Positions screen | feature | Specified |
+| REQ-044 | Strategy control center and Positions screen | feature | Approved |
 
 ## Navigation and public site (4)
 

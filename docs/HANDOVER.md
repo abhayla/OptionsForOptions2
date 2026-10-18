@@ -1,7 +1,8 @@
 # Handover
 
-**2026-10-18 (GC-3P) — START HERE: `docs/process/session-handover-2026-10-18-gc3p.md`, then `docs/process/goal-chain.md`
-(GC-3L is NEXT: the live 1-lot gate on Mon 2026-10-19; owner runbook `docs/process/gc-3l-runbook-2026-10-19.md`).**
+**2026-10-18 evening — START HERE: `docs/process/goal-chain.md`. GC-2f is NEXT (build ahead overnight, nothing product
+merged; ADR-109 holds the owner's #380 answers), then GC-3L (the live 1-lot gate on Mon 2026-10-19; owner runbook
+`docs/process/gc-3l-runbook-2026-10-19.md`), then GC-3F. GC-3P handover: `docs/process/session-handover-2026-10-18-gc3p.md`.**
 
 **Earlier, 2026-10-16 night (goal contract GC-1) — START HERE: `docs/process/session-handover-2026-10-16-gc1.md`, then
 `docs/process/goal-chain.md` (GC-2a is NEXT).** 4a close-out audit (`4a-closeout-audit-2026-10-16.md`); REQ-001, REQ-035,

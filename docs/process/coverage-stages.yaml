@@ -179,6 +179,7 @@ decisions:
   ADR-106: all          # delivery process: tier by data flow, round cap per item, verifier timing, lock, stacked PRs (owner 2026-10-17)
   ADR-107: 4b           # live-run gate: each open Tier A deferred issue triaged bears-on-run yes/no; only yes blocks (owner 2026-10-17)
   ADR-108: 4b           # GC-3 live test: eight operating rules while F-42's criteria fail; trades the 2026-10-27 expiry (owner 2026-10-17)
+  ADR-109: 4b           # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
@@ -201,6 +202,7 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
+  Q272: 4b              # open (owner, after GC-3L): which control counts as owner-account-only on the basket path (REQ-073 AC-5)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -281,8 +283,8 @@ work_items:
   W-070: 4a           # PARKED #200: door remainder (REQ-065 AC-2, Tier A)
   W-083: 4b           # PARTIAL: AC-1/AC-4 verified; AC-2 add-to-existing waits on owner OQ-7 (REQ-061, ADR-084)
   W-081: 4b           # in review: wired (PR #337); AC-1/3/4 verifier pass on main = GC-2b item 5
-  W-089: 4a           # GC-2d: Settings -> Broker & Market Data page (REQ-015 AC-4, AC-8; REQ-051 AC-1 line)
-  W-090: 4a           # GC-2d: user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
+  W-089: 4a           # GC-2f (was GC-2d): Settings -> Broker & Market Data page (REQ-015 AC-4, AC-8; REQ-051 AC-1 line)
+  W-090: 4a           # GC-2f (was GC-2d): user range/step + At Expiry/Estimated Now switch (REQ-034 AC-4, AC-6)
   W-091: 4b           # GC-2b: Kite orders/trades/positions -> domain types (F-40)
   W-092: 4b           # GC-2b: eligibility registry filled from Zerodha data (REQ-053 AC-3)
   W-093: 4b           # GC-2c: Kite read door - GET orders / trades / positions (REQ-073 AC-3/AC-4)
@@ -300,6 +302,10 @@ work_items:
   W-105: 4b           # GC-2e: a basket return (no state) on the shared redirect URL lands on /execution/returned
   W-106: 4b           # GC-2e: holdings read on the Kite read door (ADR-097 (4) before/after check)
   W-107: 4b           # GC-3: Execute refuses while the strategy's own closed plan has drifted at Zerodha (REQ-060 AC-6)
+  W-108: 4b           # GC-2f core: attribution before compare, outside surplus reported apart (#380 T1, ADR-109)
+  W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
+  W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
+  W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

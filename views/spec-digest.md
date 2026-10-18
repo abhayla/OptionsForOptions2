@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (108)
+## Decisions (109)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -114,6 +114,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner places): (1) L1 may start while the money/order cr… [refines ADR-106, ADR-107]
+- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [clarifies REQ-060 AC-4 and AC-7 (an unrecorded sa…]
 
 ## Requirements (75)
 
@@ -160,7 +161,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-041 [Approved]: Rule engine: entry, exit and rule defaults
 - REQ-042 [Approved]: Automation: Alert + Prepare Orders
 - REQ-043 [Approved]: Live monitoring and status colours
-- REQ-044 [Specified]: Strategy control center and Positions screen
+- REQ-044 [Approved]: Strategy control center and Positions screen
 - REQ-045 [Approved]: Adjustment detection and triggers
 - REQ-046 [Approved]: Adjustment Opportunity panel and Before/After
 - REQ-047 [Specified]: Adjustment-relevant data collection
@@ -193,7 +194,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (203)
+## Spec sections (204)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -374,6 +375,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q269 — DECIDED → ADR-083 (owner, 2026-10-15) — Expiry and multi-expir…
 - ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grou…
 - ## Q271 — DECIDED (expert role, 2026-10-17; spec silent - REQ-060 F-08 c…
+- ## Q272 — OPEN (owner; asked after the GC-3L live run, ADR-109) — Which…
 
 ### spec/operations/README.md
 
