@@ -5,10 +5,11 @@
 plain ``str`` / ``int`` / ``float`` / ``Decimal`` / ``bool`` / ``None`` / ``dict`` / ``list`` values, checked by exact
 type before anything is sent. No ``extensions`` (an httpx trace callback), ``auth``, ``event_hooks``, ``cookies``,
 ``transport``, body iterator or ``**kwargs`` is accepted (a TypeError); ``send``, ``stream`` and ``build_request`` are
-closed. The constructor takes only ``base_url``, ``timeout`` and ``headers``.
+closed. The constructor takes only ``caller``, ``base_url``, ``timeout`` and ``headers``.
 
-At the LAST hop (``_send_single_request``: after redirects, to the absolute URL httpx merged with ``base_url``) the
-door applies ``ofo.broker.kite_http.check_call``, reads the body, refuses any request extension but a plain timeout,
+Each client is built for ONE calling module (``caller``: its ``kite_endpoints.CALLER_*`` constant, #353) and may make
+only that module's calls. At the LAST hop (``_send_single_request``: after redirects, to the absolute URL httpx merged
+with ``base_url``) the door applies ``ofo.broker.kite_http.check_call`` for that caller, reads the body, refuses any request extension but a plain timeout,
 and builds a FRESH request from plain bytes. Only then does it open the egress gate's door permission
 (``ofo.broker.egress``), around the transport call alone: cookies, logging and the response wrapping run after it.
 The permission holds only for the door's own call chain (its thread, task and frame, through trusted libraries), so
@@ -43,6 +44,7 @@ from httpcore._backends.anyio import AnyIOStream as _AnyIOStream
 from httpx._client import BoundAsyncStream as _BoundAsyncStream
 from httpx._client import BoundSyncStream as _BoundSyncStream
 from ofo.broker import egress as _egress
+from ofo.broker.kite_endpoints import ALLOWED_CALLS as _ALLOWED_CALLS
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import check_call as _check_call
 from ofo.broker.kite_http import plain_headers as _plain_headers
@@ -169,12 +171,19 @@ def _plain_args(method: object, url: object, *, params: object, data: object, js
     return args
 
 
-def _plain_request(request: _httpx.Request) -> _httpx.Request:
+def _known_caller(caller: object) -> str:
+    """``caller`` as a key of ``ALLOWED_CALLS`` (exact ``str``), checked when the client is built (#353)."""
+    if type(caller) is not str or caller not in _ALLOWED_CALLS:
+        raise KiteCallRefused("a Kite client is built only for a module listed in ALLOWED_CALLS; nothing was sent")
+    return caller
+
+
+def _plain_request(request: _httpx.Request, caller: str) -> _httpx.Request:
     """A fresh request from plain bytes: nothing of the caller's request object (a subclass, its extensions, its
     stream) is reachable inside the door. Called after the body was read, before the door opens."""
     method = _plain_method(str(request.method))
     url = str(request.url)
-    _check_call(method, url)
+    _check_call(method, url, caller=caller)
     content = request.content
     if type(content) is not bytes:
         raise KiteCallRefused(f"{method}: the body is not plain bytes; nothing was sent")
@@ -207,8 +216,10 @@ class _Closed:
 
 
 class KiteClient(_httpx.Client):
-    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: _Mapping[str, str] | None = None,
+    def __init__(self, *, caller: str, base_url: str = "", timeout: float = _TIMEOUT,
+                 headers: _Mapping[str, str] | None = None,
                  _test_transport: _httpx.BaseTransport | None = None) -> None:
+        self._kite_caller = _known_caller(caller)
         super().__init__(base_url=_plain_str(base_url, "the base URL"), timeout=_plain_timeout(timeout),
                          headers=_plain_headers(None if headers is None else dict(headers)), follow_redirects=False,
                          trust_env=False,
@@ -249,9 +260,9 @@ class KiteClient(_httpx.Client):
         return self.request("DELETE", url, params=params, headers=headers, timeout=timeout)
 
     def _send_single_request(self, request: _httpx.Request) -> _httpx.Response:
-        _check_call(request.method, str(request.url))
+        _check_call(request.method, str(request.url), caller=self._kite_caller)
         request.read()  # a caller's body generator runs HERE, outside the door, never inside it
-        fresh = _plain_request(request)
+        fresh = _plain_request(request, self._kite_caller)
         transport = self._transport
         start = _time.perf_counter()
         with _egress._door():
@@ -267,8 +278,10 @@ class KiteClient(_httpx.Client):
 
 
 class KiteAsyncClient(_httpx.AsyncClient):
-    def __init__(self, *, base_url: str = "", timeout: float = _TIMEOUT, headers: _Mapping[str, str] | None = None,
+    def __init__(self, *, caller: str, base_url: str = "", timeout: float = _TIMEOUT,
+                 headers: _Mapping[str, str] | None = None,
                  _test_transport: _httpx.AsyncBaseTransport | None = None) -> None:
+        self._kite_caller = _known_caller(caller)
         super().__init__(base_url=_plain_str(base_url, "the base URL"), timeout=_plain_timeout(timeout),
                          headers=_plain_headers(None if headers is None else dict(headers)), follow_redirects=False,
                          trust_env=False, transport=_transport(_AsyncTransport, _test_transport))
@@ -309,9 +322,9 @@ class KiteAsyncClient(_httpx.AsyncClient):
         return self.request("DELETE", url, params=params, headers=headers, timeout=timeout)
 
     async def _send_single_request(self, request: _httpx.Request) -> _httpx.Response:
-        _check_call(request.method, str(request.url))
+        _check_call(request.method, str(request.url), caller=self._kite_caller)
         await request.aread()  # a caller's body generator runs HERE, outside the door, never inside it
-        fresh = _plain_request(request)
+        fresh = _plain_request(request, self._kite_caller)
         transport = self._transport
         start = _time.perf_counter()
         with _egress._door():
@@ -326,14 +339,14 @@ class KiteAsyncClient(_httpx.AsyncClient):
         return response
 
 
-def kite_client(*, base_url: str = "", timeout: float = _TIMEOUT,
+def kite_client(*, caller: str, base_url: str = "", timeout: float = _TIMEOUT,
                 headers: _Mapping[str, str] | None = None) -> KiteClient:
-    return KiteClient(base_url=base_url, timeout=timeout, headers=headers)
+    return KiteClient(caller=caller, base_url=base_url, timeout=timeout, headers=headers)
 
 
-def kite_async_client(*, base_url: str = "", timeout: float = _TIMEOUT,
+def kite_async_client(*, caller: str, base_url: str = "", timeout: float = _TIMEOUT,
                       headers: _Mapping[str, str] | None = None) -> KiteAsyncClient:
-    return KiteAsyncClient(base_url=base_url, timeout=timeout, headers=headers)
+    return KiteAsyncClient(caller=caller, base_url=base_url, timeout=timeout, headers=headers)
 
 
 __all__ = ["HTTPError", "KiteAsyncClient", "KiteCallRefused", "KiteClient", "kite_async_client", "kite_client"]

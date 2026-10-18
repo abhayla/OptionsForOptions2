@@ -19,14 +19,24 @@ from typing import Final
 KITE_API_HOST: Final = "api.kite.trade"
 KITE_WS_HOST: Final = "ws.kite.trade"
 
+#: The calling modules, one constant each (#353): a client module passes ITS OWN constant as ``caller=`` to every
+#: door call (``check_call``, ``open_url``, the httpx clients, ``kite_margin.urllib_transport``), and the door allows
+#: only that module's calls. ``tests/test_kite_caller_identity.py`` fails on a call site whose ``caller`` is not the
+#: calling file's own constant imported from here.
+CALLER_KITE_CLIENT: Final = "ofo_app/kite_client.py"
+CALLER_KITE_HISTORY: Final = "ofo_app/kite_history.py"
+CALLER_DOWNLOADER: Final = "ofo/instruments/downloader.py"
+CALLER_KITE_MARGIN: Final = "ofo_app/kite_margin.py"
+CALLER_KITE_READS: Final = "ofo_app/kite_reads.py"
+
 #: module path (relative to ``backend/``) -> the (METHOD, path template) pairs that module may call.
 ALLOWED_CALLS: Final[dict[str, frozenset[tuple[str, str]]]] = {
-    "ofo_app/kite_client.py": frozenset({("POST", "/session/token")}),
-    "ofo_app/kite_history.py": frozenset({("GET", "/instruments/historical/{token}/minute")}),
-    "ofo/instruments/downloader.py": frozenset({("GET", "/instruments")}),
-    "ofo_app/kite_margin.py": frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
-    "ofo_app/kite_reads.py": frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"),
-                                        ("GET", "/portfolio/holdings"), ("GET", "/quote")}),
+    CALLER_KITE_CLIENT: frozenset({("POST", "/session/token")}),
+    CALLER_KITE_HISTORY: frozenset({("GET", "/instruments/historical/{token}/minute")}),
+    CALLER_DOWNLOADER: frozenset({("GET", "/instruments")}),
+    CALLER_KITE_MARGIN: frozenset({("GET", "/user/margins"), ("POST", "/margins/basket")}),
+    CALLER_KITE_READS: frozenset({("GET", "/orders"), ("GET", "/trades"), ("GET", "/portfolio/positions"),
+                                  ("GET", "/portfolio/holdings"), ("GET", "/quote")}),
 }
 
 #: door module -> the network-capable modules (and their submodules) that door alone may import.
@@ -40,4 +50,5 @@ NETWORK_DOORS: Final[dict[str, frozenset[str]]] = {
     "ofo/broker/egress.py": frozenset({"socket"}),  # the gate itself: address-family constants and one getaddrinfo
 }
 
-__all__ = ["ALLOWED_CALLS", "KITE_API_HOST", "KITE_WS_HOST", "NETWORK_DOORS"]
+__all__ = ["ALLOWED_CALLS", "CALLER_DOWNLOADER", "CALLER_KITE_CLIENT", "CALLER_KITE_HISTORY", "CALLER_KITE_MARGIN",
+           "CALLER_KITE_READS", "KITE_API_HOST", "KITE_WS_HOST", "NETWORK_DOORS"]

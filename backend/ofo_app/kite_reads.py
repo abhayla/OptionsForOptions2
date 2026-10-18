@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from ofo.broker.kite_endpoints import CALLER_KITE_READS
 from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
 from ofo_app.kite_margin import KITE_API_URL, KiteMarginError, Transport, error_type, kite_headers, urllib_transport
 
@@ -142,8 +143,14 @@ def holdings_unchanged(before: Sequence[Holding], after: Sequence[Holding]) -> t
                  if old.get(k) != new.get(k))
 
 
+def reads_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
+                    timeout: float = 20) -> tuple[int, str]:
+    """`KiteReads`' transport: ``urllib_transport`` as this module, so only the listed reads pass (#353)."""
+    return urllib_transport(method, url, headers, body, caller=CALLER_KITE_READS, timeout=timeout)
+
+
 class KiteReads:
-    def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
+    def __init__(self, *, api_key: str, access_token: str, transport: Transport = reads_transport,
                  base_url: str = KITE_API_URL) -> None:
         self._headers = kite_headers(api_key, access_token)  # never logged
         self._call = transport
@@ -155,7 +162,7 @@ class KiteReads:
     def _data(self, method: str, path: str) -> object:
         url = self._base + path
         try:
-            check_call(method, url)  # the allow-list, before anything is sent
+            check_call(method, url, caller=CALLER_KITE_READS)  # this module's allow-list, before anything is sent
         except KiteCallRefused:
             raise KiteReadError("kite_read_refused") from None
         try:

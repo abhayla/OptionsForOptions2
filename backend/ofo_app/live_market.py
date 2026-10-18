@@ -31,8 +31,8 @@ from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.kite_provider import IST, KiteProvider
 
 from ofo_app.config import app_env, get_settings
-from ofo_app.kite_margin import KiteMargin, urllib_transport
-from ofo_app.kite_reads import KiteReads
+from ofo_app.kite_margin import KiteMargin, margin_transport
+from ofo_app.kite_reads import KiteReads, reads_transport
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import CALL_TIMEOUT_SECONDS, OutcomeMargin
 from ofo_app.routes.outcome import MarketContext, server_now
@@ -268,7 +268,7 @@ async def owner_margin_client() -> KiteMargin | None:
     if token is None:
         return None
     # each call bounded so the worker thread never outlives the outcome read timeout
-    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    transport = functools.partial(margin_transport, timeout=CALL_TIMEOUT_SECONDS)
     return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
 
 
@@ -281,7 +281,7 @@ async def owner_kite_reads() -> tuple[str, KiteReads] | None:
     token = await market._stored_token(market._config)
     if token is None:
         return None
-    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    transport = functools.partial(reads_transport, timeout=CALL_TIMEOUT_SECONDS)
     api_key = market._config.api_key
     return api_key, KiteReads(api_key=api_key, access_token=token, transport=transport)
 

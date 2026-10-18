@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from ofo.broker.kite_endpoints import ALLOWED_CALLS
+from ofo.broker.kite_endpoints import CALLER_KITE_READS
 from ofo.broker.kite_http import KiteCallRefused, check_call
 from ofo_app.kite_reads import KiteReadError, KiteReads
 
@@ -76,13 +77,13 @@ def test_repeated_i_query_is_sent_in_asked_order() -> None:
 def test_door_accepts_only_i_queries_on_quote(query) -> None:
     """AC-4: /quote takes the repeated i= query and nothing else."""
     with pytest.raises(KiteCallRefused):
-        check_call("GET", f"{BASE}{QUOTE_PATH}{query}")
+        check_call("GET", f"{BASE}{QUOTE_PATH}{query}", caller=CALLER_KITE_READS)
 
 
 def test_door_accepts_the_plain_i_queries() -> None:
-    check_call("GET", f"{BASE}{QUOTE_PATH}")
-    check_call("GET", f"{BASE}{QUOTE_PATH}?i={SYM}")
-    check_call("GET", f"{BASE}{QUOTE_PATH}?i={SYM}&i={OTHER}")
+    check_call("GET", f"{BASE}{QUOTE_PATH}", caller=CALLER_KITE_READS)
+    check_call("GET", f"{BASE}{QUOTE_PATH}?i={SYM}", caller=CALLER_KITE_READS)
+    check_call("GET", f"{BASE}{QUOTE_PATH}?i={SYM}&i={OTHER}", caller=CALLER_KITE_READS)
 
 
 @pytest.mark.parametrize("method,path", [("POST", "/quote"), ("DELETE", "/quote"), ("GET", "/quote/ltp"),

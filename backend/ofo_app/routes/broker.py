@@ -55,8 +55,7 @@ from ofo_app.broker_crypto import TokenCipher
 from ofo_app.broker_token_store import store_session
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, RedirectCookie, typed_redirect
-from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError
-from ofo_app.kite_http import kite_async_client
+from ofo_app.kite_client import HttpKiteAuth, KiteExchangeError, session_client
 
 log = logging.getLogger(__name__)
 
@@ -206,7 +205,7 @@ def current_user_ref() -> str:
 
 async def get_kite_auth(request: Request) -> AsyncIterator[KiteAuthPort]:
     rt = runtime(request)
-    async with kite_async_client() as client:
+    async with session_client() as client:
         yield HttpKiteAuth(rt.config.api_key, rt.config.api_secret.get_secret_value(), client)
 
 

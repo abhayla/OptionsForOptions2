@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import Final
 from urllib.error import HTTPError
 
-from ofo.broker.kite_endpoints import KITE_API_HOST
+from ofo.broker.kite_endpoints import CALLER_KITE_MARGIN, KITE_API_HOST
 from ofo.broker.kite_http import KiteCallRefused
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
@@ -107,11 +107,14 @@ class BasketMargin:
     orders: tuple[OrderMargin, ...]
 
 
-def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
+def urllib_transport(method: str, url: str, headers: dict[str, str], body: str | None, *, caller: str,
                      timeout: float = 20) -> tuple[int, str]:
+    """One request through the urllib door for ``caller`` (a ``kite_endpoints.CALLER_*`` constant, #353): only that
+    module's calls are allowed. Clients use their own transport (``margin_transport``, ``kite_reads.reads_transport``)."""
     data = None if body is None else body.encode("utf-8")
     try:
-        with kite_open_url(url, method=method, data=data, headers=headers, timeout=timeout) as response:  # door first
+        with kite_open_url(url, caller=caller, method=method, data=data, headers=headers,
+                           timeout=timeout) as response:  # door first
             return response.status, response.read().decode("utf-8")
     except HTTPError as exc:
         try:
@@ -122,6 +125,12 @@ def urllib_transport(method: str, url: str, headers: dict[str, str], body: str |
         raise KiteMarginError("kite_margin_refused") from None
     except Exception:  # noqa: BLE001 - IncompleteRead, bad UTF-8, resets, timeouts: all "not confirmed"
         raise KiteMarginError("kite_margin_unavailable") from None
+
+
+def margin_transport(method: str, url: str, headers: dict[str, str], body: str | None, *,
+                     timeout: float = 20) -> tuple[int, str]:
+    """`KiteMargin`'s transport: ``urllib_transport`` as this module, so only the two margin calls pass (#353)."""
+    return urllib_transport(method, url, headers, body, caller=CALLER_KITE_MARGIN, timeout=timeout)
 
 
 def _money(value: object) -> Decimal:
@@ -137,7 +146,7 @@ def _money(value: object) -> Decimal:
 
 
 class KiteMargin:
-    def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
+    def __init__(self, *, api_key: str, access_token: str, transport: Transport = margin_transport,
                  base_url: str = KITE_API_URL) -> None:
         self._headers = kite_headers(api_key, access_token)  # never logged
         self._call = transport

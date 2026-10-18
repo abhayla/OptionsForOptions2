@@ -21,6 +21,7 @@ import pytest
 from ofo.broker import egress
 from ofo.broker import kite_http as broker_http
 from ofo.broker.egress import EgressRefused
+from ofo.broker.kite_endpoints import CALLER_DOWNLOADER, CALLER_KITE_CLIENT, CALLER_KITE_READS
 from ofo_app import kite_client, kite_http, kite_ws
 from websockets.asyncio.server import serve
 
@@ -73,7 +74,7 @@ def test_each_doors_public_names_equal_all(door) -> None:
 
 def test_r6_a_guarded_clients_transport_and_super_last_hop() -> None:
     request = httpx.Request("POST", f"https://{TEST_NET}/orders/regular")
-    with kite_http.kite_client(timeout=2) as client:
+    with kite_http.kite_client(caller=CALLER_KITE_READS, timeout=2) as client:
         with pytest.raises(EgressRefused):
             client._transport.handle_request(request)
         with pytest.raises(EgressRefused):
@@ -88,15 +89,15 @@ def test_closed_constructor_arguments() -> None:
                    {"event_hooks": {"request": [print]}}, {"auth": ("a", "b")}, {"mounts": {}},
                    {"follow_redirects": True}, {"verify": False}):
         with pytest.raises(TypeError):
-            kite_http.KiteClient(**kwargs)
+            kite_http.KiteClient(caller=CALLER_KITE_READS, **kwargs)
         with pytest.raises(TypeError):
-            kite_http.kite_async_client(**kwargs)
+            kite_http.kite_async_client(caller=CALLER_KITE_READS, **kwargs)
 
 
 def test_the_test_seam_is_refused_outside_test_mode(monkeypatch) -> None:
     monkeypatch.setitem(egress._state, "test", False)
     with pytest.raises(EgressRefused):
-        kite_http.KiteClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+        kite_http.KiteClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     with pytest.raises(EgressRefused):
         kite_ws.KiteSocket(_provider(), api_key="k", access_token="t", clock=lambda: None,  # noqa: S106
                            connect=lambda *a, **k: None)
@@ -120,7 +121,7 @@ def test_a_callback_never_runs_inside_door_context() -> None:
         _connect_test_net()
         yield b"x"
 
-    with kite_http.KiteClient(_test_transport=httpx.MockTransport(handler)) as client:
+    with kite_http.KiteClient(caller=CALLER_DOWNLOADER, _test_transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(TypeError):  # W-080 r9: the door API takes no auth and no body iterator at all
             client.get(KITE + "/instruments", auth=Auth())
         with pytest.raises(TypeError):
@@ -128,7 +129,8 @@ def test_a_callback_never_runs_inside_door_context() -> None:
         with pytest.raises(EgressRefused):  # the unbound httpx send: the auth flow still runs outside the door
             httpx.Client.send(client, httpx.Request("GET", KITE + "/instruments"), auth=Auth())
         with pytest.raises(EgressRefused):  # and the body generator is read before it
-            httpx.Client.send(client, httpx.Request("POST", KITE + "/margins/basket", content=body()))
+            # #353: this client is the downloader, so its own GET carries the body generator
+            httpx.Client.send(client, httpx.Request("GET", KITE + "/instruments", content=body()))
 
 
 class _Ok(BaseHTTPRequestHandler):
@@ -148,7 +150,7 @@ def test_no_pooled_connection_outlives_its_door() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:  # the door's own transport, on a loopback server (a Kite URL with a port is refused by check_call)
-        with kite_http.kite_client(timeout=5) as client:
+        with kite_http.kite_client(caller=CALLER_KITE_READS, timeout=5) as client:
             response = client._transport.handle_request(httpx.Request("GET", f"http://127.0.0.1:{server.server_port}/"))
             assert response.read() == b"ok"
             response.close()
@@ -167,7 +169,7 @@ def test_the_http_door_reaches_an_allowed_path_inside_door_context_only() -> Non
         seen.append((request.url.path, egress._in_door()))
         return httpx.Response(200, json={})
 
-    with kite_http.KiteClient(_test_transport=httpx.MockTransport(handler)) as client:
+    with kite_http.KiteClient(caller=CALLER_DOWNLOADER, _test_transport=httpx.MockTransport(handler)) as client:
         assert client.get(KITE + "/instruments").status_code == 200  # noqa: PLR2004
         with pytest.raises(kite_http.KiteCallRefused):
             client.post(KITE + "/orders/regular", data={"x": "1"})
@@ -181,7 +183,7 @@ async def test_the_async_http_door_reaches_an_allowed_path_inside_door_context_o
         seen.append(egress._in_door())
         return httpx.Response(200, json={})
 
-    async with kite_http.KiteAsyncClient(_test_transport=httpx.MockTransport(handler)) as client:
+    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_CLIENT, _test_transport=httpx.MockTransport(handler)) as client:
         assert (await client.post(KITE + "/session/token", data={"a": "b"})).status_code == 200  # noqa: PLR2004
     assert seen == [True] and not egress._in_door()
 
@@ -238,14 +240,14 @@ def door_entries(monkeypatch) -> list[int]:
 
 def test_r8_kite_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
     from ofo.broker.kite_http import KiteCallRefused
-    with kite_http.kite_client(base_url=f"http://{TEST_NET}", timeout=2) as client, pytest.raises(KiteCallRefused):
+    with kite_http.kite_client(caller=CALLER_KITE_READS, base_url=f"http://{TEST_NET}", timeout=2) as client, pytest.raises(KiteCallRefused):
         client.post("/x")
     assert door_entries == []
 
 
 async def test_r8_kite_async_client_refuses_a_non_kite_base_url(door_entries: list[int]) -> None:
     from ofo.broker.kite_http import KiteCallRefused
-    async with kite_http.kite_async_client(base_url=f"http://{TEST_NET}", timeout=2) as client:
+    async with kite_http.kite_async_client(caller=CALLER_KITE_READS, base_url=f"http://{TEST_NET}", timeout=2) as client:
         with pytest.raises(KiteCallRefused):
             await client.get("/x")
     assert door_entries == []
@@ -271,7 +273,7 @@ def _trace_attack(seen: list[str]):
 
 def test_r9_a_trace_extension_is_refused_at_the_door_signature() -> None:
     seen: list[str] = []
-    with kite_http.kite_client(timeout=2) as client, pytest.raises(TypeError):
+    with kite_http.kite_client(caller=CALLER_KITE_READS, timeout=2) as client, pytest.raises(TypeError):
         client.get(KITE + "/user/margins", extensions={"trace": _trace_attack(seen)})
     assert seen == []
 
@@ -279,7 +281,7 @@ def test_r9_a_trace_extension_is_refused_at_the_door_signature() -> None:
 def test_r9_a_hand_built_request_with_a_trace_is_refused_at_the_last_hop() -> None:
     seen: list[str] = []
     request = httpx.Request("GET", KITE + "/user/margins", extensions={"trace": _trace_attack(seen)})
-    with kite_http.KiteClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client,             pytest.raises(kite_http.KiteCallRefused):
+    with kite_http.KiteClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client,             pytest.raises(kite_http.KiteCallRefused):
         httpx.Client.send(client, request)
     assert seen == []
 
@@ -287,7 +289,7 @@ def test_r9_a_hand_built_request_with_a_trace_is_refused_at_the_last_hop() -> No
 async def test_r9_a_hand_built_async_request_with_a_trace_is_refused_at_the_last_hop() -> None:
     seen: list[str] = []
     request = httpx.Request("POST", KITE + "/session/token", extensions={"trace": _trace_attack(seen)})
-    async with kite_http.KiteAsyncClient(_test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
+    async with kite_http.KiteAsyncClient(caller=CALLER_KITE_READS, _test_transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
         with pytest.raises(kite_http.KiteCallRefused):
             await httpx.AsyncClient.send(c, request)
     assert seen == []
@@ -299,7 +301,7 @@ def test_r9_plain_data_only_at_the_door_signature() -> None:
             _connect_test_net()
             return super().encode(*args, **kwargs)
 
-    with kite_http.kite_client(timeout=2) as client:
+    with kite_http.kite_client(caller=CALLER_KITE_READS, timeout=2) as client:
         for bad in ({"headers": {"X-Kite-Version": Sly("3")}}, {"params": {"a": object()}}, {"json": {1: "x"}},
                     {"content": iter([b"x"])}):
             with pytest.raises(TypeError):
@@ -308,7 +310,7 @@ def test_r9_plain_data_only_at_the_door_signature() -> None:
             client.request(Sly("GET"), KITE + "/instruments")
     for bad in ({"headers": {"a": Sly("b")}}, {"data": bytearray(b"x")}, {"timeout": "20"}):
         with pytest.raises(TypeError):
-            broker_http.open_url(KITE + "/instruments", **bad)
+            broker_http.open_url(KITE + "/instruments", caller=CALLER_DOWNLOADER, **bad)
     with pytest.raises(TypeError):
         kite_ws.KiteSocket(_provider(), api_key=Sly("k"), access_token="t", clock=lambda: None)  # noqa: S106 - a placeholder, never a secret
 
@@ -404,8 +406,8 @@ def door_only(monkeypatch):
     """Loopback is no longer allowed by address: a connect passes only through the door's own permission."""
     monkeypatch.setattr(egress, "_address_allowed", lambda family, address: False)
     # the local server has a port, which the URL check refuses; this test is about the egress permission alone
-    monkeypatch.setattr(kite_http, "_check_call", lambda method, url: None)
-    monkeypatch.setattr(broker_http, "check_call", lambda method, url: None)
+    monkeypatch.setattr(kite_http, "_check_call", lambda method, url, *, caller: None)
+    monkeypatch.setattr(broker_http, "check_call", lambda method, url, *, caller: None)
     with pytest.raises(EgressRefused):
         socket.create_connection(("127.0.0.1", 9), timeout=1)
 
@@ -426,14 +428,14 @@ def local_server():
 
 
 def test_r9_the_sync_doors_connect_through_their_own_permission(door_only, local_server) -> None:
-    with kite_http.kite_client(timeout=5) as client:
+    with kite_http.kite_client(caller=CALLER_DOWNLOADER, timeout=5) as client:
         assert client.get(local_server + "/instruments").text == "ok"
-    with broker_http.open_url(local_server + "/instruments", timeout=5) as response:
+    with broker_http.open_url(local_server + "/instruments", caller=CALLER_DOWNLOADER, timeout=5) as response:
         assert response.read() == b"ok"
 
 
 async def test_r9_the_async_door_connects_in_its_own_task(door_only, local_server) -> None:
-    async with kite_http.kite_async_client(timeout=5) as client:
+    async with kite_http.kite_async_client(caller=CALLER_KITE_CLIENT, timeout=5) as client:
         response = await client.post(local_server + "/session/token", data={"a": "b"})
     assert response.text == "ok"
 

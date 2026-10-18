@@ -1,7 +1,8 @@
 """The door every Kite HTTP request goes through (REQ-073 AC-4, ADR-054; run-discipline B8).
 
-``check_call(method, url)`` refuses, BEFORE anything is sent, a request to Kite's API host whose (method, path) is not in
-``ALLOWED_CALLS`` (path templates such as ``/instruments/historical/{token}/minute`` match as templates; nothing is
+``check_call(method, url, caller=...)`` refuses, BEFORE anything is sent, a request to Kite's API host whose (method,
+path) is not in ``ALLOWED_CALLS[caller]`` (#353: only the calling module's own calls; ``caller`` is its constant from
+``kite_endpoints``, an unknown caller is refused) (path templates such as ``/instruments/historical/{token}/minute`` match as templates; nothing is
 allowed by default). Every other host is refused too (loopback only in the egress test mode): the backend calls only ``api.kite.trade``.
 
 Two doors apply it: ``open_url`` here (stdlib ``urllib``, used by the instrument downloader and the history reader)
@@ -48,12 +49,23 @@ def _template_regex(template: str) -> re.Pattern[str]:
     return re.compile("".join("[^/]+" if p.startswith("{") else re.escape(p) for p in parts))
 
 
-_ALLOWED: _Final = tuple((method, _template_regex(path))
-                        for calls in _ALLOWED_CALLS.values() for method, path in sorted(calls))
+#: calling module -> its allowed (METHOD, compiled path) pairs; nothing is merged across modules (#353).
+_ALLOWED: _Final = {caller: tuple((method, _template_regex(path)) for method, path in sorted(calls))
+                    for caller, calls in _ALLOWED_CALLS.items()}
 
 
-def check_call(method: str, url: str) -> None:
-    """Raise ``KiteCallRefused`` unless ``method url`` is allow-listed on Kite's API host (loopback only in test mode)."""
+def _caller_calls(method: object, caller: object) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """The calls ``caller`` may make: it must be exactly a ``str`` key of ``ALLOWED_CALLS`` (fail closed)."""
+    calls = _ALLOWED.get(caller) if type(caller) is str else None
+    if calls is None:
+        raise KiteCallRefused(f"{method}: the caller is not a module listed in ALLOWED_CALLS; nothing was sent")
+    return calls
+
+
+def check_call(method: str, url: str, *, caller: str) -> None:
+    """Raise ``KiteCallRefused`` unless ``method url`` is allow-listed FOR ``caller`` on Kite's API host (loopback only
+    in test mode). ``caller`` is the calling module's ``kite_endpoints.CALLER_*`` constant (#353)."""
+    allowed = _caller_calls(method, caller)
     parts = _urlsplit(str(url))
     # Fail closed (B8): the address is read by this guard AND by urllib / http.client / httpx / ssl, and they differ on
     # percent-escapes (%2E), non-ASCII dots, userinfo, IPv6 brackets and backslashes. So only a plain netloc is
@@ -75,7 +87,7 @@ def check_call(method: str, url: str) -> None:
     if "" in segments or ".." in segments or "." in segments or not path.startswith("/"):
         raise KiteCallRefused(f"{method} {path!r}: not a plain path")
     verb = str(method).upper()
-    if not any(m == verb and rx.fullmatch(path) for m, rx in _ALLOWED):
+    if not any(m == verb and rx.fullmatch(path) for m, rx in allowed):
         raise KiteCallRefused(f"{verb} {path} is not an allow-listed Kite call; nothing was sent")
     if path in _BARE_TARGETS and str(url).partition("//")[2][len(parts.netloc):] != path:
         raise KiteCallRefused(f"{verb} {path}: no query or fragment is sent on this call; nothing was sent")
@@ -161,10 +173,11 @@ def plain_timeout(timeout: object) -> float:
     return float(timeout)  # type: ignore[arg-type]
 
 
-def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
+def open_url(url: str, *, caller: str, method: str = "GET", data: bytes | None = None,
              headers: _Mapping[str, str] | None = None, timeout: float = 20):
     """``urllib`` request through the door: plain data only (exact types, checked before anything else), then the
-    URL check, then sent inside the egress gate's door permission. Nothing the caller passed runs inside it."""
+    URL check for ``caller`` (its ``kite_endpoints.CALLER_*`` constant), then sent inside the egress gate's door
+    permission. Nothing the caller passed runs inside it."""
     if type(url) is not str:  # exact type, as plain_str (whose label argument would be a sentence literal here)
         raise TypeError("a Kite door takes the URL as a plain str; nothing was sent")
     method = plain_method(method)
@@ -172,7 +185,7 @@ def open_url(url: str, *, method: str = "GET", data: bytes | None = None,
     seconds = plain_timeout(timeout)
     if data is not None and type(data) is not bytes:
         raise TypeError(f"{method}: the body must be bytes; nothing was sent")
-    check_call(method, url)
+    check_call(method, url, caller=caller)
     request = _urllib_request.Request(url, data=data, headers=plain, method=method)
     with _egress._door():
         return _OPENER.open(request, timeout=seconds)  # host and path checked above; no redirect is followed

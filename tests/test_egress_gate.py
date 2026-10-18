@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from ofo.broker import egress
 from ofo.broker.egress import EgressRefused
+from ofo.broker.kite_endpoints import CALLER_KITE_READS
 
 TEST_NET = "192.0.2.1"
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
@@ -330,7 +331,7 @@ def door_entries(monkeypatch) -> list[int]:
 def test_r8_check_call_refuses_every_non_kite_host(method: str, url: str) -> None:
     from ofo.broker.kite_http import KiteCallRefused, check_call
     with pytest.raises(KiteCallRefused):
-        check_call(method, url)
+        check_call(method, url, caller=CALLER_KITE_READS)
 
 
 def test_r8_check_ws_url_refuses_a_non_kite_host() -> None:
@@ -342,16 +343,16 @@ def test_r8_check_ws_url_refuses_a_non_kite_host() -> None:
 def test_r8_open_url_refuses_with_zero_door_entries(door_entries: list[int]) -> None:
     from ofo.broker.kite_http import KiteCallRefused, open_url
     with pytest.raises(KiteCallRefused):
-        open_url(f"http://{_NON_KITE}/")
+        open_url(f"http://{_NON_KITE}/", caller=CALLER_KITE_READS)
     assert door_entries == []
 
 
 def test_r8_loopback_is_allowed_only_in_test_mode(monkeypatch) -> None:
     from ofo.broker.kite_http import KiteCallRefused, check_call, check_ws_url
-    check_call("GET", "http://127.0.0.1/x")  # test mode is on in this suite
+    check_call("GET", "http://127.0.0.1/x", caller=CALLER_KITE_READS)  # test mode is on in this suite
     check_ws_url("ws://127.0.0.1:8080")
     monkeypatch.setitem(egress._state, "test", False)
     with pytest.raises(KiteCallRefused):
-        check_call("GET", "http://127.0.0.1/x")
+        check_call("GET", "http://127.0.0.1/x", caller=CALLER_KITE_READS)
     with pytest.raises(KiteCallRefused):
         check_ws_url("ws://127.0.0.1:8080")

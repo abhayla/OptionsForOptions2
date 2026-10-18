@@ -23,9 +23,9 @@ import logging
 from typing import Protocol
 
 from ofo.broker.kite_auth import KiteSession, checksum
-from ofo.broker.kite_endpoints import KITE_API_HOST
+from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT, KITE_API_HOST
 
-from ofo_app.kite_http import HTTPError, KiteAsyncClient
+from ofo_app.kite_http import HTTPError, KiteAsyncClient, kite_async_client
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +58,11 @@ def _error_type(response: _JsonAnswer) -> str | None:
     except ValueError:
         return None
     return body.get("error_type") if isinstance(body, dict) else None
+
+
+def session_client() -> KiteAsyncClient:
+    """The httpx door client for `HttpKiteAuth`, built as this module: only ``POST /session/token`` passes (#353)."""
+    return kite_async_client(caller=CALLER_KITE_CLIENT)
 
 
 class HttpKiteAuth:

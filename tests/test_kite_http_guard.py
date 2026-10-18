@@ -12,7 +12,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from ofo.broker import egress, kite_http
-from ofo.broker.kite_endpoints import ALLOWED_CALLS
+from ofo.broker.kite_endpoints import (
+    ALLOWED_CALLS,
+    CALLER_DOWNLOADER,
+    CALLER_KITE_CLIENT,
+    CALLER_KITE_HISTORY,
+    CALLER_KITE_READS,
+)
 
 ROOT = "https://api.kite.trade"
 
@@ -44,33 +50,35 @@ ROOT = "https://api.kite.trade"
     ("POST", "https://other.kite.trade/orders/regular"),
 ])
 def test_check_call_refuses(method: str, url: str) -> None:
-    with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call(method, url)
+    for caller in ALLOWED_CALLS:  # #353: refused for every listed module, not only one
+        with pytest.raises(kite_http.KiteCallRefused):
+            kite_http.check_call(method, url, caller=caller)
 
 
-@pytest.mark.parametrize("method,url", [
-    ("POST", ROOT + "/session/token"),
-    ("post", ROOT + "/session/token"),
-    ("GET", ROOT + "/instruments"),
-    ("GET", ROOT + "/instruments/historical/12345/minute?from=2026-10-15+09:15:00&to=2026-10-15+15:30:00"),
+@pytest.mark.parametrize("method,url,caller", [
+    ("POST", ROOT + "/session/token", CALLER_KITE_CLIENT),
+    ("post", ROOT + "/session/token", CALLER_KITE_CLIENT),
+    ("GET", ROOT + "/instruments", CALLER_DOWNLOADER),
+    ("GET", ROOT + "/instruments/historical/12345/minute?from=2026-10-15+09:15:00&to=2026-10-15+15:30:00",
+     CALLER_KITE_HISTORY),
 ])
-def test_check_call_allows(method: str, url: str) -> None:
-    kite_http.check_call(method, url)
+def test_check_call_allows(method: str, url: str, caller: str) -> None:
+    kite_http.check_call(method, url, caller=caller)
 
 
 def test_every_allow_list_entry_passes_its_own_template() -> None:
-    for calls in ALLOWED_CALLS.values():
+    for caller, calls in ALLOWED_CALLS.items():
         for method, template in calls:
-            kite_http.check_call(method, ROOT + template.replace("{token}", "1").replace("{id}", "1"))
+            kite_http.check_call(method, ROOT + template.replace("{token}", "1").replace("{id}", "1"), caller=caller)
 
 
 def test_open_url_refuses_before_any_network(monkeypatch) -> None:
     opened: list[object] = []
     monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.open_url(ROOT + "/orders/regular", method="POST", data=b"x", timeout=1)
+        kite_http.open_url(ROOT + "/orders/regular", caller=CALLER_DOWNLOADER, method="POST", data=b"x", timeout=1)
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.open_url(ROOT + "/orders/regular", timeout=1)  # a plain GET of an order path
+        kite_http.open_url(ROOT + "/orders/regular", caller=CALLER_DOWNLOADER, timeout=1)  # GET of an order path
     assert opened == []
 
 
@@ -84,7 +92,8 @@ def test_open_url_sends_an_allowed_get(monkeypatch) -> None:
         return "RESP"
 
     monkeypatch.setattr(kite_http._OPENER, "open", fake_open)
-    assert kite_http.open_url(ROOT + "/instruments", headers={"X-Kite-Version": "3"}, timeout=7) == "RESP"
+    assert kite_http.open_url(ROOT + "/instruments", caller=CALLER_DOWNLOADER, headers={"X-Kite-Version": "3"},
+                              timeout=7) == "RESP"
     assert in_door == [True] and not egress._in_door()  # door context only around the send, reset after
     (req, timeout), = seen
     assert req.get_method() == "GET" and req.full_url == ROOT + "/instruments" and timeout == 7  # noqa: PLR2004
@@ -101,7 +110,7 @@ NON_ASCII_HOSTS = [
 @pytest.mark.parametrize("host", NON_ASCII_HOSTS)
 def test_check_call_refuses_non_ascii_hosts(host: str) -> None:
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("POST", f"https://{host}/orders/regular")
+        kite_http.check_call("POST", f"https://{host}/orders/regular", caller=CALLER_KITE_READS)
 
 
 @pytest.mark.parametrize("host", NON_ASCII_HOSTS)
@@ -109,7 +118,8 @@ def test_open_url_refuses_non_ascii_hosts_before_urlopen(monkeypatch, host: str)
     opened: list[object] = []
     monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.open_url(f"https://{host}/orders/regular", method="POST", data=b"x", timeout=1)
+        kite_http.open_url(f"https://{host}/orders/regular", caller=CALLER_DOWNLOADER, method="POST", data=b"x",
+                           timeout=1)
     assert opened == []
 
 
@@ -127,7 +137,7 @@ ODD_NETLOCS = [
 @pytest.mark.parametrize("netloc", ODD_NETLOCS)
 def test_check_call_refuses_odd_netlocs(netloc: str) -> None:
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("POST", f"https://{netloc}/orders/regular")
+        kite_http.check_call("POST", f"https://{netloc}/orders/regular", caller=CALLER_KITE_READS)
 
 
 @pytest.mark.parametrize("netloc", ODD_NETLOCS)
@@ -135,7 +145,8 @@ def test_open_url_refuses_odd_netlocs_before_urlopen(monkeypatch, netloc: str) -
     opened: list[object] = []
     monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.open_url(f"https://{netloc}/orders/regular", method="POST", data=b"x", timeout=1)
+        kite_http.open_url(f"https://{netloc}/orders/regular", caller=CALLER_DOWNLOADER, method="POST", data=b"x",
+                           timeout=1)
     assert opened == []
 
 
@@ -143,18 +154,18 @@ def test_open_url_refuses_odd_netlocs_before_urlopen(monkeypatch, netloc: str) -
                                  "api.kite.trade/orders/regular", "https:///orders/regular", "javascript:1"])
 def test_check_call_refuses_other_schemes_and_empty_hosts(url: str) -> None:
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("POST", url)
+        kite_http.check_call("POST", url, caller=CALLER_KITE_READS)
 
 
 def test_plain_non_kite_hosts_are_refused_and_uppercase_kite_still_hits_the_path_rule() -> None:
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("POST", "https://1.2.3.4/orders/regular")  # round 8: only Kite's own host is called
+        kite_http.check_call("POST", "https://1.2.3.4/orders/regular", caller=CALLER_KITE_READS)  # round 8: Kite only
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("GET", "https://example.com/x")
-    kite_http.check_call("GET", "https://api.kite.trade:443/instruments")
-    kite_http.check_call("GET", "http://api.kite.trade/instruments")
+        kite_http.check_call("GET", "https://example.com/x", caller=CALLER_DOWNLOADER)
+    kite_http.check_call("GET", "https://api.kite.trade:443/instruments", caller=CALLER_DOWNLOADER)
+    kite_http.check_call("GET", "http://api.kite.trade/instruments", caller=CALLER_DOWNLOADER)
     with pytest.raises(kite_http.KiteCallRefused):
-        kite_http.check_call("POST", "https://API.KITE.TRADE/orders/regular")
+        kite_http.check_call("POST", "https://API.KITE.TRADE/orders/regular", caller=CALLER_KITE_READS)
 
 
 # -- round 6: the websocket door's address check (ofo_app/kite_ws.py applies it) ------------------------------------
@@ -185,3 +196,60 @@ def test_the_kite_hosts_come_from_one_place() -> None:
     from ofo.broker import kite_endpoints  # noqa: PLC0415
     assert kite_http.KITE_API_HOST is kite_endpoints.KITE_API_HOST
     assert kite_http.KITE_WS_HOST is kite_endpoints.KITE_WS_HOST
+
+
+# -- #353: each call is allowed only for the module listed for it -----------------------------------------------------
+
+def _sample(template: str) -> str:
+    return ROOT + template.replace("{token}", "1").replace("{id}", "1")
+
+
+def test_353_a_call_listed_only_for_another_module_is_refused() -> None:
+    """REQ-073 AC-4 (#353): every (caller, call) pair where the call is not listed for that caller is refused with the
+    existing refusal - generated over the whole map, never hand-listed (GET /orders from the margin module included)."""
+    pairs = 0
+    for caller in ALLOWED_CALLS:
+        for other, calls in ALLOWED_CALLS.items():
+            for method, template in calls - ALLOWED_CALLS[caller]:
+                with pytest.raises(kite_http.KiteCallRefused, match="is not an allow-listed Kite call"):
+                    kite_http.check_call(method, _sample(template), caller=caller)
+                pairs += 1
+    assert pairs > 0
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("GET", ROOT + "/orders", caller="ofo_app/kite_margin.py")
+
+
+@pytest.mark.parametrize("caller", [None, "", "ofo_app/kite_marginx.py", "ofo_app/routes/execute.py", b"x",
+                                    "OFO_APP/KITE_READS.PY", 1, ("ofo_app/kite_reads.py",)])
+def test_353_a_caller_not_listed_or_not_a_plain_str_is_refused(caller: object) -> None:
+    """REQ-073 AC-4 (#353, fail closed): an unknown module, another type, or a str that is not exactly a key."""
+    with pytest.raises(kite_http.KiteCallRefused, match="caller is not a module listed"):
+        kite_http.check_call("GET", ROOT + "/instruments", caller=caller)  # type: ignore[arg-type]
+
+
+def test_353_a_str_subclass_caller_is_refused() -> None:
+    """REQ-073 AC-4 (#353): a str subclass equal to a real key is not that key (exact type)."""
+    class Sneaky(str):
+        pass
+
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.check_call("GET", ROOT + "/instruments", caller=Sneaky(CALLER_DOWNLOADER))
+
+
+def test_353_the_caller_is_required_on_both_doors() -> None:
+    """REQ-073 AC-4 (#353): neither ``check_call`` nor ``open_url`` has a default caller."""
+    with pytest.raises(TypeError):
+        kite_http.check_call("GET", ROOT + "/instruments")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        kite_http.open_url(ROOT + "/instruments", timeout=1)  # type: ignore[call-arg]
+
+
+def test_353_open_url_refuses_another_modules_call_before_any_network(monkeypatch) -> None:
+    """REQ-073 AC-4 (#353): the downloader's identity cannot read orders; nothing reaches the opener."""
+    opened: list[object] = []
+    monkeypatch.setattr(kite_http._OPENER, "open", lambda *a, **k: opened.append(a))
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.open_url(ROOT + "/orders", caller=CALLER_DOWNLOADER, timeout=1)
+    with pytest.raises(kite_http.KiteCallRefused):
+        kite_http.open_url(ROOT + "/orders", caller="ofo_app/routes/execute.py", timeout=1)
+    assert opened == []
