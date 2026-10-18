@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import dataclasses
 import datetime
 import inspect
 import json
@@ -25,13 +26,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ofo.engine import Instrument
+from ofo.engine import Action, Instrument
 from ofo.execution.basket import parse_tag
 from ofo.instruments import Catalogue
 from ofo.instruments.models import NSE_FO
 from ofo.instruments.parser import zerodha_listed
 from ofo.reconciliation.compare import MismatchKind, ReconciliationReport
 from ofo.timeutil import IST
+from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store, strategy_store
 from ofo_app import reconcile_attribution as ra
 from ofo_app.execute_replay import CORE_ID, TOKEN
@@ -123,16 +125,23 @@ def _positions(quantity: int | None = 65) -> object:
     return data
 
 
-def _attribute(store, broker_net, standalone=None, catalogue=None) -> ra.Attribution:
+@pytest.fixture(autouse=True)
+def _test_env(monkeypatch):
+    """The fake store reader is accepted only under APP_ENV exactly "test" (review round 2 MINOR 1)."""
+    monkeypatch.setenv("APP_ENV", "test")
+
+
+def _attribute(store, broker_net, standalone=None, catalogue=None, order_book=()) -> ra.Attribution:
     sources = ra.Sources(catalogue or _catalogue(), clock, _reader(store))
     alone = {} if standalone is None else standalone
-    return asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), alone, broker_net, sources, at=AT))
+    return asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), alone, broker_net, order_book, sources,
+                                                at=AT))
 
 
-def _run(store, positions, standalone=None) -> ra.Attribution:
-    """The product path: Zerodha's positions reply through the existing reply adapter, then the attribution (which
-    reads every strategy and all its plans from the store itself)."""
-    return _attribute(store, positions_from_reply(positions, _index()).net, standalone)
+def _run(store, positions, standalone=None, order_book=()) -> ra.Attribution:
+    """The product path: Zerodha's positions reply (and order book, already parsed) through the existing reply
+    adapter, then the attribution (which reads every strategy and all its plans from the store itself)."""
+    return _attribute(store, positions_from_reply(positions, _index()).net, standalone, order_book=order_book)
 
 
 def _blocked(result: ra.Attribution) -> set[str]:
@@ -256,14 +265,14 @@ def test_ac7_flat_row_with_no_strategy_reports_nothing():
     assert dict(result.outside) == {} and dict(result.raw_net) == {}
 
 
-def test_ac7_unfilled_plan_holds_nothing():
-    """AC-7, ADR-105: an order not yet filled (filled_quantity None) counts 0, so Zerodha's 65 is outside."""
-    order = _plans("orders-122104").plans[0].orders[0]
-    unfilled = _Entry("NIFTY", (StoredPlan(1, 1, "ENTRY", "open", (PlanOrder(
-        0, order.tag, IID, order.tradingsymbol, "BUY", 65, order.price, None),), AT, None, None),))
-    result = _run({1: unfilled}, _positions(65))
-    assert dict(result.held) == {}
-    assert dict(result.outside) == {KEY: 65}
+def test_ac7_open_plan_with_no_fill_and_no_book_row_is_pending():
+    """AC-7, ADR-110 (flips the round-2 pinned test): an OPEN plan with no stored fill and no row in Zerodha's order
+    book is PENDING, its strategy blocked; Zerodha's 65 is NOT outside (it may be the plan's own fill)."""
+    result = _run({1: _open_plan()}, _positions(65))
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_ABSENT),)}
+    assert result.blocked == {"1"}
+    assert dict(result.outside) == {} and dict(result.held) == {}
+    assert dict(result.raw_net) == {KEY: 65} and dict(result.compared_net) == {}
 
 
 def _row_without(key: str) -> object:
@@ -361,7 +370,7 @@ def test_ac7_the_caller_passes_no_plans_strategies_or_held_units():
     """AC-7, finding caller-supplied-verdict-trusted: the public signature takes only the account, the standalone map,
     Zerodha's net, the sources and ``at``; the default reader is the stores the routes use."""
     assert list(inspect.signature(ra.attribute_and_compare).parameters) == [
-        "account", "standalone", "broker_net", "sources", "at"]
+        "account", "standalone", "broker_net", "order_book", "sources", "at"]
     assert ra.StoreReader().list_strategies is strategy_store.list_strategies
     assert ra.StoreReader().plans_for is execution_plan_store.plans_for
 
@@ -407,19 +416,21 @@ def test_ac7_a_store_listing_that_is_not_a_list_is_refused():
 
     sources = ra.Sources(_catalogue(), clock, ra.StoreReader(listing, reader.plans_for))
     with pytest.raises(ra.AttributionError):
-        asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, sources, at=AT))
+        asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, (), sources, at=AT))
 
 
 def test_ac7_account_and_sources_are_checked():
-    """AC-7: the account needs a user; the sources must be a Sources with a StoreReader (no look-alike reader)."""
+    """AC-7: the account needs a user; the sources must be a Sources with a StoreReader (no look-alike reader, no
+    subclass)."""
     good = ra.Sources(_catalogue(), clock, _reader({1: _plans("orders-122104")}))
     for account in (ra.Account(CONN, ""), ra.Account(CONN, None), (CONN, USER)):
         with pytest.raises(ra.AttributionError):
-            asyncio.run(ra.attribute_and_compare(account, {}, {KEY: 65}, good, at=AT))
+            asyncio.run(ra.attribute_and_compare(account, {}, {KEY: 65}, (), good, at=AT))
     look_alike = SimpleNamespace(list_strategies=good.reader.list_strategies, plans_for=good.reader.plans_for)
-    for sources in (object(), ra.Sources(_catalogue(), clock, look_alike)):
+    subclass = type("Sub", (ra.StoreReader,), {})(good.reader.list_strategies, good.reader.plans_for)
+    for sources in (object(), ra.Sources(_catalogue(), clock, look_alike), ra.Sources(_catalogue(), clock, subclass)):
         with pytest.raises(ra.AttributionError):
-            asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, sources, at=AT))
+            asyncio.run(ra.attribute_and_compare(ra.Account(CONN, USER), {}, {KEY: 65}, (), sources, at=AT))
 
 
 @pytest.mark.parametrize(("zerodha", "outside", "blocked"), [
@@ -466,3 +477,250 @@ def test_ac7_split_outside_rule_by_hand():
     assert ra.split_outside({KEY: 40}, held, {KEY: -25}) == {}
     assert ra.split_outside({KEY: 90}, {}, {KEY: 25}) == {KEY: 65}
     assert ra.split_outside({KEY: -10}, {}, {KEY: 25}) == {}
+
+
+# ---- ADR-110: an OPEN plan is read from Zerodha's order book by the app's tag (GC-2g redesign, #405) ---------------
+
+def _book(name: str = "orders-122104", **changes) -> tuple:
+    """Zerodha's REAL order book, parsed by the reply adapter (``orders_from_reply``); ``changes`` rewrite fields of
+    every row (derived cases: only the status word, side, symbol, quantity or filled count)."""
+    rows = orders_from_reply(_recorded(name))
+    return tuple(dataclasses.replace(row, **changes) for row in rows) if changes else rows
+
+
+def _open_plan(strategy_id: int = 1, filled: int | None = None, legs: int = 1) -> _Entry:
+    """Strategy ``strategy_id``'s OPEN plan 1 (placed on Kite's page, Check not pressed), built from the real order
+    row: ``legs`` orders BUY 65 on the real contract, tags OFS<s>V1L0.., stored fill ``filled`` (None: not closed)."""
+    row = orders_from_reply(_recorded("orders-122104"))[0]
+    orders = tuple(PlanOrder(leg, f"OFS{strategy_id}V1L{leg}", IID, row.tradingsymbol, "BUY", row.quantity,
+                             row.price, filled) for leg in range(legs))
+    return _Entry("NIFTY", (StoredPlan(strategy_id, 1, "ENTRY", "open", orders, AT, None, None),))
+
+
+def test_ac7_open_plan_final_at_zerodha_counts_as_the_strategys_own():
+    """AC-7, ADR-110 core proof: plan 1 OPEN, Zerodha's real order book shows OFS1V1L0 BUY 65 COMPLETE (filled 65),
+    real positions net 65 -> the fill (65, from the order book) is strategy 1's; not blocked, nothing outside,
+    nothing pending (ADR-110: "the normal comparison of ADR-109 (2) applies" even though Check was never pressed)."""
+    result = _run({1: _open_plan()}, _recorded("positions-122104"), order_book=_book())
+    assert dict(result.pending) == {}
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {KEY: 65}}
+    assert dict(result.outside) == {}
+    assert result.report.mismatches == ()
+    assert result.blocked == frozenset()
+
+
+def test_ac7_open_plan_not_final_is_pending_and_blocked():
+    """AC-7, ADR-110 core proof: the same OPEN plan with the order row's status rewritten to OPEN -> the contract is
+    pending (not outside, not agreeing), strategy 1 blocked, 0 outside, even with Zerodha 130 (attack 2)."""
+    for zerodha in (65, 130):
+        result = _run({1: _open_plan()}, _positions(zerodha), order_book=_book(status="OPEN"))
+        assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_NOT_FINAL),)}
+        assert result.blocked == {"1"}
+        assert dict(result.outside) == {} and dict(result.compared_net) == {}
+        assert dict(result.raw_net) == {KEY: zerodha}
+        assert result.report.mismatches == ()  # nothing on the pending contract reached compare
+
+
+def test_ac7_closed_plan_filled_agrees():
+    """AC-7, ADR-110 core proof: the plan CLOSED filled 65 (stored fill), Zerodha 65 -> agrees, nothing outside,
+    nothing pending; a closed plan never reads the order book (an OPEN row for its tag changes nothing)."""
+    for book in ((), _book(status="OPEN")):
+        result = _run({1: _plans("orders-122104")}, _recorded("positions-122104"), order_book=book)
+        assert result.report.mismatches == () and dict(result.outside) == {} and dict(result.pending) == {}
+        assert result.blocked == frozenset()
+
+
+def test_ac7_open_plan_final_with_a_shortfall_is_blocked_by_compare():
+    """AC-7, attack 1: plan open + order COMPLETE (real) + Zerodha net 0 -> not pending forever: the 65 fill is the
+    strategy's, Zerodha 0 is a shortfall, compare blocks it (AC-6)."""
+    result = _run({1: _open_plan()}, _positions(0), order_book=_book())
+    assert dict(result.pending) == {}
+    assert set(result.report.blocked_strategy_ids) == {"1"} and result.blocked == {"1"}
+    assert [m.kind for m in result.report.mismatches] == [MismatchKind.MISSING_PLATFORM_POSITION]
+
+
+@pytest.mark.parametrize("filled", [None, 65])
+def test_ac7_open_plan_absent_from_the_book_is_pending(filled):
+    """AC-7, attack 3: plan open, the user never returned, no row for its tag (never placed, or an earlier day's
+    order: Kite's book holds today's only), Zerodha 0 -> pending, blocked; a stored fill on an open plan is never
+    read (65 stored, still pending)."""
+    result = _run({1: _open_plan(filled=filled)}, _positions(0), order_book=())
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_ABSENT),)}
+    assert result.blocked == {"1"} and dict(result.held) == {}
+
+
+def test_ac7_open_plan_one_final_one_working_is_pending():
+    """AC-7, attack 4: plan open with two orders (L0 COMPLETE, the real row; L1 OPEN) -> pending on the contract,
+    naming L1 only; blocked; nothing outside with Zerodha 130."""
+    real = _book()[0]
+    book = (real, dataclasses.replace(real, order_id="2", tag="OFS1V1L1", status="OPEN", filled_quantity=0))
+    result = _run({1: _open_plan(legs=2)}, _positions(130), order_book=book)
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L1", ra.PENDING_NOT_FINAL),)}
+    assert result.blocked == {"1"} and dict(result.outside) == {}
+
+
+def test_ac7_open_plan_cancelled_unfilled_holds_nothing():
+    """AC-7, attack 5: plan open + order CANCELLED filled 0, Zerodha 65 -> final, not pending; the strategy holds 0
+    there, so Zerodha's 65 is outside and blocks nothing."""
+    result = _run({1: _open_plan()}, _positions(65), order_book=_book(status="CANCELLED", filled_quantity=0))
+    assert dict(result.pending) == {} and dict(result.held) == {}
+    assert dict(result.outside) == {KEY: 65}
+    assert result.blocked == frozenset()
+
+
+def test_ac7_open_exit_plan_final_closes_the_position():
+    """AC-7, ADR-110 with an EXIT: plan 1 closed (BUY 65 filled), plan 2 EXIT open; the real 15:10 book shows
+    OFS1V2L0 SELL 65 COMPLETE -> the strategy holds 65 - 65 = 0; Zerodha's real flat row -> nothing pending, nothing
+    blocked. The same EXIT row still OPEN -> pending on the contract, blocked."""
+    entry = _plans("orders-122104").plans[0]
+    sell = _book("orders-151006")[1]
+    exit_ = StoredPlan(1, 2, "EXIT", "open", (PlanOrder(0, "OFS1V2L0", IID, sell.tradingsymbol, "SELL", 65,
+                                                        sell.price, None),), AT, None, None)
+    store = {1: _Entry("NIFTY", (entry, exit_))}
+    done = _run(store, _recorded("positions-151006"), order_book=_book("orders-151006"))
+    assert dict(done.pending) == {} and dict(done.held) == {} and done.blocked == frozenset()
+    assert done.report.mismatches == ()
+    working = _run(store, _recorded("positions-151006"), order_book=_book("orders-151006", status="OPEN"))
+    assert set(working.pending) == {KEY} and working.blocked == {"1"}
+
+
+def test_ac7_a_pending_contract_blocks_every_holder_and_spares_other_contracts():
+    """AC-7, attack 6, Q224: strategy 1 holds 65 (closed) on the real contract and 65 on a second contract; strategy
+    2's plan on the real contract is open and absent from the book. Zerodha 130 on each -> the real contract is
+    pending: both strategies blocked, nothing outside there, a recorded standalone there not reported unseen. The
+    second contract (no pending plan) is attributed as usual: 130 - 65 = 65 outside."""
+    real = _listed()
+    other_token = (int(TOKEN) >> 8) + 2
+    other = zerodha_listed(
+        instrument_token=int(TOKEN) + 2, exchange_token=other_token, tradingsymbol="NIFTY26O1923700CE",
+        name=real.contract.name, expiry=real.contract.expiry, strike=Decimal("23700"), tick_size=Decimal("0.05"),
+        lot_size=real.contract.lot_size, instrument_type=real.contract.instrument_type, segment="NFO-OPT",
+        exchange="NFO")
+    key2 = ("NIFTY", Instrument.CE, Decimal("23700.00"), KEY[3])
+    one = _second_buy(_plans("orders-122104"), iid=f"{NSE_FO}:{other_token}")
+    result = _attribute({1: one, 2: _open_plan(2)}, {KEY: 130, key2: 130}, {KEY: 25}, catalogue=_catalogue(other))
+    assert dict(result.pending) == {KEY: (ra.Pending("2", 1, "OFS2V1L0", ra.PENDING_ABSENT),)}
+    assert result.blocked == {"1", "2"}
+    assert dict(result.outside) == {key2: 65}
+    assert dict(result.standalone_unseen) == {}
+    assert {sid: dict(u) for sid, u in result.held.items()} == {"1": {key2: 65}}
+    assert result.report.mismatches == ()
+
+
+def test_ac7_the_final_states_are_exactly_the_allow_list():
+    """AC-7, ADR-110 "in a final state", finding guard-as-forbidden-list: the final words are exactly COMPLETE,
+    CANCELLED, REJECTED (Kite's terminal statuses, written out by hand here)."""
+    assert ep.TERMINAL_ORDER_STATUSES == {"COMPLETE", "CANCELLED", "REJECTED"}
+
+
+@pytest.mark.parametrize("status", ["OPEN", "TRIGGER PENDING", "AMO REQ RECEIVED", "PUT ORDER REQ RECEIVED",
+                                    "MODIFY VALIDATION PENDING", "VALIDATION PENDING", "OPEN PENDING", "complete",
+                                    "Complete", " COMPLETE", "COMPLETE ", "cancelled", "REJECTED.", ""])
+def test_ac7_any_other_status_word_is_not_final(status):
+    """AC-7, attack 7: any status word outside the allow-list (working states, unknown text, case or space variants)
+    is not final -> pending, blocked."""
+    result = _run({1: _open_plan()}, _positions(65), order_book=_book(status=status))
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_NOT_FINAL),)}
+    assert result.blocked == {"1"}
+
+
+@pytest.mark.parametrize("status", sorted(ep.TERMINAL_ORDER_STATUSES))
+def test_ac7_every_final_word_ends_the_wait(status):
+    """AC-7: each allowed final word ends the wait (the fill read from the row: 65 -> agrees with Zerodha 65)."""
+    result = _run({1: _open_plan()}, _positions(65), order_book=_book(status=status))
+    assert dict(result.pending) == {} and result.blocked == frozenset()
+
+
+def test_ac7_two_book_rows_with_one_tag_are_pending_never_summed():
+    """AC-7: two rows carry OFS1V1L0 (both COMPLETE, 65 each) -> pending with its own reason; never read as 130."""
+    real = _book()[0]
+    book = (real, dataclasses.replace(real, order_id="2"))
+    result = _run({1: _open_plan()}, _positions(130), order_book=book)
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_DUPLICATE_TAG),)}
+    assert result.blocked == {"1"} and dict(result.outside) == {}
+
+
+@pytest.mark.parametrize("changes", [
+    pytest.param({"side": Action.SELL}, id="side"),
+    pytest.param({"tradingsymbol": "NIFTY26O1923700CE"}, id="tradingsymbol"),
+    pytest.param({"quantity": 130}, id="quantity"),
+])
+def test_ac7_a_book_row_unlike_the_stored_order_is_refused(changes):
+    """AC-7: a row with the plan's tag but another side, symbol or quantity is not the order we placed -> refused
+    (AttributionError), whether the row is final or not."""
+    for status in ("COMPLETE", "OPEN"):
+        with pytest.raises(ra.AttributionError, match="not the stored"):
+            _run({1: _open_plan()}, _positions(65), order_book=_book(status=status, **changes))
+
+
+@pytest.mark.parametrize("book", [
+    pytest.param(lambda: None, id="none"),
+    pytest.param(lambda: {"OFS1V1L0": 1}, id="mapping"),
+    pytest.param(lambda: _book(quantity=True), id="bool-quantity"),
+    pytest.param(lambda: _book(filled_quantity=Decimal("65")), id="decimal-fill"),
+    pytest.param(lambda: _book(filled_quantity=66), id="overfilled"),
+    pytest.param(lambda: _book(quantity=0), id="zero-quantity"),
+    pytest.param(lambda: _book(side="BUY"), id="side-text"),
+    pytest.param(lambda: _book(status=None), id="no-status"),
+    pytest.param(lambda: _book(tag=""), id="empty-tag"),
+    pytest.param(lambda: _book(tradingsymbol=None), id="no-symbol"),
+    pytest.param(lambda: (object(),), id="not-a-row"),
+])
+def test_ac7_an_unreadable_order_book_is_refused(book):
+    """AC-7, finding broker-reply-shape-unproven-at-domain-boundary: the order book is checked again here; a wrong
+    shape is refused, never read as "absent" or as a fill."""
+    with pytest.raises(ra.AttributionError):
+        _run({1: _open_plan()}, _positions(65), order_book=book())
+
+
+def test_ac7_untagged_and_other_tags_in_the_book_are_ignored():
+    """AC-7: rows with no tag or another plan's tag do not satisfy this plan's order (absent -> pending)."""
+    real = _book()[0]
+    book = (dataclasses.replace(real, tag=None), dataclasses.replace(real, tag="OFS9V1L0"))
+    result = _run({1: _open_plan()}, _positions(65), order_book=book)
+    assert dict(result.pending) == {KEY: (ra.Pending("1", 1, "OFS1V1L0", ra.PENDING_ABSENT),)}
+
+
+# ---- review round 2 MINOR 1 and MINOR 2 ------------------------------------------------------------------------
+
+@pytest.mark.parametrize("env", ["production", "development", "TEST", " test", "test ", "tests", ""])
+def test_ac7_a_fake_store_reader_is_refused_outside_app_env_test(env, monkeypatch):
+    """AC-7, MINOR 1: a reader whose calls are not the two store functions (a filtering function) is accepted only
+    under APP_ENV exactly "test"; the default reader is accepted in any environment."""
+    monkeypatch.setenv("APP_ENV", env)
+    with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
+        _run({1: _plans("orders-122104")}, _positions(65))
+    assert ra._check_reader(ra.StoreReader()) == ra.StoreReader()
+    half = ra.StoreReader(plans_for=_reader({}).plans_for)  # only one call replaced: still not the stores
+    with pytest.raises(ra.AttributionError, match="APP_ENV=test"):
+        ra._check_reader(half)
+
+
+def test_ac7_outside_never_exceeds_zerodhas_holding():
+    """AC-7, MINOR 2, by hand: own +65, standalone -100 recorded, Zerodha +65. Expected = 65 - 100 = -35; the old
+    rule took 65 - (-35) = 100 outside, more than Zerodha holds. Zerodha's 65 is the strategy's 65, so 0 is outside
+    and the standalone short of 100 is not at Zerodha: standalone_unseen -100. Compare decides (compare.py
+    allocation rule): compared 65 - expected (65 - 100) = 100, a non-zero difference on a contract strategy 1 holds
+    -> blocked. Zerodha +200 -> 200 - 65 = 135 outside (<= 200), standalone still unseen -100."""
+    result = _run({1: _plans("orders-122104")}, _positions(65), {KEY: -100})
+    assert dict(result.outside) == {}
+    assert dict(result.standalone_unseen) == {KEY: -100}
+    assert result.blocked == {"1"} and set(result.report.blocked_strategy_ids) == {"1"}
+    held = {"1": {KEY: 65}}
+    assert ra.split_outside({KEY: 65}, held, {KEY: -100}) == {}
+    assert ra.split_outside({KEY: 200}, held, {KEY: -100}) == {KEY: 135}
+    assert ra.split_outside({KEY: 10}, held, {KEY: -100}) == {}
+    assert ra.standalone_unseen({KEY: 200}, held, {KEY: -100}, {KEY: 135}) == {KEY: -100}
+
+
+def test_ac7_standalone_unseen_by_hand():
+    """AC-7: what is left of Zerodha's net after the strategies and the outside lots covers the standalone up to its
+    size. own 65 + standalone 25, Zerodha 90 -> 25 left -> 0 unseen; Zerodha 65 -> 0 left -> 25 unseen; own 65,
+    standalone -25, Zerodha 65, 25 outside -> -25 left -> 0 unseen; standalone 25 alone, Zerodha 0 -> 25 unseen;
+    Zerodha 10 -> 15 unseen."""
+    held = {"1": {KEY: 65}}
+    assert ra.standalone_unseen({KEY: 90}, held, {KEY: 25}, {}) == {}
+    assert ra.standalone_unseen({KEY: 65}, held, {KEY: 25}, {}) == {KEY: 25}
+    assert ra.standalone_unseen({KEY: 65}, held, {KEY: -25}, {KEY: 25}) == {}
+    assert ra.standalone_unseen({}, {}, {KEY: 25}, {}) == {KEY: 25}
+    assert ra.standalone_unseen({KEY: 10}, {}, {KEY: 25}, {}) == {KEY: 15}
