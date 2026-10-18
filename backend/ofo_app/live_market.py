@@ -244,6 +244,11 @@ def latest_depth(instrument_id: str) -> Depth | None:
     return None if reader is None else reader(instrument_id, ctx.clock())
 
 
+def current_state() -> str:
+    """W-089: the live market's state word for the Settings page (``off`` when LIVE_MARKET is not on)."""
+    return NOT_STARTED if _current is None else _current.state
+
+
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
     return None if _current is None else _current.feed
 

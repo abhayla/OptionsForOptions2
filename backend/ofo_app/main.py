@@ -21,6 +21,7 @@ from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db
 from ofo_app.routes import (
     broker,
+    broker_status,
     catalogue,
     execute,
     execution_return,
@@ -99,6 +100,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     broker.mount(app, config)
+    app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
