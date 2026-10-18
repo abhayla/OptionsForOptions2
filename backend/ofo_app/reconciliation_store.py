@@ -24,7 +24,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from ofo.strategy.definition import MAX_UNITS
 from sqlalchemy import text
@@ -64,7 +64,7 @@ class ReconciliationStoreError(ValueError):
 class StoredResolution:
     action: str
     actor: str
-    note: Optional[str]
+    note: str | None
     resolved_at: datetime
 
 
@@ -78,7 +78,7 @@ class StoredMismatch:
     report: Mapping[str, Any]
     source: str
     detected_at: datetime
-    resolution: Optional[StoredResolution]
+    resolution: StoredResolution | None
 
 
 def _contract_key(value: Any, code: str) -> str:
@@ -106,7 +106,7 @@ def _report(value: Any) -> str:
     return encoded
 
 
-def _note(value: Any) -> Optional[str]:
+def _note(value: Any) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip() or value != value.strip() or len(value) > MAX_TEXT:
@@ -173,7 +173,7 @@ async def record_mismatch(conn: Any, user_ref: str, strategy_id: int, *, contrac
 
 
 async def record_resolution(conn: Any, user_ref: str, strategy_id: int, mismatch_id: int, *,  # noqa: PLR0913
-                            action: str, note: Optional[str] = None) -> None:
+                            action: str, note: str | None = None) -> None:
     """Records the one resolution of an unresolved mismatch of the user's strategy; the acting user is the actor."""
     strategy_id = await _lock(conn, user_ref, strategy_id)
     if isinstance(mismatch_id, bool) or not isinstance(mismatch_id, int) or not 1 <= mismatch_id <= 2**63 - 1:
