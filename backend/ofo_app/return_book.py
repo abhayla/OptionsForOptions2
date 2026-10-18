@@ -22,6 +22,10 @@ from ofo_app.execution_return import TodaysBook
 from ofo_app.kite_replies import BrokerOrderRow, fill_from_trade_row, order_from_row
 
 
+class TradeWithoutOrder(ValueError):
+    """A trade names an order that no order row holds (issue 381): the route says so in its own message."""
+
+
 def _ours(row: Mapping[str, object], strategy_id: int) -> bool:
     try:
         return parse_tag(row.get("tag")).strategy_id == strategy_id
@@ -70,10 +74,10 @@ def _require_trade_orders(order_rows: Sequence[Mapping[str, object]],
                           trade_rows: Sequence[Mapping[str, object]]) -> None:
     """Issue 381: a trade whose order is in no order row (any strategy, any tag) means the two reads disagree. Dropping
     it would let a plan close ``nothing_placed`` while Zerodha shows its fill, so the whole read is refused."""
-    known = {row.get("order_id") for row in order_rows if isinstance(row, Mapping)}
+    known = {row.get("order_id") for row in order_rows if isinstance(row, Mapping)} - {None}
     for row in trade_rows:
         if isinstance(row, Mapping) and row.get("order_id") not in known:
-            raise ValueError("a trade names an order the orders read does not hold")
+            raise TradeWithoutOrder("a trade names an order the orders read does not hold")
 
 
 def read_book(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[Mapping[str, object]],
@@ -85,4 +89,4 @@ def read_book(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[M
     return TodaysBook(ours, tuple(external), traded, fills, conflicting)
 
 
-__all__ = ["read_book"]
+__all__ = ["TradeWithoutOrder", "read_book"]

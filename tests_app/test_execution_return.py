@@ -255,8 +255,12 @@ def test_381_both_reads_empty_is_nothing_placed_and_a_trade_without_an_order_id_
     unreadable and refuses."""
     assert er.classify(ENTRY_OPEN, _book([], [], (ENTRY_OPEN,)), TODAY).state == er.NOTHING_PLACED
     nameless = {k: v for k, v in _data("trades-122104")[0].items() if k != "order_id"}
-    with pytest.raises(ValueError, match="trade names an order"):
+    with pytest.raises(rb.TradeWithoutOrder, match="trade names an order"):
         _book(_data("orders-122104"), [nameless], (ENTRY_OPEN,))
+    # an order row with no order id must not make a nameless trade "known" (None is never a known id)
+    nameless_order = {k: v for k, v in _data("orders-122104")[0].items() if k != "order_id"}
+    with pytest.raises(rb.TradeWithoutOrder, match="trade names an order"):
+        rb.read_book([nameless_order], [nameless], 1, frozenset())
 
 
 class _OrderedReads:
@@ -561,6 +565,34 @@ async def test_ac3_core_another_strategys_open_plan_filled_at_kite_makes_the_con
                                           "other_strategies_units": 0, "unexplained_units": 0, "mismatch": None,
                                           "reconciliation_reason": "another_strategy_plan_unsettled"}]
             assert (body["mismatches"], body["blocked"]) == (1, True)
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_381_route_trade_without_its_order_is_409_with_its_own_message_and_the_plan_stays_open(
+        app_engine, admin_engine, monkeypatch, caplog):
+    """Issue 381 through the route: orders read empty, default (real) trades read has the 65-unit fill -> 409 with the
+    return_trade_without_order wording (not the Kite-outage text), a log line, and the plan stays open."""
+    from ofo.errors import CATALOGUE  # noqa: PLC0415
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
+            response = await _post(_app_for(conn, user, _Reads("122104", orders=[])), sid)
+            assert response.status_code == HTTPStatus.CONFLICT
+            assert CATALOGUE["return_trade_without_order"].what_happened in response.text
+            assert "a trade names an order missing from the orders read" in caplog.text
+            (stored,) = await plans.plans_for(conn, user, sid)
+            assert (stored.status, stored.close_reason) == ("open", None)
         finally:
             await trans.rollback()
 
