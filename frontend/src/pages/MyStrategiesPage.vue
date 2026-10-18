@@ -10,6 +10,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { fetchSavedLegs } from '@/lib/saveDraft'
+import { buildDraft } from '@/lib/legPicker'
 
 const COMPLETED_STATUSES = []
 
@@ -19,6 +20,7 @@ const completedOnly = computed(() => route.meta.completedOnly === true)
 const rows = ref([])
 const loaded = ref(false)
 const busy = ref(false)
+const notOpenable = ref(null)
 const errorParts = ref(null)
 
 const shown = computed(() => (completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
@@ -39,11 +41,14 @@ async function openInBuilder(id) {
   if (busy.value) return
   busy.value = true
   errorParts.value = null
+  notOpenable.value = null
   try {
     const legs = await fetchSavedLegs(api, id)
-    const draft = {
-      underlying: legs[0]?.underlying,
-      legs: legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
+    const draft = buildDraft(legs)
+    // buildDraft drops a leg with no planned entry; a link that silently loses legs is refused, not opened.
+    if (!draft || draft.legs.length !== legs.length) {
+      notOpenable.value = id
+      return
     }
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(draft) } })
   } catch (e) {
@@ -71,6 +76,7 @@ async function openInBuilder(id) {
         <span class="text-ink-muted">last saved {{ istTime(s.updated_at) }}</span>
         <button type="button" class="underline" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
         <router-link :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
+        <span v-if="notOpenable === s.id" class="text-ink-muted" data-testid="not-openable">This strategy has legs without a planned entry, so it cannot be opened in the Builder from here.</span>
       </li>
     </ul>
   </section>

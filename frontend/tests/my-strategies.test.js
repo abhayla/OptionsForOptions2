@@ -4,6 +4,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
+const saved = vi.hoisted(() => ({ legs: [] }))
+vi.mock('@/lib/saveDraft', async (importActual) => ({ ...(await importActual()), fetchSavedLegs: async () => saved.legs }))
 let answer = () => Promise.reject(new Error('no answer set'))
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
@@ -12,8 +14,9 @@ vi.mock('@/services/api', async (importActual) => {
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
+let router
 async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
-  const router = createRouter({
+  router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/s', component: MyStrategiesPage, meta },
@@ -59,5 +62,30 @@ describe('My Strategies page', () => {
     const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
     expect(w.find('[data-testid="strategy-row"]').exists()).toBe(false)
     expect(w.get('[data-testid="list-empty"]').text()).toContain('No strategy is completed')
+  })
+
+  const leg = (entry) => ({ underlying: 'NIFTY', instrument_id: 'NFO-OPT:1', action: 'SELL', lots: 1, planned_entry: entry, captured_at: entry ? '2026-10-14T09:55:00Z' : null })
+
+  it('Open in Builder pushes /strategy/builder with the draft query built from the stored legs', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft')] } })
+    saved.legs = [leg('101.25')]
+    const w = await open()
+    await w.get('[data-testid="open-builder-7"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/strategy/builder')
+    expect(JSON.parse(router.currentRoute.value.query.draft)).toEqual({
+      underlying: 'NIFTY',
+      legs: [{ instrument_id: 'NFO-OPT:1', action: 'SELL', lots: 1, planned_entry: '101.25', captured_at: '2026-10-14T09:55:00Z' }],
+    })
+  })
+
+  it('a strategy with an unpriced leg (needs_reprice) shows a message on the row and does not navigate', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft')] } })
+    saved.legs = [leg('101.25'), leg(null)]
+    const w = await open()
+    await w.get('[data-testid="open-builder-7"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="not-openable"]').exists()).toBe(true)
+    expect(router.currentRoute.value.path).toBe('/s')
   })
 })
