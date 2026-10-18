@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import shutil
 import sys
@@ -161,6 +162,51 @@ def test_tag_prefix_selects_the_fills_of_those_orders(folder, capsys) -> None:
     assert code == OK and "gross_pnl_from_fills -130.00" in out
     code, out = run(capsys, folder, "pnl", "--tag-prefix", "NOPE")
     assert code == REFUSED and "at least one fill" in out
+
+
+SAVED = {"orders": "orders-151006.json", "trades": "trades-151006.json", "positions": "positions-151006.json"}
+
+
+def _without_saved_lines(out: str) -> str:
+    return "\n".join(line for line in out.splitlines() if not line.startswith("saved "))
+
+
+def test_save_dir_keeps_the_exact_replies_and_replay_gives_identical_output(folder, capsys, tmp_path) -> None:
+    """Core: pnl --save-dir writes the 3 raw replies byte for byte; --replay of that folder prints the same lines."""
+    target = tmp_path / "after-exit"
+    code, first = run(capsys, folder, "pnl", "--tag-prefix", "OFS1", "--save-dir", str(target))
+    assert code == OK and sorted(os.listdir(target)) == [
+        "orders-saved.json", "positions-saved.json", "trades-saved.json"]
+    for name, original in SAVED.items():
+        assert (target / f"{name}-saved.json").read_bytes() == (folder / original).read_bytes()
+    code, second = run(capsys, target, "pnl", "--tag-prefix", "OFS1")
+    assert code == OK and second == _without_saved_lines(first) + "\n"
+    assert "gross_pnl_from_fills -130.00" in second
+
+
+def test_save_dir_refuses_a_folder_that_is_not_empty_and_writes_nothing(folder, capsys, tmp_path) -> None:
+    """A non-empty DIR (or a file) is refused before any read; its content is untouched (never overwritten)."""
+    target = tmp_path / "taken"
+    target.mkdir()
+    (target / "orders-saved.json").write_text("keep", encoding="utf-8")
+    code, out = run(capsys, folder, "pnl", "--save-dir", str(target))
+    assert code == REFUSED and "not empty" in out and "gross_pnl" not in out
+    assert os.listdir(target) == ["orders-saved.json"]
+    assert (target / "orders-saved.json").read_text(encoding="utf-8") == "keep"
+    plain_file = tmp_path / "a-file"
+    plain_file.write_text("x", encoding="utf-8")
+    assert run(capsys, folder, "pnl", "--save-dir", str(plain_file))[0] == REFUSED
+
+
+def test_save_dir_accepts_an_existing_empty_folder_and_saves_orders_without_a_tag_prefix(
+        folder, capsys, tmp_path) -> None:
+    """--save-dir without --tag-prefix still saves orders (3 of 3), and an existing empty DIR is fine."""
+    target = tmp_path / "empty"
+    target.mkdir()
+    code, out = run(capsys, folder, "pnl", "--save-dir", str(target))
+    assert code == OK and "gross_pnl_from_fills -130.00" in out
+    assert (target / "orders-saved.json").read_bytes() == (folder / SAVED["orders"]).read_bytes()
+    assert len(os.listdir(target)) == len(SAVED)
 
 
 def test_a_fill_that_leaves_the_contract_open_is_a_stop(folder, capsys) -> None:

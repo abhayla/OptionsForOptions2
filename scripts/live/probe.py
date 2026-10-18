@@ -308,19 +308,53 @@ def _kite_position_pnl(positions: dict, contracts: set[str]) -> tuple[Decimal, D
     return pnl, unrealised
 
 
+_SAVED_REPLIES = {"orders": "/orders", "trades": "/trades", "positions": "/portfolio/positions"}
+
+
+def _check_save_dir(text: str | None) -> Path | None:
+    """The folder pnl --save-dir writes into: new or empty, never one that already holds anything (evidence is not
+    overwritten)."""
+    if text is None:
+        return None
+    target = Path(text)
+    if target.exists() and (not target.is_dir() or any(target.iterdir())):
+        raise ProbeStop(f"--save-dir {target} exists and is not empty; evidence is never overwritten")
+    return target
+
+
+def _read_exact(path: Path) -> str:
+    """A recorded reply as stored: no newline translation, so a saved copy is byte for byte the same."""
+    with open(path, encoding="utf-8", newline="") as src:
+        return src.read()
+
+
+def _save_replies(target: Path, raw: dict[str, str]) -> None:
+    """Write each reply text exactly as read, named so ``--replay`` finds it (``<name>-saved.json``)."""
+    target.mkdir(parents=True, exist_ok=True)
+    for name, path in _SAVED_REPLIES.items():
+        with open(target / f"{name}-saved.json", "x", encoding="utf-8", newline="") as out:
+            out.write(raw[path])
+        print(f"saved {name}-saved.json")
+
+
 def cmd_pnl(args) -> int:
+    save_dir = _check_save_dir(args.save_dir)
+    need_orders = bool(args.tag_prefix) or save_dir is not None
     if args.replay:
         folder = Path(args.replay)
-        texts = {"/trades": _latest(folder, "trades").read_text(encoding="utf-8"),
-                 "/portfolio/positions": _latest(folder, "positions").read_text(encoding="utf-8")}
-        if args.tag_prefix:
-            texts["/orders"] = _latest(folder, "orders").read_text(encoding="utf-8")
-        reads, _, _ = _replay_clients(folder, texts)
+        texts = {"/trades": _read_exact(_latest(folder, "trades")),
+                 "/portfolio/positions": _read_exact(_latest(folder, "positions"))}
+        if need_orders:
+            texts["/orders"] = _read_exact(_latest(folder, "orders"))
+        reads, _, recorder = _replay_clients(folder, texts)
     else:
-        reads, _, _ = _owner_clients(False)
+        reads, _, recorder = _owner_clients(save_dir is not None)
     trades, positions = reads.fetch_trades(), reads.fetch_positions()
+    orders = reads.fetch_orders() if need_orders else []
+    if save_dir is not None:
+        _save_replies(save_dir, recorder.raw)
     if args.tag_prefix:
-        ids = {o.get("order_id") for o in reads.fetch_orders() if str(o.get("tag") or "").startswith(args.tag_prefix)}
+        ids = {o.get("order_id") for o in orders if str(o.get("tag") or "").startswith(args.tag_prefix)}
         trades = [t for t in trades if t.get("order_id") in ids]
     try:
         fills = fills_from_reply(trades)
@@ -400,6 +434,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(run=cmd_contract)
     n = sub.add_parser("pnl")
     n.add_argument("--tag-prefix")
+    n.add_argument("--save-dir", metavar="DIR",
+                   help="also write the raw orders, trades and positions replies into DIR (new or empty)")
     n.set_defaults(run=cmd_pnl)
     a = sub.add_parser("audit")
     a.add_argument("--since", metavar="ISO")
