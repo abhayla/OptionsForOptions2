@@ -4,9 +4,9 @@ Applies on top of `goal-contract-GC-3L-2026-10-19.md`, which is not edited. Wher
 Owner runbook for the same day: `gc-3l-runbook-2026-10-19.md`.
 
 ## 1. Monday 2026-10-19 timeline (IST)
-- **08:30** if `lock/gc-2f` still exists on origin (GC-2f overran the cap in its lock commit), first stop the GC-2f
-  session; then the main checkout `git switch main`, clean, HEAD = origin/main, and ports 8765/4173 free (stop by
-  PID) before step 0.5; then the owner may delete the lock (`git push origin --delete lock/gc-2f`) and GC-3L starts;
+- **08:30** if `lock/gc-2f` or `lock/gc-2g` still exists on origin (that run overran the cap in its lock commit),
+  first stop that session; then the main checkout `git switch main`, clean, HEAD = origin/main, and ports 8765/4173 free (stop by
+  PID) before step 0.5; then the owner may delete that lock (`git push origin --delete lock/gc-2f` or `lock/gc-2g`) and GC-3L starts;
   GC-2f's open PRs stay open and unmerged. Main may carry
   GC-2f's docs-only close-out commit (section 2 covers it). Because goal-chain.md then still marks GC-2f NEXT, start
   GC-3L with the chain prompt with "run the contract marked NEXT" replaced by "run GC-3L (GC-2f overran; it is
