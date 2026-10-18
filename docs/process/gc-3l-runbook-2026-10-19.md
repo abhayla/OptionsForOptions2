@@ -31,6 +31,9 @@ Built from `goal-contract-GC-3L-2026-10-19.md`, `goal-contract-GC-3P-2026-10-18.
    Check, or the Check button is gone. Wait for live prices, click **Prepare exit orders**, and repeat steps 3 to 7
    (SELL the held quantity, money received and charges shown).
 
+## L4 read-back (Claude, about 12:00)
+After the exit, Claude runs `python scripts/live/probe.py pnl --tag-prefix <prefix> --save-dir D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit` (the folder must not exist yet or be empty). It saves the raw Orders, Trades and Positions replies there (`orders-saved.json`, `trades-saved.json`, `positions-saved.json`) for GC-3F, and `probe.py --replay <that folder> pnl --tag-prefix <prefix>` reads them back with no Kite call.
+
 ## Never place twice
 Click **Open Kite's page again** ONLY if no Kite tab opened AND Kite's Orders page shows no order with the strategy's tag. If an order exists, never open it again. Never retry an ENTRY (ADR-017).
 
