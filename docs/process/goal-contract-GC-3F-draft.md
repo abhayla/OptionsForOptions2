@@ -24,11 +24,12 @@ Order (each: `gh pr update-branch N`, `python tools/merge_when_green.py N` in th
    on `strategy-save-draft`, W-090's new controls are the suspect: fix before merge).
 Each PR's description says HOLD; remove the draft flag only at merge time.
 
-## Step 1 - W-108 redesign of the open-plan case (#405, parked by GC-2f)
-Fresh builder (Opus), brief = #405's findings: an open plan's orders count 0 held, so the app's own lots read as
-outside (MAJOR); refuse a non-default store reader outside tests; cap the outside count at Zerodha's holding. Then a
-fresh Opus review (at most 2 rounds); then W-111 (`build/W-111-positions`, stacked, never reviewed) gets its Tier A
-review. Merge W-108 then W-111.
+## Step 1 - merge #398 (W-108) then W-111
+GC-2g did the W-108 redesign (ADR-110 pending state, closed-plan drift; two fresh Opus rounds, round 2 PASS at
+05ae2c5) and W-111's rebase + review (see `session-handover-2026-10-19-gc2g.md`). Merge #398 after #395 (its frontend
+red was the #370 flake), then W-111's PR, each with `gh pr update-branch N` + `merge_when_green.py N` + `merge_audit.py`.
+Step 2's wiring passes Zerodha's order book (`orders_from_reply`) beside the positions net and uses
+`Attribution.blocked`; an unreadable orders reply refuses (never an empty book).
 
 ## Step 2 - #380 option C (ADR-109), 3 stacked Tier A PRs (~1,600-1,900 product lines, `fix-380-draft-2026-10-18.md`)
 1. Migration (own PR): stored mismatch record, sticky block (Q222), standalone store (REQ-060 AC-7).

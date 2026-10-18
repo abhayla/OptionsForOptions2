@@ -108,7 +108,7 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
 - Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
   `gh pr checks --watch && gh pr merge`, which merges before CI has started.
 - Fast delivery (owner 2026-10-16, revised by ADR-106; reasons there and in `docs/process/goal-chain.md`):
-  1. Before a push: the fast checks (spec tools below, `scripts/ruff_ratchet.py`, `pr_close_check.py`), the guard tests
+  1. Before a push: the fast checks (spec tools below, `scripts/ruff_ratchet.py`, `pr_close_check.py`, `coverage.py . --check`), the guard tests
      + `pytest -m repo_scan tests` (~75 s) and the changed files' tests. Full suites and DB tests run in CI; exceptions:
      a migration or DB store runs its own test file, a regenerated file its `--check`. Overrides kit run-discipline C3.
   2. Red CI: read the failed job log (`gh run view <id> --log-failed`), fix, push again - no local full-suite re-run.
