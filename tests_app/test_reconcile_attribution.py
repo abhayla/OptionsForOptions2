@@ -19,6 +19,7 @@ import datetime
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from ofo.engine import Instrument
@@ -266,6 +267,15 @@ def test_ac7_plans_not_this_strategys_are_refused(plans):
     strategy's, or an instrument the catalogue cannot place, is refused (ValueError), never counted."""
     with pytest.raises(ValueError):
         _run({1: plans}, _positions(65))
+
+
+def test_ac7_a_plan_that_is_not_a_stored_plan_is_refused():
+    """AC-7: plans come from the plan store (StoredPlan); a look-alike object with the same fields is refused, so a
+    caller cannot hand in a made-up history."""
+    real = _plans("orders-122104").plans[0]
+    look_alike = SimpleNamespace(**{f: getattr(real, f) for f in real.__dataclass_fields__})
+    with pytest.raises(ra.AttributionError, match="StoredPlan"):
+        _run({1: ra.StrategyPlans("NIFTY", (look_alike,))}, _positions(65))
 
 
 def test_ac7_duplicate_plans_are_refused():
