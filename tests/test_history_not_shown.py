@@ -54,6 +54,32 @@ def _package_of(module: str, is_package: bool) -> list[str]:
     return parts if is_package else parts[:-1]
 
 
+def _from_hits(node: ast.ImportFrom, module: str, is_package: bool) -> list[str]:
+    base = node.module or ""
+    if node.level:
+        pkg = _package_of(module, is_package)
+        if node.level - 1 > len(pkg):
+            return [f"unresolvable relative import at line {node.lineno}"]
+        pkg = pkg[: len(pkg) - (node.level - 1)]
+        base = ".".join(pkg + ([node.module] if node.module else []))
+    if _is_history(base):
+        return [f"from {base} import ..."]
+    star = base in WIDE_PACKAGES and any(a.name == "*" for a in node.names)
+    hits = [f"star import from {base} at line {node.lineno}"] if star else []
+    return hits + [f"from {base} import {a.name}" for a in node.names if _is_history(f"{base}.{a.name}")]
+
+
+def _call_hits(node: ast.Call) -> list[str]:
+    fn = node.func
+    name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
+    if name not in DYNAMIC_IMPORTS:
+        return []
+    arg = node.args[0] if node.args else None
+    if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+        return [f"non-literal {name}() at line {node.lineno}"]
+    return [f"{name}({arg.value!r})"] if _is_history(arg.value) else []
+
+
 def import_hits(source: str, module: str, is_package: bool = False) -> list[str]:
     """Every history import, or unresolvable import shape, in one backend module's source (empty = clean)."""
     hits: list[str] = []
@@ -61,32 +87,9 @@ def import_hits(source: str, module: str, is_package: bool = False) -> list[str]
         if isinstance(node, ast.Import):
             hits += [f"import {a.name}" for a in node.names if _is_history(a.name)]
         elif isinstance(node, ast.ImportFrom):
-            base = node.module or ""
-            if node.level:
-                pkg = _package_of(module, is_package)
-                if node.level - 1 > len(pkg):
-                    hits.append(f"unresolvable relative import at line {node.lineno}")
-                    continue
-                pkg = pkg[: len(pkg) - (node.level - 1)]
-                base = ".".join(pkg + ([node.module] if node.module else []))
-            if _is_history(base):
-                hits.append(f"from {base} import ...")
-                continue
-            for a in node.names:
-                if a.name == "*" and base in WIDE_PACKAGES:
-                    hits.append(f"star import from {base} at line {node.lineno}")
-                elif _is_history(f"{base}.{a.name}"):
-                    hits.append(f"from {base} import {a.name}")
+            hits += _from_hits(node, module, is_package)
         elif isinstance(node, ast.Call):
-            fn = node.func
-            name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
-            if name in DYNAMIC_IMPORTS:
-                arg = node.args[0] if node.args else None
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                    if _is_history(arg.value):
-                        hits.append(f"{name}({arg.value!r})")
-                else:
-                    hits.append(f"non-literal {name}() at line {node.lineno}")
+            hits += _call_hits(node)
     return hits
 
 
@@ -182,7 +185,7 @@ def test_the_backend_scan_flags_planted_routes_in_every_import_shape(tmp_path):
 
 
 def test_the_allow_list_check_is_what_flags_a_planted_importer(tmp_path):
-    """AC-1 self-test: with the importer on the allow-list the scan passes, without it the scan fails (the check bites)."""
+    """AC-1 self-test: allow-listed, the planted importer passes; not allow-listed, it fails (the check bites)."""
     (tmp_path / "ofo_app").mkdir()
     (tmp_path / "ofo_app" / "planted.py").write_text("from ofo_app.kite_history import KiteHistory\n", encoding="utf-8")
     found = scan_backend(tmp_path)
@@ -205,6 +208,7 @@ def test_the_frontend_scan_flags_planted_pages_and_passes_normal_code(tmp_path):
     for name, source in planted.items():
         (pages / name).write_text(source, encoding="utf-8")
     (pages / "clean.js").write_text(
-        "import { createRouter, createWebHistory } from 'vue-router'\nconst r = createRouter({ history: createWebHistory() })\n"
+        "import { createRouter, createWebHistory } from 'vue-router'\n"
+        "const r = createRouter({ history: createWebHistory() })\n"
         "api.get('/api/strategies/live')\nconst label = 'Execution history'\n", encoding="utf-8")
     assert sorted(scan_frontend(tmp_path)) == sorted(f"pages/{n}" for n in planted)
