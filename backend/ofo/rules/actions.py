@@ -3,6 +3,10 @@
 ADR-009 (Q5 = B, Q18 = D): V1 never places an order; "prepare" only builds a ``Proposal`` with status Prepared that
 needs the user's confirmation (invariant: no order without a user confirmation event). Every proposed order carries
 its strategy id (ADR-002). Wording is decision-support (ADR-003, ADR-011 Q149): "Your rule was triggered".
+
+ADR-092 (issue 63): every proposed order is the whole leg as ONE order, never split for the freeze limit; ``respond``
+checks each against its stored limit (``ofo.execution.freeze.require_within_freeze``). A leg not below its limit, or
+with no stored limit, prepares NO proposal: the alert is still given and ``blocked`` carries the reason and the limit.
 """
 from __future__ import annotations
 from ofo.errors.explanations import render_explanation
@@ -11,7 +15,11 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 
+from collections.abc import Mapping
+
 from ofo.engine import Action, Instrument, Leg, Strategy
+from ofo.errors import UserFacingError
+from ofo.execution.freeze import ContractFreeze, FreezeRefused, require_within_freeze
 from ofo.rules.model import Evaluation, Outcome, Rule, RuleAction, RuleKind, describe
 
 
@@ -36,18 +44,25 @@ class Proposal:
     requires_user_confirmation: bool = True
 
 
+#: The key of a leg's stored freeze limit: one strategy has one underlying, so instrument, strike and expiry name it.
+LegKey = tuple[Instrument, Decimal | None, datetime.date]
+
+
 @dataclass(frozen=True)
 class RuleResponse:
     alert: str
     proposal: Proposal | None
+    blocked: tuple[UserFacingError, ...] = ()  # ADR-092: why no proposal was prepared (freeze limit)
 
 
 def _order(strategy_id: str, leg: Leg, action: Action) -> ProposedOrder:
     return ProposedOrder(strategy_id, action, leg.instrument, leg.strike, leg.expiry, leg.quantity)
 
 
-def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: Strategy) -> RuleResponse:
-    """The alert (always) and, when the rule chose it, the prepared entry or exit orders of a triggered rule."""
+def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: Strategy,
+            freeze_limits: Mapping[LegKey, ContractFreeze] | None) -> RuleResponse:
+    """The alert (always) and, when the rule chose it, the prepared entry or exit orders of a triggered rule.
+    ``freeze_limits`` is REQUIRED (ADR-092): no proposal is prepared for a leg not below its stored limit, or with none."""
     if evaluation.rule_id != rule.rule_id:
         raise ValueError(f"evaluation is for rule {evaluation.rule_id!r}, not {rule.rule_id!r}")
     if evaluation.outcome is not Outcome.TRIGGERED:
@@ -65,4 +80,15 @@ def respond(rule: Rule, evaluation: Evaluation, *, strategy_id: str, strategy: S
         orders = tuple(_order(strategy_id, leg, leg.action) for leg in strategy.legs)
     else:
         raise ValueError("adjustment orders depend on the adjustment chosen (ADR-011); not prepared by this module")
+    limits = {} if freeze_limits is None else freeze_limits
+    blocked: list[UserFacingError] = []
+    for order in orders:
+        found = limits.get((order.instrument, order.strike, order.expiry))
+        try:
+            require_within_freeze(found.symbol if found is not None else None, order.quantity,
+                                  found.stored if found is not None else None)
+        except FreezeRefused as exc:
+            blocked.append(exc.message)
+    if blocked:
+        return RuleResponse(alert, None, tuple(blocked))
     return RuleResponse(alert, Proposal(strategy_id, rule.rule_id, orders))

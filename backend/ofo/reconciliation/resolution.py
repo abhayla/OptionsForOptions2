@@ -26,6 +26,7 @@ from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
 from ofo.audit.models import canonical_json, check_payload_safe
 from ofo.engine.legs import Action
+from ofo.execution.freeze import ContractFreeze, require_within_freeze
 from ofo.reconciliation.compare import (
     MismatchKind,
     ReconciliationError,
@@ -325,8 +326,14 @@ def prepare_closing_order(
     reason: str,
     audit: AuditLog,
     target: ClosingTarget = ClosingTarget.ACTIVE_VERSION,
+    freeze_limits: Mapping[Contract, ContractFreeze] | None,
 ) -> Resolution:
     """Q198 "Close/reconcile through a prepared order": an order proposal, never placed; the block stays.
+
+    ADR-092 (issue 63): each proposed order is ONE order per contract, never split; ``freeze_limits`` (contract ->
+    its stored limit and trading symbol) is REQUIRED, and an order not below its limit, or with no stored limit,
+    refuses the whole proposal (``FreezeRefused``, with the limit and the largest allowed order) before anything is
+    recorded.
 
     Note (not built): two proposals prepared on the same report are both allowed here; the confirm/submit step
     must dedupe them (W-023 blocks a second live preparation).
@@ -343,6 +350,11 @@ def prepare_closing_order(
             orders.append(ProposedOrder(Action.BUY if delta > 0 else Action.SELL, contract, abs(delta)))
     if not orders:
         raise ReconciliationError(f"strategy {strategy_id!r}: the broker already matches the target; no order")
+    limits = {} if freeze_limits is None else freeze_limits
+    for order in orders:
+        found = limits.get(order.contract)
+        require_within_freeze(found.symbol if found is not None else None, order.units,
+                              found.stored if found is not None else None)
     proposal = ClosingOrderProposal(strategy_id, target, tuple(orders), at)
     return _resolve(strategy_id, rec, ResolutionKind.PREPARE_CLOSING_ORDER, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform, proposal=proposal)

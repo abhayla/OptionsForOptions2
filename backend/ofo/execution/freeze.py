@@ -7,6 +7,13 @@ leg is allowed exactly when its units are BELOW the stored limit.
 
 ``limits`` maps a contract's broker trading symbol (the plan's ``contract``) to the stored limit. A symbol with no
 entry gets the warning, never a silent pass and never a block. This module never splits a leg.
+
+ADR-092: "Complete, Retry and exit orders follow it too." and "The fixed 1,755-unit placeholder used for slicing is
+removed; the stored limit (ADR-081, ADR-091) is the only freeze figure." ``require_within_freeze`` is the ONE check every
+order-preparing path calls (Complete, Retry, exit, the reconciliation closing proposal, the rule-action proposal); the
+review's ``freeze_check`` uses the same ``exceeded_message``. Allow-list: an order is allowed only when a stored limit
+is present, is a ``StoredFreeze``, the units are a positive whole number of its lots and below the limit; anything else
+is refused. In those paths a missing limit BLOCKS (fail closed, issue 255): nothing is prepared without a known limit.
 """
 from __future__ import annotations
 
@@ -16,6 +23,7 @@ from datetime import date
 from typing import Final
 
 from ofo.errors import UserFacingError, render
+from ofo.errors.user_facing import UserFacing
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
@@ -73,6 +81,57 @@ def largest_allowed_units(stored: StoredFreeze) -> int:
     return (stored.limit - 1) // stored.lot * stored.lot
 
 
+def exceeded_message(contract: str, units: int, stored: StoredFreeze) -> UserFacingError | None:
+    """The block message when ``units`` is not below ``stored.limit`` (with the largest allowed order), else None.
+    ``units`` must be a positive whole number of ``stored.lot`` (ValueError otherwise: a programmer or data error)."""
+    if not isinstance(stored, StoredFreeze):
+        raise ValueError(f"a freeze limit must be a StoredFreeze, got {stored!r}")
+    if isinstance(units, bool) or not isinstance(units, int) or units <= 0:
+        raise ValueError(f"{contract}: units must be a positive integer, got {units!r}")
+    if units % stored.lot != 0:
+        raise ValueError(f"{contract}: {units} units is not a whole number of lots of {stored.lot}")
+    if units < stored.limit:
+        return None
+    top = largest_allowed_units(stored)
+    return render("freeze_limit_exceeded", contract=contract, units=units, lots=units // stored.lot,
+                  max_units=top, max_lots=top // stored.lot, limit=stored.limit)
+
+
+class FreezeRefused(UserFacing, ValueError):
+    """An order not prepared because of the freeze limit (above it, or no stored limit). ``str(error)`` is the
+    developer detail; ``message`` is the catalogue message a user is shown."""
+
+    def __init__(self, *, detail: str, message: UserFacingError) -> None:
+        if type(message) is not UserFacingError:
+            raise TypeError(f"FreezeRefused needs a UserFacingError from render(), got {type(message).__name__}")
+        super().__init__(detail)
+        self.message = message
+
+
+@dataclass(frozen=True)
+class ContractFreeze:
+    """A stored limit with the exchange trading symbol it was stored for (for builders that key orders by contract
+    terms, not by symbol)."""
+
+    symbol: str
+    stored: StoredFreeze
+
+
+def require_within_freeze(contract: str | None, units: int, stored: StoredFreeze | None) -> None:
+    """THE order check (ADR-092): return only when ``units`` may go as ONE order; raise ``FreezeRefused`` otherwise.
+    ``contract`` is the trading symbol, or None when the caller has no symbol (only possible with no stored limit)."""
+    if stored is None:
+        message = (render("freeze_limit_missing", contract=contract) if contract is not None
+                   else render("freeze_limit_missing_unnamed"))
+        raise FreezeRefused(detail=f"{contract}: no stored freeze limit; nothing prepared", message=message)
+    if contract is None:
+        raise ValueError("a stored freeze limit needs the trading symbol it was stored for")
+    message = exceeded_message(contract, units, stored)
+    if message is not None:
+        raise FreezeRefused(detail=f"{contract}: {units} units is not below the freeze limit {stored.limit}",
+                            message=message)
+
+
 def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:
     """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit, and for a
     stored limit whose file date is more than ``STALE_AFTER_DAYS`` before ``today`` (the stale limit still blocks).
@@ -89,13 +148,9 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None,
             warnings.append(FreezeFinding(planned.leg_ref, planned.contract,
                                           render("freeze_limit_unknown", contract=planned.contract)))
             continue
-        if units % stored.lot != 0:
-            raise ValueError(f"{planned.contract}: {units} units is not a whole number of lots of {stored.lot}")
-        if not units < stored.limit:
-            top = largest_allowed_units(stored)
-            blocks.append(FreezeFinding(planned.leg_ref, planned.contract, render(
-                "freeze_limit_exceeded", contract=planned.contract, units=units, lots=units // stored.lot,
-                max_units=top, max_lots=top // stored.lot, limit=stored.limit)))
+        exceeded = exceeded_message(planned.contract, units, stored)
+        if exceeded is not None:
+            blocks.append(FreezeFinding(planned.leg_ref, planned.contract, exceeded))
         age = (today - stored.file_date).days
         if age > STALE_AFTER_DAYS:
             warnings.append(FreezeFinding(planned.leg_ref, planned.contract, render(
@@ -103,4 +158,6 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None,
     return FreezeCheck(tuple(blocks), tuple(warnings))
 
 
-__all__ = ["STALE_AFTER_DAYS", "FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]
+__all__ = ["STALE_AFTER_DAYS", "ContractFreeze", "FreezeCheck", "FreezeFinding", "FreezeRefused", "StoredFreeze",
+           "exceeded_message", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units",
+           "require_within_freeze"]
