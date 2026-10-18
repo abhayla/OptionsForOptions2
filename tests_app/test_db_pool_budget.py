@@ -14,10 +14,14 @@ import pytest
 
 from ofo_app import config, db
 
+pytestmark = pytest.mark.repo_scan
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "app-tests.yml"
 ROLE_LIMIT = 5  # ADR-048
 API_PROCESSES = 3
+HISTORY_STORE_IN_API = 0  # proven by test_history_store_is_never_built_by_the_api
+HISTORY_STORE_CONNECTIONS = 4  # pool_size 2 + max_overflow 2 (history_store.py)
 NO_PASSWORD_URL = "postgresql+asyncpg://example@localhost:5432/example"
 
 
@@ -54,16 +58,32 @@ def test_invalid_pool_size_is_refused(fresh):
         config.Settings()  # type: ignore[call-arg]
 
 
-@pytest.mark.repo_scan
+def _frontend_job() -> str:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    start = text.index("\n  frontend:\n")
+    end = text.index("\n  execute-screen-e2e:\n")
+    return text[start:end]
+
+
 def test_e2e_api_processes_fit_the_role_limit():
-    """AC-5: each e2e API start (ports 8000/8001/8002) declares a pool, and together they stay under the role limit."""
-    steps = re.split(r"\n      - name: ", WORKFLOW.read_text(encoding="utf-8"))
-    e2e = [s for s in steps if re.search(r"--port 800[012] >", s)]
-    assert len(e2e) == API_PROCESSES
+    """AC-5: EVERY uvicorn start in the frontend (e2e) job declares a pool; together they stay under the role limit."""
+    steps = re.split(r"\n      - name: ", _frontend_job())
+    e2e = [s for s in steps if "-m uvicorn" in s]
+    assert len(e2e) == API_PROCESSES, "a new API start in the e2e job needs a pool budget (update API_PROCESSES)"
     total = 0
     for step in e2e:
         size = re.search(r"DB_POOL_SIZE: '?(\d+)'?", step)
         overflow = re.search(r"DB_MAX_OVERFLOW: '?(\d+)'?", step)
         assert size and overflow, step.splitlines()[0]
         total += int(size.group(1)) + int(overflow.group(1))
-    assert total < ROLE_LIMIT
+    assert total + HISTORY_STORE_IN_API * HISTORY_STORE_CONNECTIONS < ROLE_LIMIT
+
+
+def test_history_store_is_never_built_by_the_api():
+    """AC-5: PostgresHistoryStore (own pool 2 + 2, not the settings) is used only by the finalize command, so the e2e
+    API processes never hold its connections. A new user of it fails here and must join the budget above."""
+    users = {
+        p.name for p in (ROOT / "backend" / "ofo_app").rglob("*.py")
+        if "PostgresHistoryStore" in p.read_text(encoding="utf-8")
+    }
+    assert users == {"history_store.py", "history_finalize.py"}
