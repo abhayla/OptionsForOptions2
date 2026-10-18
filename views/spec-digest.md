@@ -114,7 +114,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner places): (1) L1 may start while the money/order cr… [refines ADR-106, ADR-107]
-- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [clarifies REQ-060 AC-4 and AC-7 (an unrecorded sa…]
+- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [refines REQ-060, REQ-058; approves REQ-044]
 
 ## Requirements (75)
 
