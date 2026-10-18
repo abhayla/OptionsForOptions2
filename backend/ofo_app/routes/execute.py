@@ -249,9 +249,7 @@ def _health(times: tuple[datetime.datetime, ...], now: datetime.datetime) -> Dat
     return DataHealth.HEALTHY if fresh else DataHealth.STALE
 
 
-def _iid(text_id: str) -> InstrumentId:
-    segment, token = text_id.split(":")
-    return InstrumentId(segment, int(token))
+_iid = ep.instrument_id_of  # the one text -> catalogue id mapping (shared with checked_basket's held derivation)
 
 
 def _plan_orders(basket: Any) -> tuple[plans.PlanOrder, ...]:
@@ -382,7 +380,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except (KeyError, ValueError):  # a contract the catalogue cannot resolve: the catalogue refusal, never a 500
         raise _refuse("strategy_contract_not_in_catalogue") from None
     await _gate(req, priced, context, catalogue, underlying)
-    basket = await _basket(req, priced, catalogue, plan_number, held.units)
+    basket = await _basket(req, priced, catalogue, plan_number, held.history)
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket))
@@ -427,7 +425,7 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
 
 
 async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int,
-                  units: Mapping[str, int]) -> Any:
+                  history: tuple[plans.StoredPlan, ...]) -> Any:
     limits = await review_freeze_limits(req.db, priced.plan)
     today = req.now.astimezone(IST).date()
     frozen = freeze_check(priced.plan, limits, today=today)
@@ -437,7 +435,7 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
         basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
                                          freeze_check=lambda p: freeze_check(p, limits, today=today),
-                                         held={_iid(c): n for c, n in units.items()})  # #338: the held net
+                                         history=history)  # #338: the store's rows; held is derived inside
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket

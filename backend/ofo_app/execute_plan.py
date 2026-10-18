@@ -199,6 +199,17 @@ def held_units(history: Iterable[_StoredPlan]) -> dict[str, int]:
     return {contract: net for contract, net in units.items() if net != 0}
 
 
+def instrument_id_of(text_id: str) -> InstrumentId:
+    """A stored plan order's ``instrument_id`` text (``segment:token``, the live feed's key) as the catalogue's id."""
+    segment, token = text_id.split(":")
+    return InstrumentId(segment, int(token))
+
+
+def held_by_instrument(history: Iterable[_StoredPlan]) -> dict[InstrumentId, int]:
+    """``held_units`` keyed by catalogue id, the shape ``reduces_held_only`` reads (#338): one derivation, two keys."""
+    return {instrument_id_of(contract): net for contract, net in held_units(history).items()}
+
+
 def latest_filled_plan(history: Iterable[_StoredPlan]) -> int | None:
     """The number of the latest plan any of whose orders filled (the held position's version), or None."""
     numbers = [p.plan_number for p in history if any(o.filled_quantity for o in p.orders)]

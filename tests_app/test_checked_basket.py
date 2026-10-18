@@ -9,6 +9,8 @@ Zerodha's figures only, replayed here from REAL recorded replies through a fake 
 from __future__ import annotations
 
 import csv
+import dataclasses
+import datetime
 import json
 import pathlib
 from decimal import Decimal as D
@@ -24,6 +26,7 @@ from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import parse_instruments_rows
 from ofo.orders import Order
 from ofo_app.checked_basket import checked_basket, zerodha_required_margin
+from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 from ofo_app.kite_margin import KiteMargin
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -226,6 +229,19 @@ def _iid(cat: Catalogue, symbol: str):
     return entry.id
 
 
+def _history(cat: Catalogue, symbol: str, units: int) -> tuple[StoredPlan, ...]:
+    """The store's own row shape: one closed ENTRY plan whose order filled ``units`` (BUY +, SELL -) of ``symbol``;
+    checked_basket derives what is held from it with ``execute_plan.held_units`` (#338 round 3)."""
+    iid = _iid(cat, symbol)
+    side = "BUY" if units > 0 else "SELL"
+    order = PlanOrder(leg_index=0, tag="S9P1L0", instrument_id=f"{iid.exchange_segment}:{iid.exchange_token}",
+                      tradingsymbol=symbol, transaction_type=side, quantity=abs(units), price=D("1.00"),
+                      filled_quantity=abs(units))
+    return (StoredPlan(strategy_id=9, plan_number=1, action="ENTRY", status="closed", orders=(order,),
+                       created_at=datetime.datetime(2026, 10, 19, 10, 0, tzinfo=datetime.UTC), closed_at=None,
+                       close_reason=None),)
+
+
 def _two_order_reply(total: str) -> str:
     reply = json.loads(EXIT_REPLY)
     row = reply["data"]["orders"][0]
@@ -236,10 +252,10 @@ def _two_order_reply(total: str) -> str:
 
 def _exit_build(funds: str, *, held_units: int | None = 65, reply: str = EXIT_REPLY):
     cat = _contract_cat(EXIT_SYMBOL)
-    held = None if held_units is None else {_iid(cat, EXIT_SYMBOL): held_units}
+    held = () if not held_units else _history(cat, EXIT_SYMBOL, held_units)
     return checked_basket(ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.SELL, 65, "3.30"),)), cat, 2,
                           margin_client=client(Replay(funds_reply(funds), basket=reply)), freeze_check=no_freeze,
-                          held=held)
+                          history=held)
 
 
 def test_core_real_exit_reply_with_negative_funds_builds_the_closing_basket() -> None:
@@ -296,7 +312,7 @@ def test_a_mixed_basket_close_one_open_another_with_negative_funds_is_blocked(to
     with pytest.raises(BasketRefused):
         checked_basket(ExecutionPlan("S-9", legs), cat, 2,
                        margin_client=client(Replay(funds_reply("-120.50"), basket=_two_order_reply(total))),
-                       freeze_check=no_freeze, held={_iid(cat, EXIT_SYMBOL): 65})
+                       freeze_check=no_freeze, history=_history(cat, EXIT_SYMBOL, 65))
 
 
 @pytest.mark.parametrize("total", ['"x"', "null"])
@@ -320,10 +336,10 @@ def _buyback_reply(total: str) -> str:
 
 def _buyback_build(funds: str, total: str, *, held_units: int | None = -65):
     cat = _contract_cat(EXIT_SYMBOL)
-    held = None if held_units is None else {_iid(cat, EXIT_SYMBOL): held_units}
+    held = () if not held_units else _history(cat, EXIT_SYMBOL, held_units)
     return checked_basket(ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.BUY, 65, "10.50"),)), cat, 2,
                           margin_client=client(Replay(funds_reply(funds), basket=_buyback_reply(total))),
-                          freeze_check=no_freeze, held=held)
+                          freeze_check=no_freeze, history=held)
 
 
 @pytest.mark.parametrize("funds", ["-0.01", "0", "30"])
@@ -363,4 +379,35 @@ def test_adr113_a_mixed_basket_keeps_the_top_up_and_is_blocked_at_negative_funds
     with pytest.raises(BasketRefused):
         checked_basket(ExecutionPlan("S-9", legs), cat, 2,
                        margin_client=client(Replay(funds_reply("-0.01"), basket=json.dumps(reply))),
-                       freeze_check=no_freeze, held={_iid(cat, EXIT_SYMBOL): -65})
+                       freeze_check=no_freeze, history=_history(cat, EXIT_SYMBOL, -65))
+
+
+def test_a_caller_computed_held_mapping_is_not_accepted() -> None:
+    """#338 round 3 (finding caller-supplied-verdict-trusted): checked_basket takes the store's rows, never a held
+    mapping: the old keyword is gone, and a row that is not the store's StoredPlan is refused before Zerodha is read."""
+    cat = _contract_cat(EXIT_SYMBOL)
+    plan = ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.SELL, 65, "3.30"),))
+    margin = client(Replay(funds_reply("-0.01"), basket=EXIT_REPLY))
+    with pytest.raises(TypeError):
+        checked_basket(plan, cat, 2, margin_client=margin, freeze_check=no_freeze,  # type: ignore[call-arg]
+                       held={_iid(cat, EXIT_SYMBOL): 65})
+    with pytest.raises(TypeError, match="StoredPlan"):
+        checked_basket(plan, cat, 2, margin_client=margin, freeze_check=no_freeze,
+                       history=({"orders": ()},))  # type: ignore[arg-type]
+
+
+def test_held_is_the_net_over_all_stored_plans() -> None:
+    """ADR-105 via held_units: an ENTRY that filled +65 and an EXIT that filled -65 net to nothing held, so the SELL is
+    an opening order and negative funds refuse it; the ENTRY alone holds +65 and the closing SELL is built."""
+    cat = _contract_cat(EXIT_SYMBOL)
+    (entry,) = _history(cat, EXIT_SYMBOL, 65)
+    (sold,) = _history(cat, EXIT_SYMBOL, -65)
+    exited = dataclasses.replace(sold, plan_number=2, action="EXIT",
+                                 orders=(dataclasses.replace(sold.orders[0], tag="S9P2L0"),))
+    plan = ExecutionPlan("S-9", (_leg(cat, "L1", EXIT_SYMBOL, Action.SELL, 65, "3.30"),))
+    with pytest.raises(BasketRefused):
+        checked_basket(plan, cat, 3, margin_client=client(Replay(funds_reply("-0.01"), basket=EXIT_REPLY)),
+                       freeze_check=no_freeze, history=(entry, exited))
+    built = checked_basket(plan, cat, 3, margin_client=client(Replay(funds_reply("-0.01"), basket=EXIT_REPLY)),
+                           freeze_check=no_freeze, history=(entry,))
+    assert len(built.orders) == 1

@@ -14,7 +14,7 @@ with `BasketRefused`; a shortfall carries Zerodha's available vs required (AC-4)
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -22,9 +22,11 @@ from ofo.execution.basket import KiteBasket, KiteOrder, build_basket, zerodha_ex
 from ofo.execution.freeze import FreezeCheck
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
-from ofo.instruments.models import ZERODHA, InstrumentId, MissingBrokerRef
+from ofo.instruments.models import ZERODHA, MissingBrokerRef
 from ofo.orders import Order
 
+from ofo_app.execute_plan import held_by_instrument
+from ofo_app.execution_plan_store import StoredPlan
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 
 
@@ -59,12 +61,19 @@ def _zerodha_margin_source(client: KiteMargin) -> _ZerodhaMargin:
 
 def checked_basket(plan: ExecutionPlan, catalogue: Catalogue, plan_version: int, *, margin_client: KiteMargin,  # noqa: PLR0913
                    freeze_check: Callable[[ExecutionPlan], FreezeCheck],
-                   held: Mapping[InstrumentId, int] | None = None) -> KiteBasket:
+                   history: Sequence[StoredPlan] = ()) -> KiteBasket:
     """Build the read-only Kite basket for ``plan`` only if Zerodha says the funds cover the margin these exact orders
-    need, or (#338) every order closes a ``held`` position and Zerodha says the basket needs 0; otherwise raise
-    `BasketRefused` (its ``user_message`` shows available vs required)."""
+    need, or (#338) every order closes a held position and Zerodha says the basket needs 0; otherwise raise
+    `BasketRefused` (its ``user_message`` shows available vs required).
+
+    ``history`` is the strategy's stored plans, the store's own ``StoredPlan`` rows; what is held is derived here with
+    ``execute_plan.held_units`` (ADR-105), never accepted from the caller (finding caller-supplied-verdict-trusted)."""
+    rows = tuple(history)
+    for row in rows:
+        if type(row) is not StoredPlan:  # the store's rows only: no subclass, no look-alike
+            raise TypeError(f"checked_basket needs the store's StoredPlan rows, got {type(row).__name__}")
     return build_basket(plan, catalogue, plan_version, freeze_check=freeze_check,
-                        margin_source=_zerodha_margin_source(margin_client), held=held)
+                        margin_source=_zerodha_margin_source(margin_client), held=held_by_instrument(rows))
 
 
 def is_checked_basket(value: object) -> bool:
