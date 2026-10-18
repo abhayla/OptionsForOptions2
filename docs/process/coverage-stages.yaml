@@ -273,6 +273,12 @@ issues:
   "#386": 4b  # GC-3 P0 review MINORs: probe script private attributes and fail-open recorder compare; W-107 test pins
   "#389": 4b  # Exit basket mixes buy-backs and sells in one basket (REQ-058 Q238)
   "#390": 4b  # Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/AC-4)
+  "#400": 4b  # Money and P&L figures computed outside the one engine on main (ADR-008), found by W-110
+  "#401": 4b  # Disconnect route has no owner check or cross-site protection (W-089 review)
+  "#402": 4a  # Broker settings says no read ever succeeded after a later read failed (W-089 wording)
+  "#403": 4b  # Local pytest dies at random on Windows: EgressRefused from platform.platform() in pytest-metadata
+  "#404": 4a  # Evidence passes REQ-048 AC-1/AC-5, REQ-049 AC-4, REQ-052 AC-1 parked by GC-2f
+  "#405": 4b  # W-108 attribution parked after review round 2: open plans count 0 held (and W-111 stacked on it)
 
 # Work items whose status is not done.
 work_items:
