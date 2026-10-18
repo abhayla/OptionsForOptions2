@@ -48,7 +48,10 @@ GC-3L was reviewed READY on main a43cf3a. No product-code merge today, except a 
    - A probe defect (e.g. #386 item 1): fix in a worktree, Tier B review (one round), land it with `land.py`; record the
      new main head. Not fixable in one round -> park, and item 8 names it as a Monday L1 risk.
    - Login fails: the owner retries once; then park item 1 and continue with items 2-9.
-   - Stop the API when done.
+   - Start the API and the preview with `run_in_background` (never in the foreground); when done stop BOTH (API :8765,
+     preview :4173) by PID, never by a pattern that matches the caller's own command line.
+   - Before asking the owner, confirm `.env` FRONTEND_ORIGIN = `http://127.0.0.1:4173` and KITE_REDIRECT_URL starts
+     with `http://127.0.0.1:8765` (both were so on 2026-10-18 ~10:30 IST); otherwise park item 1.
 2. **ofo_dev re-check** (one line each, read-only): the four measurements above still hold.
 3. **Deferred-issue triage confirmation** (ADR-107): list open Tier A deferred issues not in the P0 6 table of
    `gc-3-p0-results-2026-10-17.md`; expected only #380, #381, #386, each already covered by GC-3L / ADR-108 (#385 is
