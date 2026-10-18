@@ -136,10 +136,7 @@ _INSERT_MISMATCH = text(
     "INSERT INTO public.reconciliation_mismatches (strategy_id, contract_key, expected_units, zerodha_units, report, "
     "source) VALUES (:s, :k, :e, :z, CAST(:r AS jsonb), :src) RETURNING id")
 _MISMATCH_OF = text(
-    "SELECT m.strategy_id, m.zerodha_units, (r.mismatch_id IS NOT NULL) AS resolved "
-    "FROM public.reconciliation_mismatches AS m "
-    "LEFT JOIN public.reconciliation_resolutions AS r ON r.mismatch_id = m.id "
-    "WHERE m.id = :m AND m.strategy_id = :s")
+    "SELECT m.zerodha_units FROM public.reconciliation_mismatches AS m WHERE m.id = :m AND m.strategy_id = :s")
 _INSERT_RESOLUTION = text(
     "INSERT INTO public.reconciliation_resolutions (mismatch_id, action, actor, note) VALUES (:m, :a, :actor, :n)")
 _UNRESOLVED = text(
@@ -184,11 +181,10 @@ async def record_resolution(conn: Any, user_ref: str, strategy_id: int, mismatch
     row = (await conn.execute(_MISMATCH_OF, {"m": mismatch_id, "s": strategy_id})).first()
     if row is None:
         raise ReconciliationStoreError(NOT_FOUND, f"mismatch {mismatch_id} of strategy {strategy_id}")
-    if row.resolved:
-        raise ReconciliationStoreError(ALREADY_RESOLVED, f"mismatch {mismatch_id} is already resolved")
     if action == KITE_FLAT and row.zerodha_units != 0:
         raise ReconciliationStoreError(BAD_RESOLUTION, f"{KITE_FLAT} needs Zerodha flat; mismatch {mismatch_id} "
                                                        f"recorded {row.zerodha_units}")
+    # "Unresolved" is enforced by the database alone (PRIMARY KEY mismatch_id): no read-then-insert race.
     try:
         async with conn.begin_nested():
             await conn.execute(_INSERT_RESOLUTION, {"m": mismatch_id, "a": action, "actor": user_ref,
