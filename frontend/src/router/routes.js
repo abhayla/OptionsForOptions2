@@ -4,6 +4,9 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
+// W-111: the two Positions pages that read Zerodha (REQ-044 AC-3 part 1); the other Positions items stay placeholders.
+const Positions = () => import('../pages/PositionsPage.vue')
+const POSITION_VIEWS = { 'positions/current-positions': 'current', 'positions/strategy-linked-positions': 'linked' }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -15,8 +18,8 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
-    meta: { title: label, section: s.key, parent: s.label },
+    component: POSITION_VIEWS[`${s.key}/${slug}`] ? Positions : Placeholder,
+    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}) },
   })),
 ])
 

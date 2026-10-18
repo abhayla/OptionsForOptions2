@@ -193,6 +193,11 @@ class ContractIndex:
             rows.append(_IndexRow(str(token), symbol, key))
         return cls(rows)
 
+    def symbol_of(self, key: ContractKey) -> str | None:
+        """The Zerodha trading symbol of a reconcile key, or None when the catalogue has none (W-111)."""
+        found = sorted({r.symbol for r in self._rows if r.key == key})
+        return found[0] if found else None
+
     def resolve(self, row: Mapping[str, object]) -> ContractKey:
         symbol = _text(row, "tradingsymbol")
         token = _token(row)

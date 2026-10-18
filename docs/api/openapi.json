@@ -1035,6 +1035,30 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
+      "OwnLotsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "units",
+          "blocked"
+        ],
+        "title": "OwnLotsOut",
+        "type": "object"
+      },
       "PayoffOut": {
         "additionalProperties": false,
         "properties": {
@@ -1210,6 +1234,77 @@
           "pnl"
         ],
         "title": "PointOut",
+        "type": "object"
+      },
+      "PositionContractOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "outside_units": {
+            "title": "Outside Units",
+            "type": "integer"
+          },
+          "own": {
+            "items": {
+              "$ref": "#/components/schemas/OwnLotsOut"
+            },
+            "title": "Own",
+            "type": "array"
+          },
+          "own_units": {
+            "title": "Own Units",
+            "type": "integer"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "zerodha_units": {
+            "title": "Zerodha Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tradingsymbol",
+          "zerodha_units",
+          "own",
+          "own_units",
+          "outside_units",
+          "blocked"
+        ],
+        "title": "PositionContractOut",
+        "type": "object"
+      },
+      "PositionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/PositionContractOut"
+            },
+            "title": "Contracts",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at",
+          "contracts",
+          "blocked"
+        ],
+        "title": "PositionsOut",
         "type": "object"
       },
       "PreferencesOut": {
@@ -2858,6 +2953,24 @@
           }
         },
         "summary": "Kite Callback"
+      }
+    },
+    "/positions": {
+      "get": {
+        "operationId": "read_positions_positions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Positions"
       }
     },
     "/strategies": {

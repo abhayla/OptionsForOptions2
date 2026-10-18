@@ -1,0 +1,88 @@
+// W-111 (REQ-044 AC-3 part 1; ADR-109 (2)): the Positions pages. The replies below have the shape of GET /positions
+// (backend/ofo_app/routes/positions.py): units and the owning strategy's id only. Expected numbers are the ADR-109 examples
+// (strategy BUY 65, Zerodha 65 or 130 or 0), never computed here.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import PositionsPage from '@/pages/PositionsPage.vue'
+
+let answer
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  return { ...actual, default: { get: () => answer() } }
+})
+
+const SYMBOL = 'NIFTY26O1923650CE'
+const reply = (zerodha, outside, blocked = false) => ({
+  read_at: '2026-10-16T12:21:04+05:30',
+  blocked,
+  contracts: [{ tradingsymbol: SYMBOL, zerodha_units: zerodha, outside_units: outside, blocked, own_units: 65, own: [{ strategy_id: 1, units: 65, blocked }] }],
+})
+
+async function show(view) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/p', component: PositionsPage, meta: { title: 'T', parent: 'Positions', view } },
+      { path: '/strategy/:id/execute', component: { template: '<div/>' } },
+    ],
+  })
+  router.push('/p')
+  await router.isReady()
+  const wrapper = mount(PositionsPage, { global: { plugins: [router] } })
+  await flushPromises()
+  return wrapper
+}
+
+describe('Positions pages', () => {
+  beforeEach(() => { answer = null })
+
+  it('AC-3: current view shows Zerodha 130, in strategies 65, outside 65 and no money word', async () => {
+    answer = () => Promise.resolve({ data: reply(130, 65) })
+    const w = await show('current')
+    expect(w.get('[data-testid=position-zerodha]').text()).toBe('130')
+    expect(w.get('[data-testid=position-own]').text()).toBe('65')
+    expect(w.get('[data-testid=position-outside]').text()).toBe('65')
+    expect(w.text()).not.toMatch(/P&L|price|margin|₹|Rs/i)
+    expect(w.find('button').exists()).toBe(false)
+  })
+
+  it('AC-3: linked view shows the strategy link and the outside lots apart', async () => {
+    answer = () => Promise.resolve({ data: reply(130, 65) })
+    const w = await show('linked')
+    expect(w.get('[data-testid=position-own-units]').text()).toBe('65')
+    expect(w.get('[data-testid=position-strategy-link]').attributes('href')).toBe('/strategy/1/execute')
+    expect(w.get('[data-testid=position-outside-lots]').text()).toContain('Not part of any strategy: 65 units')
+    expect(w.find('[data-testid=position-own-blocked]').exists()).toBe(false)
+  })
+
+  it('AC-3: Zerodha 0 against own 65 shows the blocked notice', async () => {
+    answer = () => Promise.resolve({ data: reply(0, 0, true) })
+    const w = await show('linked')
+    expect(w.find('[data-testid=position-own-blocked]').exists()).toBe(true)
+    expect(w.find('[data-testid=positions-blocked]').exists()).toBe(true)
+    expect(w.find('[data-testid=position-outside-lots]').exists()).toBe(false)
+  })
+
+  it('AC-3: an empty book says so in words', async () => {
+    answer = () => Promise.resolve({ data: { read_at: '2026-10-16T12:21:04+05:30', blocked: false, contracts: [] } })
+    const w = await show('current')
+    expect(w.get('[data-testid=positions-empty]').text()).toContain('no open positions')
+  })
+
+  it('AC-3: a refused read shows the catalogue message and never the empty-book text', async () => {
+    const parts = { what_happened: 'Your Zerodha account is not connected. Connect it to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }
+    answer = () => Promise.reject({ parts })
+    const w = await show('current')
+    expect(w.text()).toContain('Your Zerodha account is not connected')
+    expect(w.find('[data-testid=positions-empty]').exists()).toBe(false)
+    expect(w.find('[data-testid=position-row]').exists()).toBe(false)
+  })
+
+  it('AC-3: while reading, the loading text shows and neither list nor empty text', async () => {
+    answer = () => new Promise(() => {})
+    const w = await show('current')
+    expect(w.find('[data-testid=positions-loading]').exists()).toBe(true)
+    expect(w.find('[data-testid=positions-empty]').exists()).toBe(false)
+  })
+})
