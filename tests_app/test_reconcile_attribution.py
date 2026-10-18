@@ -610,7 +610,8 @@ def test_ac7_a_pending_contract_blocks_every_holder_and_spares_other_contracts()
 def test_ac7_the_final_states_are_exactly_the_allow_list():
     """AC-7, ADR-110 "in a final state", finding guard-as-forbidden-list: the final words are exactly COMPLETE,
     CANCELLED, REJECTED (Kite's terminal statuses, written out by hand here)."""
-    assert ep.TERMINAL_ORDER_STATUSES == {"COMPLETE", "CANCELLED", "REJECTED"}
+    final = ep.TERMINAL_ORDER_STATUSES
+    assert final == {"COMPLETE", "CANCELLED", "REJECTED"}
 
 
 @pytest.mark.parametrize("status", ["OPEN", "TRIGGER PENDING", "AMO REQ RECEIVED", "PUT ORDER REQ RECEIVED",

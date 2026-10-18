@@ -246,7 +246,8 @@ def rows_by_tag(order_book: object) -> dict[str, list[OrderRow]]:
     return by_tag
 
 
-def _read_open_plan(plan: StoredPlan, book: Mapping[str, Sequence[OrderRow]]) -> tuple[StoredPlan, list[tuple[str, str]]]:
+def _read_open_plan(plan: StoredPlan,
+                    book: Mapping[str, Sequence[OrderRow]]) -> tuple[StoredPlan, list[tuple[str, str]]]:
     """One OPEN plan against Zerodha's order book (module docstring): the plan with each order's fill from its final
     row (in memory), and the (tag, reason) of every order that keeps it pending (empty: every order is final)."""
     reasons: list[tuple[str, str]] = []
@@ -336,7 +337,8 @@ def split_outside(raw_net: Mapping[ContractKey, int], held: Mapping[str, Mapping
 
 
 def standalone_unseen(raw_net: Mapping[ContractKey, int], held: Mapping[str, Mapping[ContractKey, int]],
-                      standalone: Mapping[ContractKey, int], outside: Mapping[ContractKey, int]) -> dict[ContractKey, int]:
+                      standalone: Mapping[ContractKey, int],
+                      outside: Mapping[ContractKey, int]) -> dict[ContractKey, int]:
     """The part of each recorded standalone quantity Zerodha does not show: what is left of Zerodha's net after the
     strategies' units and the outside lots, on the standalone's side, covers at most the standalone; the rest is
     unseen. Pure; signed units. Example: own +65, standalone -100, Zerodha +65, 0 outside -> 0 left -> -100 unseen."""
