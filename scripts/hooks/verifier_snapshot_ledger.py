@@ -15,7 +15,9 @@ minutes after the verifier has finished (measured 2026-10-18, GC-2g: the W-112 v
 
 Only this agent's ledger is read, so a parallel verifier's live snapshot is never touched: its tool_use_ids are in
 its own ledger. A verifier killed without SubagentStop leaves its snapshot; the 15-minute age rule in
-verifier_inflight_gate stays the fallback. The snap folder honours OFO_VERIFIER_SNAP_DIR (verifier_inflight_gate's
+verifier_inflight_gate stays the fallback, and its ledger is deleted at a later verifier's SubagentStop once it is
+older than the kit's SNAP_TTL_SECONDS. Any other agent, the main session and any other event exit before the kit
+module is even loaded. The snap folder honours OFO_VERIFIER_SNAP_DIR (verifier_inflight_gate's
 `snap_dir`). Never blocks: every path, including any error of its own, exits 0.
 """
 from __future__ import annotations
@@ -25,6 +27,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -35,6 +38,7 @@ SHELL_TOOLS = {"Bash", "PowerShell"}
 AGENT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 SNAP_NAME = re.compile(r"[0-9a-f]{16}\.json")
 LEDGER_DIR = "owners"
+VERIFIER = "verifier"
 
 
 def kit_guard() -> ModuleType:
@@ -56,13 +60,10 @@ def ledger_path(agent_id: object) -> Path | None:
     return snap_dir().parent / LEDGER_DIR / f"{agent_id}.txt"
 
 
-def _is_verifier(kit: ModuleType, data: dict) -> bool:
-    return bool(kit.is_read_only(data.get("agent_type"), kit.read_only_agents()))
-
-
 def record(data: dict, kit: ModuleType) -> Path | None:
-    """PreToolUse: append this call's snapshot path to the agent's ledger. Returns the ledger written, or None."""
-    if data.get("tool_name") not in SHELL_TOOLS or not _is_verifier(kit, data):
+    """PreToolUse of a verifier (main filtered by worth_loading): append this call's snapshot path to the agent's
+    ledger. Returns the ledger written, or None."""
+    if data.get("tool_name") not in SHELL_TOOLS:
         return None
     ledger = ledger_path(data.get("agent_id"))
     snap = kit.snap_path(data)
@@ -88,10 +89,9 @@ def own_snapshot(line: str) -> Path | None:
     return p
 
 
-def clean(data: dict, kit: ModuleType) -> list[Path]:
-    """SubagentStop: delete this verifier's leftover snapshots and its ledger. Returns the snapshots deleted."""
-    if not _is_verifier(kit, data):
-        return []
+def clean(data: dict) -> list[Path]:
+    """SubagentStop of a verifier (main filtered by worth_loading): delete its leftover snapshots and its ledger.
+    Returns the snapshots deleted."""
     ledger = ledger_path(data.get("agent_id"))
     if ledger is None:
         return []
@@ -117,18 +117,43 @@ def clean(data: dict, kit: ModuleType) -> list[Path]:
     return deleted
 
 
+def prune_ledgers(kit: ModuleType) -> list[Path]:
+    """Delete every ledger older than the kit's snapshot TTL: a verifier killed without SubagentStop left it."""
+    from verifier_inflight_gate import snap_dir  # noqa: PLC0415
+
+    now = time.time()
+    pruned = []
+    for p in (snap_dir().parent / LEDGER_DIR).glob("*.txt"):
+        try:
+            if now - p.stat().st_mtime > kit.SNAP_TTL_SECONDS:
+                p.unlink()
+                pruned.append(p)
+        except OSError:
+            continue
+    return pruned
+
+
+def worth_loading(data: object) -> bool:
+    """Cheap pre-filter, before any import: only a verifier's PreToolUse / SubagentStop can need the kit module.
+    (The kit guard's extra read-only agents from its env var are not cleaned; its default is `verifier` only.)"""
+    if not isinstance(data, dict) or data.get("hook_event_name") not in ("PreToolUse", "SubagentStop"):
+        return False
+    agent = data.get("agent_type")
+    return isinstance(agent, str) and agent.split(":")[-1].strip().lower() == VERIFIER
+
+
 def main() -> int:
     try:
-        data = json.loads(sys.stdin.read())  # a non-object fails on .get below and exits 0
-        event = data.get("hook_event_name")
-        if event not in ("PreToolUse", "SubagentStop"):
+        data = json.loads(sys.stdin.read())
+        if not worth_loading(data):
             return 0
         kit = kit_guard()
-        if event == "PreToolUse":
+        if data["hook_event_name"] == "PreToolUse":
             record(data, kit)
         else:
-            clean(data, kit)
-    except Exception:  # noqa: BLE001 - a broken hook must never block a session or a verifier
+            clean(data)
+            prune_ledgers(kit)
+    except BaseException:  # noqa: BLE001 - SystemExit/KeyboardInterrupt too: this hook must never block a call
         return 0
     return 0
 

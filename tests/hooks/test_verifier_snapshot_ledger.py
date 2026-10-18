@@ -8,15 +8,17 @@ session_id, tool_use_id, tool_name; SubagentStop carries agent_id, agent_type.
 
 Guard -> killing test:
   tool_name allow-list (record)            test_a_non_shell_tool_is_not_recorded
-  agent is a verifier (record)             test_non_verifier_agents_and_the_main_session_are_ignored
+  agent is a verifier (worth_loading)      test_non_verifier_agents_and_the_main_session_are_ignored
   agent_id allow-list (ledger_path)        test_an_agent_id_that_is_not_a_plain_id_writes_no_ledger
   snap_path None (no tool_use_id)          test_a_call_without_tool_use_id_records_nothing
   snapshot name allow-list (own_snapshot)  test_ledger_lines_outside_the_snap_folder_are_not_deleted (notes.txt)
   folder IS the snap folder (own_snapshot) test_ledger_lines_outside_the_snap_folder_are_not_deleted (elsewhere, ..)
-  agent is a verifier (clean)              test_non_verifier_agents_and_the_main_session_are_ignored
   corrupt ledger deletes nothing           test_a_corrupt_ledger_deletes_nothing_and_exits_0
-  event allow-list (main)                  test_other_events_neither_record_nor_clean
+  event allow-list (worth_loading)         test_other_events_neither_record_nor_clean
+  verifier pre-filter before any import    test_non_verifier_calls_never_load_the_kit_module
+  prune ledgers older than the kit TTL     test_stale_ledgers_of_killed_verifiers_are_pruned_at_stop
   fail open on any error (main)            test_bad_input_exits_0, test_a_missing_kit_module_exits_0
+  fail open on SystemExit (BaseException)  test_a_kit_module_that_exits_at_import_never_blocks
 Mutation run: VSL_HOOK_PATH points the tests at a patched copy of the hook.
 """
 import hashlib
@@ -258,6 +260,61 @@ def test_a_missing_kit_module_exits_0(tmp):
         assert (r.returncode, r.stderr) == (0, "")
     assert snap.exists()
     assert ledger(tmp, AGENT_A).read_text(encoding="utf-8") == str(snap) + "\n"
+
+
+def copy_with_stub_kit(tmp: pathlib.Path, kit_source: str) -> pathlib.Path:
+    """A copy of the hook (and verifier_inflight_gate) whose kit module is `kit_source`; returns the hook path."""
+    hooks = tmp / "copy" / "scripts" / "hooks"
+    hooks.mkdir(parents=True)
+    for name in ("verifier_snapshot_ledger.py", "verifier_inflight_gate.py"):
+        shutil.copy2(HOOK.parent / name, hooks / name)
+    kit = tmp / "copy" / ".claude" / "hooks"
+    kit.mkdir(parents=True)
+    (kit / "verifier_write_guard.py").write_text(kit_source, encoding="utf-8")
+    return hooks / "verifier_snapshot_ledger.py"
+
+
+def test_a_kit_module_that_exits_at_import_never_blocks(tmp):
+    """Fix 1: a kit module calling sys.exit(2) at import: the hook still exits 0 (SystemExit is caught)."""
+    hook = copy_with_stub_kit(tmp, "import sys\nsys.exit(2)\n")
+    for payload in (pre(AGENT_A, "toolu_A1"), stop(AGENT_A)):
+        r = run(tmp, payload, hook=hook)
+        assert r.returncode == 0, r.stderr
+
+
+def test_non_verifier_calls_never_load_the_kit_module(tmp):
+    """Fix 2: the main session, a builder and other events return before the kit module is imported; a verifier's
+    call does import it (so the probe discriminates)."""
+    marker = tmp / "kit-imported.txt"
+    hook = copy_with_stub_kit(tmp, f"open({str(marker)!r}, 'a').write('x')\nraise RuntimeError('imported')\n")
+    post = pre(AGENT_A, "toolu_A3")
+    post["hook_event_name"] = "PostToolUse"
+    for payload in (pre(AGENT_A, "toolu_A1", agent_type=None), pre(AGENT_A, "toolu_A2", agent_type="builder"),
+                    stop(AGENT_A, agent_type="builder"), post):
+        r = run(tmp, payload, hook=hook)
+        assert (r.returncode, r.stderr) == (0, "")
+    assert not marker.exists()
+    assert run(tmp, pre(AGENT_A, "toolu_A4"), hook=hook).returncode == 0
+    assert marker.read_text() == "x"
+
+
+def test_stale_ledgers_of_killed_verifiers_are_pruned_at_stop(tmp):
+    """Fix 3: at a verifier's SubagentStop, ledgers older than the kit's SNAP_TTL_SECONDS are deleted; a younger
+    one (a live parallel verifier's) stays."""
+    spec = importlib.util.spec_from_file_location("_kit_guard_ttl", KIT_GUARD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    old = ledger(tmp, "killedagent01")
+    old.write_text("x\n", encoding="utf-8")
+    t = old.stat().st_mtime - mod.SNAP_TTL_SECONDS - 60
+    os.utime(old, (t, t))
+    young = ledger(tmp, AGENT_B)
+    young.write_text("y\n", encoding="utf-8")
+    t2 = young.stat().st_mtime - mod.SNAP_TTL_SECONDS + 600
+    os.utime(young, (t2, t2))
+    assert run(tmp, stop(AGENT_A)).returncode == 0
+    assert not old.exists()
+    assert young.read_text(encoding="utf-8") == "y\n"
 
 
 def test_the_hook_is_wired_fail_open_on_pre_shell_and_subagent_stop():
