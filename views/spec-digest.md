@@ -193,7 +193,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (202)
+## Spec sections (203)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -297,6 +297,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-41 - Kite returns the browser from a basket to the SAME registered…
 - ## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-b…
 - ## F-43 - On Mon 2026-10-19 the nearest NIFTY weekly contract expires th…
+- ## F-44 - On Sun 2026-10-18 Kite reported zero funds on the owner's acco…
 
 ### spec/open-questions.md
 

@@ -1,6 +1,9 @@
 # Handover
 
-**2026-10-16 night (goal contract GC-1) — START HERE: `docs/process/session-handover-2026-10-16-gc1.md`, then
+**2026-10-18 (GC-3P) — START HERE: `docs/process/session-handover-2026-10-18-gc3p.md`, then `docs/process/goal-chain.md`
+(GC-3L is NEXT: the live 1-lot gate on Mon 2026-10-19; owner runbook `docs/process/gc-3l-runbook-2026-10-19.md`).**
+
+**Earlier, 2026-10-16 night (goal contract GC-1) — START HERE: `docs/process/session-handover-2026-10-16-gc1.md`, then
 `docs/process/goal-chain.md` (GC-2a is NEXT).** 4a close-out audit (`4a-closeout-audit-2026-10-16.md`); REQ-001, REQ-035,
 REQ-038 Verified; #159 fixed in W-088 (PR #332; live check at GC-3); 4b core proof: the domain is right on the real
 order, but no Kite reply adapter exists (F-40 -> W-091 in GC-2b). Chain re-planned: GC-2b boundary, GC-2c Execute chain,

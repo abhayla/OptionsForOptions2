@@ -671,3 +671,18 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   blocks as a missing position, F-42) and the plan stays open into the next day (#352).
 - Bears on: GC-3 step 5, ADR-097 (1), ADR-083. Status: **measured from the master; decided by ADR-108 (2)** (owner
   2026-10-17: the live test trades the 2026-10-27 expiry).
+
+## F-44 - On Sun 2026-10-18 Kite reported zero funds on the owner's account (net, cash and opening balance all 0)
+- Read 2026-10-18 ~15:10 IST, read-only, after a real login through `/broker/zerodha/login` (GC-3P item 1):
+  `probe.py contract NFO:NIFTY26OCT27000CE` printed `available_funds 0.00`; the raw `GET /user/margins` `equity`
+  block had `net 0`, `available.cash 0`, `available.opening_balance 0`, `live_balance 0`, every `utilised` field 0.
+  The probe reads the right field (`kite_margin.fetch_available_funds` -> `equity.net`, ADR-101); the zero is Kite's.
+- Planning (GC-3P contract, ADR-108 consequence example) assumed Rs 873. Unknown whether the money left the account
+  or Kite zeroes the figures on a weekend: one Sunday read cannot tell the two apart.
+- Consequence: a 1-lot ENTRY of 65 units at Rs 5-11 needs about Rs 325-715 plus charges; with Rs 0 the product's
+  margin gate (ADR-016: "a hard execution gate") and Kite both refuse it.
+- Owner, 2026-10-18 ~15:15 IST, question tool: "Re-check Mon 09:00 (Recommended)" - the GC-3L Monday timeline carries
+  a hard funds gate at 09:00: `equity.net` must be at least 65 x the picked premium + Rs 100 (GC-3L L1, #338), else L1
+  stops before any click and the owner adds funds. Bears on: ADR-108 (2) ("against the funds read then"), ADR-016,
+  ADR-107 (#338). Status: **measured; owner-decided for the GC-3 live test** (no rule change: ADR-108 already reads
+  funds at L1).
