@@ -4,10 +4,17 @@ Widens the guard that used to cover only backend/ofo/rules/ (finding money-value
 Python module under backend/ and every .vue/.js/.ts file under frontend/src. It is an allow-list: the engine homes
 below may do money arithmetic; every other file is scanned and any arithmetic touching a money-named value fails.
 
-Threat model: in scope - arithmetic (+ - * / // % and augmented forms) on a value named premium, price, pnl, charge(s),
-margin, ltp, mtm, funds, brokerage, including through a one-step alias, getattr with a literal name, a dict key and an
-aliased import; in the browser also Number()/parseFloat()/toFixed() outside the chart files and arithmetic on a
-money-named identifier. Out of scope - code built at run time, generated files, test files.
+Threat model: in scope - arithmetic (+ - * / // % ** and augmented forms) and sum() on a value whose name has a money
+part (premium, price, pnl, charge, margin, ltp, mtm, funds, brokerage, value, loss, profit, unrealized, realized;
+camelCase and PnL split), through a literal getattr/dict key/bracket key, an aliased import, an alias made by plain,
+annotated or tuple-unpack assignment, or a list/set/generator comprehension over money. In the browser also
+Number()/parseFloat()/parseInt()/toFixed()/Math rounding, unary +, bracket keys, a parenthesised operand and an operator
+on the next line, outside the chart files.
+Out of scope (documented limits, not claims): helpers such as mul/operator.mul/fsum/reduce, for-loop variables and
+function parameters that are not money-named, amounts named amount/cost/net/total, a ratio of generically named values
+(table/model.py _percent), JS decimal libraries, code built at run time, generated files, test files.
+Existing hits on main are pinned in KNOWN_ON_MAIN (money, deferred findings) and
+NOT_MONEY_ON_MAIN (not money, each file with a reason).
 """
 from __future__ import annotations
 
@@ -34,7 +41,7 @@ JS_ALLOWED_FILES = (
 )
 
 MONEY_TOKENS = {"premium", "premiums", "price", "prices", "pnl", "charge", "charges", "margin", "margins", "ltp",
-                "mtm", "funds", "brokerage"}
+                "mtm", "funds", "brokerage", "value", "values", "loss", "profit", "unrealized", "realized"}
 # Money arithmetic that already sits outside the engine on main (GC-1 audit gap). A BASELINE, not an allowance: the
 # test fails on any line not listed here, and fails when a listed line is fixed or gone (delete the entry then). Each
 # entry is a deferred finding (see the W-110 report); do not add to this table.
@@ -56,6 +63,7 @@ KNOWN_ON_MAIN: dict[str, tuple[str, ...]] = {
         'cash -= f.price * signed',
     ),
     "backend/ofo/outcome/service.py": (
+        'times += list(snapshot.ended_times.values())  # ADR-077: times kept after the subscription ended',
         'max_loss = metrics.max_loss if loss_unl or charges is None else metrics.max_loss + charges  # ADR-082 (2)',
         'max_profit = metrics.max_profit if profit_unl or charges is None else metrics.max_profit - charges',
     ),
@@ -64,13 +72,56 @@ KNOWN_ON_MAIN: dict[str, tuple[str, ...]] = {
         'values[InputName.PNL_PCT_OF_MAX_LOSS] = -pnl * 100 / metrics.max_loss',
     ),
     "backend/ofo/table/model.py": (
+        'return value * sign * quantity',
         'entry_value = core.entry_price * core.quantity',
         'current_value = core.ltp * core.quantity if core.ltp is not None else None',
+        'ratio = (unrealized / max_loss) * 100',
         'net_entry = None if has_futures else sum(',
         '((leg.premium if leg.action is Action.SELL else -leg.premium) * leg.quantity for leg in legs), Decimal(0))',
         'net_current = None if has_futures else sum(',
         '((leg.ltp if leg.action is Action.SELL else -leg.ltp) * leg.quantity for leg in legs), Decimal(0))',
         'unrealized = sum((live_pnl(leg.leg) for leg in legs), Decimal(0))',
+    ),
+    "backend/ofo_app/routes/execute.py": (
+        'return None if value is None else value.quantize(PAISE, rounding=ROUND_HALF_UP) + 0',
+    ),
+}
+# Lines that match a money token but are not money (generic `value` parameters, counters). Pinned like the
+# baseline, one reason per file; a file listed here is still scanned and a NEW line in it fails.
+NOT_MONEY_ON_MAIN_WHY: dict[str, str] = {
+    "backend/ofo/errors/explanations.py": 'len(value) - 1: an index into a string, not money',
+    "backend/ofo/history/store.py": 'counts bars (sum of 1s over self._bars.values()), not money',
+    "backend/ofo/range/pick_lists.py": 'snaps a strike or index level to a step; points, not rupees',
+    "backend/ofo/reconciliation/compare.py": 'adds a contract quantity (units), not money',
+    "backend/ofo/strategy/guard.py": 'sign of a number (-1/0/1)',
+    "backend/ofo/strategy/linear.py": 'exact linear algebra over generic coefficients/values',
+    "backend/ofo_app/errors.py": 'encodes an HTTP header value, not money',
+}
+NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
+    "backend/ofo/errors/explanations.py": (
+        'last = len(value) - 1',
+    ),
+    "backend/ofo/history/store.py": (
+        'kept = sum(1 for b in self._bars.values() if b.minute.date() == day and b.source is BarSource.LIVE)',
+    ),
+    "backend/ofo/range/pick_lists.py": (
+        'return (value // STEP) * STEP',
+        'value -= STEP',
+        'value += STEP',
+    ),
+    "backend/ofo/reconciliation/compare.py": (
+        'expected[contract] = expected.get(contract, 0) + value',
+    ),
+    "backend/ofo/strategy/guard.py": (
+        'return (value > 0) - (value < 0)',
+    ),
+    "backend/ofo/strategy/linear.py": (
+        'return self.const + sum(coefficient * values[name] for name, coefficient in self.coefficients)',
+        'rows[rank] = [value / lead for value in rows[rank]]',
+        '[Fraction(dict(e.coefficients).get(p, 0)) for p in params] + [Fraction(value - e.const)]',
+    ),
+    "backend/ofo_app/errors.py": (
+        'headers += [(name.lower().encode("ascii"), value.encode("ascii")) for name, value in NO_LEAK_HEADERS.items()]',
     ),
 }
 
@@ -85,7 +136,9 @@ def is_money_name(name: str) -> bool:
     An UPPER_CASE name is a constant or enum member (a label, not a value) and an is_/has_ name is a flag."""
     if name.isupper() or name.lstrip("_").startswith(("is_", "has_")):
         return False
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    spaced = name.replace("PnL", "Pnl")  # PnL / unrealizedPnL tokenise as pnl, not Pn + L
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", spaced)
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", spaced)
     return any(part in MONEY_TOKENS for part in spaced.lower().split("_"))
 
 
@@ -113,17 +166,41 @@ def _own_money_ref(node: ast.AST) -> bool:
     return False
 
 
+def _is_money_value(value: ast.AST, aliases: set[str]) -> bool:
+    """A value that IS a money value or a collection of them: a money read, an alias, or a comprehension over money."""
+    if isinstance(value, ast.Name):
+        return value.id in aliases
+    if isinstance(value, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        return any(_own_money_ref(n) or (isinstance(n, ast.Name) and n.id in aliases) for n in ast.walk(value.elt))
+    return _own_money_ref(value)
+
+
+def _alias_targets(node: ast.AST, aliases: set[str]) -> set[str]:
+    """Names bound to a money value by ``a = v``, ``a: T = v`` and the pairs of ``a, b = v1, v2``."""
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
+        pairs = [(node.target, node.value)]
+    elif isinstance(node, ast.Assign):
+        pairs = []
+        for target in node.targets:
+            both_tuples = isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple)
+            if both_tuples and len(target.elts) == len(node.value.elts):
+                pairs.extend(zip(target.elts, node.value.elts, strict=True))
+            else:
+                pairs.append((target, node.value))
+    else:
+        return set()
+    return {t.id for t, v in pairs if isinstance(t, ast.Name) and _is_money_value(v, aliases)}
+
+
 def _money_aliases(tree: ast.AST) -> set[str]:
-    """Names that stand for a money value: aliased imports of money-named objects and ``other = <money value>``."""
+    """Names that stand for a money value: aliased imports of money-named objects and the assignments above."""
     aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):  # a rename must not hide the name (fail closed)
             aliases.update(a.asname for a in node.names if a.asname and is_money_name(a.name.split(".")[-1]))
-        if isinstance(node, ast.Assign) and _own_money_ref(node.value):
-            aliases.update(t.id for t in node.targets if isinstance(t, ast.Name))
-    for node in ast.walk(tree):  # once more, so a chain a = price; b = a; c = b * 2 is still caught
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name) and node.value.id in aliases:
-            aliases.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    for _ in range(3):  # repeat so a chain a = price; b = a; c = b * 2 is still caught
+        for node in ast.walk(tree):
+            aliases |= _alias_targets(node, aliases)
     return aliases
 
 
@@ -155,7 +232,10 @@ def money_arithmetic(source: str) -> list[int]:
 _JS_IDENT = r"[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*"
 _JS_OP = r"(?:\*\*|[*/%+\-])=?"
 _JS_COERCE = re.compile(r"\b(?:Number|parseFloat|parseInt)\s*\(|\.toFixed\s*\(|\bMath\.(?:round|floor|ceil|trunc)\s*\(")
-_JS_ARITH = re.compile(rf"({_JS_IDENT})\s*({_JS_OP})\s*({_JS_IDENT}|\d)|(\d)\s*({_JS_OP})\s*({_JS_IDENT})")
+_JS_ARITH = re.compile(
+    rf"({_JS_IDENT})\s*\)?\s*({_JS_OP})\s*\(?\s*({_JS_IDENT}|\d)|(\d)\s*({_JS_OP})\s*\(?\s*({_JS_IDENT})")
+_JS_UNARY_PLUS = re.compile(rf"(?<![\w$)\]+])\+\s*\(?\s*({_JS_IDENT})")  # +leg.premium coerces to a number
+_JS_BRACKET_KEY = re.compile(r"""\[\s*['"]([\w$]+)['"]\s*\]""")  # leg['premium'] reads like leg.premium
 _JS_STRINGS = re.compile(r"""'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`""")
 _JS_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/|<!--.*?-->", re.S)
 
@@ -164,21 +244,31 @@ def _blank(match: re.Match[str]) -> str:
     return re.sub(r"[^\n]", " ", match.group(0))
 
 
+def _line_of(text: str, match: re.Match[str]) -> int:
+    return text.count(chr(10), 0, match.start()) + 1
+
+
 def js_money_arithmetic(source: str) -> list[int]:
     """Line numbers where browser code coerces a number or does arithmetic on a money-named identifier.
 
     Comments and string literals are blanked first, keeping line numbers. Template markup (`<div class="a-b">`) is not
     code, so for .vue files only the <script> block and mustache/bound expressions are scanned by the caller."""
     text = _JS_COMMENTS.sub(_blank, source)
+    text = _JS_BRACKET_KEY.sub(lambda m: "." + m.group(1), text)
     text = _JS_STRINGS.sub(_blank, text)
     bad: set[int] = set()
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        if _JS_COERCE.search(line):
-            bad.add(lineno)
-        for m in _JS_ARITH.finditer(line):
-            names = [g for g in (m.group(1), m.group(3), m.group(4), m.group(6)) if g and not g[0].isdigit()]
-            if any(is_money_name(part) for n in names for part in re.split(r"\??\.", n)):
-                bad.add(lineno)
+
+    def money(*idents: str | None) -> bool:
+        return any(is_money_name(part) for n in idents if n and not n[0].isdigit() for part in re.split(r"\??\.", n))
+
+    for m in _JS_COERCE.finditer(text):
+        bad.add(_line_of(text, m))
+    for m in _JS_ARITH.finditer(text):  # whole text: an operator may sit on the next line
+        if money(m.group(1), m.group(3), m.group(4), m.group(6)):
+            bad.add(_line_of(text, m))
+    for m in _JS_UNARY_PLUS.finditer(text):
+        if money(m.group(1)):
+            bad.add(_line_of(text, m))
     return sorted(bad)
 
 
@@ -238,6 +328,21 @@ def test_guard_flags_planted_money_arithmetic_python():
     assert money_arithmetic("x = quantity * lot_size") == []
     assert money_arithmetic("x = 'premium: %s' % value") == []
     assert money_arithmetic("x = f'{premium}'") == []
+    # Fix round 1: new tokens, camelCase, and the alias shapes.
+    assert money_arithmetic("x = entry_value * 2") == [1]
+    assert money_arithmetic("x = loss + 1") == [1]
+    assert money_arithmetic("x = profit - 1") == [1]
+    assert money_arithmetic("x = unrealized / 2") == [1]
+    assert money_arithmetic("x = realized * 2") == [1]
+    assert money_arithmetic("x = livePnL * 2") == [1]
+    assert money_arithmetic("x = unrealizedPnl * 2") == [1]
+    assert money_arithmetic("x = quantity * 2") == []
+    assert money_arithmetic("from decimal import Decimal\np: Decimal = leg.premium\nx = p * 2") == [3]
+    assert money_arithmetic("p, q = leg.premium, 5\nx = p * 2") == [2]
+    assert money_arithmetic("q, p = 5, leg.premium\nx = q * 2") == []
+    assert money_arithmetic("ps = [l.premium for l in legs]\nx = sum(ps)") == [2]
+    assert money_arithmetic("ps = (l.ltp for l in legs)\nx = sum(ps)") == [2]
+    assert money_arithmetic("ps = [l.quantity for l in legs]\nx = sum(ps)") == []
 
 
 def test_guard_flags_planted_money_arithmetic_browser():
@@ -250,6 +355,12 @@ def test_guard_flags_planted_money_arithmetic_browser():
     assert js_money_arithmetic("const label = 'premium * quantity'") == []
     assert js_money_arithmetic("const i = a + b") == []
     assert js_money_arithmetic("const shown = leg.premium") == []
+    assert js_money_arithmetic("const a = +leg.premium") == [1]  # unary plus coerces to a number
+    assert js_money_arithmetic("const a = x + +y") == []
+    assert js_money_arithmetic("const a = leg['premium'] * q") == [1]
+    assert js_money_arithmetic("const a = leg.premium\n  * q") == [1]  # operator on the next line
+    assert js_money_arithmetic("const a = (leg.premium) * qty") == [1]
+    assert js_money_arithmetic("const a = leg['quantity']") == []
     script = "<script setup>\nconst k = 1\n</script>"
     vue = '<template><div class="a-b">{{ leg.premium * leg.quantity }}</div></template>\n' + script
     assert js_money_arithmetic(_vue_code(vue)) == [1]
@@ -270,7 +381,7 @@ def test_money_arithmetic_only_in_allowed_homes():
         if lines:
             source = text.splitlines()
             found[_rel(p)] = tuple(source[n - 1].strip() for n in lines)
-    assert found == KNOWN_ON_MAIN  # exact: a new line fails, and so does a listed line that no longer exists
+    assert found == {**KNOWN_ON_MAIN, **NOT_MONEY_ON_MAIN}  # exact: new or vanished lines fail
     assert {_rel(p): scan_frontend(p) for p in fe if scan_frontend(p)} == {}
 
 
