@@ -7,6 +7,7 @@ and the reply never holds a token, key or secret (allow-list of reply keys, gene
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import datetime
 import os
@@ -200,3 +201,34 @@ async def test_a_database_failure_is_a_typed_error_not_a_connected_page(app_engi
         response = await ac.get("/api/broker/status")
     assert response.status_code >= 500  # noqa: PLR2004
     assert "connected" not in response.text.lower().replace("not connected", "")
+
+
+async def _market(state: str, finished: bool):
+    """A real LiveMarket whose state word is ``state`` and whose socket task is finished or still running."""
+    market = live_market.LiveMarket()
+    market.state = state
+    market._task = asyncio.get_running_loop().create_task(asyncio.sleep(0 if finished else 30))
+    if finished:
+        await market._task
+    return market
+
+
+async def test_a_live_state_with_a_finished_socket_task_is_not_connected(app_engine, monkeypatch):
+    """AC-4: the route's feed-running input is `running()`, not the state word: LIVE with a done task is not Connected;
+    LIVE with a running task is."""
+    user = _user()
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    app = _app(maker, user)
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, TokenCipher(os.urandom(32)))
+    market = await _market(live_market.LIVE, finished=True)
+    monkeypatch.setattr(live_market, "_current", market)
+    async with _client(app) as ac:
+        dead = (await ac.get("/api/broker/status")).json()
+        assert dead["live_market_data"]["state"] == "partial" and dead["order_execution"]["state"] == "partial"
+        live = await _market(live_market.LIVE, finished=False)
+        monkeypatch.setattr(live_market, "_current", live)
+        monkeypatch.setattr(live, "_fingerprint", b"x")
+        alive = (await ac.get("/api/broker/status")).json()
+        assert alive["live_market_data"] == {"state": "connected", "fix": None}
+        live._task.cancel()

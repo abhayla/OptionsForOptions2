@@ -249,6 +249,17 @@ def current_state() -> str:
     return NOT_STARTED if _current is None else _current.state
 
 
+async def stop_current() -> None:
+    """W-089 Disconnect (ADR-020 Q94): stop the running socket and mark the market not connected. Nothing when no
+    market was registered (LIVE_MARKET off). A later login restarts it through ``pick_up_login``."""
+    market = _current
+    if market is None:
+        return
+    await market.stop()
+    market.feed, market._socket, market._fingerprint = None, None, None
+    market.state = NOT_CONNECTED
+
+
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045
     return None if _current is None else _current.feed
 

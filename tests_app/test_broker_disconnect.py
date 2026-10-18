@@ -5,6 +5,7 @@ Real PostgreSQL (skips locally without TEST_DATABASE_URL, runs in CI). The anony
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import uuid
@@ -12,6 +13,7 @@ import uuid
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from ofo_app import broker_token_store as store
+from ofo_app import live_market
 from ofo_app.broker_config import BrokerSettings, load_broker_config
 from ofo_app.broker_crypto import TokenCipher
 from ofo_app.db import get_db
@@ -114,3 +116,43 @@ async def test_disconnect_ends_only_the_callers_session_and_is_post_only(app_eng
         assert (await ac.post(DISCONNECT)).json() == {"disconnected": True}
     assert (await _row(admin_engine, mine))["end_reason"] == "disconnected"
     assert (await _row(admin_engine, other))["ended_at"] is None
+
+
+class _Socket:
+    def __init__(self) -> None:
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+async def test_disconnect_stops_a_running_live_feed(app_engine, monkeypatch):
+    """AC-8 (ADR-020 Q94): after Disconnect the live socket is stopped, not left streaming on the old token; status
+    never says the feed is live."""
+    user, cipher = _user(), TokenCipher(os.urandom(32))
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, cipher)
+    market = live_market.LiveMarket()
+    socket = _Socket()
+    market.state, market._socket, market._fingerprint = live_market.LIVE, socket, b"fp"
+    market._task = asyncio.get_running_loop().create_task(asyncio.sleep(30))
+    monkeypatch.setattr(live_market, "_current", market)
+    assert market.running()
+    async with AsyncClient(transport=ASGITransport(app=_app(maker, user)), base_url="http://t") as ac:
+        assert (await ac.post(DISCONNECT)).json() == {"disconnected": True}
+        status = (await ac.get(STATUS)).json()
+    assert socket.stopped and not market.running() and live_market.current_session() is None
+    assert market.context() is None and market.state == live_market.NOT_CONNECTED
+    assert status["live_market_data"]["state"] == "disconnected"
+
+
+async def test_disconnect_succeeds_when_no_feed_exists(app_engine, monkeypatch):
+    """AC-8: no registered market (LIVE_MARKET off) is not an error."""
+    user = _user()
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    async with app_engine.begin() as conn:
+        await store.store_session(conn, user, ACCESS_TOKEN, TokenCipher(os.urandom(32)))
+    monkeypatch.setattr(live_market, "_current", None)
+    async with AsyncClient(transport=ASGITransport(app=_app(maker, user)), base_url="http://t") as ac:
+        assert (await ac.post(DISCONNECT)).json() == {"disconnected": True}

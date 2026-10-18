@@ -154,6 +154,16 @@ class KiteReads:
         return "KiteReads()"
 
     def _data(self, method: str, path: str) -> object:
+        """One read's ``data``. A token or unavailable failure forgets the last successful sync (W-089: it must not age
+        on screen); the sync is noted by each fetch only after its own shape checks pass."""
+        try:
+            return self._fetch(method, path)
+        except KiteReadError as exc:
+            if exc.code in ("kite_read_token", "kite_read_unavailable"):
+                broker_sync.forget()
+            raise
+
+    def _fetch(self, method: str, path: str) -> object:
         url = self._base + path
         try:
             check_call(method, url)  # the allow-list, before anything is sent
@@ -181,23 +191,28 @@ class KiteReads:
             raise KiteReadError("kite_read_unavailable") from None
         if not isinstance(reply, dict) or reply.get("status") != "success" or "data" not in reply:
             raise KiteReadError("kite_read_bad_reply")
-        broker_sync.note_read()  # W-089: the Settings page's "Last successful sync"
         return reply["data"]
 
     def fetch_orders(self) -> list[object]:
         """``GET /orders``: today's orders, as a list of rows with exact Decimal money."""
-        return _rows(self._data("GET", ORDERS_PATH))
+        rows = _rows(self._data("GET", ORDERS_PATH))
+        broker_sync.note_read()  # W-089: after the shape check
+        return rows
 
     def fetch_trades(self) -> list[object]:
         """``GET /trades``: today's trades (fills), as a list of rows with exact Decimal money."""
-        return _rows(self._data("GET", TRADES_PATH))
+        rows = _rows(self._data("GET", TRADES_PATH))
+        broker_sync.note_read()
+        return rows
 
     def fetch_positions(self) -> dict[str, list[object]]:
         """``GET /portfolio/positions``: ``{"net": [...], "day": [...]}`` with exact Decimal money."""
         data = self._data("GET", POSITIONS_PATH)
         if not isinstance(data, dict):
             raise KiteReadError("kite_read_bad_reply")
-        return {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
+        out = {**data, "net": _rows(data.get("net")), "day": _rows(data.get("day"))}
+        broker_sync.note_read()
+        return out
 
     def fetch_holdings(self) -> tuple[Holding, ...]:
         """``GET /portfolio/holdings``: the eight compared fields per row (ADR-097 (4)). An empty tuple is a valid
@@ -205,6 +220,7 @@ class KiteReads:
         rows = tuple(_holding(r) for r in _rows(self._data("GET", HOLDINGS_PATH)))
         if len({r.key for r in rows}) != len(rows):
             raise KiteReadError("kite_read_bad_reply")
+        broker_sync.note_read()
         return rows
 
     def fetch_circuit_bands(self, instruments: Sequence[str]) -> dict[str, tuple[Decimal, Decimal]]:
@@ -222,4 +238,5 @@ class KiteReads:
         if not isinstance(data, dict):
             raise KiteReadError("kite_read_bad_reply")
         bands = {i: _band(data.get(i)) for i in asked}
+        broker_sync.note_read()
         return {i: b for i, b in bands.items() if b is not None}

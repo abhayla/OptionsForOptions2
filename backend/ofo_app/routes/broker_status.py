@@ -115,6 +115,7 @@ async def broker_disconnect(db: Annotated[Any, Depends(get_db)],
     """Ends the signed-in owner's active session. Strategies, history, entitlements and the account are not touched."""
     async with db.begin():
         ended = await end_session(db, user_ref, EndReason.DISCONNECTED)
+    await live_market.stop_current()  # the stored token is gone; the socket must not keep streaming on it
     if ended is not None:
         broker_sync.forget()
     return DisconnectOut(disconnected=ended is not None)
