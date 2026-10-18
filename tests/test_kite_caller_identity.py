@@ -36,7 +36,15 @@ DOOR_CALLABLES = frozenset({
 })
 #: (file, function) that forwards its own ``caller`` parameter to a door - the closed list.
 FORWARDERS = frozenset({("ofo_app/kite_margin.py", "urllib_transport")})
-DOOR_MODULES = frozenset(name.rpartition(".")[0] for name in DOOR_CALLABLES)
+#: identity wrappers (#353 round 2): each calls a door AS ITS OWN MODULE, so outside that module it may only be handed
+#: to that module's client as ``transport=`` (bare, or ``functools.partial(wrapper, timeout=...)``); any other use
+#: (a call, a value, another client) borrows the module's identity. wrapper -> its client class.
+IDENTITY_WRAPPERS = {
+    "ofo_app.kite_margin.margin_transport": "ofo_app.kite_margin.KiteMargin",
+    "ofo_app.kite_reads.reads_transport": "ofo_app.kite_reads.KiteReads",
+}
+DOOR_MODULES = frozenset(name.rpartition(".")[0] for name in [*DOOR_CALLABLES, *IDENTITY_WRAPPERS])
+DYNAMIC_IMPORTS = frozenset({"importlib.import_module", "importlib.__import__", "builtins.__import__"})
 
 
 def _imports(tree: ast.Module, rel: str) -> dict[str, str]:
@@ -126,6 +134,13 @@ def scan_source(rel: str, source: str) -> list[str]:
     called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     problems: list[str] = []
     for node in ast.walk(tree):
+        # fail closed on imports the scan does not resolve (none exist in backend/ today): a relative import, or a
+        # dynamic import (importlib.import_module / __import__) that could reach a door under another name
+        if isinstance(node, ast.ImportFrom) and node.level:
+            problems.append(f"{rel}:{node.lineno} a relative import cannot be resolved by the scan: import absolutely")
+        if isinstance(node, ast.Call) and (_qualified(node.func, imports) in DYNAMIC_IMPORTS or (
+                isinstance(node.func, ast.Name) and node.func.id == "__import__")):
+            problems.append(f"{rel}:{node.lineno} a dynamic import cannot be resolved by the scan")
         if isinstance(node, ast.Call):
             name = _qualified(node.func, imports)
             if name in DOOR_CALLABLES:
@@ -139,6 +154,37 @@ def scan_source(rel: str, source: str) -> list[str]:
             name = _qualified(node, imports)
             if name in DOOR_CALLABLES and not _is_inner_part(node, tree):
                 problems.append(f"{rel}:{node.lineno} {name} used as a value: its caller cannot be resolved")
+    return problems + _wrapper_misuse(rel, tree, imports)
+
+
+def _wrapper_misuse(rel: str, tree: ast.Module, imports: dict[str, str]) -> list[str]:
+    """Every use of an identity wrapper outside its own module that is not its own client's ``transport=``."""
+    allowed: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        client = _qualified(node.func, imports)
+        for keyword in node.keywords:
+            if keyword.arg != "transport":
+                continue
+            value = keyword.value
+            if (isinstance(value, ast.Call) and _qualified(value.func, imports) == "functools.partial"
+                    and len(value.args) == 1 and all(k.arg == "timeout" for k in value.keywords)):
+                value = value.args[0]
+            if isinstance(value, (ast.Name, ast.Attribute)) and IDENTITY_WRAPPERS.get(
+                    _qualified(value, imports) or "") == client:
+                allowed.add(id(value))
+    problems = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Name, ast.Attribute)):
+            continue
+        name = _qualified(node, imports)
+        if name not in IDENTITY_WRAPPERS or _is_inner_part(node, tree):
+            continue
+        own = name.rpartition(".")[0].replace(".", "/") + ".py"
+        if rel != own and id(node) not in allowed:
+            problems.append(f"{rel}:{node.lineno} {name} is {own}'s identity: only its client may take it as "
+                            "transport=")
     return problems
 
 
@@ -202,6 +248,20 @@ PLANTED = {
                               "urllib_transport('GET', 'u', {}, None, caller=CALLER_KITE_READS)\n",
     "fake_forwarder": "from ofo_app.kite_margin import urllib_transport\n"
                       "def urllib_transport2(caller):\n    urllib_transport('GET', 'u', {}, None, caller=caller)\n",
+    # #353 round 2: the identity wrappers outside their module, other than their own client's transport=
+    "reads_transport_called": "from ofo_app.kite_reads import reads_transport\n"
+                              "reads_transport('GET', 'https://api.kite.trade/orders', {}, None)\n",
+    "margin_transport_called": "from ofo_app import kite_margin\n"
+                               "kite_margin.margin_transport('GET', 'https://api.kite.trade/user/margins', {}, None)\n",
+    "wrapper_as_value": "from ofo_app.kite_reads import reads_transport as t\nsend = t\n",
+    "wrapper_to_another_client": "from ofo_app.kite_margin import KiteMargin\nfrom ofo_app.kite_reads import reads_transport\n"
+                                 "KiteMargin(api_key='k', access_token='t', transport=reads_transport)\n",
+    "wrapper_partial_other_keyword": "import functools\nfrom ofo_app.kite_reads import KiteReads, reads_transport\n"
+                                     "KiteReads(api_key='k', access_token='t',\n"
+                                     "          transport=functools.partial(reads_transport, headers={}))\n",
+    "relative_import": "from ..broker.kite_http import check_call\n",
+    "importlib": "import importlib\nimportlib.import_module('ofo.broker.kite_http')\n",
+    "dunder_import": "__import__('ofo.broker.kite_http')\n",
 }
 
 
@@ -229,3 +289,16 @@ def test_the_own_identity_and_the_listed_forwarder_pass() -> None:
                  "    return kite_open_url(url, caller=caller)\n")
     assert scan_source("ofo_app/kite_margin.py", forwarder) == []
     assert scan_source("ofo_app/kite_reads.py", forwarder) != []  # the same forwarder elsewhere is not listed
+
+
+def test_an_identity_wrapper_passes_only_as_its_own_clients_transport() -> None:
+    """#353 round 2 (review finding 3): ``reads_transport`` / ``margin_transport`` handed to their own client as
+    ``transport=`` (bare or ``functools.partial(..., timeout=...)``) pass anywhere; inside their own module any use
+    passes."""
+    route = ("import functools\nfrom ofo_app.kite_margin import KiteMargin, margin_transport\n"
+             "from ofo_app.kite_reads import KiteReads, reads_transport\n"
+             "KiteMargin(api_key='k', access_token='t', transport=functools.partial(margin_transport, timeout=5))\n"
+             "KiteReads(api_key='k', access_token='t', transport=reads_transport)\n")
+    assert scan_source("ofo_app/live_market.py", route) == []
+    own = "def reads_transport(method, url, headers, body):\n    return None\nx = reads_transport\n"
+    assert scan_source("ofo_app/kite_reads.py", own) == []

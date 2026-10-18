@@ -267,9 +267,10 @@ async def owner_margin_client() -> KiteMargin | None:
     token = await market._stored_token(market._config)
     if token is None:
         return None
-    # each call bounded so the worker thread never outlives the outcome read timeout
-    transport = functools.partial(margin_transport, timeout=CALL_TIMEOUT_SECONDS)
-    return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
+    # each call bounded so the worker thread never outlives the outcome read timeout; the identity wrapper goes
+    # straight into its own client's transport= (#353 scan)
+    return KiteMargin(api_key=market._config.api_key, access_token=token,
+                      transport=functools.partial(margin_transport, timeout=CALL_TIMEOUT_SECONDS))
 
 
 async def owner_kite_reads() -> tuple[str, KiteReads] | None:
@@ -281,9 +282,9 @@ async def owner_kite_reads() -> tuple[str, KiteReads] | None:
     token = await market._stored_token(market._config)
     if token is None:
         return None
-    transport = functools.partial(reads_transport, timeout=CALL_TIMEOUT_SECONDS)
     api_key = market._config.api_key
-    return api_key, KiteReads(api_key=api_key, access_token=token, transport=transport)
+    return api_key, KiteReads(api_key=api_key, access_token=token,
+                              transport=functools.partial(reads_transport, timeout=CALL_TIMEOUT_SECONDS))
 
 
 @functools.cache
