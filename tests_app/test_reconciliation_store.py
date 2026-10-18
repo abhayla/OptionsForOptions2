@@ -468,6 +468,17 @@ async def test_ac6_downgrade_is_refused_while_a_mismatch_is_stored(admin_engine)
                 await tx.conn.execute(text(own_down[0]))
 
 
+async def test_ac6_a_real_plan_instrument_id_with_an_underscore_is_a_valid_contract_key(app_engine):
+    """Real stored plan instrument ids carry an underscore (``NSE_FO:47189``, the 2026-10-16 contract): the store and
+    the database CHECK both accept it, so a real mismatch write never fails on its key; a lower-case one is refused."""
+    async with _Tx(app_engine) as tx:
+        mid = await _mismatch(tx, key=f"NSE_FO:{REAL_TOKEN}")
+        (stored,) = await rs.mismatches_for(tx.conn, tx.user, tx.strategy_id)
+        assert (stored.id, stored.contract_key) == (mid, "NSE_FO:47189")
+        assert await rs.is_blocked(tx.conn, tx.user, tx.strategy_id) is True
+        await _refused(rs.BAD_MISMATCH, _mismatch(tx, key="nse_fo:47189"))
+
+
 def test_every_stored_close_reason_is_a_plan_state_the_return_route_can_answer():
     """Class check (#380-1 review finding 4): the return route answers a closed plan with its stored close reason, so
     every reason the plan store accepts (``unresolved_from_positions`` included) must be in the route's PlanState."""

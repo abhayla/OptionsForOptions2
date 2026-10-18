@@ -59,7 +59,7 @@ ATTENTION = "marked_requiring_attention"
 SETTLING = (BASKET, KITE_FLAT)
 MAX_REPORT_BYTES = 65_536
 MAX_TEXT = 500
-_CONTRACT_KEY = re.compile(r"[A-Z][A-Z0-9-]{0,15}:[1-9][0-9]{0,18}")
+_CONTRACT_KEY = re.compile(r"[A-Z][A-Z0-9_-]{0,15}:[1-9][0-9]{0,18}")
 _UNIQUE_VIOLATION = "23505"
 #: migration 0018: one row per (mismatch, action), and one settling row per mismatch.
 _RESOLUTION_KEYS = ("reconciliation_resolutions_pkey", "reconciliation_resolutions_one_settling")
