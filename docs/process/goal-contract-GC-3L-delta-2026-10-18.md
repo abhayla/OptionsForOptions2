@@ -4,6 +4,11 @@ Applies on top of `goal-contract-GC-3L-2026-10-19.md`, which is not edited. Wher
 Owner runbook for the same day: `gc-3l-runbook-2026-10-19.md`.
 
 ## 1. Monday 2026-10-19 timeline (IST)
+- **08:30** if `lock/gc-2f` still exists on origin (GC-2f overran its 07:30 cap), the owner may delete it
+  (`git push origin --delete lock/gc-2f`) and GC-3L starts; GC-2f's open PRs stay open and unmerged. Main may carry
+  GC-2f's docs-only close-out commit (section 2 covers it). Because goal-chain.md then still marks GC-2f NEXT, start
+  GC-3L with the chain prompt with "run the contract marked NEXT" replaced by "run GC-3L (GC-2f overran; it is
+  PARTIAL, its unfinished items parked; GC-3L's close-out records that)".
 - **08:30** lock `lock/gc-3l` + step 0 (short: section 2 below replaces step 0.1 on a docs-only head).
 - **08:45 catalogue reload** on ofo_dev: `python scripts/orchestrator/dev_run.py . python -m ofo_app.catalogue_load`.
   Freeze limits: the loaded file is NSE's 2026-10-15 contract file (3511 for all 261 NIFTY 2026-10-27 CEs). A newer
