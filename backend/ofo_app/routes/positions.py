@@ -20,7 +20,6 @@ from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Depends
 from ofo.errors import render
 
-from ofo_app import execution_plan_store as plans
 from ofo_app import reconcile_attribution as ra
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier
@@ -75,19 +74,10 @@ def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
         raise _refuse("gate_broker_unconfirmed") from None
 
 
-async def _strategy_plans(db: Any, user_ref: str) -> dict[int, ra.StrategyPlans]:
-    out: dict[int, ra.StrategyPlans] = {}
-    for summary in await store.list_strategies(db, user_ref):
-        history = await plans.plans_for(db, user_ref, summary.id)
-        if history:
-            out[summary.id] = ra.StrategyPlans(summary.underlying, history)
-    return out
-
-
 async def _attribute(db: Any, user_ref: str, net: Any, sources: ra.Sources, now: datetime.datetime) -> ra.Attribution:
-    """The ONE call into W-108 (the route hands over only the store and Zerodha's net; never held units or outside
-    lots). W-108 is changing its inputs to a store reader: this adapter is the only line that changes."""
-    return ra.attribute_and_compare(await _strategy_plans(db, user_ref), {}, net, sources, at=now)
+    """The ONE call into W-108: the route hands over only the account (connection + user) and Zerodha's net; W-108
+    loads the strategies and plans itself (never held units, plans or outside lots from here or the client)."""
+    return await ra.attribute_and_compare(ra.Account(db, user_ref), {}, net, sources, at=now)
 
 
 def _answer(result: ra.Attribution, index: ContractIndex, now: datetime.datetime) -> PositionsOut:
