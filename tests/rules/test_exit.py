@@ -140,17 +140,24 @@ def _exit_response(lots: int, limits):  # noqa: ANN001, ANN202
     rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
     key = (Instrument.CE, D("23400"), EXPIRY)
     return respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
-                   freeze_limits=None if limits is None else {key: ContractFreeze("NIFTY26O2723400CE", limits)})
+                   freeze_limits={key: ContractFreeze("NIFTY26O2723400CE", limits)})
 
 
 def test_adr092_rule_proposal_blocks_55_lots_and_prepares_54_lots_as_one_order():
     """ADR-092 (issue 63): NIFTY lot 65, stored limit 3,511 (F-36): 55 lots -> no proposal, the alert still given, the
-    block names the largest allowed order; 54 lots -> one proposed order of 3,510 units; no stored limit -> none."""
+    block names the largest allowed order; 54 lots -> one proposed order of 3,510 units; no stored limit -> the 55
+    lots are proposed as one order with the review's warning (ADR-081, ADR-037)."""
     nifty = StoredFreeze(3511, 65, datetime.date(2026, 10, 15))
     blocked = _exit_response(55, nifty)
     assert blocked.proposal is None and blocked.alert.startswith("Your rule was triggered")
     assert "the largest single order allowed is 3510 units (54 lots)" in display_text(blocked.blocked[0])
     allowed = _exit_response(54, nifty)
     assert [o.quantity for o in allowed.proposal.orders] == [3510] and allowed.blocked == ()
-    missing = _exit_response(1, None)
-    assert missing.proposal is None and "no exchange freeze limit is stored" in display_text(missing.blocked[0])
+    missing = _exit_response(55, None)
+    assert [o.quantity for o in missing.proposal.orders] == [3575] and missing.blocked == ()
+    assert display_text(missing.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O2723400CE")
+    with pytest.raises(ValueError, match="no trading symbol"):
+        leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 65, D("50.00"))
+        rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
+        respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
+                freeze_limits={})

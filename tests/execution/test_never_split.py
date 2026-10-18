@@ -140,7 +140,9 @@ def test_attack_exactly_at_the_largest_allowed_order_is_one_order_one_lot_more_i
             require_within_freeze("NIFTY26O0623600CE", units, NIFTY)
         assert LARGEST in display_text(err.value.message)
     else:
-        require_within_freeze("NIFTY26O0623600CE", units, NIFTY)
+        assert require_within_freeze("NIFTY26O0623600CE", units, NIFTY) is None
+    warning = require_within_freeze("NIFTY26O0623600CE", units, None)
+    assert display_text(warning).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
     assert (exceeded_message("NIFTY26O0623600CE", units, NIFTY) is not None) is blocked
 
 
@@ -153,11 +155,16 @@ def test_attack_a_unit_count_equal_to_the_limit_is_blocked() -> None:
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])
-def test_attack_no_stored_limit_blocks_with_a_clear_reason(kind, catalogue, eligibility) -> None:  # noqa: ANN001
-    """Attack 3 (fail closed): no stored limit for the contract -> nothing prepared, the reason says so."""
-    prep = _flow(kind, 1, catalogue, eligibility, limit=None)
-    assert not prep.ready and prep.orders == ()
-    assert "no exchange freeze limit is stored for NIFTY" in prep.text
+def test_attack_no_stored_limit_warns_and_never_blocks_even_at_55_lots(kind, catalogue, eligibility) -> None:  # noqa: ANN001
+    """Attack 3 (ADR-081 "the review warns"; ADR-037 never stop a user getting out of risk): no stored limit -> the
+    55-lot order is prepared as ONE order with the review's warning for its contract, never blocked."""
+    prep = _flow(kind, BLOCKED_LOTS, catalogue, eligibility, limit=None)
+    assert prep.ready, prep.text
+    assert [o.quantity for o in prep.orders] == [3575] * len(prep.orders)
+    assert [display_text(w).startswith(f"No exchange freeze limit is stored for {o.contract}")
+            for w, o in zip(prep.warnings, prep.orders, strict=True)] == [True] * len(prep.orders)
+    with_limit = _flow(kind, BLOCKED_LOTS, catalogue, eligibility)
+    assert not with_limit.ready and with_limit.warnings == ()
 
 
 @pytest.mark.parametrize("kind", ["complete", "retry", "close"])

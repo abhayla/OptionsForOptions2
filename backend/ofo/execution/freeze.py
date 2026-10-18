@@ -13,7 +13,7 @@ removed; the stored limit (ADR-081, ADR-091) is the only freeze figure." ``requi
 order-preparing path calls (Complete, Retry, exit, the reconciliation closing proposal, the rule-action proposal); the
 review's ``freeze_check`` uses the same ``exceeded_message``. Allow-list: an order is allowed only when a stored limit
 is present, is a ``StoredFreeze``, the units are a positive whole number of its lots and below the limit; anything else
-is refused. In those paths a missing limit BLOCKS (fail closed, issue 255): nothing is prepared without a known limit.
+is refused. A MISSING stored limit never blocks on any path: every path gets the review's warning (ADR-081; ADR-037).
 """
 from __future__ import annotations
 
@@ -110,26 +110,26 @@ class FreezeRefused(UserFacing, ValueError):
 
 @dataclass(frozen=True)
 class ContractFreeze:
-    """A stored limit with the exchange trading symbol it was stored for (for builders that key orders by contract
-    terms, not by symbol)."""
+    """A contract's exchange trading symbol and its stored limit, None while none is stored (for builders that key
+    orders by contract terms, not by symbol). Every contract of a proposal must have one: the symbol names the
+    warning or the block."""
 
     symbol: str
-    stored: StoredFreeze
+    stored: StoredFreeze | None
 
 
-def require_within_freeze(contract: str | None, units: int, stored: StoredFreeze | None) -> None:
-    """THE order check (ADR-092): return only when ``units`` may go as ONE order; raise ``FreezeRefused`` otherwise.
-    ``contract`` is the trading symbol, or None when the caller has no symbol (only possible with no stored limit)."""
+def require_within_freeze(contract: str, units: int, stored: StoredFreeze | None) -> UserFacingError | None:
+    """THE order check (ADR-092): ``units`` of ``contract`` (its trading symbol) go as ONE order. A KNOWN stored limit
+    the units are not below raises ``FreezeRefused`` (with the limit and the largest allowed order). No stored limit
+    returns the review's warning (ADR-081 "the review warns that Zerodha may reject a large order"; ADR-037: never
+    stop a user getting out of risk), never a block; otherwise None."""
     if stored is None:
-        message = (render("freeze_limit_missing", contract=contract) if contract is not None
-                   else render("freeze_limit_missing_unnamed"))
-        raise FreezeRefused(detail=f"{contract}: no stored freeze limit; nothing prepared", message=message)
-    if contract is None:
-        raise ValueError("a stored freeze limit needs the trading symbol it was stored for")
+        return render("freeze_limit_unknown", contract=contract)
     message = exceeded_message(contract, units, stored)
     if message is not None:
         raise FreezeRefused(detail=f"{contract}: {units} units is not below the freeze limit {stored.limit}",
                             message=message)
+    return None
 
 
 def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:
