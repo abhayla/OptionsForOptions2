@@ -200,7 +200,8 @@ Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to c
 ## How the sessions work (reuse it)
 - Flow per item: builder (own worktree, `isolation: worktree`) → independent verifier (fresh context, read-only) →
   orchestrator records evidence (`scripts/orchestrator/record_evidence.py <worktree> <W-id> <builder> <verifier>
-  <json>`) → CI mirror → PR → `tools/merge_when_green.py` run as its OWN command (the kit guard blocks it after `&&`).
+  <json>`) → CI mirror → PR → `scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` run as its OWN command
+  (kit 1.10.1: the gate refuses without the reviewed sha).
 - Brief templates: `docs/process/builder-brief.md`, `docs/process/verifier-brief.md`. Every brief carries Budget
   (builder ≤ 80 tool calls, verifier ≤ 32 — hook-enforced), Core/Proof, Spec basis quoted from the spec, and
   Class/Proof lines on fixes (hook-enforced).

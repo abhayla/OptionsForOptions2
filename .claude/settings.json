@@ -154,10 +154,6 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_inflight_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
-          },
-          {
-            "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_snapshot_ledger.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       },
@@ -209,14 +205,6 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/verifier_snapshot_ledger.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       }
