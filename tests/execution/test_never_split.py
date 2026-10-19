@@ -261,7 +261,7 @@ def test_require_within_freeze_warns_stale_exactly_after_eight_days() -> None:
     with pytest.raises(FreezeRefused):  # stale still blocks above the limit
         require_within_freeze("NIFTY26O0623600CE", 3575, nine, today=TODAY)
     with pytest.raises(ValueError):  # today is required to be a date
-        require_within_freeze("NIFTY26O0623600CE", 65, eight, today=datetime.datetime(2026, 10, 16))
+        require_within_freeze("NIFTY26O0623600CE", 65, eight, today=datetime.datetime(2026, 10, 16))  # noqa: DTZ001  # deliberately naive: the refusal under test
 
 
 @pytest.mark.parametrize("bad", [0, -1, True, "3511"])

@@ -138,7 +138,7 @@ def test_snapshot_rejects_bad_values():
     with pytest.raises(ValueError, match="derived"):
         Snapshot({InputName.TIME_OF_DAY: D("600")}, AS_OF, DataHealth.AVAILABLE)
     with pytest.raises(ValueError, match="timezone-aware"):
-        Snapshot({}, datetime.datetime(2026, 10, 20, 11, 15), DataHealth.AVAILABLE)
+        Snapshot({}, datetime.datetime(2026, 10, 20, 11, 15), DataHealth.AVAILABLE)  # noqa: DTZ001  # deliberately naive: the refusal under test
     with pytest.raises(ValueError, match="engine"):
         snapshot_from_strategy(GOLDEN, underlying_level=D("23200"), as_of=AS_OF, data_health=DataHealth.AVAILABLE,
                                extra={InputName.LIVE_PNL: D("0")})
@@ -363,7 +363,7 @@ def _evaluation(as_of):
                       DataHealth.AVAILABLE, "src", "")
 
 
-@pytest.mark.parametrize("bad", [datetime.datetime(2026, 10, 20, 11, 15), "2026-10-20T11:15+05:30", None])
+@pytest.mark.parametrize("bad", [datetime.datetime(2026, 10, 20, 11, 15), "2026-10-20T11:15+05:30", None])  # noqa: DTZ001  # deliberately naive: the refusal under test
 def test_evaluation_refuses_a_naive_or_non_datetime_as_of(bad):
     """Dies if the Evaluation.__post_init__ tz guard is removed (a naive time would read as the host's clock)."""
     with pytest.raises(ValueError):
