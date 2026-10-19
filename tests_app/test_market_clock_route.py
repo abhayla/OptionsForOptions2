@@ -92,3 +92,32 @@ def test_basket_is_refused_when_margin_call_ran_past_the_close(monkeypatch) -> N
 def test_basket_is_returned_when_the_clock_is_still_open(monkeypatch) -> None:  # noqa: ANN001
     sentinel = _stub_basket_path(monkeypatch)
     assert asyncio.run(execute._basket(_req(_clock(START)), SimpleNamespace(plan=None), None, 1)) is sentinel
+
+
+# ---- the screen's read: the same verdict, before the click ------------------------------------------------------------
+
+def _verdict(when: datetime.datetime) -> dict:
+    import json
+
+    from ofo_app import api_models
+    return json.loads(api_models.emit(execute.market_verdict(when)))
+
+
+def test_market_status_route_is_the_gates_verdict_in_each_state() -> None:
+    """Open Wed 10:00; closed on Dussehra with the ADR-119 / ADR-121 sentence and the next trading day; unconfirmed in a
+    year with no holiday data (no date guessed). The route is mounted and uses the server clock dependency."""
+    opened = _verdict(datetime.datetime(2026, 10, 21, 10, 0, tzinfo=IST))
+    assert opened["status"] == "open" and opened["next_open"] is None and opened["message"] is None
+    closed = _verdict(datetime.datetime(2026, 10, 20, 10, 0, tzinfo=IST))
+    assert closed["status"] == "closed" and closed["next_open"] == "2026-10-21"
+    assert closed["message"]["what_happened"] == "Market closed. You can review your plan; execution opens at 09:15 on Wed 21 Oct."
+    unknown = _verdict(datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST))
+    assert unknown["status"] == "unconfirmed" and unknown["next_open"] is None
+    assert unknown["message"]["what_happened"].startswith("We could not confirm that the market is open")
+    assert any(r.path == "/execute/market-status" and "GET" in r.methods for r in execute.router.routes)
+
+
+def test_market_status_route_serves_the_server_clock() -> None:
+    import asyncio
+    out = asyncio.run(execute.execute_market_status(lambda: LATE))
+    assert out.status == "closed" and out.as_of == LATE

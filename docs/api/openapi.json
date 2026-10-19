@@ -1195,6 +1195,55 @@
         "title": "MarginOut",
         "type": "object"
       },
+      "MarketStatusOut": {
+        "additionalProperties": false,
+        "description": "ADR-119 (3): the server's market verdict for the Execute screen, shown BEFORE the click. ``message`` is the\ncatalogue refusal (None when open); the browser never decides from its own clock.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "next_open": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "closed",
+              "unconfirmed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "next_open",
+          "message",
+          "as_of"
+        ],
+        "title": "MarketStatusOut",
+        "type": "object"
+      },
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3372,6 +3421,25 @@
           }
         },
         "summary": "Zerodha Login"
+      }
+    },
+    "/execute/market-status": {
+      "get": {
+        "description": "Read-only: whether Execute is open now, on the server clock (ADR-119 (3)); the POST gate re-judges on its own.",
+        "operationId": "execute_market_status_execute_market_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Execute Market Status"
       }
     },
     "/health": {

@@ -63,7 +63,7 @@ from ofo.execution.safety import check_pre_execution, market_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.market_calendar import MarketStatus, market_status
+from ofo.market_calendar import MarketStatus, market_status, next_open
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
@@ -135,6 +135,16 @@ class ExecuteOut(ApiModel):
     basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
     orders: list[BasketOrderOut]  # display only
     cost: CostOut
+
+
+class MarketStatusOut(ApiModel):
+    """ADR-119 (3): the server's market verdict for the Execute screen, shown BEFORE the click. ``message`` is the
+    catalogue refusal (None when open); the browser never decides from its own clock."""
+
+    status: Literal["open", "closed", "unconfirmed"]
+    next_open: Optional[datetime.date]  # noqa: UP045 - the next trading day when closed, else None
+    message: Optional[CatalogueText]  # noqa: UP045 - the gate's own refusal text, None when open
+    as_of: datetime.datetime  # the server clock the verdict was judged on
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -279,6 +289,25 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+
+
+def market_verdict(now: datetime.datetime) -> MarketStatusOut:
+    """The gate's own market verdict at ``now`` (``market_failures``), as the screen shows it."""
+    failures = market_failures(now, market_open(now))
+    if not failures:
+        return MarketStatusOut(status="open", next_open=None, message=None, as_of=now)
+    opens = next_open(now) if market_status(now) is not MarketStatus.NO_CALENDAR else None
+    if opens is None:
+        return MarketStatusOut(status="unconfirmed", next_open=None, message=failures[0].message, as_of=now)
+    return MarketStatusOut(status="closed", next_open=opens.date(), message=failures[0].message, as_of=now)
+
+
+@router.get("/execute/market-status", response_model=MarketStatusOut)
+async def execute_market_status(
+    clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+) -> MarketStatusOut:
+    """Read-only: whether Execute is open now, on the server clock (ADR-119 (3)); the POST gate re-judges on its own."""
+    return market_verdict(clock())
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -638,6 +667,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut", "cost_out",
+           "execute_market_status", "market_verdict",
            "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
            "price_and_time"]
