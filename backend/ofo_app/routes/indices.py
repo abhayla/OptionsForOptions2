@@ -16,7 +16,8 @@ reads carry no user value.
 from __future__ import annotations
 
 import time
-from typing import Annotated, Callable, Optional
+from collections.abc import Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
@@ -31,7 +32,7 @@ REST_PATH = "/api/market/indices"
 router = APIRouter(route_class=ClosedRoute)
 
 
-def held_by_a_socket(ctx: MarketContext, streaming: Optional[Callable[[str], bool]]) -> bool:
+def held_by_a_socket(ctx: MarketContext, streaming: Callable[[str], bool] | None) -> bool:
     """True when every known index id is streaming on the shared feed (the outcome route's rule, issue #206). No
     predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used as
     they are, like the outcome route."""
@@ -43,7 +44,7 @@ def held_by_a_socket(ctx: MarketContext, streaming: Optional[Callable[[str], boo
     return all(streaming(i) for i in index_ids(ctx).values() if i is not None)
 
 
-def indices_read(ctx: Optional[MarketContext], streaming: Optional[Callable[[str], bool]], *, fallback: bool,
+def indices_read(ctx: MarketContext | None, streaming: Callable[[str], bool] | None, *, fallback: bool,
                  now: AnswerClock) -> IndicesOut:
     """The REST answer. ``fallback``: this page's own socket is down, so it is not live whatever other sockets hold."""
     live_now = ctx is not None and not fallback and held_by_a_socket(ctx, streaming)
@@ -51,8 +52,8 @@ def indices_read(ctx: Optional[MarketContext], streaming: Optional[Callable[[str
 
 
 @router.get(REST_PATH, response_model=IndicesOut)
-def market_indices(ctx: Annotated[Optional[MarketContext], Depends(get_market_context)],
-                   streaming: Annotated[Optional[Callable[[str], bool]], Depends(get_streaming)],
+def market_indices(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                   streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    fallback: Annotated[bool, Query(description="true when the page's own index socket is down "
                                                                "(ADR-077): the answer is then not live whoever else "

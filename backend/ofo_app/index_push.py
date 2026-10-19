@@ -1,4 +1,5 @@
-"""The live NIFTY 50 / SENSEX push of the Underlying/index view (W-114; REQ-072 AC-2, REQ-049 AC-2/AC-4). Framework-free.
+"""The live NIFTY 50 / SENSEX push of the Underlying/index view (W-114; REQ-072 AC-2, REQ-049 AC-2/AC-4).
+Framework-free.
 
 One :class:`IndexPush` serves one browser connection of the read-only index socket. On connect it subscribes the two
 index instruments (the catalogue's ``provider.index_id``) on the ONE shared fan-out (never a vendor connection per
@@ -18,26 +19,27 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
-from decimal import Decimal
-from typing import Any, Callable, Literal, Optional
+from collections.abc import Callable
+from typing import Any, Literal
 
 from ofo.errors import render
 from ofo.marketdata.quote import is_live_price
+from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
 from ofo_app.routes.outcome import HealthCode, MarketContext
 
 #: The two indices of the view, in the order the message lists them (NIFTY then SENSEX).
 UNDERLYINGS: tuple[Literal["NIFTY", "SENSEX"], ...] = ("NIFTY", "SENSEX")
-PAISA = Decimal("0.01")  # money leaves the API as a 2-decimal string
 
 
 class IndexOut(ApiModel):
     underlying: Literal["NIFTY", "SENSEX"]
-    instrument_id: Optional[InstrumentId]  # (segment, exchange token), REQ-072 AC-1; None when the catalogue lacks it
-    value: Optional[Money]  # the last price as given; None when there is none or the answer is not live
-    at: Optional[datetime.datetime]  # the quote's own time (aware); kept in the not-live answer as "last value time"
-    health: Optional[HealthCode]  # the quote's own health; None in the not-live answer
+    instrument_id: InstrumentId | None  # (segment, exchange token), REQ-072 AC-1; None when the catalogue lacks it
+    value: Money | None  # the last price as given; None when there is none or the answer is not live
+    at: datetime.datetime | None  # the quote's own time (aware); kept in the not-live answer as "last value time"
+    health: HealthCode | None  # the quote's own health; None in the not-live answer
 
 
 class IndicesOut(ApiModel):
@@ -47,13 +49,13 @@ class IndicesOut(ApiModel):
     answered_at: datetime.datetime
 
 
-def index_ids(ctx: MarketContext) -> dict[str, Optional[str]]:
+def index_ids(ctx: MarketContext) -> dict[str, str | None]:
     """The catalogue id of each index, None for one the catalogue does not know."""
     reader = getattr(ctx.provider, "index_id", lambda _u: None)
     return {u: reader(u) for u in UNDERLYINGS}
 
 
-def _row(ctx: MarketContext, underlying: Literal["NIFTY", "SENSEX"], instrument_id: Optional[str],
+def _row(ctx: MarketContext, underlying: Literal["NIFTY", "SENSEX"], instrument_id: str | None,
          live: bool) -> IndexOut:
     quote = None if instrument_id is None else ctx.provider.underlying_quote(underlying)
     if quote is not None and quote.instrument_id != instrument_id:  # never another instrument's quote as this index's
@@ -63,12 +65,12 @@ def _row(ctx: MarketContext, underlying: Literal["NIFTY", "SENSEX"], instrument_
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=at, health=None)
     if quote is None:  # unknown index or no quote: shown as unavailable, no number (REQ-072 AC-2 "missing ... as such")
         return IndexOut(underlying=underlying, instrument_id=instrument_id, value=None, at=None, health="unavailable")
-    value = quote.ltp.quantize(PAISA) if is_live_price(quote.ltp) else None
+    value = quote.ltp.quantize(PAISE) if is_live_price(quote.ltp) else None
     return IndexOut(underlying=underlying, instrument_id=instrument_id, value=value, at=at,
                     health=quote.health.value)
 
 
-def indices_answer(ctx: Optional[MarketContext], *, live: bool,
+def indices_answer(ctx: MarketContext | None, *, live: bool,
                    now: Callable[[], datetime.datetime]) -> IndicesOut:
     """The ONE answer behind the REST read and the socket push. ``ctx`` None (no live feed): NOT_CONNECTED, every value
     null. ``live`` False (the page's own socket is down, or nothing holds the indices): NOT_CONNECTED with each index's
@@ -92,17 +94,17 @@ def _ignore(_quote: Any) -> None:
 
 
 class IndexPush:
-    def __init__(self, channel: Channel, feed: Optional[LiveFeed], *, monotonic: Callable[[], float],
+    def __init__(self, channel: Channel, feed: LiveFeed | None, *, monotonic: Callable[[], float],
                  now: Callable[[], datetime.datetime], poll: float = POLL_SECONDS) -> None:
         self._channel = channel
         self._feed = feed
         self._monotonic = monotonic
         self._now = now
         self._poll = poll
-        self._handle: Optional[int] = None
+        self._handle: int | None = None
         self._live = False
-        self._shown: Optional[tuple] = None
-        self._last_push: Optional[float] = None
+        self._shown: tuple | None = None
+        self._last_push: float | None = None
         self.pushes = 0
 
     def _subscribe(self) -> None:
@@ -141,7 +143,7 @@ class IndexPush:
         self._last_push = self._monotonic()
 
     async def run(self) -> None:
-        recv: Optional[asyncio.Future] = None
+        recv: asyncio.Future | None = None
         try:
             self._subscribe()
             while True:
