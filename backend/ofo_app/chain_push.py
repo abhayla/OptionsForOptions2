@@ -13,11 +13,19 @@ One :class:`ChainPush` serves one browser connection of the read-only chain sock
 stored catalogue (one short database read per applied request, never per push: finding db-role-limit-below-pool-size),
 picks ``strikes_each_side`` catalogue strikes either side of the ATM strike from the LIVE spot (no spot: no strikes and
 no guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer`
-- the same function the REST read returns - at most once every ``MIN_PUSH_INTERVAL`` seconds and only when something the
-screen shows changed. A new request is applied at most once a second too (latest wins), so a client cannot drive
-catalogue reads or Kite subscription changes faster; it takes the new subscription BEFORE releasing the old one (the
-order of ``StrategyPush._replace``, so a shared instrument such as the index is never dropped and re-added). Everything
-is released when the connection ends, on every exit path.
+- the same function the REST read returns - only when something the screen shows changed. EVERY outbound message (a
+push or the error reply to invalid client messages, coalesced into one) passes ONE gate of ``MIN_PUSH_INTERVAL``
+seconds, so the socket never sends more than one message a second for any reason. Every subscription change (an applied
+request, latest wins; a re-pick once the spot arrives) happens at most once a second, so a client cannot drive catalogue
+reads or Kite subscription changes faster; when the live ATM leaves the window it re-centres around it at most every
+``RECENTRE_SECONDS``. A change takes the new subscription BEFORE releasing the old one (the order of
+``StrategyPush._replace``, so a shared instrument such as the index is never dropped and re-added). A contract the
+provider does not know (KeyError) makes only THAT cell unavailable; the rest of the window still streams. Everything is
+released when the connection ends, on every exit path.
+
+REQ-029 AC-4: LTP and bid/ask stream at the push rate (a 0 bid or ask reads null, F-29); OI and OI change are refreshed
+at most every ``OI_REFRESH_SECONDS``. IV is NOT carried: it needs the one calculation engine (ADR-008), so IV's lower
+frequency is the remaining part of AC-4.
 
 Liveness is this connection's own: LIVE only while THIS push holds its subscription (finding
 liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of
@@ -54,7 +62,13 @@ log = logging.getLogger(__name__)
 #: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 62 contracts (31
 #: strikes, CE and PE) and the index.
 MAX_STRIKES_EACH_SIDE = 15
+#: REQ-029 AC-4 / Q46: "OI and IV update at a lower frequency" than LTP and bid/ask. Q46 names no number; 5 s is the
+#: orchestrator's technical decision (W-116 round 2). The same interval bounds how often the window re-centres.
+OI_REFRESH_SECONDS = 5.0
+RECENTRE_SECONDS = OI_REFRESH_SECONDS
 _SIDES = ("CE", "PE")
+#: (oi, oi_change) as last shown, per contract id
+SlowValues = dict[str, tuple[int | None, int | None]]
 
 #: Why a chain answer has no rows (None when it has them). ``NOT_CONNECTED`` answers carry none either: then the state
 #: says so and this is None.
@@ -73,8 +87,11 @@ class ChainRequest(BaseModel):
 class ChainCellOut(ApiModel):
     instrument_id: InstrumentId  # the catalogue's contract id (segment:token)
     ltp: Money | None  # the last price as given; None when there is none or the answer is not live
+    bid: Money | None  # the best bid as given; None when there is none or it is 0 (F-29: 0 is "no price")
+    ask: Money | None  # the best ask as given; None when there is none or it is 0 (F-29)
     change: Money | None  # always None: the feed carries no previous close (REQ-029 AC-2, never computed otherwise)
-    oi: int | None
+    oi: int | None  # on the socket refreshed at most every OI_REFRESH_SECONDS (REQ-029 AC-4, Q46)
+    oi_change: int | None  # as the quote gives it, refreshed with ``oi``
     volume: int | None
     health: HealthCode | None  # the quote's own health; None in the not-live answer
     at: datetime.datetime | None  # the quote's own time (aware)
@@ -197,18 +214,30 @@ def _rows_missing(catalogue: ChainCatalogue, expiry: datetime.date, window: tupl
     return "SPOT_MISSING" if window is None else None
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None) -> ChainCellOut:
-    if quote is None:  # held, but no quote yet (the snapshot is keyed by instrument id): shown as such
-        return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, change=None, oi=None, volume=None,
-                            health="unavailable", at=None)
-    ltp = quote.ltp.quantize(PAISE) if quote.ltp is not None and is_live_price(quote.ltp) else None
-    return ChainCellOut(instrument_id=contract.instrument_id, ltp=ltp, change=None, oi=quote.oi, volume=quote.volume,
+def _given_money(value: Decimal | None) -> Decimal | None:
+    """A price as given, 2 decimals; None when absent or 0 (the one zero rule, F-29)."""
+    return value.quantize(PAISE) if value is not None and is_live_price(value) else None
+
+
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None) -> ChainCellOut:
+    if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
+        return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
+                            oi_change=None, volume=None, health="unavailable", at=None)
+    oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
+                                                                              (quote.oi, quote.oi_change))
+    return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
+                        ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
                         health=quote.health.value, at=quote.timestamp)
 
 
-def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,
-          window: tuple[Decimal, ...]) -> list[ChainRowOut]:
-    quotes = {q.instrument_id: q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)}
+def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, NormalizedQuote]:
+    return {q.instrument_id: q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)}
+
+
+def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
+          window: tuple[Decimal, ...], slow: SlowValues | None,
+          unknown: frozenset[str]) -> list[ChainRowOut]:
+    quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
         if c.strike in by_strike and c.instrument_type in _SIDES:
@@ -218,16 +247,19 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE),
-                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id)),
-                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id))))
+                               ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow),
+                               pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow)))
     return out
 
 
 def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
                  window: tuple[Decimal, ...] | None, *, live: bool,
-                 now: Callable[[], datetime.datetime]) -> ChainOut:
+                 now: Callable[[], datetime.datetime], slow: SlowValues | None = None,
+                 unknown: frozenset[str] = frozenset()) -> ChainOut:
     """The ONE answer behind the REST read and the socket push. Not live (no feed, the page's own socket is down, or
-    this     connection holds nothing): NOT_CONNECTED, no rows, no number; only the spot's last value time is kept."""
+    this connection holds nothing): NOT_CONNECTED, no rows, no number; only the spot's last value time is kept.
+    ``slow``: the OI values the socket last showed (None: as the quotes give them); ``unknown``: contracts the provider
+    does not know, shown unavailable."""
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
     if ctx is None or not live:
@@ -243,7 +275,8 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         spot_at=None if spot_quote is None else spot_quote.timestamp,
         spot_health="unavailable" if spot_quote is None else spot_quote.health.value,
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
-        rows_missing=missing, rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window),
+        rows_missing=missing,
+        rows=[] if missing is not None or window is None else _rows(ctx, req, catalogue, window, slow, unknown),
         answered_at=answered_at)
 
 
@@ -272,9 +305,13 @@ class ChainPush:
         self._window: tuple[Decimal, ...] | None = None
         self._handle: int | None = None
         self._pending: ChainRequest | None = None
-        self._last_apply: float | None = None
+        self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
-        self._last_push: float | None = None
+        self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
+        self._error_due = False  # invalid client messages since the last send: answered with ONE error, gated
+        self._unknown: set[str] = set()  # contracts of the request the provider does not know: shown unavailable
+        self._slow: SlowValues = {}
+        self._last_slow: float | None = None
         self.pushes = 0
 
     @property
@@ -286,60 +323,125 @@ class ChainPush:
             self._feed.fanout.unsubscribe(self._handle)
         self._handle = None
 
-    async def _error(self) -> None:
-        await self._channel.send(render("user_input_request_invalid"))
+    def _since(self, mark: float | None) -> float | None:
+        return None if mark is None else self._monotonic() - mark
 
-    async def _take_message(self, raw: Any) -> None:
+    def _gate_open(self) -> bool:
+        """ONE gate for every outbound message (a push, an error reply): at most one a second, whatever the reason."""
+        since = self._since(self._last_send)
+        return since is None or since >= MIN_PUSH_INTERVAL
+
+    async def _emit(self, message: Any) -> None:
+        await self._channel.send(message)
+        self._last_send = self._monotonic()
+
+    def _take_message(self, raw: Any) -> None:
         try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
         except ValidationError:
-            await self._error()
+            self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
             return
         self._pending = None if req == self._req else req  # the latest wins; the current one again cancels a pending
 
-    async def _maybe_apply(self) -> None:
-        if self._pending is None:
-            return
-        if self._last_apply is not None and self._monotonic() - self._last_apply < MIN_PUSH_INTERVAL:
-            return  # at most one applied request (catalogue read, subscription change) a second
-        req, self._pending = self._pending, None
-        self._last_apply = self._monotonic()
-        catalogue = await self._reader(req.underlying, req.expiry)
-        await self._take(req, catalogue)
+    def _may_take(self, interval: float) -> bool:
+        since = self._since(self._last_take)
+        return since is None or since >= interval
 
-    async def _take(self, req: ChainRequest, catalogue: ChainCatalogue) -> None:
+    async def _maybe_apply(self) -> None:
+        if self._pending is None or not self._may_take(MIN_PUSH_INTERVAL):
+            return  # at most one subscription change (catalogue read, Kite subscribe) a second
+        req, self._pending = self._pending, None
+        self._last_take = self._monotonic()
+        catalogue = await self._reader(req.underlying, req.expiry)
+        if req != self._req:
+            self._unknown = set()
+        self._take(req, catalogue)
+
+    def _subscribe_known(self, ids: list[str]) -> int | None:
+        """Subscribe ``ids`` on the fan-out. A contract the provider does not know (KeyError) is remembered and left
+        out, so THAT cell reads unavailable and the rest of the window still streams; None when no id is known."""
+        assert self._feed is not None  # noqa: S101 - called only with a feed
+        fanout = self._feed.fanout
+        ids = [i for i in ids if i not in self._unknown]
+        if not ids:
+            return None
+        try:
+            return fanout.subscribe(_ignore, ids)
+        except KeyError:
+            pass
+        singles: list[int] = []  # one id at a time finds the unknown ones; the known stay held by the final handle
+        try:
+            for i in ids:
+                try:
+                    singles.append(fanout.subscribe(_ignore, [i]))
+                except KeyError:
+                    self._unknown.add(i)
+            known = [i for i in ids if i not in self._unknown]
+            return fanout.subscribe(_ignore, known) if known else None
+        finally:
+            for handle in singles:  # the final handle holds every known id, so no vendor unsubscribe happens here
+                fanout.unsubscribe(handle)
+
+    def _take(self, req: ChainRequest, catalogue: ChainCatalogue) -> None:
         """Subscribe the request's window and index, THEN release what was held (a shared id is never dropped)."""
+        self._last_take = self._monotonic()
         window = pick_window(self._ctx, req, catalogue)
         new_handle = None
         if self._feed is not None:
             index_id = index_id_of(self._feed.ctx, req.underlying)
-            ids = window_ids(catalogue, window) + ([index_id] if index_id else [])
-            if ids:
-                try:
-                    new_handle = self._feed.fanout.subscribe(_ignore, ids)
-                except KeyError:  # an id the provider does not know: nothing was subscribed, the old one stays
-                    await self._error()
-                    return
+            new_handle = self._subscribe_known(window_ids(catalogue, window) + ([index_id] if index_id else []))
         self._release()
         self._handle, self._req, self._catalogue, self._window = new_handle, req, catalogue, window
 
-    async def _maybe_push(self) -> None:
+    def _maybe_repick(self) -> None:
+        """No spot when applied: pick once the spot arrives. The live ATM left the window: re-centre around it. Both
+        are subscription changes, so each is tried at most once a second / once every RECENTRE_SECONDS."""
+        if self._req is None or self._catalogue is None or self._handle is None:
+            return
+        if self._window is None:
+            if self._may_take(MIN_PUSH_INTERVAL) and pick_window(self._ctx, self._req, self._catalogue) is not None:
+                self._take(self._req, self._catalogue)
+            return
+        if not self._may_take(RECENTRE_SECONDS):
+            return
+        spot, grid = live_spot(self._ctx, self._req.underlying), strike_grid(self._catalogue)
+        if spot is not None and grid and atm_strike(grid, spot) not in self._window:
+            self._take(self._req, self._catalogue)
+
+    def _slow_values(self) -> SlowValues:
+        """OI and OI change as last shown, refreshed from the quotes at most every OI_REFRESH_SECONDS; a contract not
+        shown yet takes its quote's value at once."""
+        ctx, req = self._ctx, self._req
+        if ctx is None or req is None:
+            return self._slow
+        since = self._since(self._last_slow)
+        quotes = window_quotes(ctx, req)
+        if since is None or since >= OI_REFRESH_SECONDS:
+            self._slow = {i: (q.oi, q.oi_change) for i, q in quotes.items()}
+            self._last_slow = self._monotonic()
+        else:
+            for i, q in quotes.items():
+                self._slow.setdefault(i, (q.oi, q.oi_change))
+        return self._slow
+
+    async def _maybe_send(self) -> None:
+        if not self._gate_open():
+            return
+        if self._error_due:
+            self._error_due = False
+            await self._emit(render("user_input_request_invalid"))
+            return
         if self._req is None or self._catalogue is None:
             return
-        if self._last_push is not None and self._monotonic() - self._last_push < MIN_PUSH_INTERVAL:
-            return
-        if (self._window is None and self._handle is not None  # no spot when applied: pick once the spot arrives
-                and pick_window(self._ctx, self._req, self._catalogue) is not None):
-            await self._take(self._req, self._catalogue)
-        body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=self._handle is not None,
-                            now=self._now)
+        live = self._handle is not None
+        body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
+                            slow=self._slow_values() if live else None, unknown=frozenset(self._unknown))
         shown = _shown_state(body)
         if shown == self._shown:  # nothing the screen shows changed: no push
             return
-        await self._channel.send(body)
+        await self._emit(body)
         self._shown = shown
         self.pushes += 1
-        self._last_push = self._monotonic()
 
     async def run(self) -> None:
         recv: asyncio.Future | None = None
@@ -354,11 +456,12 @@ class ChainPush:
                         raw = task.result()
                     except ChannelClosed:
                         return
-                    await self._take_message(raw)
+                    self._take_message(raw)
                 await self._maybe_apply()
+                self._maybe_repick()
                 if self._handle is not None and self._feed is not None:
                     self._feed.fanout.pump_one(self._handle)
-                await self._maybe_push()
+                await self._maybe_send()
         finally:
             if recv is not None:
                 recv.cancel()

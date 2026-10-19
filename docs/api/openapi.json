@@ -256,6 +256,17 @@
       "ChainCellOut": {
         "additionalProperties": false,
         "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
           "at": {
             "anyOf": [
               {
@@ -267,6 +278,17 @@
               }
             ],
             "title": "At"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
           },
           "change": {
             "anyOf": [
@@ -324,6 +346,17 @@
             ],
             "title": "Oi"
           },
+          "oi_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi Change"
+          },
           "volume": {
             "anyOf": [
               {
@@ -339,8 +372,11 @@
         "required": [
           "instrument_id",
           "ltp",
+          "bid",
+          "ask",
           "change",
           "oi",
+          "oi_change",
           "volume",
           "health",
           "at"

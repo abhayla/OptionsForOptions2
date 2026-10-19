@@ -67,11 +67,13 @@ def index_quote(ltp: str, at: datetime.datetime = T0, health: DataHealth = DataH
                            None, None, None, None, None, None, at, SourceMetadata("fake", "fake-feed"), health)
 
 
-def option_quote(instrument_id: str, ltp: str, *, at: datetime.datetime = T0, oi: int = 1000, volume: int = 500,
-                 health: DataHealth = DataHealth.AVAILABLE, contracts=CONTRACTS) -> NormalizedQuote:
+def option_quote(instrument_id: str, ltp: str, *, at: datetime.datetime = T0, oi: int = 1000, volume: int = 500,  # noqa: PLR0913
+                 health: DataHealth = DataHealth.AVAILABLE, contracts=CONTRACTS, bid: str | None = None,
+                 ask: str | None = None) -> NormalizedQuote:
     c = next(c for c in contracts if c.instrument_id == instrument_id)
     return NormalizedQuote(instrument_id, "NIFTY", "NSE", "NSE_FO", Instrument(c.instrument_type), c.expiry, c.strike,
-                           Decimal(ltp), None, None, volume, oi, None, None, None, None, None, None, at,
+                           Decimal(ltp), None if bid is None else Decimal(bid), None if ask is None else Decimal(ask),
+                           volume, oi, None, None, None, None, None, None, at,
                            SourceMetadata("fake", "fake-feed"), health)
 
 
@@ -207,22 +209,23 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
         assert row["pe"]["instrument_id"] == cid(row["strike"], "PE") and row["pe"]["ltp"] == f"{200 + k}.25"
         assert row["ce"]["health"] == row["pe"]["health"] == "available"
     atm_row = second["rows"][2]
-    assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "change": None, "oi": 1000,
-                             "volume": 500, "health": "stale", "at": T0.isoformat()}
+    assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
+                             "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
+                             "at": T0.isoformat()}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
 async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():
-    """AC-2: each cell carries exactly LTP, Change, OI, Volume (plus id, health, time), no IV or Greeks; the feed has no
-    previous close, so change is null on every cell, never computed from anything else."""
+    """AC-2/AC-4: each cell carries exactly LTP, bid/ask, Change, OI (+ change), Volume (plus id, health, time), no IV
+    or Greeks; the feed has no previous close, so change is null on every cell, never computed from anything else."""
     provider, _feed, channel, _mono, push = make_rig()
     provider.tick(index_quote("25162.30"))
     tick_window(provider)
     task = await start(push, channel)
     await close(channel, task)
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
-    assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "change", "oi", "volume", "health",
-                                                        "at"})}
+    assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
+                                                        "oi_change", "volume", "health", "at"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
                                     "rows_missing", "rows", "answered_at"}
@@ -310,8 +313,9 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     provider.tick(index_quote("25162.30"))
     task = await start(push, channel)
     await close(channel, task)
-    assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "change": None,
-                                                "oi": None, "volume": None, "health": "unavailable", "at": None}
+    assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
+                                                "ask": None, "change": None, "oi": None, "oi_change": None,
+                                                "volume": None, "health": "unavailable", "at": None}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -370,18 +374,24 @@ async def test_close_releases_everything():
     assert feed.fanout.subscriber_count(NIFTY_ID) == 0
 
 
-async def test_an_unknown_contract_subscribes_nothing_and_keeps_the_old_subscription():
-    """A contract the provider does not know: the input message, nothing new subscribed, the old window still held."""
+async def test_an_unknown_contract_is_one_unavailable_cell_and_the_rest_of_the_window_streams():
+    """W-116 round 2 (finding 1): a contract the provider does not know makes THAT cell unavailable instead of failing
+    the whole window: the new expiry is taken, its other contracts are held, the old window is released, no error."""
     provider, feed, channel, mono, push = make_rig()
     provider.tick(index_quote("25162.30"))
     task = await start(push, channel)
-    provider.unknown = {cid("25150", "CE", NEXT_CONTRACTS)}
+    unknown = cid("25150", "CE", NEXT_CONTRACTS)
+    provider.unknown = {unknown}
     mono.now += 1.0
     await channel.inbound.put(request(expiry=NEXT_EXPIRY))
     await settle()
-    assert feed.fanout.subscriber_count(cid("25150", "CE")) == ONE
+    counts = {i: feed.fanout.subscriber_count(i) for i in (unknown, cid("25150", "PE", NEXT_CONTRACTS),
+                                                           cid("25150", "CE"), NIFTY_ID)}
     await close(channel, task)
-    assert ERROR in channel.sent
+    assert counts == {unknown: 0, cid("25150", "PE", NEXT_CONTRACTS): ONE, cid("25150", "CE"): 0, NIFTY_ID: ONE}
+    assert ERROR not in channel.sent
+    last = channel.sent[-1]
+    assert last["expiry"] == NEXT_EXPIRY.isoformat() and last["rows"][2]["ce"]["health"] == "unavailable"
 
 
 async def test_spot_missing_shows_no_rows_and_no_guessed_atm_then_rows_when_the_spot_arrives():
@@ -548,3 +558,114 @@ async def test_a_quote_of_another_instrument_is_never_the_spot():
     await close(channel, task)
     body = channel.sent[0]
     assert (body["spot"], body["atm_strike"], body["rows_missing"]) == (None, None, "SPOT_MISSING")
+
+
+async def test_storm_spot_missing_then_an_unknown_contract_sends_at_most_one_message_a_second():
+    """W-116 round 2 (Tier A finding 1, the core proof): the spot is missing when the request is applied, then the
+    re-picked window holds a contract the provider does not know while prices change on every loop. Over 30 poll loops
+    in each of three seconds at most ONE message leaves; no error is sent; the rows appear once the spot arrives, the
+    unknown contract's cell is unavailable with no number and every other contract is held."""
+    provider, feed, channel, mono, push = make_rig()
+    provider.unknown = {cid("25150", "CE")}
+    task = await start(push, channel)
+    assert channel.sent[-1]["rows_missing"] == "SPOT_MISSING"
+    provider.tick(index_quote("25162.30"))
+    per_second = []
+    for sec in range(3):
+        mono.now += 1.5
+        n0 = len(channel.sent)
+        for loop in range(30):
+            tick_window(provider, ltp_offset=100 * sec + loop + 1)
+            await asyncio.sleep(0.01)
+        per_second.append(len(channel.sent) - n0)
+    held = (feed.fanout.subscriber_count(cid("25150", "CE")), feed.fanout.subscriber_count(cid("25150", "PE")))
+    await close(channel, task)
+    assert held == (0, ONE)
+    assert per_second == [ONE, ONE, ONE]
+    assert ERROR not in channel.sent
+    last = channel.sent[-1]
+    assert [r["strike"] for r in last["rows"]] == ["25050.00", "25100.00", "25150.00", "25200.00", "25250.00"]
+    unknown_cell = last["rows"][2]["ce"]
+    assert (unknown_cell["health"], unknown_cell["ltp"], unknown_cell["oi"]) == ("unavailable", None, None)
+    assert last["rows"][2]["pe"]["ltp"] is not None and last["rows"][2]["pe"]["health"] == "available"
+
+
+async def test_fifty_invalid_messages_in_a_second_get_at_most_one_reply_a_second():
+    """W-116 round 2 (finding 4): invalid client messages pass the same one-a-second gate as every push: 50 inside one
+    second get no reply in the second a push already used, then ONE error reply, never 50."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    task = await start(push, channel)
+    n0 = len(channel.sent)
+    for _ in range(50):
+        await channel.inbound.put({"underlying": "NIFTY", "expiry": "x"})
+    await settle(20)
+    same_second = len(channel.sent) - n0
+    mono.now += 1.0
+    await settle(20)
+    await close(channel, task)
+    assert same_second == 0
+    assert channel.sent[n0:] == [ERROR]
+
+
+async def test_bid_and_ask_stream_and_zero_reads_null():
+    """REQ-029 AC-4 (bid/ask live), F-29: each cell carries its quote's bid and ask as 2-decimal strings, 0 -> null."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    provider.tick(option_quote(cid("25150", "CE"), "131.00", bid="130.05", ask="130.95"))
+    provider.tick(option_quote(cid("25150", "PE"), "90.00", bid="0", ask="0"))
+    task = await start(push, channel)
+    provider.tick(option_quote(cid("25150", "CE"), "131.00", bid="130.10", ask="131.20"))
+    mono.now += 1.0
+    await settle()
+    await close(channel, task)
+    first, second = channel.sent[0]["rows"][2], channel.sent[1]["rows"][2]
+    assert (first["ce"]["bid"], first["ce"]["ask"]) == ("130.05", "130.95")
+    assert (first["pe"]["bid"], first["pe"]["ask"], first["pe"]["ltp"]) == (None, None, "90.00")
+    assert (second["ce"]["bid"], second["ce"]["ask"]) == ("130.10", "131.20")
+
+
+async def test_oi_refreshes_at_most_every_five_seconds_while_ltp_streams():
+    """REQ-029 AC-4 / Q46: an OI change alone inside 5 s is not pushed; an LTP change is pushed at once with the OI
+    still as shown; once 5 s have passed the new OI is pushed."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    new_oi = 3000
+    provider.tick(option_quote(cid("25150", "CE"), "131.00", oi=1000))
+    task = await start(push, channel)
+    provider.tick(option_quote(cid("25150", "CE"), "131.00", oi=2000))
+    mono.now += 1.0
+    await settle()
+    oi_only = len(channel.sent)
+    provider.tick(option_quote(cid("25150", "CE"), "132.00", oi=new_oi))
+    mono.now += 1.0
+    await settle()
+    ltp_push = channel.sent[-1]["rows"][2]["ce"]
+    mono.now += 3.0
+    await settle()
+    await close(channel, task)
+    assert oi_only == ONE
+    assert (ltp_push["ltp"], ltp_push["oi"]) == ("132.00", 1000)
+    assert len(channel.sent) == THREE and channel.sent[-1]["rows"][2]["ce"]["oi"] == new_oi
+
+
+async def test_window_re_centres_on_the_live_atm_and_releases_the_old_contracts():
+    """W-116 round 2 (finding 3): the spot moves 25162.30 -> 25398; within 5 s the rows hold the new ATM 25400, the old
+    contracts below the new window are released, the index stays held and was never unsubscribed."""
+    provider, feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    task = await start(push, channel)
+    provider.tick(index_quote("25398.00"))
+    mono.now += 5.0
+    await settle()
+    old = [cid(s, side) for s in ("25050", "25100", "25150", "25200", "25250") for side in ("CE", "PE")]
+    old_counts = [feed.fanout.subscriber_count(i) for i in old]
+    new_count = feed.fanout.subscriber_count(cid("25400", "CE"))
+    index_count = feed.fanout.subscriber_count(NIFTY_ID)
+    index_dropped = any(NIFTY_ID in call for call in provider.unsubscribe_calls)
+    await close(channel, task)
+    last = channel.sent[-1]
+    assert last["atm_strike"] == "25400.00"
+    assert [r["strike"] for r in last["rows"]] == ["25300.00", "25350.00", "25400.00"]
+    assert old_counts == [0] * 10 and new_count == ONE and index_count == ONE
+    assert not index_dropped
