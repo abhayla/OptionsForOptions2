@@ -15,6 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
     const detail = /^\/strategies\/(\d+)$/.exec(url)
     if (detail) {
       const id = Number(detail[1])
+      detailGets.push(id)
       if (failDetailFor.has(id)) return Promise.reject({ parts: { what_happened: `Server says draft ${id} failed`, impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
       return Promise.resolve({ data: { id, definition: { underlying: 'NIFTY', legs: [{ contract_id: id, exchange_segment: 'NSE_FO', exchange_token: 1000 + id,
         action: 'SELL', instrument: 'CE', strike: '22800', expiry: '2026-10-13', quantity: 65, planned_entry: '100.00', captured_at: '2026-10-08T09:20:09+05:30' }] } } })
@@ -68,10 +69,21 @@ async function mountPage() {
 }
 const cards = (w) => w.findAll('[data-testid="live-strategy-card"]')
 const openAll = () => FakeSocket.all.forEach((s) => s.serverOpen())
+// Cards start one at a time: answer the newest socket, let the next card start, and repeat.
+async function answerNext(body) {
+  const s = FakeSocket.all[FakeSocket.all.length - 1]
+  s.serverOpen()
+  s.serverPush(body)
+  await flushPromises()
+  return s
+}
+const detailGets = []
 
 beforeEach(() => {
   FakeSocket.all = []
   posts.length = 0
+  detailGets.length = 0
+  vi.useRealTimers()
   failDetailFor = new Set()
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
@@ -171,10 +183,8 @@ describe('AC-5: the disconnect message is the server\'s', () => {
 describe('AC-6: monitoring is paused per strategy', () => {
   it('AC-6: two cards, one NOT_CONNECTED and one live, show independent badges and dots', async () => {
     const w = await mountPage()
-    openAll()
-    FakeSocket.all[0].serverPush(notConnected())
-    FakeSocket.all[1].serverPush(computed())
-    await flushPromises()
+    await answerNext(notConnected())
+    await answerNext(computed())
     const [a, b] = cards(w)
     expect(a.find('[data-testid="live-paused-badge"]').text()).toBe('⏸ Monitoring paused')
     expect(a.find('[data-testid="live-health-dot"]').text()).toBe('Health unknown')
@@ -187,10 +197,8 @@ describe('AC-6: monitoring is paused per strategy', () => {
   it('AC-6: a socket that drops pauses only its own card', async () => {
     postAnswer = () => new Promise(() => {}) // the REST answer never arrives: the badge comes from the socket state alone
     const w = await mountPage()
-    openAll()
-    FakeSocket.all[0].serverPush(computed())
-    FakeSocket.all[1].serverPush(computed())
-    await flushPromises()
+    await answerNext(computed())
+    await answerNext(computed())
     FakeSocket.all[1].serverClose()
     await flushPromises()
     const [a, b] = cards(w)
@@ -203,6 +211,7 @@ describe('AC-6: monitoring is paused per strategy', () => {
 describe('page lifecycle', () => {
   it('AC-5: every socket is closed on unmount, and a push after unmount is ignored', async () => {
     const w = await mountPage()
+    await answerNext(computed())
     openAll()
     expect(FakeSocket.all).toHaveLength(2)
     const first = FakeSocket.all[0]
@@ -234,5 +243,68 @@ describe('page lifecycle', () => {
     const w = await mountPage()
     expect(w.find('button').exists()).toBe(false)
     expect(w.html()).not.toMatch(/\/execute/i)
+  })
+})
+
+const many = (n) => ({ strategies: [...Array(n).keys()].map((i) => row(i + 1, `2026-10-${String(i + 1).padStart(2, '0')}T10:00:00+05:30`)) })
+
+describe('start queue: one card loading at a time (F-45, db-role-limit-below-pool-size)', () => {
+  it('AC-4: 13 strategies - one detail GET before the first card answers; the second starts after it', async () => {
+    listAnswer = many(13)
+    const w = await mountPage()
+    expect(detailGets).toEqual([13]) // newest first, only one in flight
+    expect(FakeSocket.all).toHaveLength(1)
+    expect(w.findAll('[data-testid="live-queued"]')).toHaveLength(12)
+    await answerNext(computed())
+    expect(detailGets).toEqual([13, 12])
+    for (let i = 0; i < 12; i++) await answerNext(computed())
+    expect(detailGets).toHaveLength(13)
+    expect(FakeSocket.all).toHaveLength(13)
+    expect(w.findAll('[data-testid="live-queued"]')).toHaveLength(0)
+  })
+
+  it('AC-4: a card whose GET fails releases the queue', async () => {
+    failDetailFor = new Set([2])
+    listAnswer = { strategies: [row(2, '2026-10-19T11:00:00+05:30'), row(1)] }
+    await mountPage()
+    expect(detailGets).toEqual([2, 1])
+  })
+
+  it('AC-4: a card with no answer releases the queue after 8 s', async () => {
+    vi.useFakeTimers()
+    listAnswer = many(3)
+    await mountPage()
+    expect(detailGets).toEqual([3])
+    await vi.advanceTimersByTimeAsync(7900)
+    expect(detailGets).toEqual([3])
+    await vi.advanceTimersByTimeAsync(200)
+    expect(detailGets).toEqual([3, 2])
+  })
+
+  it('AC-4: unmount mid-queue opens no further sockets', async () => {
+    vi.useFakeTimers()
+    listAnswer = many(3)
+    const w = await mountPage()
+    w.unmount()
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(FakeSocket.all).toHaveLength(1)
+    expect(detailGets).toEqual([3])
+  })
+
+  it('AC-4: executed and draft strategies sit under two headings, newest first', async () => {
+    listAnswer = { strategies: [row(1, '2026-10-17T10:00:00+05:30'), { ...row(2, '2026-10-18T10:00:00+05:30'), status: 'executed' }, row(3, '2026-10-19T10:00:00+05:30')] }
+    const w = await mountPage()
+    const ex = w.find('[data-testid="live-group-executed"]')
+    const dr = w.find('[data-testid="live-group-drafts"]')
+    expect(ex.find('h2').text()).toBe('Executed')
+    expect(dr.find('h2').text()).toBe('Saved drafts (live prices)')
+    expect(ex.findAll('[data-testid="live-strategy-card"]').map((c) => c.attributes('data-strategy-id'))).toEqual(['2'])
+    expect(dr.findAll('[data-testid="live-strategy-card"]').map((c) => c.attributes('data-strategy-id'))).toEqual(['3', '1'])
+  })
+
+  it('AC-4: an empty group is not shown', async () => {
+    const w = await mountPage()
+    expect(w.find('[data-testid="live-group-executed"]').exists()).toBe(false)
+    expect(w.find('[data-testid="live-group-drafts"]').exists()).toBe(true)
   })
 })

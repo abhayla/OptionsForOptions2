@@ -3,9 +3,9 @@
      socket (useStrategyLive) pushes the server's outcome; when it drops, the REST outcome route answers with the server's
      own not-live label (this file writes no such sentence). Paused is per card: the latest answer is NOT_CONNECTED, or
      this card's socket is down or gave up. No order or execute control exists here (ADR-002).
-     States: loading, ready, unpriced (no leg carries a planned entry), error (the saved strategy would not load). -->
+     States: queued, loading, ready, unpriced (no leg carries a planned entry), error (the saved strategy would not load). -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
@@ -13,9 +13,19 @@ import { fetchSavedLegs } from '@/lib/saveDraft'
 import { istTime } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
-const props = defineProps({ strategy: { type: Object, required: true } })
+// `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
+// got its first answer, failed, or has nothing to follow - the page then starts the next card.
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true } })
+const emit = defineEmits(['settled'])
 
-const state = ref('loading') // loading | ready | unpriced | error
+const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
+let begun = false
+let settledSent = false
+const settle = () => {
+  if (settledSent) return
+  settledSent = true
+  emit('settled')
+}
 const data = ref(null) // the newest outcome answer, as the server sent it
 const errorParts = ref(NEUTRAL_PARTS)
 let gone = false // set on unmount: a late push or answer is dropped
@@ -27,9 +37,11 @@ const live = useStrategyLive({
     if (gone) return
     seq++ // a REST answer still in flight is obsolete
     data.value = body
+    settle()
   },
   onDown: async () => {
     if (gone || !draft) return
+    settle()
     const mine = ++seq
     try {
       // ADR-077: `fallback: true` makes the server answer the not-live message even if another socket holds the contracts
@@ -45,13 +57,17 @@ const live = useStrategyLive({
   },
 })
 
-onMounted(async () => {
+async function begin() {
+  if (begun || gone) return
+  begun = true
+  state.value = 'loading'
   try {
     const legs = await fetchSavedLegs(api, props.strategy.id)
     if (gone) return
     draft = buildDraft(legs)
     if (!draft) {
       state.value = 'unpriced'
+      settle()
       return
     }
     state.value = 'ready'
@@ -60,7 +76,14 @@ onMounted(async () => {
     if (gone) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
+    settle()
   }
+}
+onMounted(() => {
+  if (props.start) begin()
+})
+watch(() => props.start, (v) => {
+  if (v) begin()
 })
 onBeforeUnmount(() => {
   gone = true
@@ -94,7 +117,8 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       </span>
     </header>
 
-    <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
+    <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">Waiting to start...</p>
+    <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />
     <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label">{{ NOT_CONNECTED_LABEL }}</p>
 
