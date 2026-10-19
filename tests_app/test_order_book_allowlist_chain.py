@@ -84,11 +84,13 @@ def test_guards_are_pinned_and_a_second_block_fails_closed() -> None:
     """An edited guard cannot keep its pin; the fill guard refuses a price for an unfilled order; the holdings guard
     raises its own SQLSTATE; a predecessor already holding block 17 is refused."""
     mine = _mine()
-    assert mine._M4._md5_body(mine._fill_guard_sql().replace("filled_quantity > 0", "true")) != mine.FILL_PIN
+    guard = mine._fill_guard_sql()
+    for part in ("coalesce(filled, 0) <= 0", "+ NEW.quantity", "FOR NO KEY UPDATE", "<> 'read committed'",
+                 "pg_advisory_xact_lock", "tag <> NEW.tag"):
+        assert guard.count(part) == 1, part
+        assert mine._M4._md5_body(guard.replace(part, "")) != mine.FILL_PIN, part
     assert mine._M4._md5_body(mine._holding_guard_sql().replace("insert-only", "x")) != mine.HOLDING_PIN
-    assert "filled_quantity > 0" in mine._fill_guard_sql() and "TG_OP <> 'INSERT'" in mine._fill_guard_sql()
-    assert mine._M4._md5_body(mine._fill_guard_sql().replace("+ NEW.quantity", "")) != mine.FILL_PIN
-    assert "sum(quantity)" in mine._fill_guard_sql()
+    assert "TG_OP <> 'INSERT'" in guard and "sum(quantity)" in guard
     assert "'OF020'" in mine._holding_guard_sql() and "'OF018'" not in mine._holding_guard_sql()
     original = mine.previous_allowlist_sql
     mine.previous_allowlist_sql = lambda: original() + mine.ALLOWLIST_BLOCK_MARKER
@@ -97,6 +99,22 @@ def test_guards_are_pinned_and_a_second_block_fails_closed() -> None:
             mine.extended_allowlist_sql()
     finally:
         mine.previous_allowlist_sql = original
+
+
+def test_the_fill_guard_locks_the_order_before_it_sums_and_a_trade_has_one_owner() -> None:
+    """#313a review round 1: the order-row lock comes BEFORE the sum (a lock after the read guards nothing), the lock
+    is self-conflicting (FOR SHARE coexists with itself, so two inserters would both sum 0), and the trade key leaves
+    out the tag (one Zerodha trade under two tags, ADR-109)."""
+    mine = _mine()
+    guard = mine._fill_guard_sql()
+    assert guard.index("FOR NO KEY UPDATE") < guard.index("sum(quantity)")
+    assert guard.index("pg_advisory_xact_lock") < guard.index("tag <> NEW.tag")
+    code = "\n".join(line.split("--")[0] for line in guard.splitlines())
+    assert "FOR SHARE" not in code and "FOR KEY SHARE" not in code and code.count("FOR NO KEY UPDATE") == 1
+    source = (VERSIONS / f"{THIS}.py").read_text(encoding="utf-8")
+    assert "CONSTRAINT {FILL_KEY} PRIMARY KEY (broker_order_id, trade_id)" in source
+    assert re.search(r"PRIMARY KEY \(tag", source) is None
+    assert f"'{mine.FILLS}:' || NEW.broker_order_id" in guard
 
 
 def test_closed_lists_match_the_domain_and_the_plan_store() -> None:

@@ -20,9 +20,13 @@ Changes (owner-run, one transaction):
 - public.execution_plan_fills: one row per Zerodha trade of a tagged plan order (tag -> execution_plan_orders.tag,
   Zerodha's order id and trade id, units, trade price NUMERIC(14,2) > 0), recorded_at from the database clock. The
   trades are stored, not an average: an average of trades at 7.00 and 7.05 is not exact in paise, the trades are.
-  PRIMARY KEY (tag, broker_order_id, trade_id): a trade id is unique only per order (FillLedger's key). Guard
-  trigger (SQLSTATE OF020): insert-only, and an insert is refused unless the order's stored filled_quantity is above
-  0 and the stored trades of the tag, with this one, do not exceed it.
+  PRIMARY KEY (broker_order_id, trade_id): a trade id is unique only per Zerodha order (FillLedger's key), and the key
+  leaves out the tag so one trade is never stored under two tags (ADR-109: a strategy owns exactly the fills of the
+  orders this app placed). Guard trigger (SQLSTATE OF020): insert-only; READ COMMITTED only; it locks the tag's order
+  row FOR NO KEY UPDATE (two inserters for one tag wait for each other, so the second sums the first's committed
+  trade) and an insert is refused unless that order's stored filled_quantity is above 0 and the stored trades of the
+  tag, with this one, do not exceed it; it also takes a transaction advisory lock on the Zerodha order id and refuses
+  an order id already stored under another tag.
 - public.adopted_holdings: units a strategy holds without a platform fill (ADR-096): strategy, contract key (the app's
   instrument id), side, units, product, average price, a unique reference, the strategy version number that adopted
   them, adopted_at from the database clock. UNIQUE (strategy_id, instrument_id): a strategy never nets a second
@@ -79,6 +83,8 @@ HOLDING_GUARD = "public.adopted_holdings_guard"
 FILL_TRIGGER = "execution_plan_fills_guard"
 HOLDING_TRIGGER = "adopted_holdings_guard"
 HOLDING_KEY = "adopted_holdings_one_per_contract"
+FILL_KEY = "execution_plan_fills_one_per_trade"  # (order id, trade id): a trade is stored once, under one tag
+FILL_TAG_INDEX = "execution_plan_fills_by_tag"  # the guard's per-tag sum
 SIDES = ("BUY", "SELL")
 PRODUCTS = ("NRML", "MIS")  # ofo.engine.product.Product values (a migration carries its own literal)
 MAX_UNITS = _PREVIOUS.MAX_UNITS
@@ -101,15 +107,31 @@ def _fill_guard_sql() -> str:
         LANGUAGE plpgsql
         SET search_path = {SEARCH_PATH}
         AS $fn$
+        DECLARE
+            filled INTEGER;
         BEGIN
             IF TG_OP <> 'INSERT' THEN
                 RAISE EXCEPTION 'fill prices are insert-only' USING ERRCODE = '{SQLSTATE}';
             END IF;
-            IF NOT EXISTS (SELECT 1 FROM {ORDERS} WHERE tag = NEW.tag AND filled_quantity > 0) THEN
+            -- the locks below serialise writers only if each later statement takes a fresh snapshot
+            IF current_setting('transaction_isolation') <> 'read committed' THEN
+                RAISE EXCEPTION 'fill prices need READ COMMITTED (stored trades are summed after the lock)'
+                    USING ERRCODE = '{SQLSTATE}';
+            END IF;
+            -- a self-conflicting row lock: two inserters for one tag wait for each other (a share lock would not:
+            -- share locks coexist, both would sum 0), and so does a filled_quantity write; the RI check's key-share
+            -- lock does not. The app role may take it: it holds UPDATE (filled_quantity) on the orders table.
+            SELECT filled_quantity INTO filled FROM {ORDERS} WHERE tag = NEW.tag FOR NO KEY UPDATE;
+            IF coalesce(filled, 0) <= 0 THEN  -- no such tag, still open (NULL), or nothing filled (0)
                 RAISE EXCEPTION 'a fill price needs an order that filled' USING ERRCODE = '{SQLSTATE}';
             END IF;
-            IF (SELECT coalesce(sum(quantity), 0) FROM {FILLS} WHERE tag = NEW.tag) + NEW.quantity
-               > (SELECT filled_quantity FROM {ORDERS} WHERE tag = NEW.tag) THEN
+            -- one Zerodha order belongs to one tag: serialise on the order id across tags (a hash collision only
+            -- serialises two unrelated writers, it never lets one through)
+            PERFORM pg_advisory_xact_lock(hashtextextended('{FILLS}:' || NEW.broker_order_id, 0));
+            IF EXISTS (SELECT 1 FROM {FILLS} WHERE broker_order_id = NEW.broker_order_id AND tag <> NEW.tag) THEN
+                RAISE EXCEPTION 'a Zerodha order is stored under one tag only' USING ERRCODE = '{SQLSTATE}';
+            END IF;
+            IF (SELECT coalesce(sum(quantity), 0) FROM {FILLS} WHERE tag = NEW.tag) + NEW.quantity > filled THEN
                 RAISE EXCEPTION 'stored trades exceed the order''s filled quantity' USING ERRCODE = '{SQLSTATE}';
             END IF;
             NEW.recorded_at := clock_timestamp();
@@ -173,10 +195,11 @@ def upgrade() -> None:
             quantity        INTEGER       NOT NULL CHECK (quantity BETWEEN 1 AND {MAX_UNITS}),
             price           NUMERIC(14,2) NOT NULL CHECK (price > 0 AND price < {PRICE_LIMIT}),
             recorded_at     TIMESTAMPTZ   NOT NULL DEFAULT clock_timestamp(),
-            PRIMARY KEY (tag, broker_order_id, trade_id)
+            CONSTRAINT {FILL_KEY} PRIMARY KEY (broker_order_id, trade_id)
         )
         """
     )
+    op.execute(f"CREATE INDEX {FILL_TAG_INDEX} ON {FILLS} (tag)")
     op.execute(
         f"""
         CREATE TABLE {HOLDINGS} (
