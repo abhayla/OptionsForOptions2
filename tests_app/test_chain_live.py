@@ -708,11 +708,36 @@ async def test_an_invalid_message_every_second_never_starves_the_data_pushes():
         mono.now += 1.0
         await settle(3)
     await close(channel, task)
-    data = [m for m in channel.sent[n0:] if m != ERROR]
-    # hand count: the quotes change in each of the 20 seconds, so every one of the 20 slots is a push (the brief's bar
-    # is >= 15; the exact 20 also catches an error-first gate whose 5 s coalescing alone would still let 16 through)
-    assert len(data) == 20  # noqa: PLR2004
-    assert ERROR not in channel.sent[n0:]  # a pending push always took the slot
+    sent = channel.sent[n0:]
+    data = [m for m in sent if m != ERROR]
+    # hand count: 20 slots; an error reply takes a slot only after waiting ERROR_REPLY_SECONDS and at most once every
+    # ERROR_REPLY_SECONDS, so at most 20 // 5 = 4 slots go to errors and >= 16 to pushes (an error-first gate: 0 pushes)
+    assert len(data) >= 20 - 20 // ERROR_REPLY_SECONDS
+    assert 1 <= sent.count(ERROR) <= 20 // ERROR_REPLY_SECONDS
+    assert all(b - a >= MIN_PUSH_INTERVAL for a, b in itertools.pairwise(times))
+
+
+async def test_one_invalid_message_under_changing_quotes_still_gets_its_error_reply():
+    """#439 fix round 2 (verifier case E): ONE invalid message while quotes change every second for 30 s. Red on the
+    push-always-first gate: 30 pushes, 0 error replies (the reply deferred forever). The aged-error rule sends exactly
+    one reply between 5 s and 7 s after the message, the pushes keep >= 28 slots, never two messages within 1 s."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    times = _timed(channel, mono)
+    task = await start(push, channel)
+    n0 = len(channel.sent)
+    sent_at = mono.now
+    await channel.inbound.put({"underlying": "NIFTY", "expiry": "x"})
+    for sec in range(30):
+        tick_window(provider, ltp_offset=sec + 1)
+        mono.now += 1.0
+        await settle(3)
+    await close(channel, task)
+    sent = channel.sent[n0:]
+    error_times = [t for t, m in zip(times[n0:], sent, strict=True) if m == ERROR]
+    assert len(error_times) == 1
+    assert ERROR_REPLY_SECONDS <= error_times[0] - sent_at <= ERROR_REPLY_SECONDS + 2
+    assert len(sent) - 1 >= 28  # noqa: PLR2004
     assert all(b - a >= MIN_PUSH_INTERVAL for a, b in itertools.pairwise(times))
 
 

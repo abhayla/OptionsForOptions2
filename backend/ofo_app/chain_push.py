@@ -313,6 +313,7 @@ class ChainPush:
         self._shown: tuple | None = None
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
         self._error_due = False  # invalid client messages since the last error reply: answered with ONE error, gated
+        self._error_since: float | None = None  # when the pending error reply became due: aged ones beat a push
         self._last_error: float | None = None  # the last error reply: at most one every ERROR_REPLY_SECONDS
         self._unknown: set[str] = set()  # contracts of the request the provider does not know: shown unavailable
         self._slow: SlowValues = {}
@@ -344,6 +345,8 @@ class ChainPush:
         try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
         except ValidationError:
+            if not self._error_due:
+                self._error_since = self._monotonic()
             self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
             return
         self._pending = None if req == self._req else req  # the latest wins; the current one again cancels a pending
@@ -436,8 +439,14 @@ class ChainPush:
     async def _maybe_send(self) -> None:
         """One message through the one gate. A pending data push takes the slot FIRST (#439: a client sending one
         invalid message a second must not starve its own pushes); a pending error reply goes only in a slot no push
-        needs, and at most once every ERROR_REPLY_SECONDS (the invalid messages in between are coalesced into it)."""
+        needs, and at most once every ERROR_REPLY_SECONDS (the invalid messages in between are coalesced into it).
+        An error reply that has waited ERROR_REPLY_SECONDS takes the next slot even over a pending push
+        (never lost)."""
         if not self._gate_open():
+            return
+        waited = self._since(self._error_since) if self._error_due else None
+        if waited is not None and waited >= ERROR_REPLY_SECONDS and self._error_may_go():
+            await self._send_error()  # an error reply that has waited ERROR_REPLY_SECONDS takes this slot (never lost)
             return
         if self._req is not None and self._catalogue is not None:
             live = self._handle is not None
@@ -450,9 +459,12 @@ class ChainPush:
                 self.pushes += 1
                 return
         if self._error_due and self._error_may_go():
-            self._error_due = False
-            await self._emit(render("user_input_request_invalid"))
-            self._last_error = self._monotonic()
+            await self._send_error()
+
+    async def _send_error(self) -> None:
+        self._error_due, self._error_since = False, None
+        await self._emit(render("user_input_request_invalid"))
+        self._last_error = self._monotonic()
 
     async def run(self) -> None:
         recv: asyncio.Future | None = None
