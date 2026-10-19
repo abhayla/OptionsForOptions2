@@ -198,7 +198,7 @@ def _rows_missing(catalogue: ChainCatalogue, expiry: datetime.date, window: tupl
 
 
 def _cell(contract: PickableContract, quote: NormalizedQuote | None) -> ChainCellOut:
-    if quote is None or quote.instrument_id != contract.instrument_id:  # held, but no quote yet: shown as such
+    if quote is None:  # held, but no quote yet (the snapshot is keyed by instrument id): shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, change=None, oi=None, volume=None,
                             health="unavailable", at=None)
     ltp = quote.ltp.quantize(PAISE) if quote.ltp is not None and is_live_price(quote.ltp) else None
@@ -290,10 +290,7 @@ class ChainPush:
         await self._channel.send(render("user_input_request_invalid"))
 
     async def _take_message(self, raw: Any) -> None:
-        if isinstance(raw, dict) and "fallback" in raw:  # the REST read's flag; it means nothing on the socket (#234)
-            await self._error()
-            return
-        try:
+        try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
         except ValidationError:
             await self._error()

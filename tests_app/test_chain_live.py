@@ -521,3 +521,30 @@ def test_the_chain_socket_is_a_door_route():
     assert isinstance(route, ClosedWebSocketRoute) and route.path == "/api/market/chain/live"
     app_paths = {getattr(r, "path", None) for r in _app_client(None, Reader()).app.routes}
     assert {"/api/market/chain/live", "/api/market/chain"} <= app_paths
+
+
+async def test_a_connection_holding_nothing_is_never_live():
+    """Finding liveness-from-shared-subscribers: a request whose index and contracts the provider cannot name subscribes
+    nothing, so this connection holds nothing and the answer is NOT_CONNECTED, never LIVE."""
+    provider, _feed, channel, _mono, push = make_rig()
+    task = await start(push, channel, {"underlying": "SENSEX", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2})
+    await close(channel, task)
+    assert provider.subscribe_calls == []
+    assert channel.sent[0]["state"] == "NOT_CONNECTED" and channel.sent[0]["rows"] == []
+
+
+class WrongIndexProvider(FakeProvider):
+    def underlying_quote(self, underlying: str) -> NormalizedQuote | None:
+        q = self.quotes.get(NIFTY_ID)
+        return None if q is None else option_quote(cid("25150", "CE"), "25162.30")
+
+
+async def test_a_quote_of_another_instrument_is_never_the_spot():
+    """AC-8: a provider answering the index with another instrument's quote gives no spot and no ATM (spot missing)."""
+    provider = WrongIndexProvider()
+    provider.tick(index_quote("25162.30"))
+    _p, _feed, channel, _mono, push = make_rig(provider=provider)
+    task = await start(push, channel)
+    await close(channel, task)
+    body = channel.sent[0]
+    assert (body["spot"], body["atm_strike"], body["rows_missing"]) == (None, None, "SPOT_MISSING")
