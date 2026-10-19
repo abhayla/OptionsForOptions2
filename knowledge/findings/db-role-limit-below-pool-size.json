@@ -1,0 +1,32 @@
+{
+ "id": "db-role-limit-below-pool-size",
+ "scope": "project",
+ "class": "A database role whose connection limit is smaller than what the processes using it may open (any one process's pool size plus overflow, summed over every process on the role): whenever load grows a pool past the limit - a page that fans out one request per row, a second app process, a test run - the database refuses new connections to every process on that role, including ones doing unrelated, critical work. Wider shape: a shared hard cap that no process sizes itself against is exhausted by whichever process bursts first.",
+ "mechanism": "2026-10-19: role ofo_app has rolconnlimit 5 (server max_connections 100); backend/ofo_app/db.py create_async_engine uses SQLAlchemy's default QueuePool (pool_size 5, max_overflow 10) and history_store.py adds pool_size 2 + max_overflow 2, so one API process may open ~19 connections against a role cap of 5. The limit is per role across databases, so ofo_dev, ofo_test, every API and every local DB test share it.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-5S core proof, Live Strategies page (W-113, ad727bb) on a second API :8766 beside GC-3L's API :8765",
+  "evidence": "API log: 'asyncpg.exceptions.TooManyConnectionsError: too many connections for role \"ofo_app\"' x11 between ~10:33 and 10:40 IST and 'unhandled error ERR-7456055C on GET /strategies/11'; after the browser closed a one-connection read still failed with the same error until the :8766 API was stopped; then 'role ofo_app connlimit: 5 | server max_connections: 100', 'held by ofo_app on ofo_dev : 3' (GC-3L's API)."
+ },
+ "fix": "Partly open. Earlier sample: #370 (three CI e2e API processes x default pool); held PR #395 adds DB_POOL_SIZE / DB_MAX_OVERFLOW settings and sets 1 + 0 in the CI e2e job only, keeping SQLAlchemy's 5 + 10 default for every other run, so a dev or live API at default can still exceed the limit alone. Page side (W-113 round 2): the Live Strategies page starts its cards one at a time. Remaining (GC-3F, with #395): a default kept under the role limit, or a startup check that refuses a pool larger than the role's rolconnlimit; or the owner raises the role limit.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check compares pool settings with rolconnlimit; the default pool is not visible in db.py. Discriminating proof of any fix: 13 strategies on the page with a second API up produce zero TooManyConnectionsError lines and pg_stat_activity for ofo_app stays <= 5."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-18",
+   "where": "#370 e2e flake (CI)",
+   "evidence": "three e2e API processes x default DB pool exhausted CONNECTION LIMIT 5 (session-handover-2026-10-18-gc2f.md); fix held as #395"
+  },
+  {
+   "date": "2026-10-19",
+   "where": "GC-5S item 1 live run",
+   "evidence": "11 TooManyConnectionsError lines in the :8766 API log; role limit 5 read back"
+  }
+ ]
+}

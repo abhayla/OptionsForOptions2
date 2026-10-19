@@ -182,6 +182,7 @@ decisions:
   ADR-110: 4b           # open plan on Positions: waiting for Check, strategy blocked until the plan's orders are final at Zerodha (owner 2026-10-18)
   ADR-111: 4b           # carried-over live-run position: #352 fix in GC-3F, owner sells on Kite by Mon 10-26 12:00 as backstop (owner 2026-10-18)
   ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
+  ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
@@ -266,10 +267,8 @@ issues:
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
   "#352": 4b  # An execution plan open at the end of the trading day cannot be read back the next day
   "#353": 4b  # Kite allow-list is checked per call, not per calling module (any door may make any listed read)
-  "#370": 4a  # Intermittent e2e: strategy-save-draft cannot find the saved draft after reload
   "#380": 4b  # Live Kite-basket routes re-implement reconciliation and partial handling: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6 fail on the path users reach (F-42)
   "#381": 4b  # Return route reads orders before trades: an order appearing between the reads loses its trade and closes nothing_placed
-  "#385": 4b  # GC-3 live steps L1-L4 parked: need the owner on a trading day (carried as GC-3L)
   "#386": 4b  # GC-3 P0 review MINORs: probe script private attributes and fail-open recorder compare; W-107 test pins
   "#389": 4b  # Exit basket mixes buy-backs and sells in one basket (REQ-058 Q238)
   "#390": 4b  # Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/AC-4)
@@ -323,10 +322,8 @@ work_items:
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
-  W-114: 4b           # GC-5S: Underlying/index view + index socket (REQ-072 AC-2)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
-  W-113: 4b           # GC-5S: Live Strategies page (REQ-049 AC-4..6)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -374,6 +371,10 @@ findings:
   F-42: 4b        # REQ-058/060 verified on domain modules the Kite-basket routes never call (#380)
   F-43: 4b        # Mon 2026-10-19 is the nearest NIFTY expiry (GC-3 expiry choice, OQ-15)
   F-44: 4b        # Kite reported Rs 0 funds on Sun 2026-10-18; 09:00 funds gate on the GC-3L day (owner 2026-10-18)
+  F-45: 4b        # ofo_app role allows 5 connections; one API pool can open ~19 (GC-5S live run, #370)
+  F-46: 4b        # a live screen kept its last answer's numbers after its own connection dropped (GC-5S W-113/114/115)
+  F-47: 4b        # the live feed carries no previous close; Option Chain Change column null (GC-5S W-116)
+  F-48: 4b        # a socket's rate limit guarded only its normal push; the error path flooded (GC-5S W-116)
 
 hypotheses:
   H1: done

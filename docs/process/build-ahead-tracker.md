@@ -34,7 +34,7 @@ Status words: `todo`, `building`, `held #PR` (open draft PR, HOLD until GC-3L en
 | #405 | W-108 attribution (redesigned, round 2 PASS) | P1 | GC-3F | A | held #398 | GC-2g handover |
 | W-111 | Positions part 1 (stacked on #398) | P1 | GC-3F | A | held #410 | GC-2g handover |
 | #381 | Return route reads trades before orders | P1 | GC-3F | A | held #394 | GC-2f handover |
-| #370 | e2e flake: API pools exhausted the role's connection limit | P5 | GC-3F | B | held #395 | merges FIRST in GC-3F |
+| #370 | e2e flake: API pools exhausted the role's connection limit | P5 | GC-3F | B | closed | #395 merged 2026-10-19 by GC-5S (owner decision ~14:52: unblocked #429); the per-process pool budget is row POOL-BUDGET (GC-5T) |
 | W-109 | My Strategies list + Completed filter | P4 | GC-3F | B | held #393 | |
 | W-110 | Repo-wide money guard (REQ-063 AC-3) | P2 | GC-3F | B | held #396 | |
 | W-089 | Settings -> Broker & Market Data (+ ofo_dev proof after merge) | P4 | GC-3F | A | held #397 | |
@@ -71,7 +71,7 @@ Status words: `todo`, `building`, `held #PR` (open draft PR, HOLD until GC-3L en
 | #318 | Clean up 462 `# noqa` markers | P5 | GC-4 | C | todo | |
 | #247 | atool selector misses two-hop dependents | P5 | GC-4 | C | todo | |
 | #191 | gate_before_commit bypasses | P5 | GC-4 | C | todo | |
-| #385 | GC-3 live steps L1-L4 | - | GC-3L | A | verified | GC-3L 2026-10-19: strategy 9 entry filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, pnl_equal -22.75, audit chain rows=9 (`session-handover-2026-10-19-gc3l.md`); issue to close with this evidence |
+| #385 | GC-3 live steps L1-L4 | - | GC-3L | A | closed | issue closed (checked by GC-5S tracker_check 2026-10-19); GC-3L 2026-10-19: strategy 9 entry filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, pnl_equal -22.75, audit chain rows=9 (`session-handover-2026-10-19-gc3l.md`); issue to close with this evidence |
 | TAG-8 | Basket tag over Kite Publisher's 8-character limit for strategy id >= 10 / version >= 10 (finding basket-tag-exceeds-publisher-limit) | P1 | GC-3F | A | todo | GC-3F item 1 (core); live proof on a strategy id >= 10; may move to GC-3L same-day if the owner approves |
 | FRESH-CLOCK | Execute gate judged freshness on the request-start clock (finding freshness-judged-on-request-start-clock) | P1 | GC-3L | A | merged #427 | a614b16, fresh-Opus PASS; proven live by the GC-3L L2/L3 prepares |
 | TRIM-STRUCT | Daily list trims far strikes and trips the ADR-058/059 percentage guards (finding daily-list-trims-far-strikes-trips-truncation-guard) | P1 | GC-3F | A | todo | GC-3F item 4; ADR-058/059 change as a technical decision row |
@@ -88,3 +88,19 @@ Status words: `todo`, `building`, `held #PR` (open draft PR, HOLD until GC-3L en
 | OQ-GC2h-2 | Owner question: what lifts the block on a contract two strategies share (Q224 + Q222 leave none) | P1 | owner | A | blocked-owner | owner-questions-2026-10-19.md; needed before #380-2 |
 | ADR-113 | Closing baskets checked on Zerodha's figure alone (technical decision, rides in #418) | P1 | GC-3F | A | held #418 | merges with #418 |
 | ADR-094-ptr | ADR-094 gains a back-pointer to ADR-113 (PR #418 round-2 MINOR) | P4 | GC-3F | C | todo | docs |
+| #442 | Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR) | P4 | GC-3F | A | deferred #442 | row added by GC-5S's tracker check (filed by GC-3L) |
+| W-113 | Live Strategies page on the live outcome socket (REQ-049 AC-4..6) | P2 | GC-5S | B | merged #429 | verifier PASS (2 rounds); live core proof 14:29-14:31 + re-proof on merged code 15:25 (gc-5s-run-log.md) |
+| W-114 | Underlying/index view + read-only index socket (REQ-072 AC-2) | P2 | GC-5S | A | merged #430 | Tier A PASS round 2; live 14:31-14:32 |
+| W-115 | Home overview: states 1-2, live index strip, no connect control (REQ-008 AC-4/AC-5) | P2 | GC-5S | B | merged #431 | AC-4/AC-5 PASS; AC-2 state 3 parked #433 |
+| #433 | Home: AC-2 state 3, AC-3 name + trial, AC-1 landing (no data yet) | P3 | GC-5T | B | parked #433 | needs GC-3F execution state, GC-4 alerts, REQ-023 entitlement |
+| #434 | Strategy screen Live Position tab (REQ-044 AC-2) | P3 | GC-5T | B | parked #434 | needs GC-3F execution state |
+| W-116 | Option Chain read route + live socket (REQ-029 AC-1/4/8 data path) | P2 | GC-5S | A | merged #437 | Tier A round 2: data path held; ACs fail as written (screen, IV); live 14:31 |
+| #439 | Chain socket self-starvation by invalid messages; IV not on the chain | P3 | GC-5T | A | deferred #439 | |
+| W-118 | Option Chain screen, display only (REQ-029 AC-1/AC-6 PASS; AC-2/AC-8 part) | P2 | GC-5S | B | merged #441 | round 2 PASS (AC-1/AC-6; AC-2/AC-8 part); live 14:32 |
+| W-117 | Learn / Alerts / Market context shells (REQ-011 AC-1 part) | P3 | GC-5S | B | merged #436 | PASS for the part built; Learn content -> #435 |
+| #435 | W-117 MINORs: TemplateText per field; shell UI wording owner read; Learn content | P4 | GC-5T | B | deferred #435 | |
+| POOL-BUDGET | Every API process sizes its DB pool from the role's limit + startup check; no nested token-read connection; single-flight charge rates (F-45 class fix, independent review 2026-10-19) | P1 | GC-5T | A | todo | core of GC-5T |
+| F-47 | Previous close into the adapter + quote model, so the chain fills Change (REQ-029 AC-2) | P3 | GC-5T | A | todo | |
+| IDX-FLAT | Check: NIFTY and SENSEX values stayed flat for 6+ pushes with advancing times at 15:25-15:26 (vs moving at 14:29-14:33); compare with Kite's own quote in a market session | P2 | GC-5T | A | todo | unverified observation, gc-5s-run-log.md |
+| W-118-sel | Option Chain selection, Buy/Sell chips, import (REQ-030) and live preview (REQ-031) | P2 | GC-5T | A | todo | after W-118 |
+| DRAFT-LABEL | A draft without planned entries shows the not-connected label while data is live (draft 13) | P4 | GC-5T | B | todo | MINOR; the Builder always captures entries (ADR-075) |

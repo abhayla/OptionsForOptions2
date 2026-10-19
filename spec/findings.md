@@ -698,3 +698,51 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   7.45, net premium -484.25, charges 23.82, margin 484.25, read 10:24:54) passed the funds gate, and after the entry the
   read was `funds 545.00` (10:35:55). Status: **resolved** - a Monday read of exactly 1000.00 after a Rs 1,000
   deposit is consistent with the Sunday zero being the real balance, not a weekend artefact (no rule change).
+
+## F-45 - The app's database role allows 5 connections in total, while ONE API process's pool can open about 19
+- Measured 2026-10-19 10:41 IST, read-only on the VPS PostgreSQL: `rolconnlimit` of role `ofo_app` = 5 (server
+  `max_connections` 100); GC-3L's API alone held 3 on `ofo_dev`. `backend/ofo_app/db.py` builds the engine with
+  SQLAlchemy's default pool (5 + overflow 10) and `history_store.py` adds its own (2 + 2).
+- Real case (GC-5S core proof, 10:33-10:40 IST): the new Live Strategies page on a second API (:8766) loaded 13 saved
+  strategies at once (13 `GET /strategies/{id}` plus a socket each); the API log shows `asyncpg TooManyConnectionsError:
+  too many connections for role "ofo_app"` 11 times and an unhandled error on `GET /strategies/11`, and a plain
+  one-connection read failed the same way after the browser closed, until that API was stopped.
+- The limit is per ROLE across databases, so ofo_dev, ofo_test and every local API or DB test share the same 5.
+- Consequence: any screen that fans out per-strategy reads, and any second API process, can refuse database work to
+  another process on the role - including a live order run. Bears on: ADR-048 (the limited `ofo_app` role), REQ-050
+  (shared computation and scale), REQ-049 AC-4. Status: **measured; registry `db-role-limit-below-pool-size`**; fix
+  open (page: bounded concurrency; app: pool sized under the role limit), open for owner decision only if the role
+  limit itself should change. Earlier sample: #370 (CI e2e), held fix #395 (pool settings, 1 + 0 in CI only).
+- Also measured 2026-10-19 (GitHub CI, PR #429 and main a614b16): the e2e test `strategy-save-draft.spec.ts:71` fails on
+  main itself with `FATAL: too many connections for role "ofo_app"` in the CI database log. Independent Opus review the
+  same day: the defect is each API process's pool (5 kept + 10 overflow against a shared limit of 5), not the screens;
+  the Live Strategies e2e visits trigger it (PR #429 red 4/4 while main 1dae5de was green). #395 (CI pools 1 + 0) merged
+  2026-10-19 by GC-5S (owner decision) and #429 then passed; the per-process pool budget is open (next contract).
+
+## F-46 - A live screen keeps showing its last answer's numbers after its own connection drops
+- Measured 2026-10-19 by three GC-5S verifier rounds, each proven with a red test on the real component: the Live
+  Strategies card (W-113) was not paused while reconnecting after a drop; the Underlying/index view (W-114) kept both
+  index values with their "as of" time after a drop whose fallback read failed, and a read sent before a drop could
+  restore a live value later; the Home strip (W-115) copied that logic before it was fixed.
+- Bears on: REQ-049 AC-4 ("Screens show when data is stale or unavailable instead of presenting old numbers as live."),
+  REQ-072 AC-2. Status: **measured; registry `last-live-answer-kept-after-drop`**; fixed per screen, and structurally for
+  the index views (one state machine in the index composable, W-115 round 2); no repo-wide check yet for a new live
+  screen.
+
+## F-47 - The live feed carries no previous close, so the Option Chain's default Change column cannot be filled
+- Read 2026-10-19 in the code on main a614b16 (GC-5S W-116): `backend/ofo/marketdata/kite_frames.py` has no `close` or
+  `ohlc` field at all (Kite's packet decoder keeps LTP, depth, volume, OI and times only), and the normalised quote model
+  (`backend/ofo/marketdata/quote.py`) has no close field; W-116's chain socket therefore sends `change: null` on every
+  cell and computes no change from anything else.
+- Bears on: REQ-029 AC-2 ("Default columns: Strike, LTP, Change, OI, Volume (Q45)"). Not a rule change: the data path is
+  missing a field. Next step: the Kite full-mode packet's close price (or the instrument's previous close from a daily
+  read) added to the adapter and the quote model, then the chain fills Change from the server. Status: **measured; open
+  (data path work, no owner decision needed unless the source of the previous close is a choice the owner wants).**
+
+## F-48 - A live socket's once-a-second limit guarded only its normal push, so its error path flooded the client
+- Measured 2026-10-19 (GC-5S W-116 round 1, red test on the real class): with the spot missing and an unknown contract in
+  the chain window, the chain socket sent an error on every poll (`[2, 30, 30]` messages per second against a limit of
+  1); round 2 routes every outbound message through one gate (`[1, 1, 1]`).
+- Bears on: REQ-029 AC-4 (live streaming at a bounded rate), REQ-050 (shared computation and scale). Status: **measured;
+  registry `rate-gate-on-success-path-only` (guarded for the chain socket)**; the index and strategy sockets not
+  re-checked yet.
