@@ -285,6 +285,7 @@ issues:
   "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
   "#433": 4c  # Home: REQ-008 AC-2 state 3 (active strategies, alerts), AC-3 name + trial, AC-1 landing - no data yet (parked by GC-5S)
   "#434": 4b  # Strategy screen Live Position tab (REQ-044 AC-2) - needs execution state (parked by GC-5S)
+  "#435": 4b  # W-117 review MINORs: TemplateText slot not per field; shell UI wording needs owner read; REQ-011 AC-1 content (deferred by GC-5S)
 
 # Work items whose status is not done.
 work_items:
