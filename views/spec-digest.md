@@ -119,7 +119,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
 - ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
 - ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
-- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none to requirements; merge commands in CLAUDE.md…]
+- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none — a kit upgrade and its merge-command migrat…]
 
 ## Requirements (75)
 
