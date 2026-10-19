@@ -35,6 +35,7 @@ from ofo.instruments import ZERODHA, Catalogue, CatalogueEntry, ContractKind, Ze
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.instruments.eligibility import NO_ELIGIBILITY
 from ofo.instruments.models import is_lot_aligned
+from ofo.market_calendar import MarketStatus, market_status, next_open
 from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
 from ofo.errors.explanations import ExplanationText, render_explanation
@@ -348,6 +349,22 @@ def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> ProReason | No
     return _worse_worst_case(active, proposed)
 
 
+def _market_failures(ctx: ExecutionContext) -> list[CheckFailure]:
+    """ADR-119: the choke point for EVERY basket build (entry, step 2, exit, Complete, Retry, adjustment all pass
+    ``check_pre_execution``). The caller's ``market_open`` can only close the gate; the gate also reads the calendar
+    itself at ``ctx.as_of``, so a caller that says True on a holiday, outside 09:15-15:30 IST or in a year with no
+    holiday data is still refused. Unknown (None, or no calendar data) is the "unconfirmed" block, never a pass."""
+    status = market_status(ctx.as_of)
+    if ctx.market_open is None or status is MarketStatus.NO_CALENDAR:
+        return [_fail(CheckCode.MARKET_CLOSED, "gate_market_unconfirmed")]
+    if ctx.market_open is True and status is MarketStatus.OPEN:
+        return []
+    opens = next_open(ctx.as_of)
+    if opens is None:
+        return [_fail(CheckCode.MARKET_CLOSED, "gate_market_unconfirmed")]
+    return [_fail(CheckCode.MARKET_CLOSED, "gate_market_closed", next_open=opens.date())]
+
+
 def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strategy_id: str) -> list[CheckFailure]:
     out: list[CheckFailure] = []
 
@@ -355,7 +372,7 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
         if value is not True:
             out.append(_fail(code, unknown if value is None else false))
 
-    unknown_or(ctx.market_open, CheckCode.MARKET_CLOSED, "gate_market_unconfirmed", "gate_market_closed")
+    out.extend(_market_failures(ctx))
     if ctx.version_state not in EXECUTABLE_VERSION_STATES[ctx.action]:
         out.append(_fail(CheckCode.VERSION_NOT_EXECUTABLE, "gate_version_not_executable", state=ctx.version_state,
                          allowed=frozenset(EXECUTABLE_VERSION_STATES[ctx.action])))

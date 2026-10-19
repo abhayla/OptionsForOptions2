@@ -63,7 +63,8 @@ from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
+from ofo.market_calendar import MarketStatus, market_status
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
@@ -234,11 +235,12 @@ def _refuse_with(message: UserFacingError) -> StrategyRefused:
     return StrategyRefused("gate_dependencies_unsatisfied", Failure.CONFLICT, message=message)
 
 
-def market_open(now: datetime.datetime) -> bool:
-    """Weekday inside the session (ofo/timeutil). No holiday calendar exists yet: a holiday reads as open and Zerodha
-    refuses the order on its page (reported gap)."""
-    local = now.astimezone(IST)
-    return local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE
+def market_open(now: datetime.datetime) -> bool | None:
+    """ADR-119: True only inside 09:15-15:30 IST on an NSE trading day (``ofo.market_calendar``, holidays are dated
+    data); None when the year has no holiday data (the gate's "unconfirmed" block). The gate itself re-reads the
+    calendar at ``as_of``, so this is only the context's honest value."""
+    status = market_status(now)
+    return None if status is MarketStatus.NO_CALENDAR else status is MarketStatus.OPEN
 
 
 def _health(times: tuple[datetime.datetime, ...], checked_at: datetime.datetime) -> DataHealth:
