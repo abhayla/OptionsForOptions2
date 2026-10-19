@@ -151,7 +151,7 @@ async def test_core_real_order_plan_numbers(app_engine):
         exit_plan = await tx.enter("EXIT", "SELL", "3.10")
         assert exit_plan.plan_number == 2 and exit_plan.action == "EXIT"
         assert [(o.tag, o.transaction_type, o.quantity, o.price) for o in exit_plan.orders] == [
-            (f"OFS{sid}V2L0", "SELL", 65, Decimal("3.10"))]
+            (make_tag(sid, 2, 0), "SELL", 65, Decimal("3.10"))]
         assert [(p.plan_number, p.status) for p in await plans.plans_for(tx.conn, tx.user, sid)] == [
             (1, "closed"), (2, "open")]
 
@@ -291,7 +291,7 @@ async def test_a_multi_leg_plan_keeps_its_order_and_exact_prices(app_engine):
         stored = await plans.record_plan(tx.conn, tx.user, sid, await plans.next_plan_number(tx.conn, tx.user, sid),
                                          "ENTRY", legs)
         assert [(o.leg_index, o.tag, o.price) for o in stored.orders] == [
-            (i, f"OFS{sid}V1L{i}", Decimal(p)) for i, p in enumerate(["101.05", "12.30", "99.00", "0.05"])]
+            (i, make_tag(sid, 1, i), Decimal(p)) for i, p in enumerate(["101.05", "12.30", "99.00", "0.05"])]
         assert (await plans.open_plan(tx.conn, tx.user, sid)).orders == stored.orders
 
 
@@ -412,6 +412,10 @@ async def test_a_duplicate_tag_across_strategies_is_impossible(app_engine):
                             "q": 65, "price": Decimal("5.45")})
 
 
+#: _ORDER_INSERT with the catalogued real instrument, so the store can read the rows back (0018 tests).
+_REAL_ORDER_INSERT = _ORDER_INSERT.replace("'NSE_FO:47189'", f"'{REAL_INSTRUMENT}'")
+
+
 async def test_the_database_accepts_the_8_char_tag_of_its_own_row_only(app_engine):
     """0018: a new-grammar tag is accepted only when it encodes the row's own (strategy, plan, leg); another
     strategy's, plan's or leg's new-grammar tag is a CHECK violation."""
@@ -420,8 +424,8 @@ async def test_the_database_accepts_the_8_char_tag_of_its_own_row_only(app_engin
         await tx.enter("ENTRY", "BUY", "5.45")
         row = {"s": s, "p": 1, "side": "BUY", "q": 65, "price": Decimal("5.45")}
         for wrong in (make_tag(s + 1, 1, 1), make_tag(s, 2, 1), make_tag(s, 1, 2)):
-            await _refused_sql(tx.conn, _ORDER_INSERT, CHECK_VIOLATION, {**row, "l": 1, "tag": wrong})
-        await tx.conn.execute(text(_ORDER_INSERT), {**row, "l": 1, "tag": make_tag(s, 1, 1)})
+            await _refused_sql(tx.conn, _REAL_ORDER_INSERT, CHECK_VIOLATION, {**row, "l": 1, "tag": wrong})
+        await tx.conn.execute(text(_REAL_ORDER_INSERT), {**row, "l": 1, "tag": make_tag(s, 1, 1)})
         stored = (await plans.plans_for(tx.conn, tx.user, s))[0]
         assert [o.tag for o in stored.orders] == [make_tag(s, 1, 0), make_tag(s, 1, 1)]
 
@@ -435,8 +439,8 @@ async def test_a_plan_stored_with_legacy_tags_still_loads_and_closes(app_engine)
                                    "VALUES (:s, 1, 'ENTRY')"), {"s": s})
         legacy = [f"OFS{s}V1L0", f"OFS{s}V1L1"]
         for leg, tag in enumerate(legacy):
-            await tx.conn.execute(text(_ORDER_INSERT), {"s": s, "p": 1, "l": leg, "tag": tag, "side": "BUY", "q": 65,
-                                                       "price": Decimal("5.45")})
+            await tx.conn.execute(text(_REAL_ORDER_INSERT), {"s": s, "p": 1, "l": leg, "tag": tag, "side": "BUY",
+                                                            "q": 65, "price": Decimal("5.45")})
         loaded = await plans.open_plan(tx.conn, tx.user, s)
         assert [o.tag for o in loaded.orders] == legacy
         closed = await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled", filled=dict.fromkeys(legacy, 65))
@@ -444,7 +448,7 @@ async def test_a_plan_stored_with_legacy_tags_still_loads_and_closes(app_engine)
         # a legacy tag that is not its row's own is still refused (the plan is closed now: use a fresh open plan)
         await tx.conn.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                                    "VALUES (:s, 2, 'EXIT')"), {"s": s})
-        await _refused_sql(tx.conn, _ORDER_INSERT, CHECK_VIOLATION,
+        await _refused_sql(tx.conn, _REAL_ORDER_INSERT, CHECK_VIOLATION,
                            {"s": s, "p": 2, "l": 0, "tag": f"OFS{s + 1}V2L0", "side": "SELL", "q": 65,
                             "price": Decimal("5.45")})
 
