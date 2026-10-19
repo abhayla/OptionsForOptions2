@@ -321,6 +321,7 @@ work_items:
   W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
+  W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
   W-114: 4b           # GC-5S: Underlying/index view + index socket (REQ-072 AC-2)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-113: 4b           # GC-5S: Live Strategies page (REQ-049 AC-4..6)
