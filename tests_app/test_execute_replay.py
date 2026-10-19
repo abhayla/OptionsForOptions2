@@ -115,7 +115,8 @@ def test_ac4_return_reads_the_122104_book_and_refuses_every_write():
 
 
 ALLOWED_IMPORT_ROOTS = {"__future__", "datetime", "json", "os", "pathlib", "decimal", "typing", "fastapi", "ofo",
-                        "ofo_app", "sqlalchemy", "asyncio", "sys", "collections", "dataclasses", "functools"}
+                        "ofo_app", "sqlalchemy", "asyncio", "sys", "collections", "dataclasses", "functools",
+                        "re"}  # re: retag_recorded (no network)
 
 
 @pytest.mark.parametrize("module", [er, seed, er_switch])
@@ -244,7 +245,8 @@ def test_recordings_are_read_with_legacy_tags_translated_and_every_other_byte_ke
     for name in ("basket-121848.json", "orders-122104.json", "orders-151006.json"):
         raw = (REPLIES / name).read_text(encoding="utf-8")
         assert "OFS1V1L0" in raw
-        assert recorded_text(name) == raw.replace("OFS1V1L0", make_tag(1, 1, 0))
+        # 15:10:06 also holds the exit OFS1V2L0
+        assert recorded_text(name) == raw.replace("OFS1V1L0", make_tag(1, 1, 0)).replace("OFS1V2L0", make_tag(1, 2, 0))
     assert make_tag(1, 1, 0) == "Q0001010"
     # only a whole string value is translated; a longer or prefixed token is left as it is
     kept = '"XOFS1V1L0" "OFS1V1L0x" "OFS01V1L0" '
