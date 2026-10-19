@@ -7,7 +7,7 @@ from decimal import Decimal
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: ADR-078: the database only the test suites write to. A live run (LIVE_MARKET) must never use it.
@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     #: #237: TEST-ONLY. Pins the catalogue routes' "today" (ofo_app.pinned_clock) so a recorded fixture stays live in CI.
     #: Refused unless APP_ENV is exactly "test".
     TEST_CATALOGUE_DATE: str | None = None
+    #: #370: the API's database pool. The defaults are SQLAlchemy's own (5 kept + 10 extra: no change for a normal
+    #: run). The throwaway CI role has CONNECTION LIMIT 5 (ADR-048) shared by three API processes, so the e2e job
+    #: starts each with 1 + 0: three connections in all, the rest of the limit left for seeding and tests.
+    DB_POOL_SIZE: int = Field(default=5, ge=1)
+    DB_MAX_OVERFLOW: int = Field(default=10, ge=0)
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":

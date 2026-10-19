@@ -4,8 +4,12 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
-// Built section pages replace their placeholder by path (W-114: the Underlying/index view).
-const BUILT = { '/market/underlying-index-view': () => import('../pages/IndexViewPage.vue') }
+// Nav items that have a real page, keyed by route name (one map for every built screen: W-113, W-114, ...); every
+// other nav item still shows the placeholder.
+const REAL_PAGES = {
+  'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
+  'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+}
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -17,7 +21,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: BUILT[`/${s.key}/${slug}`] ?? Placeholder,
+    component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])
