@@ -31,6 +31,7 @@ from ofo_app.execute_replay import DepthQuotes, RecordedKite, live_quote, sessio
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
 from ofo_app.execute_replay import store_strategy_one
+from test_execution_plan_store import trades_for
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL_BASKET = real_basket()
@@ -330,7 +331,8 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             await _refused_with(app, sid, "ENTRY", "An order this execution depends on is not in place yet")
             assert await audit_since(conn, head) == []
 
-            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65},
+                                   fills=trades_for({"OFS1V1L0": 65}))
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(flat)
             # Zerodha holds 0 of the strategy's 65: blocked (AC-7), by the reconciliation-mismatch refusal
@@ -433,7 +435,8 @@ async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
 
-    await plans.close_plan(conn, user, sid, 2, reason="exited", filled={"OFS1V2L0": 65})
+    await plans.close_plan(conn, user, sid, 2, reason="exited", filled={"OFS1V2L0": 65},
+                           fills=trades_for({"OFS1V2L0": 65}))
     done = _rows_of(_Replay(funds="1003", basket_total="-214.5", orders=None, positions="positions-151006"),
                     orders=_book("COMPLETE") + _book("COMPLETE", "OFS1V2L0"))
     app.dependency_overrides[route.get_kite_session] = lambda: _session_for(done)
@@ -477,7 +480,8 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65},
+                                   fills=trades_for({"OFS1V1L0": 65}))
 
             def _with(**kw):
                 replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
@@ -618,7 +622,8 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65},
+                                   fills=trades_for({"OFS1V1L0": 65}))
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(held)
 

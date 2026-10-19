@@ -24,7 +24,6 @@ from test_execution_plan_store import (
     REAL_INSTRUMENT,
     SYMBOLS,
     UNIQUE_VIOLATION,
-    _close,
     _new_strategy,
     _order,
     _refused_sql,
@@ -37,6 +36,7 @@ GUARD_SQLSTATE = "OF020"
 TWO_HOLDERS = 2  # two strategies of one user, each holding the same contract (Q224)
 ORDER_ID = "251019000000001"  # a Zerodha order id (15 digits)
 OTHER_ORDER_ID = "251019000000002"
+DUPLICATE_UNITS = 20  # a stored trade of 20 of 65: the same trade again still fits the sum, so the key refuses it
 RACE_UNITS = 40  # two trades of 40 units against 65 filled: each fits alone, both together (80) do not
 WAIT_SECONDS = 1.0
 _FILL = ("INSERT INTO public.execution_plan_fills (tag, broker_order_id, trade_id, quantity, price) "  # noqa: S608 constant
@@ -45,6 +45,16 @@ _FILL_OF = ("INSERT INTO public.execution_plan_fills (tag, broker_order_id, trad
             "VALUES (:tag, :oid, :tid, :q, :px)")
 _HOLD = ("INSERT INTO public.adopted_holdings (strategy_id, instrument_id, transaction_type, quantity, product, "
          "average_price, reference, version_number) VALUES (:s, :iid, 'BUY', :q, 'NRML', :px, :ref, 1)")
+
+
+async def _close(conn, _user: str, strategy_id: int, number: int, reason: str) -> None:
+    """Closes a ONE-leg plan with the plan store's own two statements but WITHOUT its trades (#313b: ``close_plan``
+    always stores them now), so these tests can insert trades by raw SQL against a filled order with none stored:
+    the database guards must hold even when the store is bypassed."""
+    filled = {"filled": LOT, "partial": LOT // 2, "nothing_placed": 0}[reason]
+    tag = make_tag(strategy_id, number, 0)
+    await conn.execute(plans._SET_FILLED, {"s": strategy_id, "p": number, "tag": tag, "f": filled})
+    await conn.execute(plans._CLOSE, {"s": strategy_id, "p": number, "r": reason})
 
 
 async def _filled_tag(tx, reason: str = "filled") -> str:
@@ -72,14 +82,17 @@ async def test_fill_price_needs_an_order_that_filled(app_engine):
 async def test_fill_price_is_positive_once_per_trade_and_only_for_a_known_tag(app_engine):
     """Guards: CHECK price > 0 and quantity >= 1, PRIMARY KEY (order id, trade id) (one row per trade), the trigger's
     unknown-tag refusal (it runs before the foreign key, which stays as a second layer), and the trigger's sum check
-    (stored trades never exceed the order's filled quantity: 65 + 1 > 65)."""
+    (stored trades never exceed the order's filled quantity: 20 + 46 > 65). The duplicate trade is 20 units, so the
+    sum check (which runs first, in the BEFORE trigger) passes and the PRIMARY KEY is what refuses it (#451 CI)."""
     async with _Tx(app_engine) as tx:
         tag = await _filled_tag(tx)
         await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "0"})
         await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "tid": "1", "q": 0, "px": "7.00"})
-        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
-        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "6.65"})
-        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": tag, "tid": "2", "q": 1, "px": "7.00"})
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": DUPLICATE_UNITS, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "tid": "1", "q": DUPLICATE_UNITS,
+                                                             "px": "6.65"})
+        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": tag, "tid": "2", "q": LOT - DUPLICATE_UNITS + 1,
+                                                            "px": "7.00"})
         await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": "OFS999999V1L0", "tid": "1", "q": LOT,
                                                             "px": "7.00"})
 

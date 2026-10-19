@@ -16,6 +16,7 @@ from decimal import Decimal as D
 
 import pytest
 from ofo_app.execute_replay import AT, REPLIES, RecordedKite
+from test_execution_plan_store import trades_for
 from test_execute_route import (
     RATES,
     _post,
@@ -72,7 +73,7 @@ async def _world(app_engine, admin_engine, monkeypatch, *, close: str, filled: d
             first = RecordedKite(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(first)
             assert (await _post(app, sid, "ENTRY")).status_code == HTTP_OK
-            await plans.close_plan(conn, user, sid, 1, reason=close, filled=filled)
+            await plans.close_plan(conn, user, sid, 1, reason=close, filled=filled, fills=trades_for(filled))
 
             def use(replay: RecordedKite) -> None:
                 app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
