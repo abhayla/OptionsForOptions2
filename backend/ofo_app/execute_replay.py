@@ -16,6 +16,7 @@ import datetime
 import functools
 import json
 import pathlib
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -23,6 +24,7 @@ from typing import Any
 
 from fastapi import Request
 from ofo.engine import Action
+from ofo.execution.basket import make_tag
 from ofo.instruments import NSE_FO, InstrumentId
 from ofo.instruments.parser import parse_instruments_csv, zerodha_listed
 from ofo.marketdata.kite_provider import IST, KiteProvider
@@ -63,10 +65,30 @@ __all__ = ["ENV_NAME", "ExecuteReplayRefused", "replay_requested", "require_test
 
 # ---- every fixture is read lazily (inside a function): importing this module reads no file ---------------------------
 
+#: A legacy tag as a whole JSON string value, plain ("OFS1V1L0") or inside an escaped JSON string (\"OFS1V1L0\").
+_LEGACY_RECORDED_TAG = re.compile(r'(?<=")OFS([1-9][0-9]*)V([1-9][0-9]*)L(0|[1-9][0-9]*)(?=\\?")', re.ASCII)
+
+
+def retag_recorded(text: str) -> str:
+    """A recording's text with every legacy tag ``OFS<s>V<p>L<l>`` replaced by ``make_tag(s, p, l)``.
+
+    The recordings (tests/fixtures/kite_replies) were made on 2026-10-16, before the 8-character basket grammar of
+    2026-10-19 (finding basket-tag-exceeds-publisher-limit, migration 0018). A test or the test-only replay that runs
+    Execute stores the new grammar, so the recorded book is read with the same tags; the translation touches only a
+    whole JSON string value matching the legacy grammar and preserves every other byte. TEST AND REPLAY ONLY: the
+    product reads Zerodha's real book as it is, and ``parse_tag`` decodes a real legacy tag with its old meaning."""
+    return _LEGACY_RECORDED_TAG.sub(lambda m: make_tag(int(m[1]), int(m[2]), int(m[3])), text)
+
+
+def recorded_text(name: str) -> str:
+    """``REPLIES / name`` as text, legacy tags translated (``retag_recorded``)."""
+    return retag_recorded((REPLIES / name).read_text(encoding="utf-8"))
+
+
 @functools.cache
 def real_basket() -> dict:
-    """The entry basket the owner sent on 2026-10-16 (basket-121848.json)."""
-    return json.loads((REPLIES / "basket-121848.json").read_text(encoding="utf-8"))
+    """The entry basket the owner sent on 2026-10-16 (basket-121848.json), its tag translated (``retag_recorded``)."""
+    return json.loads(recorded_text("basket-121848.json"))
 
 
 def real_order() -> dict:
@@ -98,7 +120,7 @@ class RecordedKite:
         self.calls: list[str] = []  # every Kite URL asked (W-102: the cost adds no Zerodha read)
 
     def _reply(self, name: str) -> Any:
-        return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=Decimal)
+        return json.loads(recorded_text(f"{name}.json"), parse_float=Decimal)
 
     def __call__(self, method: str, url: str, headers: Any, body: Any) -> tuple[int, str]:
         if self.reads_only and method != "GET":
