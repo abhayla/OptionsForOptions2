@@ -33,3 +33,12 @@ money strings such as `"0.05"` are the recorder's shape, live Kite REST sends JS
 `holdings-documented.json`: the DOCUMENTED shape of `GET /portfolio/holdings` (Kite Connect v3 portfolio docs: the
 envelope `status` / `data` and the per-row fields, JSON numbers for quantities and prices), with illustrative values
 (GOLDBEES, INFY). It is NOT a recording of the owner's account; GC-3 records the real reply and replaces it.
+
+## GC-3L positions with stock rows (2026-10-19)
+
+`positions-20261019-with-stocks.json`: PART real, PART shaped (its `_provenance` key says which). REAL-SAVED: the
+NIFTY26OCT24000CE `net` and `day` rows, from `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/positions-saved.json`.
+SHAPED from the live 13:15 IST read, which was not saved: the FRANKLININD (token 138288644) and LIQUIDBEES `net` rows
+(exchange NSE, product CNC, quantities -201900 and -2 as read live), every key copied from the saved NIFTY row;
+LIQUIDBEES' token, segment `EQ` and the money figures are illustrative. That live reply made `positions_from_reply`
+refuse the whole read (`FRANKLININD (token 138288644) matches 0 instrument rows`), blocking every Execute.
