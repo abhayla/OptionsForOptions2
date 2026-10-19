@@ -19,14 +19,30 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from ofo.errors.classes import ErrorClass
-from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, NextTradingDay, OrderRef,
-    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    Clock,
+    ContractSymbol,
+    DataHealthState,
+    DataInputName,
+    Date,
+    DisplayRupees,
+    ExecutionStatusName,
+    LegContract,
+    LegRef,
+    NextTradingDay,
+    OrderRef,
+    RiskRows,
+    Rupees,
+    Strikes,
+    Symbol,
+    UnitsByContract,
+    VersionStateName,
+    VersionStates,
+    WorstCase,
 )
+from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 

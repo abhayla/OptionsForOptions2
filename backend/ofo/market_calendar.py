@@ -22,6 +22,8 @@ DATA_FILE: Final = Path(__file__).with_name("market_calendar.json")
 #: How far ``next_open`` looks ahead before giving up (longer than any real run of closed days).
 _LOOKAHEAD_DAYS: Final = 14
 _SATURDAY: Final = 5
+_YEAR_DIGITS: Final = 4
+_ROW_LEN: Final = 2  # [date, name]
 
 Holidays = dict[int, frozenset[datetime.date]]
 
@@ -43,14 +45,14 @@ _TOP_KEYS: Final = frozenset({"source", "fetched", "segment", "note", "holidays"
 
 
 def _parse_year(key: object, rows: object) -> tuple[int, frozenset[datetime.date]]:
-    if not isinstance(key, str) or not key.isdigit() or len(key) != 4:  # noqa: PLR2004 - a four-digit year
+    if not isinstance(key, str) or not key.isdigit() or len(key) != _YEAR_DIGITS:
         raise CalendarError(f"year key {key!r} is not a four-digit year")
     year = int(key)
     if not isinstance(rows, list) or not rows:
         raise CalendarError(f"year {year} has no holiday rows")
     days: set[datetime.date] = set()
     for row in rows:
-        if not isinstance(row, list) or len(row) != 2 or not all(isinstance(x, str) and x for x in row):  # noqa: PLR2004
+        if not isinstance(row, list) or len(row) != _ROW_LEN or not all(isinstance(x, str) and x for x in row):
             raise CalendarError(f"year {year}: row {row!r} is not [date, name]")
         day = datetime.date.fromisoformat(row[0])
         if day.year != year:
@@ -66,7 +68,7 @@ def _load() -> Holidays:
     """Validated holiday data; ANY problem raises ``CalendarError`` (never a bare KeyError/JSON error)."""
     try:
         raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict) or not _TOP_KEYS >= raw.keys() or not isinstance(raw.get("holidays"), dict):
+        if not isinstance(raw, dict) or not raw.keys() <= _TOP_KEYS or not isinstance(raw.get("holidays"), dict):
             raise CalendarError("calendar file has unknown keys or no holidays object")
         if not raw["holidays"]:
             raise CalendarError("calendar file lists no years")

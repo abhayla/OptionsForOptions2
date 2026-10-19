@@ -353,7 +353,8 @@ def market_failures(as_of: datetime.datetime, market_open: bool | None) -> list[
     """ADR-119: the market verdict at ``as_of``. The caller's ``market_open`` can only close the gate; the gate also
     reads the calendar itself, so a caller that says True on a holiday, outside 09:15-15:30 IST or in a year with no
     holiday data is still refused. Unknown (None, or no calendar data) is the "unconfirmed" block, never a pass.
-    Public so a route can re-judge on a clock read AFTER its slow steps (finding freshness-judged-on-request-start-clock)."""
+    Public so a route can re-judge on a clock read AFTER its slow steps
+    (finding freshness-judged-on-request-start-clock)."""
     status = market_status(as_of)
     if market_open is None or status is MarketStatus.NO_CALENDAR:
         return [_fail(CheckCode.MARKET_CLOSED, "gate_market_unconfirmed")]

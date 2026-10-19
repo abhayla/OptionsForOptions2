@@ -6,7 +6,6 @@ import datetime
 import json
 
 import pytest
-
 from ofo import market_calendar as mc
 from ofo.market_calendar import DATA_FILE, MarketStatus, market_status, next_open
 from ofo.timeutil import IST
@@ -24,7 +23,7 @@ def _first(raw: dict) -> list:
 
 def _mutations() -> dict[str, object]:
     """Bad shapes generated from the real file (each rule the loader enforces, broken one way), not hand-listed JSON."""
-    def with_(change) -> dict:  # noqa: ANN001
+    def with_(change) -> dict:
         raw = _good()
         change(raw)
         return raw
@@ -47,7 +46,7 @@ def _mutations() -> dict[str, object]:
 
 
 @pytest.fixture
-def install(tmp_path, monkeypatch):  # noqa: ANN001, ANN201
+def install(tmp_path, monkeypatch):
     def put(payload: object) -> None:
         path = tmp_path / "market_calendar.json"
         path.write_text(payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8")
@@ -57,13 +56,13 @@ def install(tmp_path, monkeypatch):  # noqa: ANN001, ANN201
     mc._load.cache_clear()
 
 
-def test_the_shipped_file_passes_its_own_validation(install) -> None:  # noqa: ANN001
+def test_the_shipped_file_passes_its_own_validation(install) -> None:
     install(_good())
     assert mc._load()[2026] and market_status(WHEN) is MarketStatus.OPEN
 
 
 @pytest.mark.parametrize("name", sorted(_mutations()))
-def test_minor1_every_bad_shape_is_no_calendar(name: str, install) -> None:  # noqa: ANN001
+def test_minor1_every_bad_shape_is_no_calendar(name: str, install) -> None:
     install(_mutations()[name])
     with pytest.raises(mc.CalendarError):
         mc._load()
@@ -71,12 +70,12 @@ def test_minor1_every_bad_shape_is_no_calendar(name: str, install) -> None:  # n
 
 
 @pytest.mark.parametrize("text", ["", "{not json", "\x00"])
-def test_minor1_unreadable_text_is_no_calendar(text: str, install) -> None:  # noqa: ANN001
+def test_minor1_unreadable_text_is_no_calendar(text: str, install) -> None:
     install(text)
     assert market_status(WHEN) is MarketStatus.NO_CALENDAR
 
 
-def test_minor1_missing_file_is_no_calendar(install, tmp_path, monkeypatch) -> None:  # noqa: ANN001
+def test_minor1_missing_file_is_no_calendar(install, tmp_path, monkeypatch) -> None:
     install(_good())
     monkeypatch.setattr(mc, "DATA_FILE", tmp_path / "absent.json")
     mc._load.cache_clear()

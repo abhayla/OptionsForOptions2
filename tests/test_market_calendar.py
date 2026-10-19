@@ -8,13 +8,12 @@ import datetime
 import json
 
 import pytest
-
 from ofo.market_calendar import DATA_FILE, MarketStatus, is_market_open, market_status, next_open
 from ofo.timeutil import IST
 
 
-def at(day: int, hour: int, minute: int = 0, second: int = 0, month: int = 10, year: int = 2026) -> datetime.datetime:
-    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=IST)
+def at(day: int, hour: int, minute: int = 0, second: int = 0, month: int = 10) -> datetime.datetime:
+    return datetime.datetime(2026, month, day, hour, minute, second, tzinfo=IST)
 
 
 def test_ac12_dussehra_tuesday_is_closed_at_ten() -> None:
@@ -43,14 +42,14 @@ def test_ac12_weekend_is_closed() -> None:
 
 def test_ac12_a_utc_instant_is_judged_in_ist() -> None:
     """AC-12: 04:45 UTC on Wed 21 Oct is 10:15 IST (open); 03:30 UTC is 09:00 IST (closed)."""
-    utc = datetime.timezone.utc
+    utc = datetime.UTC
     assert is_market_open(datetime.datetime(2026, 10, 21, 4, 45, tzinfo=utc)) is True
     assert is_market_open(datetime.datetime(2026, 10, 21, 3, 30, tzinfo=utc)) is False
 
 
 def test_ac12_year_without_data_is_closed_with_its_own_reason() -> None:
     """AC-12: 2027 has no holiday data -> NO_CALENDAR, not open (fail closed), and no next-open guess."""
-    when = at(5, 10, month=1, year=2027)
+    when = datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST)
     assert market_status(when) is MarketStatus.NO_CALENDAR
     assert is_market_open(when) is False
     assert next_open(when) is None
@@ -81,5 +80,5 @@ def test_ac12_data_file_names_source_date_and_the_two_named_holidays() -> None:
     """AC-12 / step 1: the data file carries its source URL, fetch date and each holiday's name."""
     raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     assert raw["source"].startswith("https://www.nseindia.com/") and raw["fetched"] == "2026-10-19"
-    named = {day: name for day, name in raw["holidays"]["2026"]}
+    named = dict(raw["holidays"]["2026"])
     assert named["2026-10-20"] == "Dussehra" and named["2026-11-10"] == "Diwali-Balipratipada"

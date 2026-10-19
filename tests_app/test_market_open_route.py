@@ -8,8 +8,8 @@ from ofo.timeutil import IST
 from ofo_app.routes.execute import market_open
 
 
-def _at(month: int, day: int, h: int, m: int = 0, s: int = 0, year: int = 2026) -> datetime.datetime:
-    return datetime.datetime(year, month, day, h, m, s, tzinfo=IST)
+def _at(month: int, day: int, h: int, m: int = 0, s: int = 0) -> datetime.datetime:
+    return datetime.datetime(2026, month, day, h, m, s, tzinfo=IST)
 
 
 def test_ac12_route_market_open_proof_cases() -> None:
@@ -20,4 +20,4 @@ def test_ac12_route_market_open_proof_cases() -> None:
     assert market_open(_at(10, 21, 15, 30)) is False
     assert market_open(_at(10, 21, 9, 15)) is True
     assert market_open(_at(10, 25, 11)) is False
-    assert market_open(_at(1, 5, 10, year=2027)) is None
+    assert market_open(datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST)) is None
