@@ -4,9 +4,14 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
-
-// Sub-pages that have their own screen; every other nav item stays a placeholder until its work item.
-const BUILT_SCREENS = { 'market/option-chain': () => import('../pages/OptionChainPage.vue') }
+// Nav items that have a real page, keyed by route name (one map for every built screen: W-113, W-114, ...); every
+// other nav item still shows the placeholder.
+const REAL_PAGES = {
+  'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
+  'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+  'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
+  'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+}
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -18,7 +23,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: BUILT_SCREENS[`${s.key}/${slug}`] ?? Placeholder,
+    component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])

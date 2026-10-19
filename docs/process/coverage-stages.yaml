@@ -287,6 +287,7 @@ issues:
   "#434": 4b  # Strategy screen Live Position tab (REQ-044 AC-2) - needs execution state (parked by GC-5S)
   "#435": 4b  # W-117 review MINORs: TemplateText slot not per field; shell UI wording needs owner read; REQ-011 AC-1 content (deferred by GC-5S)
   "#439": 4b  # Chain socket: invalid messages can starve a client's own pushes; IV not on the chain (W-116 review, deferred by GC-5S)
+  "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
 
 # Work items whose status is not done.
 work_items:
@@ -322,6 +323,9 @@ work_items:
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
+  W-114: 4b           # GC-5S: Underlying/index view + index socket (REQ-072 AC-2)
+  W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
+  W-113: 4b           # GC-5S: Live Strategies page (REQ-049 AC-4..6)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

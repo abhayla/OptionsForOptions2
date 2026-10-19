@@ -82,7 +82,7 @@ from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
-from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, positions_from_reply
+from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
@@ -490,9 +490,11 @@ async def _positions(req: _Request, catalogue: Any) -> PositionsRead | None:
     unread: both block)."""
     try:
         reply = await asyncio.to_thread(req.session.reads.fetch_positions)
-        return positions_from_reply(reply, ContractIndex.from_catalogue(catalogue))
+        read = positions_from_reply(reply, ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         return None
+    log_ignored(read, f"execute strategy {req.strategy_id}")
+    return read
 
 
 def _reconciliation(req: _Request, held: _Held, positions: PositionsRead | None, catalogue: Any,
