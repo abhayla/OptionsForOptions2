@@ -216,7 +216,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
           <p v-if="derivedReading" class="text-sm font-medium" data-testid="range-reading">{{ derivedReading.text }}</p>
           <label v-if="derivedReading" class="grid gap-1 text-sm">Strategies will use this view
             <select v-model="readingChoice" class="min-h-[44px] rounded border border-line" data-testid="pick-reading">
-              <option :value="null">{{ derivedReading.label }} (from your range)</option>
+              <option :value="null">{{ derivedReading.label }}</option>
               <option v-for="r in RANGE_READINGS.filter((x) => x.key !== derivedReading.key)" :key="r.key" :value="r.key">{{ r.label }}</option>
             </select>
           </label>
