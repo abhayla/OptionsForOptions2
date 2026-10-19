@@ -35,11 +35,57 @@ class MarketStatus(Enum):
     NO_CALENDAR = "NO_CALENDAR"  # no holiday data for that year: unknown, treated as closed
 
 
+class CalendarError(ValueError):
+    """The data file is missing, unreadable or malformed. Callers treat it as "no calendar" (fail closed)."""
+
+
+_TOP_KEYS: Final = frozenset({"source", "fetched", "segment", "note", "holidays"})
+
+
+def _parse_year(key: object, rows: object) -> tuple[int, frozenset[datetime.date]]:
+    if not isinstance(key, str) or not key.isdigit() or len(key) != 4:  # noqa: PLR2004 - a four-digit year
+        raise CalendarError(f"year key {key!r} is not a four-digit year")
+    year = int(key)
+    if not isinstance(rows, list) or not rows:
+        raise CalendarError(f"year {year} has no holiday rows")
+    days: set[datetime.date] = set()
+    for row in rows:
+        if not isinstance(row, list) or len(row) != 2 or not all(isinstance(x, str) and x for x in row):  # noqa: PLR2004
+            raise CalendarError(f"year {year}: row {row!r} is not [date, name]")
+        day = datetime.date.fromisoformat(row[0])
+        if day.year != year:
+            raise CalendarError(f"year {year}: {day} is outside its year")
+        if day in days:
+            raise CalendarError(f"year {year}: {day} is listed twice")
+        days.add(day)
+    return year, frozenset(days)
+
+
 @lru_cache(maxsize=1)
 def _load() -> Holidays:
-    raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    return {int(year): frozenset(datetime.date.fromisoformat(day) for day, _name in rows)
-            for year, rows in raw["holidays"].items()}
+    """Validated holiday data; ANY problem raises ``CalendarError`` (never a bare KeyError/JSON error)."""
+    try:
+        raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict) or not _TOP_KEYS >= raw.keys() or not isinstance(raw.get("holidays"), dict):
+            raise CalendarError("calendar file has unknown keys or no holidays object")
+        if not raw["holidays"]:
+            raise CalendarError("calendar file lists no years")
+        return dict(_parse_year(k, v) for k, v in raw["holidays"].items())
+    except CalendarError:
+        raise
+    except (OSError, ValueError, TypeError) as exc:  # unreadable file, bad JSON, bad date
+        raise CalendarError(str(exc)) from exc
+
+
+def _table(holidays: Holidays | None) -> Holidays:
+    """``holidays`` for tests; production reads the file. A bad file is an EMPTY table: every year answers
+    NO_CALENDAR (the gate's "unconfirmed" block), never an exception."""
+    if holidays is not None:
+        return holidays
+    try:
+        return _load()
+    except CalendarError:
+        return {}
 
 
 def _day_status(day: datetime.date, holidays: Holidays) -> MarketStatus | None:
@@ -62,7 +108,7 @@ def _local(now: datetime.datetime) -> datetime.datetime:
 def market_status(now: datetime.datetime, holidays: Holidays | None = None) -> MarketStatus:
     """The status at ``now`` (timezone-aware, any zone). ``holidays`` is for tests; production reads the data file."""
     local = _local(now)
-    closed = _day_status(local.date(), _load() if holidays is None else holidays)
+    closed = _day_status(local.date(), _table(holidays))
     if closed is not None:
         return closed
     return MarketStatus.OPEN if SESSION_OPEN <= local.time() < SESSION_CLOSE else MarketStatus.CLOSED_HOURS
@@ -76,7 +122,7 @@ def next_open(now: datetime.datetime, holidays: Holidays | None = None) -> datet
     """The next 09:15 IST after ``now`` on a trading day; None when the search reaches a year with no data (the answer
     would be a guess)."""
     local = _local(now)
-    table = _load() if holidays is None else holidays
+    table = _table(holidays)
     for offset in range(_LOOKAHEAD_DAYS + 1):
         day = local.date() + datetime.timedelta(days=offset)
         status = _day_status(day, table)
@@ -88,4 +134,4 @@ def next_open(now: datetime.datetime, holidays: Holidays | None = None) -> datet
     return None
 
 
-__all__ = ["DATA_FILE", "MarketStatus", "is_market_open", "market_status", "next_open"]
+__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "is_market_open", "market_status", "next_open"]

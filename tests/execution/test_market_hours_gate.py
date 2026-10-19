@@ -24,7 +24,7 @@ BEFORE_OPEN = datetime.datetime(2026, 10, 21, 9, 14, 59, tzinfo=IST)
 AT_CLOSE = datetime.datetime(2026, 10, 21, 15, 30, 0, tzinfo=IST)
 NO_DATA_YEAR = datetime.datetime(2027, 1, 5, 10, 0, tzinfo=IST)
 OPEN_NOW = datetime.datetime(2026, 10, 21, 10, 0, tzinfo=IST)
-CLOSED = "Market closed. You can review your plan; execution opens at 09:15 on 21 Oct 2026."
+CLOSED = "Market closed. You can review your plan; execution opens at 09:15 on Wed 21 Oct."
 CLOSED_TIMES = [HOLIDAY, BEFORE_OPEN]
 
 
@@ -40,7 +40,7 @@ def test_ac12_entry_refused_though_caller_says_open(when, catalogue, eligibility
 
 
 def test_ac12_entry_message_names_the_next_trading_day(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-12: the refusal text is the ADR-119 sentence with the next open date (Dussehra -> 21 Oct 2026)."""
+    """AC-12: the refusal text is the ADR-119 sentence with the next open date (Dussehra -> Wed 21 Oct)."""
     result = _check(all_true_context(as_of=HOLIDAY, market_open=True), catalogue, eligibility)
     assert [f.reason for f in result.failures if f.code is CheckCode.MARKET_CLOSED] == [CLOSED]
 

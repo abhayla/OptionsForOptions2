@@ -218,7 +218,7 @@ def test_check_failure_text_shows_all_four_parts() -> None:
 
     failure = _fail(CheckCode.MARKET_CLOSED, "gate_market_closed", next_open=datetime.date(2026, 9, 30))
     assert failure.text.splitlines() == [
-        "Market closed. You can review your plan; execution opens at 09:15 on 30 Sep 2026.",
+        "Market closed. You can review your plan; execution opens at 09:15 on Wed 30 Sep.",
         "No order can be placed while the market is closed.",
         "Blocked: Execution of this strategy.",
         "Next step: Return during market hours and execute again.",

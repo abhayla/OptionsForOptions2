@@ -23,7 +23,7 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, NextTradingDay, OrderRef,
     RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
@@ -301,7 +301,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("gate_market_closed", _MD, 102,
           "Market closed. You can review your plan; execution opens at 09:15 on {next_open}.",
           "No order can be placed while the market is closed.", _EXEC,
-          "Return during market hours and execute again.", {"next_open": Date}),
+          "Return during market hours and execute again.", {"next_open": NextTradingDay}),
     _gate("gate_data_unhealthy", _MD, 103,
           "Market data needed for execution ({data_input}) {state}. Execution is paused until it is current.",
           "Prices, margin and checks could rest on data that does not match the market.", _EXEC,

@@ -116,7 +116,7 @@ _missing = {d: DataHealth.HEALTHY for d in DataInput if d is not DataInput.UNDER
 MUTATIONS = [
     ("price-band-unread", _ctx(price_bands=None), CheckCode.PRICE_OUTSIDE_BAND, None),
     ("market-closed", _ctx(market_open=False), CheckCode.MARKET_CLOSED,
-     "Market closed. You can review your plan; execution opens at 09:15 on 30 Sep 2026."),
+     "Market closed. You can review your plan; execution opens at 09:15 on Wed 30 Sep."),
     ("market-unknown", _ctx(market_open=None), CheckCode.MARKET_CLOSED,
      "We could not confirm that the market is open. Execution is paused until it is confirmed."),
     ("version-superseded", _ctx(version_state=VersionState.SUPERSEDED), CheckCode.VERSION_NOT_EXECUTABLE,
