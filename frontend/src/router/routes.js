@@ -5,7 +5,10 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 // Built section pages replace their placeholder by path (W-114: the Underlying/index view).
-const BUILT = { '/market/underlying-index-view': () => import('../pages/IndexViewPage.vue') }
+const BUILT = {
+  '/market/underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+  '/home/overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
+}
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
