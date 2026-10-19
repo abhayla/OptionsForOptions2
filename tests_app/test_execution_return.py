@@ -38,7 +38,7 @@ def _plan(number: int, action: str, sides: tuple[str, ...], closed: tuple[tuple[
           ) -> StoredPlan:
     """An open plan, or (``closed`` = (filled per leg, reason)) a closed one; 65 units per leg."""
     filled, reason = closed if closed is not None else ((None,) * len(sides), None)
-    orders = tuple(PlanOrder(i, make_tag(1, number, i), IID, SYMBOL, side, 65, D("5.45"), filled[i])
+    orders = tuple(PlanOrder(i, f"OFS1V{number}L{i}", IID, SYMBOL, side, 65, D("5.45"), filled[i])  # stored pre-0018
                    for i, side in enumerate(sides))
     status = "open" if closed is None else "closed"
     return StoredPlan(1, number, action, status, orders, AT, None if closed is None else AT, reason)
