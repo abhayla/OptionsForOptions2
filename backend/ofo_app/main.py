@@ -30,6 +30,7 @@ from ofo_app.routes import (
     outcome,
     planned_entry,
     strategies,
+    strategy_templates,
 )
 
 log = logging.getLogger(__name__)
@@ -100,6 +101,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
+    app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
     app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
     broker.mount(app, config)
     app.include_router(strategies.router)  # W-061: Save Draft and activity history

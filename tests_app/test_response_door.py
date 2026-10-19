@@ -270,8 +270,8 @@ def test_the_app_models_are_all_swept() -> None:
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
         "BasketOrderOut", "ExecuteOut", "CostOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut",
-        "ReturnOut", "IndexOut", "IndicesOut"}
-    assert len(_app_models()) == 39  # W-114 adds IndexOut and IndicesOut (the index view's message)
+        "ReturnOut", "IndexOut", "IndicesOut", "TemplateOut", "TemplatesOut"}
+    assert len(_app_models()) == 41  # W-114 adds IndexOut and IndicesOut; W-117 adds TemplateOut and TemplatesOut
 
 
 @pytest.mark.parametrize("required_only", [False, True])
