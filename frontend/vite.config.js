@@ -13,6 +13,8 @@ const proxy = {
   // W-065: the strategy live socket (a WebSocket route, so not in the OpenAPI paths the /api rewrite reads). Listed first:
   // the first matching key wins. Same origin for the browser; the path is passed through unchanged.
   '/api/strategies/live': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
+  // W-118: the Option Chain live socket, the same way.
+  '/api/market/chain/live': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
   // W-114: the read-only index socket, the same way (before '/api', whose REST read /api/market/indices it would shadow)
   '/api/market/indices/live': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
   // /api/health -> <apiTarget>/health; a route the API serves under /api (per docs/api/openapi.json) keeps its prefix
