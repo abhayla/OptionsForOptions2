@@ -13,10 +13,10 @@ Copy from: none - extends ``reconcile_attribution`` (the decision, ``decide_earl
 all its plans through the store reader) and, for each earlier-day open plan (created before today's IST date, no tag
 in today's book):
 
-- ``nothing_placed`` (the allow-list: on every contract the plan touches, Zerodha's net equals the base of every
-  other stored fill plus the standalone, the contract has not expired, no other unsettled plan touches it, one side):
-  ``close_plan(reason="nothing_placed")`` stores 0 per order. For an EXIT this frees the strategy for a new EXIT.
-- anything else: per unsettled contract, one mismatch for the plan's strategy AND for every strategy holding units
+- ``nothing_placed`` is never written here (F-55, registry net-only-read-misses-roundtrip): the next-day reply carries
+  no field that shows yesterday's activity (a flat contract's row is gone, ``day_*`` quantities restart), so a net equal
+  to the base cannot rule out a fill sold by hand the same day.
+- every earlier-day open plan: per unsettled contract, one mismatch for the plan's strategy AND for every strategy holding units
   there by its stored fills (Q224 "blocks every holder"; the store dedupes a repeat), keyed on the contract's one
   stored text (``reconcile_attribution.key_text``: two ids of one contract are one key); then
   ``close_plan(reason="unresolved_from_positions")`` (0 stored per order; the mismatch carries the sticky block until
