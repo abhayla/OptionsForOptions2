@@ -712,6 +712,113 @@
         "title": "HistoryOut",
         "type": "object"
       },
+      "IndexOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument Id"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "underlying",
+          "instrument_id",
+          "value",
+          "at",
+          "health"
+        ],
+        "title": "IndexOut",
+        "type": "object"
+      },
+      "IndicesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "indices": {
+            "items": {
+              "$ref": "#/components/schemas/IndexOut"
+            },
+            "title": "Indices",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_CONNECTED"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "indices",
+          "answered_at"
+        ],
+        "title": "IndicesOut",
+        "type": "object"
+      },
       "LevelOut": {
         "additionalProperties": false,
         "properties": {
@@ -2668,6 +2775,48 @@
           }
         },
         "summary": "Expiries"
+      }
+    },
+    "/api/market/indices": {
+      "get": {
+        "operationId": "market_indices_api_market_indices_get",
+        "parameters": [
+          {
+            "description": "true when the page's own index socket is down (ADR-077): the answer is then not live whoever else subscribes",
+            "in": "query",
+            "name": "fallback",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "true when the page's own index socket is down (ADR-077): the answer is then not live whoever else subscribes",
+              "title": "Fallback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Indices"
       }
     },
     "/api/strategies/outcome": {
