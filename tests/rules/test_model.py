@@ -354,3 +354,21 @@ def test_v1_complexity_limits():
     with pytest.raises(ValueError, match="at least two"):
         AllOf((gt("delta", "0"),))
     assert dataclasses.asdict(ComplexityLimits()) == {"max_depth": 2, "max_leaves": 5}
+
+
+def _evaluation(as_of):
+    from ofo.rules.model import Evaluation
+
+    return Evaluation("R1", RuleKind.EXIT, RuleAction.ALERT_AND_PREPARE_ORDERS, Outcome.NOT_TRIGGERED, (), (), as_of,
+                      DataHealth.AVAILABLE, "src", "")
+
+
+@pytest.mark.parametrize("bad", [datetime.datetime(2026, 10, 20, 11, 15), "2026-10-20T11:15+05:30", None])
+def test_evaluation_refuses_a_naive_or_non_datetime_as_of(bad):
+    """Dies if the Evaluation.__post_init__ tz guard is removed (a naive time would read as the host's clock)."""
+    with pytest.raises(ValueError):
+        _evaluation(bad)
+
+
+def test_evaluation_accepts_an_aware_as_of():
+    assert _evaluation(AS_OF).as_of == AS_OF

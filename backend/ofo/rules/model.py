@@ -103,6 +103,12 @@ class Evaluation:
     source: str
     reason: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.as_of, datetime.datetime):
+            raise ValueError(f"as_of must be a datetime, got {self.as_of!r}")
+        if self.as_of.tzinfo is None or self.as_of.utcoffset() is None:
+            raise ValueError(f"as_of must be timezone-aware, got {self.as_of!r}")
+
 
 def evaluate(rule: Rule, snapshot: Snapshot) -> Evaluation:
     """Evaluate ``rule`` against ``snapshot``; fail closed on unhealthy or missing data."""

@@ -13,7 +13,7 @@ removed; the stored limit (ADR-081, ADR-091) is the only freeze figure." ``requi
 order-preparing path calls (Complete, Retry, exit, the reconciliation closing proposal, the rule-action proposal); the
 review's ``freeze_check`` uses the same ``_assess``. Only a USABLE known limit (a ``StoredFreeze`` that allows at
 least one whole lot) the units are not below blocks, with the limit and the largest allowed order. A limit that is
-missing, None, not a ``StoredFreeze``, or allows no whole lot (bad stored data, e.g. 64 for NIFTY lot 65) never blocks
+missing, None, or allows no whole lot (bad stored data, e.g. 64 for NIFTY lot 65) never blocks
 on any path: every path gets the review's ``freeze_limit_unknown`` warning (ADR-081 "the review warns"; ADR-037). A
 usable limit whose exchange file is more than ``STALE_AFTER_DAYS`` old also warns on every path (the limit still
 applies).
@@ -85,8 +85,17 @@ def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
     return out
 
 
+def _require_stored_type(stored: object) -> None:
+    """Allow-list for every entry that takes ``stored``: exactly a ``StoredFreeze`` or None (None = limit unknown).
+    Any other type is a programmer error (a raw int, a str, a duck object), never "limit unknown": TypeError."""
+    if stored is not None and not isinstance(stored, StoredFreeze):
+        raise TypeError(f"a stored freeze limit must be a StoredFreeze or None, got {type(stored).__name__}")
+
+
 def largest_allowed_units(stored: StoredFreeze) -> int:
     """The largest whole-lot order below the limit (NIFTY: 3,511 and lot 65 -> 3,510 = 54 lots)."""
+    if not isinstance(stored, StoredFreeze):
+        raise TypeError(f"a stored freeze limit must be a StoredFreeze, got {type(stored).__name__}")
     return (stored.limit - 1) // stored.lot * stored.lot
 
 
@@ -94,7 +103,7 @@ def exceeded_message(contract: str, units: int, stored: StoredFreeze) -> UserFac
     """The block message when ``units`` is not below ``stored.limit`` (with the largest allowed order), else None.
     ``units`` must be a positive whole number of ``stored.lot`` (ValueError otherwise: a programmer or data error)."""
     if not isinstance(stored, StoredFreeze):
-        raise ValueError(f"a freeze limit must be a StoredFreeze, got {stored!r}")
+        raise TypeError(f"a freeze limit must be a StoredFreeze, got {type(stored).__name__}")
     if isinstance(units, bool) or not isinstance(units, int) or units <= 0:
         raise ValueError(f"{contract}: units must be a positive integer, got {units!r}")
     if units % stored.lot != 0:
@@ -126,11 +135,16 @@ class ContractFreeze:
     symbol: str
     stored: StoredFreeze | None
 
+    def __post_init__(self) -> None:
+        _require_stored_type(self.stored)
+
 
 def usable(stored: object) -> StoredFreeze | None:
     """``stored`` when it is a ``StoredFreeze`` that allows at least one whole lot below its limit, else None (bad
-    stored data such as 64 for NIFTY lot 65 would block even a 1-lot exit: it is treated as no limit, so it warns)."""
-    if not isinstance(stored, StoredFreeze) or largest_allowed_units(stored) < stored.lot:
+    stored data such as 64 for NIFTY lot 65 would block even a 1-lot exit: it is treated as no limit, so it warns).
+    None is "limit unknown"; any other non-``StoredFreeze`` is a programmer error: TypeError."""
+    _require_stored_type(stored)
+    if stored is None or largest_allowed_units(stored) < stored.lot:
         return None
     return stored
 
@@ -157,6 +171,7 @@ def _assess(contract: str, units: int, stored: object, today: date,
             ) -> tuple[UserFacingError | None, tuple[UserFacingError, ...]]:
     """(the block message or None, the warnings) for ``units`` of ``contract`` as ONE order: the shared rule of the
     review and every order-preparing path."""
+    _require_stored_type(stored)
     if not isinstance(today, date) or isinstance(today, datetime):
         raise ValueError(f"today must be a date, got {today!r}")
     known = usable(stored)
@@ -176,7 +191,7 @@ def require_within_freeze(contract: str, units: int, stored: object, *, today: d
     stop a user getting out of risk), or a stale one (file more than ``STALE_AFTER_DAYS`` before ``today``)."""
     block, warnings = _assess(contract, units, stored, today)
     if block is not None:
-        limit = stored.limit if isinstance(stored, StoredFreeze) else stored
+        limit = stored.limit if isinstance(stored, StoredFreeze) else None
         raise FreezeRefused(detail=f"{contract}: {units} units is not below the freeze limit {limit}",
                             message=block)
     return warnings

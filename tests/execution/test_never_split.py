@@ -21,11 +21,14 @@ from execution_inputs import condor_legs
 from ofo.engine import Action, Instrument, Leg
 from ofo.errors import display_text
 from ofo.execution.freeze import (
+    ContractFreeze,
     FreezeRefused,
     StoredFreeze,
     exceeded_message,
     freeze_check,
+    largest_allowed_units,
     require_within_freeze,
+    usable,
 )
 from ofo.execution.partial import (
     BrokerOrderStatus,
@@ -275,13 +278,37 @@ def test_attack_units_that_are_not_positive_whole_lots_are_refused(units) -> Non
         require_within_freeze("NIFTY26O0623600CE", units, NIFTY, today=TODAY)
 
 
-def test_attack_a_forged_limit_object_never_passes_silently_and_never_blocks() -> None:
-    """Allow-list: only a real StoredFreeze is a usable limit; any other object (with ``limit``/``lot``) is treated as
-    no limit: the unknown warning, never a silent pass and never a block (ADR-081)."""
-    class Forged:
-        limit, lot = 10**9, 65
-    (warning,) = require_within_freeze("NIFTY26O0623600CE", 65, Forged(), today=TODAY)  # type: ignore[arg-type]
+class _Forged:
+    limit, lot = 10**9, 65
+
+
+_WRONG_TYPES = [1800, "3511", 18.0, {"limit": 1800, "lot": 65}, _Forged(), True, (1800, 65)]
+
+
+@pytest.mark.parametrize("bad", _WRONG_TYPES)
+def test_attack_a_wrongly_typed_stored_limit_is_a_type_error_on_every_entry(bad) -> None:
+    """Allow-list (class: programmer error downgraded to "limit unknown"): only StoredFreeze or None. Dies if
+    ``_require_stored_type`` is dropped from ``usable`` (and so from require_within_freeze/_assess/freeze_check)."""
+    with pytest.raises(TypeError, match="StoredFreeze"):
+        require_within_freeze("NIFTY26O0623600CE", 65, bad, today=TODAY)
+    with pytest.raises(TypeError):
+        usable(bad)
+    with pytest.raises(TypeError):
+        exceeded_message("NIFTY26O0623600CE", 65, bad)
+    with pytest.raises(TypeError):
+        largest_allowed_units(bad)
+    with pytest.raises(TypeError):  # dies if ContractFreeze.__post_init__ guard is removed
+        ContractFreeze("NIFTY26O0623600CE", bad)
+    leg = Leg(Action.BUY, Instrument.CE, D("23600"), datetime.date(2026, 10, 6), 65, D("50.00"))
+    plan = ExecutionPlan("S-1", (PlannedLeg("L1", "NIFTY26O0623600CE", leg),))
+    with pytest.raises(TypeError):
+        freeze_check(plan, {"NIFTY26O0623600CE": bad}, today=TODAY)
+
+
+def test_none_stored_limit_still_gives_the_limit_unknown_warning() -> None:
+    (warning,) = require_within_freeze("NIFTY26O0623600CE", 65, None, today=TODAY)
     assert display_text(warning).startswith("No exchange freeze limit is stored for NIFTY26O0623600CE")
+    assert usable(None) is None
 
 
 def test_attack_freeze_check_review_still_warns_without_a_stored_limit() -> None:
