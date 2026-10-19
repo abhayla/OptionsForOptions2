@@ -544,9 +544,13 @@ async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None
 
 def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
     """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
-    ``clock_timestamp()``, so both sides of the comparison come from the same clock."""
-    if loaded is None:
+    ``clock_timestamp()``, so both sides of the comparison come from the same clock. Fail closed (INSTR-FRESH): no
+    stamp or a stamp without a time zone is UNAVAILABLE (a naive value would be read in this machine's zone); a stamp
+    later than the clock it is judged on cannot come from that clock and is STALE."""
+    if loaded is None or loaded.tzinfo is None or db_now.tzinfo is None:
         return DataHealth.UNAVAILABLE
+    if loaded > db_now:
+        return DataHealth.STALE
     same_day = loaded.astimezone(IST).date() == db_now.astimezone(IST).date()
     return DataHealth.HEALTHY if same_day else DataHealth.STALE
 
