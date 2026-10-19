@@ -52,7 +52,7 @@ MISSING, SIDE, QUANTITY = "recon_missing_platform_position", "recon_side_mismatc
 #: Why reconciliation is required where no quantity can be compared (named in the reply).
 EARLIER_SESSION = "plan_from_earlier_session"
 OTHER_UNSETTLED = "another_strategy_plan_unsettled"
-DUPLICATE_TAG = "duplicate_tag"  # a basket posted twice: one tag on more broker orders than the plan holds (ADR-117 (g))
+DUPLICATE_TAG = "duplicate_tag"  # a basket posted twice: one tag on more broker orders than the plan holds
 
 
 class _Side(Protocol):
@@ -210,7 +210,8 @@ def pnl_or_none(fills: Sequence[FillEvent]):
         return None
 
 
-__all__ = ["DUPLICATE_TAG", "EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
+__all__ = ["DUPLICATE_TAG", "EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL",
+           "PARTIAL_CHOICES",
            "RECONCILE", "WAITING",
            "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
            "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]
