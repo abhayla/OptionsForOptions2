@@ -808,3 +808,14 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   `spec/technical-design/legacy-reuse.md` row M2 (`market_hours.py` ADAPT): copy the session logic only, never its
   holiday list. The project's list is `backend/ofo/market_calendar.json` (source URL and fetch date in the file), built
   on branch gc6/mkt-hours. Not a rule change. Status: **measured; the copied list is not used (GC-6 row MKT-HOURS)**.
+
+## F-55 - A net-only next-day read cannot see a same-day round trip: a filled-then-hand-sold entry reads "nothing placed"
+- Measured 2026-10-19 by the read-only Opus review of PR #421 (#352-1, head 21ba2c389ff8), confirmed by the
+  orchestrator: `backend/ofo_app/reconcile_attribution.py:35-36` on that branch documents "an ENTRY filled and sold by
+  hand on Kite the same earlier day leaves the net at the base and reads `nothing_placed`". Kite's next-day positions
+  give one net number per contract; a BUY 65 filled and a hand SELL 65 the same day net to 0, the same as no order.
+- Bears on: ADR-111 ("the app records the resulting mismatch" for a hand close on Kite) and REQ-060. The plan closes
+  with no mismatch and no P&L for a trade that happened. Fix direction (technical, GC-6 row NET-ROUNDTRIP): use the
+  activity fields of the next-day positions reply, or treat an earlier-day plan whose net equals the base as
+  unresolved, never `nothing_placed`, when activity cannot be ruled out. Status: **open; registry
+  `net-only-read-misses-roundtrip`**.
