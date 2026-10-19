@@ -42,11 +42,29 @@ db-role-connection-limit-below-pool-size, outcome-multi-expiry-unhandled-500. F-
 ## OWNER RULES TODAY (memory + rule file): data issues are technical calls, decided as a market-data expert; content and
 layout of ALL screens decided by a design role studying similar apps (look: GLOBAL.md section 3); conflicting business
 requirements always go to the owner (`conflicting-business-requirements` project rule).
-## PENDING: owner decision whether the tag fix runs same-day under GC-3L (else GC-3F item 1). BLOCKED: none.
+## AFTERNOON (owner "Today" ~11:40: tag fix + live proof same day)
+- Tag fix PR #438 merged d859ccb (Tier A fresh-Opus PASS, 9 mutations, SQL CHECK emulation agrees on 50,000 rows; CI
+  first red twice on my slips: spec digest not regenerated, then a docstring line > 120 chars). Owner approved the
+  ADR-105 tag-form SPEC CHANGE (AskUserQuestion). New tag `Q` + strategy(4) + plan(2) + leg(1) base-36; legacy OFS
+  tags keep their meaning. ofo_dev migrated to `0018_basket_tag_8` as owner (in-memory URL, scratch helper).
+- Live proof NOT run: strategy 14 (24000 CE) and 15 (24100 CE) refused `RECONCILIATION_MISMATCH` "status unknown".
+  Cause: the owner's own equity trades today (FRANKLININD CNC -201900, LIQUIDBEES CNC -2; the owner confirmed
+  the sales were theirs) made `positions_from_reply` refuse the whole reply (`FRANKLININD (token 138288644) matches 0 instrument rows`)
+  -> every Execute blocked. Fix PR #440 (allowlist `platform_may_own`, unknown exchange refuses, ignored rows logged):
+  review round 1 FAIL (MAJOR: unknown exchange was ignored) -> fixed a8a29fb -> round 2 re-check. Nothing placed.
+- Live proof moved to GC-3F (Wed 09:30-10:30): at 14:17 the timeline put the EXIT ~15:15, risking a carry-over over
+  the Tuesday holiday; the stated 14:50 cutoff applied.
+## PENDING: PR #440 round-2 verdict + merge; the live proof of #438 + #440 on a strategy id >= 10 (GC-3F item 1).
+BLOCKED: none.
 ## PARALLEL: GC-5S (screens) RUNNING, owner-approved, own lock; its held PRs merge only after `lock/gc-3l` is gone.
 ## LESSONS (lessons.md): (a) push the branch BEFORE starting a reviewer - the verifier-in-flight hook blocks pushes
 (~10 min lost); (b) a refused catalogue reload IS a stop for Execute, not "not a stop" as the delta said; (c) replay
 tests pin the clock after the frame, so live-only clock bugs hide; (d) the Builder always saves a NEW draft (no update
-path in the UI), hence the PUT workaround.
-## NEXT: GC-3F (`goal-contract-GC-3F-2026-10-21.md`, Wed 2026-10-21; Tue holiday): item 1 tag fix (Tier A, live proof on
-a strategy id >= 10), then the held-PR merges and #380.
+path in the UI), hence the PUT workaround; (e) run CI's own checks (spec digest --check, ruff ratchet) before EVERY
+push, even a one-line docs edit (~20 min lost on #438); (f) a contract traded today and the whole account's positions
+feed reconciliation - read live positions before picking the proof strategy; (g) the verifier-in-flight snapshot is
+shared by every session on the machine and records no owner, so a parallel session's verifier blocks this session's
+git writes (finding to register; run-discipline E2).
+## NEXT: GC-3F (`goal-contract-GC-3F-2026-10-21.md`, Wed 2026-10-21; Tue holiday): item 1 = the LIVE PROOF only (code
+merged: #438 tags, #440 positions) on a strategy id >= 10 on a contract untraded that day, then the held-PR merges
+(#419's migration renumbers to 0019) and #380.

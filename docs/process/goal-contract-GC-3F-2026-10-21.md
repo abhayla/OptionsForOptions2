@@ -9,8 +9,12 @@ that proof, measured on GC-3L's identical round trip: gross -22.75 + charges ~48
 Rs 71 at today's premium; needs funds >= the entry's premium + charges (GC-3L: Rs 508 on Rs 1,000).
 **Cap: lock + 7 h, never after 17:30 IST.** Live steps 09:15-15:30 IST only. Budget per item below; at budget a worker
 stops and reports done / not done / next command.
-**Same-day option (owner decision pending at writing time):** if the owner approves the tag fix as a same-day GC-3L
-item, it lands under GC-3L and this contract starts at item 2 (item 1's live proof still runs here if GC-3L could not).
+**Status at GC-3L close (2026-10-19 ~14:40):** the owner chose the same-day fix. Item 1's CODE is merged: PR #438
+(d859ccb; tags, migration 0018, ADR-105 SPEC CHANGE owner-approved, REQ-073 AC-2) and PR #440 (positions reader skips
+rows the platform can never own - the owner's equity trades had blocked every Execute; see the GC-3L handover). ofo_dev
+is at 0018. So item 1 here is ONLY its live proof (b) - run it FIRST, 09:30-10:30 IST, on a strategy id >= 10 and on a
+2026-10-27 CE strike NOT traded that day (read live positions first: the whole account's positions feed reconciliation).
+Held PR #419 now renumbers its migration to 0019 (down_revision 0018_basket_tag_8) before it merges.
 
 Core: every tag the product writes into a Kite basket - entry and exit, any strategy id, any plan version, any leg -
 is at most 8 characters, alphanumeric, unique per order, and the reconciler decodes it back to (strategy, plan, leg).

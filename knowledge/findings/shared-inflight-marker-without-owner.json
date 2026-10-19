@@ -1,0 +1,27 @@
+{
+ "id": "shared-inflight-marker-without-owner",
+ "scope": "generic",
+ "class": "A machine-wide 'work in flight' marker that records no owner makes every session on the machine obey every other session's marker: one session's long-running check blocks another session's unrelated writes, and no session can tell a live marker of its own from a peer's or a stale one.",
+ "mechanism": "verifier_inflight_gate writes its snapshot under %TEMP%\\verifier-write-guard\\snap with no session id; while any session's verifier runs, every session's git worktree/commit/push is refused.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-3L and the parallel GC-5S session on one laptop",
+  "evidence": "GC-3L's `git worktree add` refused three times ('A verifier tool call is running (snapshot 169s/174s/0s old)') while its own reviewer had finished; the snapshot (written 11:27) belonged to GC-5S's verifier; GC-5S reported the same block on its own pushes; resolved only by asking the peer session for a 10-minute window"
+ },
+ "fix": "Not fixed (the gate is a project hook, scripts/hooks/verifier_inflight_gate.py). Class fix: the snapshot records the writing session id and the gate blocks only that session's writes (run-discipline E2: shared state records its owner).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test runs two sessions against the gate. Measured once, 2026-10-19."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-106.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "GC-3L close-out commit of the GC-3F review fixes",
+   "evidence": "three refusals, ~10 minutes, cleared by a peer-agreed window"
+  }
+ ]
+}
