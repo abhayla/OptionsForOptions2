@@ -349,20 +349,26 @@ def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> ProReason | No
     return _worse_worst_case(active, proposed)
 
 
-def _market_failures(ctx: ExecutionContext) -> list[CheckFailure]:
-    """ADR-119: the choke point for EVERY basket build (entry, step 2, exit, Complete, Retry, adjustment all pass
-    ``check_pre_execution``). The caller's ``market_open`` can only close the gate; the gate also reads the calendar
-    itself at ``ctx.as_of``, so a caller that says True on a holiday, outside 09:15-15:30 IST or in a year with no
-    holiday data is still refused. Unknown (None, or no calendar data) is the "unconfirmed" block, never a pass."""
-    status = market_status(ctx.as_of)
-    if ctx.market_open is None or status is MarketStatus.NO_CALENDAR:
+def market_failures(as_of: datetime.datetime, market_open: bool | None) -> list[CheckFailure]:
+    """ADR-119: the market verdict at ``as_of``. The caller's ``market_open`` can only close the gate; the gate also
+    reads the calendar itself, so a caller that says True on a holiday, outside 09:15-15:30 IST or in a year with no
+    holiday data is still refused. Unknown (None, or no calendar data) is the "unconfirmed" block, never a pass.
+    Public so a route can re-judge on a clock read AFTER its slow steps (finding freshness-judged-on-request-start-clock)."""
+    status = market_status(as_of)
+    if market_open is None or status is MarketStatus.NO_CALENDAR:
         return [_fail(CheckCode.MARKET_CLOSED, "gate_market_unconfirmed")]
-    if ctx.market_open is True and status is MarketStatus.OPEN:
+    if market_open is True and status is MarketStatus.OPEN:
         return []
-    opens = next_open(ctx.as_of)
+    opens = next_open(as_of)
     if opens is None:
         return [_fail(CheckCode.MARKET_CLOSED, "gate_market_unconfirmed")]
     return [_fail(CheckCode.MARKET_CLOSED, "gate_market_closed", next_open=opens.date())]
+
+
+def _market_failures(ctx: ExecutionContext) -> list[CheckFailure]:
+    """The choke point for EVERY basket build (entry, step 2, exit, Complete, Retry, adjustment all pass
+    ``check_pre_execution``)."""
+    return market_failures(ctx.as_of, ctx.market_open)
 
 
 def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strategy_id: str) -> list[CheckFailure]:

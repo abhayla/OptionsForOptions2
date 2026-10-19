@@ -59,7 +59,7 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
-from ofo.execution.safety import check_pre_execution
+from ofo.execution.safety import check_pre_execution, market_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
@@ -424,6 +424,10 @@ async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) ->
 async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext, catalogue: Any,
                 underlying: str) -> None:
     eligibility = await elig.fresh_registry(req.db, underlying=underlying)
+    # ADR-119: the market is judged on the clock read RIGHT BEFORE the gate, never on the request start (the quotes,
+    # margin and eligibility reads above took time; a request that started at 15:29:59 is refused at 15:30:01).
+    now = req.clock()
+    context = dataclasses.replace(context, as_of=now, market_open=market_open(now))
     result = check_pre_execution(priced.strategy, context, catalogue, eligibility, strategy_id=str(req.strategy_id))
     if result.blocked:
         raise _refuse_with(result.failures[0].message)
@@ -445,6 +449,10 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket
         raise TypeError("checked_basket returned something other than its sealed basket")
+    after = req.clock()  # ADR-119 again: Zerodha's margin call above may have run past 15:30
+    closed = market_failures(after, market_open(after))
+    if closed:
+        raise _refuse_with(closed[0].message)
     return basket
 
 
