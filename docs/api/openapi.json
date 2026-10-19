@@ -2359,6 +2359,84 @@
         "title": "TableOut",
         "type": "object"
       },
+      "TemplateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "Beginner",
+              "Intermediate",
+              "Advanced"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "objectives": {
+            "items": {
+              "enum": [
+                "income",
+                "directional",
+                "hedge",
+                "volatility"
+              ],
+              "type": "string"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "views": {
+            "items": {
+              "enum": [
+                "bullish",
+                "bearish",
+                "range-bound",
+                "volatile"
+              ],
+              "type": "string"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "level",
+          "views",
+          "objectives"
+        ],
+        "title": "TemplateOut",
+        "type": "object"
+      },
+      "TemplatesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "title": "TemplatesOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3258,6 +3336,24 @@
           }
         },
         "summary": "Planned Entry"
+      }
+    },
+    "/api/strategy-templates": {
+      "get": {
+        "operationId": "strategy_templates_api_strategy_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Strategy Templates"
       }
     },
     "/broker/zerodha/login": {
