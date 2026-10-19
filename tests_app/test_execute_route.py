@@ -575,11 +575,12 @@ async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliatio
     assert positions is not None and positions.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
     assert route._reconciliation(entry_req, held({}), positions, catalogue, "NIFTY") == frozenset()
 
+    core = route._feed_key(CORE_ID)
     exit_req = request([*stocks, *_position_rows()])  # the strategy's 65 next to the stocks
     positions = await route._positions(exit_req, catalogue)
     assert positions.net == {KEY: 65}
-    assert route._reconciliation(exit_req, held({route._feed_key(CORE_ID): 65}), positions, catalogue, "NIFTY") == frozenset()
-    assert route._reconciliation(exit_req, held({route._feed_key(CORE_ID): 130}), positions, catalogue, "NIFTY") == frozenset({"15"})
+    assert route._reconciliation(exit_req, held({core: 65}), positions, catalogue, "NIFTY") == frozenset()
+    assert route._reconciliation(exit_req, held({core: 130}), positions, catalogue, "NIFTY") == frozenset({"15"})
 
 
 def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():
