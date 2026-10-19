@@ -1,5 +1,5 @@
-"""REQ-056 AC-12 / ADR-119: the Execute route's own ``market_open`` (the value it puts in the gate's context) follows the
-calendar. No database: the function is pure."""
+"""REQ-056 AC-12 / ADR-119: the Execute route's own ``market_open`` (the value it puts in the gate's context) follows
+the calendar. No database: the function is pure."""
 from __future__ import annotations
 
 import datetime

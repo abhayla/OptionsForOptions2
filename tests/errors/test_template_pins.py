@@ -135,7 +135,8 @@ def _sample_slots() -> dict:
     return {
         "symbol": "BANKNIFTY", "leg": value, "quantity": 100, "underlying": "NIFTY", "lot": 65, "two_lots": 130,
         "state": VersionState.SUPERSEDED, "allowed": frozenset({VersionState.ACTIVE}), "other": 1,
-        "next_open": datetime.date(2026, 9, 30), "data_input": DataInput.LEG_PRICES, "contract": value, "date": datetime.date(2026, 9, 29),
+        "next_open": datetime.date(2026, 9, 30), "data_input": DataInput.LEG_PRICES, "contract": value,
+        "date": datetime.date(2026, 9, 29),
         "strikes": (Decimal("23950"), Decimal("24050")), "available": Decimal("40000.00"),
         "required": Decimal("50000.00"), "before": Decimal("-26000"), "after": UNLIMITED, "time": at,
         "_health": DataHealth.STALE,

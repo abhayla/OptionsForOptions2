@@ -2,7 +2,7 @@
   "source": "https://www.nseindia.com/api/holiday-master?type=trading (the data behind https://www.nseindia.com/resources/exchange-communication-holidays), key FO = Equity Derivatives (F&O) trading holidays",
   "fetched": "2026-10-19",
   "segment": "FO",
-  "note": "Weekends are closed by the code, not listed here The Sunday Diwali Laxmi Pujan 2026-11-08 is listed by NSE with an asterisk (Muhurat trading session, timing announced later); no special session is opened by this file (ADR-119). Add a year by adding its key with the NSE list; a year with no key makes Execute refuse (fail closed).",
+  "note": "Weekends are closed by the code, not listed here. The Sunday Diwali Laxmi Pujan 2026-11-08 is listed by NSE with an asterisk (Muhurat trading session, timing announced later); no special session is opened by this file (ADR-119). Add a year by adding its key with the NSE list; a year with no key makes Execute refuse (fail closed).",
   "holidays": {
     "2026": [
       ["2026-01-15", "Municipal Corporation Election - Maharashtra"],
