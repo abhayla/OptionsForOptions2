@@ -6,7 +6,7 @@
 // reconnect backoff is the strategy socket's (imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
-import { MAX_ATTEMPTS, backoffDelay } from './useStrategyLive'
+import { createLiveSocket } from './useStrategyLive'
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
 export const CHAIN_REST_PATH = '/market/chain' // relative to the api base (/api)
@@ -27,92 +27,6 @@ export function isChainAnswer(msg) {
 /** The request body for the socket and the REST read. */
 export function chainRequest(underlying, expiry) {
   return { underlying, expiry, strikes_each_side: STRIKES_EACH_SIDE }
-}
-
-/**
- * The socket lifecycle, framework-free (tested with a fake socket and fake timers).
- * follow(req): the request to send on open and after a change. onPush(answer), onDown() (closed without stop()),
- * onStatus(status): connecting | live | down | off.
- */
-export function createChainSocket({ url, onPush, onDown = () => {}, onStatus = () => {},
-  WebSocketImpl = globalThis.WebSocket, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  let socket = null
-  let body = null
-  let attempts = 0
-  let timer = null
-  let stopped = true
-
-  function open() {
-    timer = null
-    onStatus('connecting')
-    const ws = new WebSocketImpl(url)
-    socket = ws
-    ws.onopen = () => {
-      if (socket === ws && body) ws.send(body)
-    }
-    ws.onmessage = (ev) => {
-      if (socket !== ws) return
-      let msg
-      try {
-        msg = JSON.parse(ev.data)
-      } catch {
-        return // the server mints every message; anything else is ignored, never shown
-      }
-      if (!isChainAnswer(msg)) return
-      attempts = 0
-      onStatus('live')
-      onPush(msg)
-    }
-    ws.onclose = () => {
-      if (socket !== ws) return
-      socket = null
-      if (stopped) return
-      onStatus('down')
-      schedule()
-      onDown()
-    }
-  }
-
-  function schedule() {
-    if (stopped || timer !== null) return
-    if (attempts >= MAX_ATTEMPTS) {
-      onStatus('off')
-      return
-    }
-    attempts += 1
-    timer = setTimer(open, backoffDelay(attempts))
-  }
-
-  function follow(next) {
-    const text = JSON.stringify(next)
-    const changed = text !== body
-    body = text
-    if (stopped) {
-      stopped = false
-      attempts = 0
-      open()
-      return
-    }
-    if (!socket && timer === null) { // given up earlier: a new choice tries again
-      attempts = 0
-      open()
-      return
-    }
-    if (changed && socket && socket.readyState === 1) socket.send(body)
-  }
-
-  function stop() {
-    stopped = true
-    body = null
-    if (timer !== null) clearTimer(timer)
-    timer = null
-    const ws = socket
-    socket = null
-    if (ws) ws.close()
-    onStatus('off')
-  }
-
-  return { follow, stop, attempts: () => attempts }
 }
 
 const sameRequest = (msg, req) => !!req && msg.underlying === req.underlying && msg.expiry === req.expiry
@@ -151,9 +65,10 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
     viaSocket.value = false
   }
 
-  const live = createChainSocket({
+  const live = createLiveSocket({
     url,
     WebSocketImpl,
+    isAnswer: isChainAnswer,
     onStatus: (s) => (status.value = s),
     onPush: (msg) => {
       if (!sameRequest(msg, request.value)) return // an answer for the choice before this one
@@ -195,13 +110,27 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
     } else failed.value = true
   }
 
+  /** The choice is changing (underlying or expiry not settled): stop following, drop the shown answer and the request, and
+   *  ignore every read and push for the old choice, before anything else is loaded. */
+  function clear() {
+    epoch += 1
+    request.value = null
+    answer.value = null
+    viaSocket.value = false
+    failed.value = false
+    pushed = false
+    live.stop()
+  }
+
   const stop = () => live.stop()
   onBeforeUnmount(stop)
 
   const isLive = () => answer.value?.state === 'LIVE' && viaSocket.value
   const shown = () => (isLive() ? answer.value : null)
-  const notLive = () => !isLive() && (answer.value !== null || failed.value)
-  return { answer, status, request, follow, stop, shown, isLive, notLive }
+  // A REST first paint that says LIVE while the socket is still connecting is a wait, not a not-connected state.
+  const waitingForSocket = () => answer.value?.state === 'LIVE' && status.value === 'connecting'
+  const notLive = () => !isLive() && !waitingForSocket() && (answer.value !== null || failed.value)
+  return { answer, status, request, follow, clear, stop, shown, isLive, notLive }
 }
 
 /** Whole days from `today` to the expiry date (date parts only; a label, never a price). */

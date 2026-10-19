@@ -8,7 +8,7 @@ const Placeholder = () => import('../pages/PlaceholderPage.vue')
 // Sub-pages that have their own screen; every other nav item stays a placeholder until its work item.
 const BUILT_SCREENS = { 'market/option-chain': () => import('../pages/OptionChainPage.vue') }
 
-const sectionRoutes =SECTIONS.flatMap((s) => [
+const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
     name: s.key,

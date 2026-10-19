@@ -225,4 +225,69 @@ describe('Option Chain screen', () => {
     const w2 = await mountPage()
     expect(w2.find('[data-testid="catalogue-unreadable"]').exists()).toBe(true)
   })
+
+  // W-118 round 2 (REQ-049 AC-4): a change of underlying clears the old answer at once, whatever the catalogue does.
+  const nifty = (ltp) => answer(ltp, { expiry: '2026-10-20' })
+  async function liveNifty() {
+    const w = await mountPage()
+    const s = sock()
+    s.serverOpen()
+    s.serverPush(nifty('111.11'))
+    await flushPromises()
+    expect(w.text()).toContain('111.11')
+    return { w, s }
+  }
+
+  it('switching to SENSEX with a slow catalogue shows no NIFTY number and ignores a late NIFTY push', async () => {
+    let releaseSensex
+    restAnswer = (url) => {
+      if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { expiries: ['2026-10-20'] } })
+      if (url === '/catalogue/SENSEX/expiries') return new Promise((r) => { releaseSensex = r })
+      return Promise.reject(new Error('down'))
+    }
+    const { w, s } = await liveNifty()
+    await w.find('[data-testid="underlying-select"]').setValue('SENSEX')
+    await flushPromises()
+    expect(w.text()).not.toContain('111.11')
+    expect(w.text()).not.toContain('24510.00')
+    expect(w.find('[data-testid="spot"]').text()).toBe('-')
+    s.serverPush(nifty('222.22'))
+    await flushPromises()
+    expect(w.text()).not.toContain('222.22')
+    releaseSensex({ data: { expiries: ['2026-10-20'] } })
+    await flushPromises()
+    s.serverPush(nifty('222.22')) // still the old socket and the old underlying
+    await flushPromises()
+    expect(w.text()).not.toContain('222.22')
+  })
+
+  it('switching to SENSEX when the catalogue fails shows the error and no NIFTY rows', async () => {
+    restAnswer = (url) => (url === '/catalogue/NIFTY/expiries' ? Promise.resolve({ data: { expiries: ['2026-10-20'] } }) : Promise.reject(new Error('down')))
+    const { w } = await liveNifty()
+    await w.find('[data-testid="underlying-select"]').setValue('SENSEX')
+    await flushPromises()
+    expect(w.find('[data-testid="catalogue-unreadable"]').exists()).toBe(true)
+    expect(w.findAll('[data-testid="chain-row"]')).toHaveLength(0)
+    expect(w.text()).not.toContain('111.11')
+    expect(w.text()).not.toContain('24510.00')
+  })
+
+  it('a late push for the old expiry after an expiry change is ignored', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const { w, s } = await liveNifty()
+    await w.find('[data-testid="expiry-select"]').setValue(EXPIRY)
+    await flushPromises()
+    expect(w.text()).not.toContain('111.11')
+    s.serverPush(nifty('333.33'))
+    await flushPromises()
+    expect(w.text()).not.toContain('333.33')
+  })
+
+  it('a REST first paint that says LIVE shows the waiting state, not the not-connected label, while the socket connects', async () => {
+    script({ chain: () => Promise.resolve({ data: nifty('44.00') }) })
+    const w = await mountPage()
+    expect(w.find('[data-testid="not-live"]').exists()).toBe(false)
+    expect(w.find('[data-testid="chain-waiting"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('44.00')
+  })
 })

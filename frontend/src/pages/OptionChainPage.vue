@@ -24,7 +24,7 @@ const expiry = ref('')
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { status, request, follow, shown, notLive } = useChainAnswer()
+const { status, request, follow, clear, shown, notLive } = useChainAnswer()
 
 async function loadExpiries() {
   const mine = ++expirySeq
@@ -43,10 +43,16 @@ async function loadExpiries() {
 }
 
 onMounted(loadExpiries)
-watch(underlying, loadExpiries)
+// A changed choice clears the old answer at once (sync flush), before the expiries load: no number from one choice is
+// ever shown under another (REQ-049 AC-4).
+watch(underlying, () => {
+  clear()
+  loadExpiries()
+}, { flush: 'sync' })
 watch(expiry, (value) => {
   if (value) follow(chainRequest(underlying.value, value))
-})
+  else clear()
+}, { flush: 'sync' })
 
 const view = computed(() => shown())
 const rowsMissing = computed(() => (view.value?.rows_missing ? ROWS_MISSING_LABELS[view.value.rows_missing] : ''))
