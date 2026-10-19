@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (119)
+## Decisions (120)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -85,7 +85,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-077 2026-10-15: When a strategy's live connection to the platform… [refines ADR-068]
 - ADR-078 2026-10-15: A second database, ofo_dev, is created on the sam… [refines ADR-048]
 - ADR-079 2026-10-15: The platform sets no timer on an open order and n… [refines ADR-054]
-- ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRML (carry forward), with no product choice on scree… [refines ADR-017]
+- ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRM… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
 - ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha… [amends ADR-071]
 - ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the excha… [refines ADR-006]
@@ -125,6 +125,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-118 2026-10-19: (1) Only a strategy that never sent a basket (a draft) can be deleted. [extends REQ-070]
 - ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every basket build: entry, two-basket step 2, exit, Complete… [extends REQ-056]
 - ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1;… [none — both owner answers confirm text that alrea…]
+- ADR-121 2026-10-19: (1) In the "Not sure" range flow (REQ-026 AC-1), the platform derives the market view from the expe… [extends REQ-026; extends ADR-119]
 
 ## Requirements (75)
 
@@ -204,7 +205,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (213)
+## Spec sections (214)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -318,6 +319,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-51 - No studied app shows a guided objective, market-view and range…
 - ## F-52 - The generated build order and a work item still say REQ-061 AC…
 - ## F-53 - Every workflow runs on every PR push including drafts, and a f…
+- ## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses…
 
 ### spec/open-questions.md
 
