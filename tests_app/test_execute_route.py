@@ -551,7 +551,7 @@ def test_exit_legs_close_exactly_the_net_opposite_side():
     assert ep.exit_legs({}, lambda t: t) == []
 
 
-async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation():
+async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation(caplog):
     """GC-3L 2026-10-19: the owner's own stock trades (CNC) sat in Zerodha's net positions; the reader refused the
     whole reply, reconciliation became unknown (None) and every Execute was refused RECONCILIATION_MISMATCH. The
     stock row is ignored (reported), the strategy's own contract is still compared."""
@@ -571,8 +571,11 @@ async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliatio
         return SimpleNamespace(units=units)
 
     entry_req = request(stocks)  # the strategy holds nothing; Zerodha holds only stocks
-    positions = await route._positions(entry_req, catalogue)
+    with caplog.at_level("INFO", logger="ofo_app.kite_replies"):
+        positions = await route._positions(entry_req, catalogue)
     assert positions is not None and positions.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+    assert [r.getMessage() for r in caplog.records] == [
+        "execute strategy 15: positions read ignored 2 non-platform rows: NSE:FRANKLININD, NSE:LIQUIDBEES"]
     assert route._reconciliation(entry_req, held({}), positions, catalogue, "NIFTY") == frozenset()
 
     core = route._feed_key(CORE_ID)

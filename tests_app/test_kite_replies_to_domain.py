@@ -369,3 +369,33 @@ def test_other_underlying_fo_rows_are_ignored():
     fut = {**nifty, "tradingsymbol": "NIFTY26OCTFUT", "instrument_token": 3}
     with pytest.raises(KiteReplyError, match="matches 0"):  # a NIFTY future is ours: resolved, not skipped
         positions_from_reply({"net": [fut]}, _oct_index())
+
+
+def test_an_unknown_exchange_refuses_never_ignored():
+    """Tier A review MAJOR: only the listed never-ours exchanges are skipped; a code that is neither those nor an F&O
+    exchange (a case slip, a new code) could be ours and refuses the read."""
+    nifty = {**_with_stocks()["net"][2], "quantity": 65, "average_price": 7}
+    for exchange in ("nfo", "NSEFO", "XYZ", "bfo"):
+        with pytest.raises(KiteReplyError, match="unknown exchange"):
+            positions_from_reply({"net": [{**nifty, "exchange": exchange}]}, _oct_index())
+    stock = _with_stocks()["net"][0]
+    for exchange in ("NSE", "BSE"):
+        assert positions_from_reply({"net": [{**stock, "exchange": exchange}]}, _oct_index()).ignored == (
+            f"{exchange}:FRANKLININD",)
+
+
+def test_an_ignored_row_without_a_symbol_refuses():
+    stock = {k: v for k, v in _with_stocks()["net"][0].items() if k != "tradingsymbol"}
+    with pytest.raises(KiteReplyError, match="tradingsymbol"):  # never a KeyError, never an unnamed skip
+        positions_from_reply({"net": [stock]}, _oct_index())
+
+
+def test_ignored_rows_are_logged_once_per_read_without_money(caplog):
+    from ofo_app.kite_replies import log_ignored  # noqa: PLC0415
+
+    read = positions_from_reply(_with_stocks(), _oct_index())
+    with caplog.at_level("INFO", logger="ofo_app.kite_replies"):
+        log_ignored(read, "execute strategy 15")
+        log_ignored(positions_from_reply({"net": []}, _oct_index()), "execute strategy 15")  # nothing ignored: silent
+    assert [r.getMessage() for r in caplog.records] == [
+        "execute strategy 15: positions read ignored 2 non-platform rows: NSE:FRANKLININD, NSE:LIQUIDBEES"]
