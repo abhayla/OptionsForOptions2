@@ -18,4 +18,4 @@ attack: searched src for a frontend-minted AC-5 sentence: none; the drop path st
 
 Round 1 (4f82043) passed with two MINORs (paused while reconnecting; a copied 'Unlimited' line), fixed in aaf1af8 and re-verified. Not yet proven: the page on live ticks (GC-5S core proof) and the replay e2e run (CI).
 
-Recorded by the orchestrator from the verifier's returned blocks.
+Recorded by the orchestrator from the verifier's returned block.
