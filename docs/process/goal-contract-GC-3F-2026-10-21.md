@@ -105,6 +105,12 @@ Budget: 30 min, 60 tool calls.
 
 ## Item 7 - W-111 part 2 (P&L/risk on Positions) - only after #400 decides where those figures come from; else carried.
 
+## Item 8 - #444 builder brief standing items (a)-(d) from kit 1.8.0 (Tier C docs + process change)
+Added 2026-10-19 by the kit 1.10.1 close-out (ADR-115). `docs/process/builder-brief.md` gains the kit's four standing
+items (time-budget reservation, CI install order, fail-closed static detectors, every answer state of another system).
+A process change: safety + delivery role reviewers see the current text beside the new text before merge. Done when
+the template carries (a)-(d) and the first GC-3F builder brief after it shows them. Budget: 20 min, 30 tool calls.
+
 ## Stops
 Item 1's core proof fails; a Tier A item red after 2 review rounds (park with an issue, chain rule 4); OQ-GC2h-2
 unanswered (item 3 step 2.2 parks); a live step outside 09:15-15:30 IST.
