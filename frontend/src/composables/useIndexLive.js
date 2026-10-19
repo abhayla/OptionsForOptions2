@@ -5,6 +5,7 @@
 // GET /api/market/indices?fallback=true, whose answer is the server's own not-live state. The reconnect backoff is the
 // strategy socket's (imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
+import api from '@/services/api'
 import { MAX_ATTEMPTS, backoffDelay } from './useStrategyLive'
 
 export const INDEX_LIVE_PATH = '/api/market/indices/live'
@@ -96,4 +97,71 @@ export function useIndexLive({ onPush, onDown, url = indexLiveUrl(), WebSocketIm
   const live = createIndexSocket({ url, onPush, onDown, WebSocketImpl, onStatus: (s) => (status.value = s) })
   onBeforeUnmount(() => live.stop())
   return { status, start: live.start, stop: live.stop }
+}
+
+export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
+export const INDEX_KEYS = Object.keys(INDEX_NAMES)
+export const NOT_LIVE_LABEL = 'Index values unavailable.'
+export const VALUE_UNAVAILABLE = 'Not available'
+
+async function readAnswer(fallback) {
+  try {
+    const { data } = await api.get(INDEX_REST_PATH, { params: fallback ? { fallback: true } : {} })
+    return isIndicesAnswer(data) ? data : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The ONE answer state machine for every screen that shows index values (index page, Home strip): first-paint read,
+ * socket pushes, drop counter (a read sent before the latest drop is ignored), clear-on-drop (REQ-049 AC-4: an old LIVE
+ * number is never kept; only each index's last time stays), fallback read. `shownValue(row)` returns a number only from a
+ * LIVE answer received after the latest drop. Screens render `rowFor`/`shownValue`/`notLive` and hold no answer state.
+ */
+export function useIndexAnswer({ url, WebSocketImpl } = {}) {
+  const answer = ref(null)
+  const failed = ref(false)
+  let pushed = false // a socket push arrived: a slower first-paint REST answer must not replace it
+  let drops = 0
+
+  function notLiveAfterDrop() {
+    const rows = (answer.value?.indices ?? []).map((r) => ({ underlying: r.underlying, instrument_id: r.instrument_id, value: null, at: r.at ?? null, health: null }))
+    answer.value = { state: 'NOT_CONNECTED', indices: rows }
+  }
+
+  const { status, start: startSocket } = useIndexLive({
+    url,
+    WebSocketImpl,
+    onPush: (msg) => {
+      pushed = true
+      failed.value = false
+      answer.value = msg
+    },
+    onDown: async () => {
+      drops += 1
+      const mine = drops
+      pushed = false
+      notLiveAfterDrop()
+      const data = await readAnswer(true)
+      if (mine !== drops || status.value === 'live' || pushed) return // a newer drop or push is newer than this answer
+      if (data) answer.value = data
+      else failed.value = true
+    },
+  })
+
+  async function start() {
+    startSocket()
+    const sentAt = drops
+    const data = await readAnswer(false)
+    if (pushed || sentAt !== drops) return
+    if (data) answer.value = data
+    else failed.value = true
+  }
+
+  const rowFor = (u) => answer.value?.indices?.find((r) => r.underlying === u) ?? null
+  const isLive = () => answer.value?.state === 'LIVE'
+  const shownValue = (row) => (isLive() && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
+  const notLive = () => answer.value?.state === 'NOT_CONNECTED' || failed.value
+  return { answer, status, start, rowFor, shownValue, isLive, notLive }
 }
