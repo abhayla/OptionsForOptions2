@@ -32,8 +32,9 @@ Rules:
   again on every request.
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
-- Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
-  characters, unique per leg, decoded by the pure ``parse_tag``. An id that does not fit is refused, never truncated.
+- Tag: ``Q`` + strategy (4) + plan version (2) + leg (1), zero-padded base 36 (digits, uppercase): exactly 8
+  characters, Kite Publisher's basket limit; unique per leg, decoded by the pure ``parse_tag`` (which also decodes the
+  legacy ``OFS<strategy>V<version>L<leg>`` tags with their old meaning). An id above its ceiling is refused.
 """  # noqa: E501
 from __future__ import annotations
 
@@ -319,6 +320,20 @@ def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...]) -> Margi
         return check_margin(None, None)
 
 
-__all__ = ["KITE_BASKET_URL", "MAX_TAG_LENGTH", "MAX_TAG_LEG_INDEX", "MAX_TAG_PLAN_VERSION", "MAX_TAG_STRATEGY_ID",
-           "TAG_PREFIX", "BasketRefused", "KiteBasket", "KiteOrder", "MarginSource", "TagParts", "build_basket",
-           "make_tag", "parse_tag", "zerodha_exchange"]
+__all__ = [
+    "KITE_BASKET_URL",
+    "MAX_TAG_LEG_INDEX",
+    "MAX_TAG_LENGTH",
+    "MAX_TAG_PLAN_VERSION",
+    "MAX_TAG_STRATEGY_ID",
+    "TAG_PREFIX",
+    "BasketRefused",
+    "KiteBasket",
+    "KiteOrder",
+    "MarginSource",
+    "TagParts",
+    "build_basket",
+    "make_tag",
+    "parse_tag",
+    "zerodha_exchange",
+]

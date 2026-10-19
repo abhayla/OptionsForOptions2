@@ -1,7 +1,8 @@
 """W-080 AC-2 (REQ-073): a tag fits Kite Publisher's basket limit of 8 characters, identifies strategy + plan version +
 leg, is unique per order and decodes back with the pure ``parse_tag``; ids above a ceiling are refused, never
 truncated. Kite's basket answered "`tag` should be max 8 characters" for ``OFS11V1L0`` on 2026-10-19 (finding
-basket-tag-exceeds-publisher-limit). Legacy ``OFS<s>V<v>L<i>`` tags (Zerodha's book, stored plans) keep their meaning."""
+basket-tag-exceeds-publisher-limit). Legacy ``OFS<s>V<v>L<i>`` tags (Zerodha's book, stored plans) keep their
+meaning."""
 from __future__ import annotations
 
 import random
@@ -61,7 +62,8 @@ def test_above_a_ceiling_is_refused_not_truncated(args) -> None:
 def test_a_basket_above_the_ceiling_is_refused() -> None:
     cat = real_catalogue()
     with pytest.raises(BasketRefused):
-        build_basket(real_plan(cat, strategy_id="S-1679616"), cat, 1, freeze_check=FakeFreeze(), margin_source=OkMargin())
+        build_basket(real_plan(cat, strategy_id="S-1679616"), cat, 1, freeze_check=FakeFreeze(),
+                     margin_source=OkMargin())
 
 
 def test_tags_of_a_real_basket_decode_to_the_same_strategy_and_version() -> None:
@@ -75,7 +77,8 @@ def test_tags_of_a_real_basket_decode_to_the_same_strategy_and_version() -> None
 
 def test_strategy_twelve_basket_tags_are_eight_characters() -> None:
     cat = real_catalogue()
-    basket = build_basket(real_plan(cat, strategy_id="S-12"), cat, 1, freeze_check=FakeFreeze(), margin_source=OkMargin())
+    basket = build_basket(real_plan(cat, strategy_id="S-12"), cat, 1, freeze_check=FakeFreeze(),
+                          margin_source=OkMargin())
     tags = [o.tag for o in basket.orders]
     assert all(len(t) == KITE_BASKET_TAG_LIMIT for t in tags), tags
     assert [parse_tag(t) for t in tags[:2]] == [TagParts(12, 1, 0), TagParts(12, 1, 1)]
@@ -121,6 +124,6 @@ def test_tags_are_unique_over_a_large_sample() -> None:
     rng = random.Random(8)  # noqa: S311 - a reproducible sample, not security
     triples = {(rng.randint(1, MAX_TAG_STRATEGY_ID), rng.randint(1, MAX_TAG_PLAN_VERSION), rng.randint(0, 35))
                for _ in range(20000)}
-    triples |= {(s, v, i) for s in range(1, 40) for v in range(1, 40) for i in range(0, 36)}
+    triples |= {(s, v, i) for s in range(1, 40) for v in range(1, 40) for i in range(36)}
     tags = {make_tag(*t) for t in triples}
     assert len(tags) == len(triples)
