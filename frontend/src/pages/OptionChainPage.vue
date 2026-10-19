@@ -70,7 +70,7 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
 <template>
   <section data-testid="option-chain-page">
     <p class="text-xs text-ink-muted">Market</p>
-    <h1 class="text-xl font-semibold">Option Chain</h1>
+    <h1 class="text-xl font-semibold" data-testid="page-title">Option Chain</h1>
 
     <div class="mt-3 flex flex-wrap items-end gap-3" data-testid="chain-header">
       <label class="text-sm">
