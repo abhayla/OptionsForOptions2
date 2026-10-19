@@ -1,6 +1,14 @@
 # Handover
 
-**2026-10-19 evening — kit 1.10.1 taken (PR #426, ADR-115), after GC-3L closed.** Merge form is now
+**2026-10-19 evening — kit 1.10.1 MERGED (PR #426, merge 9b08940, ADR-115), after GC-3L closed.** CI 6/6 green (api,
+lint-and-test, coverage, close-keywords, frontend, execute-screen-e2e); merged with the new form itself. Live guard
+check after the merge: `sed -n 1,5p <kit rule>` runs (1.7.0 refused it); writes still refused. Tier A Opus review of
+the migration: PASS WITH MINORS; its MAJOR fixed in the PR (`land.py` read the gate's `RE-REVIEW NEEDED` / `updates
+exhausted` as BEHIND and updated the branch itself up to 3 times; now it stops and names the refusal; test proven by
+mutation). Kept on purpose: `merge.py`'s own update-branch before the gate (one base update right before each held
+PR's gate). Open: #444 builder brief lacks the kit standing items (a)-(d) -> GC-3F item 8; kit gaps filed as
+Startup-Factory #151 (plans README not shipped; snapshot cleanup needs a matching session_id). Branches
+`kit-upgrade/1.10.1` and `build/verifier-snapshot-cleanup` deleted (note on #412). Merge form is now
 `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha of the reviewed commit>` (same flag on `land.py`);
 the gate answers `RE-REVIEW NEEDED` when an update touched the PR's files or a Tier A path. Changed callers:
 `merge.py`, `land.py` (+ tests), CLAUDE.md, this file, the GC-3F contract item 2. Stand-in

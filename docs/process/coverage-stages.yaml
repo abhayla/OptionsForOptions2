@@ -288,6 +288,7 @@ issues:
   "#435": 4b  # W-117 review MINORs: TemplateText slot not per field; shell UI wording needs owner read; REQ-011 AC-1 content (deferred by GC-5S)
   "#439": 4b  # Chain socket: invalid messages can starve a client's own pushes; IV not on the chain (W-116 review, deferred by GC-5S)
   "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
+  "#444": 4b  # Builder brief template lacks the kit 1.8.0 standing items (a)-(d)
 
 # Work items whose status is not done.
 work_items:
