@@ -179,7 +179,10 @@ decisions:
   ADR-106: all          # delivery process: tier by data flow, round cap per item, verifier timing, lock, stacked PRs (owner 2026-10-17)
   ADR-107: 4b           # live-run gate: each open Tier A deferred issue triaged bears-on-run yes/no; only yes blocks (owner 2026-10-17)
   ADR-108: 4b           # GC-3 live test: eight operating rules while F-42's criteria fail; trades the 2026-10-27 expiry (owner 2026-10-17)
-  ADR-109: 4b           # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
+  ADR-110: 4b           # open plan on Positions: waiting for Check, strategy blocked until the plan's orders are final at Zerodha (owner 2026-10-18)
+  ADR-111: 4b           # carried-over live-run position: #352 fix in GC-3F, owner sells on Kite by Mon 10-26 12:00 as backstop (owner 2026-10-18)
+  ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
+  ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
   ADR-084: 4b           # existing positions grouped per underlying+expiry; entry = Zerodha average, editable (owner 2026-10-15, Q270)
@@ -236,7 +239,6 @@ vendor_enquiries:
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
   "#191": 4a            # gate_before_commit follow-up: 3 MAJOR bypasses + 2 minors (#155 merged partial, owner Q6)
-  "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#43": 4b
   "#45": 4b
   "#63": 4b
@@ -249,9 +251,7 @@ issues:
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
-  "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
-  "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # partial re-check fixed (PR #337); open until the Execute route fills ExecutionContext from Zerodha (GC-2c)
   "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
@@ -273,6 +273,17 @@ issues:
   "#386": 4b  # GC-3 P0 review MINORs: probe script private attributes and fail-open recorder compare; W-107 test pins
   "#389": 4b  # Exit basket mixes buy-backs and sells in one basket (REQ-058 Q238)
   "#390": 4b  # Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/AC-4)
+  "#400": 4b  # Money and P&L figures computed outside the one engine on main (ADR-008), found by W-110
+  "#401": 4b  # Disconnect route has no owner check or cross-site protection (W-089 review)
+  "#402": 4a  # Broker settings says no read ever succeeded after a later read failed (W-089 wording)
+  "#403": 4b  # Local pytest dies at random on Windows: EgressRefused from platform.platform() in pytest-metadata
+  "#404": 4a  # Evidence passes REQ-048 AC-1/AC-5, REQ-049 AC-4, REQ-052 AC-1 parked by GC-2f
+  "#405": 4b  # W-108 attribution parked after review round 2: open plans count 0 held (and W-111 stacked on it)
+  "#409": 4a  # History-not-shown scan misses aliased import_module, __import__ fromlist and 'intraday' (W-112 verifier MINORs)
+  "#411": 4b  # Positions pending row: 'listed above' line shows with no other holder; pending-row e2e is a mock (W-111 review MINORs)
+  "#422": 4b  # Freeze check accepts any type for the stored limit; Evaluation.as_of has no timezone check (PR #420 review MINORs)
+  "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
+  "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
 
 # Work items whose status is not done.
 work_items:

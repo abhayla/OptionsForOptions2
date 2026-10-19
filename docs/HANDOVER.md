@@ -1,8 +1,15 @@
 # Handover
 
-**2026-10-18 evening — START HERE: `docs/process/goal-chain.md`. GC-2f is NEXT (build ahead overnight, nothing product
-merged; ADR-109 holds the owner's #380 answers), then GC-3L (the live 1-lot gate on Mon 2026-10-19; owner runbook
-`docs/process/gc-3l-runbook-2026-10-19.md`), then GC-3F. GC-3P handover: `docs/process/session-handover-2026-10-18-gc3p.md`.**
+**2026-10-19 — GC-3L DONE: the 4b live gate passed on a real 1-lot round trip (strategy 9, NIFTY26OCT24000CE, entry
+filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, P&L -22.75 = Kite's, audit chain verified). START
+HERE `docs/process/session-handover-2026-10-19-gc3l.md`. GC-3F is NEXT (`goal-contract-GC-3F-2026-10-21.md`, Wed
+2026-10-21): item 1 the 8-character basket tag fix, then the held PRs and #380. GC-5S (screens) runs in parallel.**
+
+**2026-10-18 night — GC-2g is NEXT (`goal-contract-GC-2g-2026-10-18.md`: W-108 redesign, W-111 review, REQ-052 AC-1;
+nothing product merged), then GC-3L.** Earlier: START HERE `docs/process/session-handover-2026-10-18-gc2f.md`, then
+`docs/process/goal-chain.md`. GC-3L follows GC-2g (the live 1-lot gate on Mon 2026-10-19; owner runbook `docs/process/gc-3l-runbook-2026-10-19.md`), then
+GC-3F (draft `goal-contract-GC-3F-draft.md`: merge GC-2f's held PRs, #395 first). GC-2f PARTIAL: six reviewed HOLD PRs
+(#393-#397, #399), W-108 parked (#405). ADR-109 holds the owner's #380 answers.**
 
 **Earlier, 2026-10-16 night (goal contract GC-1) — START HERE: `docs/process/session-handover-2026-10-16-gc1.md`, then
 `docs/process/goal-chain.md` (GC-2a is NEXT).** 4a close-out audit (`4a-closeout-audit-2026-10-16.md`); REQ-001, REQ-035,

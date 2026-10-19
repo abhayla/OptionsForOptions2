@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (109)
+## Decisions (112)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
 - ADR-002 2026-09-28: The strategy, not the order, is the central object.
@@ -110,11 +110,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact Decimal and is quantized half-up to the paisa only… [applies ADR-008, ADR-101]
 - ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it opened that contract on (its adopted holding's sid… [applies ADR-016, ADR-018, ADR-019]
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instrument list as the product's own download loaded it… [applies ADR-016, ADR-057, ADR-058, REQ-053]
-- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2, OFS{strategy}V{plan}L{leg}) is a PLAN NUMBER minted for each Execute of a strategy (entry, exit… [applies ADR-050, ADR-054, REQ-073]
+- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2; since 2026-10-19 the 8-character form Q + strategy (4 base-36) + plan number (2 base-36) + leg… [applies ADR-050, ADR-054, REQ-073]
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner places): (1) L1 may start while the money/order cr… [refines ADR-106, ADR-107]
 - ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [refines REQ-060, REQ-058; approves REQ-044]
+- ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Positions screen shows each contract of that plan as… [refines REQ-044]
+- ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and the position carries over, GC-3F fixes #352 first (… [refines ADR-108]
+- ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-app alerts, REQ-064 stored timeline) is built on t… [none — restates the master plan's existing stage…]
 
 ## Requirements (75)
 
