@@ -1,5 +1,14 @@
 # Owner questions (2026-10-19)
 
+**Answered 2026-10-19 evening (question tool, GC-6 planning session):**
+- OQ-GC2h-1 -> "No guessing (Recommended)": ADR-109 (2) unchanged (ADR-120).
+- OQ-GC2h-2 -> "Kite flat -> one action (Recommended)", refined per the broker-app review (only that contract's legs;
+  strict flat test) (ADR-116).
+- New, same session: REQ-056 AC-4 vs REQ-073 AC-1 -> two baskets (ADR-117); what-if sliders -> not in V1 (ADR-120);
+  draft delete -> drafts only, kept hidden (ADR-118); Execute outside market hours -> blocked (ADR-119); GC-6 finish
+  rule -> buildable all done, blocked rows only with the owner's acceptance (`goal-contract-GC-6-2026-10-19.md`);
+  sign-in/sign-out -> out of the GC-6 plan; Security page -> not asked further (sign-in out of scope).
+
 ## OQ-GC2h-1: may the app adopt a next-day position as a strategy's own fill?
 - **Case:** an ENTRY plan (strategy 1, BUY 65 NIFTY CE) is left open at the end of a trading day; the next morning Kite's
   order and trade lists are empty (they hold today's rows only) and Kite's net shows 65 more units of that contract.

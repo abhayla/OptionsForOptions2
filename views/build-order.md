@@ -4,7 +4,7 @@
 
 What may be built next, generated from `spec/requirements/` and `work/`. Order: dependencies first (`depends_on`), then the walking skeleton, then layer (core, foundation, feature, polish), then `risk: high` first, then id. States: **next** (every dependency done), **waiting** (names the undone dependencies), **blocked** (a dependency, direct or transitive, is delivered by a blocked work item; names that root and its next_action). Ask before starting: `python tools/build_order.py . --may-start REQ-###`.
 
-Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-070, REQ-072
+Done (10): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059, REQ-072
 
 | id | title | layer | risk | state |
 |---|---|---|---|---|
@@ -53,10 +53,11 @@ Done (11): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
-| REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 waits on owner OQ-7 (build an order-free adopt-into-existing path, or defer it in REQ-061); AC-3 monitoring and the connect screen are later items; minors in #275. |
+| REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
 | REQ-068 | Strategy preferences | feature | normal | next |
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
+| REQ-070 | Builder history and restore | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
