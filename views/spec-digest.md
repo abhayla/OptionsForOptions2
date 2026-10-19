@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (112)
+## Decisions (113)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -78,7 +78,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-070 2026-10-09: The GitHub repository is public. [refines ADR-046]
 - ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-pro… [refines ADR-003]
 - ADR-072 2026-10-09: The plain-language answer to "Where do I start lo… [applies REQ-034]
-- ADR-073 2026-10-10: The framework-generated API docs page (/docs) and API description (/openapi.json) are served only w… [applies ADR-003]
+- ADR-073 2026-10-10: The framework-generated API docs page (/docs) and… [applies ADR-003]
 - ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass… [none — it amends only the master-plan Stage 4 cor…]
 - ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition,… [refines ADR-062]
 - ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells mi… [none — adds the TOTAL Current Value rule next to…]
@@ -110,7 +110,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact… [applies ADR-008, ADR-101]
 - ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it… [applies ADR-016, ADR-018, ADR-019]
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instru… [applies ADR-016, ADR-057, ADR-058, REQ-053]
-- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2, OFS{strategy}V{plan}L{leg}) is a PLAN NUMBER… [applies ADR-050, ADR-054, REQ-073]
+- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2; since 2026-10-19 the 8-character form Q + str… [applies ADR-050, ADR-054, REQ-073]
 - ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real de… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner… [refines ADR-106, ADR-107]
@@ -118,6 +118,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Pos… [refines REQ-044]
 - ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
 - ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
+- ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
 
 ## Requirements (75)
 
@@ -128,10 +129,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-005 [Specified]: Product language and positioning
 - REQ-006 [Specified]: Three UX levels
 - REQ-007 [Specified]: Strategy information density
-- REQ-008 [Specified]: Home dashboard
+- REQ-008 [Approved]: Home dashboard
 - REQ-009 [Approved]: Primary navigation and account menu
-- REQ-010 [Specified]: Public site and live-data access
-- REQ-011 [Specified]: Learn section
+- REQ-010 [Approved]: Public site and live-data access
+- REQ-011 [Approved]: Learn section
 - REQ-012 [Approved]: Registration and identity layers
 - REQ-013 [Approved]: Email change and account deletion
 - REQ-014 [Approved]: Zerodha Client ID binding and anti-abuse
@@ -149,9 +150,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-026 [Approved]: Expected market range input
 - REQ-027 [Approved]: Strike selection modes
 - REQ-028 [Approved]: Generic strategy engine and templates
-- REQ-029 [Specified]: Option Chain display and live data
-- REQ-030 [Specified]: Option Chain leg selection and import
-- REQ-031 [Specified]: Option Chain live strategy preview
+- REQ-029 [Approved]: Option Chain display and live data
+- REQ-030 [Approved]: Option Chain leg selection and import
+- REQ-031 [Approved]: Option Chain live strategy preview
 - REQ-032 [Verified]: Calculation engine
 - REQ-033 [Verified]: Expiry scenario and live P&L formulas
 - REQ-034 [Approved]: Outcome view and scenario levels
@@ -197,7 +198,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (204)
+## Spec sections (208)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -302,6 +303,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-b…
 - ## F-43 - On Mon 2026-10-19 the nearest NIFTY weekly contract expires th…
 - ## F-44 - On Sun 2026-10-18 Kite reported zero funds on the owner's acco…
+- ## F-45 - The app's database role allows 5 connections in total, while O…
+- ## F-46 - A live screen keeps showing its last answer's numbers after it…
+- ## F-47 - The live feed carries no previous close, so the Option Chain's…
+- ## F-48 - A live socket's once-a-second limit guarded only its normal pu…
 
 ### spec/open-questions.md
 

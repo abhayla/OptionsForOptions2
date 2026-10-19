@@ -1,5 +1,10 @@
 # Handover
 
+**2026-10-19 — GC-3L DONE: the 4b live gate passed on a real 1-lot round trip (strategy 9, NIFTY26OCT24000CE, entry
+filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, P&L -22.75 = Kite's, audit chain verified). START
+HERE `docs/process/session-handover-2026-10-19-gc3l.md`. GC-3F is NEXT (`goal-contract-GC-3F-2026-10-21.md`, Wed
+2026-10-21): item 1 the 8-character basket tag fix, then the held PRs and #380. GC-5S (screens) runs in parallel.**
+
 **2026-10-18 night — GC-2g is NEXT (`goal-contract-GC-2g-2026-10-18.md`: W-108 redesign, W-111 review, REQ-052 AC-1;
 nothing product merged), then GC-3L.** Earlier: START HERE `docs/process/session-handover-2026-10-18-gc2f.md`, then
 `docs/process/goal-chain.md`. GC-3L follows GC-2g (the live 1-lot gate on Mon 2026-10-19; owner runbook `docs/process/gc-3l-runbook-2026-10-19.md`), then

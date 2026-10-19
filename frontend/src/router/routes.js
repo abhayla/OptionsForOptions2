@@ -4,6 +4,21 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
+// Nav items that have a real page, keyed by route name (one map for every built screen: W-113, W-114, ...); every
+// other nav item still shows the placeholder.
+const REAL_PAGES = {
+  'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
+  'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+  'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
+  'market-market-context': () => import('../pages/MarketContextPage.vue'), // W-117
+  'alerts-active': () => import('../pages/AlertsPage.vue'),
+  'alerts-history': () => import('../pages/AlertsPage.vue'),
+  'alerts-notification-settings': () => import('../pages/AlertsPage.vue'),
+  'learn-strategy-education': () => import('../pages/LearnPage.vue'),
+  'learn-options-concepts': () => import('../pages/LearnPage.vue'),
+  'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
+  'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+}
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -15,7 +30,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
+    component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])

@@ -1,5 +1,7 @@
 # GC-3F DRAFT (written by GC-2f, 2026-10-18; GC-3L's close-out finalises it per chain rules 3-4)
 
+**SUPERSEDED 2026-10-19 by `goal-contract-GC-3F-2026-10-21.md` (GC-3L close-out). Kept for history.**
+
 **DRAFT.** GC-3L runs first (Mon 2026-10-19, live gate). GC-3L's close-out rewrites this from its own results (a stop
 or a finding on the live run changes the order below) and runs the full fresh Opus review (it adds order and
 reconciliation behaviour).
