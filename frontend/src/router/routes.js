@@ -8,6 +8,7 @@ const Placeholder = () => import('../pages/PlaceholderPage.vue')
 // other nav item still shows the placeholder.
 const REAL_PAGES = {
   'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
+  'strategies-strategy-builder': () => import('../pages/StrategyBuilderPage.vue'), // GC-6 BUILDER-WIRE (F-49)
   'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
   'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
   'market-market-context': () => import('../pages/MarketContextPage.vue'), // W-117
