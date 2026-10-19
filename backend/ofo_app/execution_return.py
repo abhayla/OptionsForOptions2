@@ -52,6 +52,7 @@ MISSING, SIDE, QUANTITY = "recon_missing_platform_position", "recon_side_mismatc
 #: Why reconciliation is required where no quantity can be compared (named in the reply).
 EARLIER_SESSION = "plan_from_earlier_session"
 OTHER_UNSETTLED = "another_strategy_plan_unsettled"
+DUPLICATE_TAG = "duplicate_tag"  # a basket posted twice: one tag on more broker orders than the plan holds (ADR-117 (g))
 
 
 class _Side(Protocol):
@@ -117,6 +118,8 @@ def classify(plan: StoredPlan, book: TodaysBook, today: datetime.date) -> PlanAn
     if from_earlier_session(plan, today):
         return PlanAnswer(RECONCILE, {}, EARLIER_SESSION)
     rows = {o.tag: book.ours.get(o.tag, ()) for o in plan.orders}
+    if any(len(found) > 1 for found in rows.values()):
+        return PlanAnswer(RECONCILE, {}, DUPLICATE_TAG)  # one tag, two broker orders: never summed, never picked
     if any(r.status not in ep.TERMINAL_ORDER_STATUSES for found in rows.values() for r in found):
         return PlanAnswer(WAITING, {})  # REQ-057 AC-2: an order still working changes nothing
     filled = {}
@@ -140,7 +143,7 @@ def drifted(history: Sequence[StoredPlan], book: TodaysBook) -> tuple[int, ...]:
             if not found:
                 continue  # not in today's book (another day): nothing to compare
             moving = any(r.status not in ep.TERMINAL_ORDER_STATUSES for r in found)
-            if moving or sum(r.filled_quantity for r in found) != (order.filled_quantity or 0):
+            if moving or len(found) > 1 or sum(r.filled_quantity for r in found) != (order.filled_quantity or 0):
                 out.append(plan.plan_number)
                 break
     return tuple(out)
@@ -207,7 +210,7 @@ def pnl_or_none(fills: Sequence[FillEvent]):
         return None
 
 
-__all__ = ["EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
+__all__ = ["DUPLICATE_TAG", "EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
            "RECONCILE", "WAITING",
            "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "drifted", "exit_is_clean",
            "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]

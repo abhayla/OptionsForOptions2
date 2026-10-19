@@ -60,7 +60,7 @@ class ReturnPlanOut(ApiModel):
     action: Literal["ENTRY", "EXIT"]
     state: PlanState
     choices: list[Identifier]  # REQ-058 AC-2's four choices for a partial plan, in order; empty otherwise
-    reason: Optional[Literal["plan_from_earlier_session"]]  # noqa: UP045 - why reconciliation, beyond the book
+    reason: Optional[Literal["plan_from_earlier_session", "duplicate_tag"]]  # noqa: UP045 - why reconciliation
 
 
 class ReturnContractOut(ApiModel):
