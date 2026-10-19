@@ -3,10 +3,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { expandTemplate, expiryLabels, matchTemplates, rangeLists, viewFromRange, FORBIDDEN_WORDS } from '@/lib/guided'
+import { expandTemplate, expiryLabels, matchTemplates, rangeLists, readingFromRange, viewFromRange, FORBIDDEN_WORDS } from '@/lib/guided'
 
 const posts = []
 let plannedPrice = '120.50'
+let level = '22812.40' // the fake index level
+let contractsNow = null // null = CONTRACTS
 const leg = (action, instrument, strike_steps) => ({ action, instrument, strike_steps, expiry_slot: 'near', quantity_multiplier: 1 })
 const TEMPLATES = { templates: [
   { id: 'bull_call_spread', name: 'Bull Call Spread', description: 'd', level: 'Beginner', views: ['bullish'], objectives: ['directional'],
@@ -29,8 +31,8 @@ vi.mock('@/services/api', async (importActual) => {
     get: (url) => {
       if (url === '/strategy-templates') return Promise.resolve({ data: TEMPLATES })
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
-      if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: CONTRACTS } })
-      if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: '22812.40' }] } })
+      if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: contractsNow ?? CONTRACTS } })
+      if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: level }] } })
       return Promise.reject(new Error(url))
     },
     post: (url, body) => {
@@ -65,7 +67,7 @@ async function toResults(w, objective, view) {
   await flushPromises()
 }
 
-beforeEach(() => { posts.length = 0; plannedPrice = '120.50' })
+beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null })
 
 describe('Create Strategy page', () => {
   it('REQ-024 AC-6: offers the two paths with their exact titles', async () => {
@@ -168,6 +170,66 @@ describe('Create Strategy page', () => {
     expect(w.findAll('[data-testid="strategy-card"]').map((c) => c.attributes('data-template-id'))).toEqual(['iron_condor'])
   })
 
+  describe('range reading (ADR-121 (1), ADR-122)', () => {
+    // NIFTY 24,350: every 100-point strike 23,500..25,100, both sides, so the range lists reach the ADR examples.
+    const wide = () => {
+      level = '24350.00'
+      const out = []
+      let t = 100
+      for (let k = 23500; k <= 25100; k += 100) { out.push(ct(t += 1, 'CE', `${k}.00`)); out.push(ct(t += 1, 'PE', `${k}.00`)) }
+      contractsNow = out
+    }
+    const toRange = async (w, lo, hi) => {
+      await w.find('[data-testid="path-guided"]').trigger('click')
+      await pick(w, 'objective', 'earn-premium')
+      await pick(w, 'market-view', 'not-sure')
+      await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+      await flushPromises()
+      await w.find('[data-testid="pick-lower"]').setValue(lo)
+      await w.find('[data-testid="pick-upper"]').setValue(hi)
+      await flushPromises()
+    }
+    const cardIds = (w) => w.findAll('[data-testid="strategy-card"]').map((c) => c.attributes('data-template-id'))
+
+    it('24,350 with 24,300-25,100 reads "Your range leans up" and shows bullish cards', async () => {
+      wide()
+      const { w } = await mountPage()
+      await toRange(w, '24300', '25100')
+      expect(w.find('[data-testid="range-reading"]').text()).toBe('Your range leans up')
+      expect(w.find('[data-testid="strategy-card"]').exists()).toBe(false) // cards only after Show strategies
+      await w.find('[data-testid="show-strategies"]').trigger('click')
+      await flushPromises()
+      expect(cardIds(w)).toEqual(['cash_secured_put'])
+    })
+
+    it('24,350 with 24,000-24,600 reads "Your range is balanced" and shows range-bound cards', async () => {
+      wide()
+      const { w } = await mountPage()
+      await toRange(w, '24000', '24600')
+      expect(w.find('[data-testid="range-reading"]').text()).toBe('Your range is balanced')
+      await w.find('[data-testid="show-strategies"]').trigger('click')
+      await flushPromises()
+      expect(cardIds(w)).toEqual(['iron_condor'])
+    })
+
+    it('24,350 with 23,500-24,500 reads "Your range leans down"', async () => {
+      wide()
+      const { w } = await mountPage()
+      await toRange(w, '23500', '24500')
+      expect(w.find('[data-testid="range-reading"]').text()).toBe('Your range leans down')
+    })
+
+    it('changing the reading changes the cards', async () => {
+      wide()
+      const { w } = await mountPage()
+      await toRange(w, '24300', '25100')
+      await w.find('[data-testid="pick-reading"]').setValue('balanced')
+      await w.find('[data-testid="show-strategies"]').trigger('click')
+      await flushPromises()
+      expect(cardIds(w)).toEqual(['iron_condor'])
+    })
+  })
+
   it('ADR-003: no forbidden advice word anywhere on the results screen', async () => {
     const { w } = await mountPage()
     await toResults(w, 'know', null)
@@ -177,6 +239,19 @@ describe('Create Strategy page', () => {
 })
 
 describe('guided helpers', () => {
+  it('ADR-121 (1): more than twice is directional, exactly twice is not; each side', () => {
+    expect(readingFromRange('24350', '24300', '25100')).toBe('up') // 50 below, 750 above
+    expect(readingFromRange('24350', '24000', '24600')).toBe('balanced') // 350 / 250
+    expect(readingFromRange('24350', '23500', '24500')).toBe('down') // 850 / 150
+    expect(readingFromRange('100', '90', '120')).toBe('balanced') // 10 / 20: exactly twice
+    expect(readingFromRange('100', '90', '121')).toBe('up') // 10 / 21
+    expect(readingFromRange('100', '80', '110')).toBe('balanced') // 20 / 10: exactly twice
+    expect(readingFromRange('100', '79', '110')).toBe('down') // 21 / 10
+    expect(viewFromRange('100', '90', '121')).toBe('bullish')
+    expect(viewFromRange('100', '79', '110')).toBe('bearish')
+    expect(viewFromRange('100', '90', '120')).toBe('range-bound')
+  })
+
   it('REQ-026 AC-2: expiry labels are real dates with This Week / Next Week / Monthly / Next Monthly', () => {
     expect(expiryLabels(['2026-10-13', '2026-10-20', '2026-10-27', '2026-11-24']).map((e) => e.label))
       .toEqual(['This Week — 13 Oct', 'Next Week — 20 Oct', 'Monthly — 27 Oct', 'Next Monthly — 24 Nov'])

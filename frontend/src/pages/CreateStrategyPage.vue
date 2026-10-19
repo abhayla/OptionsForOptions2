@@ -3,7 +3,7 @@
      expected range from pick lists) -> Step 4 strategies you could consider. Each card's legs are the template's default
      shape on listed contracts (never substituted); its planned entries come from POST /api/strategies/planned-entry and
      its max profit, max loss and breakevens from POST /api/strategies/outcome (the one engine), shown exactly as sent.
-     Wording of the range lines (REQ-026 AC-1/AC-4/AC-8) waits on the legal review Q211/Q261: provisional. -->
+     The range reading line uses the three ADR-122 texts (rule: ADR-121 (1)); the other range lines (REQ-026 AC-4/AC-8) wait on the legal review Q211/Q261: provisional. -->
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,7 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
 import {
-  CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, expandTemplate, expiryLabels, matchTemplates, rangeLists, viewFromRange,
+  CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, RANGE_READINGS, expandTemplate, expiryLabels, matchTemplates, rangeLists, readingFromRange,
 } from '@/lib/guided'
 
 const TOTAL_STEPS = 4
@@ -34,6 +34,7 @@ const expiries = ref([])
 const expiry = ref('')
 const contracts = ref([])
 const lower = ref(null)
+const readingChoice = ref(null) // the user's own pick (ADR-121 (1): the user can change the reading); null = keep the derived one
 const upper = ref(null)
 const cards = ref([])
 const showAll = ref(false)
@@ -48,9 +49,14 @@ const lists = computed(() => {
   try { return rangeLists(current.value, contracts.value, underlying.value) } catch { return null }
 })
 const expiryLabel = computed(() => expiryLabels(expiries.value).find((e) => e.value === expiry.value)?.label ?? '')
+const derivedReading = computed(() => {
+  if (!notSure.value || current.value === null || lower.value === null || upper.value === null) return null
+  try { return RANGE_READINGS.find((r) => r.key === readingFromRange(current.value, lower.value, upper.value)) } catch { return null }
+})
+const activeReading = computed(() => RANGE_READINGS.find((r) => r.key === readingChoice.value) ?? derivedReading.value)
 const viewTag = computed(() => {
   if (isKnow.value) return null
-  if (notSure.value) return viewFromRange(current.value, lower.value, upper.value)
+  if (notSure.value) return activeReading.value?.tag ?? null
   return MARKET_VIEWS.find((v) => v.key === viewKey.value)?.tag ?? null
 })
 const matched = computed(() => (step.value === 4 ? matchTemplates(templates.value, objective.value, viewTag.value) : null))
@@ -103,6 +109,7 @@ async function chooseExpiry() {
   contracts.value = Array.isArray(list) ? list : []
   lower.value = current.value // REQ-026 AC-3: both levels start at the current level
   upper.value = current.value
+  readingChoice.value = null
 }
 
 async function priceCard(template, legs) {
@@ -206,6 +213,13 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
             </select>
           </label>
           <p class="text-xs text-ink-muted" data-testid="range-note">{{ RANGE_NOTE }}</p>
+          <p v-if="derivedReading" class="text-sm font-medium" data-testid="range-reading">{{ derivedReading.text }}</p>
+          <label v-if="derivedReading" class="grid gap-1 text-sm">Strategies will use this view
+            <select v-model="readingChoice" class="min-h-[44px] rounded border border-line" data-testid="pick-reading">
+              <option :value="null">{{ derivedReading.label }} (from your range)</option>
+              <option v-for="r in RANGE_READINGS.filter((x) => x.key !== derivedReading.key)" :key="r.key" :value="r.key">{{ r.label }}</option>
+            </select>
+          </label>
         </template>
         <button
 type="button" class="min-h-[44px] w-full rounded bg-accent px-4 text-white sm:w-auto" data-testid="show-strategies"

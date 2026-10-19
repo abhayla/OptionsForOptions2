@@ -55,4 +55,19 @@ async function seed(page: Page) {
     await expect(page).toHaveURL(/\/strategy\/builder\?/)
     await expect(page.getByTestId('leg-row')).toHaveCount(1)
   })
+
+  test('create strategy not-sure range: the reading line follows the range and can be changed', async ({ page }) => {
+    await seed(page)
+    await page.goto(`${REPLAY_URL}/strategies/create-strategy`)
+    await page.getByTestId('path-guided').click()
+    await page.locator('[data-testid="objective"][data-key="earn-premium"]').click()
+    await page.locator('[data-testid="market-view"][data-key="not-sure"]').click()
+    await page.getByTestId('pick-expiry').selectOption('2026-10-13')
+    await page.getByTestId('pick-lower').selectOption('22800.00')
+    await page.getByTestId('pick-upper').selectOption('23000')
+    await expect(page.getByTestId('range-reading')).toHaveText('Your range leans up')
+    await page.getByTestId('pick-reading').selectOption('balanced')
+    await page.getByTestId('show-strategies').click()
+    await expect(page.getByTestId('results-heading')).toBeVisible()
+  })
 }

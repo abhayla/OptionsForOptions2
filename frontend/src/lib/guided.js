@@ -73,16 +73,31 @@ export function rangeLists(currentText, contracts, underlying) {
   }
 }
 
-/** The market view a chosen range implies (REQ-026 AC-1 "the platform derives the market characteristics"). Provisional
- *  rule, not in the spec: one side more than twice the other is directional, otherwise range-bound. */
-export function viewFromRange(currentText, lowerText, upperText) {
+/** ADR-121 (1) + ADR-122: the three readings of a chosen range. The catalogue carries no "mildly" view key (its views are
+ *  bullish / bearish / range-bound / volatile), so "mildly bullish/bearish" map to the nearest keys, bullish / bearish. */
+export const RANGE_READINGS = Object.freeze([
+  { key: 'up', text: 'Your range leans up', tag: 'bullish', label: 'Mildly bullish' },
+  { key: 'down', text: 'Your range leans down', tag: 'bearish', label: 'Mildly bearish' },
+  { key: 'balanced', text: 'Your range is balanced', tag: 'range-bound', label: 'Neutral' },
+])
+
+/** ADR-121 (1): "if the distance from the current level to one end is more than twice the distance to the other end,
+ *  the view is that direction ...; otherwise it is range-bound (neutral)." Exactly twice is NOT directional. Returns a
+ *  RANGE_READINGS key. */
+export function readingFromRange(currentText, lowerText, upperText) {
   const c = Number(currentText)
   const down = c - Number(lowerText)
   const up = Number(upperText) - c
   if (down < 0 || up < 0) throw new Error('range must hold the current level') // REQ-026 AC-6
-  if (up > 2 * down) return 'bullish'
-  if (down > 2 * up) return 'bearish'
-  return 'range-bound'
+  if (up > 2 * down) return 'up'
+  if (down > 2 * up) return 'down'
+  return 'balanced'
+}
+
+/** The catalogue view tag a chosen range implies (REQ-026 AC-1), by readingFromRange. */
+export function viewFromRange(currentText, lowerText, upperText) {
+  const key = readingFromRange(currentText, lowerText, upperText)
+  return RANGE_READINGS.find((r) => r.key === key).tag
 }
 
 /** Templates matching the objective and the view, Beginner first (REQ-068 AC-2 levels). `fallback` says nothing matched

@@ -82,6 +82,10 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
+  // lib/guided.js only SELECTS index levels and strikes from the catalogue (distance between levels, nearest strike); it
+  // never touches an outcome/P&L number (its header says so). It may use Number, Math.abs/min/max and reduce; rounding and
+  // number formatting stay banned there.
+  const GUIDED_BANNED = [/parseFloat\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil)\s*\(/, /\.toFixed\s*\(/]
 
   it('scans the screen files', () => {
     expect(files.some((f) => f.endsWith('StrategyBuilderPage.vue'))).toBe(true)
@@ -91,7 +95,7 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     const hits = []
     for (const f of files) {
       const text = fs.readFileSync(f, 'utf8')
-      for (const re of BANNED) if (re.test(text.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, ''))) hits.push(`${path.relative(SRC, f)}: ${re}`)
+      for (const re of path.relative(SRC, f) === path.join('lib', 'guided.js') ? GUIDED_BANNED : BANNED) if (re.test(text.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, ''))) hits.push(`${path.relative(SRC, f)}: ${re}`)
     }
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])
