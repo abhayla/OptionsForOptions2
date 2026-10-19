@@ -106,7 +106,7 @@ def test_ac4_return_reads_the_122104_book_and_refuses_every_write():
     """AC-4: the return's session reads OFS1V1L0 COMPLETE 65 and its trade; any non-GET (an order) raises."""
     session = er._replay_session(_request("/strategies/1/execution/return"))
     (order,) = session.reads.fetch_orders()
-    assert (order["tag"], order["status"], order["filled_quantity"]) == ("OFS1V1L0", "COMPLETE", 65)
+    assert (order["tag"], order["status"], order["filled_quantity"]) == ("Q0001010", "COMPLETE", 65)
     assert len(session.reads.fetch_trades()) == 1
     for url in ("https://api.kite.trade/orders/regular", "https://api.kite.trade/orders"):
         with pytest.raises(AssertionError):
@@ -233,3 +233,19 @@ def pathlib_backend():
     import pathlib  # noqa: PLC0415
 
     return pathlib.Path(er.__file__).resolve().parent.parent
+
+
+def test_recordings_are_read_with_legacy_tags_translated_and_every_other_byte_kept() -> None:
+    """The 2026-10-16 recordings predate the 8-character grammar (0018): the replay reads OFS1V1L0 as make_tag(1,1,0)
+    and changes nothing else; the AC-1 basket is the recorded text with only the tag replaced."""
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+    from ofo_app.execute_replay import REPLIES, recorded_text, retag_recorded  # noqa: PLC0415
+
+    for name in ("basket-121848.json", "orders-122104.json", "orders-151006.json"):
+        raw = (REPLIES / name).read_text(encoding="utf-8")
+        assert "OFS1V1L0" in raw
+        assert recorded_text(name) == raw.replace("OFS1V1L0", make_tag(1, 1, 0))
+    assert make_tag(1, 1, 0) == "Q0001010"
+    # only a whole string value is translated; a longer or prefixed token is left as it is
+    kept = '"XOFS1V1L0" "OFS1V1L0x" "OFS01V1L0" '
+    assert retag_recorded(kept + '"OFS12V3L1"') == kept + '"Q000C031"'
