@@ -8,6 +8,8 @@
   draft delete -> drafts only, kept hidden (ADR-118); Execute outside market hours -> blocked (ADR-119); GC-6 finish
   rule -> buildable all done, blocked rows only with the owner's acceptance (`goal-contract-GC-6-2026-10-19.md`);
   sign-in/sign-out -> out of the GC-6 plan; Security page -> not asked further (sign-in out of scope).
+- Later the same evening (GC-6 run): range -> market view "Lopsided = directional (Recommended)" (ADR-121 (1));
+  next-trading-day format "Wed 21 Oct (Recommended)" (ADR-121 (2)).
 
 ## OQ-GC2h-1: may the app adopt a next-day position as a strategy's own fill?
 - **Case:** an ENTRY plan (strategy 1, BUY 65 NIFTY CE) is left open at the end of a trading day; the next morning Kite's

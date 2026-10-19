@@ -188,7 +188,8 @@ decisions:
   ADR-117: 4b           # entry is two baskets when a sell depends on a protective buy (owner 2026-10-19, #390)
   ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
   ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
-  ADR-120: 4b           # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
+  ADR-121: 4b           # range reading (lopsided = direction) and next-trading-day format "Wed 21 Oct" (owner 2026-10-19)
+  ADR-120: 4b          # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
@@ -388,6 +389,7 @@ findings:
   F-51: 4b        # no studied app has a guided objective/view/range wizard; REQ-024/026 alone (GC-6 S3)
   F-52: 4b        # build-order and W-083 still showed OQ-7 as open after ADR-096 answered it (GC-6 S0)
   F-53: 4b        # every workflow runs on every PR push incl. drafts; app-tests runs the API suite on frontend-only PRs (GC-6 O0)
+  F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
 
 hypotheses:
   H1: done
