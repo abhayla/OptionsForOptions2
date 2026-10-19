@@ -15,7 +15,8 @@ test('AC-2: no saved strategies -> Create Strategy, Explore Option Chain, Learn,
   await expect(page.getByTestId('home-actions').getByRole('link')).toHaveText(['Create Strategy', 'Explore Option Chain', 'Learn'])
   await expect(page.getByText('Plan your trade. Follow your strategy. Then execute.')).toBeVisible()
   await expect(page.getByTestId('zerodha-line')).toHaveText('Already trade with Zerodha? Connect when ready')
-  await expect(page.getByRole('button')).toHaveCount(0)
+  // AC-5: Home itself offers no control (the shell header's own button, AppHeader.vue, is not part of Home)
+  await expect(page.getByTestId('home').getByRole('button')).toHaveCount(0)
 })
 
 test('AC-2: three drafts -> My Strategies first, rows newest first', async ({ page }) => {
