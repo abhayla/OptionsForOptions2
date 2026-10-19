@@ -71,7 +71,7 @@ def _starts_workflow(path: str) -> bool:
     ("changed", "expected"),
     [
         ("frontend/src/x.vue", {"frontend", "e2e"}),
-        ("backend/ofo_app/routes/x.py", {"api", "e2e"}),
+        ("backend/ofo_app/routes/x.py", {"api", "frontend", "e2e"}),
         ("backend/ofo/engine/x.py", {"api", "frontend", "e2e"}),
         ("requirements-app.txt", {"api", "frontend", "e2e"}),
         ("tests/fixtures/kite_ws/x.csv", {"api", "frontend", "e2e"}),
@@ -92,8 +92,8 @@ def test_a_change_selects_exactly_the_jobs_that_read_it(changed: str, expected: 
 
 def test_frontend_only_starts_no_api_job_and_backend_api_only_starts_no_frontend_job() -> None:
     assert "api" not in _selected(["frontend/src/x.vue", "frontend/package-lock.json"])
-    assert "frontend" not in _selected(["backend/ofo_app/routes/x.py", "tests_app/test_x.py"])
-    assert "e2e" in _selected(["backend/ofo_app/routes/x.py"])  # the Execute screen e2e runs the real API
+    assert "frontend" not in _selected(["tests_app/test_x.py", "requirements-dev.txt"])  # API-test-only inputs
+    assert {"frontend", "e2e"} <= _selected(["backend/ofo_app/routes/x.py"])  # Playwright runs on the real API
 
 
 @pytest.mark.parametrize(

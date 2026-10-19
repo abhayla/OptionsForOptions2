@@ -95,11 +95,12 @@ jobs:
               - 'docs/api/**'
               - 'docs/research/kite-proof-2026-10-07/**'
               - '.github/workflows/app-tests.yml'
-            # frontend job: lint, unit tests, build, Playwright journeys. The brief's rule: frontend-only starts no API
-            # job and a backend/ofo_app-only change starts no frontend job; backend/ofo feeds both layers.
+            # frontend job: lint, unit tests, build, Playwright journeys. Frontend-only starts no API job; backend/ofo
+            # and backend/ofo_app feed it because its Playwright journeys run against the real API.
             frontend:
               - 'frontend/**'
               - 'backend/ofo/**'
+              - 'backend/ofo_app/**'
               - 'tests/fixtures/**'
               - 'requirements-app.txt'
               - 'docs/api/**'
