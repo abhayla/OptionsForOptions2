@@ -81,7 +81,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
-from ofo_app.kite_reads import KiteReadError, KiteReads
+from ofo_app.kite_reads import TOKEN_CODE, KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
@@ -230,6 +230,12 @@ def _refuse(template: str, **slots: object) -> StrategyRefused:
     return StrategyRefused(template, Failure.CONFLICT, message=render(template, **slots))
 
 
+def read_refusal(exc: KiteReadError) -> StrategyRefused:
+    """A failed Zerodha read as the refusal the user sees: an expired token is the session-expired message (reconnect),
+    any other failure is "not confirmed". Nothing was written before the read (class: partial broker answer)."""
+    return _refuse("gate_session_expired" if exc.code == TOKEN_CODE else "gate_broker_unconfirmed")
+
+
 def _refuse_with(message: UserFacingError) -> StrategyRefused:
     return StrategyRefused("gate_dependencies_unsatisfied", Failure.CONFLICT, message=message)
 
@@ -312,7 +318,9 @@ async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     try:
         book = await asyncio.to_thread(req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
-    except (KiteReadError, ValueError):
+    except KiteReadError as exc:
+        raise read_refusal(exc) from None
+    except ValueError:
         raise _refuse("gate_broker_unconfirmed") from None
     if still_open:
         raise _refuse("gate_dependencies_unsatisfied")
@@ -630,4 +638,4 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
 
 __all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
            "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
-           "price_and_time"]
+           "price_and_time", "read_refusal"]

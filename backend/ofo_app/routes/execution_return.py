@@ -163,7 +163,9 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     try:
         orders, trades = reads.fetch_orders(), reads.fetch_trades()
         positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
-    except (KiteReadError, KiteReplyError, ValueError):
+    except KiteReadError as exc:
+        raise read_refusal(exc) from None  # an expired token reads "session expired"; nothing was written yet
+    except (KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
     log_ignored(positions, f"return strategy {req.strategy_id}")
     return _Read(orders, trades, positions.net)

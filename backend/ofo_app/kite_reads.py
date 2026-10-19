@@ -41,6 +41,7 @@ _OK: Final = 200
 _BUSY: Final = 429
 _DENIED: Final = 403
 _SERVER_ERROR: Final = 500
+TOKEN_CODE: Final = "kite_read_token"  # 403 / TokenException: the Zerodha session is no longer valid
 
 
 class KiteReadError(Exception):
@@ -170,7 +171,7 @@ class KiteReads:
         if status != _OK:
             log.warning("kite read HTTP status %s", status)
             if status == _DENIED or error_type(text) == "TokenException":
-                raise KiteReadError("kite_read_token")
+                raise KiteReadError(TOKEN_CODE)
             if status == _BUSY:
                 raise KiteReadError("kite_read_busy")
             raise KiteReadError("kite_read_unavailable" if status >= _SERVER_ERROR else "kite_read_refused")
