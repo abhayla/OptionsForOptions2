@@ -9,6 +9,7 @@ const Placeholder = () => import('../pages/PlaceholderPage.vue')
 const REAL_PAGES = {
   'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
   'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+  'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
 }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
