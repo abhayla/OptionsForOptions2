@@ -87,6 +87,8 @@ def test_guards_are_pinned_and_a_second_block_fails_closed() -> None:
     assert mine._M4._md5_body(mine._fill_guard_sql().replace("filled_quantity > 0", "true")) != mine.FILL_PIN
     assert mine._M4._md5_body(mine._holding_guard_sql().replace("insert-only", "x")) != mine.HOLDING_PIN
     assert "filled_quantity > 0" in mine._fill_guard_sql() and "TG_OP <> 'INSERT'" in mine._fill_guard_sql()
+    assert mine._M4._md5_body(mine._fill_guard_sql().replace("+ NEW.quantity", "")) != mine.FILL_PIN
+    assert "sum(quantity)" in mine._fill_guard_sql()
     assert "'OF020'" in mine._holding_guard_sql() and "'OF018'" not in mine._holding_guard_sql()
     original = mine.previous_allowlist_sql
     mine.previous_allowlist_sql = lambda: original() + mine.ALLOWLIST_BLOCK_MARKER

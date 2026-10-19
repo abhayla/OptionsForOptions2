@@ -12,15 +12,17 @@ stored plan); ADR-048 (the limited application role); ADR-023 (the database cloc
 
 Copy from: none - new store, modelled on 0018's tables, guards, grants and allow-list block.
 
-Technical decision (#313 builder, recorded in the PR body): the average fill price is a NEW insert-only table keyed by
-the order's tag, not a column on execution_plan_orders. A column would need a new UPDATE grant and a new body for
-0016's pinned order guard, i.e. rewriting allow-list block 15; a separate table leaves 0016 untouched.
+Technical decision (#313 builder, recorded in the PR body): fill prices are a NEW insert-only table of trades keyed by
+the order's tag, not an average_price column on execution_plan_orders. A column would need a new UPDATE grant and a
+new body for 0016's pinned order guard, i.e. rewriting allow-list block 15; a separate table leaves 0016 untouched.
 
 Changes (owner-run, one transaction):
-- public.execution_plan_fills: one row per tagged plan order that filled (tag -> execution_plan_orders.tag), its
-  average fill price NUMERIC(14,2) > 0, recorded_at from the database clock. Guard trigger (SQLSTATE OF020):
-  insert-only, and an insert is refused unless the order's stored filled_quantity is above 0 (a price for an order
-  that never filled is never stored).
+- public.execution_plan_fills: one row per Zerodha trade of a tagged plan order (tag -> execution_plan_orders.tag,
+  Zerodha's order id and trade id, units, trade price NUMERIC(14,2) > 0), recorded_at from the database clock. The
+  trades are stored, not an average: an average of trades at 7.00 and 7.05 is not exact in paise, the trades are.
+  PRIMARY KEY (tag, broker_order_id, trade_id): a trade id is unique only per order (FillLedger's key). Guard
+  trigger (SQLSTATE OF020): insert-only, and an insert is refused unless the order's stored filled_quantity is above
+  0 and the stored trades of the tag, with this one, do not exceed it.
 - public.adopted_holdings: units a strategy holds without a platform fill (ADR-096): strategy, contract key (the app's
   instrument id), side, units, product, average price, a unique reference, the strategy version number that adopted
   them, adopted_at from the database clock. UNIQUE (strategy_id, instrument_id): a strategy never nets a second
@@ -83,7 +85,7 @@ MAX_UNITS = _PREVIOUS.MAX_UNITS
 MAX_TEXT = _PREVIOUS.MAX_TEXT
 CONTRACT_KEY_REGEX = _PREVIOUS.CONTRACT_KEY_REGEX
 PRICE_LIMIT = "1000000000000"  # NUMERIC(14,2): below 10^12, as execution_plan_store.PRICE_LIMIT
-FILL_INSERT_COLUMNS = ("tag", "average_price")
+FILL_INSERT_COLUMNS = ("tag", "broker_order_id", "trade_id", "quantity", "price")
 HOLDING_INSERT_COLUMNS = ("strategy_id", "instrument_id", "transaction_type", "quantity", "product", "average_price",
                           "reference", "version_number")
 ALLOWLIST_BLOCK_MARKER = "-- 17. order book store"
@@ -105,6 +107,10 @@ def _fill_guard_sql() -> str:
             END IF;
             IF NOT EXISTS (SELECT 1 FROM {ORDERS} WHERE tag = NEW.tag AND filled_quantity > 0) THEN
                 RAISE EXCEPTION 'a fill price needs an order that filled' USING ERRCODE = '{SQLSTATE}';
+            END IF;
+            IF (SELECT coalesce(sum(quantity), 0) FROM {FILLS} WHERE tag = NEW.tag) + NEW.quantity
+               > (SELECT filled_quantity FROM {ORDERS} WHERE tag = NEW.tag) THEN
+                RAISE EXCEPTION 'stored trades exceed the order''s filled quantity' USING ERRCODE = '{SQLSTATE}';
             END IF;
             NEW.recorded_at := clock_timestamp();
             RETURN NEW;
@@ -160,9 +166,14 @@ def upgrade() -> None:
     op.execute(
         f"""
         CREATE TABLE {FILLS} (
-            tag           TEXT          PRIMARY KEY REFERENCES {ORDERS} (tag),
-            average_price NUMERIC(14,2) NOT NULL CHECK (average_price > 0 AND average_price < {PRICE_LIMIT}),
-            recorded_at   TIMESTAMPTZ   NOT NULL DEFAULT clock_timestamp()
+            tag             TEXT          NOT NULL REFERENCES {ORDERS} (tag),
+            broker_order_id TEXT          NOT NULL
+                                          CHECK (broker_order_id <> '' AND length(broker_order_id) <= {MAX_TEXT}),
+            trade_id        TEXT          NOT NULL CHECK (trade_id <> '' AND length(trade_id) <= {MAX_TEXT}),
+            quantity        INTEGER       NOT NULL CHECK (quantity BETWEEN 1 AND {MAX_UNITS}),
+            price           NUMERIC(14,2) NOT NULL CHECK (price > 0 AND price < {PRICE_LIMIT}),
+            recorded_at     TIMESTAMPTZ   NOT NULL DEFAULT clock_timestamp(),
+            PRIMARY KEY (tag, broker_order_id, trade_id)
         )
         """
     )

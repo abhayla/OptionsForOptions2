@@ -14,13 +14,23 @@ import pytest
 from ofo.execution.basket import make_tag
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from test_execution_plan_store import (CHECK_VIOLATION, INSUFFICIENT_PRIVILEGE, LOT, REAL_INSTRUMENT, UNIQUE_VIOLATION,
-                                       _close, _new_strategy, _refused_sql, _Tx)
+from test_execution_plan_store import (
+    CHECK_VIOLATION,
+    INSUFFICIENT_PRIVILEGE,
+    LOT,
+    REAL_INSTRUMENT,
+    UNIQUE_VIOLATION,
+    _close,
+    _new_strategy,
+    _refused_sql,
+    _Tx,
+)
 
 GUARD_SQLSTATE = "OF020"
 FK_VIOLATION = "23503"
 TWO_HOLDERS = 2  # two strategies of one user, each holding the same contract (Q224)
-_FILL = "INSERT INTO public.execution_plan_fills (tag, average_price) VALUES (:tag, :px)"
+_FILL = ("INSERT INTO public.execution_plan_fills (tag, broker_order_id, trade_id, quantity, price) "
+         "VALUES (:tag, '251019000000001', :tid, :q, :px)")
 _HOLD = ("INSERT INTO public.adopted_holdings (strategy_id, instrument_id, transaction_type, quantity, product, "
          "average_price, reference, version_number) VALUES (:s, :iid, 'BUY', :q, 'NRML', :px, :ref, 1)")
 
@@ -37,24 +47,26 @@ async def test_fill_price_needs_an_order_that_filled(app_engine):
     async with _Tx(app_engine) as tx:
         plan = await tx.enter("ENTRY", "BUY", "7.00")
         open_tag = make_tag(tx.strategy_id, plan.plan_number, 0)
-        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": open_tag, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": open_tag, "tid": "1", "q": LOT, "px": "7.00"})
         await _close(tx.conn, tx.user, tx.strategy_id, plan.plan_number, "nothing_placed")
-        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": open_tag, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": open_tag, "tid": "1", "q": LOT, "px": "7.00"})
         tag = await _filled_tag(tx)
-        await tx.conn.execute(text(_FILL), {"tag": tag, "px": "7.00"})
-        row = (await tx.conn.execute(text("SELECT average_price, recorded_at FROM public.execution_plan_fills "
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
+        row = (await tx.conn.execute(text("SELECT price, recorded_at FROM public.execution_plan_fills "
                                           "WHERE tag = :t"), {"t": tag})).one()
-        assert str(row.average_price) == "7.00" and row.recorded_at is not None
+        assert str(row.price) == "7.00" and row.recorded_at is not None
 
 
-async def test_fill_price_is_positive_once_per_tag_and_only_for_a_known_tag(app_engine):
-    """Guards: CHECK average_price > 0, PRIMARY KEY tag (one price per order), FOREIGN KEY to the order's tag."""
+async def test_fill_price_is_positive_once_per_trade_and_only_for_a_known_tag(app_engine):
+    """Guards: CHECK price > 0, PRIMARY KEY (tag, order id, trade id) (one row per trade), FOREIGN KEY to the tag, and
+    the trigger's sum check (stored trades never exceed the order's filled quantity: 65 + 1 > 65)."""
     async with _Tx(app_engine) as tx:
         tag = await _filled_tag(tx)
-        await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "px": "0"})
-        await tx.conn.execute(text(_FILL), {"tag": tag, "px": "7.00"})
-        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "px": "6.65"})
-        await _refused_sql(tx.conn, _FILL, FK_VIOLATION, {"tag": "OFS999999V1L0", "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "0"})
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "6.65"})
+        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": tag, "tid": "2", "q": 1, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, FK_VIOLATION, {"tag": "OFS999999V1L0", "tid": "1", "q": LOT, "px": "7.00"})
 
 
 async def test_app_role_cannot_update_or_delete_and_the_owner_is_refused_by_the_guards(app_engine, admin_engine):
@@ -62,16 +74,16 @@ async def test_app_role_cannot_update_or_delete_and_the_owner_is_refused_by_the_
     cannot UPDATE or DELETE a stored price or holding)."""
     async with _Tx(app_engine) as tx:
         tag = await _filled_tag(tx)
-        await tx.conn.execute(text(_FILL), {"tag": tag, "px": "7.00"})
-        await _refused_sql(tx.conn, "UPDATE public.execution_plan_fills SET average_price = 1 WHERE tag = :t",
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
+        await _refused_sql(tx.conn, "UPDATE public.execution_plan_fills SET price = 1 WHERE tag = :t",
                            INSUFFICIENT_PRIVILEGE, {"t": tag})
         await _refused_sql(tx.conn, "DELETE FROM public.adopted_holdings", INSUFFICIENT_PRIVILEGE)
     async with _Tx(admin_engine) as tx:
         tag = await _filled_tag(tx)
-        await tx.conn.execute(text(_FILL), {"tag": tag, "px": "7.00"})
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
         await tx.conn.execute(text(_HOLD), {"s": tx.strategy_id, "iid": "NSE_FO:47189", "q": LOT, "px": "7.00",
                                             "ref": "adopt:1"})
-        for sql in ("UPDATE public.execution_plan_fills SET average_price = 1",
+        for sql in ("UPDATE public.execution_plan_fills SET price = 1",
                     "DELETE FROM public.execution_plan_fills",
                     "UPDATE public.adopted_holdings SET quantity = 1",
                     "DELETE FROM public.adopted_holdings"):
