@@ -1,0 +1,27 @@
+{
+ "id": "basket-tag-exceeds-publisher-limit",
+ "scope": "generic",
+ "class": "Any identifier built for one channel from the limit of a different channel of the same vendor (the API order tag allows 20 characters, the Publisher basket page allows 8) exceeds the stricter channel's limit once a counter inside it grows a digit, so the feature works for the first nine entities and fails for every one after.",
+ "mechanism": "make_tag (backend/ofo/execution/basket.py:89-97) allows 20 characters and builds OFS{s}V{v}L{i}; Kite's basket page (Kite Publisher /connect/basket) refuses a tag over 8 characters, so any strategy id >= 10 (strategy 11 -> OFS11V1L0) or version >= 10 (OFS9V10L0 is 9) is refused.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-3L live entry on the owner's Kite account, strategy 11",
+  "evidence": "Kite returned {\"status\":\"error\",\"message\":\"`tag` should be max 8 characters\",\"error_type\":\"InputException\"}; Kite Orders: \"You haven't placed any orders today\" (nothing placed); every user's 10th strategy onward cannot execute; workaround: the same leg on strategy 9 (tag OFS9V1L0, 8 chars) filled"
+ },
+ "fix": "Not fixed. Class fix: one tag builder whose limit is the minimum across the basket page and the API (8), covering entry and exit tags and versions >= 10, with a test that fails on any generated tag over 8 characters for large ids; the tag lookup used for reconciliation (ADR-054) must still resolve the shorter form.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Found only by a live basket on strategy id 11. Discrimination to prove when built: OFS9V1L0 passes, OFS11V1L0 and OFS9V10L0 fail the length check today. Unmeasured: Kite's rule on allowed characters."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-054.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "Kite Publisher basket, strategy 11 leg 0",
+   "evidence": "InputException: `tag` should be max 8 characters; no order placed"
+  }
+ ]
+}

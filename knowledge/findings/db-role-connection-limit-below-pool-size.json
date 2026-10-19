@@ -1,0 +1,32 @@
+{
+ "id": "db-role-connection-limit-below-pool-size",
+ "scope": "generic",
+ "class": "A database role whose connection limit is smaller than the maximum a single application process's pool can open (plus any second process sharing the role) fails under load with 'too many connections' that surfaces as a 500 on whichever request needs a connection next, intermittently and only when several requests overlap.",
+ "mechanism": "The ofo_app role has rolconnlimit 5; one API process's SQLAlchemy pool can grow to 15 (+ history); a second API process or a parallel e2e run on the same role exhausts the five slots.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "CI frontend e2e on PR #427, and a second API on :8766 on ofo_dev",
+  "evidence": "rolconnlimit 5 measured by a parallel session 2026-10-19 10:41; e2e failed 4/4 tries with asyncpg.exceptions.TooManyConnectionsError: too many connections for role \"ofo_app\" -> GET /strategies 500 -> saved-drafts list empty -> open-draft-3 click timeout (a re-run passed); the second API on :8766 hit it 11 times"
+ },
+ "fix": "Not fixed. Class fix options (technical call): set the pool size and overflow below the role limit divided by the number of processes, and/or raise the role limit; a startup check that compares the pool maximum with rolconnlimit and refuses to start (or logs loudly) when it is higher.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No test compares pool maximum with the role limit. Unmeasured: the production role's limit and the pool settings of the deployed process."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "PR #427 frontend e2e, 4 of 4 tries",
+   "evidence": "TooManyConnectionsError for role ofo_app -> GET /strategies 500"
+  },
+  {
+   "date": "2026-10-19",
+   "where": "second API process on :8766",
+   "evidence": "hit the limit 11 times"
+  }
+ ]
+}
