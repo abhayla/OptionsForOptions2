@@ -551,6 +551,37 @@ def test_exit_legs_close_exactly_the_net_opposite_side():
     assert ep.exit_legs({}, lambda t: t) == []
 
 
+async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation():
+    """GC-3L 2026-10-19: the owner's own stock trades (CNC) sat in Zerodha's net positions; the reader refused the
+    whole reply, reconciliation became unknown (None) and every Execute was refused RECONCILIATION_MISMATCH. The
+    stock row is ignored (reported), the strategy's own contract is still compared."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    stocks = json.loads((REPLIES / "positions-20261019-with-stocks.json").read_text(encoding="utf-8"),
+                        parse_float=D)["data"]["net"][:2]  # FRANKLININD, LIQUIDBEES (CNC)
+    catalogue = _catalogue()
+
+    def request(rows: list) -> SimpleNamespace:
+        reads = SimpleNamespace(fetch_positions=lambda: {"net": rows, "day": []})
+        return SimpleNamespace(session=SimpleNamespace(reads=reads), strategy_id=15)
+
+    def held(units: dict) -> SimpleNamespace:
+        return SimpleNamespace(units=units)
+
+    entry_req = request(stocks)  # the strategy holds nothing; Zerodha holds only stocks
+    positions = await route._positions(entry_req, catalogue)
+    assert positions is not None and positions.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+    assert route._reconciliation(entry_req, held({}), positions, catalogue, "NIFTY") == frozenset()
+
+    exit_req = request([*stocks, *_position_rows()])  # the strategy's 65 next to the stocks
+    positions = await route._positions(exit_req, catalogue)
+    assert positions.net == {KEY: 65}
+    assert route._reconciliation(exit_req, held({route._feed_key(CORE_ID): 65}), positions, catalogue, "NIFTY") == frozenset()
+    assert route._reconciliation(exit_req, held({route._feed_key(CORE_ID): 130}), positions, catalogue, "NIFTY") == frozenset({"15"})
+
+
 def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():
     from ofo.engine import Leg  # noqa: PLC0415
     from ofo.engine.product import Product  # noqa: PLC0415
