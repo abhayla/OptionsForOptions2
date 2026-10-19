@@ -26,3 +26,14 @@
   is (blocked until support intervenes).
 - **Business call:** it decides when a user's strategies can trade again after a mixed-up shared position.
 - Found by the #380-1 fix round (PR #419, 2026-10-19). Needed before GC-3F wires the routes (step 2.2).
+
+## OQ-GC5S-1 (optional scope ideas, nothing blocked): the design study's five SPEC CHANGE proposals
+- **Source:** `docs/design/screens-research-2026-10-19.md`, section "Would need a SPEC CHANGE". Under ADR-114 (4) none is
+  built; the requirements are built as written.
+- **Ideas:** (1) at 390 px, Buy/Sell in a bottom sheet after tapping a chain cell, instead of REQ-030 AC-2 "Each contract
+  row has Buy and Sell buttons" (built: visible buttons, the table scrolls inside its card); (2) ATM IV / PCR / Max Pain
+  for all levels (REQ-029 AC-2 keeps IV at Advanced); (3) rule-triggered exits like Kite ATO (no requirement; ADR-002);
+  (4) PCR and OI totals on Market context / index view (no content AC); (5) Greeks on the Live Position tab below
+  Advanced (ADR-056 keeps them at Advanced).
+- **Recommendation:** keep the spec as is for V1; revisit (2) and (4) when the Market context screen is scoped.
+- **Business call:** each changes what a user sees or may do. Ask only if the owner wants to widen scope.
