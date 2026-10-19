@@ -13,6 +13,7 @@ artifact file it finds by path convention:
     work/W-###.md                  -> work-item.schema.json    (YAML frontmatter)
     releases/R-###.md              -> release.schema.json      (YAML frontmatter)
     owner-questions/OQ-###.md      -> owner-question.schema.json (YAML frontmatter)
+    plans/PL-###.md                -> plan.schema.json         (YAML frontmatter)
     capabilities/**/capability.json -> capability.schema.json  (JSON)
 
 Prints one line per error: "path: field: message"
@@ -38,6 +39,7 @@ ADR_ID_RE = re.compile(r"^(ADR-\d{3,}|OD-\d+)$")
 WORK_ID_RE = re.compile(r"^W-\d{3,}$")
 RELEASE_ID_RE = re.compile(r"^R-\d{3,}$")
 OQ_ID_RE = re.compile(r"^OQ-\d{3,}$")
+PLAN_ID_RE = re.compile(r"^PL-\d{3,}$")
 AC_ID_RE = re.compile(r"^AC-\d+$")
 
 
@@ -56,6 +58,7 @@ _SCHEMAS = {
     "evidence": load_schema("evidence.schema.json"),
     "finding": load_schema("finding.schema.json"),
     "owner-question": load_schema("owner-question.schema.json"),
+    "plan": load_schema("plan.schema.json"),
 }
 
 _VALIDATORS = {k: Draft7Validator(v) for k, v in _SCHEMAS.items()}
@@ -575,6 +578,14 @@ def lint_root(root: Path, quiet: bool) -> tuple[list[LintError], dict[str, int],
         counts["owner-question"] = counts.get("owner-question", 0) + len(files)
         for p in files:
             errors.extend(lint_markdown_file(p, "owner-question", OQ_ID_RE))
+
+    plan_dir = root / "plans"
+    if plan_dir.is_dir():
+        recognized = True
+        files = sorted(plan_dir.glob("PL-*.md"))
+        counts["plan"] = counts.get("plan", 0) + len(files)
+        for p in files:
+            errors.extend(lint_markdown_file(p, "plan", PLAN_ID_RE))
 
     rel_dir = root / "releases"
     if rel_dir.is_dir():

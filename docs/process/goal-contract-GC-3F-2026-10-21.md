@@ -54,8 +54,11 @@ Kite Publisher's basket page allows 8. Today's format breaks at strategy id >= 1
 - Budget: 60 min, 120 tool calls (Tier A). Findings checked: basket-tag-exceeds-publisher-limit,
   shared-callback-treats-every-return-as-login.
 
-## Item 2 - held PRs, in order (each: `gh pr update-branch N`, `python tools/merge_when_green.py N` foreground,
-`python scripts/orchestrator/merge_audit.py`)
+## Item 2 - held PRs, in order (each: `python scripts/orchestrator/merge.py N --reviewed-sha <full sha of the commit
+the review passed>` foreground (update-branch, then the kit 1.10.1 gate), `python scripts/orchestrator/merge_audit.py`)
+Kit 1.10.1 (PR #426) merged before these: each held PR was branched on kit 1.7.0, so its checks now run the stricter
+kit guard; a gate answer `RE-REVIEW NEEDED: <files>` means the base update touched the PR's files or a Tier A path,
+so that PR gets a review of the new head before its sha is passed.
 `lock/gc-3l` is gone once GC-3L's close-out merges, so the GC-2f/2g/2h holds lift; GC-5S's held PRs likewise merge only
 after `lock/gc-3l` is gone (true from that merge) and follow this list's order where they touch the same files.
 First the two PARTIAL steps from GC-2h: #421 (#352-1) last review round, then CI; #424 (#403) fresh-Opus review (a

@@ -183,6 +183,7 @@ decisions:
   ADR-111: 4b           # carried-over live-run position: #352 fix in GC-3F, owner sells on Kite by Mon 10-26 12:00 as backstop (owner 2026-10-18)
   ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
   ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
+  ADR-115: 4b           # kit 1.10.1 taken after GC-3L: merges pin the reviewed sha; kit snapshot cleanup replaces the stand-in (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)

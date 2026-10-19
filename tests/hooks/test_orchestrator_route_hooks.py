@@ -267,33 +267,45 @@ class Runner:
         return self.results.pop(0)
 
 
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
 def test_merge_chain_order_and_success(capsys):
     r = Runner([(0, "ok\n"), (0, "updated\n"), (0, "merged\n")])
-    assert merge.merge("308", r) == 0
+    assert merge.merge("308", SHA, r) == 0
     assert "pr_close_check.py" in " ".join(r.calls[0]) and r.calls[0][-2:] == ["--pr", "308"]
     assert r.calls[1] == ["gh", "pr", "update-branch", "308"]
-    assert "merge_when_green.py" in r.calls[2][1] and r.calls[2][-1] == "308"
+    assert "merge_when_green.py" in r.calls[2][1] and r.calls[2][2:] == ["308", "--reviewed-sha", SHA]
 
 
 def test_merge_stops_on_failed_close_check():
     r = Runner([(1, "body line 1: closes #5\n")])
-    assert merge.merge("308", r) == 1
+    assert merge.merge("308", SHA, r) == 1
     assert len(r.calls) == 1
 
 
 def test_merge_ignores_already_up_to_date_but_stops_on_other_update_failure():
     ok = Runner([(0, ""), (1, "Pull request branch is already up-to-date\n"), (0, "merged\n")])
-    assert merge.merge("308", ok) == 0 and len(ok.calls) == THREE
+    assert merge.merge("308", SHA, ok) == 0 and len(ok.calls) == THREE
     bad = Runner([(0, ""), (1, "merge conflict\n")])
-    assert merge.merge("308", bad) == 1 and len(bad.calls) == TWO
+    assert merge.merge("308", SHA, bad) == 1 and len(bad.calls) == TWO
 
 
 def test_merge_not_up_to_date_is_a_failure():
     r = Runner([(0, ""), (1, "Pull request branch is not up to date with base\n")])
-    assert merge.merge("308", r) == 1 and len(r.calls) == TWO
+    assert merge.merge("308", SHA, r) == 1 and len(r.calls) == TWO
 
 
 def test_merge_returns_the_gate_failure_and_validates_usage():
     red = Runner([(0, ""), (0, ""), (3, "CI red\n")])
-    assert merge.merge("308", red) == THREE
+    assert merge.merge("308", SHA, red) == THREE
     assert merge.main([]) == TWO and merge.main(["abc"]) == TWO
+    assert merge.main(["308"]) == TWO  # kit 1.8.0: the bare PR-number form is refused
+    assert merge.main(["308", "--sha", SHA]) == TWO
+
+
+def test_merge_refuses_a_bad_reviewed_sha_before_any_step():
+    for bad in ("", SHA[:12], SHA[:-1] + "g", "HEAD"):
+        r = Runner([])
+        assert merge.merge("308", bad, r) == TWO
+        assert r.calls == []

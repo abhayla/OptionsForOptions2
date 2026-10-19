@@ -1,5 +1,14 @@
 # Handover
 
+**2026-10-19 evening — kit 1.10.1 taken (PR #426, ADR-115), after GC-3L closed.** Merge form is now
+`python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha of the reviewed commit>` (same flag on `land.py`);
+the gate answers `RE-REVIEW NEEDED` when an update touched the PR's files or a Tier A path. Changed callers:
+`merge.py`, `land.py` (+ tests), CLAUDE.md, this file, the GC-3F contract item 2. Stand-in
+`scripts/hooks/verifier_snapshot_ledger.py` deleted with its tests and wiring (kit 1.9.0 SubagentStop cleanup replaces
+it). The stricter kit guard refuses `git diff --output=`, Bash `2>$null` on a kit path, PowerShell `$(...)` around one;
+it now allows `sed -n N,Mp <kit file>` and `cd <dir> && <read>`. `plans/` created. The held PRs (#393-#424) were
+branched on 1.7.0: update each from main right before its own gate.
+
 **2026-10-19 — GC-3L DONE: the 4b live gate passed on a real 1-lot round trip (strategy 9, NIFTY26OCT24000CE, entry
 filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, P&L -22.75 = Kite's, audit chain verified). START
 HERE `docs/process/session-handover-2026-10-19-gc3l.md`. GC-3F is NEXT (`goal-contract-GC-3F-2026-10-21.md`, Wed
@@ -200,7 +209,8 @@ Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to c
 ## How the sessions work (reuse it)
 - Flow per item: builder (own worktree, `isolation: worktree`) → independent verifier (fresh context, read-only) →
   orchestrator records evidence (`scripts/orchestrator/record_evidence.py <worktree> <W-id> <builder> <verifier>
-  <json>`) → CI mirror → PR → `tools/merge_when_green.py` run as its OWN command (the kit guard blocks it after `&&`).
+  <json>`) → CI mirror → PR → `scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` run as its OWN command
+  (kit 1.10.1: the gate refuses without the reviewed sha).
 - Brief templates: `docs/process/builder-brief.md`, `docs/process/verifier-brief.md`. Every brief carries Budget
   (builder ≤ 80 tool calls, verifier ≤ 32 — hook-enforced), Core/Proof, Spec basis quoted from the spec, and
   Class/Proof lines on fixes (hook-enforced).
