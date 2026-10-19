@@ -72,14 +72,16 @@ async def test_fill_price_needs_an_order_that_filled(app_engine):
 async def test_fill_price_is_positive_once_per_trade_and_only_for_a_known_tag(app_engine):
     """Guards: CHECK price > 0 and quantity >= 1, PRIMARY KEY (order id, trade id) (one row per trade), the trigger's
     unknown-tag refusal (it runs before the foreign key, which stays as a second layer), and the trigger's sum check
-    (stored trades never exceed the order's filled quantity: 65 + 1 > 65)."""
+    (stored trades never exceed the order's filled quantity: 32 + 34 > 65)."""
     async with _Tx(app_engine) as tx:
         tag = await _filled_tag(tx)
         await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "0"})
         await _refused_sql(tx.conn, _FILL, CHECK_VIOLATION, {"tag": tag, "tid": "1", "q": 0, "px": "7.00"})
-        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": LOT, "px": "7.00"})
-        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "tid": "1", "q": LOT, "px": "6.65"})
-        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": tag, "tid": "2", "q": 1, "px": "7.00"})
+        half = LOT // 2  # under the filled quantity, so the sum check passes and the PRIMARY KEY is what refuses
+        await tx.conn.execute(text(_FILL), {"tag": tag, "tid": "1", "q": half, "px": "7.00"})
+        await _refused_sql(tx.conn, _FILL, UNIQUE_VIOLATION, {"tag": tag, "tid": "1", "q": half, "px": "6.65"})
+        await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": tag, "tid": "2", "q": LOT - half + 1,
+                                                            "px": "7.00"})
         await _refused_sql(tx.conn, _FILL, GUARD_SQLSTATE, {"tag": "OFS999999V1L0", "tid": "1", "q": LOT,
                                                             "px": "7.00"})
 
