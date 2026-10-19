@@ -33,6 +33,11 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 MAX_RETRIES = 3
 FULL_SHA = re.compile(r"[0-9a-fA-F]{40}")  # the kit gate's own rule (merge_when_green._HEX40)
 BEHIND_WORDS = ("behind", "not up to date", "required status checks are expected", "base branch policy")
+# Kit 1.8.0 gate refusals that are final: the gate already updated the branch itself (or refused to, because the
+# update was not covered by the review), so another update here would only hide the cause. Checked before BEHIND,
+# because "updates exhausted" contains "behind" and RE-REVIEW NEEDED arrives while the PR is BEHIND.
+FINAL_REFUSALS = ("RE-REVIEW NEEDED", "updates exhausted", "REFUSED: reviewed sha", "REFUSED: --reviewed-sha",
+                  "coverage could not be checked")
 
 
 def real_runner(cmd, cwd=None):
@@ -189,6 +194,9 @@ class Lander:
                 return
             if "failing check:" in text:
                 self.red_ci(text)
+            final = next((w for w in FINAL_REFUSALS if w in text), None)
+            if final:
+                raise Stop(f"merge gate refused ({final}); not updating the branch again (output above)")
             if not self.is_behind(text):
                 raise Stop("merge gate refused for a reason other than BEHIND (output above)")
             if attempt == MAX_RETRIES:

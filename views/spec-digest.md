@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (113)
+## Decisions (114)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -79,7 +79,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-pro… [refines ADR-003]
 - ADR-072 2026-10-09: The plain-language answer to "Where do I start lo… [applies REQ-034]
 - ADR-073 2026-10-10: The framework-generated API docs page (/docs) and… [applies ADR-003]
-- ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass… [none — it amends only the master-plan Stage 4 cor…]
+- ADR-074 2026-10-15: If the one bounded #200 round fails, the master-p… [none — it amends only the master-plan Stage 4 cor…]
 - ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition,… [refines ADR-062]
 - ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells mi… [none — adds the TOTAL Current Value rule next to…]
 - ADR-077 2026-10-15: When a strategy's live connection to the platform drops (the browser's own socket closes) and the s… [refines ADR-068]
@@ -119,6 +119,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
 - ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
 - ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
+- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none to requirements; merge commands in CLAUDE.md…]
 
 ## Requirements (75)
 

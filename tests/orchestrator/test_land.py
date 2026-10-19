@@ -72,6 +72,21 @@ def test_the_gate_gets_the_reviewed_sha(tmp_path, capsys):
     assert all(g[-2:] == ["--reviewed-sha", SHA] for g in gates)
 
 
+def test_final_gate_refusals_stop_without_updating_even_when_behind(tmp_path, capsys):
+    """Opus review MAJOR-1: RE-REVIEW NEEDED arrives while the PR is BEHIND and "updates exhausted" contains
+    "behind"; neither may trigger land.py's own update-branch retries, which would hide the cause."""
+    for refusal in ("RE-REVIEW NEEDED: backend/ofo/execution/basket.py",
+                    "REFUSED: PR 77 is still behind its base after 3 updates (updates exhausted)",
+                    "REFUSED: reviewed sha 0123456789ab is not an ancestor of head fedcba987654"):
+        fake = Fake([(1, refusal)], state="BEHIND")
+        rc, out = run(fake, tmp_path, capsys)
+        assert rc == 1
+        assert len(fake.ran(GATE)) == 1
+        assert not fake.ran("update-branch")
+        assert not fake.ran("merge", "--no-edit")
+        assert "not updating the branch again" in out
+
+
 def test_a_missing_or_short_reviewed_sha_stops_before_anything_runs(tmp_path, capsys):
     for bad in ("", SHA[:12], SHA[:-1] + "g", "HEAD"):
         fake = Fake([(0, "merged")])
