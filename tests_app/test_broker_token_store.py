@@ -80,6 +80,10 @@ class FakeConn:
         self.calls: list[tuple[str, dict]] = []
         self.commits = 0
         self.order: list[str] = []
+        self.in_tx = False  # does the caller already hold a transaction on this connection?
+
+    def in_transaction(self):
+        return self.in_tx
 
     async def commit(self):
         self.commits += 1
@@ -201,6 +205,27 @@ async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     assert params["reason"] == "expired" and "token_ciphertext = NULL" in sql
     assert params["id"] == 7 and "WHERE id = :id" in sql  # only the row that was read  # noqa: PLR2004
     assert conn.order[-2:] == ["UPDATE", "commit"]
+
+
+@pytest.mark.parametrize("call_it", ["access_token_for", "call_with_token"])
+async def test_a_connection_already_in_a_transaction_is_refused_before_anything_runs(call_it):
+    """GC-6 MAJOR-1: the token end commits, so it would commit the caller's own earlier writes: refused up front."""
+    cipher = _cipher()
+    blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, True))
+    conn.in_tx = True
+
+    async def call(token):
+        raise AssertionError("must not run")
+
+    with pytest.raises(store.BrokerStoreError, match="token_read_needs_fresh_connection"):
+        if call_it == "access_token_for":
+            await store.access_token_for(conn, "u-1", cipher)
+        else:
+            await store.call_with_token(conn, "u-1", cipher, call)
+    assert conn.calls == [] and conn.commits == 0  # nothing read, no UPDATE, no commit
+    conn.in_tx = False  # the same connection, fresh: passes (ends the expired session, commits once)
+    assert await store.access_token_for(conn, "u-1", cipher) is None and conn.commits == 1
 
 
 class _CountingEngine:
@@ -408,7 +433,9 @@ async def test_a_ciphertext_copied_to_another_row_does_not_decrypt(app_engine):
                 ).scalar_one()
         await conn.execute(text("UPDATE public.broker_sessions SET token_ciphertext = :c WHERE id = :i"),
                            {"c": blob, "i": b_id})
+    async with app_engine.connect() as conn:  # the token read needs a connection with no transaction open
         assert await store.access_token_for(conn, b, cipher) is None
+    async with app_engine.connect() as conn:
         assert await store.access_token_for(conn, a, cipher) == ACCESS_TOKEN
 
 
@@ -470,7 +497,7 @@ async def test_a_token_exception_inside_the_callers_transaction_still_ends_the_s
         raise KiteTokenException()
 
     with pytest.raises(KiteTokenException):
-        async with app_engine.begin() as conn:  # this transaction rolls back on the re-raise
+        async with app_engine.connect() as conn:  # fresh connection; its rollback on the re-raise cannot undo the end
             await store.call_with_token(conn, user, cipher, call)
     (row,) = await _rows(admin_engine, user)
     assert (row["end_reason"], row["token_ciphertext"]) == ("expired", None) and row["ended_at"] is not None

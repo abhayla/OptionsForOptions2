@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 #: How long the start-up read of the role's connection limit may take; a slower database is a read failure (fail-open).
 ROLE_LIMIT_READ_TIMEOUT_SECONDS = 5.0
-_ROLE_LIMIT = text("SELECT rolconnlimit FROM pg_roles WHERE rolname = current_user")
+_ROLE_LIMIT = text("SELECT rolconnlimit, rolsuper FROM pg_roles WHERE rolname = current_user")
 
 
 class PoolBudgetError(RuntimeError):
@@ -77,12 +77,16 @@ def check_pool_against_role_limit(pool_max: int, role_limit: int) -> None:
 
 async def verify_pool_budget(engine: AsyncEngine | None = None) -> None:
     """Start-up check (GC-6): read the role's ``rolconnlimit`` once and refuse to start when the pool can exceed it.
-    Fail-open ONLY when the read itself fails (logged as a warning); a known excess is never let through."""
+    Fail-open ONLY when the read itself fails (logged as a warning); a known excess is never let through. A superuser
+    is skipped: PostgreSQL does not enforce ``rolconnlimit`` for one."""
     try:
         async with asyncio.timeout(ROLE_LIMIT_READ_TIMEOUT_SECONDS):
             async with (engine or get_engine()).connect() as conn:
-                role_limit = int((await conn.execute(_ROLE_LIMIT)).scalar_one())
+                limit, superuser = (await conn.execute(_ROLE_LIMIT)).one()
+                role_limit = int(limit)
     except Exception as exc:  # noqa: BLE001 - an unreadable limit does not stop the app; the reason class is logged
         log.warning("database role connection limit not read (%s); pool budget not checked", type(exc).__name__)
+        return
+    if superuser:  # PostgreSQL does not enforce a connection limit on a superuser
         return
     check_pool_against_role_limit(pool_maximum(), role_limit)

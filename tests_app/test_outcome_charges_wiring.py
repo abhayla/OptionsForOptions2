@@ -155,3 +155,33 @@ async def test_concurrent_callers_after_expiry_trigger_one_load(monkeypatch):
     got = await asyncio.gather(*(outcome.load_charge_rates() for _ in range(20)))
     assert got == [None] * 20 and len(opened) == 1
     assert await outcome.load_charge_rates() is None and len(opened) == 1  # remembered: no new session
+
+
+async def test_a_cancelled_caller_does_not_cancel_the_shared_load(monkeypatch):
+    """The load is shielded: cancel one waiting caller mid-load, the others still get the rates (one session)."""
+    opened = []
+    release = asyncio.Event()
+
+    class _Held:
+        async def __aenter__(self):
+            opened.append(1)
+            await release.wait()
+            return object()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def rates(session):
+        return RATES
+
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _Held)
+    monkeypatch.setattr(store, "rates_in_force", rates)
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": 0.0, "value": None})
+    tasks = [asyncio.create_task(outcome.load_charge_rates()) for _ in range(3)]
+    await asyncio.sleep(0.01)  # all three are waiting on the one load
+    tasks[0].cancel()
+    await asyncio.sleep(0.01)
+    release.set()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    assert isinstance(results[0], asyncio.CancelledError)
+    assert results[1:] == [RATES, RATES] and len(opened) == 1
