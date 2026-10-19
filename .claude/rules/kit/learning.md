@@ -50,6 +50,9 @@ The project's registry is `knowledge/findings/`: one JSON file per class (format
 - **R2** Accept/reject each finding with a line of evidence, write the third-round brief AROUND them; its PR body
   cites the review; the owner is told afterwards, as information.
 - **R3 Third red after the reviewed round is a stop:** escalate with the review, both briefs and a recommendation.
+- **R4 A process change gets role reviews before the owner sees it:** a change to review tiers, rounds, verifiers
+  or guards goes to independent reviewers (safety, delivery, platform), each given the current rule quoted beside
+  the proposed one (finding `process-change-narrows-safety-rule`).
 
 ## D. Detection-gap RCA (high-risk reviews and production defects)
 

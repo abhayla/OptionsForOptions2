@@ -112,19 +112,14 @@ DENY_KIND_KIT_FOLDER = "kit-folder"
 # real file, or the whole command is refused.
 _READONLY_PROGRAM_RE = re.compile(
     r"^(cat|type|head|tail|less|more|wc|grep|rg|findstr|ls|dir"
-    r"|get-content|gc|get-childitem|gci|select-string|sls|diff)\b",
+    r"|get-content|gc|get-childitem|gci|select-string|sls|diff)(?:\.exe)?(?=\s|$)",
     re.IGNORECASE,
 )
+# W-046 round 5 (#127): main's `^git\s+` spelling only. Round 1 had widened it to `git.exe`, which
+# allowed `git.exe diff <kit path>` where main denies it (AC-6: tightening only).
 _READONLY_GIT_RE = re.compile(
-    r"^git\s+(diff|log|show|status|blame|ls-files)\b", re.IGNORECASE
+    r"^(git)\s+(diff|log|show|status|blame|ls-files)\b", re.IGNORECASE
 )
-_READONLY_KIT_TOOL_RE = re.compile(
-    r"^python3?\s+tools[/\\]kit_(?:selftest|drift)\.py\b", re.IGNORECASE
-)
-_READONLY_KIT_SETTINGS_CHECK_RE = re.compile(
-    r"^python3?\s+tools[/\\]kit_settings\.py\b", re.IGNORECASE
-)
-
 # Item 1 (OD-22 follow-up, kit-file-guard-blocks-nonmutating-tool-runs): a segment whose program
 # is python/python3/py and whose first argument is EXACTLY `tools/<name>.py` (nothing further --
 # no extra `/`, `\`, `..`, no trailing text before whitespace/end) is RUNNING that kit tool, not
@@ -139,28 +134,76 @@ _READONLY_KIT_SETTINGS_CHECK_RE = re.compile(
 # ran a writer under a read-only-looking name. The `(?=\s|$)` anchor below closes that: the
 # argument must end exactly at `.py`, followed only by whitespace or end of segment.
 _RUNNING_KIT_TOOL_RE = re.compile(
-    r"^(?:python3?|py)(?:\s+-\S+)*\s+tools[/\\]([\w.-]+\.py)(?=\s|$)", re.IGNORECASE
+    r"^(?:python3?|py)(?-i:(?:\s+-[IBu])*)\s+tools[/\\]([\w.-]+\.py)(?=\s|$)", re.IGNORECASE
 )
 
-# Review round 2, item C: these tool names are writers only in some invocations; naming them here
-# (rather than a flat set) means the running-tool leniency above never covers the writing form,
-# which stays whole-command-only via _SANCTIONED_WHOLE_RE (or is refused outright if not sole).
-_UNCONDITIONAL_WRITER_TOOL_NAMES = {"kit_settings.py", "kit_upgrade.py"}
+# Review round 3: a kit tool is judged on its NORMALISED words (quotes and backslashes removed),
+# not on substrings of the raw text, and a flag matches when it is a unique leading part of a writer
+# flag (argparse accepts `--write-vie`). Tools that only write unless told to check are read-only
+# only with their exact check flag.
+_KIT_TOOLS_ALWAYS_WRITE = {"kit_upgrade.py", "new_project.py"}
+_KIT_TOOLS_READONLY_FLAGS = {  # tool -> exact words that make the run read-only
+    "kit_settings.py": ("--check",),
+    "build_findings_index.py": ("--check",),
+    "build_order.py": ("--check", "--may-start"),
+    "build_spec_digest.py": ("--check",),
+    "build_spec_index.py": ("--check",),
+    "generate_kit_tools_provenance.py": ("--check",),
+}
+# Writer / caller-chosen-output flags of any kit tool (long names; `-o` is the short form).
+_KIT_WRITER_FLAGS = (
+    "output", "out", "out-root", "out-dir", "output-dir", "outfile", "write", "write-view",
+    "force", "force-nonempty", "in-place", "inplace",
+)
+# Tools whose output flag is allowed when its value is exactly the tool's own generated file.
+_KIT_OWN_OUTPUT = {"build_status_page.py": "views/status-page.html"}
+
+
+def _main_text_writer_test(name: str, segment: str) -> bool:
+    """The pre-W-046 writer test, kept EXACTLY as it was: substring tests on the raw segment text.
+    The word-level checks below are added on top (deny if either denies), so a junk-wrapped token
+    (`--write-viewx`, `x--write-view`) that the word match misses is still caught here (AC-6)."""
+    seg_lower = segment.lower()
+    if name in ("kit_settings.py", "kit_upgrade.py"):
+        if name == "kit_settings.py":
+            return "--check" not in seg_lower
+        return True
+    if name == "build_findings_index.py":
+        return "--check" not in seg_lower
+    if name == "trace_check.py":
+        return "--write-view" in seg_lower
+    return False
 
 
 def _is_writer_invocation(tool_name: str, segment: str) -> bool:
     name = tool_name.lower()
-    seg_lower = segment.lower()
-    if name in _UNCONDITIONAL_WRITER_TOOL_NAMES:
-        # kit_settings.py without --check still writes settings.json; --check makes it read-only.
-        if name == "kit_settings.py":
-            return "--check" not in seg_lower
-        return True  # kit_upgrade.py always writes
-    if name == "build_findings_index.py":
-        return "--check" not in seg_lower  # writes the index unless --check
-    if name == "trace_check.py":
-        return "--write-view" in seg_lower  # only --write-view writes
+    if _main_text_writer_test(name, segment):
+        return True
+    words = _shell_words(segment)
+    if words is None:
+        return True  # cannot tokenise with certainty: treat as a writer
+    if name in _KIT_TOOLS_ALWAYS_WRITE:
+        return True
+    rest = words[1:]
+    if name in _KIT_TOOLS_READONLY_FLAGS and not any(
+        w in _KIT_TOOLS_READONLY_FLAGS[name] for w in rest
+    ):
+        return True
+    own = _KIT_OWN_OUTPUT.get(name)
+    for i, w in enumerate(rest):
+        if w.startswith("--"):
+            flag = w[2:].split("=", 1)[0].lower()
+            if not _name_is_leading_part(flag, _KIT_WRITER_FLAGS):
+                continue
+            if own is not None and _name_is_leading_part(flag, ("out",)):
+                value = w.split("=", 1)[1] if "=" in w else (rest[i + 1] if i + 1 < len(rest) else None)
+                if value == own:
+                    continue
+            return True
+        if w.startswith("-") and len(w) > 1 and "o" in w[1:].split("=", 1)[0]:
+            return True
     return False
+
 
 # Sanctioned writers (review r1, item 2): allowed ONLY when the entire command is exactly one
 # of these invocations (arguments allowed, no separators, no redirects) -- never as one segment
@@ -242,28 +285,255 @@ def _dir_ancestors(rel_path: str) -> list[str]:
     return out
 
 
-def _has_bad_redirect(segment: str) -> bool:
+# W-046 round 5 (#127): `$null` is PowerShell's null device only under the PowerShell tool; in
+# Bash it is an ordinary variable that may be set to any path, so it is not an inert target there.
+# Data tables, so a mutation test can loosen each one.
+_INERT_REDIRECT_TARGETS = {
+    "Bash": ("/dev/null", "nul"),
+    "PowerShell": ("/dev/null", "nul", "$null"),
+}
+
+
+def _has_bad_redirect(segment: str, shell: str = "Bash") -> bool:
+    inert = _INERT_REDIRECT_TARGETS["PowerShell" if shell == "PowerShell" else "Bash"]
     for m in _BAD_REDIRECT_RE.finditer(segment):
         target = m.group(1).strip("'\"")
-        if target.lower() not in ("/dev/null", "nul", "$null"):
+        if target.lower() not in inert:
             return True
     return False
 
 
-def _is_readonly_segment(segment: str) -> bool:
+# ---------------------------------------------------------------------------
+# W-046 (OD-85 D2, REQ-055 AC-6, issue #120): a read-only program can still make the shell or the
+# program itself run code or write a file through its ARGUMENTS. Every rule below only ever ADDS
+# a deny once a command has already named a protected path; none of them allows anything new.
+#
+# Known gaps, out of this guard's threat model (say so here so nobody assumes otherwise):
+#   - a git diff driver / textconv / fsmonitor configured in .git/config or .gitattributes (the
+#     program then runs it with no flag on the command line);
+#   - shell rc files, aliases and functions;
+#   - a write that names no protected path at all (issue #119 re-hashes lock-listed files);
+#   - zsh, and a glob that expands to a file someone already created with a flag-like name.
+# ---------------------------------------------------------------------------
+
+# Banned arguments per allowlisted program, matched on NORMALISED words (see _shell_words).
+# long: a word `--name` or `--name=value` is banned when `name` is a leading part of one of these
+# (git and others accept an unambiguous abbreviation, so `--outp` is `--output`); matched
+# case-insensitively. short: banned when the letter appears in a single-dash word (`-abc` is
+# `-a -b -c`; `-ccore.x=y` carries `-c`), case-sensitive. plus: any word starting with `+`.
+_BANNED_ARGS = {
+    "git": {"long": ("output", "ext-diff", "textconv", "filters"), "short": "c", "plus": False},
+    "rg": {"long": ("pre", "pre-glob", "hostname-bin"), "short": "", "plus": False},
+    "less": {"long": ("log-file",), "short": "oO", "plus": True},
+    "more": {"long": ("log-file",), "short": "oO", "plus": True},
+}
+
+# Characters allowed in a command that names a protected path: printable ASCII, tab, line feed.
+_ALLOWED_CHAR_RE = re.compile(r"\A[\x20-\x7e\t\n]*\Z")
+
+def _bad_charset(command: str) -> bool:
+    """True if the command holds any character outside printable ASCII, tab and LF: curly quotes
+    (PowerShell reads them as quote marks, the guard does not), NBSP, en dash, CR, U+0085,
+    U+2028/2029 and the like all make the guard and the shell read different words."""
+    return _ALLOWED_CHAR_RE.match(command) is None
+
+
+def _bash_backslash_hazard(command: str) -> bool:
+    """True if a backslash outside single quotes could make the shell and _split_segments read
+    different quotes or line breaks: any backslash outside quotes, and inside double quotes a
+    backslash before `"` or a line feed (any other backslash there, such as in a grep
+    alternation or an escaped backslash, is read the same way by both)."""
+    quote = None
+    i = 0
+    n = len(command)
+    while i < n:
+        ch = command[i]
+        if quote == "'":
+            if ch == "'":
+                quote = None
+        elif quote == '"':
+            if ch == "\\":
+                if i + 1 < n and command[i + 1] in ('"', chr(10)):
+                    return True
+                i += 1  # the escaped character cannot open or close a quote
+            elif ch == '"':
+                quote = None
+        elif ch == "\\":
+            return True
+        elif ch in ("'", '"'):
+            quote = ch
+        i += 1
+    return False
+
+
+def _ps_unquoted_hazard(command: str) -> bool:
+    """PowerShell tool only: True if `(`, `{` or a backtick appears outside quotes (`@(` and
+    `$(` contain `(`). The shell runs the code inside them while the guard sees a read."""
+    quote = None
+    for ch in command:
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch in "({`":
+            return True
+    return False
+
+
+def _expansion_hazard(segment: str) -> bool:
+    """True if the text holds ANY `$` outside single quotes. The guard cannot know what the
+    shell makes of it (`--ext$X-diff` with X unset is `--ext-diff`, `$null_x` is another
+    variable, `$^` and `$?` are variables too), so there is no word-level exemption: inert
+    redirects (`2>/dev/null`, `2>$null`, ...) are removed whole-word first by
+    _strip_inert_redirects. The one literal `$` kept is a regex end anchor right before the closing
+    double quote (`grep "foo$" f`), which the shell never expands."""
+    quote = None
+    n = len(segment)
+    for i, ch in enumerate(segment):
+        if quote == "'":
+            if ch == "'":
+                quote = None
+            continue
+        if ch == "'" and quote is None:
+            quote = "'"
+            continue
+        if ch == '"':
+            quote = None if quote == '"' else '"'
+            continue
+        if ch == "$":
+            if quote == '"' and i + 1 < n and segment[i + 1] == '"':
+                continue
+            return True
+    return False
+
+
+_INERT_REDIRECT_RES = {
+    # Bash: `$null` is a variable (round 5), so `2>$null` keeps its `$` and the `$` denial applies.
+    "Bash": re.compile(r"(?<!\S)(?:[12]?>/dev/null|2>&1)(?=\s|$)"),
+    "PowerShell": re.compile(r"(?<!\S)(?:[12]?>(?:/dev/null|(?i:\$null))|2>&1)(?=\s|$)"),
+}
+
+
+def _strip_inert_redirects(command: str, shell: str = "Bash") -> str:
+    """Remove exact whole-word redirect tokens that write nothing (`2>/dev/null`, `>/dev/null`,
+    `2>&1`, and under the PowerShell tool only `2>$null`, `>$null`), so the `$` denial needs no
+    `$null` special case."""
+    rx = _INERT_REDIRECT_RES["PowerShell" if shell == "PowerShell" else "Bash"]
+    return rx.sub("", command)
+
+
+def _segment_hazard(segment: str, shell: str = "Bash") -> bool:
+    """The checks EVERY allowed segment passes through, whatever program admitted it: an
+    unresolvable `$` expansion, or text that cannot be tokenised with certainty."""
+    return (
+        _expansion_hazard(_strip_inert_redirects(segment, shell))
+        or _shell_words(segment, shell) is None
+    )
+
+
+def _shell_words(segment: str, shell: str = "Bash") -> list[str] | None:
+    """Split a segment into shell words with quotes and backslashes removed (so `--""filters`,
+    `'--'filters` and a backslash before the first dash all become `--filters`). Returns None when the segment cannot
+    be tokenised with certainty (unbalanced quote, unquoted `{` brace expansion, or an unquoted
+    glob character in a word that starts with `-`): the caller then treats it as NOT read-only."""
+    words: list[str] = []
+    cur: list[str] = []
+    started = False
+    quote = None
+    i = 0
+    n = len(segment)
+
+    def finish() -> None:
+        nonlocal cur, started
+        if started:
+            words.append("".join(cur).replace("\\", ""))
+        cur = []
+        started = False
+
+    while i < n:
+        ch = segment[i]
+        if quote is not None:
+            if quote == '"' and ch == "\\" and shell != "PowerShell" and i + 1 < n:
+                cur.append(segment[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            else:
+                cur.append(ch)
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            started = True
+            i += 1
+            continue
+        if ch == "\\" and shell != "PowerShell" and i + 1 < n:
+            cur.append(segment[i + 1])
+            started = True
+            i += 2
+            continue
+        if ch in " \t\n":
+            finish()
+            i += 1
+            continue
+        if ch == "{":
+            return None
+        if ch in "*?[" and cur and cur[0] == "-":
+            return None
+        cur.append(ch)
+        started = True
+        i += 1
+    if quote is not None:
+        return None
+    finish()
+    return words
+
+
+def _name_is_leading_part(name: str, longs: tuple[str, ...]) -> bool:
+    return bool(name) and any(b.startswith(name) for b in longs)
+
+
+def _word_is_banned(word: str, rules: dict) -> bool:
+    if rules["plus"] and word.startswith("+"):
+        return True
+    if word.startswith("--"):
+        return _name_is_leading_part(word[2:].split("=", 1)[0].lower(), rules["long"])
+    if word.startswith("-") and len(word) > 1:
+        body = word[1:].split("=", 1)[0]
+        return any(ch in rules["short"] for ch in body)
+    return False
+
+
+def _program_runs_code(program: str, segment: str, shell: str = "Bash") -> bool:
+    """True if this allowlisted read-only segment must NOT be treated as read-only: the guard
+    cannot tokenise it with certainty, or one of its words is a banned argument of the program
+    that admitted it (the same case-insensitive match that admitted the segment)."""
+    if _segment_hazard(segment, shell):
+        return True
+    words = _shell_words(segment, shell)
+    rules = _BANNED_ARGS.get(program.lower())
+    if rules is None:
+        return False
+    return any(_word_is_banned(w, rules) for w in words[1:])
+
+
+def _is_readonly_segment(segment: str, shell: str = "Bash") -> bool:
     s = segment.strip()
     if not s:
         return True
-    if _has_bad_redirect(s):
+    if _has_bad_redirect(s, shell):
         return False
-    if _READONLY_PROGRAM_RE.match(s):
-        return True
-    if _READONLY_GIT_RE.match(s):
-        return True
-    if _READONLY_KIT_TOOL_RE.match(s):
-        return True
-    if _READONLY_KIT_SETTINGS_CHECK_RE.match(s) and "--check" in s.lower():
-        return True
+    if _segment_hazard(s, shell):
+        return False
+    m_prog = _READONLY_PROGRAM_RE.match(s)
+    if m_prog:
+        return not _program_runs_code(m_prog.group(1), s, shell)
+    m_git = _READONLY_GIT_RE.match(s)
+    if m_git:
+        return not _program_runs_code("git", s, shell)
     m = _RUNNING_KIT_TOOL_RE.match(s)
     if m and not _is_writer_invocation(m.group(1), s):
         return True
@@ -475,17 +745,14 @@ def _protected_rel_names(project_root: str, lock: dict | None) -> list[tuple[str
     return sorted(out, key=lambda t: -len(t[0]))
 
 
-def check_shell_tool(command: str, project_root: str, lock: dict | None) -> tuple[str, str] | None:
+def check_shell_tool(
+    command: str, project_root: str, lock: dict | None, shell: str = "Bash"
+) -> tuple[str, str] | None:
     if not command:
         return None
 
     # Bypass (review r1, item 3): valid ONLY as a leading inline assignment.
     if _BASH_BYPASS_LEADING_RE.match(command) or _PS_BYPASS_LEADING_RE.match(command):
-        return None
-
-    # Sanctioned writer (review r1, item 2): allowed ONLY when it IS the entire command --
-    # no separators, no redirects, nothing trailing (a comment or another command).
-    if not _SEPARATOR_CHARS_RE.search(command) and _SANCTIONED_WHOLE_RE.match(command):
         return None
 
     norm_command = _norm_command_text(command)
@@ -498,18 +765,912 @@ def check_shell_tool(command: str, project_root: str, lock: dict | None) -> tupl
     if hit is None:
         return None
 
+    # W-046 r2: from here a protected path IS named, so an internal error must DENY, never allow.
+    # (An error before this point -- bad JSON, missing lock, no project -- still fails open, as
+    # main() documents: nothing is known to be protected yet.)
+    try:
+        return _check_named_command(command, shell, hit)
+    except Exception:
+        return hit
+
+
+def _check_named_command(command: str, shell: str, hit: tuple[str, str]) -> tuple[str, str] | None:
     # Review round 2, item B: command substitution / process substitution can hide an arbitrary
     # write inside what otherwise looks like a read-only segment (e.g. a `cat`/`python` call whose
     # argument is `$(rm tools/pathsafe.py)`); refuse outright rather than try to parse into it.
     if "$(" in command or "`" in command or "<(" in command:
         return hit
 
+    # W-046 r3: ANY `$` outside single quotes denies (both shells, sanctioned writers included).
+    # Inert redirects are removed for THIS scan only; every other check sees the command exactly
+    # as before (tightening only: nothing main denies may become allowed).
+    if _expansion_hazard(_strip_inert_redirects(command, shell)):
+        return hit
+
+    # W-046: characters the guard and the shell read differently (curly quotes, NBSP, CR, ...).
+    if _bad_charset(command):
+        return hit
+
+    # W-046 r2: in Bash a backslash outside single quotes escapes the next character (a quote
+    # included), which _split_segments does not model: `cat \" ; rm tools/x ; echo \"` is three
+    # commands to the shell and one quoted segment to the splitter. Fail closed.
+    if shell != "PowerShell" and _bash_backslash_hazard(command):
+        return hit
+
+    # W-046: PowerShell runs the code inside ( ), @( ), { } and backtick escapes.
+    if shell == "PowerShell" and _ps_unquoted_hazard(command):
+        return hit
+
+    # Sanctioned writer (review r1, item 2): allowed ONLY when it IS the entire command --
+    # no separators, no redirects, nothing trailing (a comment or another command). Checked
+    # after the rules above so a sanctioned program cannot carry a hidden sub-expression.
+    if not _SEPARATOR_CHARS_RE.search(command) and _SANCTIONED_WHOLE_RE.match(command):
+        return None
+
     # Review r1, item 1: default-deny once a protected path/folder is named, UNLESS every
     # segment of the command is provably read-only.
     segments = _split_segments(command)
-    if all(_is_readonly_segment(seg) for seg in segments):
+    if all(_is_readonly_segment(seg, shell) for seg in segments):
         return None
 
+    return hit
+
+
+# ---------------------------------------------------------------------------
+# W-041 (REQ-055 AC-1, OD-85 D1): a second, strictly narrower allow path for the Bash tool.
+#
+# check_shell_tool above is main's verdict, tightened only by W-046 (OD-85 D2; its denies are a
+# superset of commit 43aa7d8's, proven by the W-046 differential) and NOT edited here (its source
+# is pinned by a test, re-taken deliberately at W-046 round 5).
+# check_shell_command takes that verdict first; a command it denies is allowed ONLY when it came
+# from the Bash tool AND passes a strict simple-command grammar AND every program's shell-
+# normalised words pass that program's allowlist. Anything this code cannot resolve for certain
+# (an unknown program, a lexer disagreement with shlex, an unparsable loop, any exception) keeps
+# main's deny. An allow is a SILENT exit 0 (never a JSON "allow", which would override other
+# hooks' denies).
+#
+# Findings this answers: guard-matches-raw-text-not-shell-words (judge normalised words, not raw
+# text), guard-matches-one-spelling-of-a-program (the program word must be a bare table name; no
+# path, no extension, exact case), readonly-allowlist-runs-code-in-arguments (per-program bans on
+# every flag that runs a helper or writes a file, in every spelling: prefixes, `=`, clusters).
+#
+# W-049 (REQ-056 AC-2) adds three more exemptions to this same narrow path, each a data table:
+#   - DATA tokens ("d"): a whole-word single-quoted string, or exactly
+#     "$(cat <<'WORD' <newline> body <newline> WORD <newline> )"  (quoted delimiter only; the FIRST
+#     line equal to WORD ends the body; the next characters must be `)"`). Bash expands nothing in
+#     either spelling, so the text reaches the program as one literal argument. A d token is accepted
+#     ONLY as the value of a flag marked data-ok in _GH_WRITER_FLAGS / _GIT_COMMIT_FLAGS, and only for
+#     the programs in _DATA_PROGRAMS (gh, git): `gh pr|issue create|comment|edit` and `git commit`,
+#     which never write a local file by themselves. Any other d token, and any near-miss spelling of
+#     either form, fails closed. Newlines stay banned everywhere outside a d token. The shlex
+#     differential check runs on a skeleton where each d token is replaced by a fixed word.
+#   - sed: print-only. Flags only from _SED_FLAG_LETTERS, exactly one script (_SED_SCRIPT_RE, the
+#     first non-flag word), then files; any later word starting with "-" is refused.
+#   - a leading `cd <one plain dir> &&` (_CD_PREFIX_OPS); the rest must pass the existing rules.
+#
+# KNOWN GAPS (out of scope by the W-041 threat model; reported, not defended here):
+#   - a `git commit` runs the project's own git hooks (pre-commit, commit-msg, ...) and, for
+#     `gh pr create`, a push runs pre-push: a hook is code the repo owner chose, outside this text;
+#   - the heredoc form assumes bash 5.x (Git Bash) parses a quoted heredoc inside $( ) as a real
+#     command; very old bash (3.2) does not and is not a supported shell here;
+#   - a git config key that names a program (core.fsmonitor, diff/filter drivers,
+#     remote.<name>.uploadpack, core.sshCommand, gpg.program, core.pager) is run by an
+#     allowlisted git subcommand without appearing in the command text;
+#   - shell rc aliases/functions (the Bash tool's shell is assumed to run no user rc that
+#     redefines cat, git, ...);
+#   - zsh as the Bash tool's shell: the grammar is proven against bash / Git Bash only;
+#   - writes that name no kit path at all (issue 119);
+#   - a launched owner script (-File, outside every kit root) receives relative arguments such
+#     as `.`; what that owner script does with them is the owner's script's business.
+# ---------------------------------------------------------------------------
+import shlex as _shlex
+
+_SIMPLE_WORD_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:@%+=,~*-"
+)
+# Inside quotes: printable ASCII except the characters that expand or escape inside quotes,
+# and both quote characters.
+_SIMPLE_QUOTED_BANNED = frozenset("$`\\!\"'")
+_SIMPLE_REDIRECTS = {
+    "2>/dev/null": ["2", ">", "/dev/null"],
+    ">/dev/null": [">", "/dev/null"],
+    "2>&1": ["2", ">&", "1"],
+}
+_SIMPLE_LIST_OPS = ("&&", "||", ";")
+_SIMPLE_VAR_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# A glob word must start with a literal folder: its text before the first star holds a slash,
+# and it starts with a letter, digit, underscore, dot or tilde (never a dash).
+_SIMPLE_GLOB_PREFIX_RE = re.compile(r"^[A-Za-z0-9_.~][^*]*/")
+
+# Per-program allowlist (anything not a key of _PROGRAM_RULES is not allowed). Bans are data so a
+# mutation test can remove each one and show an attack test going red.
+_SIMPLE_ANY_ARGS = {"cat", "head", "tail", "wc", "ls", "cmp", "diff"}
+_GREP_BANNED_SHORT = "f"
+_GREP_BANNED_LONG = ("file",)
+_RG_BANNED_SHORT = "z"
+_RG_BANNED_LONG = ("pre", "pre-glob", "hostname-bin", "search-zip")
+_SORT_BANNED_SHORT = "oT"
+_SORT_BANNED_LONG = ("output", "compress-program", "temporary-directory")
+_UNIQ_MAX_POSITIONALS = 1
+_GIT_SUBCOMMANDS = {
+    "status", "log", "show", "diff", "ls-files", "blame", "rev-parse", "merge-base",
+    "ls-remote", "cat-file",
+}
+_GIT_BANNED_LONG = ("ext-diff", "textconv", "output", "filters", "upload-pack", "exec")
+# W-046 round 5 merge: REQ-055 AC-6 bans git `-c` in every spelling (`-ccore.x=y`, `-nc`); main's
+# verdict denies it, so this allow path must not re-allow it after the subcommand either.
+_GIT_BANNED_SHORT = "c"
+_GIT_LS_REMOTE_FLAGS = {
+    "--heads", "--tags", "--refs", "-q", "--quiet", "--exit-code", "--get-url", "--symref",
+    "-h", "-t", "-b", "--branches",
+}
+_GIT_LS_REMOTE_SORT_RE = re.compile(r"^--sort=[A-Za-z0-9:_-]+$")
+_GIT_REMOTE_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_GIT_CAT_FILE_FLAGS = {"-t", "-s", "-p", "-e"}
+_GH_GROUPS = {"issue", "pr", "run", "repo"}
+_GH_ACTIONS = {"view", "list"}
+_GH_REPO_VALUE_RE = re.compile(
+    r"^(?:[A-Za-z0-9][A-Za-z0-9.-]*/)?[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$"
+)
+_FINDINGS_REGEN_WORDS = ["python", "tools/build_findings_index.py", "."]
+_LAUNCHER_PROGRAMS = {"powershell", "pwsh"}
+_LAUNCHER_FLAG_NOVALUE = {"-noprofile"}
+_LAUNCHER_FLAG_VALUE = {"-executionpolicy"}
+_LAUNCHER_VALUE_RE = re.compile(r"^[A-Za-z]+$")
+_LAUNCHER_ARG_BANNED_PREFIXES = ("-c", "-e")
+
+# W-049 tables. Every exemption below is data so a mutation test can loosen each one.
+_DATA_PLACEHOLDER = "DATA"
+_HEREDOC_OPEN = "\"$(cat <<'"
+_HEREDOC_WORD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
+_AFTER_WORD_CHARS = " ;|&"
+# Programs that may receive a d token (and only inside their writer flag tables below).
+_DATA_PROGRAMS = {"gh", "git"}
+_SED_FLAG_LETTERS = "nEr"
+_SED_SCRIPT_RE = re.compile(r"^[0-9]+(,[0-9]+)?p\Z")
+_CD_PROGRAM = "cd"
+_CD_PREFIX_OPS = ("&&",)
+_GH_WRITER_ACTIONS = {
+    "pr": {"create", "comment", "edit"},
+    "issue": {"create", "comment", "edit"},
+}
+# flag -> (canonical name, takes a value, a d token may be the value)
+_GH_WRITER_FLAGS = {
+    "-t": ("title", True, True), "--title": ("title", True, True),
+    "-b": ("body", True, True), "--body": ("body", True, True),
+    "-B": ("base", True, False), "--base": ("base", True, False),
+    "-H": ("head", True, False), "--head": ("head", True, False),
+    "-d": ("draft", False, False), "--draft": ("draft", False, False),
+    "-l": ("label", True, False), "--label": ("label", True, False),
+    "-a": ("assignee", True, False), "--assignee": ("assignee", True, False),
+    "--add-label": ("label", True, False), "--remove-label": ("label", True, False),
+    "-R": ("repo", True, False), "--repo": ("repo", True, False),
+    "--fill": ("fill", False, False),
+}
+_GH_WRITER_POSITIONAL_RE = re.compile(r"^[0-9]+\Z")
+_GH_WRITER_POSITIONALS = {"create": 0, "comment": 1, "edit": 1}
+_GIT_COMMIT_FLAGS = {
+    "-m": ("message", True, True), "--message": ("message", True, True),
+    "-q": ("quiet", False, False), "--quiet": ("quiet", False, False),
+    "-s": ("signoff", False, False), "--signoff": ("signoff", False, False),
+}
+
+
+class _SimpleFail(Exception):
+    """Any shape the grammar cannot resolve for certain: the caller keeps main's deny."""
+
+
+def _check_plain_word(word: str) -> None:
+    for k, c in enumerate(word):
+        if c == "~":
+            if k == 0:
+                if not (word == "~" or word.startswith("~/")):
+                    raise _SimpleFail("~user or ~+ / ~- expansion")
+            elif not word[k - 1].isalnum():
+                raise _SimpleFail("~ after = or : expands in bash")
+    if "*" in word and not _SIMPLE_GLOB_PREFIX_RE.match(word):
+        raise _SimpleFail("glob without a literal dir/ prefix")
+
+
+# Round 3 (independent review): this lexer reads a Python str, bash reads bytes after its reader
+# drops NUL (and MSYS drops CR), so a delimiter split by such a character is `EOF)` to bash and
+# `E?OF)` to us. One whitelist on the WHOLE command, before any token is cut: every character is
+# printable (str.isprintable) or in _DATA_EXTRA_CHARS. Tab and newline stay legal here, but the
+# grammar still refuses them outside a data token.
+_DATA_EXTRA_CHARS = "\t\n"
+
+
+def _command_chars_ok(command: str) -> bool:
+    return all(c.isprintable() or c in _DATA_EXTRA_CHARS for c in command)
+
+
+def _q_body_ok(body: str) -> bool:
+    return all(" " <= c <= "~" and c not in _SIMPLE_QUOTED_BANNED for c in body)
+
+
+def _delimiter_ends_line(command: str, q: int) -> bool:
+    """The closing quote of the delimiter word is followed by a newline and nothing else."""
+    return command[q + 1:q + 2] == "\n"
+
+
+def _close_paren_follows(command: str, nl: int) -> bool:
+    """The delimiter line is followed (after its newline) by the lone `)"`."""
+    return nl != -1 and command.startswith(')"', nl + 1)
+
+
+def _line_names_delimiter(line: str, word: str) -> bool:
+    """A body line that contains the delimiter word anywhere: bash and this lexer may disagree on
+    where the heredoc ends, so refuse (stricter than bash's own rule)."""
+    return word in line
+
+
+def _scan_heredoc(command: str, i: int) -> tuple[str, int]:
+    """The one heredoc data spelling, starting at command[i]: -> (body, index after the closing
+    `)"`). Anything else that looks like it raises _SimpleFail."""
+    k = i + len(_HEREDOC_OPEN)
+    q = command.find("'", k)
+    if q == -1:
+        raise _SimpleFail("heredoc delimiter not closed")
+    word = command[k:q]
+    if not word or not _HEREDOC_WORD_RE.match(word):
+        raise _SimpleFail("heredoc delimiter shape")
+    if not _delimiter_ends_line(command, q):
+        raise _SimpleFail("text after the heredoc delimiter")
+    start = pos = q + 2
+    while True:
+        nl = command.find("\n", pos)
+        line = command[pos:] if nl == -1 else command[pos:nl]
+        if line == word:
+            if not _close_paren_follows(command, nl):
+                raise _SimpleFail("heredoc not closed by a lone )\"")
+            return command[start:pos], nl + 3
+        if _line_names_delimiter(line, word):
+            # bash 5.2 inside $( ) ends a heredoc at `EOF)`, `EOF )`, `EOF;)` and runs the rest
+            raise _SimpleFail("a body line contains the delimiter")
+        if nl == -1:
+            raise _SimpleFail("heredoc not closed")
+        pos = nl + 1
+
+
+def _simple_lex(command: str) -> list[tuple[str, str]]:
+    """Tokens of a command in the strict grammar: ("w", text) plain word, ("q", text) quoted
+    word, ("v", name) a `"$name"` word, ("d", text) a data word, ("op", op), ("r", redirect).
+    Raises _SimpleFail."""
+    return _simple_lex_skeleton(command)[0]
+
+
+def _simple_skeleton(command: str) -> str:
+    """The command text with every d token replaced by one fixed word (for the shlex check)."""
+    return _simple_lex_skeleton(command)[1]
+
+
+def _simple_lex_skeleton(command: str) -> tuple[list[tuple[str, str]], str]:
+    if not _command_chars_ok(command):
+        raise _SimpleFail("a character outside the printable whitelist")
+    spans: list[tuple[int, int]] = []
+    toks: list[tuple[str, str]] = []
+    n = len(command)
+    i = 0
+    while i < n:
+        ch = command[i]
+        if ch == " ":
+            i += 1
+            continue
+        at_word_start = i == 0 or command[i - 1] == " "
+        redirect = None
+        if at_word_start:
+            for red in _SIMPLE_REDIRECTS:
+                if command.startswith(red, i):
+                    redirect = red
+                    break
+        if redirect is not None:
+            end = i + len(redirect)
+            if end < n and command[end] not in " ;|&":
+                raise _SimpleFail("redirect glued to a word")
+            toks.append(("r", redirect))
+            i = end
+            continue
+        if command.startswith("&&", i) or command.startswith("||", i):
+            toks.append(("op", command[i:i + 2]))
+            i += 2
+            continue
+        if ch in "|;":
+            toks.append(("op", ch))
+            i += 1
+            continue
+        if ch in "&<>":
+            raise _SimpleFail("lone & or an unlisted redirect")
+        if ch in "\"'":
+            if not at_word_start:
+                raise _SimpleFail("quote inside a word")
+            if ch == '"' and command.startswith('"$(', i):
+                if not command.startswith(_HEREDOC_OPEN, i):
+                    raise _SimpleFail("command substitution")
+                body, end = _scan_heredoc(command, i)
+                if end < n and command[end] not in _AFTER_WORD_CHARS:
+                    raise _SimpleFail("heredoc data not a whole word")
+                toks.append(("d", body))
+                spans.append((i, end))
+                i = end
+                continue
+            close = command.find(ch, i + 1)
+            if close == -1:
+                raise _SimpleFail("unterminated quote")
+            body = command[i + 1:close]
+            if close + 1 < n and command[close + 1] not in _AFTER_WORD_CHARS:
+                raise _SimpleFail("quote not around a whole word")
+            if ch == "'" and body and not _q_body_ok(body):
+                toks.append(("d", body))
+                spans.append((i, close + 1))
+            elif ch == '"' and body.startswith("$") and _SIMPLE_VAR_RE.match(body[1:]):
+                toks.append(("v", body[1:]))
+            else:
+                if not body:
+                    raise _SimpleFail("empty quoted word")
+                for c in body:
+                    if not (" " <= c <= "~") or c in _SIMPLE_QUOTED_BANNED:
+                        raise _SimpleFail("banned character inside quotes")
+                toks.append(("q", body))
+            i = close + 1
+            continue
+        j = i
+        while j < n and command[j] not in " ;|&<>":
+            c = command[j]
+            if c in "\"'":
+                raise _SimpleFail("quote inside a word")
+            if c not in _SIMPLE_WORD_CHARS:
+                raise _SimpleFail("character outside the grammar")
+            j += 1
+        word = command[i:j]
+        _check_plain_word(word)
+        toks.append(("w", word))
+        i = j
+    parts: list[str] = []
+    last = 0
+    for a, b in spans:
+        parts.append(command[last:a])
+        parts.append(_DATA_PLACEHOLDER)
+        last = b
+    parts.append(command[last:])
+    return toks, "".join(parts)
+
+
+def _shlex_expected(toks: list[tuple[str, str]]) -> list[str]:
+    out: list[str] = []
+    for kind, text in toks:
+        if kind == "r":
+            out.extend(_SIMPLE_REDIRECTS[text])
+        elif kind == "v":
+            out.append("$" + text)
+        elif kind == "d":
+            out.append(_DATA_PLACEHOLDER)
+        else:
+            out.append(text)
+    return out
+
+
+def _parse_pipeline(toks, var):
+    """-> list of simple commands. `var` = (name, (kind, text)) substitutes `"$name"`."""
+    cmds: list[list[tuple[str, str]]] = []
+    cur: list[tuple[str, str]] = []
+    for kind, text in list(toks) + [("op", "|")]:
+        if kind == "op":
+            if text != "|" or not cur:
+                raise _SimpleFail("empty pipeline stage or a list operator inside a pipeline")
+            cmds.append(cur)
+            cur = []
+            continue
+        if kind == "v":
+            if var is None or text != var[0] or not cur:
+                raise _SimpleFail("a variable outside its loop, or as the program word")
+            cur.append(var[1])
+            continue
+        if kind == "r" and not cur:
+            raise _SimpleFail("redirect before the program word")
+        cur.append((kind, text))
+    return cmds
+
+
+def _parse_loop(toks, i):
+    """`for V in <words>; do <pipeline>; done` -> (next index, [pipeline per loop word])."""
+    n = len(toks)
+    if i + 3 >= n or toks[i + 1][0] != "w" or toks[i + 2] != ("w", "in"):
+        raise _SimpleFail("not a for V in ... loop")
+    name = toks[i + 1][1]
+    if not _SIMPLE_VAR_RE.match(name):
+        raise _SimpleFail("loop variable name")
+    j = i + 3
+    words = []
+    while j < n and toks[j][0] in ("w", "q"):
+        words.append(toks[j])
+        j += 1
+    if not words or j + 1 >= n or toks[j] != ("op", ";") or toks[j + 1] != ("w", "do"):
+        raise _SimpleFail("loop header")
+    k = j + 2
+    body_start = k
+    while k < n and toks[k] != ("op", ";"):
+        if toks[k][0] == "op" and toks[k][1] != "|":
+            raise _SimpleFail("loop body is not one pipeline")
+        k += 1
+    if k + 1 >= n or toks[k + 1] != ("w", "done"):
+        raise _SimpleFail("loop not closed by ; done")
+    body = toks[body_start:k]
+    if not body:
+        raise _SimpleFail("empty loop body")
+    runs = [_parse_pipeline(body, (name, w)) for w in words]
+    return k + 2, runs
+
+
+def _simple_parse(command: str):
+    """Parse a command into segments; each segment is a list of simple commands (one pipeline,
+    or a for-loop body substituted once per loop word). A simple command is a list of
+    ("w"|"q"|"r", text). None = not in the grammar (fail closed)."""
+    try:
+        if not command:
+            return None
+        toks = _simple_lex(command)
+        if not toks:
+            return None
+        skeleton = _simple_skeleton(command)
+        if "\r" in skeleton or "\n" in skeleton:
+            return None  # a newline is legal only inside a d token
+        lx = _shlex.shlex(skeleton, posix=True, punctuation_chars=True)
+        lx.whitespace_split = True
+        if list(lx) != _shlex_expected(toks):
+            return None  # our lexer and the shell-like reference disagree: fail closed
+        segments = []
+        i = 0
+        n = len(toks)
+        while True:
+            if i >= n:
+                return None
+            if toks[i] == ("w", "for"):
+                i, runs = _parse_loop(toks, i)
+            else:
+                j = i
+                while j < n and not (toks[j][0] == "op" and toks[j][1] in _SIMPLE_LIST_OPS):
+                    j += 1
+                runs = [_parse_pipeline(toks[i:j], None)]
+                i = j
+            segments.append([cmd for run in runs for cmd in run])
+            if i >= n:
+                break
+            if toks[i][0] != "op" or toks[i][1] not in _SIMPLE_LIST_OPS:
+                return None
+            i += 1
+            if i >= n:
+                return None  # a trailing list operator
+        return segments
+    except _SimpleFail:
+        return None
+
+
+def _short_cluster_has(word: str, letters: str) -> bool:
+    return (word.startswith("-") and not word.startswith("--") and len(word) > 1
+            and any(c in word[1:] for c in letters))
+
+
+def _long_name(word: str) -> str | None:
+    if not word.startswith("--") or word == "--":
+        return None
+    return word[2:].split("=", 1)[0]
+
+
+def _long_banned(word: str, banned, both_ways: bool = False) -> bool:
+    """A long option that IS, or is an accepted abbreviation of, a banned option."""
+    name = _long_name(word)
+    if not name:
+        return False
+    return any(b.startswith(name) or (both_ways and name.startswith(b)) for b in banned)
+
+
+def _allow_grep(args):
+    return not any(_short_cluster_has(a, _GREP_BANNED_SHORT) or _long_banned(a, _GREP_BANNED_LONG)
+                   for a, _g in args)
+
+
+def _allow_rg(args):
+    return not any(_short_cluster_has(a, _RG_BANNED_SHORT)
+                   or _long_banned(a, _RG_BANNED_LONG, both_ways=True) for a, _g in args)
+
+
+def _allow_sort(args):
+    return not any(_short_cluster_has(a, _SORT_BANNED_SHORT) or _long_banned(a, _SORT_BANNED_LONG)
+                   for a, _g in args)
+
+
+def _allow_uniq(args):
+    positional = 0
+    after_dashdash = False
+    for a, glob in args:
+        if after_dashdash or a == "-" or not a.startswith("-"):
+            if glob:
+                return False  # one glob word can expand to an INPUT and an OUTPUT file
+            positional += 1
+        elif a == "--":
+            after_dashdash = True
+    return positional <= _UNIQ_MAX_POSITIONALS
+
+
+class _Data(str):
+    """The text of a d token: marks a word that may stand only as a listed flag's value."""
+
+
+def _flag_command_names(rest, flags, positional_max, positional_re):
+    """Walk the words after `gh pr create` / `git commit`: only flags of the table (exact
+    spelling; `--long=value` allowed), values w/q (d only where the table says), at most
+    `positional_max` positionals matching `positional_re`. -> set of canonical flag names, or None."""
+    names: set[str] = set()
+    positional = 0
+    k = 0
+    while k < len(rest):
+        a, glob = rest[k]
+        if glob or isinstance(a, _Data):
+            return None
+        value = None
+        if a in flags:
+            spec = flags[a]
+            if spec[1]:
+                if k + 1 >= len(rest) or rest[k + 1][1]:
+                    return None
+                value = rest[k + 1][0]
+                k += 1
+        elif a.startswith("--") and "=" in a and a.split("=", 1)[0] in flags:
+            name, value = a.split("=", 1)
+            spec = flags[name]
+            if not spec[1]:
+                return None
+        elif a.startswith("-"):
+            return None
+        else:
+            positional += 1
+            if positional > positional_max or not positional_re.match(a):
+                return None
+            k += 1
+            continue
+        if spec[1]:
+            if isinstance(value, _Data):
+                if not spec[2]:
+                    return None
+            elif value.startswith("-") or (spec[0] == "repo" and not _GH_REPO_VALUE_RE.match(value)):
+                return None
+        names.add(spec[0])
+        k += 1
+    return names
+
+
+def _allow_sed(args):
+    """Print-only sed: flags from _SED_FLAG_LETTERS, one script, then files."""
+    if any(isinstance(a, _Data) for a, _g in args):
+        return False
+    i = 0
+    while i < len(args) and args[i][0].startswith("-"):
+        a = args[i][0]
+        if a.startswith("--") or len(a) < 2 or any(c not in _SED_FLAG_LETTERS for c in a[1:]):
+            return False
+        i += 1
+    if i >= len(args):
+        return False
+    script, script_glob = args[i]
+    if script_glob or not _SED_SCRIPT_RE.match(script):
+        return False
+    return not any(a.startswith("-") for a, _g in args[i + 1:])
+
+
+def _allow_git(args):
+    if not args or isinstance(args[0][0], _Data):
+        return False
+    if args[0][0] == "commit":
+        names = _flag_command_names(args[1:], _GIT_COMMIT_FLAGS, 0, _GH_WRITER_POSITIONAL_RE)
+        return names is not None and "message" in names
+    if args[0][0] not in _GIT_SUBCOMMANDS:
+        return False  # nothing (no -c, -C, --exec-path, ...) before the subcommand
+    if any(isinstance(a, _Data) for a, _g in args):
+        return False
+    sub = args[0][0]
+    rest = args[1:]
+    if any(_long_banned(a, _GIT_BANNED_LONG) or _short_cluster_has(a, _GIT_BANNED_SHORT)
+           for a, _g in rest):
+        return False
+    if sub == "ls-remote":
+        # Only listed no-value flags: -u / --upload-pack / --exec and -o / --server-option
+        # (which takes a separate value and would shift the remote) are all refused here.
+        remote_seen = False
+        for a, _g in rest:
+            if a.startswith("-"):
+                if a not in _GIT_LS_REMOTE_FLAGS and not _GIT_LS_REMOTE_SORT_RE.match(a):
+                    return False
+            elif not remote_seen:
+                if not _GIT_REMOTE_RE.match(a):
+                    return False
+                remote_seen = True
+        return True
+    if sub == "cat-file":
+        return all(a in _GIT_CAT_FILE_FLAGS for a, _g in rest if a.startswith("-"))
+    return True
+
+
+def _allow_gh(args):
+    if (len(args) >= 2 and not isinstance(args[0][0], _Data) and not isinstance(args[1][0], _Data)
+            and args[1][0] in _GH_WRITER_ACTIONS.get(args[0][0], ())):
+        names = _flag_command_names(args[2:], _GH_WRITER_FLAGS,
+                                    _GH_WRITER_POSITIONALS.get(args[1][0], 0),
+                                    _GH_WRITER_POSITIONAL_RE)
+        return bool(names)
+    if any(isinstance(a, _Data) for a, _g in args):
+        return False
+    if len(args) < 2 or args[0][0] not in _GH_GROUPS or args[1][0] not in _GH_ACTIONS:
+        return False
+    rest = [a for a, _g in args[2:]]
+    k = 0
+    while k < len(rest):
+        a = rest[k]
+        value = None
+        if a in ("-R", "--repo"):
+            if k + 1 >= len(rest):
+                return False
+            value = rest[k + 1]
+            k += 1
+        elif a.startswith("--repo="):
+            value = a[len("--repo="):]
+        elif a.startswith("-R"):
+            value = a[2:]
+        else:
+            name = _long_name(a)
+            if name and "repo".startswith(name):
+                return False  # an abbreviated --repo spelling
+        if value is not None and not _GH_REPO_VALUE_RE.match(value):
+            return False
+        k += 1
+    return True
+
+
+def _allow_any(args):
+    return True
+
+
+_PROGRAM_RULES = {
+    "grep": _allow_grep,
+    "rg": _allow_rg,
+    "sort": _allow_sort,
+    "uniq": _allow_uniq,
+    "git": _allow_git,
+    "gh": _allow_gh,
+    "sed": _allow_sed,
+}
+for _p in sorted(_SIMPLE_ANY_ARGS):
+    _PROGRAM_RULES[_p] = _allow_any
+
+
+def _words_of(cmd):
+    """Normalised (text, is_glob) of each word of a simple command, redirects dropped."""
+    out = []
+    for k, t in cmd:
+        if k == "d":
+            out.append((_Data(t), False))
+        elif k in ("w", "q"):
+            out.append((t, k == "w" and "*" in t))
+    return out
+
+
+def _program_allows(cmd) -> bool:
+    if not cmd or cmd[0][0] not in ("w", "q"):
+        return False
+    words = _words_of(cmd)
+    prog, prog_glob = words[0]
+    if prog_glob:
+        return False
+    if prog not in _DATA_PROGRAMS and any(isinstance(w, _Data) for w, _g in words):
+        return False  # a data token is accepted only by the writer programs
+    rule = _PROGRAM_RULES.get(prog)
+    if rule is None:
+        return False
+    return bool(rule(words[1:]))
+
+
+# Ported from branch w-041-guard-reads (commit 6b0daf7): resolve a path word with certainty, every
+# home `~` might expand to, and "outside every kit root" (cross-drive commonpath ValueError ->
+# outside, never a crash or a fail-open).
+_BAD_TOKEN_CHARS = frozenset("$%*?[]{}()<>|&;`!#^=\"'")
+_MAX_WALK_DIRS = 2000
+
+
+def _resolve_token(text: str, cwd: str | None, allow_relative: bool, allow_tilde: bool) -> str | None:
+    """Canonical location of a clean path word, or None when it cannot be resolved with certainty
+    (variables, globs, flag-embedded values, odd drive forms, unknown Git Bash mounts)."""
+    if not text or any(c.isspace() for c in text):
+        return None
+    if any(c in _BAD_TOKEN_CHARS for c in text) or text[0] in "-@":
+        return None
+    t = text.replace("\\", "/")
+    if t.startswith("~"):
+        if not allow_tilde or not (t == "~" or t.startswith("~/")):
+            return None
+        t = os.path.expanduser(t).replace("\\", "/")
+        if t.startswith("~"):
+            return None
+    if os.name == "nt":
+        m = re.match(r"^/([A-Za-z])(?:/(.*))?$", t)
+        if m:
+            t = m.group(1) + ":/" + (m.group(2) or "")
+        elif t.startswith("/"):
+            return None  # //unc, /tmp, /home ... : a Git Bash mount we cannot map for certain
+        if ":" in t and not re.match(r"^[A-Za-z]:/", t):
+            return None  # d:foo, stream names, provider paths
+    if not (t.startswith("/") or re.match(r"^[A-Za-z]:/", t)):
+        if not allow_relative or not cwd:
+            return None
+        t = os.path.join(cwd, t)
+    return _canon(t)
+
+
+def _is_under(path: str, root: str) -> bool:
+    try:
+        return os.path.commonpath([path, root]) == root
+    except ValueError:  # different drives: provably not under it
+        return False
+
+
+def _kit_root_below(directory: str) -> bool:
+    """True if a kit project root may sit anywhere under `directory`. Bounded: running out of
+    budget fails closed (reported as a kit root below)."""
+    seen = 0
+    for dirpath, _dirs, _files in os.walk(directory):
+        seen += 1
+        if seen > _MAX_WALK_DIRS:
+            return True
+        if os.path.isfile(os.path.join(dirpath, LOCK_REL)):
+            return True
+    return False
+
+
+def _outside_every_kit_root(resolved: str, project_root: str) -> bool:
+    """True only when `resolved` is provably not inside, and not an ancestor of, any kit root:
+    the project root, the root found by walking up from the path to ITS OWN lock file (so a
+    sibling checkout stays protected against its own root), or a root below it."""
+    root = _canon(project_root)
+    if _is_under(resolved, root) or _is_under(root, resolved):
+        return False
+    cur = resolved
+    while True:
+        if os.path.isfile(os.path.join(cur, LOCK_REL)):
+            return False
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    if os.path.isdir(resolved) and _kit_root_below(resolved):
+        return False
+    return True
+
+
+def _is_abs_form(text: str) -> bool:
+    """Absolute (`/x`), home-shortcut (`~` or `~/x`) or drive form (`C:/x`). Nothing relative."""
+    t = text.replace("\\", "/")
+    return t == "~" or t.startswith("~/") or t.startswith("/") or bool(re.match(r"^[A-Za-z]:/", t))
+
+
+def _home_candidates() -> list[str]:
+    """Every home directory the shell might expand `~` to: HOME, USERPROFILE, HOMEDRIVE+HOMEPATH
+    from the hook's own environment (unset or empty values are skipped)."""
+    out: list[str] = []
+    for key in ("HOME", "USERPROFILE"):
+        v = os.environ.get(key)
+        if v:
+            out.append(v)
+    hd, hp = os.environ.get("HOMEDRIVE"), os.environ.get("HOMEPATH")
+    if hd and hp:
+        out.append(hd + hp)
+    return out
+
+
+def _abs_resolutions(text: str) -> list[str]:
+    """Every canonical location an absolute / `~` / drive-form plain word may name; [] when it
+    cannot be resolved with certainty. `~` resolves against EVERY home candidate."""
+    if not _is_abs_form(text):
+        return []
+    t = text.replace("\\", "/")
+    if t.startswith("~"):
+        homes = _home_candidates()
+        if not homes:
+            return []
+        out: list[str] = []
+        for h in homes:
+            r = _resolve_token(h.replace("\\", "/") + t[1:], None, False, False)
+            if r is None:
+                return []
+            out.append(r)
+        return out
+    r = _resolve_token(text, None, False, False)
+    return [r] if r is not None else []
+
+
+def _launcher_allows(cmd, project_root: str, lock) -> bool:
+    """`powershell|pwsh [-NoProfile|-ExecutionPolicy <word>] -File <abs/~/drive path outside
+    every kit root> [args]`; no argument names a protected path; never -Command."""
+    if any(k in ("r", "d") for k, _t in cmd) or cmd[0][0] != "w" or cmd[0][1] not in _LAUNCHER_PROGRAMS:
+        return False
+    i = 1
+    while i < len(cmd) and cmd[i][0] == "w" and cmd[i][1].lower() != "-file":
+        f = cmd[i][1].lower()
+        if f in _LAUNCHER_FLAG_NOVALUE:
+            i += 1
+        elif f in _LAUNCHER_FLAG_VALUE:
+            if (i + 1 >= len(cmd) or cmd[i + 1][0] != "w"
+                    or not _LAUNCHER_VALUE_RE.match(cmd[i + 1][1])):
+                return False
+            i += 2
+        else:
+            return False  # -Command, -EncodedCommand and anything unlisted
+    if i + 1 >= len(cmd) or cmd[i][0] != "w" or cmd[i][1].lower() != "-file":
+        return False
+    script_kind, script = cmd[i + 1]
+    if script_kind != "w" or "*" in script:
+        return False  # a quoted `~` is not expanded by the shell; a glob is not one path
+    resolved = _abs_resolutions(script)
+    if not resolved or not all(_outside_every_kit_root(r, project_root) for r in resolved):
+        return False
+    names = [_norm_command_text(rel) for rel, _k in _protected_rel_names(project_root, lock)]
+    for kind, text in cmd[i + 2:]:
+        if kind == "w" and "*" in text:
+            return False
+        if text.lower().startswith(_LAUNCHER_ARG_BANNED_PREFIXES):
+            return False  # no -Command / -EncodedCommand spelling anywhere, even as a script arg
+        norm = _norm_command_text(text)
+        if any(_contains_path_token(norm, tok) for tok in names):
+            return False
+        if kind == "w" and _is_abs_form(text):
+            r = _abs_resolutions(text)
+            if not r or not all(_outside_every_kit_root(x, project_root) for x in r):
+                return False
+    return True
+
+
+def _cd_dir_ok(text: str) -> bool:
+    return bool(text) and not text.startswith("-") and "*" not in text
+
+
+def _has_cd_prefix(command: str, segments) -> bool:
+    """True when the command starts `cd <one plain word> <op in _CD_PREFIX_OPS>` and more follows."""
+    toks = _simple_lex(command)
+    return (len(toks) >= 4 and toks[0] == ("w", _CD_PROGRAM) and toks[1][0] == "w"
+            and _cd_dir_ok(toks[1][1]) and toks[2][0] == "op" and toks[2][1] in _CD_PREFIX_OPS
+            and len(segments) >= 2 and segments[0] == [[toks[0], toks[1]]])
+
+
+def _simple_allows(command: str, project_root: str, lock) -> bool:
+    """True only when the whole command is in the strict grammar and every program passes."""
+    segments = _simple_parse(command)
+    if not segments:
+        return False
+    if len(segments) == 1 and len(segments[0]) == 1 and not command.startswith("for "):
+        # the two whole-command shapes: never inside a loop, a list or a pipeline
+        only = segments[0][0]
+        if [t for _k, t in only] == _FINDINGS_REGEN_WORDS and all(k == "w" for k, _t in only):
+            return True
+        if only[0][0] == "w" and only[0][1] in _LAUNCHER_PROGRAMS:
+            return _launcher_allows(only, project_root, lock)
+    if _has_cd_prefix(command, segments):
+        segments = segments[1:]  # the leading cd is checked above; every later segment is not
+    return all(_program_allows(cmd) for seg in segments for cmd in seg)
+
+
+def check_shell_command(
+    tool_name: str, command: str, project_root: str, lock: dict | None
+) -> tuple[str, str] | None:
+    """Main's verdict first; a denied command is allowed only from the Bash tool, and only when
+    _simple_allows proves it (any internal error keeps the deny). W-046 merge: the tool name is
+    passed on, so main's verdict applies the PowerShell-only checks to PowerShell commands."""
+    hit = check_shell_tool(command, project_root, lock, tool_name)
+    if hit is None:
+        return None
+    if tool_name != "Bash":
+        return hit
+    try:
+        if _simple_allows(command, project_root, lock):
+            return None
+    except Exception:
+        return hit
     return hit
 
 
@@ -552,13 +1713,16 @@ def main() -> None:
                 deny(path_shown, kind)
         elif tool_name in SHELL_TOOLS:
             command = tool_input.get("command", "") or ""
-            hit = check_shell_tool(command, project_root, lock)
+            hit = check_shell_command(tool_name, command, project_root, lock)
             if hit:
                 path_shown, kind = hit
                 deny(path_shown, kind)
     except SystemExit:
         raise
     except Exception:
+        # Fail open ONLY for failures before a protected path is known (no lock, no project, a
+        # file-tool resolve error). Once check_shell_tool has matched a protected path, its own
+        # error handling returns a DENY (W-046 r2), so it never reaches here.
         sys.exit(0)
 
     sys.exit(0)

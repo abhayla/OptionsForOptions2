@@ -8,6 +8,15 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/hook_presence_check.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 90,
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\" --session-start"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -24,6 +33,15 @@
           {
             "type": "command",
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/answer_writeback_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 90,
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       }
@@ -186,6 +204,14 @@
       }
     ],
     "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier_write_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
       {
         "hooks": [
           {
