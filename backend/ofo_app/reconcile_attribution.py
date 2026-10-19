@@ -29,8 +29,9 @@ this strategy's other plans included): never ``nothing_placed`` while a filled-t
 out (the net equalling the base proves nothing); every earlier-day plan is unresolved (``unresolved``: out of compare,
 strategy and holders blocked; ``next_day_resolution`` stores a mismatch for the plan's strategy AND every holder, so
 ``stored`` keeps them all blocked after the plan closes), never
-``filled`` or ``exited``. Example (real plan OFS1V1L0 BUY 65): base 0, net 0 -> unresolved (``roundtrip_not_ruled_out``: bought and sold
-by hand the same day also leaves net 0); net 65 -> unresolved (the 65 cannot be told from outside lots). ``next_day_resolution`` writes these decisions; a plan with a tag in
+``filled`` or ``exited``. Example (real plan OFS1V1L0 BUY 65): base 0, net 0 -> unresolved
+(``roundtrip_not_ruled_out``: bought and sold by hand the same day also leaves net 0); net 65 -> unresolved (the 65
+cannot be told from outside lots). ``next_day_resolution`` writes these decisions; a plan with a tag in
 today's book stays on the order-book path below. No next-day reply field proves "nothing happened yesterday", so an
 earlier-day plan is never closed ``nothing_placed`` by this decision (F-55).
 

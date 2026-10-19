@@ -109,6 +109,8 @@ def _attribute(store, quantity, *, at=MON, standalone=None, book=(), mismatches=
                                                 sources, at=at))
 
 
+_HELD = 65  # the base in the parametrized case: the closed plan's fill
+_STANDALONE = 25
 NEXT_DAY_BOOK = tuple(orders_from_reply([]))  # Kite's order book the next day: none of Friday's orders
 
 
@@ -148,13 +150,14 @@ def test_ac6_entry_net_above_base_is_a_mismatch_never_filled(quantity):
                                                     (95, eps.UNRESOLVED), (0, eps.UNRESOLVED)])
 def test_ac4_base_is_the_other_stored_plans(quantity, outcome):
     """AC-4: the strategy holds +65 from a CLOSED plan (real OFS1V1L0 filled 65) and has an earlier-day open ENTRY
-    BUY 65 as plan 2 (derived). Base = 65: net 65 (= base, a round trip is not ruled out) -> mismatch (expected 65 + 65, Zerodha 65); 130 (base + 65), 95 (base + 30), 0 -> mismatch."""
+    BUY 65 as plan 2 (derived). Base = 65: net 65 (= base, a round trip is not ruled out) -> mismatch
+    (expected 65 + 65, Zerodha 65); 130 (base + 65), 95 (base + 30), 0 -> mismatch."""
     closed = _real_plan(1, status="closed")
     plan2 = dataclasses.replace(_real_plan(1), plan_number=2, orders=tuple(
         dataclasses.replace(o, tag="OFS1V2L0") for o in _real_plan(1).orders))
     done, calls = _resolve({1: _Entry(closed, plan2)}, quantity)
     assert done[0].plan_number == plan2.plan_number and done[0].reason == outcome
-    if quantity == 65:
+    if outcome == eps.UNRESOLVED and quantity == _HELD:
         assert calls == [("mismatch", 1, IID, 130, 65, ra.UNSETTLED_ROUNDTRIP_UNREAD), ("close", 1, 2, eps.UNRESOLVED)]
     else:
         assert calls == [("mismatch", 1, IID, 65, quantity, ra.UNSETTLED_NET_CHANGED), ("close", 1, 2, eps.UNRESOLVED)]
@@ -263,10 +266,11 @@ def test_ac6_another_strategys_same_day_open_plan_makes_it_a_mismatch():
 @pytest.mark.parametrize(("quantity", "outcome"), [(25, eps.UNRESOLVED), (90, eps.UNRESOLVED)])
 def test_ac4_standalone_is_in_the_base(quantity, outcome):
     """AC-4 (REQ-060 AC-7): a standalone 25 recorded on the contract; earlier-day ENTRY BUY 65. Net 25 = base ->
-    mismatch (expected 25 + 65 = 90, Zerodha 25, round trip not ruled out); net 90 (base + 65) -> mismatch (expected 25, Zerodha 90)."""
+    mismatch (expected 25 + 65 = 90, Zerodha 25, round trip not ruled out); net 90 (base + 65) -> mismatch
+    (expected 25, Zerodha 90)."""
     done, calls = _resolve({1: _Entry(_real_plan(1))}, quantity, standalone={KEY: 25})
     assert done[0].reason == outcome
-    expected = ("mismatch", 1, IID, 90, 25, ra.UNSETTLED_ROUNDTRIP_UNREAD) if quantity == 25 else (
+    expected = ("mismatch", 1, IID, 90, 25, ra.UNSETTLED_ROUNDTRIP_UNREAD) if quantity == _STANDALONE else (
         "mismatch", 1, IID, 25, 90, ra.UNSETTLED_NET_CHANGED)
     assert calls[0] == expected
 
