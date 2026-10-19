@@ -283,6 +283,10 @@ issues:
   "#411": 4b  # Positions pending row: 'listed above' line shows with no other holder; pending-row e2e is a mock (W-111 review MINORs)
   "#422": 4b  # Freeze check accepts any type for the stored limit; Evaluation.as_of has no timezone check (PR #420 review MINORs)
   "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
+  "#433": 4c  # Home: REQ-008 AC-2 state 3 (active strategies, alerts), AC-3 name + trial, AC-1 landing - no data yet (parked by GC-5S)
+  "#434": 4b  # Strategy screen Live Position tab (REQ-044 AC-2) - needs execution state (parked by GC-5S)
+  "#435": 4b  # W-117 review MINORs: TemplateText slot not per field; shell UI wording needs owner read; REQ-011 AC-1 content (deferred by GC-5S)
+  "#439": 4b  # Chain socket: invalid messages can starve a client's own pushes; IV not on the chain (W-116 review, deferred by GC-5S)
   "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
 
 # Work items whose status is not done.
@@ -317,6 +321,7 @@ work_items:
   W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
+  W-113: 4b           # GC-5S: Live Strategies page (REQ-049 AC-4..6)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

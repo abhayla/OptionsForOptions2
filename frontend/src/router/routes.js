@@ -5,6 +5,9 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 
+// Nav items that have a real page (W-113); every other nav item still shows the placeholder.
+const REAL_PAGES = { 'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue') }
+
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
@@ -15,7 +18,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
+    component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])
