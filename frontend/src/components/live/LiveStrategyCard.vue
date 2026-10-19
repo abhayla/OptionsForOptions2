@@ -10,7 +10,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, maxLine } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
@@ -30,12 +30,14 @@ const data = ref(null) // the newest outcome answer, as the server sent it
 const errorParts = ref(NEUTRAL_PARTS)
 let gone = false // set on unmount: a late push or answer is dropped
 let draft = null
+const wasLive = ref(false) // a live push arrived at least once: from then on a socket that is not live pauses the card
 let seq = 0 // only the newest REST answer is shown
 
 const live = useStrategyLive({
   onPush: (body) => {
     if (gone) return
     seq++ // a REST answer still in flight is obsolete
+    wasLive.value = true
     data.value = body
     settle()
   },
@@ -90,7 +92,8 @@ onBeforeUnmount(() => {
   live.stop()
 })
 
-const down = computed(() => live.status.value === 'down' || live.status.value === 'off')
+// down, off, or (after it was live once) connecting again: old figures must not look live while the socket is not live (REQ-049 AC-4)
+const down = computed(() => live.status.value === 'down' || live.status.value === 'off' || (wasLive.value && live.status.value !== 'live'))
 const notConnected = computed(() => data.value?.state === 'NOT_CONNECTED')
 // AC-6: a card with no live answer is paused; an unpriced card has nothing to follow.
 const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || down.value)))
@@ -98,8 +101,8 @@ const showFigures = computed(() => state.value === 'ready' && data.value?.state 
 const refused = computed(() => state.value === 'ready' && data.value?.state === 'REFUSED')
 const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at) : '-'))
 const checkedAt = computed(() => istTime(data.value?.answered_at))
-const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
-const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
+const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
+const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
 const healthWord = (leg) => (leg.health === 'available' ? null : leg.health || 'unavailable')
 </script>

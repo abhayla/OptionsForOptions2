@@ -194,6 +194,32 @@ describe('AC-6: monitoring is paused per strategy', () => {
     expect(b.find('[data-testid="live-spot"]').text()).toBe('25123.45')
   })
 
+  it('AC-4: a card whose socket is reconnecting is paused before the REST answer arrives; old figures carry no live look', async () => {
+    postAnswer = () => new Promise(() => {}) // the REST fallback is held back
+    const w = await mountPage()
+    await answerNext(computed())
+    expect(cards(w)[0].find('[data-testid="live-spot"]').exists()).toBe(true)
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    await new Promise((r) => setTimeout(r, 1300)) // the backoff reopens a socket: status 'connecting', nothing live yet
+    await flushPromises()
+    const c = cards(w)[0]
+    expect(c.attributes('data-live')).toBe('connecting')
+    expect(c.attributes('data-paused')).toBe('true')
+    expect(c.find('[data-testid="live-paused-badge"]').exists()).toBe(true)
+    expect(c.find('[data-testid="live-health-dot"]').exists()).toBe(true)
+    expect(c.find('[data-testid="live-spot"]').exists()).toBe(false)
+    expect(c.find('[data-testid="live-legs"]').exists()).toBe(false)
+  })
+
+  it('AC-4: the very first connect, before any answer, is waiting and not paused', async () => {
+    const w = await mountPage()
+    const c = cards(w)[0]
+    expect(c.attributes('data-live')).toBe('connecting')
+    expect(c.attributes('data-paused')).toBe('false')
+    expect(c.find('[data-testid="live-waiting"]').exists()).toBe(true)
+  })
+
   it('AC-6: a socket that drops pauses only its own card', async () => {
     postAnswer = () => new Promise(() => {}) // the REST answer never arrives: the badge comes from the socket state alone
     const w = await mountPage()
