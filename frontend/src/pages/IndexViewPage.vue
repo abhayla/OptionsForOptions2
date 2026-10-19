@@ -15,6 +15,13 @@ const VALUE_UNAVAILABLE = 'Not available'
 const answer = ref(null) // the server's last answer, untouched
 const failed = ref(false)
 let pushed = false // a socket push arrived: a slower first-paint REST answer must not replace it
+let drops = 0 // counts socket drops: an answer whose request was sent before the latest drop is ignored
+
+function notLiveAfterDrop() {
+  // REQ-072 AC-2 / REQ-049 AC-4: an old LIVE number is never kept; only each index's last time stays for the not-live line
+  const rows = (answer.value?.indices ?? []).map((r) => ({ underlying: r.underlying, instrument_id: r.instrument_id, value: null, at: r.at ?? null, health: null }))
+  answer.value = { state: 'NOT_CONNECTED', indices: rows }
+}
 
 async function read(fallback) {
   try {
@@ -32,8 +39,12 @@ const { status, start } = useIndexLive({
     answer.value = msg
   },
   onDown: async () => {
+    drops += 1
+    const mine = drops
+    pushed = false
+    notLiveAfterDrop()
     const data = await read(true)
-    if (status.value === 'live') return // the socket came back first: its push is newer than this answer
+    if (mine !== drops || status.value === 'live' || pushed) return // a newer drop or a socket push is newer than this answer
     if (data) answer.value = data
     else failed.value = true
   },
@@ -41,8 +52,9 @@ const { status, start } = useIndexLive({
 
 onMounted(async () => {
   start()
+  const sentAt = drops
   const data = await read(false)
-  if (pushed) return
+  if (pushed || sentAt !== drops) return
   if (data) answer.value = data
   else failed.value = true
 })

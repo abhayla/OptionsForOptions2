@@ -58,7 +58,7 @@ beforeEach(() => {
   apiAnswer = null
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('the index socket lifecycle', () => {
   it('AC-2: opens the same-origin path, sends nothing, passes each index answer untouched, ignores anything else', () => {
@@ -138,6 +138,67 @@ describe('the Underlying/index view page', () => {
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('Not available')
     expect(panel(w, 'NIFTY').get('[data-testid="index-at"]').text()).toBe('Last updated 19 Oct 2026, 09:20:00 IST')
     expect(w.text()).not.toContain('25145.50')
+  })
+
+  it('AC-2: a drop with a failing fallback read shows no number from the earlier LIVE push (round 2 finding 1)', async () => {
+    apiAnswer = (params) => (params.fallback ? Promise.reject(new Error('down')) : Promise.resolve({ data: notConnected(null) }))
+    const w = await mountPage()
+    const ws = FakeSocket.all[0]
+    ws.serverPush(live(row('NIFTY', '25150.00', T1), row('SENSEX', '82010.25', T1)))
+    await flushPromises()
+    expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25150.00')
+    ws.serverClose()
+    await flushPromises()
+    expect(w.text()).not.toContain('25150.00')
+    expect(w.text()).not.toContain('82010.25')
+    for (const u of ['NIFTY', 'SENSEX']) {
+      expect(panel(w, u).get('[data-testid="index-value"]').text()).toBe('Not available')
+      expect(panel(w, u).get('[data-testid="index-at"]').text()).toBe('Last updated 19 Oct 2026, 09:20:00 IST')
+    }
+    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+  })
+
+  it('AC-2: a drop, then the fallback answers NOT_CONNECTED -> no number', async () => {
+    apiAnswer = (params) => Promise.resolve({ data: params.fallback ? notConnected(T1) : notConnected(null) })
+    const w = await mountPage()
+    const ws = FakeSocket.all[0]
+    ws.serverPush(live(row('NIFTY', '25150.00', T1), row('SENSEX', '82010.25', T1)))
+    await flushPromises()
+    ws.serverClose()
+    await flushPromises()
+    expect(w.text()).not.toContain('25150.00')
+    expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('Not available')
+  })
+
+  it('AC-2: a first-paint read sent before the drop and resolving LIVE after it is ignored (round 2 finding 2)', async () => {
+    let release
+    const held = new Promise((resolve) => { release = resolve })
+    apiAnswer = (params) => (params.fallback ? Promise.resolve({ data: notConnected(null) }) : held)
+    const w = await mountPage()
+    FakeSocket.all[0].serverClose()
+    await flushPromises()
+    release({ data: live(row('NIFTY', '25150.00', T1), row('SENSEX', '82010.25', T1)) })
+    await flushPromises()
+    expect(w.text()).not.toContain('25150.00')
+    expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('Not available')
+    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+  })
+
+  it('AC-2: after a drop a NEW live push shows the number again', async () => {
+    vi.useFakeTimers()
+    apiAnswer = (params) => (params.fallback ? Promise.reject(new Error('down')) : Promise.resolve({ data: notConnected(null) }))
+    const w = await mountPage()
+    const ws = FakeSocket.all[0]
+    ws.serverPush(live(row('NIFTY', '25150.00', T1), row('SENSEX', '82010.25', T1)))
+    await flushPromises()
+    ws.serverClose()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1000) // the reconnect backoff opens a new socket
+    FakeSocket.all[1].serverPush(live(row('NIFTY', '25151.00', T2), row('SENSEX', '82011.00', T2)))
+    await flushPromises()
+    expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25151.00')
+    expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('82011.00')
+    expect(w.find('[data-testid="index-state"]').exists()).toBe(false)
   })
 
   it('AC-2: a null value in a LIVE answer is never rendered as a number', async () => {
