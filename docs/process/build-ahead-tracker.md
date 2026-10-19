@@ -71,11 +71,16 @@ Status words: `todo`, `building`, `held #PR` (open draft PR, HOLD until GC-3L en
 | #318 | Clean up 462 `# noqa` markers | P5 | GC-4 | C | todo | |
 | #247 | atool selector misses two-hop dependents | P5 | GC-4 | C | todo | |
 | #191 | gate_before_commit bypasses | P5 | GC-4 | C | todo | |
-| #385 | GC-3 live steps L1-L4 | - | GC-3L | A | blocked-live | Mon 2026-10-19 |
-| #273 | Margin check uses the platform estimate, not Zerodha's figure | - | GC-3F | A | blocked-live | needs GC-3L's real replies |
+| #385 | GC-3 live steps L1-L4 | - | GC-3L | A | verified | GC-3L 2026-10-19: strategy 9 entry filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, pnl_equal -22.75, audit chain rows=9 (`session-handover-2026-10-19-gc3l.md`); issue to close with this evidence |
+| TAG-8 | Basket tag over Kite Publisher's 8-character limit for strategy id >= 10 / version >= 10 (finding basket-tag-exceeds-publisher-limit) | P1 | GC-3F | A | todo | GC-3F item 1 (core); live proof on a strategy id >= 10; may move to GC-3L same-day if the owner approves |
+| FRESH-CLOCK | Execute gate judged freshness on the request-start clock (finding freshness-judged-on-request-start-clock) | P1 | GC-3L | A | merged #427 | a614b16, fresh-Opus PASS; proven live by the GC-3L L2/L3 prepares |
+| TRIM-STRUCT | Daily list trims far strikes and trips the ADR-058/059 percentage guards (finding daily-list-trims-far-strikes-trips-truncation-guard) | P1 | GC-3F | A | todo | GC-3F item 4; ADR-058/059 change as a technical decision row |
+| DB-CONNLIMIT | ofo_app rolconnlimit 5 below one API's pool (finding db-role-connection-limit-below-pool-size) | P2 | GC-3F | A | todo | GC-3F item 5 |
+| OUTCOME-500 | Outcome route 500 on a 2-expiry draft (finding outcome-multi-expiry-unhandled-500) | P4 | GC-3F | B | todo | GC-3F item 6 |
+| #273 | Margin check uses the platform estimate, not Zerodha's figure | - | GC-3F | A | todo | GC-3L's real replies now saved (`ofo-kite-ticks/2026-10-19/`); Zerodha margin 484.25 read at 10:24:54 |
 | #255 | Never split anywhere: Complete / Retry / exit block above the freeze limit (ADR-092, OQ-2 answered 2026-10-16) | P1 | GC-3F | A | held #420 | with #63, #43 |
 | #269 | Max-loss sentence vs charges (OQ-4, OQ-10) | - | owner | A | blocked-owner | OQ-4, OQ-10 |
-| Q272 | Which control counts as "the owner's own account" (REQ-073 AC-5) | - | GC-3F | A | blocked-owner | ask after GC-3L |
+| Q272 | Which control counts as "the owner's own account" (REQ-073 AC-5) | - | GC-3F | A | blocked-owner | GC-3L done 2026-10-19: ask now |
 | #129 | Anonymous callers can lock the owner out of Kite login | - | stage-5 | A | blocked-owner | needs platform login (Google OAuth credentials) |
 | #112 | Entitlement ledger index + free-day cap | - | stage-5 | A | todo | with W-008/W-009 |
 | #422 | Freeze check accepts any type; Evaluation.as_of has no timezone check (PR #420 review MINORs) | P4 | GC-3F | A | deferred #422 | |
