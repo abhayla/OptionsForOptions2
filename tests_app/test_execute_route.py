@@ -682,7 +682,7 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
         return loaded
 
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
-    req = SimpleNamespace(db=None, now=AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
+    req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
     health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
     assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
