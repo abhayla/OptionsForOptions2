@@ -350,7 +350,7 @@ def get_streaming() -> Optional[Callable[[str], bool]]:
     return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
 
 
-def inputs_streaming(ctx: MarketContext, streaming: Optional[Callable[[str], bool]], ids: Iterable[str]) -> bool:
+def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None, ids: Iterable[str]) -> bool:
     """Issue #206's rule for any REST read of live inputs: True when every id is held by a socket on the shared feed.
     No predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used
     as they are. The chain read (ofo_app.routes.chain) uses it too."""

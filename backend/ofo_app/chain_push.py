@@ -9,19 +9,19 @@
 # fan-out (ADR-068), like ``live_push.StrategyPush``.
 
 One :class:`ChainPush` serves one browser connection of the read-only chain socket. The client sends a
-:class:`ChainRequest` ``{underlying, expiry, strikes_each_side}``. The push reads that expiry's contracts from the stored
-catalogue (one short database read per applied request, never per push: finding db-role-limit-below-pool-size), picks
-``strikes_each_side`` catalogue strikes either side of the ATM strike from the LIVE spot (no spot: no strikes and no
-guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer` -
-the same function the REST read returns - at most once every ``MIN_PUSH_INTERVAL`` seconds and only when something the
+:class:`ChainRequest` ``{underlying, expiry, strikes_each_side}``. The push reads that expiry's contracts from the
+stored catalogue (one short database read per applied request, never per push: finding db-role-limit-below-pool-size),
+picks ``strikes_each_side`` catalogue strikes either side of the ATM strike from the LIVE spot (no spot: no strikes and
+no guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer`
+- the same function the REST read returns - at most once every ``MIN_PUSH_INTERVAL`` seconds and only when something the
 screen shows changed. A new request is applied at most once a second too (latest wins), so a client cannot drive
 catalogue reads or Kite subscription changes faster; it takes the new subscription BEFORE releasing the old one (the
 order of ``StrategyPush._replace``, so a shared instrument such as the index is never dropped and re-added). Everything
 is released when the connection ends, on every exit path.
 
 Liveness is this connection's own: LIVE only while THIS push holds its subscription (finding
-liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of the
-answer, so a quote that went stale is never shown as available (REQ-049 AC-2; no new staleness rule here: finding
+liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of
+the answer, so a quote that went stale is never shown as available (REQ-049 AC-2; no new staleness rule here: finding
 staleness-by-last-change-age). ``change`` is always null: the normalised feed carries no previous close for a contract,
 and REQ-029 AC-2's change is never computed from anything else. No order, basket, margin or execute call exists here
 (REQ-029 AC-6).
@@ -37,12 +37,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
-from sqlalchemy.exc import SQLAlchemyError
-
 from ofo.errors import render
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
+from sqlalchemy.exc import SQLAlchemyError
+
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
@@ -51,7 +51,8 @@ from ofo_app.routes.outcome import HealthCode, MarketContext
 log = logging.getLogger(__name__)
 
 #: The most strikes either side of ATM a chain may ask for, and the default (design: "15 strikes either side at first
-#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 2 * 31 contracts + 1 index.
+#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 62 contracts (31
+#: strikes, CE and PE) and the index.
 MAX_STRIKES_EACH_SIDE = 15
 _SIDES = ("CE", "PE")
 
@@ -200,7 +201,7 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None) -> ChainCel
     if quote is None or quote.instrument_id != contract.instrument_id:  # held, but no quote yet: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, change=None, oi=None, volume=None,
                             health="unavailable", at=None)
-    ltp = quote.ltp.quantize(PAISE) if is_live_price(quote.ltp) else None
+    ltp = quote.ltp.quantize(PAISE) if quote.ltp is not None and is_live_price(quote.ltp) else None
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=ltp, change=None, oi=quote.oi, volume=quote.volume,
                         health=quote.health.value, at=quote.timestamp)
 
@@ -225,8 +226,8 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,
 def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
                  window: tuple[Decimal, ...] | None, *, live: bool,
                  now: Callable[[], datetime.datetime]) -> ChainOut:
-    """The ONE answer behind the REST read and the socket push. Not live (no feed, the page's own socket is down, or this
-    connection holds nothing): NOT_CONNECTED, no rows, no number; only the spot's last value time is kept."""
+    """The ONE answer behind the REST read and the socket push. Not live (no feed, the page's own socket is down, or
+    this     connection holds nothing): NOT_CONNECTED, no rows, no number; only the spot's last value time is kept."""
     spot_quote = None if ctx is None else _spot_quote(ctx, req.underlying)
     answered_at = now() if ctx is None else ctx.clock()
     if ctx is None or not live:
@@ -288,7 +289,7 @@ class ChainPush:
     async def _error(self) -> None:
         await self._channel.send(render("user_input_request_invalid"))
 
-    async def _receive(self, raw: Any) -> None:
+    async def _take_message(self, raw: Any) -> None:
         if isinstance(raw, dict) and "fallback" in raw:  # the REST read's flag; it means nothing on the socket (#234)
             await self._error()
             return
@@ -313,8 +314,8 @@ class ChainPush:
         """Subscribe the request's window and index, THEN release what was held (a shared id is never dropped)."""
         window = pick_window(self._ctx, req, catalogue)
         new_handle = None
-        if self._ctx is not None:
-            index_id = index_id_of(self._ctx, req.underlying)
+        if self._feed is not None:
+            index_id = index_id_of(self._feed.ctx, req.underlying)
             ids = window_ids(catalogue, window) + ([index_id] if index_id else [])
             if ids:
                 try:
@@ -330,9 +331,9 @@ class ChainPush:
             return
         if self._last_push is not None and self._monotonic() - self._last_push < MIN_PUSH_INTERVAL:
             return
-        if self._window is None and self._handle is not None:  # no spot when applied: pick once the spot arrives
-            if pick_window(self._ctx, self._req, self._catalogue) is not None:
-                await self._take(self._req, self._catalogue)
+        if (self._window is None and self._handle is not None  # no spot when applied: pick once the spot arrives
+                and pick_window(self._ctx, self._req, self._catalogue) is not None):
+            await self._take(self._req, self._catalogue)
         body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=self._handle is not None,
                             now=self._now)
         shown = _shown_state(body)
@@ -356,7 +357,7 @@ class ChainPush:
                         raw = task.result()
                     except ChannelClosed:
                         return
-                    await self._receive(raw)
+                    await self._take_message(raw)
                 await self._maybe_apply()
                 if self._handle is not None and self._feed is not None:
                     self._feed.fanout.pump_one(self._handle)

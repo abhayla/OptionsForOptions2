@@ -316,6 +316,7 @@ work_items:
   W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
+  W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:

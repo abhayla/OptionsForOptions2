@@ -253,6 +253,258 @@
         "title": "CellOut",
         "type": "object"
       },
+      "ChainCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "ltp",
+          "change",
+          "oi",
+          "volume",
+          "health",
+          "at"
+        ],
+        "title": "ChainCellOut",
+        "type": "object"
+      },
+      "ChainOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "atm_strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atm Strike"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ChainRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "rows_missing": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SPOT_MISSING",
+                  "EXPIRY_UNKNOWN",
+                  "CATALOGUE_EMPTY",
+                  "CATALOGUE_UNREADABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Missing"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "spot_health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Health"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_CONNECTED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "underlying",
+          "expiry",
+          "spot",
+          "spot_at",
+          "spot_health",
+          "atm_strike",
+          "rows_missing",
+          "rows",
+          "answered_at"
+        ],
+        "title": "ChainOut",
+        "type": "object"
+      },
+      "ChainRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ce": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChainCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChainCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strike",
+          "ce",
+          "pe"
+        ],
+        "title": "ChainRowOut",
+        "type": "object"
+      },
       "ColumnOut": {
         "additionalProperties": false,
         "properties": {
@@ -2668,6 +2920,83 @@
           }
         },
         "summary": "Expiries"
+      }
+    },
+    "/api/market/chain": {
+      "get": {
+        "operationId": "market_chain_api_market_chain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": true,
+            "schema": {
+              "enum": [
+                "NIFTY",
+                "SENSEX"
+              ],
+              "title": "Underlying",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expiry",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Expiry",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "strikes_each_side",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 15,
+              "minimum": 1,
+              "title": "Strikes Each Side",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "true when the screen's own chain socket is down (ADR-077): the answer is then not live whoever else subscribes",
+            "in": "query",
+            "name": "fallback",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "true when the screen's own chain socket is down (ADR-077): the answer is then not live whoever else subscribes",
+              "title": "Fallback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Chain"
       }
     },
     "/api/strategies/outcome": {

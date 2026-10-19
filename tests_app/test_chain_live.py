@@ -39,7 +39,8 @@ NIFTY_ID = "NSE_INDEX:256265"
 GRID = [Decimal(25000 + 50 * i) for i in range(9)]  # 25000 .. 25400
 WINDOW_2 = [Decimal(s) for s in ("25050", "25100", "25150", "25200", "25250")]
 ERROR = render("user_input_request_invalid").as_dict()
-ONE, TWO = 1, 2
+ONE, TWO, THREE, FIVE, EIGHT = 1, 2, 3, 5, 8  # push / row counts
+HTTP_OK, HTTP_UNPROCESSABLE = 200, 422
 
 
 def contracts_for(expiry: datetime.date, token_base: int) -> tuple[PickableContract, ...]:
@@ -241,8 +242,9 @@ async def test_ac4_at_most_one_push_a_second_and_none_without_a_change():
         mono.now += 0.2
         await settle(2)
     await close(channel, task)
-    assert pushed == 3  # t=0 (first), t=1.0, t=2.0: hand count of 1 s gates over 2 s
-    assert len(channel.sent) == pushed + 1  # the last tick's change is pushed once at the next gate, then nothing
+    assert pushed == THREE  # t=0 (first), t=1.0, t=2.0: hand count of 1 s gates over 2 s
+    assert len(channel.sent) == pushed  # the t=2.0 push carried the last tick; 2 quiet seconds push nothing
+    assert channel.sent[-1]["rows"][0]["ce"]["ltp"] == "110.50"  # the last tick (offset 10) was the one pushed
 
 
 async def test_ac4_requests_are_applied_at_most_once_a_second_latest_wins():
@@ -261,7 +263,7 @@ async def test_ac4_requests_are_applied_at_most_once_a_second_latest_wins():
     await close(channel, task)
     assert len(reader.calls) == TWO
     assert len(provider.subscribe_calls) == TWO  # 5 strikes, then 9 (4 each side): never 7
-    assert len(channel.sent[-1]["rows"]) == 9
+    assert len(channel.sent[-1]["rows"]) == EIGHT  # 4 each side of 25150: only 3 below it on the grid (25000..25350)
 
 
 @pytest.mark.parametrize(("spot", "atm"), [("25162.30", "25150.00"), ("25175", "25150.00"), ("25175.01", "25200.00"),
@@ -396,7 +398,7 @@ async def test_spot_missing_shows_no_rows_and_no_guessed_atm_then_rows_when_the_
     await settle()
     await close(channel, task)
     last = channel.sent[-1]
-    assert last["atm_strike"] == "25150.00" and len(last["rows"]) == 5 and last["rows_missing"] is None
+    assert last["atm_strike"] == "25150.00" and len(last["rows"]) == FIVE and last["rows_missing"] is None
     assert feed.fanout.subscriber_count(NIFTY_ID) == 0
 
 
@@ -449,7 +451,7 @@ async def test_two_holders_and_fallback_answer_not_connected():
     await close(channel_b, task_b)
     assert (down.state, down.rows, down.spot, down.atm_strike) == ("NOT_CONNECTED", [], None, None)
     assert down.spot_at == T0
-    assert up.state == "LIVE" and up.atm_strike == Decimal("25150") and len(up.rows) == 5
+    assert up.state == "LIVE" and up.atm_strike == Decimal("25150") and len(up.rows) == FIVE
 
 
 def test_rest_read_without_a_holder_is_not_live():
@@ -477,3 +479,45 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
+
+
+def _app_client(ctx: MarketContext | None, reader: Reader):
+    from ofo_app.main import create_app  # noqa: PLC0415 - the app is built per test, with no lifespan (no database)
+    from ofo_app.routes import chain, outcome  # noqa: PLC0415
+    from starlette.testclient import TestClient  # noqa: PLC0415
+
+    app = create_app()
+    app.dependency_overrides[outcome.get_market_context] = lambda: ctx
+    app.dependency_overrides[outcome.get_streaming] = lambda: None
+    app.dependency_overrides[outcome.get_answer_clock] = lambda: Clock(T0)
+    app.dependency_overrides[chain.get_chain_reader] = lambda: reader
+    return TestClient(app)
+
+
+def test_rest_route_answers_the_chain_and_refuses_a_bad_strike_count():
+    """AC-1/AC-8 through the app's door: GET /api/market/chain answers the chain message; fallback=1 NOT_CONNECTED;
+    strikes_each_side 0, 16 and 'x' are refused with the one input message (422)."""
+    provider = FakeProvider()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    reader = Reader()
+    client = _app_client(MarketContext(provider, Clock(T0), Decimal("0.065")), reader)
+    query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2}
+    ok = client.get("/api/market/chain", params=query)
+    assert ok.status_code == HTTP_OK, ok.text
+    assert ok.json()["state"] == "LIVE" and ok.json()["atm_strike"] == "25150.00" and len(ok.json()["rows"]) == FIVE
+    assert client.get("/api/market/chain", params={**query, "fallback": "1"}).json()["state"] == "NOT_CONNECTED"
+    for bad in ("0", "16", "x", "-1"):
+        refused = client.get("/api/market/chain", params={**query, "strikes_each_side": bad})
+        assert refused.status_code == HTTP_UNPROCESSABLE and refused.json() == ERROR, (bad, refused.text)
+
+
+def test_the_chain_socket_is_a_door_route():
+    """The socket is registered as a door socket route minting only ChainOut (and catalogue messages)."""
+    from ofo_app.errors import ClosedWebSocketRoute  # noqa: PLC0415
+    from ofo_app.routes import chain  # noqa: PLC0415
+
+    route = chain.socket_route()
+    assert isinstance(route, ClosedWebSocketRoute) and route.path == "/api/market/chain/live"
+    app_paths = {getattr(r, "path", None) for r in _app_client(None, Reader()).app.routes}
+    assert {"/api/market/chain/live", "/api/market/chain"} <= app_paths

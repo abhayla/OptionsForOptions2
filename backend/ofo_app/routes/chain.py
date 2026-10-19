@@ -22,12 +22,29 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from ofo_app.chain_push import (MAX_STRIKES_EACH_SIDE, ChainCatalogue, ChainOut, ChainPush, ChainReader, ChainRequest,
-                                chain_answer, index_id_of, pick_window, stored_chain, window_ids)
+from ofo_app.chain_push import (
+    MAX_STRIKES_EACH_SIDE,
+    ChainCatalogue,
+    ChainOut,
+    ChainPush,
+    ChainReader,
+    ChainRequest,
+    chain_answer,
+    index_id_of,
+    pick_window,
+    stored_chain,
+    window_ids,
+)
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.routes import live, outcome
-from ofo_app.routes.outcome import (AnswerClock, MarketContext, get_answer_clock, get_market_context, get_streaming,
-                                    inputs_streaming)
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    get_answer_clock,
+    get_market_context,
+    get_streaming,
+    inputs_streaming,
+)
 
 PATH = "/api/market/chain/live"
 REST_PATH = "/api/market/chain"
