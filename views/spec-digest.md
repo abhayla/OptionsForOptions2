@@ -151,7 +151,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-021 [Approved]: Referral rewards
 - REQ-022 [Specified]: Free-eligibility loop
 - REQ-023 [Specified]: Paid Pro and billing
-- REQ-024 [Specified]: Guided strategy creation
+- REQ-024 [Approved]: Guided strategy creation
 - REQ-025 [Approved]: Strategy discovery and preferences
 - REQ-026 [Approved]: Expected market range input
 - REQ-027 [Approved]: Strike selection modes

@@ -40,6 +40,7 @@ Done (10): REQ-001, REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-05
 | REQ-018 | Trial and Limited/Read-Only mode | feature | normal | blocked: its own work item W-008 blocked: blocked by W-007 (parked, issue #12) |
 | REQ-019 | Complimentary Pro for qualifying Zerodha customers | feature | normal | blocked: its own work item W-011 blocked: blocked by W-007 (parked, issue #12) |
 | REQ-021 | Referral rewards | feature | normal | blocked: its own work item W-009 blocked: blocked by W-007 (parked, issue #12) |
+| REQ-024 | Guided strategy creation | feature | normal | next |
 | REQ-025 | Strategy discovery and preferences | feature | normal | next |
 | REQ-026 | Expected market range input | feature | normal | next |
 | REQ-027 | Strike selection modes | feature | normal | next |
@@ -72,7 +73,6 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
 - REQ-023 (Specified): Paid Pro and billing
-- REQ-024 (Specified): Guided strategy creation
 - REQ-047 (Specified): Adjustment-relevant data collection
 - REQ-050 (Specified): Shared computation and scale
 - REQ-066 (Specified): Compliance gates

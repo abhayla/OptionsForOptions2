@@ -2359,6 +2359,58 @@
         "title": "TableOut",
         "type": "object"
       },
+      "TemplateLegOut": {
+        "additionalProperties": false,
+        "description": "One leg of a template at its default parameters (W-119): the strike as whole steps from the ATM strike.",
+        "properties": {
+          "action": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expiry_slot": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Expiry Slot",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "quantity_multiplier": {
+            "title": "Quantity Multiplier",
+            "type": "integer"
+          },
+          "strike_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike Steps"
+          }
+        },
+        "required": [
+          "action",
+          "instrument",
+          "strike_steps",
+          "expiry_slot",
+          "quantity_multiplier"
+        ],
+        "title": "TemplateLegOut",
+        "type": "object"
+      },
       "TemplateOut": {
         "additionalProperties": false,
         "properties": {
@@ -2369,6 +2421,13 @@
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Id",
             "type": "string"
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
           },
           "level": {
             "enum": [
@@ -2415,7 +2474,8 @@
           "description",
           "level",
           "views",
-          "objectives"
+          "objectives",
+          "legs"
         ],
         "title": "TemplateOut",
         "type": "object"
