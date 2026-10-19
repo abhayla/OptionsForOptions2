@@ -5,7 +5,10 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 
-const sectionRoutes = SECTIONS.flatMap((s) => [
+// Sub-pages that have their own screen; every other nav item stays a placeholder until its work item.
+const BUILT_SCREENS = { 'market/option-chain': () => import('../pages/OptionChainPage.vue') }
+
+const sectionRoutes =SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
     name: s.key,
@@ -15,7 +18,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
+    component: BUILT_SCREENS[`${s.key}/${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])
