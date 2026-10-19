@@ -797,3 +797,14 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   `ci.yml` is kit-owned: a draft filter there is a `harvest` issue to Startup-Factory; `app-tests.yml` is
   project-owned and is split into a frontend job and an API job with their own path filters. Status: **measured; open
   (GC-6 row O0)**.
+
+## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses Tue 2026-10-20 and lists Wed 2026-10-21
+- Measured 2026-10-19 by the GC-6 MKT-HOURS builder: NSE's own holiday API (`holiday-master?type=trading`, key `FO`)
+  returns 20 F&O trading holidays for 2026, including 2026-10-20 (Dussehra) and 2026-11-10 (Diwali-Balipratipada); the
+  public calendars checked the same day (cleartax, Tata MF, Upstox) agree on 20 October. The hard-coded 2026 list in
+  `abhayla/algochanakya@bf9faf7 backend/app/utils/market_hours.py` has no 20 October, lists 21 October (a trading day
+  per NSE) and misses several other holidays.
+- Bears on: ADR-119 (the holiday list is dated data with a source, never typed into code) and
+  `spec/technical-design/legacy-reuse.md` row M2 (`market_hours.py` ADAPT): copy the session logic only, never its
+  holiday list. The project's list is `backend/ofo/market_calendar.json` (source URL and fetch date in the file), built
+  on branch gc6/mkt-hours. Not a rule change. Status: **measured; the copied list is not used (GC-6 row MKT-HOURS)**.
