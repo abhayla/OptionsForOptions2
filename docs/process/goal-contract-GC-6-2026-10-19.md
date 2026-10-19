@@ -163,8 +163,8 @@ with POOL-BUDGET; m7 heartbeat written out in full.
 The first session (a47e05b8) ran 20:16-~22:30 IST and released `lock/gc-6` at handover; the next session takes it
 fresh (chain rule 2, parallel lock). Every worktree it created is removed; every branch below is pushed. The truth is
 the tracker rows (contract `GC-6`), not this list; this list is the starting point:
-- **Closed:** S0 (#446), HARVEST-DRAFT (Startup-Factory#152). BUILDER-WIRE: PR #447 (see its row for merged/CI).
-- **Held, reviewed PASS:** POOL-BUDGET draft PR #448 (core proof = its CI api job; read it first).
+- **Closed:** S0 (#446), HARVEST-DRAFT (Startup-Factory#152). BUILDER-WIRE: PR #447 reviewed PASS but NOT merged - its CI sat queued during GitHub's Actions incident of 2026-10-19 ~21:10 IST; first step of the next run: `python scripts/orchestrator/merge.py 447 --reviewed-sha 78218e9bd0b71c7207b2dba0f54708aaee6dd5e0`.
+- **Held, reviewed PASS, core PROVEN:** POOL-BUDGET draft PR #448 (CI api job 118146292336: 2653 passed, the core-proof test ran).
 - **Built, review findings to fix (round 2):** MKT-HOURS (gc6/mkt-hours), CI-SPLIT (gc6/ci-split, round-2 review only).
 - **Built, not yet reviewed:** CREATE-GUIDED (gc6/create-guided; apply ADR-121 (1) first), #313a (gc6/313a-migration).
 - **Next to start:** #313b, KILL-SWITCH (on gc6/mkt-hours), INSTR-FRESH, TOKEN-RETURN, DUP-TAG, W-083-AC2, then the O2
