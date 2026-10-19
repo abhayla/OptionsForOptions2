@@ -35,6 +35,7 @@ from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
 from ofo_app import order_audit
+from ofo_app import order_book_store as books
 from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
@@ -200,7 +201,8 @@ async def _others(req: _Request, catalogue: Any, zerodha: _Read) -> tuple[dict[t
             raise _refuse("gate_broker_unconfirmed") from None
         unknown.update(ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
                        for o in er.unsettled_orders(history, book))
-        for key, n in _keyed(ep.held_units(history), catalogue, underlying).items():
+        adopted = await books.adopted_for(req.db, req.user_ref, other)
+        for key, n in _keyed(ep.held_units(history, adopted), catalogue, underlying).items():
             total[key] = total.get(key, 0) + n
     return total, frozenset(unknown)
 
@@ -212,6 +214,7 @@ class _World:
     zerodha: _Read
     others: Mapping[tuple, int]
     undecidable: frozenset  # contracts another strategy's open or drifted plan touches
+    adopted: tuple  # this strategy's adopted holdings (ADR-096: counted as fills)
 
 
 def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, str]:
@@ -220,7 +223,7 @@ def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, 
 
 
 def _checks(history: Sequence[plans.StoredPlan], world: _World) -> tuple[er.ContractCheck, ...]:
-    held = _keyed(ep.held_units(history), world.catalogue, world.underlying)
+    held = _keyed(ep.held_units(history, world.adopted), world.catalogue, world.underlying)
     return er.reconcile(sorted(_symbols(history, world), key=repr), held, world.others, world.zerodha.net,
                         world.undecidable)
 
@@ -250,8 +253,11 @@ async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...]
     if answer.state in (er.WAITING, er.RECONCILE):
         return {plan.plan_number: answer}  # stays open: nothing changes (REQ-057 AC-2)
     reason = _final_reason(history, plan, answer, world)
-    await plans.close_plan(req.db, req.user_ref, req.strategy_id, plan.plan_number, reason=reason,
-                           filled=dict(answer.filled))
+    try:  # #313b: the plan's trades are stored with the close, in this transaction
+        await plans.close_plan(req.db, req.user_ref, req.strategy_id, plan.plan_number, reason=reason,
+                               filled=dict(answer.filled), fills=er.plan_fills(plan, book))
+    except plans.PlanStoreError:  # trades that cannot be stored exactly: nothing closes (fail closed, rolled back)
+        raise _refuse("gate_broker_unconfirmed") from None
     return {}
 
 
@@ -318,7 +324,8 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
         book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
     except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
         raise _refuse("gate_broker_unconfirmed") from None
-    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))
+    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha),
+                   await books.adopted_for(req.db, req.user_ref, req.strategy_id))
     live = await _settle_open_plan(req, history, book, world)
     await _record_externals(req, book)
     await order_audit.record_broker_book(req.db, zerodha.orders, zerodha.trades, tags)  # W-103: our orders + trades
