@@ -8,6 +8,13 @@ const Placeholder = () => import('../pages/PlaceholderPage.vue')
 const BUILT = {
   '/market/underlying-index-view': () => import('../pages/IndexViewPage.vue'),
   '/home/overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
+  '/market/market-context': () => import('../pages/MarketContextPage.vue'), // W-117
+  '/alerts/active': () => import('../pages/AlertsPage.vue'),
+  '/alerts/history': () => import('../pages/AlertsPage.vue'),
+  '/alerts/notification-settings': () => import('../pages/AlertsPage.vue'),
+  '/learn/strategy-education': () => import('../pages/LearnPage.vue'),
+  '/learn/options-concepts': () => import('../pages/LearnPage.vue'),
+  '/learn/platform-guidance': () => import('../pages/LearnPage.vue'),
 }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [

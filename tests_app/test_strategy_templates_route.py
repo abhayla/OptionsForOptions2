@@ -15,6 +15,7 @@ from ofo_app.routes import strategy_templates
 from starlette.testclient import TestClient
 
 HTTP_OK = 200
+HTTP_METHOD_NOT_ALLOWED = 405
 CATALOGUE_SIZE = 21  # the catalogue file's own header: "The catalogue is 21 templates."
 
 
@@ -53,7 +54,7 @@ def test_ac1_the_route_is_read_only(client: TestClient) -> None:
     """AC-1 (negative): only GET exists; a write gets 405 and the catalogue is unchanged."""
     before = client.get(strategy_templates.PATH).json()
     for send in (client.post, client.put, client.delete):
-        assert send(strategy_templates.PATH).status_code == 405
+        assert send(strategy_templates.PATH).status_code == HTTP_METHOD_NOT_ALLOWED
     assert client.get(strategy_templates.PATH).json() == before
 
 

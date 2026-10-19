@@ -320,6 +320,7 @@ work_items:
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-114: 4b           # GC-5S: Underlying/index view + index socket (REQ-072 AC-2)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
+  W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
