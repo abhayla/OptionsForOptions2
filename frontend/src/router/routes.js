@@ -17,6 +17,7 @@ const REAL_PAGES = {
   'learn-strategy-education': () => import('../pages/LearnPage.vue'),
   'learn-options-concepts': () => import('../pages/LearnPage.vue'),
   'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
+  'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
 }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
