@@ -110,7 +110,9 @@ def test_core_gc3l_replies_become_one_trade_per_tag_at_the_recorded_prices():
     entry = er.plan_fills(ENTRY, book)
     assert entry == (plans.PlanFill("OFS9V1L0", ENTRY_ORDER, ENTRY_TRADE, LOT, ENTRY_PRICE),)
     assert plans._checked_trades({"OFS9V1L0": LOT}, entry) == entry
-    book = _book(_gc3l("orders"), _gc3l("trades"), EXIT)
+    # the route reads the book with EVERY stored tag: the entry's trade is in it, and is never the exit's
+    book = _book(_gc3l("orders"), _gc3l("trades"), ENTRY, EXIT)
+    assert len(book.fills) == 2  # noqa: PLR2004 the entry's and the exit's trade
     assert er.classify(EXIT, book, GC3L_DAY) == er.PlanAnswer(er.FILLED, {"OFS9V2L0": LOT})
     assert er.plan_fills(EXIT, book) == (plans.PlanFill("OFS9V2L0", EXIT_ORDER, EXIT_TRADE, LOT, EXIT_PRICE),)
 
@@ -227,7 +229,7 @@ def test_one_zerodha_order_under_two_tags_is_refused():
 def test_only_a_tuple_of_real_plan_fills_is_taken_and_a_forged_one_is_rechecked():
     """Allow-list: a mapping or a plain dict per trade is refused; a PlanFill whose price was forged to 7.005 after
     construction is refused by the re-check."""
-    for bad in ({"OFS9V1L0": LOT}, ({"tag": "OFS9V1L0"},), "trades"):
+    for bad in ({"OFS9V1L0": LOT}, ({"tag": "OFS9V1L0"},), "trades", frozenset({_fill()})):
         with pytest.raises(plans.PlanStoreError):
             plans._checked_trades({"OFS9V1L0": LOT}, bad)
     forged = _fill()

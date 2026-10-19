@@ -103,14 +103,14 @@ _FILLS = text("SELECT f.tag, f.broker_order_id, f.trade_id, f.quantity, f.price 
 
 async def _locked(conn: Any, user_ref: str, strategy_id: Any) -> int:
     try:
-        return await plans._lock(conn, user_ref, strategy_id)  # the one strategy lock of the plan store
+        return await plans.lock_strategy(conn, user_ref, strategy_id)  # the one strategy lock of the plan store
     except plans.PlanStoreError as exc:
         raise OrderBookError(NOT_FOUND, exc.detail) from exc
 
 
 async def _owned(conn: Any, user_ref: str, strategy_id: Any) -> int:
     try:
-        return await plans._owned(conn, user_ref, strategy_id)  # the plan store's ownership check
+        return await plans.owned_strategy(conn, user_ref, strategy_id)  # the plan store's ownership check
     except plans.PlanStoreError as exc:
         raise OrderBookError(NOT_FOUND, exc.detail) from exc
 

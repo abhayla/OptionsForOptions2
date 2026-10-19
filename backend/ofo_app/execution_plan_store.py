@@ -200,7 +200,7 @@ async def _check_symbols(conn: Any, orders: tuple[PlanOrder, ...]) -> None:
                                            f"catalogue's {ZERODHA} symbol {symbol!r} for {o.instrument_id}")
 
 
-async def _lock(conn: Any, user_ref: str, strategy_id: Any) -> int:
+async def lock_strategy(conn: Any, user_ref: str, strategy_id: Any) -> int:
     """Row-locks the user's strategy until the transaction ends; another user's or a missing one is not_found."""
     try:
         strategy_id = strategy_store.check_strategy_id(strategy_id)
@@ -210,7 +210,7 @@ async def _lock(conn: Any, user_ref: str, strategy_id: Any) -> int:
     return strategy_id
 
 
-async def _owned(conn: Any, user_ref: str, strategy_id: Any) -> int:
+async def owned_strategy(conn: Any, user_ref: str, strategy_id: Any) -> int:
     try:
         strategy_id = strategy_store.check_strategy_id(strategy_id)
     except strategy_store.StrategyStoreError as exc:
@@ -223,7 +223,7 @@ async def _owned(conn: Any, user_ref: str, strategy_id: Any) -> int:
 async def next_plan_number(conn: Any, user_ref: str, strategy_id: int, *, floor: int = 0) -> int:
     """The plan number for the next Execute. Run it in the transaction that then calls ``record_plan``."""
     floor = _int(floor, "floor", 0)
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     if (await conn.execute(_OPEN, {"s": strategy_id})).first() is not None:
         raise PlanStoreError(PLAN_OPEN, f"strategy {strategy_id} already has an open plan")
     highest = int((await conn.execute(_HIGHEST, {"s": strategy_id})).scalar_one())
@@ -277,7 +277,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
                       action: str, orders: Sequence[PlanOrder]) -> StoredPlan:
     """Stores the plan open, with its orders. The caller commits (and has called ``next_plan_number`` in the same
     transaction: the strategy lock is taken here too, so a plan can never be recorded around it)."""
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     number = _int(plan_number, "plan_number", 1)
     if action not in ACTIONS:
         raise PlanStoreError(BAD_PLAN, f"action must be ENTRY or EXIT, got {action!r}")
@@ -334,7 +334,7 @@ async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
 
 async def plans_for(conn: Any, user_ref: str, strategy_id: int) -> tuple[StoredPlan, ...]:
     """Every plan of the strategy, ascending by plan number."""
-    return await _read(conn, await _owned(conn, user_ref, strategy_id))
+    return await _read(conn, await owned_strategy(conn, user_ref, strategy_id))
 
 
 async def open_plan(conn: Any, user_ref: str, strategy_id: int) -> Optional[StoredPlan]:
@@ -431,7 +431,7 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
     ``fills`` (#313b) are Zerodha's trades of the plan's orders: per tag they must sum exactly to the filled quantity
     (so a close with fills carries its trades, and a close with nothing filled carries none); they are stored in this
     transaction, under the strategy and plan locks already held."""
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     if not isinstance(reason, str) or reason not in CLOSE_REASONS:
         raise PlanStoreError(BAD_PLAN, f"reason must be one of {CLOSE_REASONS}, got {reason!r}")
     if isinstance(plan_number, bool) or not isinstance(plan_number, int) or not 1 <= plan_number <= INTEGER_MAX:
@@ -461,4 +461,5 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
 
 
 __all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "UNRESOLVED", "PlanFill", "PlanOrder", "PlanStoreError",
-           "StoredPlan", "close_plan", "next_plan_number", "open_plan", "plans_for", "record_plan", "zerodha_symbol"]
+           "StoredPlan", "close_plan", "lock_strategy", "next_plan_number", "open_plan", "owned_strategy", "plans_for",
+           "record_plan", "zerodha_symbol"]
