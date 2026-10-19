@@ -29,6 +29,12 @@ An execution plan left open at the end of a trading day is read back the next da
 through the strategy's Execute screen (next session Wed 2026-10-21). Deadline: merged by Mon 2026-10-26 12:00 IST,
 else the owner sells the lot on Kite that day and the app records the mismatch. Tier A (order state).
 
+## Step 0.7 - GC-2h's held PRs (2026-10-19)
+First the two PARTIAL steps: #421 (#352-1) last review round, then CI; #424 (#403) Tier A review. Then merge, after
+#398 / #410: #419 (migration 0018, own PR), #418 (#338/#353 + ADR-113), #420 (never split), #421 (stacked on #419 +
+#398), #417 (tracker_check), #424. Before #380 step 2.2: the owner's answer to OQ-GC2h-2 (shared-contract unblock) and
+#423 (the route derives Zerodha's net and basket-reconciled from Kite). Tracker rows say the same.
+
 ## Step 1 - merge #398 (W-108) then W-111
 GC-2g did the W-108 redesign (ADR-110 pending state, closed-plan drift; two fresh Opus rounds, round 2 PASS at
 05ae2c5) and W-111's rebase + review (see `session-handover-2026-10-19-gc2g.md`). Merge #398 after #395 (its frontend
