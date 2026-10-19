@@ -15,13 +15,14 @@ picks ``strikes_each_side`` catalogue strikes either side of the ATM strike from
 no guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer`
 - the same function the REST read returns - only when something the screen shows changed. EVERY outbound message (a
 push or the error reply to invalid client messages, coalesced into one) passes ONE gate of ``MIN_PUSH_INTERVAL``
-seconds, so the socket never sends more than one message a second for any reason. Every subscription change (an applied
-request, latest wins; a re-pick once the spot arrives) happens at most once a second, so a client cannot drive catalogue
-reads or Kite subscription changes faster; when the live ATM leaves the window it re-centres around it at most every
-``RECENTRE_SECONDS``. A change takes the new subscription BEFORE releasing the old one (the order of
-``StrategyPush._replace``, so a shared instrument such as the index is never dropped and re-added). A contract the
-provider does not know (KeyError) makes only THAT cell unavailable; the rest of the window still streams. Everything is
-released when the connection ends, on every exit path.
+seconds, so the socket never sends more than one message a second for any reason; a pending push takes the gate before
+a pending error reply, and error replies go at most once every ``ERROR_REPLY_SECONDS`` (#439). Every subscription
+change (an applied request, latest wins; a re-pick once the spot arrives) happens at most once a second, so a client
+cannot drive catalogue reads or Kite subscription changes faster; when the live ATM leaves the window it re-centres
+around it at most every ``RECENTRE_SECONDS``. A change takes the new subscription BEFORE releasing the old one (the
+order of ``StrategyPush._replace``, so a shared instrument such as the index is never dropped and re-added). A contract
+the provider does not know (KeyError) makes only THAT cell unavailable; the rest of the window still streams.
+Everything is released when the connection ends, on every exit path.
 
 REQ-029 AC-4: LTP and bid/ask stream at the push rate (a 0 bid or ask reads null, F-29); OI and OI change are refreshed
 at most every ``OI_REFRESH_SECONDS``. IV is NOT carried: it needs the one calculation engine (ADR-008), so IV's lower
@@ -66,6 +67,9 @@ MAX_STRIKES_EACH_SIDE = 15
 #: orchestrator's technical decision (W-116 round 2). The same interval bounds how often the window re-centres.
 OI_REFRESH_SECONDS = 5.0
 RECENTRE_SECONDS = OI_REFRESH_SECONDS
+#: #439: invalid client messages are answered with at most one error reply per this many seconds, and only in a slot no
+#: data push needs (a pending push takes the one gate first). 5 s is the orchestrator's technical decision.
+ERROR_REPLY_SECONDS = 5.0
 _SIDES = ("CE", "PE")
 #: (oi, oi_change) as last shown, per contract id
 SlowValues = dict[str, tuple[int | None, int | None]]
@@ -308,7 +312,8 @@ class ChainPush:
         self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
-        self._error_due = False  # invalid client messages since the last send: answered with ONE error, gated
+        self._error_due = False  # invalid client messages since the last error reply: answered with ONE error, gated
+        self._last_error: float | None = None  # the last error reply: at most one every ERROR_REPLY_SECONDS
         self._unknown: set[str] = set()  # contracts of the request the provider does not know: shown unavailable
         self._slow: SlowValues = {}
         self._last_slow: float | None = None
@@ -424,24 +429,30 @@ class ChainPush:
                 self._slow.setdefault(i, (q.oi, q.oi_change))
         return self._slow
 
+    def _error_may_go(self) -> bool:
+        since = self._since(self._last_error)
+        return since is None or since >= ERROR_REPLY_SECONDS
+
     async def _maybe_send(self) -> None:
+        """One message through the one gate. A pending data push takes the slot FIRST (#439: a client sending one
+        invalid message a second must not starve its own pushes); a pending error reply goes only in a slot no push
+        needs, and at most once every ERROR_REPLY_SECONDS (the invalid messages in between are coalesced into it)."""
         if not self._gate_open():
             return
-        if self._error_due:
+        if self._req is not None and self._catalogue is not None:
+            live = self._handle is not None
+            body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
+                                slow=self._slow_values() if live else None, unknown=frozenset(self._unknown))
+            shown = _shown_state(body)
+            if shown != self._shown:  # something the screen shows changed: the push wins the slot
+                await self._emit(body)
+                self._shown = shown
+                self.pushes += 1
+                return
+        if self._error_due and self._error_may_go():
             self._error_due = False
             await self._emit(render("user_input_request_invalid"))
-            return
-        if self._req is None or self._catalogue is None:
-            return
-        live = self._handle is not None
-        body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
-                            slow=self._slow_values() if live else None, unknown=frozenset(self._unknown))
-        shown = _shown_state(body)
-        if shown == self._shown:  # nothing the screen shows changed: no push
-            return
-        await self._emit(body)
-        self._shown = shown
-        self.pushes += 1
+            self._last_error = self._monotonic()
 
     async def run(self) -> None:
         recv: asyncio.Future | None = None

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import itertools
 import json
 import pathlib
 import re
@@ -25,9 +26,17 @@ from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo_app import chain_push
 from ofo_app.catalogue_picker import PickableContract
-from ofo_app.chain_push import ChainCatalogue, ChainOut, ChainPush, ChainRequest, atm_strike, strike_window
+from ofo_app.chain_push import (
+    ERROR_REPLY_SECONDS,
+    ChainCatalogue,
+    ChainOut,
+    ChainPush,
+    ChainRequest,
+    atm_strike,
+    strike_window,
+)
 from ofo_app.errors import socket_body
-from ofo_app.live_push import ChannelClosed, LiveFeed
+from ofo_app.live_push import MIN_PUSH_INTERVAL, ChannelClosed, LiveFeed
 from ofo_app.routes.chain import chain_read
 from ofo_app.routes.outcome import MarketContext
 
@@ -669,3 +678,59 @@ async def test_window_re_centres_on_the_live_atm_and_releases_the_old_contracts(
     assert [r["strike"] for r in last["rows"]] == ["25300.00", "25350.00", "25400.00"]
     assert old_counts == [0] * 10 and new_count == ONE and index_count == ONE
     assert not index_dropped
+
+
+def _timed(channel, mono) -> list[float]:
+    """Record the monotonic time of every message the channel sends (the one gate's own clock)."""
+    times: list[float] = []
+    send = channel.send
+
+    async def timed_send(source) -> None:
+        times.append(mono.now)
+        await send(source)
+
+    channel.send = timed_send
+    return times
+
+
+async def test_an_invalid_message_every_second_never_starves_the_data_pushes():
+    """#439 item 1 (finding rate-gate-on-success-path-only, side effect): a client sending an invalid message every
+    1.0 s for 20 s while quotes change still gets its data pushes (a pending push takes the gate before a pending error
+    reply), and still never two messages less than 1 s apart. Red on the error-first gate: 0 data pushes."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    times = _timed(channel, mono)
+    task = await start(push, channel)
+    n0 = len(channel.sent)
+    for sec in range(20):
+        await channel.inbound.put({"underlying": "NIFTY", "expiry": "x"})
+        tick_window(provider, ltp_offset=sec + 1)
+        mono.now += 1.0
+        await settle(3)
+    await close(channel, task)
+    data = [m for m in channel.sent[n0:] if m != ERROR]
+    # hand count: the quotes change in each of the 20 seconds, so every one of the 20 slots is a push (the brief's bar
+    # is >= 15; the exact 20 also catches an error-first gate whose 5 s coalescing alone would still let 16 through)
+    assert len(data) == 20  # noqa: PLR2004
+    assert ERROR not in channel.sent[n0:]  # a pending push always took the slot
+    assert all(b - a >= MIN_PUSH_INTERVAL for a, b in itertools.pairwise(times))
+
+
+async def test_invalid_messages_with_no_data_change_get_at_most_one_error_every_five_seconds():
+    """#439 item 1: error replies are coalesced - an invalid message every second for 20 s with nothing new to push gets
+    at most one error reply per ERROR_REPLY_SECONDS (never one per message), and at least one reply."""
+    provider, _feed, channel, mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    times = _timed(channel, mono)
+    task = await start(push, channel)
+    n0 = len(channel.sent)
+    for _ in range(20):
+        await channel.inbound.put({"underlying": "NIFTY", "expiry": "x"})
+        mono.now += 1.0
+        await settle(3)
+    await close(channel, task)
+    sent = channel.sent[n0:]
+    error_times = [t for t, m in zip(times[n0:], sent, strict=True) if m == ERROR]
+    assert sent == [ERROR] * len(error_times)
+    assert 1 <= len(error_times) <= 20 // ERROR_REPLY_SECONDS  # at most 4 in 20 s, never 20
+    assert all(b - a >= ERROR_REPLY_SECONDS for a, b in itertools.pairwise(error_times))
