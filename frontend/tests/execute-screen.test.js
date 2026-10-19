@@ -58,9 +58,20 @@ const RETURN = { strategy_id: 1, read_at: '2026-10-16T15:22:00+05:30', strategy_
   contracts: [{ tradingsymbol: 'NIFTY26O1923650CE', platform_units: 65, zerodha_units: 65, other_strategies_units: 0,
     unexplained_units: 0, mismatch: null, reconciliation_reason: null }],
   mismatches: 0, blocked: false, external_orders: [], realised_pnl: null }
-const REFUSAL = { what_happened: 'The market is closed. Orders can be placed once it opens.',
+const REFUSAL = { what_happened: 'Market closed. You can review your plan; execution opens at 09:15 on Wed 21 Oct.',
   impact: 'No order can be placed while the market is closed.', what_is_blocked: 'Execution of this strategy.',
   next_action: 'Return during market hours and execute again.' }
+
+// ADR-119 (3): the server's market verdict, as GET /execute/market-status writes it (Dussehra Tue 2026-10-20 10:00 IST)
+const MARKET_OPEN = { status: 'open', next_open: null, message: null, as_of: '2026-10-21T10:00:00+05:30' }
+const MARKET_CLOSED = { status: 'closed', next_open: '2026-10-21', as_of: '2026-10-20T10:00:00+05:30',
+  message: { what_happened: 'Market closed. You can review your plan; execution opens at 09:15 on Wed 21 Oct.',
+    impact: 'No order can be placed while the market is closed.', what_is_blocked: 'Execution of this strategy.',
+    next_action: 'Return during market hours and execute again.' } }
+const MARKET_UNCONFIRMED = { status: 'unconfirmed', next_open: null, as_of: '2027-01-05T10:00:00+05:30',
+  message: { what_happened: 'We could not confirm that the market is open. Execution is paused until it is confirmed.',
+    impact: "No order can be placed while the market's status is unknown.", what_is_blocked: 'Execution of this strategy.',
+    next_action: 'Try again once the market status is shown.' } }
 
 const ok = (data) => () => Promise.resolve({ data })
 const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
@@ -83,6 +94,7 @@ beforeEach(() => {
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-19': ok({ contracts: [CONTRACT] }),
     'POST /strategies/1/execute': ok(REPLY),
     'POST /strategies/1/execution/return': ok(RETURN),
+    'GET /execute/market-status': ok(MARKET_OPEN),
   }
   submitSpy = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {})
   localStorage.clear()
@@ -277,6 +289,61 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     expect(text(w, 'cost-charges-note')).toBe('Charges are not included.')
     expect(w.find('[data-testid="cost-charges"]').exists()).toBe(false)
+  })
+})
+
+describe('ADR-119 (3): the screen shows the server market verdict BEFORE the click', () => {
+  const marketCase = async (verdict) => {
+    answers['GET /execute/market-status'] = verdict
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    return w
+  }
+
+  it('open: both actions enabled and no market sentence', async () => {
+    const w = await marketCase(ok(MARKET_OPEN))
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeUndefined()
+    expect(w.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="market-closed-what"]').exists()).toBe(false)
+  })
+
+  it('closed (Dussehra): both actions disabled, the server sentence is shown, and a click calls nothing', async () => {
+    const w = await marketCase(ok(MARKET_CLOSED))
+    expect(text(w, 'market-closed-what')).toBe(MARKET_CLOSED.message.what_happened)
+    for (const id of ['prepare-entry', 'prepare-exit']) expect(w.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toEqual([])
+  })
+
+  it('closed shows the disabled actions and the sentence even when the legs never go live (after hours)', async () => {
+    answers['GET /execute/market-status'] = ok(MARKET_CLOSED)
+    const w = await openExecute('1', 20)
+    await new Promise((r) => setTimeout(r, 40))
+    await flushPromises()
+    expect(text(w, 'market-closed-what')).toBe(MARKET_CLOSED.message.what_happened)
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('unconfirmed: actions disabled with the could-not-confirm text; a failed read is the same (fail closed)', async () => {
+    const w = await marketCase(ok(MARKET_UNCONFIRMED))
+    expect(text(w, 'market-closed-what')).toBe(MARKET_UNCONFIRMED.message.what_happened)
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    const failed = await marketCase(() => Promise.reject({ message: 'down', parts: null }))
+    expect(text(failed, 'market-closed-what')).toBe(MARKET_UNCONFIRMED.message.what_happened)
+    expect(failed.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('the browser clock never decides: a closed verdict stays closed at a browser time inside the session', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-21T04:45:00Z')) // 10:15 IST on a trading day
+    try {
+      const w = await marketCase(ok(MARKET_CLOSED))
+      expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
