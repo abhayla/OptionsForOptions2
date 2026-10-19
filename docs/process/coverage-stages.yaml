@@ -322,6 +322,8 @@ work_items:
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
+  W-114: 4b           # GC-5S: Underlying/index view + index socket (REQ-072 AC-2)
+  W-113: 4b           # GC-5S: Live Strategies page (REQ-049 AC-4..6)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
