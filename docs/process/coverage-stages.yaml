@@ -184,6 +184,11 @@ decisions:
   ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
   ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
   ADR-115: 4b           # kit 1.10.1 taken after GC-3L: merges pin the reviewed sha; kit snapshot cleanup replaces the stand-in (owner 2026-10-19)
+  ADR-116: 4b           # shared contract flat on Zerodha: one recorded action exits that contract's legs in every holder (owner 2026-10-19, OQ-GC2h-2)
+  ADR-117: 4b           # entry is two baskets when a sell depends on a protective buy (owner 2026-10-19, #390)
+  ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
+  ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
+  ADR-120: 4b           # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
@@ -377,6 +382,11 @@ findings:
   F-46: 4b        # a live screen kept its last answer's numbers after its own connection dropped (GC-5S W-113/114/115)
   F-47: 4b        # the live feed carries no previous close; Option Chain Change column null (GC-5S W-116)
   F-48: 4b        # a socket's rate limit guarded only its normal push; the error path flooded (GC-5S W-116)
+  F-49: 4b        # Strategy Builder built but missing from REAL_PAGES; nav shows a placeholder (GC-6 S1)
+  F-50: 4b        # Kite basket: required vs final margin; sequence changes required margin only (GC-6 S5)
+  F-51: 4b        # no studied app has a guided objective/view/range wizard; REQ-024/026 alone (GC-6 S3)
+  F-52: 4b        # build-order and W-083 still showed OQ-7 as open after ADR-096 answered it (GC-6 S0)
+  F-53: 4b        # every workflow runs on every PR push incl. drafts; app-tests runs the API suite on frontend-only PRs (GC-6 O0)
 
 hypotheses:
   H1: done

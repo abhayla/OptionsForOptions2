@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (114)
+## Decisions (119)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -80,11 +80,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-072 2026-10-09: The plain-language answer to "Where do I start lo… [applies REQ-034]
 - ADR-073 2026-10-10: The framework-generated API docs page (/docs) and… [applies ADR-003]
 - ADR-074 2026-10-15: If the one bounded #200 round fails, the master-p… [none — it amends only the master-plan Stage 4 cor…]
-- ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition,… [refines ADR-062]
-- ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells mi… [none — adds the TOTAL Current Value rule next to…]
-- ADR-077 2026-10-15: When a strategy's live connection to the platform drops (the browser's own socket closes) and the s… [refines ADR-068]
-- ADR-078 2026-10-15: A second database, ofo_dev, is created on the same Windows VPS PostgreSQL as ofo_test, reached by t… [refines ADR-048]
-- ADR-079 2026-10-15: The platform sets no timer on an open order and never cancels or modifies one (ADR-054). [refines ADR-054]
+- ADR-075 2026-10-15: Save Draft stores each leg's planned entry price… [refines ADR-062]
+- ADR-076 2026-10-15: TOTAL Current Value is shown only for options-onl… [none — adds the TOTAL Current Value rule next to…]
+- ADR-077 2026-10-15: When a strategy's live connection to the platform… [refines ADR-068]
+- ADR-078 2026-10-15: A second database, ofo_dev, is created on the sam… [refines ADR-048]
+- ADR-079 2026-10-15: The platform sets no timer on an open order and n… [refines ADR-054]
 - ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRML (carry forward), with no product choice on scree… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
 - ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha… [amends ADR-071]
@@ -120,6 +120,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
 - ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
 - ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none — a kit upgrade and its merge-command migrat…]
+- ADR-116 2026-10-19: (1) When a contract held by two or more strategies disagrees with Zerodha and Zerodha shows that co… [amends REQ-060]
+- ADR-117 2026-10-19: (1) When any sell leg depends on a protective buy, entry is TWO baskets: basket 1 holds the protect… [amends REQ-056; extends REQ-073]
+- ADR-118 2026-10-19: (1) Only a strategy that never sent a basket (a draft) can be deleted. [extends REQ-070]
+- ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every basket build: entry, two-basket step 2, exit, Complete… [extends REQ-056]
+- ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1;… [none — both owner answers confirm text that alrea…]
 
 ## Requirements (75)
 
@@ -192,14 +197,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-067 [Specified]: Delivery controls
 - REQ-068 [Approved]: Strategy preferences
 - REQ-069 [Approved]: Suggested setups in the Guided Builder
-- REQ-070 [Verified]: Builder history and restore
+- REQ-070 [Approved]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
 - REQ-072 [Verified]: Index spot prices for NIFTY 50 and SENSEX
 - REQ-073 [Approved]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (208)
+## Spec sections (213)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -308,6 +313,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-46 - A live screen keeps showing its last answer's numbers after it…
 - ## F-47 - The live feed carries no previous close, so the Option Chain's…
 - ## F-48 - A live socket's once-a-second limit guarded only its normal pu…
+- ## F-49 - The Strategy Builder page is built but missing from the route…
+- ## F-50 - Kite's basket page shows Required margin and Final margin; ord…
+- ## F-51 - No studied app shows a guided objective, market-view and range…
+- ## F-52 - The generated build order and a work item still say REQ-061 AC…
+- ## F-53 - Every workflow runs on every PR push including drafts, and a f…
 
 ### spec/open-questions.md
 
