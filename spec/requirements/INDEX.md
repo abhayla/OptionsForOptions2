@@ -152,7 +152,7 @@ Requirements: 75; sections: 18
 | REQ-028 | Generic strategy engine and templates | core | Approved |
 | REQ-068 | Strategy preferences | feature | Approved |
 | REQ-069 | Suggested setups in the Guided Builder | feature | Approved |
-| REQ-070 | Builder history and restore | feature | Verified |
+| REQ-070 | Builder history and restore | feature | Approved |
 
 ## Strategy lifecycle (5)
 

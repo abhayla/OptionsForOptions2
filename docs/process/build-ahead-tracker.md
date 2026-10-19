@@ -13,94 +13,131 @@ Status words: `todo`, `building`, `held #PR` (open draft PR, HOLD until GC-3L en
 
 | Id | Item | P | Contract | Tier | Status | Evidence |
 |---|---|---|---|---|---|---|
-| #352-1 | #352 half 1: an earlier-day open plan resolved the next day from positions only (ADR-111; deadline Mon 10-26 12:00) | P1 | GC-3F | A | held #421 | GC-2h: R1 REVISE (other holders not blocked) -> round-2 fix a474d30 + openapi; round-2 review NOT run (cap) - first step of GC-3F |
-| #352-2 | #352 half 2: close-of-day read (after 15:30 IST, before the book clears) closes every open plan | P1 | GC-3F | A | todo | needs the live timing |
+| #352-1 | #352 half 1: an earlier-day open plan resolved the next day from positions only (ADR-111; deadline Mon 10-26 12:00) | P1 | GC-6 | A | held #421 | GC-2h: R1 REVISE (other holders not blocked) -> round-2 fix a474d30 + openapi; round-2 review NOT run (cap) - first step of GC-3F; review by GC-6, merge by GC-3F item 2; verify: python -m pytest -q tests_app/test_row_352_1.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #352-2 | #352 half 2: close-of-day read (after 15:30 IST, before the book clears) closes every open plan | P1 | GC-6 | A | todo | needs the live timing; verify: python -m pytest -q tests_app/test_row_352_2.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #352-proof | Real next-day positions reply captured with `probe.py` (Wed 2026-10-21) as #352-1's pre-merge proof | P1 | GC-3F | A | blocked-live | GC-2h review MINOR 8 |
-| OQ-GC2h-1 | Owner question: may a next-day net be adopted as the strategy's fill (ADR-109 (2) says never automatically)? | P1 | owner | A | blocked-owner | owner-questions-2026-10-19.md |
-| #352 | Open plan cannot be read back next day - closes when #352-1 and #352-2 merge + verifier | P1 | GC-3F | A | todo | |
+| OQ-GC2h-1 | Owner question: may a next-day net be adopted as the strategy's fill (ADR-109 (2) says never automatically)? | P1 | owner | A | closed | owner 2026-10-19 (question tool): "No guessing (Recommended)" - ADR-109 (2) unchanged; recorded in ADR-120 |
+| #352 | Open plan cannot be read back next day - closes when #352-1 and #352-2 merge + verifier | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_352.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #380-1 | #380 step 2.1: migration - stored mismatch record, sticky block (Q222), standalone store (REQ-060 AC-7) | P1 | GC-3F | A | held #419 | GC-2h: R1 REVISE -> R2 PASS (eb3d871); openapi regenerated 5ee4e1d, CI re-run pending |
-| #380-2 | #380 step 2.2: one reconciler in both routes (via #398), triggers as reads, expired legs (T6) | P1 | GC-3F | A | todo | |
-| #380-3 | #380 step 2.3: partial actions (ADR-109 (3)), 3-action reconcile screen (ADR-109 (4)), rejection reason | P1 | GC-3F | A | todo | |
-| #380 | Live Kite-basket routes skip reconciliation/partial rules (F-42) - closes when #380-1..3 merge + verifier | P1 | GC-3F | A | todo | |
-| #389 | Exit basket mixes buy-backs and sells (shorts-first, REQ-058 Q238) - with #380-2 | P1 | GC-3F | A | todo | |
-| #390 | Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/4) - with #380-3 if it fits | P1 | GC-3F | A | todo | |
+| #380-2 | #380 step 2.2: one reconciler in both routes (via #398), triggers as reads, expired legs (T6) | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_execution_return_reconcile.py tests_app/test_execute_reconcile_attribution.py (one reconciler in both routes; triggers as reads; expired legs via settlement) |
+| #380-3 | #380 step 2.3: partial actions (ADR-109 (3)), 3-action reconcile screen (ADR-109 (4)), rejection reason | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_partial_actions.py tests_app/test_reconcile_screen_actions.py; npx playwright test e2e/reconcile-actions.spec.ts (ADR-109 (3)/(4), ADR-116 flat lift) |
+| #380 | Live Kite-basket routes skip reconciliation/partial rules (F-42) - closes when #380-1..3 merge + verifier | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_380.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #389 | Exit basket mixes buy-backs and sells (shorts-first, REQ-058 Q238) - with #380-2 | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_389.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #390 | Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/4) - with #380-3 if it fits | P1 | GC-6 | A | todo | verify: python -m pytest -q tests/execution/test_two_basket_entry.py (ADR-117 rules a-g incl. partial fill cap and a property test that tags never clash) |
 | #338 | Negative balance blocks a closing (reduce-only) basket | P1 | GC-3F | A | held #418 | GC-2h: R1 REVISE -> R2 PASS; CI fix (held from stored plans) 891bc52, CI green; ADR-113 |
-| #353 | Kite allow-list checked per call, not per calling module | P1 | GC-3F | A | held #418 | with #338 |
+| #353 | Kite allow-list checked per call, not per calling module | P1 | GC-6 | A | held #418 | with #338; review by GC-6, merge by GC-3F item 2; verify: python -m pytest -q tests_app/test_row_353.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #63 | Two ProposedOrder builders do not slice at the freeze limit | P1 | GC-3F | A | held #420 | GC-2h: R1 REVISE -> R2 PASS 0ca3bc7, CI green |
 | #43 | Plan gaps: Complete ignores freeze/margin; per-slice failure; lot alignment | P1 | GC-3F | A | held #420 | with #63 |
-| #263 | NRML+MIS same contract blocks exits; non-NRML entry; freeze load race | P1 | GC-3F | A | todo | |
-| #279 | Settle-before-reconcile order; expired standalone note; persist settlement state | P1 | GC-3F | A | todo | |
-| #115 | Orders linked to the catalogue by symbol, not InstrumentId | P1 | GC-3F | A | todo | |
+| #263 | NRML+MIS same contract blocks exits; non-NRML entry; freeze load race | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_263.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #279 | Settle-before-reconcile order; expired standalone note; persist settlement state | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_279.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #115 | Orders linked to the catalogue by symbol, not InstrumentId | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_115.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #405 | W-108 attribution (redesigned, round 2 PASS) | P1 | GC-3F | A | held #398 | GC-2g handover |
-| W-111 | Positions part 1 (stacked on #398) | P1 | GC-3F | A | held #410 | GC-2g handover |
+| W-111 | Positions part 1 (stacked on #398) | P1 | GC-6 | A | held #410 | GC-2g handover; verify: python -m pytest -q tests_app/test_row_w_111.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #381 | Return route reads trades before orders | P1 | GC-3F | A | held #394 | GC-2f handover |
 | #370 | e2e flake: API pools exhausted the role's connection limit | P5 | GC-3F | B | closed | #395 merged 2026-10-19 by GC-5S (owner decision ~14:52: unblocked #429); the per-process pool budget is row POOL-BUDGET (GC-5T) |
-| W-109 | My Strategies list + Completed filter | P4 | GC-3F | B | held #393 | |
-| W-110 | Repo-wide money guard (REQ-063 AC-3) | P2 | GC-3F | B | held #396 | |
-| W-089 | Settings -> Broker & Market Data (+ ofo_dev proof after merge) | P4 | GC-3F | A | held #397 | |
-| W-090 | User scenario range, At Expiry / Estimated Now | P4 | GC-3F | B | held #399 | |
+| W-109 | My Strategies list + Completed filter | P4 | GC-3F | B | held #393 |  |
+| W-110 | Repo-wide money guard (REQ-063 AC-3) | P2 | GC-3F | B | held #396 |  |
+| W-089 | Settings -> Broker & Market Data (+ ofo_dev proof after merge) | P4 | GC-3F | A | held #397 |  |
+| W-090 | User scenario range, At Expiry / Estimated Now | P4 | GC-3F | B | held #399 |  |
 | W-112 | REQ-052 AC-1 no history shown (evidence written) | P4 | GC-3F | B | held #408 | evidence/W-112/AC-1.md on the branch |
-| #400 | Money/P&L figures computed outside the engine (ADR-008) | P2 | GC-3G | A | todo | |
-| #240 | ADR-082 charges in the engine; money sentences include charges | P2 | GC-3G | A | todo | |
-| #313 | Order book, fills, adopted holdings persisted (with #380-1's store) | P2 | GC-3G | A | todo | |
-| #45 | W-026 backup checks unpinned; REQ-056 AC-7 price unchecked | P2 | GC-3G | A | todo | |
-| #234 | W-065 verifier LOWs (push matcher, socket fallback, outage leg edit) | P2 | GC-3G | A | todo | |
-| REQ-041 | Rule engine open points: priority, conflict, cooldown | P3 | GC-4 | A | todo | ADR-112 |
-| REQ-043 | Live monitoring statuses (on the replay) | P3 | GC-4 | A | todo | ADR-112 |
-| REQ-042 | Alert + prepared basket, user confirms (ADR-002) | P3 | GC-4 | A | todo | ADR-112 |
-| REQ-062 | In-app Alerts + AC-3 dedupe against a fake Notifier | P3 | GC-4 | B | todo | ADR-112 |
-| REQ-064 | Stored timeline + audit emitters (2 of 33 event types today) | P3 | GC-4 | A | todo | |
-| #107 | Scheduled audit-log verification monitor | P3 | GC-4 | B | todo | |
+| #400 | Money/P&L figures computed outside the engine (ADR-008) | P2 | GC-6 | A | todo | verify: python -m pytest -q tests/test_money_from_engine_only.py (repo scan: no P&L/premium/charge arithmetic outside backend/ofo/engine) + the routes' figure tests |
+| #240 | ADR-082 charges in the engine; money sentences include charges | P2 | GC-6 | A | todo | verify: python -m pytest -q tests/engine/test_charges_adr082.py (GC-3L trade: gross -22.75, charges 48.25 -> net per Zerodha's contract note) |
+| #313 | Order book, fills, adopted holdings persisted (with #380-1's store) | P2 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_order_book_store.py (orders, fills, adopted holdings survive a restart; read back by tag) |
+| #45 | W-026 backup checks unpinned; REQ-056 AC-7 price unchecked | P2 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_45.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #234 | W-065 verifier LOWs (push matcher, socket fallback, outage leg edit) | P2 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_234.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| REQ-041 | Rule engine open points: priority, conflict, cooldown | P3 | GC-6 | A | todo | ADR-112; verify: python -m pytest -q tests_app/test_row_req_041.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| REQ-043 | Live monitoring statuses (on the replay) | P3 | GC-6 | A | todo | ADR-112; verify: python -m pytest -q tests_app/test_row_req_043.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| REQ-042 | Alert + prepared basket, user confirms (ADR-002) | P3 | GC-6 | A | todo | ADR-112; verify: python -m pytest -q tests_app/test_row_req_042.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| REQ-062 | In-app Alerts + AC-3 dedupe against a fake Notifier | P3 | GC-6 | B | todo | ADR-112; verify: python -m pytest -q tests_app/test_row_req_062.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| REQ-064 | Stored timeline + audit emitters (2 of 33 event types today) | P3 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_req_064.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #107 | Scheduled audit-log verification monitor | P3 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_107.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | GC-5 | A real rule fires; WhatsApp via the Notifier delivered | P3 | GC-5 | A | blocked-live | owner go + release record |
-| #404 | Evidence REQ-048 AC-1/AC-5, REQ-049 AC-4 (REQ-052 AC-1 done in #408) | P4 | GC-3G | C | todo | |
-| #148 | Response serializer + request-boundary user words | P4 | GC-3G | A | todo | REQ-065 before Stage 5 |
-| #199 | Response door MINORs (expires strip, per-status headers, dynamic shapes) | P4 | GC-3G | B | todo | |
-| #200 | Response door module rebinding (parked after 9 rounds) - independent redesign | P4 | GC-3G | A | parked #200 | |
-| #220 | Responsive clipping check on the data-filled table | P4 | GC-3G | B | todo | |
-| #409 | History scan misses aliased import shapes, `intraday` | P4 | GC-3G | B | deferred #409 | |
-| #411 | Positions pending-row wording; pending e2e is a mock | P4 | GC-3F | B | deferred #411 | |
-| #297 | Gate 4a minors (raw symbols, duplicate notice, margin login message, Loss 0) | P4 | GC-3G | B | todo | |
-| #402 | Broker settings wording after a failed read | P4 | GC-3F | B | todo | |
-| #126 | Catalogue delist limit + refusal alert in the daily load job | P4 | GC-3G | B | todo | |
-| #386 | GC-3 P0 review MINORs (probe private attrs, recorder compare, W-107 pins) | P4 | GC-3F | B | todo | |
-| #401 | Disconnect route: owner check / cross-site protection (full fix with Stage 5 login) | P4 | GC-3F | A | todo | |
-| #403 | Windows local pytest EgressRefused (+ the eslint-run test that never runs) | P5 | GC-3F | A | held #424 | GC-2h: built, NOT reviewed (cap); a hook change = Tier A review first |
+| #404 | Evidence REQ-048 AC-1/AC-5, REQ-049 AC-4 (REQ-052 AC-1 done in #408) | P4 | GC-6 | C | todo | verify: python -m pytest -q tests_app/test_row_404.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #148 | Response serializer + request-boundary user words | P4 | GC-6 | A | todo | REQ-065 before Stage 5; verify: python -m pytest -q tests_app/test_row_148.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #199 | Response door MINORs (expires strip, per-status headers, dynamic shapes) | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_199.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #200 | Response door module rebinding (parked after 9 rounds) - independent redesign | P4 | GC-6 | A | parked #200 | verify: python -m pytest -q tests_app/test_row_200.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #220 | Responsive clipping check on the data-filled table | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_220.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #409 | History scan misses aliased import shapes, `intraday` | P4 | GC-6 | B | deferred #409 | verify: python -m pytest -q tests_app/test_row_409.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #411 | Positions pending-row wording; pending e2e is a mock | P4 | GC-6 | B | deferred #411 | carried into GC-6 (step-0 review m5); verify: python -m pytest -q tests_app/test_row_411.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #297 | Gate 4a minors (raw symbols, duplicate notice, margin login message, Loss 0) | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_297.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #402 | Broker settings wording after a failed read | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_402.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #126 | Catalogue delist limit + refusal alert in the daily load job | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_126.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #386 | GC-3 P0 review MINORs (probe private attrs, recorder compare, W-107 pins) | P4 | GC-3F | B | todo |  |
+| #401 | Disconnect route: owner check / cross-site protection (full fix with Stage 5 login) | P4 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_401.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #403 | Windows local pytest EgressRefused (+ the eslint-run test that never runs) | P5 | GC-6 | A | held #424 | GC-2h: built, NOT reviewed (cap); a hook change = Tier A review first; review by GC-6, merge by GC-3F item 2; verify: python -m pytest -q tests_app/test_row_403.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | BUDGET | Nothing stops a worker at its tool-call budget (101-122 of 50-80 on 2026-10-18/19) | P5 | GC-3F | C | todo | kit item: handoff file New 4 |
 | TRACKER | `tracker_check.py`: tracker vs GitHub states, every open issue has a row | P5 | GC-3F | B | held #417 | GC-2h: Tier B PASS, minors fixed, CI green |
-| #344 | History finalize scale test flaky on CI | P5 | GC-3G | B | todo | |
-| #318 | Clean up 462 `# noqa` markers | P5 | GC-4 | C | todo | |
-| #247 | atool selector misses two-hop dependents | P5 | GC-4 | C | todo | |
-| #191 | gate_before_commit bypasses | P5 | GC-4 | C | todo | |
+| #344 | History finalize scale test flaky on CI | P5 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_344.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #318 | Clean up 462 `# noqa` markers | P5 | GC-6 | C | todo | verify: python -m pytest -q tests_app/test_row_318.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #247 | atool selector misses two-hop dependents | P5 | GC-6 | C | todo | verify: python -m pytest -q tests_app/test_row_247.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #191 | gate_before_commit bypasses | P5 | GC-6 | C | todo | verify: python -m pytest -q tests_app/test_row_191.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #385 | GC-3 live steps L1-L4 | - | GC-3L | A | closed | issue closed (checked by GC-5S tracker_check 2026-10-19); GC-3L 2026-10-19: strategy 9 entry filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, pnl_equal -22.75, audit chain rows=9 (`session-handover-2026-10-19-gc3l.md`); issue to close with this evidence |
 | TAG-8 | Basket tag over Kite Publisher's 8-character limit for strategy id >= 10 / version >= 10 (finding basket-tag-exceeds-publisher-limit) | P1 | GC-3F | A | todo | GC-3F item 1 (core); live proof on a strategy id >= 10; may move to GC-3L same-day if the owner approves |
 | FRESH-CLOCK | Execute gate judged freshness on the request-start clock (finding freshness-judged-on-request-start-clock) | P1 | GC-3L | A | merged #427 | a614b16, fresh-Opus PASS; proven live by the GC-3L L2/L3 prepares |
 | TRIM-STRUCT | Daily list trims far strikes and trips the ADR-058/059 percentage guards (finding daily-list-trims-far-strikes-trips-truncation-guard) | P1 | GC-3F | A | todo | GC-3F item 4; ADR-058/059 change as a technical decision row |
-| DB-CONNLIMIT | ofo_app rolconnlimit 5 below one API's pool (finding db-role-connection-limit-below-pool-size) | P2 | GC-3F | A | todo | GC-3F item 5 |
-| OUTCOME-500 | Outcome route 500 on a 2-expiry draft (finding outcome-multi-expiry-unhandled-500) | P4 | GC-3F | B | todo | GC-3F item 6 |
-| #273 | Margin check uses the platform estimate, not Zerodha's figure | - | GC-3F | A | todo | GC-3L's real replies now saved (`ofo-kite-ticks/2026-10-19/`); Zerodha margin 484.25 read at 10:24:54 |
+| DB-CONNLIMIT | ofo_app rolconnlimit 5 below one API's pool (finding db-role-connection-limit-below-pool-size) | P2 | GC-6 | A | todo | closes with POOL-BUDGET (same class, F-45); GC-3F item 5; verify: python -m pytest -q tests_app/test_row_db_connlimit.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| OUTCOME-500 | Outcome route 500 on a 2-expiry draft (finding outcome-multi-expiry-unhandled-500) | P4 | GC-6 | B | todo | GC-3F item 6; verify: python -m pytest -q tests_app/test_row_outcome_500.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #273 | Margin check uses the platform estimate, not Zerodha's figure | - | GC-6 | A | todo | GC-3L's real replies now saved (`ofo-kite-ticks/2026-10-19/`); Zerodha margin 484.25 read at 10:24:54; verify: python -m pytest -q tests_app/test_row_273.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
 | #255 | Never split anywhere: Complete / Retry / exit block above the freeze limit (ADR-092, OQ-2 answered 2026-10-16) | P1 | GC-3F | A | held #420 | with #63, #43 |
 | #269 | Max-loss sentence vs charges (OQ-4, OQ-10) | - | owner | A | blocked-owner | OQ-4, OQ-10 |
 | Q272 | Which control counts as "the owner's own account" (REQ-073 AC-5) | - | GC-3F | A | blocked-owner | GC-3L done 2026-10-19: ask now |
-| #129 | Anonymous callers can lock the owner out of Kite login | - | stage-5 | A | blocked-owner | needs platform login (Google OAuth credentials) |
-| #112 | Entitlement ledger index + free-day cap | - | stage-5 | A | todo | with W-008/W-009 |
-| #422 | Freeze check accepts any type; Evaluation.as_of has no timezone check (PR #420 review MINORs) | P4 | GC-3F | A | deferred #422 | |
-| #423 | Reconciliation store: route must derive zerodha_net_now / basket-reconciled from Kite; Q224 lock race (PR #419 MINORs) | P1 | GC-3F | A | deferred #423 | with #380-2 |
-| OQ-GC2h-2 | Owner question: what lifts the block on a contract two strategies share (Q224 + Q222 leave none) | P1 | owner | A | blocked-owner | owner-questions-2026-10-19.md; needed before #380-2 |
+| #129 | Anonymous callers can lock the owner out of Kite login | - | stage-5 | A | blocked-owner | needs platform login (Google OAuth credentials); owner-accepted 2026-10-19 (D6: sign-in out of the GC-6 plan) |
+| #112 | Entitlement ledger index + free-day cap | - | stage-5 | A | todo | with W-008/W-009; owner-accepted 2026-10-19 (D6: sign-in out of the GC-6 plan) |
+| #422 | Freeze check accepts any type; Evaluation.as_of has no timezone check (PR #420 review MINORs) | P4 | GC-6 | A | deferred #422 | carried into GC-6 (step-0 review m5); verify: python -m pytest -q tests_app/test_row_422.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| #423 | Reconciliation store: route must derive zerodha_net_now / basket-reconciled from Kite; Q224 lock race (PR #419 MINORs) | P1 | GC-6 | A | todo | with #380-2; ; reopened as GC-6 work (step-0 review M6): depends_on #380-2; verify: python -m pytest -q tests_app/test_reconciliation_store_derivation.py (zerodha_net_now derived from Kite; Q224 lock race closed) |
+| OQ-GC2h-2 | Owner question: what lifts the block on a contract two strategies share (Q224 + Q222 leave none) | P1 | owner | A | closed | owner 2026-10-19 (question tool): "Kite flat -> one action (Recommended)" - ADR-116 |
 | ADR-113 | Closing baskets checked on Zerodha's figure alone (technical decision, rides in #418) | P1 | GC-3F | A | held #418 | merges with #418 |
 | ADR-094-ptr | ADR-094 gains a back-pointer to ADR-113 (PR #418 round-2 MINOR) | P4 | GC-3F | C | todo | docs |
 | #442 | Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR) | P4 | GC-3F | A | deferred #442 | row added by GC-5S's tracker check (filed by GC-3L) |
 | W-113 | Live Strategies page on the live outcome socket (REQ-049 AC-4..6) | P2 | GC-5S | B | merged #429 | verifier PASS (2 rounds); live core proof 14:29-14:31 + re-proof on merged code 15:25 (gc-5s-run-log.md) |
 | W-114 | Underlying/index view + read-only index socket (REQ-072 AC-2) | P2 | GC-5S | A | merged #430 | Tier A PASS round 2; live 14:31-14:32 |
 | W-115 | Home overview: states 1-2, live index strip, no connect control (REQ-008 AC-4/AC-5) | P2 | GC-5S | B | merged #431 | AC-4/AC-5 PASS; AC-2 state 3 parked #433 |
-| #433 | Home: AC-2 state 3, AC-3 name + trial, AC-1 landing (no data yet) | P3 | GC-5T | B | parked #433 | needs GC-3F execution state, GC-4 alerts, REQ-023 entitlement |
-| #434 | Strategy screen Live Position tab (REQ-044 AC-2) | P3 | GC-5T | B | parked #434 | needs GC-3F execution state |
+| #433 | Home: AC-2 state 3, AC-3 name + trial, AC-1 landing (no data yet) | P3 | GC-6 | B | todo | needs GC-3F execution state, GC-4 alerts, REQ-023 entitlement; verify: python -m pytest -q tests_app/test_row_433.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence; reopened as GC-6 work (step-0 review M6): depends_on GC-3F item 1 (execution state) |
+| #434 | Strategy screen Live Position tab (REQ-044 AC-2) | P3 | GC-6 | B | todo | needs GC-3F execution state; verify: python -m pytest -q tests_app/test_row_434.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence; reopened as GC-6 work (step-0 review M6): depends_on GC-3F item 1 (execution state) |
 | W-116 | Option Chain read route + live socket (REQ-029 AC-1/4/8 data path) | P2 | GC-5S | A | merged #437 | Tier A round 2: data path held; ACs fail as written (screen, IV); live 14:31 |
-| #439 | Chain socket self-starvation by invalid messages; IV not on the chain | P3 | GC-5T | A | deferred #439 | |
+| #439 | Chain socket self-starvation by invalid messages; IV not on the chain | P3 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_439.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence; reopened as GC-6 work (step-0 review M6): build offline; live proof under real ticks (blocked-live part) |
 | W-118 | Option Chain screen, display only (REQ-029 AC-1/AC-6 PASS; AC-2/AC-8 part) | P2 | GC-5S | B | merged #441 | round 2 PASS (AC-1/AC-6; AC-2/AC-8 part); live 14:32 |
 | W-117 | Learn / Alerts / Market context shells (REQ-011 AC-1 part) | P3 | GC-5S | B | merged #436 | PASS for the part built; Learn content -> #435 |
-| #435 | W-117 MINORs: TemplateText per field; shell UI wording owner read; Learn content | P4 | GC-5T | B | deferred #435 | |
-| POOL-BUDGET | Every API process sizes its DB pool from the role's limit + startup check; no nested token-read connection; single-flight charge rates (F-45 class fix, independent review 2026-10-19) | P1 | GC-5T | A | todo | core of GC-5T |
-| F-47 | Previous close into the adapter + quote model, so the chain fills Change (REQ-029 AC-2) | P3 | GC-5T | A | todo | |
-| IDX-FLAT | Check: NIFTY and SENSEX values stayed flat for 6+ pushes with advancing times at 15:25-15:26 (vs moving at 14:29-14:33); compare with Kite's own quote in a market session | P2 | GC-5T | A | todo | unverified observation, gc-5s-run-log.md |
-| W-118-sel | Option Chain selection, Buy/Sell chips, import (REQ-030) and live preview (REQ-031) | P2 | GC-5T | A | todo | after W-118 |
-| DRAFT-LABEL | A draft without planned entries shows the not-connected label while data is live (draft 13) | P4 | GC-5T | B | todo | MINOR; the Builder always captures entries (ADR-075) |
+| #435 | W-117 MINORs: TemplateText per field; shell UI wording owner read; Learn content | P4 | GC-6 | B | todo | verify: python -m pytest -q tests_app/test_row_435.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence; reopened as GC-6 work (step-0 review M6): feeds LEARN (S11) |
+| POOL-BUDGET | Every API process sizes its DB pool from the role's limit + startup check; no nested token-read connection; single-flight charge rates (F-45 class fix, independent review 2026-10-19) | P1 | GC-6 | A | todo | core of GC-5T; verify: python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_db_pool_startup.py tests_app/test_db_pool_budget.py tests_app/test_broker_token_store.py tests_app/test_outcome_charges_wiring.py; CI core-proof test tests_app/test_db_pool_core_proof.py on CI PostgreSQL (two default engines, 60 s load, 0 TooManyConnectionsError, ofo_app <= 5; old defaults fail) |
+| F-47 | Previous close into the adapter + quote model, so the chain fills Change (REQ-029 AC-2) | P3 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_row_f_47.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| IDX-FLAT | Check: NIFTY and SENSEX values stayed flat for 6+ pushes with advancing times at 15:25-15:26 (vs moving at 14:29-14:33); compare with Kite's own quote in a market session | P2 | GC-6 | A | todo | unverified observation, gc-5s-run-log.md; verify: python -m pytest -q tests_app/test_row_idx_flat.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| W-118-sel | Option Chain selection, Buy/Sell chips, import (REQ-030) and live preview (REQ-031) | P2 | GC-6 | A | todo | after W-118; verify: python -m pytest -q tests_app/test_row_w_118_sel.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| DRAFT-LABEL | A draft without planned entries shows the not-connected label while data is live (draft 13) | P4 | GC-6 | B | todo | MINOR; the Builder always captures entries (ADR-075); verify: python -m pytest -q tests_app/test_row_draft_label.py (or the named test file the brief records here) + the row's issue checklist ticked with evidence |
+| S0 | GC-6 step 0 docs PR: research note part 2, ADR-116..120, findings, contract, tracker, GC-3F delta | P1 | GC-6 | C | building | verify: python tools/factory_lint.py . ; python tools/check_spec_refs.py . ; python tools/build_findings_index.py . --check (each exit 0) |
+| CI-SPLIT | Split project-owned app-tests.yml into frontend and API jobs with their own path filters (delivery review #7) | P1 | GC-6 | A | todo | verify: on the next frontend-only PR `gh pr checks N` lists no API-suite job |
+| HARVEST-DRAFT | Kit issue: draft-PR filter for the kit's ci.yml (kit-owned, never edited here) | P5 | GC-6 | C | todo | verify: gh issue view <n> --repo abhayla/Startup-Factory shows the harvest label |
+| TRACKER-CHECK-PLAN | Extend tracker_check.py (held #417): GC-6 contract ids <-> rows <-> evidence files on main; no `building` row without a verify line | P1 | GC-6 | B | todo | verify: python scripts/orchestrator/tracker_check.py . exits 0 on main and fails on a planted row without verify; also fails when a GC-6 row is blocked-* without `owner-accepted <date>` |
+| KILL-SWITCH | Owner kill switch: a server setting refuses to build any basket, reason shown on Execute | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_execute_kill_switch.py (CI DB job) |
+| MKT-HOURS | Execute only 09:15-15:30 IST on NSE trading days; holiday list as dated data (ADR-119, owner D8) | P1 | GC-6 | A | todo | verify: python -m pytest -q tests/execution/test_market_hours_gate.py (refuses 2026-10-20, a holiday) |
+| INSTR-FRESH | Lot size and expiry weekday from the day's instrument file; Execute blocked when the catalogue is stale | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_execute_catalogue_stale.py |
+| TOKEN-RETURN | Kite token expired between basket and return: state untouched, 'Reconnect, then Check with Zerodha' | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_return_token_expired.py |
+| DUP-TAG | Duplicate basket tags on return block (never merge); re-opening Kite for a basket whose tagged orders exist is refused | P1 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_return_duplicate_tags.py |
+| EXIT-FREEZE-MSG | Exit above the freeze limit: block per ADR-092 with 'exit the rest on Kite', never a dead end | P2 | GC-6 | A | todo | verify: npx playwright test e2e/execute-exit-freeze.spec.ts |
+| ORDER-LIVE-THU | Live proof of the GC-6 order path: Thu 2026-10-22 09:30-11:30, 2-leg spread via two baskets, then exit | P1 | GC-6 | A | blocked-live | verify: Check 0 mismatches; probe.py pnl pnl_equal exit 0; probe.py audit chain verified; holdings unchanged |
+| W-083-AC2 | REQ-061 AC-2 order-free adopt into an existing strategy (ADR-096, OQ-7 answered 2026-10-16) | P2 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_adopt_existing_positions.py |
+| BUILDER-WIRE | S1a Strategy Builder reachable: nav item 'Strategy Builder' mapped in REAL_PAGES to StrategyBuilderPage; Create Strategy cards and chain import land on the same page (frontend only, mergeable before Wed) | P1 | GC-6 | B | todo | verify: npx playwright test e2e/builder-reachable.spec.ts (nav item, /strategy/builder, chain import link open the same page) |
+| BUILDER-CONTENT | S1b Builder research content: plain-language block first, 'Today's estimate' label for Estimated Now at Guided, level gating, Undo, Save draft, Go to Execute (stacked on held #399 W-090, after Wed merges) | P1 | GC-6 | B | todo | depends_on #399 merged; verify: npx playwright test e2e/builder-content.spec.ts at 1280 and 390 px; ADR-003 grep clean |
+| CREATE-GUIDED | S3 Create Strategy guided flow (REQ-024/026/028/068/069; wording provisional until Q211/Q261) | P2 | GC-6 | B | todo | verify: npx playwright test e2e/create-strategy.spec.ts at 1280 and 390 px; ADR-003 grep clean |
+| EXECUTE-REVIEW | S5 Execute review: plain sentence first, margin + charges, two-step stepper, risk by level, Ready to execute | P1 | GC-6 | A | todo | verify: npx playwright test e2e/execute-review.spec.ts; npm run test:run |
+| ORDERS-SCREEN | S6 Orders: 4 tabs, 7 status words, Zerodha's reason, REQ-058 actions, cancel as a Kite instruction | P2 | GC-6 | B | todo | verify: npx playwright test e2e/orders.spec.ts; python -m pytest -q tests_app/test_orders_route.py |
+| MY-STRAT-HISTORY | S4 My Strategies groups + History tab (REQ-070), on held #393 | P3 | GC-6 | B | todo | verify: npx playwright test e2e/my-strategies-history.spec.ts |
+| DRAFT-DELETE | Never-executed drafts deletable, hidden + kept for audit; executed show 'Can't delete: orders were sent' (ADR-118) | P3 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_strategy_delete_draft.py; the delete case in e2e/my-strategies-history.spec.ts |
+| ALERTS-THREAD | S9 alert row -> Live Position -> Adjustment -> Execute, Back never leaves the strategy | P3 | GC-6 | B | todo | verify: npx playwright test e2e/alert-thread.spec.ts |
+| ADJUST | S10 Adjustments panel: 4 layers, Before/After, playbooks (REQ-037/045/046; Q211 for personalised logic) | P3 | GC-6 | A | todo | verify: npx playwright test e2e/adjustments.spec.ts; python -m pytest -q tests/adjustments |
+| ZERODHA-CONN | S8 Zerodha connection page: four statuses, last sync, Reconnect/Disconnect, guided setup (REQ-015), on held #397 | P3 | GC-6 | B | todo | verify: npx playwright test e2e/zerodha-connection.spec.ts |
+| MARKET-CTX | S11 Market context content per the morning note (REQ-072/049 only; no PCR without scope) | P4 | GC-6 | B | todo | verify: npx playwright test e2e/market-context.spec.ts |
+| LANDING | S12 public landing + FAQ, every sample 'Sample · Historical', no live values logged out (REQ-010) | P4 | GC-6 | B | todo | verify: npx playwright test e2e/landing.spec.ts |
+| BILLING-SHELL | S13 Subscription/Free eligibility/Referrals shells, actions disabled under ADR-055 | P5 | GC-6 | B | todo | verify: npx playwright test e2e/billing-shell.spec.ts |
+| ST-MKT-CLOSED | Shared state: 'Market closed. Prices are from <time>' (disables Execute per ADR-119) | P1 | GC-6 | B | todo | verify: npm run test:run -- MarketClosedBanner; used on S1/S5/S6/S7 |
+| ST-SESSION | Shared state: 'Zerodha session ended. Reconnect to continue', return to the same screen (REQ-015 AC-5) | P1 | GC-6 | B | todo | verify: npm run test:run -- SessionEndedCard; e2e session-ended case |
+| ST-TWO-BASKET | Shared state: Step 1 of 2 Buys / Step 2 of 2 Sells; 'Buys filled. Sells not placed yet. Your position is not complete.'; 'A buy failed. Sells stay locked.' (ADR-117) | P1 | GC-6 | B | todo | verify: npm run test:run -- TwoBasketStepper; e2e execute-review two-step case |
+| ST-RETURN | Shared state: 'Checking with Zerodha...' then done / no change detected yet / failed + Retry | P1 | GC-6 | B | todo | verify: npm run test:run -- ReturnStatus; e2e return-page cases |
+| ST-EMPTY | Empty state per screen with a next-step button (S4, S6, S7) | P3 | GC-6 | B | todo | verify: npm run test:run -- EmptyState; each screen's e2e empty case |
+| E2E-J1 | Close-out gate: journey 1 at 390 px (Home -> Create Strategy -> Builder -> Execute -> return page -> Orders) | P1 | GC-6 | B | todo | verify: npx playwright test e2e/journey1-390.spec.ts |
+| POSITIONS | S7 Positions screen: strategy-linked groups, outside lots, open-plan row, mismatch badge, W-111 part 2 P&L after #400 (on held #398/#410) | P2 | GC-6 | B | todo | verify: npx playwright test e2e/positions.spec.ts; python -m pytest -q tests_app/test_positions_route.py |
+| REVIEW-421 | Last review round of held #421 (#352-1) before Wed; GC-3F merges it | P1 | GC-6 | A | todo | verify: fresh-Opus verdict PASS recorded with the reviewed full sha |
+| REVIEW-424 | Fresh-Opus review of held #424 (#403, a hook change) before Wed; GC-3F merges it | P1 | GC-6 | A | todo | verify: fresh-Opus verdict PASS recorded with the reviewed full sha |
+| #353-VERIFY | Confirm held #418 covers #353 (Kite allow-list per calling module) after it merges | P2 | GC-6 | A | todo | verify: python -m pytest -q tests_app/test_egress_gate_doors.py on main after #418 |
+| HOME-NEW | Home state 1 (new user) checked against the research note (W-115 merged states 1-2) | P2 | GC-6 | B | todo | verify: npx playwright test e2e/home-new-user.spec.ts at 1280 and 390 px |
+| IDENTITY-SCREENS | Sign-up, login, profile, security, account deletion (REQ-010/012/013/014) - out of the GC-6 plan | P3 | GC-6 | B | stage-5 | owner-accepted 2026-10-19 (D6: "Ignore google signin and signout in this plan"); verify: n/a until stage 5 |
