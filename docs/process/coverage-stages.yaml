@@ -283,6 +283,7 @@ issues:
   "#411": 4b  # Positions pending row: 'listed above' line shows with no other holder; pending-row e2e is a mock (W-111 review MINORs)
   "#422": 4b  # Freeze check accepts any type for the stored limit; Evaluation.as_of has no timezone check (PR #420 review MINORs)
   "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
+  "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
 
 # Work items whose status is not done.
 work_items:
