@@ -4,6 +4,8 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
+// Built section pages replace their placeholder by path (W-114: the Underlying/index view).
+const BUILT = { '/market/underlying-index-view': () => import('../pages/IndexViewPage.vue') }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -15,7 +17,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
+    component: BUILT[`/${s.key}/${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])
