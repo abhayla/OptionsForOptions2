@@ -108,30 +108,33 @@ def test_a_docs_spec_knowledge_or_evidence_change_starts_nothing(changed: str) -
 def test_every_path_that_started_the_workflow_still_selects_at_least_one_job() -> None:
     """Under-testing guard: each outer-gate glob, probed with a sample file, must select a job (nothing starts a
     workflow whose jobs all skip, and nothing that used to run tests now runs none)."""
-    probes = {
-        "backend/ofo/**": "backend/ofo/engine/x.py",
-        "tests/fixtures/**": "tests/fixtures/kite_ws/x.csv",
-        "backend/ofo_app/**": "backend/ofo_app/main.py",
-        "tests_app/**": "tests_app/test_x.py",
-        "requirements-app.txt": "requirements-app.txt",
-        "pytest-app.ini": "pytest-app.ini",
-        "scripts/alembic_migration_guard.py": "scripts/alembic_migration_guard.py",
-        "scripts/generate_openapi.py": "scripts/generate_openapi.py",
-        "frontend/**": "frontend/src/x.vue",
-        "docs/api/**": "docs/api/openapi.json",
-        "docs/research/kite-proof-2026-10-07/**": "docs/research/kite-proof-2026-10-07/rest-2026-10-15/basket.json",
-        ".github/workflows/app-tests.yml": ".github/workflows/app-tests.yml",
-        "tests/**": "tests/engine/test_x.py",
-        "ruff.toml": "ruff.toml",
-        "requirements-dev.txt": "requirements-dev.txt",
-        "scripts/ruff_ratchet.py": "scripts/ruff_ratchet.py",
-        "scripts/ruff_baseline.json": "scripts/ruff_baseline.json",
+    api, ui, both = {"api"}, {"frontend", "e2e"}, {"api", "frontend", "e2e"}
+    basket = "docs/research/kite-proof-2026-10-07/rest-2026-10-15/basket.json"
+    probes = {  # outer-gate glob -> (sample file, EXACT job set it must select)
+        "backend/ofo/**": ("backend/ofo/engine/x.py", both),
+        "tests/fixtures/**": ("tests/fixtures/kite_ws/x.csv", both),
+        "backend/ofo_app/**": ("backend/ofo_app/main.py", both),
+        "tests_app/**": ("tests_app/test_x.py", api),
+        "requirements-app.txt": ("requirements-app.txt", both),
+        "pytest-app.ini": ("pytest-app.ini", api),
+        "scripts/alembic_migration_guard.py": ("scripts/alembic_migration_guard.py", api),
+        "scripts/generate_openapi.py": ("scripts/generate_openapi.py", api),
+        "frontend/**": ("frontend/src/x.vue", ui),
+        "docs/api/**": ("docs/api/openapi.json", both),
+        "docs/research/kite-proof-2026-10-07/**": (basket, api),
+        ".github/workflows/app-tests.yml": (".github/workflows/app-tests.yml", both),
+        "tests/**": ("tests/engine/test_x.py", api),
+        "ruff.toml": ("ruff.toml", api),
+        "requirements-dev.txt": ("requirements-dev.txt", api),
+        "scripts/ruff_ratchet.py": ("scripts/ruff_ratchet.py", api),
+        "scripts/ruff_baseline.json": ("scripts/ruff_baseline.json", api),
+        "scripts/**": ("scripts/live/probe.py", api),  # tests_app/test_live_probe.py loads it
     }
     for event in ("push", "pull_request"):
         assert set(_outer_paths(event)) == set(probes), f"{event}: outer paths changed; extend the probes"
-    for glob, sample in probes.items():
+    for glob, (sample, expected) in probes.items():
         assert _matches([glob], sample), glob
-        assert _selected([sample]), f"{sample} (outer gate {glob}) would start the workflow and run no job"
+        assert _selected([sample]) == expected, f"{sample} (outer gate {glob}) selects the wrong jobs"
 
 
 def test_tests_dir_is_in_the_api_filter_for_the_ruff_ratchet() -> None:

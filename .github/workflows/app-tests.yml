@@ -28,6 +28,7 @@ on:
       - 'requirements-dev.txt'
       - 'scripts/ruff_ratchet.py'
       - 'scripts/ruff_baseline.json'
+      - 'scripts/**'  # tests_app/test_live_probe.py loads scripts/live/probe.py; the ratchet covers scripts/
   pull_request:
     paths:
       - 'backend/ofo/**'
@@ -49,6 +50,7 @@ on:
       - 'requirements-dev.txt'
       - 'scripts/ruff_ratchet.py'
       - 'scripts/ruff_baseline.json'
+      - 'scripts/**'  # tests_app/test_live_probe.py loads scripts/live/probe.py; the ratchet covers scripts/
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -92,6 +94,7 @@ jobs:
               - 'scripts/generate_openapi.py'
               - 'scripts/ruff_ratchet.py'
               - 'scripts/ruff_baseline.json'
+              - 'scripts/**'
               - 'docs/api/**'
               - 'docs/research/kite-proof-2026-10-07/**'
               - '.github/workflows/app-tests.yml'
