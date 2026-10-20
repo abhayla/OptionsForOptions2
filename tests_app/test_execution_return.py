@@ -466,9 +466,12 @@ async def test_ac3_core_another_strategys_open_plan_filled_at_kite_makes_the_con
             reads = _Reads("122104", orders=[real_order, b_order],
                            trades=[real_trade, {**real_trade, "order_id": b_id, "trade_id": "4484195"}])
             body = (await _post(_app_for(conn, user, reads), sid)).json()
+            # #380-2: the one reconciler counts B's OPEN plan from its final row (ADR-110: every order final -> its
+            # fills count), so A 65 + B 65 = 130 expected against Zerodha 65: a same-side shortfall on a shared
+            # contract (compare: broker part 65 != 0, same side -> quantity mismatch); Q224 blocks every holder.
             assert body["contracts"] == [{"tradingsymbol": SYMBOL, "platform_units": 65, "zerodha_units": 65,
-                                          "other_strategies_units": 0, "unexplained_units": 0, "mismatch": None,
-                                          "reconciliation_reason": "another_strategy_plan_unsettled"}]
+                                          "other_strategies_units": 65, "unexplained_units": 0,
+                                          "mismatch": "recon_quantity_mismatch", "reconciliation_reason": None}]
             assert (body["mismatches"], body["blocked"]) == (1, True)
         finally:
             await trans.rollback()

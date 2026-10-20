@@ -2,15 +2,16 @@
 route and the return route, on the owner's REAL 2026-10-19 Kite replies.
 
 Real inputs (tests/fixtures/kite_replies/, README there): ``orders-2026-10-19-roundtrip.json`` and
-``positions-2026-10-19-roundtrip.json``, copied from ``D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/``
-(``orders-saved.json``, ``positions-saved.json``; client id redacted to XX0000): OFS9V1L0 BUY 65 NIFTY26OCT24000CE
-COMPLETE, OFS9V2L0 SELL 65 COMPLETE, Zerodha's net row quantity 0. Token 13156354 = exchange token 51392 (13156354 >> 8);
-NSE's contract file of 2026-10-16 (same folder) lists 51392 as NIFTY 24000 CE, expiry 2026-10-27, lot 65.
+``positions-2026-10-19-roundtrip.json``, copied from
+``D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/`` (``orders-saved.json``, ``positions-saved.json``;
+client id redacted to XX0000): OFS9V1L0 BUY 65 NIFTY26OCT24000CE COMPLETE, OFS9V2L0 SELL 65 COMPLETE, Zerodha's net
+row quantity 0. Token 13156354 = exchange token 51392 (13156354 >> 8); NSE's contract file of 2026-10-16 (same
+folder) lists 51392 as NIFTY 24000 CE, expiry 2026-10-27, lot 65.
 
 Expected values come from the spec by hand: ADR-109 ("strategy BUY 65 NIFTY CE, Kite 130 -> not blocked, 65 outside;
 ... Kite 0 -> blocked"), REQ-060 AC-7 ("A broker position in no strategy and not recorded as standalone ... blocks no
-strategy"). No database: the store is the injected fake of ``reconcile_attribution``'s three reads, the connection a fake
-that answers the standalone read with no rows.
+strategy"). No database: the store is the injected fake of ``reconcile_attribution``'s three reads, the connection
+a fake that answers the standalone read with no rows.
 """
 from __future__ import annotations
 
