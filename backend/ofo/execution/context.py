@@ -162,6 +162,9 @@ class ExecutionContext:
     margin_required: Decimal | None
     # Required, no default (round 2 MAJOR B): None means the reconciliation status is unknown and blocks.
     reconciliation_blocked_strategy_ids: frozenset[str] | None
+    # ADR-127 kill switch, read fresh by the caller at gate time. Required, no default: True blocks, None (could not
+    # be read) blocks; only False passes.
+    platform_paused: bool | None
     charges_estimate: Decimal | None = None
     # The active version's intended position, read by the caller from the stored active version; trusted only
     # when ``active_legs_hash(strategy_id, active_version_id, active_legs)`` equals ``active_legs_hash``.
@@ -198,7 +201,8 @@ class ExecutionContext:
         if not isinstance(self.as_of, datetime.datetime) or self.as_of.utcoffset() is None:
             raise ValueError(f"as_of must be a timezone-aware datetime, got {self.as_of!r}")
         for name in (
-            "market_open", "broker_connected", "session_valid", "pro_entitled", "rules_valid", "dependencies_satisfied"
+            "market_open", "broker_connected", "session_valid", "pro_entitled", "rules_valid", "dependencies_satisfied",
+            "platform_paused",
         ):
             _tristate(getattr(self, name), name)
         if self.version_state is not None and not isinstance(self.version_state, VersionState):

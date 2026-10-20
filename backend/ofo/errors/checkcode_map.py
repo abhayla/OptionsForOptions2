@@ -44,6 +44,8 @@ CHECKCODE_TO_ERROR_CLASS: dict[CheckCode, ErrorClass] = {
     CheckCode.ACTIVE_LEGS_UNVERIFIED: ErrorClass.RECONCILIATION_MISMATCH,
     CheckCode.STRATEGY_MISMATCH: ErrorClass.RECONCILIATION_MISMATCH,
     CheckCode.RECONCILIATION_MISMATCH: ErrorClass.RECONCILIATION_MISMATCH,
+    # ADR-127: the owner's kill switch is a platform state, not the user's market or data.
+    CheckCode.PLATFORM_PAUSED: ErrorClass.INTERNAL_SYSTEM,
     # Everything else is our own bug.
     CheckCode.INTERNAL_ERROR: ErrorClass.INTERNAL_SYSTEM,
 }

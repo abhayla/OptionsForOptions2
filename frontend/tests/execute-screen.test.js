@@ -73,6 +73,11 @@ const MARKET_UNCONFIRMED = { status: 'unconfirmed', next_open: null, as_of: '202
     impact: "No order can be placed while the market's status is unknown.", what_is_blocked: 'Execution of this strategy.',
     next_action: 'Try again once the market status is shown.' } }
 
+const MARKET_PAUSED = { status: 'paused', next_open: null, as_of: '2026-10-21T10:00:00+05:30',
+  message: { what_happened: 'Execution is paused by the platform right now. You can review and save your plan; no orders can be sent.',
+    impact: 'No order can be sent while execution is paused.', what_is_blocked: 'Execution of this strategy.',
+    next_action: 'Review and save your plan now, and come back when execution is on again.' } }
+
 const ok = (data) => () => Promise.resolve({ data })
 const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
@@ -333,6 +338,16 @@ describe('ADR-119 (3): the screen shows the server market verdict BEFORE the cli
     const failed = await marketCase(() => Promise.reject({ message: 'down', parts: null }))
     expect(text(failed, 'market-closed-what')).toBe(MARKET_UNCONFIRMED.message.what_happened)
     expect(failed.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('ADR-127 paused: both actions disabled, exactly the ADR-127 sentence is shown before any click, a click calls nothing', async () => {
+    const w = await marketCase(ok(MARKET_PAUSED))
+    expect(text(w, 'market-closed-what')).toBe(
+      'Execution is paused by the platform right now. You can review and save your plan; no orders can be sent.')
+    for (const id of ['prepare-entry', 'prepare-exit']) expect(w.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toEqual([])
   })
 
   it('the browser clock never decides: a closed verdict stays closed at a browser time inside the session', async () => {

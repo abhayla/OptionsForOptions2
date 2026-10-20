@@ -59,7 +59,7 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
-from ofo.execution.safety import check_pre_execution, market_failures
+from ofo.execution.safety import check_pre_execution, market_failures, paused_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.market_calendar import MarketStatus, market_status, next_open
@@ -69,7 +69,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import entitlement_store, live_market, order_audit
+from ofo_app import entitlement_store, kill_switch, live_market, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import strategy_store as store
@@ -141,7 +141,7 @@ class MarketStatusOut(ApiModel):
     """ADR-119 (3): the server's market verdict for the Execute screen, shown BEFORE the click. ``message`` is the
     catalogue refusal (None when open); the browser never decides from its own clock."""
 
-    status: Literal["open", "closed", "unconfirmed"]
+    status: Literal["open", "closed", "unconfirmed", "paused"]  # "paused" = the owner's kill switch (ADR-127)
     next_open: Optional[datetime.date]  # noqa: UP045 - the next trading day when closed, else None
     message: Optional[CatalogueText]  # noqa: UP045 - the gate's own refusal text, None when open
     as_of: datetime.datetime  # the server clock the verdict was judged on
@@ -291,8 +291,12 @@ class _Request:
     rates: ChargeRates | None
 
 
-def market_verdict(now: datetime.datetime) -> MarketStatusOut:
-    """The gate's own market verdict at ``now`` (``market_failures``), as the screen shows it."""
+def market_verdict(now: datetime.datetime, paused: bool | None) -> MarketStatusOut:
+    """The gate's own verdict at ``now`` as the screen shows it: the kill switch first (``paused_failures``, ADR-127;
+    unknown counts as paused), then the market (``market_failures``)."""
+    stopped = paused_failures(paused)
+    if stopped:
+        return MarketStatusOut(status="paused", next_open=None, message=stopped[0].message, as_of=now)
     failures = market_failures(now, market_open(now))
     if not failures:
         return MarketStatusOut(status="open", next_open=None, message=None, as_of=now)
@@ -305,9 +309,11 @@ def market_verdict(now: datetime.datetime) -> MarketStatusOut:
 @router.get("/execute/market-status", response_model=MarketStatusOut)
 async def execute_market_status(
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+    db: Annotated[Any, Depends(get_db)],
 ) -> MarketStatusOut:
-    """Read-only: whether Execute is open now, on the server clock (ADR-119 (3)); the POST gate re-judges on its own."""
-    return market_verdict(clock())
+    """Read-only: whether Execute is open now, on the server clock (ADR-119 (3)) and the kill switch (ADR-127); the POST
+    gate re-judges both on its own."""
+    return market_verdict(clock(), await kill_switch.is_paused(db))
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -456,7 +462,9 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
     # ADR-119: the market is judged on the clock read RIGHT BEFORE the gate, never on the request start (the quotes,
     # margin and eligibility reads above took time; a request that started at 15:29:59 is refused at 15:30:01).
     now = req.clock()
-    context = dataclasses.replace(context, as_of=now, market_open=market_open(now))
+    # ADR-127: the kill switch is read fresh here too (a statement of its own, never the value from request start).
+    context = dataclasses.replace(context, as_of=now, market_open=market_open(now),
+                                  platform_paused=await kill_switch.is_paused(req.db))
     result = check_pre_execution(priced.strategy, context, catalogue, eligibility, strategy_id=str(req.strategy_id))
     if result.blocked:
         raise _refuse_with(result.failures[0].message)
@@ -479,8 +487,8 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     if not is_checked_basket(basket):  # the one production path to a basket
         raise TypeError("checked_basket returned something other than its sealed basket")
     after = req.clock()  # ADR-119 again: Zerodha's margin call above may have run past 15:30
-    closed = market_failures(after, market_open(after))
-    if closed:
+    closed = paused_failures(await kill_switch.is_paused(req.db)) + market_failures(after, market_open(after))
+    if closed:  # the owner may have flipped the switch while Zerodha's margin call ran (ADR-127)
         raise _refuse_with(closed[0].message)
     return basket
 
@@ -653,6 +661,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
         strategy_id=sid, version_id=f"revision-{stored.revision}", actor="user", underlying=underlying,
         action=ExecutionAction.EXIT if is_exit else ExecutionAction.NEW_ENTRY, as_of=req.now,
         market_open=market_open(req.now),
+        platform_paused=await kill_switch.is_paused(req.db),  # ADR-127; the gate reads it again (_gate)
         broker_connected=True,  # today's order book was just read with the stored session (else refused above)
         session_valid=True,  # the same read: Zerodha accepted the session's token
         pro_entitled=await _pro_entitled(req, db_now),

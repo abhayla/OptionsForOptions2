@@ -55,13 +55,13 @@ const live = useStrategyLive({
   },
 })
 const everLive = ref(false)
-const market = ref(null) // the server's verdict: { status: open|closed|unconfirmed, message }; null until first read
+const market = ref(null) // the server's verdict: { status: open|closed|unconfirmed|paused, message }; paused = the owner's kill switch (ADR-127); null until first read
 const marketOpen = computed(() => market.value?.status === 'open')
 
 async function readMarket() {
   try {
     const data = (await api.get('/execute/market-status')).data
-    market.value = data && ['open', 'closed', 'unconfirmed'].includes(data.status)
+    market.value = data && ['open', 'closed', 'unconfirmed', 'paused'].includes(data.status)
       ? { status: data.status, message: data.message ?? MARKET_UNCONFIRMED_PARTS }
       : { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS } // unreadable: fail closed
   } catch {

@@ -70,6 +70,7 @@ class CheckCode(str, Enum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DEPENDENCIES_UNSATISFIED = "DEPENDENCIES_UNSATISFIED"
     RECONCILIATION_MISMATCH = "RECONCILIATION_MISMATCH"
+    PLATFORM_PAUSED = "PLATFORM_PAUSED"
 
 
 # Checks that look at each leg's contract; skipped (reported as not checked) when the underlying is unsupported.
@@ -366,10 +367,19 @@ def market_failures(as_of: datetime.datetime, market_open: bool | None) -> list[
     return [_fail(CheckCode.MARKET_CLOSED, "gate_market_closed", next_open=opens.date())]
 
 
+def paused_failures(platform_paused: bool | None) -> list[CheckFailure]:
+    """ADR-127: the owner's kill switch. Only an explicit False passes; True and unknown (None: the switch could not
+    be read) both refuse with the one ADR-127 sentence, so a read failure can never let an order through. Public so a
+    route can re-read the switch AFTER its slow steps (finding freshness-judged-on-request-start-clock)."""
+    if platform_paused is False:
+        return []
+    return [_fail(CheckCode.PLATFORM_PAUSED, "gate_platform_paused")]
+
+
 def _market_failures(ctx: ExecutionContext) -> list[CheckFailure]:
     """The choke point for EVERY basket build (entry, step 2, exit, Complete, Retry, adjustment all pass
-    ``check_pre_execution``)."""
-    return market_failures(ctx.as_of, ctx.market_open)
+    ``check_pre_execution``). The kill switch comes first, so it is the failure a user is shown (ADR-127)."""
+    return paused_failures(ctx.platform_paused) + market_failures(ctx.as_of, ctx.market_open)
 
 
 def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strategy_id: str) -> list[CheckFailure]:

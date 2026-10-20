@@ -24,6 +24,7 @@ NEXT_DAY = datetime.date(2026, 10, 22)
 class _Ctx:
     as_of: datetime.datetime
     market_open: bool | None
+    platform_paused: bool | None = None
 
 
 def _clock(*readings: datetime.datetime):
@@ -35,6 +36,13 @@ def _clock(*readings: datetime.datetime):
     return read
 
 
+def _not_paused(monkeypatch, value=False) -> None:
+    """The kill switch read is a DB statement; these tests have no database, so it is a stub."""
+    async def read(db):
+        return value
+    monkeypatch.setattr(execute.kill_switch, "is_paused", read)
+
+
 def _req(clock):
     return SimpleNamespace(now=START, clock=clock, db=None, strategy_id=7, session=SimpleNamespace(margin=None))
 
@@ -44,6 +52,7 @@ def test_gate_judges_the_clock_read_right_before_it_not_request_start(monkeypatc
     market_open False, and the user is refused with the ADR-119 sentence. Without the re-read the spy sees 15:29:59."""
     async def fresh_registry(db, underlying):
         return None
+    _not_paused(monkeypatch)
     seen: list[_Ctx] = []
 
     monkeypatch.setattr(execute.elig, "fresh_registry", fresh_registry)
@@ -63,6 +72,7 @@ def test_gate_with_the_clock_still_inside_the_session_passes_the_market_context(
     """Control: a clock still before 15:30:00 gives market_open True (the re-read does not close the gate by itself)."""
     async def fresh_registry(db, underlying):
         return None
+    _not_paused(monkeypatch)
     seen: list[_Ctx] = []
     monkeypatch.setattr(execute.elig, "fresh_registry", fresh_registry)
     monkeypatch.setattr(execute, "check_pre_execution", lambda s, ctx, *a, **k: seen.append(ctx) or SimpleNamespace(
@@ -73,6 +83,7 @@ def test_gate_with_the_clock_still_inside_the_session_passes_the_market_context(
 
 def _stub_basket_path(monkeypatch) -> object:
     sentinel = object()
+    _not_paused(monkeypatch)
 
     async def limits(db, plan):
         return None
@@ -98,8 +109,8 @@ def test_basket_is_returned_when_the_clock_is_still_open(monkeypatch) -> None:
 
 # ---- the screen's read: the same verdict, before the click ----------------------------------------------------
 
-def _verdict(when: datetime.datetime) -> dict:
-    return json.loads(api_models.emit(execute.market_verdict(when)))
+def _verdict(when: datetime.datetime, paused: bool | None = False) -> dict:
+    return json.loads(api_models.emit(execute.market_verdict(when, paused)))
 
 
 def test_market_status_route_is_the_gates_verdict_in_each_state() -> None:
@@ -117,6 +128,7 @@ def test_market_status_route_is_the_gates_verdict_in_each_state() -> None:
     assert any(r.path == "/execute/market-status" and "GET" in r.methods for r in execute.router.routes)
 
 
-def test_market_status_route_serves_the_server_clock() -> None:
-    out = asyncio.run(execute.execute_market_status(lambda: LATE))
+def test_market_status_route_serves_the_server_clock(monkeypatch) -> None:
+    _not_paused(monkeypatch)
+    out = asyncio.run(execute.execute_market_status(lambda: LATE, None))
     assert out.status == "closed" and out.as_of == LATE
