@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (127)
+## Decisions (131)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -93,10 +93,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-085 2026-10-15: When a draft saved without planned entries (befor…
 - ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is n…
 - ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be… [none — changes the master plan's gate rule (a pro…]
-- ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - e… [none — fills the time REQ-039 AC-3 left open and…]
-- ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE… [none — uses the ADR-072 loss regions for the tabl…]
-- ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
-- ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refreshed by running the freeze-file loader once a wee… [extends ADR-081]
+- ADR-088 2026-10-16: The four non-normal Builder states with no time t… [none — fills the time REQ-039 AC-3 left open and…]
+- ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE wh… [none — uses the ADR-072 loss regions for the tabl…]
+- ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that… [approves REQ-073]
+- ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refr… [extends ADR-081]
 - ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze limit "is blocked on the order review with the re… [extends ADR-081]
 - ADR-093 2026-10-16: Every coding standard of this project is either enforced by an automatic check (a linter rule, a ty… [none — a new subject: engineering standards for a…]
 - ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket figure (`final.total` of `POST /margins/basket`) pl… [applies ADR-016]
@@ -133,6 +133,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
 - ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
 - ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
+- ADR-129 2026-10-20: (1) The success outcome of the return-from-Kite check (after "Checking with Zerodha…") reads exactl… [extends REQ-073]
+- ADR-130 2026-10-20: (1) Orders, when empty, shows "No orders yet." with a [Create Strategy] button. [extends ADR-002]
+- ADR-131 2026-10-20: (1) Tapping Buy (or Sell) on a contract already selected with that same action unselects it (a togg… [refines REQ-030]
+- ADR-132 2026-10-20: (1) REQ-030 AC-12: when a selected contract is already a leg of the strategy, the prompt reads "<co… [refines REQ-030]
 
 ## Requirements (75)
 
