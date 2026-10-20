@@ -215,6 +215,14 @@
     "sha256": "3d700cafffea9c8c0569201c985a27e8b5d8131c5a72e83c74dd9aec7eb4d3a8",
     "reviewed": "pending owner read"
   },
+  "gate_platform_paused": {
+    "sha256": "49a9495c9d0b2259f9781b4973a5bea8f6b76f60ba7d89874ec237b2b46d1286",
+    "reviewed": "pending owner read"
+  },
+  "gate_platform_paused_open_position": {
+    "sha256": "97baa745558ee7b3c7716947949b1475f3c36c39952ab6dbf3fa6c7143a24aa5",
+    "reviewed": "pending owner read"
+  },
   "strategy_catalogue_unreadable": {
     "sha256": "0c12f0940dc21ad6fa48ba5dd23523e146c3557e7774421ff28995d45f4f457c",
     "reviewed": "pending owner read"

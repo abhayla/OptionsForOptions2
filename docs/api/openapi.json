@@ -1107,6 +1107,20 @@
         "title": "IndicesOut",
         "type": "object"
       },
+      "KillSwitchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "title": "KillSwitchOut",
+        "type": "object"
+      },
       "LevelOut": {
         "additionalProperties": false,
         "properties": {
@@ -1225,11 +1239,21 @@
             ],
             "title": "Next Open"
           },
+          "paused_hint": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Hint"
+          },
           "status": {
             "enum": [
               "open",
               "closed",
-              "unconfirmed"
+              "unconfirmed",
+              "paused"
             ],
             "title": "Status",
             "type": "string"
@@ -3050,6 +3074,81 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/kill-switch": {
+      "put": {
+        "description": "Turns the switch on or off and appends ONE audit event, in one transaction (the event is the state).",
+        "operationId": "set_kill_switch_admin_kill_switch_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-owner-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Owner-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "paused": {
+                    "title": "Paused",
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "title": "Reason",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "paused",
+                  "reason"
+                ],
+                "title": "KillSwitchIn",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KillSwitchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Kill Switch"
+      }
+    },
     "/api/broker/refusals/{code}": {
       "get": {
         "description": "Read-only: the catalogue message for a refusal code, for the page the callback redirected to (#163).",
@@ -3425,8 +3524,27 @@
     },
     "/execute/market-status": {
       "get": {
-        "description": "Read-only: whether Execute is open now, on the server clock (ADR-119 (3)); the POST gate re-judges on its own.",
+        "description": "Read-only: whether Execute is open now, on the server clock (ADR-119 (3)) and the kill switch (ADR-127); the POST\ngate re-judges both on its own. With ``strategy_id`` and the switch on, also whether that strategy holds units\n(the net of its stored plans, the gate's own source) for the ADR-128 hint; an unreadable answer adds no hint.",
         "operationId": "execute_market_status_execute_market_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "strategy_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3437,6 +3555,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Execute Market Status"

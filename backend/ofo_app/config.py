@@ -71,6 +71,18 @@ def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]  # DATABASE_URL comes from the environment
 
 
+#: ADR-127: the platform owner's key for owner-only routes (the kill switch). Read from the process environment at each
+#: request (never cached, never logged). Until sign-in exists (stage 5) there is no owner identity, so this one secret
+#: IS the owner check: unset, or shorter than OWNER_KEY_MIN, means no owner route answers at all (fail closed).
+OWNER_KEY_ENV = "OFO_OWNER_KEY"
+OWNER_KEY_MIN = 24
+
+
+def owner_key() -> str | None:
+    value = os.environ.get(OWNER_KEY_ENV, "").strip()
+    return value if len(value) >= OWNER_KEY_MIN else None
+
+
 class _AppEnv(BaseSettings):
     """Only APP_ENV, with no default: whether it was set at all is part of the answer (ADR-073)."""
 

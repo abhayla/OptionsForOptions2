@@ -123,6 +123,7 @@ def all_true_context(**overrides: Any) -> ExecutionContext:
         action=ExecutionAction.NEW_ENTRY,
         as_of=AS_OF,
         market_open=True,
+        platform_paused=False,
         broker_connected=True,
         session_valid=True,
         pro_entitled=True,

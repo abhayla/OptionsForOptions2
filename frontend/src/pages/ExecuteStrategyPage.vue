@@ -55,14 +55,16 @@ const live = useStrategyLive({
   },
 })
 const everLive = ref(false)
-const market = ref(null) // the server's verdict: { status: open|closed|unconfirmed, message }; null until first read
+const market = ref(null) // the server's verdict: { status: open|closed|unconfirmed|paused, message }; paused = the owner's kill switch (ADR-127); null until first read
 const marketOpen = computed(() => market.value?.status === 'open')
 
 async function readMarket() {
   try {
-    const data = (await api.get('/execute/market-status')).data
-    market.value = data && ['open', 'closed', 'unconfirmed'].includes(data.status)
-      ? { status: data.status, message: data.message ?? MARKET_UNCONFIRMED_PARTS }
+    const data = (await api.get('/execute/market-status', { params: { strategy_id: strategyId.value } })).data
+    market.value = data && ['open', 'closed', 'unconfirmed', 'paused'].includes(data.status)
+      ? { status: data.status, message: data.message ?? MARKET_UNCONFIRMED_PARTS,
+          // ADR-128: the server's one line (its own catalogue text), only while paused and only for a strategy it knows holds units
+          hint: data.status === 'paused' ? (data.paused_hint ?? null) : null }
       : { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS } // unreadable: fail closed
   } catch {
     market.value = { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS }
@@ -120,6 +122,7 @@ async function prepare(action) {
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
 
     <ErrorMessage v-if="!reply && market && !marketOpen" class="mt-2" :parts="market.message" prefix="market-closed" />
+    <p v-if="!reply && market && market.hint" class="mt-1" data-testid="paused-hint">{{ market.hint.what_happened }}</p>
 
     <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive) || (market && !marketOpen))" class="mt-2 flex gap-2" data-testid="execute-actions">
       <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || !marketOpen" @click="prepare('ENTRY')">

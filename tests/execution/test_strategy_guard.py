@@ -144,7 +144,8 @@ def _eligibility(cat: Catalogue) -> ZerodhaEligibility:
 def _context(version_number: int) -> ExecutionContext:
     return ExecutionContext(
         strategy_id=SID, version_id=f"v{version_number}", actor="user:U-1", underlying="NIFTY",
-        action=ExecutionAction.ADJUSTMENT, as_of=at(20), market_open=True, broker_connected=True, session_valid=True,
+        action=ExecutionAction.ADJUSTMENT, as_of=at(20), market_open=True, platform_paused=False, broker_connected=True,
+        session_valid=True,
         pro_entitled=True, version_state=VersionState.PROPOSED, rules_valid=True, dependencies_satisfied=True,
         data_health={d: DataHealth.HEALTHY for d in DataInput}, margin_available=D("500000.00"),
         margin_required=D("50000.00"), reconciliation_blocked_strategy_ids=frozenset(), charges_estimate=D("236.40"),

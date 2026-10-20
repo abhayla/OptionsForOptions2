@@ -396,6 +396,15 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The platform could not finish checking this strategy before execution.", _EXEC,
           "Try again in a few minutes; contact support if this keeps happening."),
     # Strategy template catalogue (ofo.strategy.loader): the user sees this; the developer detail stays on the error.
+    _gate("gate_platform_paused", _IS, 104,
+          "Execution is paused by the platform right now. You can review and save your plan; no orders can be sent.",
+          "No order can be sent while execution is paused.", _EXEC,
+          "Review and save your plan now, and come back when execution is on again."),
+    # ADR-128: the one line added under the ADR-127 sentence on a screen with an open position while paused.
+    _gate("gate_platform_paused_open_position", _IS, 105,
+          "You can still close positions directly on Kite.",
+          "Orders from this platform cannot be sent while execution is paused.", _EXEC,
+          "Close the position directly on Kite if you need to."),
     _gate("strategy_catalogue_unreadable", _IS, 102, "The strategy template list could not be read.",
           "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
           "Build the strategy leg by leg for now; contact support if this keeps happening."),
