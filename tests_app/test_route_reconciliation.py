@@ -128,9 +128,9 @@ def _positions(quantity: int) -> object:
     return data
 
 
-def _attribute(plans, positions, others=None) -> tuple[ra.Attribution, object]:
+def _attribute(plans, positions, others=None, at=AT) -> tuple[ra.Attribution, object]:
     return asyncio.run(rr.attribute(_Conn(), USER, _catalogue(), positions, _recorded("orders-2026-10-19-roundtrip"),
-                                    at=AT, clock=clock, reader=_reader(plans, others)))
+                                    at=at, clock=lambda: at, reader=_reader(plans, others)))
 
 
 def _run(plans, positions, others=None) -> ra.Attribution:
@@ -285,3 +285,31 @@ def test_exit_is_never_clean_while_another_strategys_plan_is_unsettled_on_the_co
     on the contract makes Zerodha's units there unknown, so strategy 9's EXIT never reads ``exited``."""
     flat = _recorded("positions-2026-10-19-roundtrip")
     assert _exited(_plans((1, 2)), flat, {10: (_other_plan("open", None),)}) is False
+
+
+# ---- T6 / ADR-083: an expired held leg settles; it is never a missing position -----------------------------------
+#: The real contract's expiry day (2026-10-27): after the expiry-day settle time (15:39, F-33), the day after, and
+#: before the close (still a tradable leg).
+EXPIRY_EVENING = datetime.datetime(2026, 10, 27, 15, 45, tzinfo=IST)
+DAY_AFTER = datetime.datetime(2026, 10, 28, 9, 30, tzinfo=IST)
+EXPIRY_AFTERNOON = datetime.datetime(2026, 10, 27, 15, 0, tzinfo=IST)
+
+
+@pytest.mark.parametrize("at", [EXPIRY_EVENING, DAY_AFTER])
+def test_t6_an_expired_held_leg_gone_at_zerodha_settles_and_blocks_nothing(at):
+    """ADR-083 (1): "reconciliation expects that leg gone from Zerodha's positions and does not raise a
+    missing-position mismatch for it". Strategy 9 holds 65 by plan 1; after the expiry close Zerodha's real row is
+    flat -> awaiting settlement (shown, never blocking), nothing to store, nothing outside."""
+    attribution, _ = _attribute(_plans((1,)), _recorded("positions-2026-10-19-roundtrip"), at=at)
+    assert attribution.blocked == frozenset()
+    assert {(m.kind, m.strategy_ids) for m in attribution.report.mismatches} == {
+        (MismatchKind.AWAITING_SETTLEMENT, ())}
+    assert rr.mismatch_rows(attribution, _catalogue()) == ()
+    assert dict(attribution.outside) == {}
+
+
+def test_t6_before_the_expiry_close_a_flat_zerodha_is_still_a_missing_position():
+    """The same flat row at 15:00 on the expiry day: the leg can still trade, so it is a blocking mismatch."""
+    attribution, _ = _attribute(_plans((1,)), _recorded("positions-2026-10-19-roundtrip"), at=EXPIRY_AFTERNOON)
+    assert attribution.blocked == frozenset({"9"})
+    assert {m.kind for m in attribution.report.mismatches} == {MismatchKind.MISSING_PLATFORM_POSITION}
