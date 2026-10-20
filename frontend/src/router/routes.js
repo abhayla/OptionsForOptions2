@@ -57,6 +57,8 @@ const settingsRoutes = [
 
 export const routes = [
   { path: '/', redirect: '/home' },
+  // GC-6 row LANDING (REQ-010): public page, no app shell (meta.public); '/' stays on /home until sign-in (Stage 5).
+  { path: '/welcome', name: 'landing', component: () => import('../pages/LandingPage.vue'), meta: { title: 'Welcome', public: true } },
   ...sectionRoutes,
   ...settingsRoutes,
   { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
