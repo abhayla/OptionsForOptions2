@@ -397,3 +397,61 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
 
     monkeypatch.setattr(route.rr, "reconcile_account", blocked)
     assert _run(route._reconcile(req, held, _catalogue())) == ("P", frozenset({"9"}))
+
+
+# ---- #380-2d: the two guards the 380-2c mutation pass still found alive -----------------------------
+
+def test_the_execute_context_carries_the_verdicts_blocked_strategies_into_the_gate(monkeypatch):
+    """Dropping ``reconciliation_blocked_strategy_ids`` from the context makes a blocked strategy read as unblocked."""
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    class Reads:
+        def fetch_positions(self):
+            return {}
+
+    async def margin(*args, **kwargs):
+        return Decimal("100000"), Decimal("50000")
+
+    async def entitled(*args, **kwargs):
+        return True
+
+    async def health(*args, **kwargs):
+        return {}
+
+    async def db_now(db):
+        return AT
+
+    async def blocked(*args, **kwargs):
+        return SimpleNamespace(positions="P", attribution=SimpleNamespace(blocked=frozenset({"9"})))
+
+    monkeypatch.setattr(route, "_zerodha_margin", margin)
+    monkeypatch.setattr(route, "_pro_entitled", entitled)
+    monkeypatch.setattr(route, "_data_health", health)
+    monkeypatch.setattr(route.elig, "database_now", db_now)
+    monkeypatch.setattr(route.rr, "reconcile_account", blocked)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, clock=lambda: AT, action="enter", strategy_id=9,
+                          session=SimpleNamespace(reads=Reads()))
+    definition = SimpleNamespace(underlying="NIFTY", rules_ref=None)
+    stored = SimpleNamespace(revision=1, saved=SimpleNamespace(definition=definition))
+    held = SimpleNamespace(order_rows=[], state=None)
+    ctx, _ = _run(route._context(req, stored, SimpleNamespace(price_bands={}), held, _catalogue()))
+    assert ctx.reconciliation_blocked_strategy_ids == frozenset({"9"})
+
+
+@pytest.mark.parametrize("error", ["kite_reply", "reconciliation", "value"])
+def test_the_return_route_reads_each_unreadable_reconciler_reply_as_broker_unconfirmed(monkeypatch, error):
+    from ofo.reconciliation.compare import ReconciliationError  # noqa: PLC0415
+    from ofo_app.kite_replies import KiteReplyError  # noqa: PLC0415
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+
+    raised = {"kite_reply": KiteReplyError("x"), "reconciliation": ReconciliationError("x"),
+              "value": ValueError("x")}[error]
+
+    async def fails(*args, **kwargs):
+        raise raised
+
+    monkeypatch.setattr(route.rr, "reconcile_account", fails)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT)
+    with pytest.raises(type(route._refuse("gate_broker_unconfirmed"))) as err:
+        _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[])))
+    assert repr(err.value.message) == repr(route._refuse("gate_broker_unconfirmed").message)
