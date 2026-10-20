@@ -1,5 +1,6 @@
-// W-089 (REQ-015 AC-4): the Broker & Market Data page text for every state the server can send, and the fail-closed
-// cases: an unknown state or fix code is never shown as Connected, and a failed read shows the unavailable state.
+// W-089 + GC-6 ZERODHA-CONN (REQ-015 AC-4, ADR-138 (5)): the Broker & Market Data page shows one state, Connected or
+// Reconnect, plus the last sync time. Every answer state of GET /broker/status is covered; anything that is not a live
+// session (expired, never connected, partial, unknown word, empty, unreadable) is never shown as Connected.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
@@ -30,43 +31,55 @@ async function open(data) {
 describe('/settings/broker-market-data', () => {
   beforeEach(() => { calls.length = 0 })
 
-  it('connected: four Connected rows and no fix text', async () => {
+  it('live session: Connected plus the last sync time, no Reconnect help, no four-status block', async () => {
     const w = await open({ ...base, last_successful_sync: '2026-10-17T09:05:00Z' })
     expect(calls[0]).toEqual(['get', '/broker/status'])
-    for (const k of ['account_connection', 'live_market_data', 'position_sync', 'order_execution']) {
-      expect(t(w, `status-${k}`)).toBe('Connected')
-      expect(w.find(`[data-testid="fix-${k}"]`).exists()).toBe(false)
-    }
+    expect(t(w, 'connection-state')).toBe('Connected')
     expect(t(w, 'last-sync-time')).toContain('IST')
+    expect(w.find('[data-testid="reconnect-help"]').exists()).toBe(false)
+    expect(w.find('[data-testid="broker-rows"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Partially connected')
+    expect(w.text()).not.toContain('Order-execution readiness')
+    expect(t(w, 'broker-reconnect')).toBe('Reconnect Zerodha')
   })
 
-  it('partial: names the fix for each code', async () => {
-    const w = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_session_ended' }, position_sync: { state: 'partial', fix: 'no_read_yet' } })
-    expect(t(w, 'status-live_market_data')).toBe('Partially connected')
-    expect(t(w, 'fix-live_market_data')).toContain('Zerodha ended the live feed')
-    expect(t(w, 'fix-position_sync')).toContain('No position read from Zerodha has succeeded')
+  it('live session with no sync yet: still Connected, says no read is recorded', async () => {
+    const w = await open(base)
+    expect(t(w, 'connection-state')).toBe('Connected')
     expect(t(w, 'last-sync-none')).toContain('no successful read')
   })
 
-  it('disconnected: guide text and a Connect button, no Disconnect', async () => {
-    const d = { state: 'disconnected', fix: 'session_expired' }
-    const w = await open({ ...base, account_connection: d, live_market_data: d, position_sync: d, order_execution: d })
-    expect(t(w, 'status-account_connection')).toBe('Disconnected')
-    expect(t(w, 'fix-order_execution')).toContain('expired')
-    expect(t(w, 'broker-reconnect')).toBe('Connect Zerodha')
+  it('partial feature statuses do not change the single state', async () => {
+    const w = await open({ ...base, live_market_data: { state: 'partial', fix: 'live_feed_session_ended' }, position_sync: { state: 'partial', fix: 'no_read_yet' } })
+    expect(t(w, 'connection-state')).toBe('Connected')
+    expect(w.text()).not.toContain('Partially connected')
+  })
+
+  it.each([
+    ['expired', { state: 'disconnected', fix: 'session_expired' }],
+    ['never connected', { state: 'disconnected', fix: 'connect_zerodha' }],
+    ['partial account', { state: 'partial', fix: null }],
+    ['unknown word', { state: 'weird', fix: 'nope' }],
+    ['empty object', {}],
+    ['missing field', undefined],
+  ])('%s: Reconnect, never Connected, link to the login route, no Disconnect', async (_name, acct) => {
+    const w = await open({ ...base, account_connection: acct, last_successful_sync: null })
+    expect(t(w, 'connection-state')).toBe('Reconnect')
+    expect(t(w, 'reconnect-help')).toContain('We never ask for your password, PIN or OTP')
+    expect(w.get('[data-testid="broker-reconnect"]').attributes('href')).toBe('/api/broker/zerodha/login')
     expect(w.find('[data-testid="broker-disconnect"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Connected')
   })
 
-  it('an unknown state is shown as Disconnected, never Connected', async () => {
-    const w = await open({ ...base, account_connection: { state: 'weird', fix: 'nope' } })
-    expect(t(w, 'status-account_connection')).toBe('Disconnected')
-    expect(t(w, 'fix-account_connection')).toContain('Use Reconnect')
+  it('an empty reply (null body) shows Reconnect', async () => {
+    const w = await open(null)
+    expect(t(w, 'connection-state')).toBe('Reconnect')
   })
 
-  it('a failed read shows the unavailable state and no rows', async () => {
+  it('a failed read shows the unavailable state and no connection state', async () => {
     const w = await open(new Error('down'))
     expect(w.find('[data-testid="broker-unavailable"]').exists()).toBe(true)
-    expect(w.find('[data-testid="broker-rows"]').exists()).toBe(false)
+    expect(w.find('[data-testid="connection-state"]').exists()).toBe(false)
     expect(w.text()).not.toContain('Connected')
   })
 
