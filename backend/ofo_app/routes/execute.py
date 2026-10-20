@@ -40,7 +40,7 @@ from typing import Annotated, Any, Literal, Optional, Protocol
 from fastapi import APIRouter, Depends, Query
 from ofo.charges.calculator import ChargeOrder
 from ofo.charges.rates import ChargeRates
-from ofo.engine import Action, Instrument, Leg
+from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.product import Product
 from ofo.entitlements.engine import access_at
 from ofo.entitlements.events import AccessLevel
@@ -130,12 +130,25 @@ class CostOut(ApiModel):
     figures_read_at: datetime.datetime  # the route clock read right after Zerodha's figures
 
 
+class ReviewOut(ApiModel):
+    """EXECUTE-REVIEW (REQ-056 AC-5/AC-9; ADR-008): the plan's at-expiry risk from the one engine (``strategy_metrics``),
+    shown by the screen as given. ``max_loss`` / ``max_profit`` are a 2-decimal string, or None when unlimited (the
+    matching flag is true) or not known (an exit, whose closing orders say nothing about the risk left; a multi-expiry
+    strategy, which has no exact at-expiry figure): unknown is never 0."""
+
+    max_loss: Optional[Money]  # noqa: UP045 - None = unlimited or unknown
+    max_loss_unlimited: bool
+    max_profit: Optional[Money]  # noqa: UP045 - None = unlimited or unknown
+    max_profit_unlimited: bool
+
+
 class ExecuteOut(ApiModel):
     plan_number: int
     tags: list[Identifier]
     basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
     orders: list[BasketOrderOut]  # display only
     cost: CostOut
+    review: ReviewOut
 
 
 class MarketStatusOut(ApiModel):
@@ -458,7 +471,8 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
-    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures))
+    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
+                   review_out(priced.strategy, req.action))
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
@@ -549,14 +563,28 @@ def cost_out(orders: Any, rates: ChargeRates | None, figures: Figures) -> CostOu
         "figures_read_at": figures.read_at})
 
 
-def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut) -> ExecuteOut:
+def review_out(strategy: Strategy, action: str) -> ReviewOut:
+    """The risk figures for the review block, from the engine's ``strategy_metrics`` only (no arithmetic here). An EXIT
+    plan (closing orders) and a multi-expiry strategy carry none: both None, both flags false (unknown, never 0)."""
+    unknown = ReviewOut.model_validate({"max_loss": None, "max_loss_unlimited": False, "max_profit": None,
+                                        "max_profit_unlimited": False})
+    if action == EXIT or not strategy.is_single_expiry:
+        return unknown
+    metrics = strategy_metrics(strategy)
+    loss_unlimited, profit_unlimited = metrics.max_loss is UNLIMITED, metrics.max_profit is UNLIMITED
+    return ReviewOut.model_validate({
+        "max_loss": None if loss_unlimited else _paise(metrics.max_loss), "max_loss_unlimited": loss_unlimited,
+        "max_profit": None if profit_unlimited else _paise(metrics.max_profit), "max_profit_unlimited": profit_unlimited})
+
+
+def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut, review: ReviewOut) -> ExecuteOut:
     return ExecuteOut.model_validate({
         "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
                     "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
                    for o in basket.orders],
-        "cost": cost})
+        "cost": cost, "review": review})
 
 
 # ---- the ExecutionContext, one real source per field ---------------------------------------------------------------
@@ -705,6 +733,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
-           "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session", "get_quote_reader",
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut", "ReviewOut",
+           "cost_out", "review_out", "execute_market_status", "get_execute_clock", "get_kite_session", "get_quote_reader",
            "held_products", "market_open", "market_verdict", "price_and_time"]

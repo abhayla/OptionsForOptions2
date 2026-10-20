@@ -269,13 +269,13 @@ def test_the_app_models_are_all_swept() -> None:
         "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
-        "BasketOrderOut", "ExecuteOut", "MarketStatusOut", "CostOut", "ReturnPlanOut", "ReturnContractOut",
+        "BasketOrderOut", "ExecuteOut", "MarketStatusOut", "CostOut", "ReviewOut", "ReturnPlanOut", "ReturnContractOut",
         "ReturnExternalOut",
         "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
         "TemplatesOut", "KillSwitchOut"}
     # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
-    # TemplatesOut; ADR-127 adds KillSwitchOut
-    assert len(_app_models()) == 46
+    # TemplatesOut; ADR-127 adds KillSwitchOut; EXECUTE-REVIEW adds ReviewOut
+    assert len(_app_models()) == 47
 
 
 @pytest.mark.parametrize("required_only", [False, True])

@@ -722,3 +722,33 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
     assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
     assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE
+
+
+# ---- EXECUTE-REVIEW (REQ-056 AC-5/AC-9): the risk block comes from the engine's metrics, strings, never a made-up 0 ----
+
+def _review_body(legs, action="ENTRY") -> dict:
+    from ofo.engine import Strategy  # noqa: PLC0415
+    from ofo_app.api_models import emit  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    return json.loads(emit(route.review_out(Strategy(tuple(legs)), action)))
+
+
+def _call(strike, expiry, qty, price, action=Action.BUY):
+    from ofo.engine import Leg  # noqa: PLC0415
+
+    return Leg(action, Instrument.CE, D(strike), expiry, qty, D(price), D(price))
+
+
+def test_review_out_a_long_call_has_its_premium_as_max_loss_and_unlimited_profit():
+    leg = _call("23650", datetime.date(2026, 10, 19), 65, "3.35")
+    assert _review_body([leg]) == {"max_loss": "217.75", "max_loss_unlimited": False, "max_profit": None,
+                                   "max_profit_unlimited": True}
+
+
+def test_review_out_an_exit_and_a_multi_expiry_strategy_are_unknown_never_zero():
+    near = _call("23650", datetime.date(2026, 10, 19), 65, "3.35")
+    far = _call("23650", datetime.date(2026, 10, 26), 65, "5", Action.SELL)
+    unknown = {"max_loss": None, "max_loss_unlimited": False, "max_profit": None, "max_profit_unlimited": False}
+    assert _review_body([near], "EXIT") == unknown
+    assert _review_body([near, far]) == unknown
