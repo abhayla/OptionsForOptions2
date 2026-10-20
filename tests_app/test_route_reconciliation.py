@@ -55,12 +55,17 @@ def _recorded(name: str) -> object:
     return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"), parse_float=Decimal)["data"]
 
 
-def _catalogue() -> Catalogue:
-    cat = Catalogue()
-    cat.load([zerodha_listed(
+def listed() -> object:
+    """NIFTY26OCT24000CE as NSE's 2026-10-16 contract file lists it (the real 2026-10-19 round trip's contract)."""
+    return zerodha_listed(
         instrument_token=TOKEN, exchange_token=TOKEN >> 8, tradingsymbol="NIFTY26OCT24000CE", name="NIFTY",
         expiry=datetime.date(2026, 10, 27), strike=Decimal("24000"), tick_size=Decimal("0.05"), lot_size=65,
-        instrument_type="CE", segment="NFO-OPT", exchange="NFO")])
+        instrument_type="CE", segment="NFO-OPT", exchange="NFO")
+
+
+def _catalogue() -> Catalogue:
+    cat = Catalogue()
+    cat.load([listed()])
     return cat
 
 
