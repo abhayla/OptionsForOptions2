@@ -28,7 +28,7 @@ const points = SAMPLE_PAYOFF_POINTS.map(([x, y]) => `${x},${y}`).join(' ')
     <main class="mx-auto max-w-5xl px-4 py-8">
       <section class="grid gap-6 md:grid-cols-2 md:items-center">
         <div>
-          <h1 class="text-2xl font-semibold" data-testid="landing-hero">{{ HERO_LINE }}</h1>
+          <h1 class="text-2xl font-semibold" data-testid="landing-hero"><span data-testid="page-title">{{ HERO_LINE }}</span></h1>
           <router-link :to="AUTH_TARGET" class="mt-4 inline-block rounded bg-accent px-4 py-2 text-surface" data-testid="landing-signup">{{ NAV_LABELS.signUp }}</router-link>
         </div>
         <figure class="min-w-0" data-testid="landing-sample">
