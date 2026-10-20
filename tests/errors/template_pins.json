@@ -1398,5 +1398,29 @@
   "explanation:confirm_to_continue": {
     "sha256": "18a70db3c9af1d491f44a4cbae162357cd128d15d7591a321a5a50cbb6d8d7bd",
     "reviewed": "pending owner read"
+  },
+  "explanation:recovery_order_open": {
+    "sha256": "f38861a6dce7fb52eae06bb1db923568c2f2087777574d686864965f264401d5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:recovery_margin_short": {
+    "sha256": "99395250d21449a32fb8858268f9199aee3a16b0bd6f3ee5c26d173df829363a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:recovery_entry_order_open": {
+    "sha256": "adc2ecb6cb962b506543162718f32b107702647cb6ecf96c706186e87b916df5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:recovery_read_stale": {
+    "sha256": "259410454a4267528cf0c7cb6b803f2b8c2e018325222b7cb04dbacc8cee3588",
+    "reviewed": "pending owner read"
+  },
+  "explanation:recovery_shared_contract": {
+    "sha256": "2f5f578b8b8e67f62c029720ab4df5765a688ea4b9d98be9b33895e52b5852dd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:recovery_overnight": {
+    "sha256": "8377fbdaddada2c9f8f46e0968c2291247ca86edf51e8c9fd62b84098dabd182",
+    "reviewed": "pending owner read"
   }
 }

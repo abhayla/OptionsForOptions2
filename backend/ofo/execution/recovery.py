@@ -34,13 +34,13 @@ from typing import Final
 
 from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
-from ofo.errors.explanations import CHOICE_LABEL_TEXT
+from ofo.errors.explanations import CHOICE_LABEL_TEXT, ExplanationText, render_explanation
 from ofo.execution.basket import parse_tag
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.execution.sequence import protects
 from ofo.instruments.models import is_lot_aligned
-from ofo.timeutil import MAX_READ_AGE, MAX_READ_FUTURE_SKEW
+from ofo.timeutil import IST, MAX_READ_AGE, MAX_READ_FUTURE_SKEW, SESSION_CLOSE, SESSION_OPEN
 
 #: Kite's terminal order statuses: the ONE home (``ofo_app.execute_plan`` imports it). Anything else is open.
 TERMINAL_ORDER_STATUSES: Final = frozenset({"COMPLETE", "CANCELLED", "REJECTED"})
@@ -59,7 +59,7 @@ class RecoveryAction(Enum):
 
 
 class Refusal(Enum):
-    """Why an action builds nothing. Codes only: the user-visible sentences are an open wording question (#380-3)."""
+    """Why an action builds nothing. The six ADR-142 lines come from ``refusal_line``; other codes have no line."""
 
     READ_FAILED = "read_failed"
     READ_STALE = "read_stale"
@@ -412,6 +412,36 @@ def recovery_gate(legs: Sequence[Leg], ctx: object, catalogue: object, eligibili
                                strategy_id=strategy_id)
 
 
+#: ADR-142 (1): the refusals the owner gave a line to; every other refusal has none (``refusal_line`` -> None).
+_REFUSAL_LINES: Final = {Refusal.ORDER_OPEN: "recovery_order_open", Refusal.ENTRY_ORDER_OPEN: "recovery_entry_order_open",
+                         Refusal.READ_STALE: "recovery_read_stale"}
+
+
+def refusal_line(out: Outcome, *, margin: MarginAnswer | None = None, holders: int = 0) -> ExplanationText | None:
+    """ADR-142 (1): the exact line a refused action shows, from the one catalogue. Margin short needs Zerodha's two
+    figures (the same answer the refusal was decided on); "several strategies" is the Use Zerodha's numbers refusal
+    with more than one holder. A refusal ADR-142 gives no line to returns None (no wording is invented here)."""
+    if out.refusal is Refusal.MARGIN_SHORT:
+        if margin is None or margin.available is None or margin.required is None:
+            raise ValueError("a margin-short line needs Zerodha's available and required figures")
+        return render_explanation("recovery_margin_short", available=margin.available, required=margin.required)
+    if (out.refusal is Refusal.AMBIGUOUS and out.action is RecoveryAction.USE_ZERODHA_NUMBERS and holders > 1):
+        return render_explanation("recovery_shared_contract")
+    template = _REFUSAL_LINES.get(out.refusal) if out.refusal is not None else None
+    return None if template is None else render_explanation(template)
+
+
+def overnight_line(now: datetime.datetime, next_day: datetime.date) -> ExplanationText | None:
+    """ADR-136 (5) / ADR-142: outside 09:15-15:30 IST on a weekday (or on a weekend) the screen says the position is
+    carried overnight, naming the next day the caller read from the market calendar; inside the session, None."""
+    if now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    local = now.astimezone(IST)
+    if local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE:
+        return None
+    return render_explanation("recovery_overnight", next_day=next_day)
+
+
 __all__ = [
     "TERMINAL_ORDER_STATUSES",
     "MarginAnswer",
@@ -426,7 +456,9 @@ __all__ = [
     "close_via_basket",
     "missing_legs",
     "offers",
+    "overnight_line",
     "place_missing_legs",
     "recovery_gate",
+    "refusal_line",
     "use_zerodha_numbers",
 ]

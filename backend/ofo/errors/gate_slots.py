@@ -101,6 +101,21 @@ class Date(SlotType):
         return _format_date(value)
 
 
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+class NextTradingDay(SlotType):
+    """A calendar date as ADR-121 (2) writes the next trading day: weekday, day, short month, no year: "Wed 21 Oct"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, date, "NextTradingDay")
+
+    @staticmethod
+    def format(value: date) -> str:
+        return f"{_WEEKDAYS[value.weekday()]} {value.day} {_MONTHS[value.month - 1]}"
+
+
 class Strikes(SlotType):
     """One or two listed strikes offered as alternatives (never applied): "23,950 or 24,050"."""
 

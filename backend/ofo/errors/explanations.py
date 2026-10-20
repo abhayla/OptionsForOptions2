@@ -21,6 +21,7 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
+from ofo.errors.gate_slots import DisplayRupees, NextTradingDay
 from ofo.errors.slots import SlotType, _require_exact
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
@@ -1015,6 +1016,22 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
+    # #380-3, ADR-142 (1): what a refused recovery action says (exact lines; amounts in the engine's money format,
+    # the next day in the ADR-121 format)
+    ExplanationTemplate("recovery_order_open", "values_seen",
+                        "An order for this contract is still open on Kite. Cancel or change it on Kite first."),
+    ExplanationTemplate("recovery_margin_short", "values_seen",
+                        "Zerodha shows {available} available; these orders need {required}. Add funds on Kite or "
+                        "close what filled.", {"available": DisplayRupees, "required": DisplayRupees}),
+    ExplanationTemplate("recovery_entry_order_open", "values_seen", "Cancel your open entry order on Kite first."),
+    ExplanationTemplate("recovery_read_stale", "values_seen",
+                        "Zerodha's answer is out of date. Check with Zerodha again."),
+    ExplanationTemplate("recovery_shared_contract", "values_seen",
+                        "Several strategies hold this contract. Use Zerodha's numbers needs a single holder; close via "
+                        "a basket or manage it on Kite."),
+    ExplanationTemplate("recovery_overnight", "values_seen",
+                        "The market is closed. This position stays open overnight; nothing can be placed before 09:15 "
+                        "on {next_day}.", {"next_day": NextTradingDay}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 
