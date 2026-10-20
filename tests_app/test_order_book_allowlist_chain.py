@@ -142,3 +142,15 @@ def test_predecessor_from_down_revision_and_downgrade_restores_it() -> None:
     assert re.findall(r"""_load\(\s*["']\d{4}_""", source) == []
     assert "op.execute(extended_allowlist_sql())" in source and "op.execute(previous_allowlist_sql())" in source
     assert "order book records are stored" in source
+
+
+def test_adopted_average_keeps_every_decimal_and_trade_prices_stay_whole_paise() -> None:
+    """ADR-126: the adopted holding's average price column has no declared scale (7.025 or 7.016666666666667 stored
+    exactly, never rounded), with the > 0 and < 10^12 CHECK kept; a trade price stays NUMERIC(14,2) (#313a)."""
+    source = (VERSIONS / f"{THIS}.py").read_text(encoding="utf-8")
+    holding = re.findall(r"^\s*average_price\s+(.+)$", source, re.MULTILINE)
+    fill = re.findall(r"^\s*price\s+(.+)$", source, re.MULTILINE)
+    assert len(holding) == 1 and len(fill) == 1, (holding, fill)
+    assert re.fullmatch(r"NUMERIC\s+NOT NULL CHECK \(average_price > 0 AND average_price < \{PRICE_LIMIT\}\),",
+                        holding[0]), holding[0]
+    assert re.fullmatch(r"NUMERIC\(14,2\) NOT NULL CHECK \(price > 0 AND price < \{PRICE_LIMIT\}\),", fill[0]), fill[0]

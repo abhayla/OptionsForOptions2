@@ -253,15 +253,44 @@ def _holding(**over) -> books.AdoptedHolding:
     return books.AdoptedHolding(**fields)
 
 
-@pytest.mark.parametrize("over", [{"average_price": D("5.125")}, {"average_price": D("0")}, {"quantity": 0},
+@pytest.mark.parametrize("over", [{"average_price": D("0")}, {"average_price": D("-7.025")},
+                                  {"average_price": D("NaN")}, {"average_price": D("Infinity")},
+                                  {"average_price": plans.PRICE_LIMIT}, {"average_price": 7.025},
+                                  {"average_price": "7.025"}, {"quantity": 0},
                                   {"quantity": True}, {"transaction_type": "buy"}, {"product": "CNC"},
                                   {"reference": ""}, {"reference": "x" * 501}, {"instrument_id": ""}])
 def test_a_bad_adopted_holding_cannot_be_built(over):
-    """Allow-lists: side BUY/SELL, product NRML/MIS (ofo.engine.product), a price exact to the paisa (5.125, a real
-    broker average shape, is refused rather than rounded to 5.13 by NUMERIC(14,2))."""
+    """Allow-lists: side BUY/SELL, product NRML/MIS (ofo.engine.product), a price that is a finite Decimal in
+    (0, 10^12) - never a float or a string."""
     with pytest.raises(books.OrderBookError) as err:
         _holding(**over)
     assert err.value.code == books.BAD_HOLDING
+
+
+@pytest.mark.parametrize("average", ["7.025", "5.125", "7.016666666666667", "7.00"])
+def test_an_adopted_average_finer_than_a_paisa_is_kept_exact(average):
+    """ADR-126: Zerodha's average (7.025 = 65 at 7.00 + 65 at 7.05; 7.016666666666667 = Kite's float for 2 x 7.00 +
+    1 x 7.05) is taken as given - not rounded, not refused - and survives str and the audit's canonical JSON."""
+    from ofo.audit.models import canonical_json  # noqa: PLC0415
+
+    holding = _holding(average_price=D(average), quantity=2 * LOT)
+    assert str(holding.average_price) == average
+    assert D(str(holding.average_price)) == D(average)
+    wire = json.loads(canonical_json({"average_price": holding.average_price}))
+    assert wire == {"average_price": {"$decimal": average}} and D(wire["average_price"]["$decimal"]) == D(average)
+    assert D(json.loads(json.dumps(str(holding.average_price)))) == D(average)
+
+
+def test_a_trade_price_finer_than_a_paisa_is_still_refused():
+    """#313a / ADR-126 (4): a trade the app placed is whole paise - 7.005 is refused, not rounded, while an adopted
+    average of the same shape is kept."""
+    with pytest.raises(plans.PlanStoreError, match="at most 2 decimals"):
+        _fill(price=D("7.005"))
+    assert _holding(average_price=D("7.005")).average_price == D("7.005")
+    forged = _holding()
+    object.__setattr__(forged, "average_price", 7.025)  # a frozen dataclass forged to a float: the re-check refuses
+    with pytest.raises(books.OrderBookError):
+        forged.check()
 
 
 def test_held_units_count_an_adopted_holding_exactly_as_a_fill():
@@ -461,3 +490,33 @@ async def test_record_adopted_refuses_a_second_holding_of_a_contract_and_a_used_
             assert err.value.code == books.NOT_FOUND
         assert await books.adopted_for(tx.conn, tx.user, sid) == (first,)
         assert await books.adopted_for(tx.conn, tx.user, other) == ()
+
+
+async def test_core_adopted_average_7_025_survives_a_restart_exactly(app_engine, admin_engine):
+    """Core proof (ADR-126): record_adopted with Zerodha's average 7.025 for 130 units, committed; the engine is
+    disposed and a NEW one reads back Decimal("7.025") exactly (a NUMERIC(14,2) column would give 7.03), while a
+    trade fill at 7.005 is still refused. Commits; removes its own rows."""
+    user, ids, sid = _user(), [], None
+    units = 2 * LOT
+    try:
+        async with app_engine.connect() as conn:
+            async with conn.begin():
+                sid = await _new_strategy(conn, user)
+                stored = await books.record_adopted(conn, user, sid, _holding(average_price=D("7.025"),
+                                                                              quantity=units,
+                                                                              reference=f"adopt:{user}:core"))
+            ids = await _contract_ids(conn)
+        assert stored.average_price == D("7.025") and str(stored.average_price) == "7.025"
+        await app_engine.dispose()
+        fresh = create_async_engine(app_engine.url, poolclass=NullPool)
+        try:
+            async with fresh.connect() as conn:
+                (back,) = await books.adopted_for(conn, user, sid)
+        finally:
+            await fresh.dispose()
+        assert type(back.average_price) is D and str(back.average_price) == "7.025"
+        assert (back.quantity, back.instrument_id) == (units, REAL_INSTRUMENT)
+        with pytest.raises(plans.PlanStoreError, match="at most 2 decimals"):
+            _fill(price=D("7.005"))
+    finally:
+        await _remove_own_fills_and_rows(admin_engine, ids, user)

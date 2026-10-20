@@ -4,7 +4,8 @@ Spec basis: issue #313 ("it must be stored (fills AND adopted holdings, in the s
 version)"); ADR-096 (a held Zerodha position is added to an existing strategy order-free, as a new strategy version
 with no order: "records the held legs (Zerodha's quantity, average price as the entry per ADR-084)"); ADR-109 (2) (a
 strategy owns exactly the fills of orders this app placed, matched by tag); ADR-105 (held units = the net over every
-stored plan); ADR-008 (money exact: Decimal in, NUMERIC(14,2) stored). Schema: migration 0020_order_book_store.
+stored plan); ADR-008 (money exact: Decimal in, NUMERIC stored); ADR-126 (an adopted average is kept with every
+decimal Zerodha gives, never rounded or refused). Schema: migration 0020_order_book_store.
 
 Copy from: none - new store over the #313a tables, modelled on ``execution_plan_store`` (row lock, id checks, errors).
 
@@ -12,7 +13,9 @@ Copy from: none - new store over the #313a tables, modelled on ``execution_plan_
   the transaction that wrote the new strategy version; the version number stored is the strategy's OWN revision read
   under that lock, never a caller's number. Refused before the database: a contract the catalogue cannot name exactly
   once, a contract the strategy already holds (adopted or by its stored plans' net), a reference already used, a price
-  with more than 2 decimals (NUMERIC(14,2) would round it), a side/product outside the closed lists.
+  that is not a finite Decimal in (0, 10^12), a side/product outside the closed lists. The average price is stored
+  and read back exactly as given (7.025 stays 7.025; ADR-126): the column has no declared scale. Trade prices (the
+  plan store's PlanFill) stay whole paise. No screen shows the adopted average yet, so nothing formats it here.
 - adopted_for: the strategy's adopted holdings, oldest first (``execute_plan.held_units`` counts them as fills).
 - fills_for: the strategy's stored trades per tag (written by ``execution_plan_store.close_plan``).
 Transaction control (commit) stays with the caller. Another user's strategy answers exactly like a missing one.
@@ -25,7 +28,6 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from ofo.engine.product import Product
-from ofo.money import PAISE
 from ofo.strategy.definition import MAX_UNITS
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -79,10 +81,10 @@ class AdoptedHolding:
         if self.product not in PRODUCTS:
             raise OrderBookError(BAD_HOLDING, f"product must be one of {PRODUCTS}, got {self.product!r}")
         px = self.average_price
-        if (not isinstance(px, Decimal) or not px.is_finite() or px <= 0 or px >= plans.PRICE_LIMIT
-                or px != px.quantize(PAISE)):
-            raise OrderBookError(BAD_HOLDING, f"average_price must be a positive Decimal with at most 2 decimals "
-                                              f"(NUMERIC(14,2) would round it), got {px!r}")
+        # ADR-126: Zerodha's average is kept with every decimal it has (7.025); no paisa rounding or refusal here
+        if not isinstance(px, Decimal) or not px.is_finite() or px <= 0 or px >= plans.PRICE_LIMIT:
+            raise OrderBookError(BAD_HOLDING, f"average_price must be a finite Decimal above 0 and below "
+                                              f"{plans.PRICE_LIMIT}, got {px!r}")
         ref = self.reference
         if not isinstance(ref, str) or not ref.strip() or ref != ref.strip() or len(ref) > MAX_TEXT:
             raise OrderBookError(BAD_HOLDING, f"reference must be trimmed text of 1..{MAX_TEXT} characters")

@@ -37,6 +37,7 @@ TWO_HOLDERS = 2  # two strategies of one user, each holding the same contract (Q
 ORDER_ID = "251019000000001"  # a Zerodha order id (15 digits)
 OTHER_ORDER_ID = "251019000000002"
 DUPLICATE_UNITS = 20  # a stored trade of 20 of 65: the same trade again still fits the sum, so the key refuses it
+PAISE_SCALE = 2  # a trade price is whole paise (#313a)
 RACE_UNITS = 40  # two trades of 40 units against 65 filled: each fits alone, both together (80) do not
 WAIT_SECONDS = 1.0
 _FILL = ("INSERT INTO public.execution_plan_fills (tag, broker_order_id, trade_id, quantity, price) "  # noqa: S608 constant
@@ -149,8 +150,8 @@ async def test_a_fill_outside_read_committed_is_refused(app_engine):
 
 
 async def _remove_own_fills_and_rows(admin_engine, contract_ids: list[int], user_ref: str) -> None:
-    """This test's committed trades first (the insert-only guard off for one transaction, as the table owner), then
-    the plan-store helper removes the rest."""
+    """This test's committed trades and adopted holdings first (the insert-only guards off for one transaction, as the
+    table owner), then the plan-store helper removes the rest."""
     async with admin_engine.connect() as conn:  # noqa: SIM117
         async with conn.begin():
             await conn.execute(text("ALTER TABLE public.execution_plan_fills DISABLE TRIGGER USER"))
@@ -159,6 +160,11 @@ async def _remove_own_fills_and_rows(admin_engine, contract_ids: list[int], user
                 "FROM public.execution_plan_orders o JOIN public.strategies s ON s.id = o.strategy_id "
                 "WHERE s.user_ref = :u)"), {"u": user_ref})
             await conn.execute(text("ALTER TABLE public.execution_plan_fills ENABLE TRIGGER USER"))
+            await conn.execute(text("ALTER TABLE public.adopted_holdings DISABLE TRIGGER USER"))
+            await conn.execute(text(
+                "DELETE FROM public.adopted_holdings WHERE strategy_id IN (SELECT id FROM public.strategies "
+                "WHERE user_ref = :u)"), {"u": user_ref})
+            await conn.execute(text("ALTER TABLE public.adopted_holdings ENABLE TRIGGER USER"))
     await _remove_own_rows(admin_engine, contract_ids, user_ref)
 
 
@@ -246,6 +252,24 @@ async def test_holding_checks_refuse_bad_values(app_engine):
         for over in ({"q": 0}, {"px": "0"}, {"iid": "nse_fo:47189"}):
             await _refused_sql(tx.conn, _HOLD, CHECK_VIOLATION, {**base, **over})
         await _refused_sql(tx.conn, _HOLD.replace("'NRML'", "'CNC'"), CHECK_VIOLATION, base)
+        for bad in ("NaN", "Infinity", "1000000000000"):  # the upper bound also refuses NaN and Infinity
+            await _refused_sql(tx.conn, _HOLD, CHECK_VIOLATION, {**base, "px": bad})
+
+
+async def test_adopted_average_is_stored_with_every_decimal_zerodha_gives(app_engine):
+    """ADR-126: the column keeps 7.025 (65 at 7.00 + 65 at 7.05) and 7.016666666666667 (Kite's float average of
+    2 x 7.00 + 1 x 7.05) exactly; a NUMERIC(14,2) column would round both silently. A trade price stays whole paise."""
+    async with _Tx(app_engine) as tx:
+        for ref, px in (("adopt:p1", "7.025"), ("adopt:p2", "7.016666666666667")):
+            sid = tx.strategy_id if ref == "adopt:p1" else await _new_strategy(tx.conn, tx.user, catalogue=False)
+            await tx.conn.execute(text(_HOLD), {"s": sid, "iid": REAL_INSTRUMENT, "q": LOT, "px": px, "ref": ref})
+            stored = (await tx.conn.execute(text("SELECT average_price FROM public.adopted_holdings "
+                                                 "WHERE reference = :r"), {"r": ref})).scalar_one()
+            assert str(stored) == px
+        scale = (await tx.conn.execute(text(
+            "SELECT numeric_scale FROM information_schema.columns WHERE table_schema = 'public' "
+            "AND table_name = 'execution_plan_fills' AND column_name = 'price'"))).scalar_one()
+        assert scale == PAISE_SCALE
 
 
 async def test_downgrade_is_refused_while_a_holding_is_stored(admin_engine):

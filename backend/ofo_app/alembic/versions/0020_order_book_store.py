@@ -29,7 +29,13 @@ Changes (owner-run, one transaction):
   an order id already stored under another tag.
 - public.adopted_holdings: units a strategy holds without a platform fill (ADR-096): strategy, contract key (the app's
   instrument id), side, units, product, average price, a unique reference, the strategy version number that adopted
-  them, adopted_at from the database clock. UNIQUE (strategy_id, instrument_id): a strategy never nets a second
+  them, adopted_at from the database clock. The average price is NUMERIC with NO declared scale (ADR-126): Zerodha
+  reports a position's average_price as a JSON float with no fixed number of decimals (an average of whole-paisa trades
+  is 7.025 for 65 at 7.00 + 65 at 7.05, or 7.016666666666667 for 2 x 7.00 + 1 x 7.05), the app keeps it as
+  Decimal(str(float)) (kite_replies.kite_money exact=True, ADR-102), and any fixed scale would round some of those
+  silently. The > 0 and < 10^12 CHECK still bounds it (NaN and Infinity fail the upper bound). Trade prices stay
+  NUMERIC(14,2): a single Zerodha trade is a whole paisa.
+  UNIQUE (strategy_id, instrument_id): a strategy never nets a second
   holding into a contract it already holds, while two strategies may each hold the same contract (Q224). Guard
   trigger (OF020): insert-only.
 - Grants (column-limited): SELECT on both; INSERT on the written columns (never the clock columns or the id); USAGE
@@ -90,7 +96,7 @@ PRODUCTS = ("NRML", "MIS")  # ofo.engine.product.Product values (a migration car
 MAX_UNITS = _PREVIOUS.MAX_UNITS
 MAX_TEXT = _PREVIOUS.MAX_TEXT
 CONTRACT_KEY_REGEX = _PREVIOUS.CONTRACT_KEY_REGEX
-PRICE_LIMIT = "1000000000000"  # NUMERIC(14,2): below 10^12, as execution_plan_store.PRICE_LIMIT
+PRICE_LIMIT = "1000000000000"  # below 10^12, as execution_plan_store.PRICE_LIMIT (both price columns)
 FILL_INSERT_COLUMNS = ("tag", "broker_order_id", "trade_id", "quantity", "price")
 HOLDING_INSERT_COLUMNS = ("strategy_id", "instrument_id", "transaction_type", "quantity", "product", "average_price",
                           "reference", "version_number")
@@ -209,7 +215,7 @@ def upgrade() -> None:
             transaction_type TEXT          NOT NULL CHECK (transaction_type IN ({_quoted(SIDES)})),
             quantity         INTEGER       NOT NULL CHECK (quantity BETWEEN 1 AND {MAX_UNITS}),
             product          TEXT          NOT NULL CHECK (product IN ({_quoted(PRODUCTS)})),
-            average_price    NUMERIC(14,2) NOT NULL CHECK (average_price > 0 AND average_price < {PRICE_LIMIT}),
+            average_price    NUMERIC       NOT NULL CHECK (average_price > 0 AND average_price < {PRICE_LIMIT}),
             reference        TEXT          NOT NULL UNIQUE CHECK (reference <> '' AND length(reference) <= {MAX_TEXT}),
             version_number   INTEGER       NOT NULL CHECK (version_number > 0),
             adopted_at       TIMESTAMPTZ   NOT NULL DEFAULT clock_timestamp(),
