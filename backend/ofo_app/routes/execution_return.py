@@ -227,11 +227,15 @@ def _undecided(world: _World, sid: str, key: tuple) -> str | None:
 
 
 def _exit_clean(req: _Request, history: Sequence[plans.StoredPlan], world: _World) -> bool:
-    """An EXIT reads ``exited`` only when the one reconciliation does not block the strategy, it holds nothing, and
-    Zerodha holds no outside lots on its contracts (Zerodha still holding units is not an exit)."""
+    """An EXIT reads ``exited`` only when the one reconciliation does not block the strategy, it holds nothing,
+    Zerodha holds no outside lots on its contracts (Zerodha still holding units is not an exit), and no other
+    strategy's plan or stored mismatch is unsettled on them (Zerodha's units there are unknown, so "Zerodha agrees"
+    cannot be read; review round 1 MAJOR 1, kept from the deleted parallel exit check)."""
     sid, attribution = str(req.strategy_id), world.verdict.attribution
+    keys = _keys(history, world)
     return (not world.verdict.blocks(req.strategy_id) and not any(attribution.held.get(sid, {}).values())
-            and not any(attribution.outside.get(key) for key in _keys(history, world)))
+            and not any(attribution.outside.get(key) for key in keys)
+            and not any(_undecided(world, sid, key) for key in keys))
 
 
 def _final_reason(req: _Request, history: Sequence[plans.StoredPlan], plan: plans.StoredPlan,

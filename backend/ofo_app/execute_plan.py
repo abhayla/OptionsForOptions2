@@ -10,11 +10,8 @@
   when the source carries one (``circuit_block``). No depth, a depth that cannot fill, or a price outside the band
   refuses the leg with the catalogue message; a price is never taken from the stored plan alone. ``planned_price``
   (the slippage base only) is the leg's stored planned entry, else the quote's last price, else the leg is refused.
-- ``strategy_blocked`` (REQ-060 AC-7): Zerodha's net units per contract against the units this strategy holds by its
-  stored filled plans; FEWER units at Zerodha, or the opposite side, block it; units beyond it block nothing.
-  ``ofo.reconciliation.compare`` is not used: it attributes ANY difference on a held contract to the holder (a
-  surplus included) and has no input for "a position in no strategy and not recorded as standalone", so it would
-  block on a surplus that AC-7 says "blocks no strategy".
+- Who Zerodha's units belong to and what blocks (REQ-060 AC-7) is decided only by the one reconciler,
+  ``route_reconciliation.reconcile_account`` (#380-2; the earlier ``strategy_blocked`` here was deleted).
 """
 from __future__ import annotations
 
@@ -230,19 +227,6 @@ def contract_key(catalogue: Catalogue, instrument_id: InstrumentId, underlying: 
     return (underlying, kind, None if kind is Instrument.FUT else c.strike, c.expiry)
 
 
-def strategy_blocked(broker_net: Mapping[ContractKey, int], held: Mapping[ContractKey, int]) -> bool:
-    """REQ-060 AC-7 for ONE strategy: blocked when, on a contract it holds, Zerodha holds FEWER units than the
-    strategy, or the opposite side. Units BEYOND the strategy's (a position in no strategy) block nothing: they are
-    offered the grouping choice (Q24). Signed units: BUY +, SELL -."""
-    for key, units in held.items():
-        if units == 0:
-            continue
-        net = broker_net.get(key, 0)
-        if (net > 0) != (units > 0) or abs(net) < abs(units):
-            return True
-    return False
-
-
 __all__ = ["TERMINAL_ORDER_STATUSES", "LegQuote", "LegRefused", "LegToPrice", "PricedPlan", "book_floor",
            "contract_key", "exit_legs", "held_units", "latest_filled_plan", "price_legs", "quote_from_kite",
-           "quote_time", "strategy_blocked", "version_state"]
+           "quote_time", "version_state"]

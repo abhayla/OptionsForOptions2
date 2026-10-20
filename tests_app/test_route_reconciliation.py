@@ -94,12 +94,16 @@ def _plans(numbers: tuple[int, ...]) -> tuple[StoredPlan, ...]:
     return tuple(out)
 
 
-def _reader(plans: tuple[StoredPlan, ...]) -> ra.StoreReader:
+def _reader(plans: tuple[StoredPlan, ...], others: dict[int, tuple[StoredPlan, ...]] | None = None,
+            ) -> ra.StoreReader:
+    """Strategy 9 with ``plans``; ``others``: further strategies of the same user, by id, with their plans."""
+    by_id = {SID: plans, **(others or {})}
+
     async def list_strategies(conn, user_ref):
-        return [StrategySummary(SID, "NIFTY", "draft", AT, AT)]
+        return [StrategySummary(sid, "NIFTY", "draft", AT, AT) for sid in sorted(by_id)]
 
     async def plans_for(conn, user_ref, strategy_id):
-        return plans
+        return by_id[strategy_id]
 
     async def mismatches_for(conn, user_ref, strategy_id):
         return ()
@@ -119,11 +123,13 @@ def _positions(quantity: int) -> object:
     return data
 
 
-def _run(plans, positions) -> ra.Attribution:
-    attribution, _ = asyncio.run(rr.attribute(_Conn(), USER, _catalogue(), positions,
-                                              _recorded("orders-2026-10-19-roundtrip"), at=AT, clock=clock,
-                                              reader=_reader(plans)))
-    return attribution
+def _attribute(plans, positions, others=None) -> tuple[ra.Attribution, object]:
+    return asyncio.run(rr.attribute(_Conn(), USER, _catalogue(), positions, _recorded("orders-2026-10-19-roundtrip"),
+                                    at=AT, clock=clock, reader=_reader(plans, others)))
+
+
+def _run(plans, positions, others=None) -> ra.Attribution:
+    return _attribute(plans, positions, others)[0]
 
 
 def test_core_real_roundtrip_gives_no_mismatch():
@@ -209,3 +215,68 @@ def test_both_routes_call_the_one_reconciler(route):
     source = path.read_text(encoding="utf-8")
     for gone in ("strategy_blocked", "er.reconcile(", "_OTHER_STRATEGIES", "exit_is_clean"):
         assert gone not in source, (route, gone)
+
+
+def test_the_parallel_reconciliation_code_is_deleted():
+    """#380-2 step 1: the old comparison exists nowhere the product could call it again."""
+    from ofo_app import execute_plan, execution_return  # noqa: PLC0415
+    for module, gone in ((execute_plan, "strategy_blocked"), (execution_return, "reconcile"),
+                         (execution_return, "ContractCheck"), (execution_return, "exit_is_clean"),
+                         (execution_return, "unsettled_orders")):
+        assert not hasattr(module, gone), (module.__name__, gone)
+
+
+# ---- #380-2 step 1: the guards of the deleted parallel code, each held by the one reconciler -------------------------
+# ``execute_plan.strategy_blocked`` and ``execution_return.reconcile`` / ``ContractCheck`` / ``exit_is_clean`` /
+# ``unsettled_orders`` were deleted (no product caller after e35ce5c). Every case their tests pinned is pinned here on
+# the one reconciler, with strategy 9's real plan 1 (BUY 65) and Zerodha's real positions row at another quantity.
+
+@pytest.mark.parametrize(("zerodha", "blocked", "kind", "outside"), [
+    (65, False, None, {}),  # Zerodha agrees
+    (130, False, None, {KEY: 65}),  # units beyond the strategy: outside, blocking nothing (REQ-060 AC-7)
+    (0, True, MismatchKind.MISSING_PLATFORM_POSITION, {}),  # the real flat row against a filled entry
+    (64, True, MismatchKind.QUANTITY_MISMATCH, {}),  # fewer units at Zerodha
+    (-65, True, MismatchKind.SIDE_MISMATCH, {}),  # the opposite side
+    (-130, True, MismatchKind.SIDE_MISMATCH, {}),  # the opposite side beyond the strategy is never outside
+])
+def test_old_strategy_blocked_cases_hold_on_the_one_reconciler(zerodha, blocked, kind, outside):
+    """Was ``strategy_blocked`` / ``er.reconcile``'s table: fewer or the wrong side blocks, more blocks nothing."""
+    positions = _positions(zerodha) if zerodha else _recorded("positions-2026-10-19-roundtrip")
+    attribution = _run(_plans((1,)), positions)
+    assert (attribution.blocked == frozenset({"9"})) is blocked
+    assert dict(attribution.outside) == outside
+    assert {m.kind for m in attribution.report.mismatches if "9" in m.strategy_ids} == ({kind} if kind else set())
+
+
+def _other_plan(status: str, filled: int | None, sid: int = 10) -> StoredPlan:
+    """Another strategy's plan BUY 65 on the same contract; its tag is in no book row (open: pending)."""
+    order = PlanOrder(0, f"OFS{sid}V1L0", IID, "NIFTY26OCT24000CE", "BUY", 65, Decimal("7"), filled)
+    closed = status == "closed"
+    return StoredPlan(sid, 1, "ENTRY", status, (order,), AT, AT if closed else None, "filled" if closed else None)
+
+
+def _exited(plans, positions, others=None) -> bool:
+    """The return route's own EXIT test on the one verdict (``routes.execution_return._exit_clean``)."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+    attribution, read = _attribute(plans, positions, others)
+    world = route._World(_catalogue(), "NIFTY", rr.Verdict(attribution, read, (), ()))
+    return route._exit_clean(SimpleNamespace(strategy_id=SID), plans, world)
+
+
+def test_old_exit_is_clean_cases_hold_on_the_route():
+    """Was ``exit_is_clean``'s table: an EXIT reads ``exited`` only when the strategy holds 0 and Zerodha agrees
+    (nothing outside); units another strategy holds by its stored fills do not stop it."""
+    flat = _recorded("positions-2026-10-19-roundtrip")
+    assert _exited(_plans((1, 2)), flat) is True  # the real round trip
+    assert _exited(_plans((1, 2)), _positions(65)) is False  # Zerodha still +65 (outside lots)
+    assert _exited(_plans((1,)), _positions(65)) is False  # the strategy still holds 65
+    assert _exited(_plans((1, 2)), _positions(65), {10: (_other_plan("closed", 65),)}) is True  # strategy 10's 65
+
+
+def test_exit_is_never_clean_while_another_strategys_plan_is_unsettled_on_the_contract():
+    """Was ``exit_is_clean(..., undecidable)`` + ``unsettled_orders`` (review MAJOR 1): another strategy's OPEN plan
+    on the contract makes Zerodha's units there unknown, so strategy 9's EXIT never reads ``exited``."""
+    flat = _recorded("positions-2026-10-19-roundtrip")
+    assert _exited(_plans((1, 2)), flat, {10: (_other_plan("open", None),)}) is False

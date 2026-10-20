@@ -15,11 +15,10 @@ recorded, never dropped).
   that order, else the plan stays open and needs reconciliation (never pick one).
 - ``drifted``: a CLOSED plan whose tags show, in today's book, a filled quantity other than the one stored at close (an
   order that appeared or filled after the close) needs reconciliation (design review finding 5).
-- ``reconcile``: per contract the strategy traded, Zerodha's net minus the units every OTHER stored strategy holds is
-  this strategy's share; ``execute_plan.strategy_blocked`` decides the block (one copy of REQ-060 AC-7). Units beyond
-  the strategy are unexplained: listed, blocking nothing. A contract another strategy touches through an OPEN plan or
-  a DRIFTED closed plan (``unsettled_orders``) is undecidable for this one: reconciliation required, never a pass (its
-  units at Zerodha may be the other strategy's; review round 1 MAJOR 1).
+- Reconciliation (who Zerodha's units belong to, what blocks) is NOT here: the one reconciler is
+  ``route_reconciliation.reconcile_account`` (#380-2; the parallel ``reconcile`` / ``exit_is_clean`` /
+  ``unsettled_orders`` were deleted, their guards pinned on it in ``tests_app/test_route_reconciliation.py``).
+  ``OTHER_UNSETTLED`` names the return route's reason for a contract another strategy's plan leaves undecidable.
 - ``classify`` never closes a plan created before today's trading session (IST date on the database clock): Kite's book
   holds only today's orders, so "no tag today" says nothing about it (review round 1 MAJOR 2).
 
@@ -47,8 +46,6 @@ PARTIAL = "partial"
 RECONCILE = "reconciliation_required"
 #: REQ-058 AC-2, in its order: "Complete Strategy, Retry Failed Leg, Review Manually, Close Partial Strategy."
 PARTIAL_CHOICES = ("complete_strategy", "retry_failed_leg", "review_manually", "close_partial_strategy")
-#: Mismatch kinds, named by their catalogue template (ofo.reconciliation.compare's ids; the screen renders the text).
-MISSING, SIDE, QUANTITY = "recon_missing_platform_position", "recon_side_mismatch", "recon_quantity_mismatch"
 #: Why reconciliation is required where no quantity can be compared (named in the reply).
 EARLIER_SESSION = "plan_from_earlier_session"
 OTHER_UNSETTLED = "another_strategy_plan_unsettled"
@@ -164,59 +161,6 @@ def drifted(history: Sequence[StoredPlan], book: TodaysBook) -> tuple[int, ...]:
     return tuple(out)
 
 
-def unsettled_orders(history: Sequence[StoredPlan], book: TodaysBook) -> tuple[PlanOrder, ...]:
-    """Another strategy's orders whose units cannot be counted: every order of an OPEN plan (Zerodha may have filled
-    it; its stored filled quantity is not known yet) and of a closed plan that has drifted in ``book`` (that
-    strategy's own rows of today's book)."""
-    moved = set(drifted(history, book))
-    return tuple(o for p in history if p.status != "closed" or p.plan_number in moved for o in p.orders)
-
-
-@dataclass(frozen=True)
-class ContractCheck:
-    key: tuple
-    platform_units: int  # what this strategy holds by its stored fills (BUY +, SELL -)
-    zerodha_units: int  # Zerodha's account-wide net
-    other_units: int  # what every other stored strategy holds
-    kind: str | None  # a blocking mismatch's catalogue id, else None
-    undecidable: str | None = None  # OTHER_UNSETTLED: another strategy's units here are unknown -> reconcile
-
-    @property
-    def blocks(self) -> bool:
-        return self.kind is not None or self.undecidable is not None
-
-    @property
-    def unexplained(self) -> int:
-        """Zerodha's units beyond every stored strategy: listed, blocking nothing (REQ-060 AC-7)."""
-        return self.zerodha_units - self.other_units - self.platform_units
-
-
-def _kind(share: int, units: int) -> str | None:
-    if not ep.strategy_blocked({"c": share}, {"c": units}):
-        return None
-    if share == 0:
-        return MISSING
-    return SIDE if (share > 0) != (units > 0) else QUANTITY
-
-
-def reconcile(keys: Sequence[tuple], held: Mapping[tuple, int], others: Mapping[tuple, int],
-              broker_net: Mapping[tuple, int], undecidable: frozenset = frozenset()) -> tuple[ContractCheck, ...]:
-    """One row per contract the strategy traded (``keys``). A key in ``undecidable`` (another strategy's open or
-    drifted plan touches it) is never decided: reconciliation required, whatever the numbers say."""
-    rows = []
-    for key in keys:
-        units, other, net = held.get(key, 0), others.get(key, 0), broker_net.get(key, 0)
-        unknown = OTHER_UNSETTLED if key in undecidable else None
-        rows.append(ContractCheck(key, units, net, other, _kind(net - other, units), unknown))
-    return tuple(rows)
-
-
-def exit_is_clean(checks: Sequence[ContractCheck]) -> bool:
-    """An EXIT reads ``exited`` only when the strategy holds 0 on every contract AND Zerodha agrees: no mismatch and
-    no units left beyond the other strategies (Zerodha still holding them is not an exit)."""
-    return all(c.platform_units == 0 and not c.blocks and c.unexplained == 0 for c in checks)
-
-
 def pnl_or_none(fills: Sequence[FillEvent]):
     """ADR-102 through the one engine: the fills' realised P&L when they leave every contract flat, else None."""
     try:
@@ -227,5 +171,5 @@ def pnl_or_none(fills: Sequence[FillEvent]):
 
 __all__ = ["EARLIER_SESSION", "EXITED", "FILLED", "NOTHING_PLACED", "OTHER_UNSETTLED", "PARTIAL", "PARTIAL_CHOICES",
            "RECONCILE", "SESSION_EARLIER", "SESSION_FUTURE", "SESSION_TODAY", "WAITING",
-           "ContractCheck", "OrderRow", "PlanAnswer", "TodaysBook", "classify", "created_session", "drifted",
-           "exit_is_clean", "from_earlier_session", "pnl_or_none", "reconcile", "unsettled_orders"]
+           "OrderRow", "PlanAnswer", "TodaysBook", "classify", "created_session", "drifted",
+           "from_earlier_session", "pnl_or_none"]

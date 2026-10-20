@@ -35,7 +35,6 @@ from ofo_app.execute_replay import store_strategy_one
 ROOT = Path(__file__).resolve().parents[1]
 REAL_BASKET = real_basket()
 REAL_ORDER = real_order()
-KEY = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))
 _live_quote = live_quote
 _Replay = RecordedKite
 _session_for = session_for
@@ -130,27 +129,6 @@ def test_ac1_a_depth_source_without_a_band_prices_the_leg_and_leaves_the_band_to
     no_base = ep.LegQuote(live.depth, live.at, None, None)
     with pytest.raises(ep.LegRefused):  # no planned entry and no last price: refused, never a guessed base
         ep.price_legs("1", "NIFTY", [_leg(Action.BUY)], _catalogue(), lambda i, t: no_base)
-
-
-# ---- REQ-060 AC-7: who a broker difference blocks -------------------------------------------------------------------
-
-def test_ac7_units_beyond_the_strategy_block_nothing():
-    """A position in no strategy (Zerodha 130, the strategy 65 BUY) is offered the grouping choice, blocks nothing."""
-    assert ep.strategy_blocked({KEY: 65}, {KEY: 65}) is False
-    assert ep.strategy_blocked({KEY: 130}, {KEY: 65}) is False
-    assert ep.strategy_blocked({KEY: -130}, {KEY: -65}) is False
-    assert ep.strategy_blocked({KEY: 65}, {}) is False  # nothing held by the strategy: an entry is never blocked
-
-
-def test_ac7_a_shortfall_blocks_the_strategy():
-    assert ep.strategy_blocked({}, {KEY: 65}) is True  # the real 15:10 flat book against a filled entry
-    assert ep.strategy_blocked({KEY: 64}, {KEY: 65}) is True
-    assert ep.strategy_blocked({KEY: -64}, {KEY: -65}) is True
-
-
-def test_ac7_the_opposite_side_blocks_the_strategy():
-    assert ep.strategy_blocked({KEY: -65}, {KEY: 65}) is True
-    assert ep.strategy_blocked({KEY: 130}, {KEY: -65}) is True
 
 
 # ---- the response carries the exact Kite form text, only from a real basket -----------------------------------------
