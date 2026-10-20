@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (126)
+## Decisions (127)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -92,7 +92,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one g… [refines ADR-018]
 - ADR-085 2026-10-15: When a draft saved without planned entries (befor…
 - ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is n…
-- ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be built, reviewed, verified and merged before the St… [none — changes the master plan's gate rule (a pro…]
+- ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be… [none — changes the master plan's gate rule (a pro…]
 - ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - e… [none — fills the time REQ-039 AC-3 left open and…]
 - ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE… [none — uses the ADR-072 loss regions for the tabl…]
 - ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
@@ -132,6 +132,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved because the next-day positions cannot show whether… [extends ADR-109; extends ADR-120]
 - ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
 - ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
+- ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
 
 ## Requirements (75)
 
