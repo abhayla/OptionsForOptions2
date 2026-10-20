@@ -28,6 +28,7 @@ from ofo.execution.context import (
     DataHealth,
     ExecutionAction,
     ExecutionContext,
+    ZerodhaNow,
     active_legs_hash,
     product_key,
 )
@@ -39,6 +40,7 @@ from ofo import wording as shared_wording
 from ofo.errors import LegValue, UserFacingError, display_text, render
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.timeutil import IST_UNNAMED as IST
+from ofo.timeutil import MAX_READ_AGE
 
 logger = logging.getLogger("ofo.execution.safety")
 
@@ -348,7 +350,44 @@ def pro_requirement(strategy: Strategy, ctx: ExecutionContext) -> ProReason | No
     return _worse_worst_case(active, proposed)
 
 
-def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strategy_id: str) -> list[CheckFailure]:
+def _blocked_exit_allowed(strategy: Strategy, ctx: ExecutionContext) -> bool:
+    """#380-3, ADR-137 (3) "Close via a basket" while blocked: the ONE narrow exception to the reconciliation block.
+
+    An allow-list (finding guard-as-forbidden-list): True ONLY when the action is EXIT, Zerodha's position was read at
+    the click (``ctx.zerodha_now``: taken at or after ``as_of`` and at most ``MAX_READ_AGE`` later) and EVERY order
+    (a) is the opposite side of the position Zerodha shows NOW for that contract (BUY for a short, SELL for a long; a
+    contract Zerodha shows flat, or a key the read does not carry, has no opposite side), (b) its units, summed per
+    contract, are at most Zerodha's absolute net there, (c) no open order exists at Zerodha on that contract, and
+    (d) the basket is all buy-backs, or all sells while Zerodha shows no short on any contract of the read (shorts
+    first, REQ-058 Q238; a mixed basket is never allowed: two baskets). Anything else, including no read, is False:
+    the strategy stays blocked as before. Every other check of the gate still runs on the basket."""
+    now = ctx.zerodha_now
+    if ctx.action is not ExecutionAction.EXIT or type(now) is not ZerodhaNow or not strategy.legs:
+        return False
+    if not (ctx.as_of <= now.read_at <= ctx.as_of + MAX_READ_AGE):
+        return False  # a read from before the click, or a long-held one: never decide on it
+    sides = {leg.action for leg in strategy.legs}
+    if sides == {Action.SELL}:
+        if any(units < 0 for units in now.net.values()):
+            return False  # (d) a short is still open: the buy-backs go first
+    elif sides != {Action.BUY}:
+        return False  # (d) mixed (or an unknown side)
+    totals: dict[tuple, int] = {}
+    for leg in strategy.legs:
+        key = product_key(leg)
+        net = now.net.get(key)
+        if net is None or key in now.open_orders:
+            return False  # an unresolved contract, or (c) an order still open on it
+        if not ((leg.action is Action.BUY and net < 0) or (leg.action is Action.SELL and net > 0)):
+            return False  # (a) not the opposite side of what Zerodha holds now
+        totals[key] = totals.get(key, 0) + leg.quantity
+        if totals[key] > abs(net):
+            return False  # (b) more units than Zerodha holds: it would open the other side
+    return True
+
+
+def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strategy_id: str,
+                      strategy: Strategy) -> list[CheckFailure]:
     out: list[CheckFailure] = []
 
     def unknown_or(value: bool | None, code: CheckCode, unknown: str, false: str) -> None:
@@ -381,7 +420,7 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
                          required=ctx.margin_required))
     if ctx.reconciliation_blocked_strategy_ids is None:
         out.append(_fail(CheckCode.RECONCILIATION_MISMATCH, "gate_reconciliation_unknown"))
-    elif strategy_id in ctx.reconciliation_blocked_strategy_ids:
+    elif strategy_id in ctx.reconciliation_blocked_strategy_ids and not _blocked_exit_allowed(strategy, ctx):
         out.append(_fail(CheckCode.RECONCILIATION_MISMATCH, "gate_reconciliation_mismatch"))
     return out
 
@@ -592,7 +631,7 @@ def _run_checks(
     unverified = _active_legs_failure(ctx, strategy_id) if uses_active_legs else None
     trusted = dataclasses.replace(ctx, active_legs=None) if unverified else ctx  # never reason from unverified legs
     pro_reason = pro_requirement(strategy, trusted)
-    failures = _context_failures(ctx, pro_reason, strategy_id)
+    failures = _context_failures(ctx, pro_reason, strategy_id, strategy)
     if unverified is not None:
         failures.append(unverified)
     if strategy_id != ctx.strategy_id:

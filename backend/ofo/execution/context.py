@@ -138,6 +138,31 @@ def _optional_decimal(value: object, name: str) -> None:
 
 
 @dataclass(frozen=True)
+class ZerodhaNow:
+    """#380-3, ADR-137 (3): Zerodha's position on a blocked strategy's contracts, read at the click, for the ONE narrow
+    blocked-exit rule in the gate (``safety._blocked_exit_allowed``).
+
+    ``net``: Zerodha's signed net units per ``product_key`` for EVERY contract of the strategy's plans (a contract
+    Zerodha shows flat is present with 0, never absent: an absent key is a contract the read did not resolve and fails
+    closed). ``open_orders``: the keys with ANY open order at Zerodha, whatever its tag. ``read_at``: the route clock read
+    AFTER both replies came back (finding freshness-judged-on-request-start-clock)."""
+
+    net: Mapping[tuple, int]
+    open_orders: frozenset[tuple]
+    read_at: datetime.datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.net, Mapping) or not all(
+                isinstance(k, tuple) and type(v) is int for k, v in self.net.items()):
+            raise ValueError("net must be a mapping of position key to integer units")
+        if not isinstance(self.open_orders, frozenset) or not all(isinstance(k, tuple) for k in self.open_orders):
+            raise ValueError("open_orders must be a frozenset of position keys")
+        if not isinstance(self.read_at, datetime.datetime) or self.read_at.utcoffset() is None:
+            raise ValueError(f"read_at must be a timezone-aware datetime, got {self.read_at!r}")
+        object.__setattr__(self, "net", MappingProxyType(dict(self.net)))  # a caller's later edit changes nothing
+
+
+@dataclass(frozen=True)
 class ExecutionContext:
     """All inputs to the pre-execution gate for one strategy and one action. Immutable once built."""
 
@@ -183,8 +208,13 @@ class ExecutionContext:
     # a 0.00 placeholder, never a real price). An adjustment leg without one blocks ("price not known yet"). Entry and
     # exit orders carry their own leg price, so this is not read for them.
     order_prices: Mapping[tuple, Decimal | int] | None = None
+    # #380-3 / ADR-137 (3): Zerodha's position read at the click, read ONLY by the narrow blocked-exit rule. None = not
+    # read: a reconciliation-blocked strategy stays blocked for every action (the rule fails closed).
+    zerodha_now: ZerodhaNow | None = None
 
     def __post_init__(self) -> None:
+        if self.zerodha_now is not None and type(self.zerodha_now) is not ZerodhaNow:
+            raise ValueError(f"zerodha_now must be a ZerodhaNow or None, got {self.zerodha_now!r}")
         for name in ("strategy_id", "version_id", "actor", "underlying"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
