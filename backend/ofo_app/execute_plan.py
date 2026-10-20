@@ -28,12 +28,11 @@ from ofo.execution.basket import parse_tag
 from ofo.execution.context import VersionState
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.price_check import circuit_block
+from ofo.execution.recovery import TERMINAL_ORDER_STATUSES
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.timeutil import IST
 
-#: Zerodha's order statuses after which an order can no longer fill (an allow-list; anything else is open).
-TERMINAL_ORDER_STATUSES = frozenset({"COMPLETE", "CANCELLED", "REJECTED"})
 _QUOTE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 

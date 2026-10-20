@@ -32,3 +32,9 @@ EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)
 EXPIRY_DAY_SETTLE_FROM: Final = datetime.time(15, 39)
 #: Minute history for a trading day is fetched up to this IST time (naive time), past the 15:30 close.
 HISTORY_FETCH_UNTIL: Final = datetime.time(15, 59)
+
+#: Orchestrator defaults (W-023 round 3, moved from ``ofo.orders.model`` by #380-3 so the recovery module reads them
+#: without importing the order book): how far ahead of the platform clock a broker read may be stamped, and how old a
+#: read may be, before it is refused.
+MAX_READ_FUTURE_SKEW: Final = datetime.timedelta(seconds=5)
+MAX_READ_AGE: Final = datetime.timedelta(seconds=60)

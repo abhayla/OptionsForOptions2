@@ -46,6 +46,9 @@ from ofo.engine.product import Product
 from ofo.money import zerodha_paise
 from ofo.strategy.versions import StrategyRecord
 
+# W-023 round 3 read limits; a refused read sets no block time and clears no block (home: timeutil, #380-3)
+from ofo.timeutil import MAX_READ_AGE, MAX_READ_FUTURE_SKEW
+
 
 class OrderState(Enum):
     PREPARED = "Prepared"
@@ -392,10 +395,6 @@ def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-#: Orchestrator defaults (W-023 round 3): how far ahead of the platform clock a broker read may be stamped, and how
-#: old a read may be, before it is refused. A refused read sets no block time and clears no block.
-MAX_READ_FUTURE_SKEW: Final = datetime.timedelta(seconds=5)
-MAX_READ_AGE: Final = datetime.timedelta(seconds=60)
 
 
 class OrderBook:

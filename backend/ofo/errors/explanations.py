@@ -208,6 +208,14 @@ CHOICE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "RETRY_FAILED_LEG": "Retry Failed Leg",
     "REVIEW_MANUALLY": "Review Manually",
     "CLOSE_PARTIAL_STRATEGY": "Close Partial Strategy",
+    # #380-3: the recovery actions, verbatim from ADR-136 (1) and ADR-137 (1)
+    "CHECK_WITH_ZERODHA": "Check with Zerodha",
+    "PLACE_MISSING_LEGS": "Place missing legs",
+    "CLOSE_FILLED_LEGS": "Close filled legs",
+    "MANAGE_ON_KITE": "I'll manage it on Kite",
+    "CHANGE_PRICE_ON_KITE": "Change price on Kite",
+    "USE_ZERODHA_NUMBERS": "Use Zerodha's numbers for this contract",
+    "CLOSE_VIA_BASKET": "Close via a basket",
 })
 #: The order-sequence step names (ofo.execution.sequence.StepKind).
 STEP_LABEL_TEXT: Mapping[str, str] = MappingProxyType({

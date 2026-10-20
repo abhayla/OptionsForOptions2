@@ -222,6 +222,8 @@ _ALLOWED_LEG_SHAPES = {
     "engine/inputs.py:LegInput": "a calculation input",
     "execution/review.py:ReviewLine": "a display row of the pre-execution review; it has no route to the broker",
     "outcome/service.py:OutcomeLeg": "a display row of the outcome view (W-063); it has no route to the broker",
+    "execution/recovery.py:ZerodhaOrder": ("an inbound broker fact (a row of Zerodha's order book, #380-3); "
+                                           "nothing converts it to an order"),
 }
 
 
