@@ -322,13 +322,27 @@ async def execute_market_status(
     gate re-judges both on its own. With ``strategy_id`` and the switch on, also whether that strategy holds units
     (the net of its stored plans, the gate's own source) for the ADR-128 hint; an unreadable answer adds no hint."""
     paused = await kill_switch.is_paused(db)
-    holds = False
-    if paused is not False and strategy_id is not None:
-        try:
-            holds = any(ep.held_units(await plans.plans_for(db, user_ref, strategy_id)).values())
-        except SQLAlchemyError:
-            holds = False
+    holds = paused is not False and await _holds_units(db, user_ref, strategy_id)
     return market_verdict(clock(), paused, open_position=holds)
+
+
+# Every way the hint read can fail, so each one is "no hint", never a 500 (round 2 MAJOR). PlanStoreError /
+# StrategyStoreError are ValueErrors (not found, foreign, out of range, a catalogue row the plan cannot name); the
+# database (SQLAlchemyError); a stored value that does not parse (int()/Decimal(): ValueError, TypeError,
+# ArithmeticError); a row or plan of an unexpected shape (AttributeError, LookupError).
+_HINT_READ_FAILURES = (SQLAlchemyError, ValueError, TypeError, ArithmeticError, AttributeError, LookupError)
+
+
+async def _holds_units(db: Any, user_ref: str, strategy_id: int | None) -> bool:
+    """ADR-128 allow-list: True ONLY for a strategy id in the stored range that this user owns and whose stored plans
+    net to held units; no id, an id outside 1..BIGINT_MAX, a missing or foreign strategy, or any failed read is False
+    (no hint; the paused verdict and its ADR-127 sentence still stand)."""
+    if strategy_id is None or not 1 <= strategy_id <= store.BIGINT_MAX:
+        return False
+    try:
+        return any(ep.held_units(await plans.plans_for(db, user_ref, strategy_id)).values())
+    except _HINT_READ_FAILURES:
+        return False
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)

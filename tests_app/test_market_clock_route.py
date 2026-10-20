@@ -130,5 +130,5 @@ def test_market_status_route_is_the_gates_verdict_in_each_state() -> None:
 
 def test_market_status_route_serves_the_server_clock(monkeypatch) -> None:
     _not_paused(monkeypatch)
-    out = asyncio.run(execute.execute_market_status(lambda: LATE, None))
+    out = asyncio.run(execute.execute_market_status(lambda: LATE, None, "u1"))
     assert out.status == "closed" and out.as_of == LATE

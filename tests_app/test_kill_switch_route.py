@@ -305,3 +305,111 @@ def test_market_status_route_adds_the_hint_for_a_held_strategy_while_paused(monk
     _units(monkeypatch, error=SQLAlchemyError("down"))
     unreadable = _status(monkeypatch, True, strategy_id=9)
     assert unreadable.status == "paused" and unreadable.paused_hint is None  # never guessed
+
+
+# ---- round 2 MAJOR: the hint read never turns a lookup refusal into a 500 (real store code, a fake connection) ------
+
+_OWNER, _OWNED_ID = "u1", 9
+
+
+class _PlanDb:
+    """Answers the REAL execution_plan_store queries: strategy 9 belongs to u1 and holds 65 units of one contract."""
+
+    def __init__(self, *, price="100.00", symbols=1, down=False):
+        self.price, self.symbols, self.down = price, symbols, down
+
+    def _rows(self, query, params):
+        if query is execute.plans._OWNED:
+            return [SimpleNamespace()] if (params["s"], params["u"]) == (_OWNED_ID, _OWNER) else []
+        if query is execute.plans._ORDERS:
+            return [SimpleNamespace(plan_number=1, leg_index=0, tag="t1", instrument_id="NFO-OPT:12345",
+                                    transaction_type="BUY", quantity=65, price=self.price, filled_quantity=65)]
+        if query is execute.plans._SYMBOLS:
+            return [SimpleNamespace(broker_symbol="NIFTY26OCT25000CE", live=True)] * self.symbols
+        if query is execute.plans._PLANS:
+            return [SimpleNamespace(plan_number=1, action="ENTRY", status="closed", created_at=OPEN_NOW,
+                                    closed_at=OPEN_NOW, close_reason="filled")]
+        raise AssertionError(f"unexpected query {query}")
+
+    async def execute(self, query, params):
+        if self.down:
+            raise SQLAlchemyError("down")
+        rows = self._rows(query, params)
+        return SimpleNamespace(first=lambda: rows[0] if rows else None, all=lambda: rows)
+
+
+def _status_client(monkeypatch, db, user=_OWNER):
+    """The real execute router and error handlers over HTTP; only the clock, the user and the connection are stubbed."""
+    monkeypatch.setattr(execute.kill_switch, "is_paused", _reads(True))
+    app = FastAPI()
+    errors.install(app)
+    app.include_router(execute.router)
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[execute.current_user_ref] = lambda: user
+    app.dependency_overrides[execute.get_execute_clock] = lambda: (lambda: OPEN_NOW)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _paused_body(client, strategy_id):
+    resp = client.get("/execute/market-status", params={"strategy_id": strategy_id})
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert body["status"] == "paused" and body["message"]["what_happened"] == ADR_127
+    return body
+
+
+def test_market_status_shows_the_hint_for_an_owned_held_strategy_over_http(monkeypatch) -> None:
+    body = _paused_body(_status_client(monkeypatch, _PlanDb()), _OWNED_ID)
+    assert body["paused_hint"]["what_happened"] == ADR_128  # the one allowed outcome: the real store read ran
+
+
+@pytest.mark.parametrize("strategy_id", [
+    999999,          # no such strategy: _owned -> PlanStoreError(NOT_FOUND), the round 2 500
+    99999999999999,  # in BIGINT range, not stored: the same refusal
+    2**63 - 1,       # the largest id strategies.id can hold
+    2**63,           # beyond strategies.id (BIGSERIAL): refused before any read
+    10**30,          # far beyond: refused before any read
+])
+def test_market_status_unknown_or_out_of_range_strategy_is_paused_with_no_hint(monkeypatch, strategy_id) -> None:
+    assert _paused_body(_status_client(monkeypatch, _PlanDb()), strategy_id)["paused_hint"] is None
+
+
+def test_market_status_foreign_strategy_is_paused_with_no_hint(monkeypatch) -> None:
+    client = _status_client(monkeypatch, _PlanDb(), user="u2")  # strategy 9 is u1's
+    assert _paused_body(client, _OWNED_ID)["paused_hint"] is None
+
+
+@pytest.mark.parametrize("db", [
+    _PlanDb(down=True),    # SQLAlchemyError
+    _PlanDb(price="abc"),  # a stored price that does not parse: decimal.InvalidOperation (ArithmeticError)
+    _PlanDb(price=None),   # TypeError from Decimal(None)
+    _PlanDb(symbols=0),    # no catalogue symbol: PlanStoreError(BAD_PLAN)
+])
+def test_market_status_failed_hint_read_is_paused_with_no_hint(monkeypatch, db) -> None:
+    assert _paused_body(_status_client(monkeypatch, db), _OWNED_ID)["paused_hint"] is None
+
+
+@pytest.mark.parametrize("error", [
+    AttributeError("row shape"), KeyError("column"), IndexError("row"), ValueError("int()"), TypeError("None"),
+])
+def test_market_status_every_listed_read_failure_is_no_hint(monkeypatch, error) -> None:
+    _units(monkeypatch, error=error)
+    out = _status(monkeypatch, True, strategy_id=_OWNED_ID)
+    assert out.status == "paused" and out.paused_hint is None
+
+
+def test_market_status_out_of_range_id_never_reaches_the_store(monkeypatch) -> None:
+    calls = []
+
+    async def plans_for(db, user_ref, strategy_id):
+        calls.append(strategy_id)
+        return ()
+    monkeypatch.setattr(execute.plans, "plans_for", plans_for)
+    for strategy_id in (2**63, 0, -1):
+        assert _status(monkeypatch, True, strategy_id=strategy_id).paused_hint is None
+    assert calls == []
+
+
+def test_market_status_not_paused_never_reads_the_hint(monkeypatch) -> None:
+    _units(monkeypatch, error=AssertionError("must not be read while the switch is off"))
+    assert _status(monkeypatch, False, strategy_id=_OWNED_ID).status == "open"
