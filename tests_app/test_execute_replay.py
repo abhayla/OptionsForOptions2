@@ -29,7 +29,8 @@ from ofo_app import seed_execute_replay as seed
 from ofo_app.routes import execute
 from starlette.requests import Request
 
-SEAMS = (execute.get_kite_session, execute.get_quote_reader, execute.get_execute_clock, elig.get_eligibility_today)
+SEAMS = (execute.get_kite_session, execute.get_quote_reader, execute.get_execute_clock, execute.get_list_stamp,
+         elig.get_eligibility_today)
 
 
 def _refused_envs() -> list[str]:

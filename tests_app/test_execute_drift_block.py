@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal as D
 
 import pytest
-from ofo_app.execute_replay import AT, RecordedKite, recorded_text
+from ofo_app.execute_replay import RecordedKite, recorded_text, replay_clocks
 from test_execute_route import (
     RATES,
     _post,
@@ -67,7 +67,7 @@ async def _world(app_engine, admin_engine, monkeypatch, *, close: str, filled: d
             sid = await _strategy_one(conn, user, app_engine.url.username)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
-            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides.update(replay_clocks())  # request clock + list stamp, one recorded day
             app.dependency_overrides[route.load_charge_rates] = lambda: RATES
             first = RecordedKite(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(first)

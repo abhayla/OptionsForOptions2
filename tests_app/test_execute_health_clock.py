@@ -23,7 +23,7 @@ import pytest
 from ofo.execution.context import DataHealth, DataInput
 from ofo.marketdata.health import HealthThresholds
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app.execute_replay import AT
+from ofo_app.execute_replay import AT, replay_list_stamp
 from ofo_app.routes import execute as route
 
 S = datetime.timedelta(seconds=1)
@@ -41,13 +41,12 @@ def _list_loaded(monkeypatch):
 
 def _req(spot_at: datetime.datetime | None, check_at: datetime.datetime) -> SimpleNamespace:
     quote = None if spot_at is None else (D("23131.85"), spot_at)
-    return SimpleNamespace(db=None, now=AT, clock=lambda: check_at,
+    return SimpleNamespace(db=None, now=AT, clock=lambda: check_at, list_stamp=replay_list_stamp,
                            quotes=SimpleNamespace(underlying_price=lambda u: quote))
 
 
 async def _health(spot_at, check_at, leg_times=()) -> dict:
-    return await route._data_health(_req(spot_at, check_at), SimpleNamespace(quote_times=tuple(leg_times)), "NIFTY",
-                                    AT)
+    return await route._data_health(_req(spot_at, check_at), SimpleNamespace(quote_times=tuple(leg_times)), "NIFTY")
 
 
 async def test_1_an_index_tick_a_moment_after_the_request_started_is_healthy():
@@ -109,6 +108,7 @@ async def test_7_the_check_clock_is_read_after_the_index_quote():
         world["t"] += 5 * S  # the tick that arrived while the route read Zerodha
         return D("23135.90"), world["t"]
 
-    req = SimpleNamespace(db=None, now=AT, clock=lambda: world["t"], quotes=SimpleNamespace(underlying_price=_spot))
-    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", AT)
+    req = SimpleNamespace(db=None, now=AT, clock=lambda: world["t"], quotes=SimpleNamespace(underlying_price=_spot),
+                          list_stamp=replay_list_stamp)
+    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY")
     assert health[DataInput.UNDERLYING_PRICE] is DataHealth.HEALTHY

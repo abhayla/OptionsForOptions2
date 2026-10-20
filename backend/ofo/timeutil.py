@@ -27,9 +27,9 @@ IST_ZONE_NAME: Final = "Asia/Kolkata"
 SESSION_OPEN: Final = datetime.time(9, 15)
 SESSION_CLOSE: Final = datetime.time(15, 30)
 #: IST time from which a day's Zerodha instrument file counts as published (INSTR-FRESH, ADR-015). A list load stamped
-#: earlier than this on a day downloaded the PREVIOUS day's file, so it is never fresh for that day. The zerodha-expert
-#: skill states no publish time; 08:30 is the owner-delegated orchestrator's setting (an implementation setting under
-#: ADR-015), in force until a documented time replaces it.
+#: earlier than this on a day downloaded the PREVIOUS day's file, so it is never fresh for that day. Source: the Kite
+#: Connect v3 market-quotes docs ask for the instruments dump "once a day (ideally at around 08:30 AM)" and say it is
+#: not updated intraday (finding F-56); ADR-015 makes the threshold an implementation setting.
 INSTRUMENT_LIST_PUBLISH_IST: Final = datetime.time(8, 30)
 #: Contract expiry: the session close, as an IST-aware time.
 EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)

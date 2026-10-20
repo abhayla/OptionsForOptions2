@@ -26,11 +26,23 @@ from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument
 from ofo.instruments import Catalogue
 from ofo_app import execute_plan as ep
-from ofo_app.execute_replay import AT, CORE_ID, REPLIES, TOKEN, real_basket, real_order, recorded_text
-from ofo_app.execute_replay import DepthQuotes, RecordedKite, live_quote, session_for
+from ofo_app.execute_replay import (
+    AT,
+    CORE_ID,
+    REPLIES,
+    TOKEN,
+    DepthQuotes,
+    RecordedKite,
+    live_quote,
+    real_basket,
+    real_order,
+    recorded_text,
+    replay_clocks,
+    session_for,
+    store_strategy_one,
+)
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
-from ofo_app.execute_replay import store_strategy_one
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL_BASKET = real_basket()
@@ -297,7 +309,7 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             sid = await _strategy_one(conn, user, app_engine.url.username)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
-            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides.update(replay_clocks())  # request clock + list stamp, one recorded day
             app.dependency_overrides[route.load_charge_rates] = lambda: RATES
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
@@ -386,7 +398,7 @@ async def test_w100_entry_band_comes_from_zerodhas_quote_and_an_unknown_one_refu
             sid = await _strategy_one(conn, user, app_engine.url.username)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
-            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides.update(replay_clocks())  # request clock + list stamp, one recorded day
 
             async def entry(quote_text: str | None, phrase: str) -> None:
                 replay = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
@@ -473,7 +485,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             sid = await _strategy_one(conn, user, app_engine.url.username, units=130)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
-            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides.update(replay_clocks())  # request clock + list stamp, one recorded day
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
@@ -649,7 +661,7 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
             sid = await _strategy_one(conn, user, app_engine.url.username)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
-            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides.update(replay_clocks())  # request clock + list stamp, one recorded day
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
@@ -703,6 +715,10 @@ async def test_a_grant_stamped_on_the_database_clock_is_pro_while_the_route_cloc
     assert await route._pro_entitled(req, DB_NOW) is True
 
 
+#: this test's own database clock, after Zerodha's 08:30 publish time (round-2 MAJOR 1: 07:50 is before it)
+LIST_DB_NOW = datetime.datetime(2026, 10, 17, 9, 20, tzinfo=AT.tzinfo)
+
+
 async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_route_clock_is_pinned_to_yesterday(
         monkeypatch):
     from types import SimpleNamespace  # noqa: PLC0415
@@ -711,14 +727,63 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
     from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
 
-    loaded = DB_NOW - datetime.timedelta(minutes=30)  # stamped by clock_timestamp() this morning
+    loaded = LIST_DB_NOW - datetime.timedelta(minutes=30)  # 08:50, stamped by clock_timestamp() this morning
 
     async def _loaded_at(conn):
         return loaded
 
+    async def _db_now(conn):
+        return LIST_DB_NOW
+
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
-    req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
-    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
+    monkeypatch.setattr(elig, "database_now", _db_now)
+    req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None),
+                          list_stamp=route.database_list_stamp)  # production's reader: the route clock is not used
+    health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY")
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
-    assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
-    assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE
+    assert route._list_health(loaded, LIST_DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE
+    assert route._list_health(None, LIST_DB_NOW) is DataHealth.UNAVAILABLE
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_instr_fresh_the_replay_entry_is_200_when_the_seed_ran_at_07_00_ist(app_engine, admin_engine,
+                                                                                monkeypatch):
+    """Round-2 MAJOR 2 (CI runs 00:00-08:30 IST): the seed's list load is stamped at 07:00 IST on the database clock
+    (pinned here by wrapping the real stamp read: the real stamp must exist), and the replay's ENTRY still answers 200,
+    because the replay judges the recorded day's pair. Production's reader judges that same 07:00 stamp STALE."""
+    from http import HTTPStatus  # noqa: PLC0415
+
+    from ofo.execution.context import DataHealth  # noqa: PLC0415
+    from ofo.timeutil import IST  # noqa: PLC0415
+    from ofo_app import eligibility_from_zerodha as elig  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_strategy_followups import _ConnMaker  # noqa: PLC0415
+    from test_strategy_store import _app, _user  # noqa: PLC0415
+
+    real_loaded_at = elig.list_loaded_at
+
+    async def _seeded_at_07_00(conn):
+        real = await real_loaded_at(conn)
+        assert real is not None, "the seed loaded no list"
+        return datetime.datetime.combine(real.astimezone(IST).date(), datetime.time(7, 0), IST)
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            monkeypatch.setattr(elig, "list_loaded_at", _seeded_at_07_00)
+            app = _app(_ConnMaker(conn), user)
+            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            app.dependency_overrides.update(replay_clocks())
+            app.dependency_overrides[route.load_charge_rates] = lambda: RATES
+            entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
+            app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
+            resp = await _post(app, sid, "ENTRY")
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            loaded, _ = await route.database_list_stamp(conn)
+            assert route._list_health(loaded, loaded.replace(hour=10)) is DataHealth.STALE  # production: never fresh
+        finally:
+            await trans.rollback()

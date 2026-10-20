@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
@@ -224,6 +224,24 @@ def get_quote_reader() -> QuoteReader:
     return LiveDepthQuotes(server_clock)
 
 
+#: The instrument list's load stamp and the clock it is judged on, read together from ONE source (INSTR-FRESH): a
+#: stamp from one clock judged on another clock is the class this seam closes (freshness judged on an uncontrolled
+#: clock, finding freshness-judged-on-request-start-clock).
+ListStamp = Callable[[Any], Awaitable[tuple[datetime.datetime | None, datetime.datetime]]]
+
+
+async def database_list_stamp(conn: Any) -> tuple[datetime.datetime | None, datetime.datetime]:
+    """Production: ``max(last_seen_at)`` and ``clock_timestamp()``, both the database's own clock (ADR-023): the
+    trigger that stamps a list load reads the same clock the rule is judged on."""
+    return await elig.list_loaded_at(conn), await elig.database_now(conn)
+
+
+def get_list_stamp() -> ListStamp:
+    """The ONLY source of the list-freshness inputs. Production never overrides it; the test-only Execute replay
+    (``execute_replay.replay_clocks``, refused outside APP_ENV=test at start-up) answers the recorded day's pair."""
+    return database_list_stamp
+
+
 # ---- helpers --------------------------------------------------------------------------------------------------------
 
 def _refuse(template: str, **slots: object) -> StrategyRefused:
@@ -277,6 +295,7 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+    list_stamp: ListStamp = database_list_stamp
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -287,12 +306,14 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
+    list_stamp: Annotated[ListStamp, Depends(get_list_stamp)],
 ) -> ExecuteOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_unconfirmed")
-        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
+                                            list_stamp),
                              stored)
         await db.commit()
     except store.StrategyStoreError as exc:
@@ -543,8 +564,8 @@ async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None
 
 
 def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
-    """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
-    ``clock_timestamp()``, so both sides of the comparison come from the same clock. Fail closed (INSTR-FRESH): no
+    """Instrument-list freshness on the judging clock's own India date. Both inputs come from one ``ListStamp`` (in
+    production the database: ``last_seen_at`` is stamped by ``clock_timestamp()``). Fail closed (INSTR-FRESH): no
     stamp or a stamp without a time zone is UNAVAILABLE (a naive value would be read in this machine's zone); a stamp
     later than the clock it is judged on cannot come from that clock and is STALE. Fresh also needs the stamp at or
     after ``INSTRUMENT_LIST_PUBLISH_IST``: a load before Zerodha publishes the day's file holds yesterday's lot sizes
@@ -559,10 +580,9 @@ def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) ->
     return DataHealth.HEALTHY if same_day and published else DataHealth.STALE
 
 
-async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,
-                       db_now: datetime.datetime) -> dict[DataInput, DataHealth]:
+async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str) -> dict[DataInput, DataHealth]:
     spot = req.quotes.underlying_price(underlying)
-    listing = _list_health(await elig.list_loaded_at(req.db), db_now)
+    listing = _list_health(*await req.list_stamp(req.db))  # stamp and judging clock from the one source
     checked_at = req.clock()  # read after every quote (legs priced earlier, the index just now): the judging clock
     return {DataInput.LEG_PRICES: _health(priced.quote_times, checked_at),
             DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), checked_at),
@@ -617,7 +637,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     figures = Figures(available, required, req.clock())  # the same one read, shown in the reply (W-102)
     positions = await _positions(req, catalogue)
     is_exit = req.action == EXIT
-    db_now = await elig.database_now(req.db)  # the clock that stamped the grants and the list load (ADR-023)
+    db_now = await elig.database_now(req.db)  # the clock that stamped the grants (ADR-023)
     return ExecutionContext(
         strategy_id=sid, version_id=f"revision-{stored.revision}", actor="user", underlying=underlying,
         action=ExecutionAction.EXIT if is_exit else ExecutionAction.NEW_ENTRY, as_of=req.now,
@@ -628,7 +648,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
         version_state=held.state,  # derived from the net of all plans (ep.version_state), never hard-coded
         rules_valid=True if stored.saved.definition.rules_ref is None else None,  # no rules: nothing to validate
         dependencies_satisfied=True,  # no open basket at Zerodha and no open stored plan (both refused above)
-        data_health=await _data_health(req, priced, underlying, db_now),
+        data_health=await _data_health(req, priced, underlying),
         margin_available=available, margin_required=required,
         reconciliation_blocked_strategy_ids=_reconciliation(req, held, positions, catalogue, underlying),
         price_bands=priced.price_bands,
@@ -636,6 +656,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
-           "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
-           "price_and_time"]
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "ListStamp", "LiveDepthQuotes",
+           "cost_out", "database_list_stamp", "get_execute_clock", "get_kite_session", "get_list_stamp",
+           "get_quote_reader", "held_products", "market_open", "price_and_time"]

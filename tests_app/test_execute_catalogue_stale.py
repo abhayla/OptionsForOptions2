@@ -31,11 +31,20 @@ def _install(monkeypatch, loaded) -> None:
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
 
 
+def _install_clock(monkeypatch, db_now) -> None:
+    async def _now(conn):
+        return db_now
+
+    monkeypatch.setattr(elig, "database_now", _now)
+
+
 async def _list_state(monkeypatch, loaded, db_now=MON_10_00) -> DataHealth:
+    """Through production's reader (``database_list_stamp``): the stamp and the judging clock both from the database."""
     _install(monkeypatch, loaded)
-    req = SimpleNamespace(db=None, now=db_now, clock=lambda: db_now,
+    _install_clock(monkeypatch, db_now)
+    req = SimpleNamespace(db=None, now=db_now, clock=lambda: db_now, list_stamp=route.database_list_stamp,
                           quotes=SimpleNamespace(underlying_price=lambda u: None))
-    return (await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", db_now))[DataInput.INSTRUMENT_LIST]
+    return (await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY"))[DataInput.INSTRUMENT_LIST]
 
 
 async def test_core_a_list_last_loaded_on_friday_is_stale_on_monday_and_a_load_this_morning_passes(monkeypatch):
@@ -95,8 +104,8 @@ def _stub_reads(monkeypatch, health_seen: list) -> None:
     async def _now(conn):
         return MON_10_00
 
-    async def _data_health(req, priced, underlying, db_now):
-        health_seen.append(db_now)
+    async def _data_health(req, priced, underlying):
+        health_seen.append(req.list_stamp)
         return dict.fromkeys(DataInput, DataHealth.STALE)
 
     monkeypatch.setattr(route, "_zerodha_margin", _margin)
@@ -114,12 +123,13 @@ async def test_entry_and_exit_contexts_carry_the_list_health_judged_on_the_datab
     adjustments are ENTRY/EXIT baskets through the same ``_execute``)."""
     seen: list = []
     _stub_reads(monkeypatch, seen)
-    req = SimpleNamespace(db=None, strategy_id=1, action=action, now=MON_10_00, clock=lambda: MON_10_00)
+    req = SimpleNamespace(db=None, strategy_id=1, action=action, now=MON_10_00, clock=lambda: MON_10_00,
+                          list_stamp=route.database_list_stamp)
     definition = SimpleNamespace(underlying="NIFTY", rules_ref=None)
     stored = SimpleNamespace(revision=1, saved=SimpleNamespace(definition=definition))
     held = route._Held({}, _state(action), None, ())
     ctx, _ = await route._context(req, stored, SimpleNamespace(price_bands={}), held, None)
-    assert seen == [MON_10_00] and ctx.action is want
+    assert seen == [route.database_list_stamp] and ctx.action is want
     assert all(v is DataHealth.STALE for v in ctx.data_health.values())
 
 
