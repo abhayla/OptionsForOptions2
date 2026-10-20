@@ -1,6 +1,6 @@
 // GC-6 shared states: each approved text, state, prop and emit is pinned. A text change turns a test red.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { readFileSync } from 'node:fs'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
@@ -80,10 +80,13 @@ describe('ReturnStatus', () => {
   it('no change text', () => {
     expect(t(mount(ReturnStatus, { props: { status: 'no_change' } }), 'return-status-no-change')).toBe('no change detected yet')
   })
-  it('done renders only the caller slot (no invented text)', () => {
-    const w = mount(ReturnStatus, { props: { status: 'done' }, slots: { default: 'SLOT' } })
-    expect(t(w, 'return-status-done')).toBe('SLOT')
-    expect(mount(ReturnStatus, { props: { status: 'done' } }).get('[data-testid="return-status-done"]').text()).toBe('')
+  it('done reads the approved text exactly (ADR-129); slot is only an extra below it', () => {
+    const bare = mount(ReturnStatus, { props: { status: 'done' } })
+    expect(t(bare, 'return-status-done-text')).toBe('Zerodha confirmed your orders.')
+    expect(t(bare, 'return-status-done')).toBe('Zerodha confirmed your orders.')
+    const w = mount(ReturnStatus, { props: { status: 'done' }, slots: { default: '<span data-testid="x">SLOT</span>' } })
+    expect(t(w, 'return-status-done-text')).toBe('Zerodha confirmed your orders.')
+    expect(t(w, 'x')).toBe('SLOT')
   })
   it('failed: Retry button emits retry', async () => {
     const w = mount(ReturnStatus, { props: { status: 'failed' } })
@@ -101,13 +104,23 @@ describe('EmptyState', () => {
     await w.get('[data-testid="empty-state-action"]').trigger('click')
     expect(w.emitted('action')).toHaveLength(1)
   })
-  it('S6 and S7: message only, no invented button', () => {
-    const s6 = mount(EmptyState, { props: { message: T.EMPTY_S6_MESSAGE } })
-    expect(t(s6, 'empty-state-message')).toBe('No orders yet.')
-    expect(s6.find('[data-testid="empty-state-action"]').exists()).toBe(false)
-    const s7 = mount(EmptyState, { props: { message: T.EMPTY_S7_MESSAGE } })
-    expect(t(s7, 'empty-state-message')).toBe('No open positions.')
-    expect(s7.find('button').exists()).toBe(false)
+  it('S6 and S7: exact messages plus Create Strategy button to the Create Strategy route (ADR-130)', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { template: '<i/>' } }] })
+    router.push('/orders')
+    await router.isReady()
+    for (const [msg, label, text] of [[T.EMPTY_S6_MESSAGE, T.EMPTY_S6_BUTTON, 'No orders yet.'], [T.EMPTY_S7_MESSAGE, T.EMPTY_S7_BUTTON, 'No open positions.']]) {
+      const w = mount(EmptyState, { props: { message: msg, actionLabel: label, actionTo: T.CREATE_STRATEGY_ROUTE }, global: { plugins: [router] } })
+      expect(t(w, 'empty-state-message')).toBe(text)
+      expect(t(w, 'empty-state-action')).toBe('Create Strategy')
+      await w.get('[data-testid="empty-state-action"]').trigger('click')
+      await flushPromises()
+      expect(router.currentRoute.value.fullPath).toBe('/strategy/builder')
+      expect(w.emitted('action')).toHaveLength(1)
+      await router.push('/orders')
+    }
+  })
+  it('Create Strategy route is a real route in the router table', () => {
+    expect(readFileSync('src/router/routes.js', 'utf8')).toContain(`path: '${T.CREATE_STRATEGY_ROUTE}'`)
   })
 })
 

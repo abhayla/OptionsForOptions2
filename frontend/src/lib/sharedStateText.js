@@ -17,8 +17,13 @@ export const CHECK_WITH_ZERODHA = 'Check with Zerodha' // wording fixed by REQ-0
 export const RETURN_CHECKING = 'Checking with Zerodha…'
 export const RETURN_NO_CHANGE = 'no change detected yet'
 export const RETRY_LABEL = 'Retry'
+export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 
 export const EMPTY_S4_MESSAGE = 'No saved strategies yet.'
 export const EMPTY_S4_BUTTON = 'Create Strategy'
 export const EMPTY_S6_MESSAGE = 'No orders yet.'
 export const EMPTY_S7_MESSAGE = 'No open positions.'
+// ADR-130: S6 and S7 get the same Create Strategy button as S4, to the same route.
+export const EMPTY_S6_BUTTON = EMPTY_S4_BUTTON
+export const EMPTY_S7_BUTTON = EMPTY_S4_BUTTON
+export const CREATE_STRATEGY_ROUTE = '/strategy/builder'
