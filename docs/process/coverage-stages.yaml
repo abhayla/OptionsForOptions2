@@ -194,6 +194,8 @@ decisions:
   ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
   ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
   ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-136: 4b           # proposed: help with a partly executed strategy (owner requirement, under expert review)
+  ADR-135: 4b           # four order states: Not sent to Zerodha / Order placed / Executed n of m / Not executed - see Kite (owner 2026-10-20)
   ADR-134: 4b           # complement the broker, never duplicate it; orders show "Order placed" / "Executed" (owner 2026-10-20)
   ADR-133: 4b           # never-placed basket "Cancelled" + "Not placed on Kite" (owner 2026-10-20; superseded in effect by ADR-134)
   ADR-132: 4b          # chain selection texts: already-in-strategy prompt (owner 2026-10-20)

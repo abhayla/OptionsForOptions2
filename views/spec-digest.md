@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (133)
+## Decisions (135)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -99,8 +99,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refr… [extends ADR-081]
 - ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze… [extends ADR-081]
 - ADR-093 2026-10-16: Every coding standard of this project is either e… [none — a new subject: engineering standards for a…]
-- ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket figure (`final.total` of `POST /margins/basket`) pl… [applies ADR-016]
-- ADR-095 2026-10-16: When the user gives one price tolerance (in rupees) for the whole strategy, each leg gets the share… [extends ADR-080]
+- ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket f… [applies ADR-016]
+- ADR-095 2026-10-16: When the user gives one price tolerance (in rupee… [extends ADR-080]
 - ADR-096 2026-10-16: REQ-061 AC-2 "add it to an existing strategy" is built now. [extends ADR-084]
 - ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 afternoon: 1 lot of a NIFTY option BUY, from a bask… [applies ADR-054, ADR-060]
 - ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is met when every route open to ordinary code is refus… [refines REQ-073]
@@ -139,6 +139,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-132 2026-10-20: (1) REQ-030 AC-12: when a selected contract is already a leg of the strategy, the prompt reads "<co… [refines REQ-030]
 - ADR-133 2026-10-20: (1) When "Check with Zerodha" finds no order carrying a plan's tag (the user opened Kite and never… [refines REQ-057]
 - ADR-134 2026-10-20: (1) Anything the broker (Zerodha today, any broker later) already provides - its order book, order… [amends REQ-057; amends REQ-058; amends REQ-073]
+- ADR-135 2026-10-20: (1) Under ADR-134 the app shows each strategy order in exactly one of four states: "Not sent to Zer… [amends REQ-057; supersedes ADR-133]
+- ADR-136 2026-10-20: (1) Owner requirement for a partly executed strategy: the user gets help to (a) re-check the result… [amends REQ-058]
 
 ## Requirements (75)
 
