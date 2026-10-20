@@ -126,7 +126,7 @@ describe('Option Chain screen', () => {
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
     // REQ-030 AC-2: the only buttons are the per-cell Buy / Sell choices of a leg for import (ADR-002: never an order)
-    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Sell'])
+    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Refresh', 'Sell'])
     expect(w.findAll('a')).toHaveLength(0)
     expect(w.text()).not.toMatch(/\b(order|execute|place)\b/i)
     const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')

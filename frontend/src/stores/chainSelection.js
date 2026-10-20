@@ -26,9 +26,15 @@ export function contractOf(underlying, expiry, strike, type, cell) {
 export const useChainSelection = defineStore('chainSelection', () => {
   const entries = ref([]) // { id, ...contract, action: 'BUY' | 'SELL' | null, lots }
   const removed = ref(null) // the last removed entry and its place, for the short Undo (AC-15)
+  // The latest server answer per contract (instrument_id -> true | false), kept apart from the entries so a removed or
+  // restored entry never carries an older answer back in (AC-16). No answer = unknown = not permitted.
+  const answers = ref({})
+  const answer = (instrumentId) => answers.value[instrumentId] === true
 
-  const add = (contract, action) =>
+  const add = (contract, action) => {
+    answers.value[contract.instrument_id] = contract.permitted === true
     entries.value.push({ ...contract, id: legId(contract.instrument_id, action), action, lots: DEFAULT_LOTS })
+  }
   const ofContract = (instrumentId) => entries.value.filter((e) => e.instrument_id === instrumentId)
 
   /** AC-1: tick or untick a contract. Ticked, it has no action until Buy or Sell is chosen (AC-2: never inferred). */
@@ -76,7 +82,11 @@ export const useChainSelection = defineStore('chainSelection', () => {
     if (!removed.value) return
     const { entry, index } = removed.value
     removed.value = null
-    if (!entries.value.some((e) => e.id === entry.id)) entries.value.splice(index, 0, entry)
+    if (entries.value.some((e) => e.id === entry.id)) return
+    // AC-16: the permission it had when removed is not trusted; it follows the latest answer (none = unknown)
+    entry.permitted = answer(entry.instrument_id)
+    if (!entry.permitted && !(entry.instrument_id in answers.value)) entry.unavailable_reason = 'unknown'
+    entries.value.splice(index, 0, entry)
   }
   const dismissUndo = () => (removed.value = null)
   const clear = () => {
@@ -88,6 +98,7 @@ export const useChainSelection = defineStore('chainSelection', () => {
    *  contract that lost permission stays visible in Selected Legs with its reason but is never counted or imported. */
   function syncPermissions(cells) {
     for (const cell of cells) {
+      answers.value[cell.instrument_id] = isPermitted(cell)
       for (const e of ofContract(cell.instrument_id)) {
         e.permitted = isPermitted(cell)
         e.unavailable_reason = e.permitted ? null : (cell.unavailable_reason ?? 'unknown')
@@ -98,7 +109,7 @@ export const useChainSelection = defineStore('chainSelection', () => {
   const forUnderlying = (underlying) => entries.value.filter((e) => e.underlying === underlying)
   /** Legs that have an action AND that Zerodha permits: what "Add Selected (N)" counts and imports (the one choke point
    *  every import passes through: draftOf reads this). */
-  const legsOf = (underlying) => forUnderlying(underlying).filter((e) => e.action !== null && e.permitted === true)
+  const legsOf = (underlying) => forUnderlying(underlying).filter((e) => e.action !== null && e.permitted === true && answer(e.instrument_id))
   const pendingOf = (underlying) => forUnderlying(underlying).filter((e) => e.action === null && e.permitted === true)
   const unavailableOf = (underlying) => forUnderlying(underlying).filter((e) => e.permitted !== true)
   const expiriesOf = (underlying) => [...new Set(legsOf(underlying).map((e) => e.expiry))].sort()
@@ -112,6 +123,6 @@ export const useChainSelection = defineStore('chainSelection', () => {
     }
   }
 
-  return { entries, removed, toggleContract, chooseAction, setLots, stepLots, remove, undo, dismissUndo, clear,
+  return { entries, removed, answers, toggleContract, chooseAction, setLots, stepLots, remove, undo, dismissUndo, clear,
     syncPermissions, forUnderlying, legsOf, pendingOf, unavailableOf, expiriesOf, draftOf, count: computed(() => entries.value.length) }
 })

@@ -157,7 +157,9 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
 
     <p v-if="anyUnavailable" class="mt-3 text-sm" data-testid="unavailable-notice">
       Some contracts are currently unavailable on Zerodha and cannot be added.
-      <button type="button" class="ml-1 rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
+    </p>
+    <p v-if="view && view.rows.length" class="mt-3 text-sm">
+      <button type="button" class="rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
     <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">

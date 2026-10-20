@@ -247,10 +247,12 @@ describe('Option Chain: contracts Zerodha does not permit (REQ-030 AC-13, AC-16;
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-27', strikes_each_side: 15 })
   })
 
-  it('AC-16: with every contract permitted there is no notice and no Refresh button', async () => {
+  it('AC-16: with every contract permitted there is no notice, but Refresh is still shown and re-sends the request once', async () => {
     const w = await mountPage()
     expect(w.find('[data-testid="unavailable-notice"]').exists()).toBe(false)
-    expect(w.find('[data-testid="chain-refresh"]').exists()).toBe(false)
+    const before = sock().sent.length
+    await w.get('[data-testid="chain-refresh"]').trigger('click')
+    expect(sock().sent.length).toBe(before + 1)
   })
 
   it('AC-13/AC-16: a ticked contract that a newer answer marks not permitted stays visible with its reason and leaves the count and the import', async () => {
@@ -303,6 +305,42 @@ describe('chainSelection store: permission', () => {
     expect(s.draftOf('NIFTY').legs).toEqual([])
     s.syncPermissions([cell('id-1', '10.00')]) // permitted again on the next answer
     expect(s.draftOf('NIFTY').legs.map((l) => l.instrument_id)).toEqual(['id-1'])
+  })
+})
+
+describe('chainSelection store: permission is re-checked, never carried (review MINOR 1)', () => {
+  const ca = contractOf('NIFTY', '2026-10-27', '1', 'CE', cell('id-A', '10.00'))
+  const cb = contractOf('NIFTY', '2026-11-03', '2', 'CE', cell('id-B', '10.00'))
+
+  it('a leg on another expiry whose answer says not permitted is excluded from draftOf even if its own flag says true', () => {
+    const s = useChainSelection()
+    s.chooseAction(ca, 'BUY')
+    s.chooseAction(cb, 'SELL')
+    s.syncPermissions([{ ...cell('id-A', '10.00'), permitted: false, unavailable_reason: 'restricted' }])
+    s.entries.find((e) => e.instrument_id === 'id-A').permitted = true // a stale cached flag
+    expect(s.legsOf('NIFTY').map((e) => e.instrument_id)).toEqual(['id-B'])
+    expect(s.draftOf('NIFTY').legs.map((l) => l.instrument_id)).toEqual(['id-B'])
+  })
+
+  it('a leg removed, then losing permission, is not permitted again by Undo', () => {
+    const s = useChainSelection()
+    s.chooseAction(ca, 'BUY')
+    s.remove(s.entries[0].id)
+    s.syncPermissions([{ ...cell('id-A', '10.00'), permitted: false, unavailable_reason: 'restricted' }]) // entry not present: only the answer moves
+    s.undo()
+    expect(s.entries).toHaveLength(1)
+    expect(s.entries[0].permitted).toBe(false)
+    expect(s.draftOf('NIFTY').legs).toEqual([])
+  })
+
+  it('Undo of a leg with no known answer reads as unknown and is excluded', () => {
+    const s = useChainSelection()
+    s.chooseAction(ca, 'BUY')
+    s.remove(s.entries[0].id)
+    delete s.answers['id-A']
+    s.undo()
+    expect(s.entries[0].unavailable_reason).toBe('unknown')
+    expect(s.draftOf('NIFTY').legs).toEqual([])
   })
 })
 
