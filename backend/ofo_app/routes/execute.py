@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ofo.charges.calculator import ChargeOrder
 from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument, Leg
@@ -67,6 +67,7 @@ from ofo.money import PAISE
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import entitlement_store, kill_switch, live_market, order_audit
@@ -145,6 +146,9 @@ class MarketStatusOut(ApiModel):
     next_open: Optional[datetime.date]  # noqa: UP045 - the next trading day when closed, else None
     message: Optional[CatalogueText]  # noqa: UP045 - the gate's own refusal text, None when open
     as_of: datetime.datetime  # the server clock the verdict was judged on
+    # ADR-128: set only while paused AND the strategy asked about holds units; the screen shows its ``what_happened``
+    # under the ADR-127 sentence. None = nothing to add (no position, no strategy asked about, or the read failed).
+    paused_hint: Optional[CatalogueText] = None  # noqa: UP045
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -291,12 +295,14 @@ class _Request:
     rates: ChargeRates | None
 
 
-def market_verdict(now: datetime.datetime, paused: bool | None) -> MarketStatusOut:
+def market_verdict(now: datetime.datetime, paused: bool | None, *, open_position: bool = False) -> MarketStatusOut:
     """The gate's own verdict at ``now`` as the screen shows it: the kill switch first (``paused_failures``, ADR-127;
-    unknown counts as paused), then the market (``market_failures``)."""
+    unknown counts as paused), then the market (``market_failures``). ADR-128: paused with an open position adds the
+    one Kite hint line (exits stay blocked; only the text is added)."""
     stopped = paused_failures(paused)
     if stopped:
-        return MarketStatusOut(status="paused", next_open=None, message=stopped[0].message, as_of=now)
+        hint = render("gate_platform_paused_open_position") if open_position else None
+        return MarketStatusOut(status="paused", next_open=None, message=stopped[0].message, as_of=now, paused_hint=hint)
     failures = market_failures(now, market_open(now))
     if not failures:
         return MarketStatusOut(status="open", next_open=None, message=None, as_of=now)
@@ -309,11 +315,20 @@ def market_verdict(now: datetime.datetime, paused: bool | None) -> MarketStatusO
 @router.get("/execute/market-status", response_model=MarketStatusOut)
 async def execute_market_status(
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
-    db: Annotated[Any, Depends(get_db)],
+    db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+    strategy_id: Annotated[Optional[int], Query(ge=1)] = None,  # noqa: UP045 - the strategy on screen (ADR-128 hint)
 ) -> MarketStatusOut:
     """Read-only: whether Execute is open now, on the server clock (ADR-119 (3)) and the kill switch (ADR-127); the POST
-    gate re-judges both on its own."""
-    return market_verdict(clock(), await kill_switch.is_paused(db))
+    gate re-judges both on its own. With ``strategy_id`` and the switch on, also whether that strategy holds units
+    (the net of its stored plans, the gate's own source) for the ADR-128 hint; an unreadable answer adds no hint."""
+    paused = await kill_switch.is_paused(db)
+    holds = False
+    if paused is not False and strategy_id is not None:
+        try:
+            holds = any(ep.held_units(await plans.plans_for(db, user_ref, strategy_id)).values())
+        except SQLAlchemyError:
+            holds = False
+    return market_verdict(clock(), paused, open_position=holds)
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)

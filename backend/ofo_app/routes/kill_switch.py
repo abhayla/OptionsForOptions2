@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.exceptions import RequestValidationError
 from ofo.safe_compare import equal_secret
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ofo_app import kill_switch
 from ofo_app.api_models import ApiModel
@@ -43,11 +44,27 @@ def require_owner(x_owner_key: Annotated[str | None, Header()] = None) -> None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
 
 
-@router.put("/admin/kill-switch", response_model=KillSwitchOut)
+async def _read_body(request: Request) -> KillSwitchIn:
+    """Parses the body AFTER the owner check (FastAPI reads a declared body first, so malformed JSON from a stranger
+    would answer 422 and show that the route exists). A malformed body WITH a valid key is still a 422."""
+    try:
+        raw = await request.json()
+    except ValueError:  # includes JSON decode and unicode errors
+        problem = {"type": "json_invalid", "loc": ("body",), "msg": "invalid JSON", "input": None}
+        raise RequestValidationError([problem]) from None
+    try:
+        return KillSwitchIn.model_validate(raw)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from None
+
+
+@router.put("/admin/kill-switch", response_model=KillSwitchOut, openapi_extra={"requestBody": {
+    "required": True, "content": {"application/json": {"schema": KillSwitchIn.model_json_schema()}}}})
 async def set_kill_switch(
-    body: KillSwitchIn, _owner: Annotated[None, Depends(require_owner)], db: Annotated[Any, Depends(get_db)],
+    request: Request, _owner: Annotated[None, Depends(require_owner)], db: Annotated[Any, Depends(get_db)],
 ) -> KillSwitchOut:
     """Turns the switch on or off and appends ONE audit event, in one transaction (the event is the state)."""
+    body = await _read_body(request)
     try:
         await kill_switch.set_paused(db, body.paused, reason=body.reason)
         await db.commit()

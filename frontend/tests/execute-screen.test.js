@@ -350,6 +350,33 @@ describe('ADR-119 (3): the screen shows the server market verdict BEFORE the cli
     expect(posts()).toEqual([])
   })
 
+  it('ADR-128 paused + an open position: the ADR-127 sentence, then the server Kite line under it, Exit disabled', async () => {
+    const HINT = { what_happened: 'You can still close positions directly on Kite.', impact: 'x', what_is_blocked: 'y', next_action: 'z' }
+    const w = await marketCase(ok({ ...MARKET_PAUSED, paused_hint: HINT }))
+    expect(text(w, 'market-closed-what')).toBe(MARKET_PAUSED.message.what_happened)
+    expect(text(w, 'paused-hint')).toBe('You can still close positions directly on Kite.')
+    const html = w.html()
+    expect(html.indexOf('market-closed-what')).toBeLessThan(html.indexOf('paused-hint')) // under the ADR-127 sentence
+    expect(w.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    expect(calls.find(([m, u]) => m === 'GET' && u === '/execute/market-status')[2]).toEqual({ params: { strategy_id: '1' } })
+    await w.get('[data-testid="prepare-exit"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toEqual([]) // exits stay blocked in the app
+  })
+
+  it('ADR-128 paused + no open position (no hint from the server): the ADR-127 sentence only', async () => {
+    const w = await marketCase(ok({ ...MARKET_PAUSED, paused_hint: null }))
+    expect(text(w, 'market-closed-what')).toBe(MARKET_PAUSED.message.what_happened)
+    expect(w.find('[data-testid="paused-hint"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Kite.') // the line is not retyped on the page
+  })
+
+  it('ADR-128: a hint on a verdict that is not paused is never shown', async () => {
+    const w = await marketCase(ok({ ...MARKET_CLOSED, paused_hint: { what_happened: 'You can still close positions directly on Kite.' } }))
+    expect(w.find('[data-testid="paused-hint"]').exists()).toBe(false)
+  })
+
   it('the browser clock never decides: a closed verdict stays closed at a browser time inside the session', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-21T04:45:00Z')) // 10:15 IST on a trading day

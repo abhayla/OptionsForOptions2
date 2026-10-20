@@ -11,9 +11,12 @@ from http import HTTPStatus
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from ofo.timeutil import IST
-from ofo_app import api_models, kill_switch
+from ofo_app import api_models, errors, kill_switch
 from ofo_app.config import OWNER_KEY_MIN
+from ofo_app.db import get_db
 from ofo_app.routes import execute
 from ofo_app.routes import kill_switch as owner_route
 from ofo_app.routes.strategies import StrategyRefused
@@ -129,8 +132,8 @@ def test_screen_verdict_is_paused_with_the_adr127_sentence_while_the_market_is_o
 
 def test_market_status_route_reads_the_switch_per_request(monkeypatch) -> None:
     monkeypatch.setattr(execute.kill_switch, "is_paused", _reads(True, False))
-    assert asyncio.run(execute.execute_market_status(lambda: OPEN_NOW, "db")).status == "paused"
-    assert asyncio.run(execute.execute_market_status(lambda: OPEN_NOW, "db")).status == "open"
+    assert asyncio.run(execute.execute_market_status(lambda: OPEN_NOW, "db", "u1")).status == "paused"
+    assert asyncio.run(execute.execute_market_status(lambda: OPEN_NOW, "db", "u1")).status == "open"
 
 
 # ---- the stored switch: the latest audit event is the state ----------------------------------------------------------
@@ -186,3 +189,119 @@ def test_the_flip_route_is_mounted_put_only_behind_the_owner_check() -> None:
     (route,) = [r for r in owner_route.router.routes if r.path == "/admin/kill-switch"]
     assert route.methods == {"PUT"}
     assert any(d.call is owner_route.require_owner for d in route.dependant.dependencies)
+
+
+# ---- round 1: the route reveals nothing before the owner check, the context reads the switch, ADR-128 ----------------
+
+def _mini_app(monkeypatch):
+    """The real owner router and the real error handlers, a stub DB; no PostgreSQL."""
+    key = "k" * OWNER_KEY_MIN
+    monkeypatch.setenv("OFO_OWNER_KEY", key)
+    flips = []
+
+    class Db:
+        async def commit(self): ...
+        async def rollback(self): ...
+
+    async def fake_set(conn, paused, *, reason, actor="owner"):
+        flips.append((paused, reason))
+        return 1
+    monkeypatch.setattr(owner_route.kill_switch, "set_paused", fake_set)
+    app = FastAPI()
+    errors.install(app)
+    app.include_router(owner_route.router)
+    app.dependency_overrides[get_db] = Db
+    return TestClient(app, raise_server_exceptions=False), key, flips
+
+
+def test_malformed_json_without_the_key_is_a_404_like_an_unknown_path(monkeypatch) -> None:
+    """Guard: the owner check runs BEFORE the body is parsed (a declared ``body: KillSwitchIn`` gives 422)."""
+    client, _key, flips = _mini_app(monkeypatch)
+    json_head = {"content-type": "application/json"}
+    unknown = client.put("/admin/no-such-route", content=b"{not json", headers=json_head)
+    for headers in ({}, {"X-Owner-Key": "x" * OWNER_KEY_MIN}):
+        stranger = client.put("/admin/kill-switch", content=b"{not json", headers={**json_head, **headers})
+        assert stranger.status_code == HTTPStatus.NOT_FOUND and stranger.json() == unknown.json()
+    wrong_shape = client.put("/admin/kill-switch", json={"paused": "yes"})
+    assert wrong_shape.status_code == HTTPStatus.NOT_FOUND and wrong_shape.json() == unknown.json()
+    assert flips == []
+
+
+def test_owner_with_a_malformed_or_wrong_body_gets_422_and_nothing_is_flipped(monkeypatch) -> None:
+    client, key, flips = _mini_app(monkeypatch)
+    head = {"X-Owner-Key": key, "content-type": "application/json"}
+    unprocessable = HTTPStatus.UNPROCESSABLE_ENTITY
+    assert client.put("/admin/kill-switch", content=b"{not json", headers=head).status_code == unprocessable
+    assert client.put("/admin/kill-switch", content=json.dumps({"paused": "yes", "reason": "r"}),
+                      headers=head).status_code == unprocessable
+    assert client.put("/admin/kill-switch", content=json.dumps({"paused": True}), headers=head
+                      ).status_code == unprocessable
+    assert flips == []
+    ok = client.put("/admin/kill-switch", content=json.dumps({"paused": True, "reason": "r"}), headers=head)
+    assert ok.status_code == HTTPStatus.OK and ok.json() == {"paused": True} and flips == [(True, "r")]
+
+
+def test_context_build_reads_the_switch_not_a_constant(monkeypatch) -> None:
+    """Guard: the ``platform_paused=`` read in ``execute._context``; a constant False there fails this (mutation M4)."""
+    async def margin(req, priced, catalogue):
+        return None, None
+
+    async def none(*a, **k):
+        return None
+
+    async def now(db):
+        return OPEN_NOW
+    monkeypatch.setattr(execute, "_zerodha_margin", margin)
+    monkeypatch.setattr(execute, "_positions", none)
+    monkeypatch.setattr(execute, "_pro_entitled", none)
+    async def health(*a, **k):
+        return {}
+    monkeypatch.setattr(execute, "_data_health", health)
+    monkeypatch.setattr(execute, "_reconciliation", lambda *a, **k: frozenset())
+    monkeypatch.setattr(execute.elig, "database_now", now)
+    req = SimpleNamespace(now=OPEN_NOW, clock=lambda: OPEN_NOW, db="db", strategy_id=7, action=execute.ENTRY)
+    definition = SimpleNamespace(underlying="NIFTY", rules_ref=None)
+    stored = SimpleNamespace(revision=1, saved=SimpleNamespace(definition=definition))
+    held = execute._Held({}, None, None, ())
+    for value in (True, None, False):
+        monkeypatch.setattr(execute.kill_switch, "is_paused", _reads(value))
+        context, _figures = asyncio.run(execute._context(req, stored, SimpleNamespace(price_bands=None), held, None))
+        assert context.platform_paused is value
+
+
+ADR_128 = "You can still close positions directly on Kite."
+
+
+def test_adr128_hint_only_while_paused_and_only_with_an_open_position() -> None:
+    held = json.loads(api_models.emit(execute.market_verdict(OPEN_NOW, True, open_position=True)))
+    assert held["message"]["what_happened"] == ADR_127 and held["paused_hint"]["what_happened"] == ADR_128
+    for paused, position in ((True, False), (False, True), (False, False)):
+        verdict = execute.market_verdict(OPEN_NOW, paused, open_position=position)
+        assert json.loads(api_models.emit(verdict))["paused_hint"] is None
+
+
+def _units(monkeypatch, units=None, error=None):
+    async def plans_for(db, user_ref, strategy_id):
+        if error:
+            raise error
+        return ("history", user_ref, strategy_id)
+    monkeypatch.setattr(execute.plans, "plans_for", plans_for)
+    monkeypatch.setattr(execute.ep, "held_units", lambda history: units or {})
+
+
+def _status(monkeypatch, paused, **kw):
+    monkeypatch.setattr(execute.kill_switch, "is_paused", _reads(paused))
+    return asyncio.run(execute.execute_market_status(lambda: OPEN_NOW, "db", "u1", **kw))
+
+
+def test_market_status_route_adds_the_hint_for_a_held_strategy_while_paused(monkeypatch) -> None:
+    _units(monkeypatch, {"c1": 65})
+    on = _status(monkeypatch, True, strategy_id=9)
+    assert on.status == "paused" and on.paused_hint.what_happened == ADR_128
+    assert _status(monkeypatch, True).paused_hint is None  # no strategy asked about: nothing to say
+    assert _status(monkeypatch, False, strategy_id=9).paused_hint is None
+    _units(monkeypatch, {"c1": 0})
+    assert _status(monkeypatch, True, strategy_id=9).paused_hint is None  # flat: only the ADR-127 sentence
+    _units(monkeypatch, error=SQLAlchemyError("down"))
+    unreadable = _status(monkeypatch, True, strategy_id=9)
+    assert unreadable.status == "paused" and unreadable.paused_hint is None  # never guessed

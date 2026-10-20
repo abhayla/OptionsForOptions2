@@ -1107,27 +1107,6 @@
         "title": "IndicesOut",
         "type": "object"
       },
-      "KillSwitchIn": {
-        "additionalProperties": false,
-        "properties": {
-          "paused": {
-            "title": "Paused",
-            "type": "boolean"
-          },
-          "reason": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "paused",
-          "reason"
-        ],
-        "title": "KillSwitchIn",
-        "type": "object"
-      },
       "KillSwitchOut": {
         "additionalProperties": false,
         "properties": {
@@ -1259,6 +1238,15 @@
               }
             ],
             "title": "Next Open"
+          },
+          "paused_hint": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Hint"
           },
           "status": {
             "enum": [
@@ -3112,7 +3100,25 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KillSwitchIn"
+                "additionalProperties": false,
+                "properties": {
+                  "paused": {
+                    "title": "Paused",
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "title": "Reason",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "paused",
+                  "reason"
+                ],
+                "title": "KillSwitchIn",
+                "type": "object"
               }
             }
           },
@@ -3518,8 +3524,27 @@
     },
     "/execute/market-status": {
       "get": {
-        "description": "Read-only: whether Execute is open now, on the server clock (ADR-119 (3)) and the kill switch (ADR-127); the POST\ngate re-judges both on its own.",
+        "description": "Read-only: whether Execute is open now, on the server clock (ADR-119 (3)) and the kill switch (ADR-127); the POST\ngate re-judges both on its own. With ``strategy_id`` and the switch on, also whether that strategy holds units\n(the net of its stored plans, the gate's own source) for the ADR-128 hint; an unreadable answer adds no hint.",
         "operationId": "execute_market_status_execute_market_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "strategy_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3530,6 +3555,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Execute Market Status"
