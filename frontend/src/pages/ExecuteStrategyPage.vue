@@ -21,7 +21,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { EVERY_TRADE_NOTE, LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, SEQUENCE_NOTE, isLiveOutcome, orderTypeText, planSentence, readableReply, readyText, riskLine } from '@/lib/execute'
+import { ACCEPT_REFRESHED_NOTE, EVERY_TRADE_NOTE, LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, SEQUENCE_NOTE, acknowledgementOf, isLiveOutcome, orderTypeText, planSentence, readableReply, readyText, riskLine } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -33,6 +33,7 @@ const sentence = computed(() => (reply.value ? planSentence(reply.value, lastAct
 const risk = computed(() => (reply.value ? riskLine(reply.value) : null)) // ADR-140: the server's tier, rendered; never computed here
 const awaitingAcceptance = computed(() => !!reply.value && reply.value.basket == null) // EXCEPTIONAL: the server holds the basket back until accepted
 const accepting = ref(false)
+const refreshed = ref(false) // the server answered an acceptance with a NEW proposal (and a new token)
 const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? String(route.params.id) : null)) // an id string, never parsed
 const phase = ref('loading') // loading | waiting-live | live | not-live | executing | prepared | error
 const liveNow = ref(false)
@@ -115,6 +116,7 @@ async function prepare(action) {
     const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action })).data
     if (!readableReply(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
     lastAction.value = action
+    refreshed.value = false
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
@@ -123,15 +125,19 @@ async function prepare(action) {
   }
 }
 
-// ADR-140: "I accept this risk" asks the SERVER again with accept_risk; only its reply carries the basket. Nothing in the
-// browser opens Kite on this click, and no browser flag is ever sent on to Kite.
+// ADR-140 (1): "I accept this risk" hands the SERVER's single-use token (issued for the exact proposal shown) back to it;
+// only its reply carries the basket. If the proposal moved meanwhile the server answers with a new proposal and a new
+// token and no basket: the figures are replaced and the owner is asked again. Nothing in the browser opens Kite on this
+// click, and no browser-made flag is ever sent on to Kite.
 async function acceptRisk() {
-  if (accepting.value || !awaitingAcceptance.value || !liveNow.value || !marketOpen.value) return
+  const token = acknowledgementOf(reply.value)
+  if (accepting.value || !awaitingAcceptance.value || token === null || !liveNow.value || !marketOpen.value) return
   accepting.value = true
   errorParts.value = null
   try {
-    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action: lastAction.value, accept_risk: true })).data
-    if (!readableReply(data) || data.basket == null) throw new Error('unreadable basket') // an acceptance must yield a basket
+    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action: lastAction.value, acknowledgement: token })).data
+    if (!readableReply(data)) throw new Error('unreadable basket')
+    refreshed.value = data.basket == null // a withheld reply again: the proposal changed; show it and ask again
     reply.value = data
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -171,6 +177,7 @@ async function acceptRisk() {
         :data-tier="risk.tier"
         data-testid="execute-risk-line"
       >{{ risk.text }}</p>
+      <p v-if="refreshed && awaitingAcceptance" class="mt-1 text-sm" role="status" data-testid="accept-refreshed">{{ ACCEPT_REFRESHED_NOTE }}</p>
       <button
         v-if="awaitingAcceptance && risk && risk.needsAcceptance"
         type="button"

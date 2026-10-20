@@ -73,8 +73,9 @@ test.describe('Execute screen on the Execute replay API', () => {
     if (reply.cost.charges === null) await expect(page.getByTestId('cost-charges-note')).toHaveText(reply.cost.charges_note)
     else await expect(page.getByTestId('cost-charges')).toHaveText(reply.cost.charges)
     // EXECUTE-REVIEW: the real reply's engine risk block is what the screen shows (one long call: loss = the premium, profit unlimited)
-    expect(reply.review).toEqual({ max_loss: '217.75', max_loss_unlimited: false, max_profit: null, max_profit_unlimited: true })
-    await expect(page.getByTestId('execute-max-loss')).toHaveText('217.75')
+    expect(reply.review).toEqual({ max_loss: '217.75', max_loss_unlimited: false, max_profit: null, max_profit_unlimited: true,
+      max_loss_display: '₹217.75', max_profit_display: null })
+    await expect(page.getByTestId('execute-max-loss')).toHaveText('₹217.75')
     await expect(page.getByTestId('execute-max-profit')).toHaveText('Unlimited')
     await expect(page.getByTestId('execute-ready')).toHaveText('Ready to execute: 1 orders')
     expect(kite).toHaveLength(0) // the reply alone sends nothing to Kite

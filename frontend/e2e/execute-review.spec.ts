@@ -21,7 +21,8 @@ const TWO_BUYS = {
   orders: [order('NIFTY26O1923650CE', 65, '3.35', 'Q0001010'), order('NIFTY26O1924150PE', 75, '29.90', 'Q0001011')],
   cost: { net_premium: '-2460.25', charges: '310.00', charges_note: null, funds_available: '240000.00', margin_required: '110000.00',
     figures_read_at: '2026-10-16T15:07:20+05:30' },
-  review: { max_loss: '5900.00', max_loss_unlimited: false, max_profit: '4100.00', max_profit_unlimited: false },
+  review: { max_loss: '5900.00', max_loss_unlimited: false, max_profit: '4100.00', max_profit_unlimited: false,
+    max_loss_display: '₹5,900.00', max_profit_display: '₹4,100.00' },
 }
 
 test.describe('Execute review reading order', () => {
@@ -57,8 +58,8 @@ test.describe('Execute review reading order', () => {
     await expect(page.getByTestId('margin-label')).toHaveText("planning estimate; Zerodha's figure is authoritative")
     await expect(page.getByTestId('cost-margin')).toHaveText('110000.00')
     await expect(page.getByTestId('cost-funds')).toHaveText('240000.00')
-    await expect(page.getByTestId('execute-max-loss')).toHaveText('5900.00')
-    await expect(page.getByTestId('execute-max-profit')).toHaveText('4100.00')
+    await expect(page.getByTestId('execute-max-loss')).toHaveText('₹5,900.00')
+    await expect(page.getByTestId('execute-max-profit')).toHaveText('₹4,100.00')
     await expect(page.getByTestId('order-seq')).toHaveText(['1', '2'])
     await expect(page.getByTestId('execute-ready')).toHaveText('Ready to execute: 2 orders')
 

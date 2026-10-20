@@ -842,10 +842,17 @@
       "ExecuteIn": {
         "additionalProperties": false,
         "properties": {
-          "accept_risk": {
-            "default": false,
-            "title": "Accept Risk",
-            "type": "boolean"
+          "acknowledgement": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledgement"
           },
           "action": {
             "enum": [
@@ -2082,6 +2089,17 @@
             ],
             "title": "Max Loss"
           },
+          "max_loss_display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Display"
+          },
           "max_loss_unlimited": {
             "title": "Max Loss Unlimited",
             "type": "boolean"
@@ -2097,6 +2115,17 @@
             ],
             "title": "Max Profit"
           },
+          "max_profit_display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Display"
+          },
           "max_profit_unlimited": {
             "title": "Max Profit Unlimited",
             "type": "boolean"
@@ -2106,7 +2135,9 @@
           "max_loss",
           "max_loss_unlimited",
           "max_profit",
-          "max_profit_unlimited"
+          "max_profit_unlimited",
+          "max_loss_display",
+          "max_profit_display"
         ],
         "title": "ReviewOut",
         "type": "object"
@@ -2156,8 +2187,20 @@
       },
       "RiskOut": {
         "additionalProperties": false,
-        "description": "ADR-140 (REQ-056 AC-6): the server's risk tier for the plan's worst-case loss. ``percent_of_funds`` is a\n1-decimal string, None when Zerodha's funds are unknown/zero or the loss is unlimited. ``needs_acceptance`` is\ntrue for EXCEPTIONAL: the reply then carries NO basket until the owner repeats the request with ``accept_risk``.",
+        "description": "ADR-140 (REQ-056 AC-6): the server's risk tier for the plan's worst-case loss. ``percent_of_funds`` is a\n1-decimal string, None when Zerodha's funds are unknown/zero or the loss is unlimited. ``needs_acceptance`` is\ntrue for EXCEPTIONAL: the reply then carries NO basket and ``acknowledgement`` (the Strategy Guard's single-use\ntoken for this exact proposal) until the owner repeats the request carrying that token (ADR-140 (1)).\n``reason`` LOSS_UNKNOWN / UNCOVERED_SHORT: the engine returned no worst case (ADR-143).",
         "properties": {
+          "acknowledgement": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledgement"
+          },
           "needs_acceptance": {
             "title": "Needs Acceptance",
             "type": "boolean"
@@ -2178,7 +2221,9 @@
               {
                 "enum": [
                   "UNLIMITED",
-                  "ABOVE_FUNDS"
+                  "ABOVE_FUNDS",
+                  "LOSS_UNKNOWN",
+                  "UNCOVERED_SHORT"
                 ],
                 "type": "string"
               },
@@ -2202,7 +2247,8 @@
           "tier",
           "percent_of_funds",
           "reason",
-          "needs_acceptance"
+          "needs_acceptance",
+          "acknowledgement"
         ],
         "title": "RiskOut",
         "type": "object"

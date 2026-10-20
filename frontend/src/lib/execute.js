@@ -1,7 +1,8 @@
 // The Execute screen's helpers (W-104; REQ-056 AC-1, REQ-073 AC-1/AC-3; ADR-054, ADR-097 (2), ADR-008). Pure functions.
 // New file (copy from: none - legacy-reuse row 149's BasketOrderModal builds the basket in the browser; ADR-054 wants
 // the server's read-only basket posted byte-for-byte, so nothing of it is copied).
-// The browser computes no money here: every amount is a string from the API, shown as given.
+// The browser computes and formats no money here: every amount is a display string the server wrote with the engine's one
+// money formatter (`*_display` fields), placed as given (ADR-008).
 
 /** localStorage key holding the id of the strategy whose basket the owner last sent to Kite (read by the landing page). */
 export const LAST_EXECUTED_KEY = 'ofo.lastExecutedStrategy'
@@ -89,21 +90,28 @@ export const EVERY_TRADE_NOTE = 'Every trade follows a strategy'
 /** Guided level's gloss of the order type (shared rules: "LIMIT (price you set)"). */
 export const LIMIT_GLOSS = 'LIMIT (price you set)'
 
+/** ADR-143 (owner 2026-10-20): the risk line when the engine returned no worst-case loss, character for character. */
+export const LOSS_UNKNOWN_LINE = "Worst case: the loss for this strategy can't be estimated."
+/** Shown when the server answered an acceptance with a NEW proposal (prices or figures moved, so the earlier token no longer fits). */
+export const ACCEPT_REFRESHED_NOTE = 'The figures changed since you last looked. Check them, then accept again.'
+
+/** A review amount as the server wrote it: "Unlimited" when its flag is set, "-" when the server stated none. `side` is
+ *  "profit" or "loss". The text is the server's `max_<side>_display`; nothing is formatted here. */
+export function reviewLine(review, side) {
+  if (review?.[`max_${side}_unlimited`]) return 'Unlimited'
+  const shown = review?.[`max_${side}_display`]
+  return typeof shown === 'string' && shown !== '' ? shown : '-'
+}
+
+/** The server's single-use guard token on a withheld EXCEPTIONAL reply, or null. It is handed back unchanged. */
+export function acknowledgementOf(reply) {
+  const token = reply?.risk?.acknowledgement
+  return typeof token === 'string' && token !== '' ? token : null
+}
+
 /** "Ready to execute: <n> orders": the count is the server's own order list. */
 export function readyText(reply) {
   return `Ready to execute: ${reply.orders.length} orders`
-}
-
-/** A server money string ("240000.00") as rupees with Indian digit grouping ("₹2,40,000.00"). String work only: the
- *  figure is never parsed into a number (ADR-008). A string that is not a plain decimal is returned untouched after ₹. */
-export function rupees(amount) {
-  const m = /^(-?)(\d+)(\.\d+)?$/.exec(String(amount))
-  if (!m) return `₹${amount}`
-  const [, sign, whole, frac = ''] = m
-  const last3 = whole.slice(-3)
-  const rest = whole.slice(0, -3)
-  const head = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''
-  return `${sign}₹${head}${last3}${frac}`
 }
 
 const countText = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
@@ -130,8 +138,8 @@ export function planSentence(reply, action = 'ENTRY') {
   }
   const head = `You will place ${countText(n, 'order')} now (${buys} buy, ${sells} sell); worst case loss`
   if (review?.max_loss_unlimited) return `${head} is unlimited.`
-  if (typeof review?.max_loss !== 'string' || review.max_loss === '') return null
-  return `${head} ${rupees(review.max_loss)}.`
+  if (typeof review?.max_loss_display !== 'string' || review.max_loss_display === '') return null
+  return `${head} ${review.max_loss_display}.`
 }
 
 /** The risk line (ADR-140; REQ-056 AC-6), from the server's `risk` block only: the tier and the percentage are the
@@ -140,24 +148,28 @@ export function riskLine(reply) {
   const risk = reply?.risk
   if (!risk || typeof risk !== 'object') return null
   const { tier, percent_of_funds: pct, reason } = risk
+  if ((reason === 'LOSS_UNKNOWN' && tier === 'ELEVATED') || (reason === 'UNCOVERED_SHORT' && tier === 'EXCEPTIONAL')) {
+    return { tier, text: LOSS_UNKNOWN_LINE, needsAcceptance: tier === 'EXCEPTIONAL' } // ADR-143
+  }
   if (tier === 'EXCEPTIONAL') {
     if (reason === 'UNLIMITED') return { tier, text: 'This strategy has no limit on its loss', needsAcceptance: true }
     if (reason === 'ABOVE_FUNDS') return { tier, text: 'This strategy can lose more than your available funds', needsAcceptance: true }
     return null
   }
-  const loss = reply.review?.max_loss
+  const loss = reply.review?.max_loss_display
   if ((tier !== 'NORMAL' && tier !== 'ELEVATED') || typeof loss !== 'string' || loss === '') return null
-  const base = `Worst case: you could lose ${rupees(loss)}`
+  const base = `Worst case: you could lose ${loss}`
   if (typeof pct !== 'string' || pct === '') return { tier, text: `${base}.`, needsAcceptance: false }
   const text = tier === 'NORMAL' ? `${base} (${pct}% of your available funds).` : `${base} - ${pct}% of your available funds.`
   return { tier, text, needsAcceptance: false }
 }
 
 /** True when the screen may show the reply: a basket the form can post, or no basket because the server is waiting for the
- *  owner's acceptance of an EXCEPTIONAL risk (nothing stored, nothing to post until accepted). */
+ *  owner's acceptance of an EXCEPTIONAL risk (nothing stored, nothing to post until the token it issued comes back). */
 export function readableReply(reply) {
   if (basketFields(reply)) return true
-  return reply?.basket == null && riskLine(reply)?.needsAcceptance === true && reply.risk.needs_acceptance === true
+  return reply?.basket == null && riskLine(reply)?.needsAcceptance === true && reply.risk.needs_acceptance === true &&
+    acknowledgementOf(reply) !== null // nothing to post and nothing to accept with -> not a reply this screen can act on
 }
 
 /** The order type as shown: Guided adds the gloss; every other level shows the server's word. */

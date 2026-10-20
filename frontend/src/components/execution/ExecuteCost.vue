@@ -3,8 +3,8 @@
      profit, then the net premium. Every value is the string the API gave: no amount is parsed, added or rounded here.
      Charges absent -> the server's own note is shown instead of a number. Funds and margin are Zerodha's figures. -->
 <script setup>
-import { istTime, maxLine } from '@/lib/displayFormat'
-import { MARGIN_ESTIMATE_LABEL, NOT_READ } from '@/lib/execute'
+import { istTime } from '@/lib/displayFormat'
+import { MARGIN_ESTIMATE_LABEL, NOT_READ, reviewLine } from '@/lib/execute'
 
 defineProps({ cost: { type: Object, required: true }, review: { type: Object, default: null } })
 </script>
@@ -22,8 +22,8 @@ defineProps({ cost: { type: Object, required: true }, review: { type: Object, de
       <dt>Figures read at</dt><dd data-testid="cost-read-at">{{ istTime(cost.figures_read_at) }}</dd>
     </dl>
     <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1" data-testid="execute-risk">
-      <dt>Max loss</dt><dd data-testid="execute-max-loss">{{ maxLine(review, 'loss') }}</dd>
-      <dt>Max profit</dt><dd data-testid="execute-max-profit">{{ maxLine(review, 'profit') }}</dd>
+      <dt>Max loss</dt><dd data-testid="execute-max-loss">{{ reviewLine(review, 'loss') }}</dd>
+      <dt>Max profit</dt><dd data-testid="execute-max-profit">{{ reviewLine(review, 'profit') }}</dd>
       <dt>Net premium (minus = paid)</dt><dd data-testid="cost-net-premium">{{ cost.net_premium }}</dd>
     </dl>
   </div>
