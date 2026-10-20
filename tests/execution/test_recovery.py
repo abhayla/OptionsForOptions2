@@ -351,3 +351,33 @@ def test_recovery_basket_goes_through_the_shared_gate_market_closed(catalogue, e
     assert CheckCode.MARKET_CLOSED in closed.failed_codes
     opened = recovery_gate(legs, all_true_context(), catalogue, eligibility, strategy_id="S-1")
     assert CheckCode.MARKET_CLOSED not in opened.failed_codes
+
+
+# ---- 6. Route wiring (#380-3 item 1): a recovery basket is a NEW plan number -----------------------------------------
+
+def test_second_place_press_never_re_places_what_the_first_basket_filled() -> None:
+    """Threat "a second order for an open leg" across presses: Place missing legs went out as plan 2 (OFS9V2L0) and
+    filled; plan 1's sell is still REJECTED. Counting only plan 1 would build SELL 65 again (double short). Dies if
+    ``_fills`` reads one plan version only."""
+    rows = [*adr136_rows(), row(SYMBOLS[2], "SELL", "COMPLETE", LOT, "OFS9V2L0")]
+    out = place(read(rows))
+    assert (out.refusal, out.legs) == (Refusal.NOT_PARTIAL, ())
+
+
+def test_place_missing_refused_once_a_later_plan_started_closing() -> None:
+    """Close filled legs step 1 (OFS9V2L0 BUY 23000 PE) completed: the strategy is being closed, never completed."""
+    rows = [*adr136_rows(), row(SYMBOLS[1], "BUY", "COMPLETE", LOT, "OFS9V2L0")]
+    out = place(read(rows, net={SYMBOLS[0]: LOT, SYMBOLS[3]: LOT}))
+    assert (out.refusal, out.contracts, out.legs) == (Refusal.CLOSING, (SYMBOLS[1],), ())
+
+
+def test_base_plan_tag_on_the_other_side_is_still_ambiguous() -> None:
+    rows = [*adr136_rows(), row(SYMBOLS[0], "SELL", "COMPLETE", LOT, "OFS9V1L9")]
+    assert place(read(rows)).refusal is Refusal.AMBIGUOUS
+
+
+def test_an_older_plan_is_not_read() -> None:
+    """Scope plan 1 ignores plan 0 tags (none exist in practice); a stray older fill never counts as this entry's."""
+    rows = [*adr136_rows(), row(SYMBOLS[2], "SELL", "COMPLETE", LOT, "OFS9V0L2")]
+    out = place(read(rows))
+    assert out.legs == (RecoveryLeg("L2", SYMBOLS[2], SELL, LOT),)

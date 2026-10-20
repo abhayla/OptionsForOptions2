@@ -74,6 +74,7 @@ class Refusal(Enum):
     NOTHING_TO_CLOSE = "nothing_to_close"
     BLOCKED = "reconciliation_blocked"  # ADR-120 (2)
     NOT_BLOCKED = "not_blocked"
+    CLOSING = "closing_started"  # a later plan of ours already sells/buys back a filled leg: never "place missing"
     GATE = "gate"  # the shared gate refused (market hours, kill switch, data, ...)
 
 
@@ -178,24 +179,34 @@ class _Fills:
     filled: dict[str, int]  # planned contract -> units our ENTRY orders filled (the plan's side)
     open_entries: tuple[str, ...]  # contracts with one of our entry orders still open
     open_any: frozenset[str]  # every contract with ANY open order, whatever its tag (ADR-136 (2))
+    closing: frozenset[str] = frozenset()  # contracts a LATER plan of ours trades on the closing side
 
 
 def _fills(plan: ExecutionPlan, orders: tuple[ZerodhaOrder, ...], strategy_number: int,
            plan_version: int) -> _Fills | Refusal:
+    """Our orders of ``plan_version`` AND of every later plan (a Place missing legs basket is a new plan number, so
+    its fills count towards the same planned legs: a second press never re-places what the first one filled). A later
+    plan's order on the opposite side is a close (``closing``); on the base plan it is ambiguous."""
     filled = {p.contract: 0 for p in plan.legs}
     tags: set[str] = set()
     open_entries: list[str] = []
+    closing: set[str] = set()
     for order in orders:
-        if not _ours(order, strategy_number) or parse_tag(order.tag).plan_version != plan_version:
+        if not _ours(order, strategy_number) or parse_tag(order.tag).plan_version < plan_version:
             continue
         planned = plan.by_contract(order.contract)
-        if order.tag in tags or planned is None or order.side is not planned.leg.action:
-            return Refusal.AMBIGUOUS  # a tag twice, or our entry tag on a contract/side the plan does not have
+        if order.tag in tags or planned is None:
+            return Refusal.AMBIGUOUS  # a tag twice, or our tag on a contract the plan does not have
         tags.add(order.tag)
+        if order.side is not planned.leg.action:
+            if parse_tag(order.tag).plan_version == plan_version:
+                return Refusal.AMBIGUOUS  # the base plan's own tag on the other side
+            closing.add(order.contract)
+            continue
         filled[order.contract] += order.filled_quantity
         if order.is_open:
             open_entries.append(order.contract)
-    return _Fills(filled, tuple(open_entries), frozenset(o.contract for o in orders if o.is_open))
+    return _Fills(filled, tuple(open_entries), frozenset(o.contract for o in orders if o.is_open), frozenset(closing))
 
 
 def _lot(plan_leg: PlannedLeg, lot_sizes: Mapping[str, int]) -> int:
@@ -271,6 +282,8 @@ def missing_legs(plan: ExecutionPlan, read: ZerodhaRead, scope: Scope) -> Outcom
     filled = fills.filled
     if not any(filled.values()) or all(filled[p.contract] >= p.leg.quantity for p in plan.legs):
         return Outcome(action, refusal=Refusal.NOT_PARTIAL)
+    if fills.closing:
+        return Outcome(action, refusal=Refusal.CLOSING, contracts=tuple(sorted(fills.closing)))
     legs = _missing(plan, fills, scope.lot_sizes)
     if isinstance(legs, Outcome) or not legs:
         return legs or Outcome(action, refusal=Refusal.NOTHING_TO_PLACE)
