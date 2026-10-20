@@ -58,6 +58,7 @@ from ofo.execution.context import (
     ExecutionAction,
     ExecutionContext,
     VersionState,
+    ZerodhaNow,
     active_legs_hash,
     product_key,
 )
@@ -279,6 +280,30 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+    # #380-3: a recovery action's decision (routes/recovery.py), called once the book and the plans are read; None =
+    # the plain Execute press. It reads Zerodha itself and returns the basket's legs, never a caller's verdict.
+    decide: Optional[Callable[..., Any]] = None  # noqa: UP045
+
+
+class Declined(Exception):
+    """#380-3: a recovery action builds nothing; ``refusal`` names why, ``line`` is its ADR-142 line (or None)."""
+
+    def __init__(self, refusal: str, line: Any = None) -> None:
+        super().__init__(refusal)
+        self.refusal, self.line = refusal, line
+
+
+@dataclass(frozen=True)
+class Recovery:
+    """#380-3: what a recovery decision hands the one pipeline: the version state, the legs to price, Zerodha's
+    positions and blocked ids from the ONE reconciler (read for the decision, not read twice), and Zerodha's position
+    at the click for the gate's narrow blocked-exit rule (None everywhere but Close via a basket)."""
+
+    state: VersionState
+    legs: list[ep.LegToPrice]
+    positions: PositionsRead | None
+    blocked_ids: frozenset[str] | None
+    zerodha_now: ZerodhaNow | None = None
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -317,6 +342,8 @@ async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     except (KiteReadError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
     if still_open:
+        if req.decide is not None:  # ADR-142 (1): never a second order for a leg still open
+            raise Declined("order_open", render_explanation("recovery_order_open"))
         raise _refuse("gate_dependencies_unsatisfied")
     try:
         return await plans.next_plan_number(req.db, req.user_ref, req.strategy_id, floor=floor), book
@@ -376,14 +403,18 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     units = ep.held_units(history)
     if _plan_drift(req, history, order_rows):  # W-107: before any other refusal, so the owner sees the true reason
         raise _refuse("gate_reconciliation_mismatch")
-    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history, order_rows)
     catalogue = await load_catalogue(req.db)
+    rec: Recovery | None = None
+    if req.decide is not None:
+        rec = await req.decide(req, history, order_rows, catalogue)
+    state = rec.state if rec is not None else _executable(req.action, units)
+    held = _Held(units, state, ep.latest_filled_plan(history), history, order_rows)
     underlying = stored.saved.definition.underlying
     try:
-        wanted = await _wanted(req, stored, units)
+        wanted = rec.legs if rec is not None else await _wanted(req, stored, units)
         quote_of = await _banded(req, wanted, catalogue)
         priced = ep.price_legs(str(req.strategy_id), underlying, wanted, catalogue, quote_of)
-        context, figures = await _context(req, stored, priced, held, catalogue)
+        context, figures = await _context(req, stored, priced, held, catalogue, rec)
     except ep.LegRefused as refused:
         raise _refuse_with(refused.message) from None
     except (KeyError, ValueError):  # a contract the catalogue cannot resolve: the catalogue refusal, never a 500
@@ -595,12 +626,13 @@ def _exit_fields(sid: str, held: _Held, priced: ep.PricedPlan, positions: Positi
             "exit_products": {product_key(leg): BASKET_PRODUCT for leg in priced.strategy.legs}}
 
 
-async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Held,
-                   catalogue: Any) -> tuple[ExecutionContext, Figures]:
+async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Held,  # noqa: PLR0913
+                   catalogue: Any, rec: Recovery | None = None) -> tuple[ExecutionContext, Figures]:
     sid, underlying = str(req.strategy_id), stored.saved.definition.underlying
     available, required = await _zerodha_margin(req, priced, catalogue)
     figures = Figures(available, required, req.clock())  # the same one read, shown in the reply (W-102)
-    positions, blocked_ids = await _reconcile(req, held, catalogue)
+    positions, blocked_ids = ((rec.positions, rec.blocked_ids) if rec is not None
+                              else await _reconcile(req, held, catalogue))
     is_exit = req.action == EXIT
     db_now = await elig.database_now(req.db)  # the clock that stamped the grants and the list load (ADR-023)
     return ExecutionContext(
@@ -617,10 +649,35 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
         margin_available=available, margin_required=required,
         reconciliation_blocked_strategy_ids=blocked_ids,
         price_bands=priced.price_bands,
+        zerodha_now=None if rec is None else rec.zerodha_now,
         **(_exit_fields(sid, held, priced, positions, catalogue) if is_exit else _NO_ACTIVE_LEGS),
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
-           "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
-           "price_and_time"]
+#: #380-3: the one pipeline and its request, for the recovery route (routes/recovery.py); never a second copy
+PipelineRequest = _Request
+run_pipeline = _execute
+refuse = _refuse
+instrument_of = _iid
+
+__all__ = [
+    "BASKET_PRODUCT",
+    "CostOut",
+    "Declined",
+    "ExecuteIn",
+    "ExecuteOut",
+    "Figures",
+    "LiveDepthQuotes",
+    "PipelineRequest",
+    "Recovery",
+    "cost_out",
+    "get_execute_clock",
+    "get_kite_session",
+    "get_quote_reader",
+    "held_products",
+    "instrument_of",
+    "market_open",
+    "price_and_time",
+    "refuse",
+    "run_pipeline",
+]

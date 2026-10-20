@@ -1291,6 +1291,79 @@
         "title": "PreferencesOut",
         "type": "object"
       },
+      "RecoveryIn": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "place_missing_legs",
+              "close_filled_legs",
+              "close_via_basket"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "RecoveryIn",
+        "type": "object"
+      },
+      "RecoveryOut": {
+        "additionalProperties": false,
+        "description": "Either the basket (the Execute reply, the plan stored) or the refusal and its ADR-142 line (nothing stored).",
+        "properties": {
+          "action": {
+            "enum": [
+              "place_missing_legs",
+              "close_filled_legs",
+              "close_via_basket"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "execute": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecuteOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          }
+        },
+        "required": [
+          "action",
+          "refusal",
+          "line",
+          "execute"
+        ],
+        "title": "RecoveryOut",
+        "type": "object"
+      },
       "RefusalOut": {
         "additionalProperties": false,
         "description": "The reviewed catalogue message (four parts) for one refusal code: what /broker/refused shows (#163).",
@@ -3136,6 +3209,56 @@
           }
         },
         "summary": "Strategy History"
+      }
+    },
+    "/strategies/{strategy_id}/recovery": {
+      "post": {
+        "description": "Place missing legs builds an ENTRY basket of the missing legs only; both closes build an EXIT basket (shorts\nfirst). A refusal rolls everything back: nothing stored, no plan number consumed.",
+        "operationId": "recover_strategies__strategy_id__recovery_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recover"
       }
     },
     "/strategies/{strategy_id}/restore/{seq}": {

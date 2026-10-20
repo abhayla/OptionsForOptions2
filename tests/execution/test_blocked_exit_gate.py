@@ -1,4 +1,5 @@
-"""#380-3, ADR-137 (3): the ONE narrow blocked-exit rule inside ``check_pre_execution`` (``safety._blocked_exit_allowed``).
+"""#380-3, ADR-137 (3): the ONE narrow blocked-exit rule inside ``check_pre_execution``
+(``safety._blocked_exit_allowed``).
 
 A reconciliation-blocked strategy refuses every action, except an EXIT basket whose every order (a) is the opposite side
 of what Zerodha shows NOW for that contract, (b) is at most Zerodha's absolute net there, (c) has no open order on that

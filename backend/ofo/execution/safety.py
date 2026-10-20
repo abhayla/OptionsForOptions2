@@ -372,6 +372,11 @@ def _blocked_exit_allowed(strategy: Strategy, ctx: ExecutionContext) -> bool:
             return False  # (d) a short is still open: the buy-backs go first
     elif sides != {Action.BUY}:
         return False  # (d) mixed (or an unknown side)
+    return _orders_close_zerodha(strategy, now)
+
+
+def _orders_close_zerodha(strategy: Strategy, now: ZerodhaNow) -> bool:
+    """(a)-(c) of ``_blocked_exit_allowed``, per order; an unresolved contract (absent from the read) is False."""
     totals: dict[tuple, int] = {}
     for leg in strategy.legs:
         key = product_key(leg)

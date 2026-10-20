@@ -270,8 +270,8 @@ def test_the_app_models_are_all_swept() -> None:
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
         "BasketOrderOut", "ExecuteOut", "CostOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut",
-        "ReturnOut"}
-    assert len(_app_models()) == 37  # W-102 adds CostOut (the Execute reply's cost)
+        "ReturnOut", "RecoveryOut"}
+    assert len(_app_models()) == 38  # #380-3 adds RecoveryOut (the recovery route's reply)
 
 
 @pytest.mark.parametrize("required_only", [False, True])

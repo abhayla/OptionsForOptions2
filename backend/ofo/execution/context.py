@@ -139,13 +139,13 @@ def _optional_decimal(value: object, name: str) -> None:
 
 @dataclass(frozen=True)
 class ZerodhaNow:
-    """#380-3, ADR-137 (3): Zerodha's position on a blocked strategy's contracts, read at the click, for the ONE narrow
-    blocked-exit rule in the gate (``safety._blocked_exit_allowed``).
+    """#380-3, ADR-137 (3): Zerodha's position on a blocked strategy's contracts, read at the click, for the ONE
+    narrow blocked-exit rule in the gate (``safety._blocked_exit_allowed``).
 
     ``net``: Zerodha's signed net units per ``product_key`` for EVERY contract of the strategy's plans (a contract
     Zerodha shows flat is present with 0, never absent: an absent key is a contract the read did not resolve and fails
-    closed). ``open_orders``: the keys with ANY open order at Zerodha, whatever its tag. ``read_at``: the route clock read
-    AFTER both replies came back (finding freshness-judged-on-request-start-clock)."""
+    closed). ``open_orders``: the keys with ANY open order at Zerodha, whatever its tag. ``read_at``: the route clock
+    read AFTER both replies came back (finding freshness-judged-on-request-start-clock)."""
 
     net: Mapping[tuple, int]
     open_orders: frozenset[tuple]
