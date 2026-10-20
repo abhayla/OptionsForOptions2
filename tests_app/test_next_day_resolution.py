@@ -440,9 +440,11 @@ def test_ac6_store_contract_key_admits_the_apps_real_instrument_id():
             rs._contract_key(bad, rs.BAD_MISMATCH)
 
 
-def test_ac6_two_contract_plan_records_only_the_unsettled_contract():
-    """AC-6: a derived two-leg earlier-day ENTRY (BUY 65 on the real 23650 CE, BUY 65 on 23700 CE); Zerodha flat on
-    23650 (= base) and +65 on 23700 -> one mismatch, on 23700 only (expected 0, Zerodha 65); the plan is unresolved."""
+def test_ac6_two_contract_plan_records_a_mismatch_on_both_contracts():
+    """AC-6, F-55: a derived two-leg earlier-day ENTRY (BUY 65 on the real 23650 CE, BUY 65 on 23700 CE); Zerodha flat
+    on 23650 (= base) and +65 on 23700 -> a mismatch on BOTH contracts: 23650 because a net equal to the base cannot
+    rule out a fill sold by hand (expected 65 = base + planned, Zerodha 0), 23700 because the net changed (expected 0,
+    Zerodha 65); the plan is unresolved."""
     real = _listed()
     other_token = (int(TOKEN) >> 8) + 2
     other = zerodha_listed(

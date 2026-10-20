@@ -146,8 +146,7 @@ UNSETTLED_MIXED_SIDES = "plan_sides_mixed"
 #: contract's row is gone; ``day_*`` quantities restart; ``overnight_quantity`` is the carried net itself), so a plan
 #: filled and sold by hand the same day cannot be ruled out (registry net-only-read-misses-roundtrip, F-55).
 UNSETTLED_ROUNDTRIP_UNREAD = "roundtrip_not_ruled_out"
-#: The earlier-day outcomes (``EarlierDay.outcome``): the two close reasons of ``execution_plan_store``.
-EARLIER_NOTHING_PLACED = "nothing_placed"
+#: The earlier-day outcome (``EarlierDay.outcome``): always this close reason of ``execution_plan_store`` (F-55).
 EARLIER_UNRESOLVED = execution_plan_store.UNRESOLVED
 
 
@@ -244,9 +243,8 @@ class EarlierDayContract:
     """One contract an earlier-day open plan touches. ``expected_units``: what every strategy's stored fills plus the
     standalone say Zerodha holds WITHOUT this plan (the base: this strategy's other plans included). ``zerodha_units``:
     Zerodha's net as read. ``planned_units``: the plan's orders, signed, had they filled in full; ``gross_units``:
-    their quantities, unsigned. ``reason``: None
-    when the contract shows the plan changed nothing, else an ``UNSETTLED_*`` value. ``instrument_ids``: the plan's
-    stored ids on this contract, sorted."""
+    their quantities, unsigned. ``reason``: the ``UNSETTLED_*`` value (``decide_earlier_day`` sets one on every
+    contract, F-55). ``instrument_ids``: the plan's stored ids on this contract, sorted."""
 
     key: ContractKey
     instrument_ids: tuple[str, ...]
@@ -260,8 +258,8 @@ class EarlierDayContract:
 
 @dataclass(frozen=True)
 class EarlierDay:
-    """The decision for one earlier-day open plan: ``outcome`` is ``EARLIER_NOTHING_PLACED`` only when EVERY contract
-    it touches has no reason (the allow-list); anything else is ``EARLIER_UNRESOLVED``."""
+    """The decision for one earlier-day open plan: ``outcome`` is always ``EARLIER_UNRESOLVED`` (F-55: the next-day
+    net cannot rule out a fill sold by hand the same day), and every contract carries an ``UNSETTLED_*`` reason."""
 
     strategy_id: int
     plan_number: int
@@ -308,9 +306,8 @@ def decide_earlier_day(  # noqa: PLR0913 every input is a separately read fact
     """#352-1, ADR-109 (2), ADR-111, F-55: Zerodha's next-day reply shows only the net, and a net equal to
     ``expected`` (the base without this plan) cannot rule out a fill sold by hand the same day, so the plan is
     ``unresolved_from_positions`` on every path (a contract expired at ``at``, shared, held elsewhere, mixed sides,
-    changed net, or net equal to the base). The ``nothing_placed`` outcome is kept only as a constant. Never
-    ``filled`` or ``exited``: never ``filled`` or ``exited`` (the next-day net cannot tell the plan's
-    fills from outside lots or a hand close on Kite)."""
+    changed net, or net equal to the base), never ``nothing_placed``. Never ``filled`` or ``exited`` either (the
+    next-day net cannot tell the plan's fills from outside lots or a hand close on Kite)."""
     by_key: dict[ContractKey, list[PlanOrder]] = {}
     for order in plan.orders:
         by_key.setdefault(instrument_key(catalogue, order.instrument_id, underlying), []).append(order)
@@ -754,7 +751,7 @@ def holders(known: Mapping[str, Mapping[ContractKey, int]], key: ContractKey) ->
     return tuple(sorted(int(sid) for sid, units in known.items() if units.get(key)))
 
 
-__all__ = ["EARLIER_NOTHING_PLACED", "EARLIER_UNRESOLVED", "PENDING_ABSENT", "PENDING_CLOSED_DRIFTED",
+__all__ = ["EARLIER_UNRESOLVED", "PENDING_ABSENT", "PENDING_CLOSED_DRIFTED",
            "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL", "PENDING_ROW_DIFFERS", "UNSETTLED_EXPIRED",
            "UNSETTLED_HELD_ELSEWHERE", "UNSETTLED_MIXED_SIDES", "UNSETTLED_NET_CHANGED", "UNSETTLED_SHARED", "Account",
            "Attribution", "AttributionError", "EarlierDay", "EarlierDayContract", "OrderRow", "Pending", "Sources",
