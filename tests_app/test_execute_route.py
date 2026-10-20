@@ -761,7 +761,7 @@ def test_review_out_an_exit_and_a_multi_expiry_strategy_are_unknown_never_zero()
     assert _review_body([near, far]) == unknown
 
 
-# ---- EXECUTE-REVIEW fix round 2 (ADR-140 (1), ADR-143): an EXCEPTIONAL basket needs THIS proposal's guard token ---------
+# ---- EXECUTE-REVIEW fix round 2 (ADR-140 (1), ADR-143): an EXCEPTIONAL basket needs this proposal's guard token ---
 
 def _unlimited_review(monkeypatch, route) -> None:
     """Make the engine's review say 'unlimited loss' for the real one-leg entry: the only way to reach an EXCEPTIONAL
@@ -827,15 +827,15 @@ async def test_exceptional_basket_reaches_kite_only_through_the_guard_token(app_
 
             _unlimited_review(monkeypatch, route)
             # a bare accept cannot even be sent: the field does not exist
-            bare = await _post_with(app, sid, {"action": "ENTRY", "accept_risk": True})
-            assert bare.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+            refused = (await _post_with(app, sid, {"action": "ENTRY", "accept_risk": True})).status_code
+            assert refused == HTTPStatus.UNPROCESSABLE_ENTITY
 
             first = await _post_with(app, sid, {"action": "ENTRY"})
             assert first.status_code == HTTPStatus.OK, first.text
             asked = first.json()
-            assert asked["basket"] is None and asked["risk"]["tier"] == "EXCEPTIONAL"
             token = asked["risk"]["acknowledgement"]
-            assert asked["risk"]["needs_acceptance"] is True and isinstance(token, str) and token
+            assert (asked["basket"], asked["risk"]["tier"], asked["risk"]["needs_acceptance"]) == (None, "EXCEPTIONAL", True)
+            assert isinstance(token, str) and token
             assert await _numbers(conn, user, sid) == [1]  # only the closed ELEVATED plan: nothing stored
 
             forged = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": token[:-1] + "_"})

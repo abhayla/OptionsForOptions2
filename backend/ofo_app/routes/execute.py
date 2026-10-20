@@ -669,7 +669,7 @@ def _risk_binding(req: _Request, stored: Any, orders: Any, review: ReviewOut, ri
 
 def _redeemed(req: _Request, binding: GuardBinding) -> bool:
     """True only when the request carries the token the guard issued for exactly this binding (single use). No token,
-    a forged one, another proposal's, or a reused one -> False; the caller then issues a fresh token, storing nothing."""
+    a forged one, another proposal's, or a reused one -> False; the caller then issues a fresh token and stores none."""
     if req.acknowledgement is None:
         return False
     try:
