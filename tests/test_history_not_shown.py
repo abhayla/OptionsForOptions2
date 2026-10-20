@@ -135,37 +135,67 @@ def _arg(node: ast.Call, pos: int, *kws: str) -> ast.AST | None:
     return next((k.value for k in node.keywords if k.arg in kws), None)
 
 
+def _is_none_constant(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
+
+
+def _unreadable_args(node: ast.Call, dotted: str) -> bool:
+    """True when a call's arguments cannot be read statically (not a checked importer, starred, or ``**kw``)."""
+    return (dotted not in LITERAL_CHECKED or any(isinstance(a, ast.Starred) for a in node.args)
+            or any(k.arg is None for k in node.keywords))
+
+
+def _package_problem(node: ast.Call, dotted: str) -> tuple[str | None, str | None]:
+    """(package, problem) for ``import_module`` / ``__import__``: a non-literal package or level is a problem."""
+    if dotted.endswith("import_module"):
+        pkg_node = _arg(node, 1, "package")
+        package = _str_value(pkg_node)
+        bad = pkg_node is not None and package is None and not _is_none_constant(pkg_node)
+        return package, ("non-literal package in" if bad else None)
+    if dotted.endswith("__import__"):
+        level = _arg(node, 4, "level")
+        bad = level is not None and not (isinstance(level, ast.Constant) and level.value == 0)
+        return None, ("relative or non-literal level in" if bad else None)
+    return None, None
+
+
+def _fromlist_names(node: ast.Call, dotted: str, base: str) -> list[str] | None:
+    """The module names a ``__import__`` fromlist adds to ``base``; None when it is not a literal list of strings."""
+    fromlist = _arg(node, 3, "fromlist") if dotted.endswith("__import__") else None
+    if fromlist is None:
+        return []
+    items = fromlist.elts if isinstance(fromlist, (ast.List, ast.Tuple)) else None
+    if items is None or not all(_str_value(i) is not None for i in items):
+        return None
+    return [f"{base}.{_str_value(i)}" for i in items]
+
+
+def _module_base(node: ast.Call, dotted: str) -> tuple[str | None, str]:
+    """(absolute module name, "") when the call names its module by literals; else (None, why not)."""
+    if _unreadable_args(node, dotted):
+        return None, "unresolvable"
+    name = _str_value(_arg(node, 0, "name", "mod_name", "module_name"))
+    if name is None:
+        return None, "non-literal"
+    package, problem = _package_problem(node, dotted)
+    if problem:
+        return None, problem
+    base = _absolute(name, package)
+    return (base, "") if base is not None else (None, "unresolvable relative name in")
+
+
 def _dynamic_call_hits(node: ast.Call, dotted: str) -> list[str]:
     """A dynamic import is read only when its module name (and fromlist/package/level) are literals; else flagged."""
     line = f"{dotted}() at line {node.lineno}"
     if dotted in PATH_LOADERS:
         return [f"path-loader {line}"]
-    if dotted not in LITERAL_CHECKED or any(isinstance(a, ast.Starred) for a in node.args)             or any(k.arg is None for k in node.keywords):
-        return [f"unresolvable {line}"]
-    name = _str_value(_arg(node, 0, "name", "mod_name", "module_name"))
-    if name is None:
-        return [f"non-literal {line}"]
-    package = None
-    if dotted.endswith("import_module"):
-        pkg_node = _arg(node, 1, "package")
-        package = _str_value(pkg_node)
-        if pkg_node is not None and package is None and not (isinstance(pkg_node, ast.Constant) and pkg_node.value is None):
-            return [f"non-literal package in {line}"]
-    elif dotted.endswith("__import__"):
-        level = _arg(node, 4, "level")
-        if level is not None and not (isinstance(level, ast.Constant) and level.value == 0):
-            return [f"relative or non-literal level in {line}"]
-    base = _absolute(name, package)
+    base, problem = _module_base(node, dotted)
     if base is None:
-        return [f"unresolvable relative name in {line}"]
-    names = [base]
-    fromlist = _arg(node, 3, "fromlist") if dotted.endswith("__import__") else None
-    if fromlist is not None:
-        items = fromlist.elts if isinstance(fromlist, (ast.List, ast.Tuple)) else None
-        if items is None or not all(_str_value(i) is not None for i in items):
-            return [f"non-literal fromlist in {line}"]
-        names += [f"{base}.{_str_value(i)}" for i in items]
-    hit = next((n for n in names if _is_history(n)), None)
+        return [f"{problem} {line}"]
+    more = _fromlist_names(node, dotted, base)
+    if more is None:
+        return [f"non-literal fromlist in {line}"]
+    hit = next((n for n in [base, *more] if _is_history(n)), None)
     return [f"{dotted}({hit!r})"] if hit else []
 
 
@@ -186,7 +216,8 @@ def _dynamic_hits(tree: ast.AST, aliases: dict[str, str]) -> list[str]:
         if isinstance(node, (ast.Name, ast.Attribute)) and id(node) not in inner:
             if _is_dynamic(_resolve(node, aliases)):
                 hits.append(f"reference to {_resolve(node, aliases)} (not a direct call) at line {node.lineno}")
-        elif isinstance(node, ast.ImportFrom) and not node.level and node.module in STAR_SOURCES                 and any(a.name == "*" for a in node.names):
+        elif (isinstance(node, ast.ImportFrom) and not node.level and node.module in STAR_SOURCES
+              and any(a.name == "*" for a in node.names)):
             hits.append(f"star import from {node.module} at line {node.lineno}")
     return hits
 
@@ -221,10 +252,9 @@ def disallowed(found: dict[str, list[str]], allowed: frozenset[str]) -> dict[str
     for m, h in found.items():
         if m in allowed:
             continue
-        if m.startswith(PATH_LOADER_FOLDERS):
-            h = [x for x in h if not x.startswith("path-loader ")]
-        if h:
-            out[m] = h
+        kept = [x for x in h if not x.startswith("path-loader ")] if m.startswith(PATH_LOADER_FOLDERS) else h
+        if kept:
+            out[m] = kept
     return out
 
 
@@ -366,7 +396,7 @@ def test_the_frontend_scan_flags_planted_pages_and_passes_normal_code(tmp_path):
     "__import__('ofo_app', fromlist=names)\n",                                               # computed fromlist
     "__import__('ofo_app', level=1)\n",
     "from importlib import *\n",
-    "import importlib.util\nimportlib.util.spec_from_file_location('m', p)\n",               # path loader outside Alembic
+    "import importlib.util\nimportlib.util.spec_from_file_location('m', p)\n",  # path loader outside Alembic
 ])
 def test_the_backend_scan_flags_every_dynamic_import_shape(source):
     assert import_hits(source, "ofo_app.routes.planted"), source
@@ -374,8 +404,8 @@ def test_the_backend_scan_flags_every_dynamic_import_shape(source):
 
 
 @pytest.mark.parametrize("source", [
-    "def im(x):\n    return x\nim('ofo_app.kite_history')\n",             # same name, not from importlib: not a dynamic import
-    "import importlib\nimportlib.import_module('ofo_app.kite_reads')\n",   # resolvable, not a history module
+    "def im(x):\n    return x\nim('ofo_app.kite_history')\n",  # same name, not from importlib: not dynamic
+    "import importlib\nimportlib.import_module('ofo_app.kite_reads')\n",  # resolvable, not a history module
     "__import__('os')\n",
     "import runpy\nrunpy.run_module('ofo_app.other')\n",
     "import_module = len\nimport_module('ofo_app.kite_history')\n",
@@ -386,7 +416,8 @@ def test_the_backend_scan_passes_resolvable_non_history_and_unrelated_calls(sour
 
 
 def test_path_loaders_are_allowed_only_in_the_alembic_versions_folder():
-    source = "import importlib.util\ns = importlib.util.spec_from_file_location('m', p)\nm = importlib.util.module_from_spec(s)\n"
+    source = ("import importlib.util\ns = importlib.util.spec_from_file_location('m', p)\n"
+              "m = importlib.util.module_from_spec(s)\n")
     found = {"ofo_app.alembic.versions.0099_x": import_hits(source, "ofo_app.alembic.versions.0099_x"),
              "ofo_app.routes.x": import_hits(source, "ofo_app.routes.x")}
     assert sorted(disallowed(found, ALLOWED_IMPORTERS)) == ["ofo_app.routes.x"]
