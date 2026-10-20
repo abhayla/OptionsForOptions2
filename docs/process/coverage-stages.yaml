@@ -189,6 +189,12 @@ decisions:
   ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
   ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
   ADR-121: 4b           # range reading (lopsided = direction) and next-trading-day format "Wed 21 Oct" (owner 2026-10-19)
+  ADR-122: 4b           # range-reading line texts: leans up / leans down / balanced (owner 2026-10-19)
+  ADR-123: 4b           # shared contract: one recorded "Kite now matches, unblock every holder" action (owner 2026-10-19)
+  ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
+  ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
+  ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-127: 4b           # kill switch message "Execution is paused by the platform right now..." (owner 2026-10-20)
   ADR-120: 4b          # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
@@ -389,6 +395,8 @@ findings:
   F-52: 4b        # build-order and W-083 still showed OQ-7 as open after ADR-096 answered it (GC-6 S0)
   F-53: 4b        # every workflow runs on every PR push incl. drafts; app-tests runs the API suite on frontend-only PRs (GC-6 O0)
   F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
+  F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
+  F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
 
 hypotheses:
   H1: done
