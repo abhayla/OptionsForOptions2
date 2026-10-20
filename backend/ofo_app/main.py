@@ -26,6 +26,7 @@ from ofo_app.routes import (
     execution_return,
     health,
     live,
+    orders,
     outcome,
     planned_entry,
     strategies,
@@ -102,6 +103,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
+    app.include_router(orders.router)  # GC-6: the Orders screen's lines, four approved states (ADR-135)
     app.include_router(catalogue.router)  # W-068: the leg picker's expiries and contracts (read-only)
     app.include_router(planned_entry.router)  # W-068: planned entry captured only from a live price
     return app

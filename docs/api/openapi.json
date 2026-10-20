@@ -800,6 +800,143 @@
         "title": "MarginOut",
         "type": "object"
       },
+      "OrderLineOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "ENTRY",
+              "EXIT"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "could_not_confirm": {
+            "title": "Could Not Confirm",
+            "type": "boolean"
+          },
+          "filled_quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filled Quantity"
+          },
+          "message": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "needs_reconciliation": {
+            "title": "Needs Reconciliation",
+            "type": "boolean"
+          },
+          "ordered_quantity": {
+            "title": "Ordered Quantity",
+            "type": "integer"
+          },
+          "plan_number": {
+            "title": "Plan Number",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_sent",
+                  "placed",
+                  "executed",
+                  "not_executed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "transaction_type": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Transaction Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "plan_number",
+          "action",
+          "tradingsymbol",
+          "transaction_type",
+          "ordered_quantity",
+          "filled_quantity",
+          "state",
+          "could_not_confirm",
+          "needs_reconciliation",
+          "message",
+          "updated_at"
+        ],
+        "title": "OrderLineOut",
+        "type": "object"
+      },
+      "OrdersOut": {
+        "additionalProperties": false,
+        "properties": {
+          "kite_read": {
+            "enum": [
+              "not_needed",
+              "read",
+              "failed"
+            ],
+            "title": "Kite Read",
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderLineOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "read_at",
+          "kite_read",
+          "orders"
+        ],
+        "title": "OrdersOut",
+        "type": "object"
+      },
       "OutcomeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2859,6 +2996,24 @@
           }
         },
         "summary": "Kite Callback"
+      }
+    },
+    "/orders": {
+      "get": {
+        "operationId": "list_orders_orders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Orders"
       }
     },
     "/strategies": {
