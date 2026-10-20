@@ -523,10 +523,22 @@ def test_version_state_is_derived_from_the_net():
 
 
 def test_exit_legs_close_exactly_the_net_opposite_side():
+    """Q238 / #389: a mixed exit buys back the shorts first (basket 1); the longs go only once no short is held."""
     legs = ep.exit_legs({"NFO-OPT:47189": 30, "NFO-OPT:1": -65}, lambda t: t)
-    assert [(leg.instrument_id, leg.action, leg.quantity) for leg in legs] == [("NFO-OPT:1", Action.BUY, 65),
-                                                                                ("NFO-OPT:47189", Action.SELL, 30)]
+    assert [(leg.instrument_id, leg.action, leg.quantity) for leg in legs] == [("NFO-OPT:1", Action.BUY, 65)]
+    legs = ep.exit_legs({"NFO-OPT:47189": 30, "NFO-OPT:1": 0}, lambda t: t)  # after basket 1: no short left
+    assert [(leg.instrument_id, leg.action, leg.quantity) for leg in legs] == [("NFO-OPT:47189", Action.SELL, 30)]
     assert ep.exit_legs({}, lambda t: t) == []
+
+
+def test_exit_never_sells_a_long_while_a_short_is_held():
+    """#389 threat: an exit selling longs first. Every short/long mix of the Iron Condor (ADR-136's example) gives
+    a buy-only basket; dies if exit_legs stops calling shorts_first."""
+    condor = {"NFO-OPT:1": 65, "NFO-OPT:2": -65, "NFO-OPT:3": -65, "NFO-OPT:4": 65}
+    legs = ep.exit_legs(condor, lambda t: t)
+    assert {(leg.instrument_id, leg.action) for leg in legs} == {("NFO-OPT:2", Action.BUY), ("NFO-OPT:3", Action.BUY)}
+    with pytest.raises(ValueError, match="integers"):
+        ep.exit_legs({"NFO-OPT:1": True}, lambda t: t)
 
 
 def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():

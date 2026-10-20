@@ -28,7 +28,7 @@ from ofo.execution.basket import parse_tag
 from ofo.execution.context import VersionState
 from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.price_check import circuit_block
-from ofo.execution.recovery import TERMINAL_ORDER_STATUSES
+from ofo.execution.recovery import TERMINAL_ORDER_STATUSES, shorts_first
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.timeutil import IST
@@ -212,9 +212,12 @@ def version_state(action: str, held: Mapping[str, int]) -> VersionState:
 
 
 def exit_legs(held: Mapping[str, int], instrument_of: Callable[[str], InstrumentId]) -> list[LegToPrice]:
-    """ADR-105: an exit closes exactly the net, opposite side, per contract (sorted for a stable basket order)."""
+    """ADR-105: an exit closes exactly the net, opposite side, per contract (sorted for a stable basket order).
+    Q238 / #389 (``recovery.shorts_first``): while any short is held this basket holds ONLY the buy-backs; the longs
+    are sold by the next exit, once Zerodha shows no short left (a mix takes two baskets, never longs first)."""
+    _, chosen = shorts_first(held)
     return [LegToPrice(instrument_of(contract), Action.SELL if net > 0 else Action.BUY, abs(net), None)
-            for contract, net in sorted(held.items()) if net != 0]
+            for contract, net in sorted(chosen.items())]
 
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the W-091 reconcile key

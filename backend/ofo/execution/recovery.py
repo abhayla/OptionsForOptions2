@@ -293,6 +293,17 @@ def place_missing_legs(plan: ExecutionPlan, read: ZerodhaRead, margin: MarginAns
     return out
 
 
+def shorts_first(signed: Mapping[str, int]) -> tuple[int, dict[str, int]]:
+    """Q238 / #389, the ONE home of the exit order: step 1 = every contract held short (negative units), so the
+    buy-backs go first; only when nothing is short, step 2 = every long. Zero units are dropped. A mix of shorts and
+    longs therefore always takes two baskets, the longs never before the shorts are bought back."""
+    for value in signed.values():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"signed units must be integers, got {value!r}")
+    shorts = {c: u for c, u in signed.items() if u < 0}
+    return (1, shorts) if shorts else (2, {c: u for c, u in signed.items() if u > 0})
+
+
 def _close(action: RecoveryAction, plan: ExecutionPlan, read: ZerodhaRead, held_cap: Mapping[str, int],
            open_any: frozenset[str]) -> Outcome:
     """Q238 / #389: step 1 buys back every short Zerodha still shows; only once Zerodha shows no short left does
@@ -300,9 +311,10 @@ def _close(action: RecoveryAction, plan: ExecutionPlan, read: ZerodhaRead, held_
     if read.net is None:
         return Outcome(action, refusal=Refusal.READ_FAILED)
     held = {p.contract: min(abs(read.net.get(p.contract, 0)), held_cap.get(p.contract, 0)) for p in plan.legs}
-    shorts = [p for p in plan.legs if read.net.get(p.contract, 0) < 0 and held[p.contract]]
-    longs = [p for p in plan.legs if read.net.get(p.contract, 0) > 0 and held[p.contract]]
-    step, group, side = (1, shorts, Action.BUY) if shorts else (2, longs, Action.SELL)
+    step, chosen = shorts_first({p.contract: held[p.contract] * (1 if read.net.get(p.contract, 0) > 0 else -1)
+                                 for p in plan.legs})
+    group = [p for p in plan.legs if p.contract in chosen]
+    side = Action.BUY if step == 1 else Action.SELL
     if not group:
         return Outcome(action, refusal=Refusal.NOTHING_TO_CLOSE)
     busy = tuple(p.contract for p in group if p.contract in open_any)
@@ -460,5 +472,6 @@ __all__ = [
     "place_missing_legs",
     "recovery_gate",
     "refusal_line",
+    "shorts_first",
     "use_zerodha_numbers",
 ]
