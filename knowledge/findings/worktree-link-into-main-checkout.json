@@ -10,11 +10,11 @@
  },
  "fix": "Instance repaired 2026-10-19. Class: every reviewer/builder brief says 'never create a junction or symlink; never `--force` a worktree removal; if node_modules is needed, run npm ci inside the scratch checkout or say unverified'; GC-6 row WT-LINK-GUARD adds a structural guard (a PreToolUse hook refusing junction/symlink creation that targets the main checkout, and a removal helper that deletes links as links first and counts main's packages before/after - run-discipline F3/F4).",
  "detection": {
-  "status": "guarded",
+  "status": "unguarded",
   "checks": [
    "scripts/hooks/link_guard.py (PreToolUse Bash|PowerShell; refuses link creation whose target is inside the main checkout and `git worktree remove --force`), tests/test_link_guard_hook.py"
   ],
-  "note": "Guard covers mklink, New-Item Junction/SymbolicLink/HardLink, ln -s, fsutil hardlink, inline os.symlink/CreateJunction, and forced worktree removal; it does NOT cover a human outside Claude Code, nor rm -rf / Remove-Item -Recurse over an existing link (links made before the hook), nor the removal helper that counts main packages before/after (still prose: run-discipline F3/F4)."
+  "note": "Status stays unguarded: half the class is covered. COVERED (link_guard.py, tests/test_link_guard_hook.py): creating a link whose target is inside the main checkout (mklink incl. Git Bash //J spellings, New-Item Junction/SymbolicLink/HardLink incl. -Target:value, ln -s, fsutil hardlink, os.symlink/CreateJunction/.NET CreateSymbolicLink, cmd /c mklink started from PowerShell, verbatim and NT path prefixes) and forced worktree removal (git, git.exe or a wrapper such as agit.py; --force, any unambiguous prefix of it, -f, clusters holding f); unreadable commands holding a link verb and the main path are refused. NOT COVERED: rm -rf / Remove-Item -Recurse over a link that already exists (made before the hook, or by a human outside Claude Code), a compiled binary, and the removal helper that deletes links as links and counts main packages before/after (run-discipline F3/F4), which does not exist yet. Flip to guarded only when that helper or a recursive-delete guard lands."
  },
  "spec_ref": [
   "spec/decisions/ADR-106.md"

@@ -9,6 +9,7 @@ so each check is needed."""
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -56,6 +57,24 @@ REFUSED = {
     "force_remove_with_C": ("Bash", rf"git -C {MAIN} worktree remove --force {CWD}"),
     "force_remove_powershell": ("PowerShell", rf"git worktree remove --force {CWD}"),
     "force_remove_chained": ("Bash", f"cd x && git worktree remove -f {CWD}"),
+    # round 2 (review of 22c4b2e)
+    "agit_force": ("Bash", f"python scripts/orchestrator/agit.py abc worktree remove --force {CWD}"),
+    "agit_force_short": ("Bash", f"python scripts/orchestrator/agit.py abc worktree remove -f {CWD}"),
+    "force_prefix_forc": ("Bash", f"git worktree remove --forc {CWD}"),
+    "force_prefix_fo": ("Bash", f"git worktree remove --fo {CWD}"),
+    "force_prefix_f": ("Bash", f"git worktree remove --f {CWD}"),
+    "force_combined_short": ("Bash", f"git worktree remove -qf {CWD}"),
+    "cmd_double_slash_c": ("Bash", rf"cmd //c mklink //J {CWD}\nm {NM}"),
+    "cmd_double_slash_quoted": ("Bash", rf'cmd //c "mklink //D {CWD}\nm {NM}"'),
+    "cmd_double_slash_lower": ("Bash", rf"cmd //c mklink //h {CWD}\a {MAIN}\package-lock.json"),
+    "param_colon_target": ("PowerShell", rf"New-Item -ItemType Junction -Path nm -Target:{NM}"),
+    "param_colon_value": ("PowerShell", rf"New-Item -ItemType:Junction -Path nm -Value:{NM}"),
+    "verbatim_prefix": ("PowerShell", "New-Item -ItemType Junction -Path nm -Target \\\\?\\" + NM),
+    "nt_prefix": ("Bash", "mklink /J nm \\??\\" + NM),
+    "dotnet_directory_symlink": ("PowerShell", f"[System.IO.Directory]::CreateSymbolicLink('nm', '{NM}')"),
+    "dotnet_file_symlink": ("PowerShell", rf"[System.IO.File]::CreateSymbolicLink('a', '{MAIN}\package-lock.json')"),
+    "start_process_cmd_mklink": ("PowerShell", f'Start-Process cmd -ArgumentList "/c mklink /J nm {NM}" -Wait'),
+    "unparseable_eval_mklink": ("Bash", f'eval "mklink /J nm {NM}"'),
 }
 ALLOWED = {
     "mkdir": ("Bash", f"mkdir -p {CWD}/frontend"),
@@ -75,6 +94,14 @@ ALLOWED = {
     "read_main_file": ("Bash", f"cat {MAIN}/README.md"),
     "new_item_directory": ("PowerShell", rf"New-Item -ItemType Directory -Path {CWD}\x"),
     "git_status_in_main": ("Bash", f"git -C {MAIN} status"),
+    "pytest_k_junction": ("Bash", "python -m pytest -q -k junction tests/test_x.py"),
+    "pytest_k_symlink": ("Bash", "python -m pytest -k symlink"),
+    "node_name_hardlink": ("Bash", "node scripts/check.js --name hardlink"),
+    "agit_plain_remove": ("Bash", f"python scripts/orchestrator/agit.py abc worktree remove {CWD}"),
+    "agit_status": ("Bash", "python scripts/orchestrator/agit.py abc status"),
+    "dotnet_directory_exists": ("PowerShell", f"[System.IO.Directory]::Exists('{NM}')"),
+    "start_process_npm": ("PowerShell", 'Start-Process npm -ArgumentList "ci" -Wait'),
+    "param_colon_target_scratch": ("PowerShell", rf"New-Item -ItemType Junction -Path nm -Target:{SCRATCH}\b"),
 }
 
 
@@ -112,8 +139,70 @@ def test_guard_is_target_based_not_a_banned_shape() -> None:
     assert verdict(("Bash", rf"mklink /J x {SCRATCH}\y")) is None
 
 
+def test_bare_words_do_not_resolve_as_main_paths_when_cwd_is_main() -> None:
+    """Round-1 finding 7: `python -m pytest -k junction` run from the main checkout was refused, naming python."""
+    for cmd in ("python -m pytest -q -k junction", "python -m pytest -k symlink tests/x.py"):
+        assert lg.decide("Bash", {"command": cmd}, roots=ROOTS, cwd=MAIN) is None
+
+
+def test_force_flag_spellings() -> None:
+    for w in ("--force", "--forc", "--for", "--fo", "--f", "-f", "-fq", "-qf", "--force=1"):
+        assert lg._is_force_flag(w), w
+    for w in ("--foo", "--quiet", "-q", "rv-f-fix", "--fx", "x"):
+        assert not lg._is_force_flag(w), w
+
+
+def test_key_strips_device_prefixes() -> None:
+    assert lg._key("\\\\?\\" + NM) == lg._key(NM) == lg._key("\\??\\" + NM)
+
+
+def _must_pass_through(monkeypatch: pytest.MonkeyPatch, attr: str, value: object, names: list[str]) -> None:
+    monkeypatch.setattr(lg, attr, value)
+    assert all(verdict(REFUSED[n]) is None for n in names), names
+
+
+def test_mutation_agit_wrapper_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    old = re.compile(r"\bgit\b[^\n]*?\bworktree\s+remove\b(?P<rest>[^\n]*)", re.I)
+    _must_pass_through(monkeypatch, "GIT_WT_REMOVE", old, ["agit_force", "agit_force_short"])
+
+
+def test_mutation_force_prefix_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    def old(w: str) -> bool:
+        return w == "--force" or bool(re.fullmatch(r"-[A-Za-z]*f[A-Za-z]*", w))
+
+    _must_pass_through(monkeypatch, "_is_force_flag", old, ["force_prefix_forc", "force_prefix_fo", "force_prefix_f"])
+
+
+def test_mutation_double_slash_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    names = ["cmd_double_slash_c", "cmd_double_slash_quoted", "cmd_double_slash_lower"]
+    _must_pass_through(monkeypatch, "_fix_slashes", lambda t: t, names)
+
+
+def test_mutation_param_colon_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    _must_pass_through(monkeypatch, "_split_param", lambda t: [t], ["param_colon_target", "param_colon_value"])
+
+
+def test_mutation_device_prefix_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    _must_pass_through(monkeypatch, "_strip_device_prefix", lambda p: p, ["verbatim_prefix", "nt_prefix"])
+
+
+def test_mutation_dotnet_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    never = re.compile(r"(?!x)x")
+    _must_pass_through(monkeypatch, "DOTNET_LINK", never, ["dotnet_directory_symlink", "dotnet_file_symlink"])
+
+
+def test_mutation_arg_carrier_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    _must_pass_through(monkeypatch, "ARG_CARRIERS", frozenset(), ["start_process_cmd_mklink"])
+
+
+def test_mutation_loose_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    _must_pass_through(monkeypatch, "_loose_refusal", lambda *_a: None, ["unparseable_eval_mklink"])
+
+
 def test_mutation_without_the_target_check_links_pass(monkeypatch: pytest.MonkeyPatch) -> None:
-    link_cases = [n for n in REFUSED if not n.startswith("force_") and n != "variable_target"]
+    link_cases = [
+        n for n in REFUSED if not n.startswith(("force_", "agit_", "unparseable_")) and n != "variable_target"
+    ]
     monkeypatch.setattr(lg, "_inside", lambda *_a, **_k: False)
     assert all(verdict(REFUSED[n]) is None for n in link_cases)
 

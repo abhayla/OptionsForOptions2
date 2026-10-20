@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -43,19 +44,34 @@ SEGMENT_SPLIT = re.compile(r"[;&|\n]+")
 MKLINK = re.compile(r"\bmklink(\.exe)?\b", re.I)
 NEWITEM = re.compile(r"\b(new-item|ni)\b", re.I)
 LINK_TYPE = re.compile(r"junction|symbolic\s*link|hard\s*link|symboliclink|hardlink", re.I)
+# a CALL of a link-creating function in inline code (a bare word such as `pytest -k junction` is not a call)
 CODE_LINK = re.compile(
-    r"symlink|createjunction|hardlink|os\.link\b|symlink_to|link_to|createsymboliclink|"
-    r"fsutil\s+hardlink|\bjunction(\.exe)?\b",
+    r"\b(?:\w+\.)*(?:symlink\w*|link|link_to|hardlink_to|ln_sf?|createjunction|createsymboliclink|createhardlink)\s*\(",
     re.I,
 )
-GIT_WT_REMOVE = re.compile(r"\bgit\b[^\n]*?\bworktree\s+remove\b(?P<rest>[^\n]*)", re.I)
+# .NET static/instance link creators: PowerShell needs no interpreter word to call them
+DOTNET_LINK = re.compile(r"\bcreate(?:as)?(?:symboliclink|junction|hardlink)\w*\s*\(", re.I)
+# any command (git, git.exe, agit.py or another wrapper forwarding git args) running `worktree remove`
+GIT_WT_REMOVE = re.compile(r"\bworktree\s+remove\b(?P<rest>[^\n]*)", re.I)
+# unreadable commands are judged on the raw text: a link verb and the main checkout both present
+UNPARSEABLE = re.compile(r"\beval\b|\binvoke-expression\b|\biex\b|-enc(?:odedcommand)?\b|\$\(|`|base64", re.I)
+LOOSE_VERBS = re.compile(
+    r"mklink|\bln\s+-\w*s|\bln\s+--symbolic|-itemtype\s*:?\s*(?:junction|symbolic|hard)|\bfsutil\s+hardlink|"
+    r"createjunction|createsymboliclink|createhardlink|symlink",
+    re.I,
+)
 TOKEN_SPLIT = re.compile(r"""[\s"'`,()=]+""")
 UNRESOLVED = re.compile(r"[$%`]|\$\(|~")
 
 
+def _strip_device_prefix(p: str) -> str:
+    """Drop the verbatim, NT and device path prefixes (already slash-normalised)."""
+    return re.sub(r"^/{1,2}[?.]/(?=[A-Za-z]:)|^/\?\?/(?=[A-Za-z]:)", "", p)
+
+
 def _key(path: str) -> str:
     """One comparable form for D:\\x, /d/x, /mnt/d/x, /cygdrive/d/x: lower-case, forward slashes, drive as /d."""
-    p = path.replace("\\", "/").rstrip("/").casefold()
+    p = _strip_device_prefix(path.replace("\\", "/")).rstrip("/").casefold()
     m = re.match(r"^([a-z]):(/|$)", p)
     if m:
         p = "/" + m.group(1) + p[2:]
@@ -108,12 +124,28 @@ def main_roots(project_dir: str) -> list[str]:
     return keys
 
 
+def _fix_slashes(t: str) -> str:
+    """Git Bash passes `//c` `//J` through for `/c` `/J` (MSYS path conversion off): the same switch."""
+    return re.sub(r"^//(?=[A-Za-z]$)", "/", t)
+
+
+def _split_param(t: str) -> list[str]:
+    """PowerShell `-Target:value` is `-Target value`."""
+    m = re.fullmatch(r"(-[A-Za-z]+):(.+)", t, re.S)
+    return [m.group(1), m.group(2)] if m else [t]
+
+
 def _tokens(text: str) -> list[str]:
-    return [t for t in TOKEN_SPLIT.split(text) if t]
+    out: list[str] = []
+    for raw in TOKEN_SPLIT.split(text):
+        if raw:
+            out.extend(_split_param(_fix_slashes(raw)))
+    return out
 
 
 def _is_path_like(t: str) -> bool:
-    return bool(re.match(r"^[A-Za-z]:", t)) or "/" in t or "\\" in t or t.startswith(".") or not t.startswith("-")
+    """A word that is a path: drive, a separator or a leading dot. A bare word (python, -k, junction) is not."""
+    return bool(re.match(r"^[A-Za-z]:", t)) or "/" in t or "\\" in t or t.startswith(".")
 
 
 LAUNCHERS = {
@@ -143,15 +175,15 @@ LAUNCHERS = {
     "-command",
     "-noprofile",
 }
-INTERPRETERS = re.compile(
-    r"^(python|py|pypy|node|perl|ruby|pwsh|powershell)[\d.]*(\.exe)?$|^(fsutil|junction)(\.exe)?$", re.I
-)
+INTERPRETERS = re.compile(r"^(python|py|pypy|node|perl|ruby|pwsh|powershell)[\d.]*(\.exe)?$", re.I)
+# a word after which the rest is itself a command line (cmd /c, Start-Process -ArgumentList, pwsh -Command)
+ARG_CARRIERS = frozenset({"/c", "/k", "-argumentlist", "-args", "-command"})
 ASSIGN = re.compile(r"^[A-Za-z_]\w*=")
 
 
 def _at_command_position(low: list[str], i: int) -> bool:
     """True when every word before index i is a launcher/prefix (word i is then the command run)."""
-    return all(w in LAUNCHERS or ASSIGN.match(w) for w in low[:i])
+    return all(w in LAUNCHERS or ASSIGN.match(w) for w in low[:i]) or any(w in ARG_CARRIERS for w in low[:i])
 
 
 def _targets(seg: str) -> tuple[list[str] | None, bool]:
@@ -169,12 +201,17 @@ def _targets(seg: str) -> tuple[list[str] | None, bool]:
         ):
             rest = [x for x in toks[i + 1 :] if not x.startswith("-")]  # ln -s TARGET [LINK]
             return (rest[:1] if rest else None), True
+        if _at_command_position(low, i) and (
+            re.fullmatch(r"junction(\.exe)?", t) or (re.fullmatch(r"fsutil(\.exe)?", t) and "hardlink" in low[i + 1 :])
+        ):
+            return None, True
     if NEWITEM.search(seg) and LINK_TYPE.search(seg):
         for i, t in enumerate(low):
             if t in ("-target", "-value", "-tar", "-val", "-v") and i + 1 < len(toks):
                 return [toks[i + 1]], True
         return None, True
-    return None, bool(CODE_LINK.search(seg)) and any(INTERPRETERS.match(t) for t in toks)
+    inline_code = bool(CODE_LINK.search(seg)) and any(INTERPRETERS.match(t) for t in toks)
+    return None, bool(DOTNET_LINK.search(seg)) or inline_code
 
 
 def _link_refusal(command: str, roots: list[str], cwd: str) -> str | None:
@@ -203,13 +240,42 @@ def _link_refusal(command: str, roots: list[str], cwd: str) -> str | None:
     return None
 
 
+def _is_force_flag(w: str) -> bool:
+    """`--force`, any unambiguous git prefix of it (`--forc`, `--fo`, `--f`), `-f` and short clusters holding f."""
+    return bool(re.fullmatch(r"--f(?:o(?:r(?:ce?)?)?)?(?:=.*)?", w, re.I) or re.fullmatch(r"-[A-Za-z]*f[A-Za-z]*", w))
+
+
+def _names_main(command: str, roots: list[str]) -> bool:
+    norm = re.sub(r"/+", "/", command.replace("\\", "/").casefold())
+    for k in roots:
+        variants = {k}
+        if re.match(r"^/[a-z](/|$)", k):
+            variants |= {f"{k[1]}:{k[2:]}", "/mnt" + k, "/cygdrive" + k}
+        if any(v in norm for v in variants):
+            return True
+    return False
+
+
+def _loose_refusal(command: str, roots: list[str]) -> str | None:
+    """Fail closed on a command the segment parser cannot read (eval, $(...), unbalanced quotes, encoded commands)."""
+    unreadable = bool(UNPARSEABLE.search(command))
+    if not unreadable:
+        try:
+            shlex.split(command)
+        except ValueError:
+            unreadable = True
+    if unreadable and LOOSE_VERBS.search(command) and _names_main(command, roots):
+        return MESSAGE_LINK.format(why="an unreadable command holding a link verb and naming the main checkout")
+    return None
+
+
 def _force_refusal(command: str) -> str | None:
     for seg in re.split(r"[;&|\n]+", command):
         m = GIT_WT_REMOVE.search(seg)
         if not m:
             continue
         for w in _tokens(m.group("rest")):
-            if w == "--force" or re.fullmatch(r"-[A-Za-z]*f[A-Za-z]*", w) or w.startswith("--force="):
+            if _is_force_flag(w):
                 return MESSAGE_FORCE
     return None
 
@@ -225,7 +291,7 @@ def decide(tool_name: str, tool_input: dict, roots: list[str] | None = None, cwd
         return forced
     if roots is None:
         roots = main_roots(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
-    return _link_refusal(command, roots, cwd or os.getcwd())
+    return _link_refusal(command, roots, cwd or os.getcwd()) or _loose_refusal(command, roots)
 
 
 def main() -> int:
