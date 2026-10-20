@@ -140,7 +140,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-133 2026-10-20: (1) When "Check with Zerodha" finds no order carrying a plan's tag (the user opened Kite and never… [refines REQ-057]
 - ADR-134 2026-10-20: (1) Anything the broker (Zerodha today, any broker later) already provides - its order book, order… [amends REQ-057; amends REQ-058; amends REQ-073]
 - ADR-135 2026-10-20: (1) Under ADR-134 the app shows each strategy order in exactly one of four states: "Not sent to Zer… [amends REQ-057; supersedes ADR-133]
-- ADR-136 2026-10-20: (1) Owner requirement for a partly executed strategy: the user gets help to (a) re-check the result… [amends REQ-058]
+- ADR-136 2026-10-20: (1) A partly executed strategy shows its actual risk and max loss now (REQ-058 AC-1) and offers exa… [amends REQ-058]
 
 ## Requirements (75)
 
