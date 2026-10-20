@@ -72,14 +72,22 @@ def test_unknown_loss_is_at_least_elevated_never_a_silent_pass():
 
 
 def test_unknown_loss_with_an_uncovered_short_is_exceptional():
-    got = risk_tier(None, unlimited=False, funds=FUNDS, limit=None, uncovered_short=True)
+    got = risk_tier(None, unlimited=False, funds=FUNDS, limit=None, unknown_loss=Reason.UNCOVERED_SHORT)
     assert (got.tier, got.reason, got.percent_of_funds) == (Tier.EXCEPTIONAL, Reason.UNCOVERED_SHORT, None)
 
 
 def test_an_exit_with_no_known_loss_has_no_tier():
     for funds in (FUNDS, None):
-        assert risk_tier(None, unlimited=False, funds=funds, limit=None, loss_expected=False) is None
-        assert risk_tier(None, unlimited=False, funds=funds, limit=None, loss_expected=False, uncovered_short=True) is None
+        assert risk_tier(None, unlimited=False, funds=funds, limit=None, unknown_loss=None) is None
+
+
+def test_the_reason_for_an_unknown_loss_is_chosen_from_the_legs_and_the_action():
+    from ofo.execution.risk_tier import unknown_loss_reason  # noqa: PLC0415
+
+    naked, covered = [_leg(Action.SELL, Instrument.CE)], [_leg(Action.SELL, Instrument.CE), _leg(Action.BUY, Instrument.CE)]
+    assert unknown_loss_reason(naked, is_exit=False) is Reason.UNCOVERED_SHORT
+    assert unknown_loss_reason(covered, is_exit=False) is Reason.LOSS_UNKNOWN
+    assert unknown_loss_reason(naked, is_exit=True) is None  # an exit's closing orders say nothing about the risk left
 
 
 def _leg(action, instrument, strike="23650"):

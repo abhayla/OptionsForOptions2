@@ -59,7 +59,7 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
-from ofo.execution.risk_tier import RiskTier, Tier, has_uncovered_short, risk_tier
+from ofo.execution.risk_tier import Reason, RiskTier, Tier, risk_tier, unknown_loss_reason
 from ofo.execution.safety import check_pre_execution, market_failures, paused_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.market_calendar import MarketStatus, market_status, next_open
@@ -515,14 +515,14 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
     review = review_out(priced.strategy, req.action)
-    shape = {"loss_expected": req.action != EXIT, "uncovered_short": has_uncovered_short(priced.strategy.legs)}
-    risk = risk_out(review, figures.funds_available, **shape)
+    unknown = unknown_loss_reason(priced.strategy.legs, is_exit=req.action == EXIT)
+    risk = risk_out(review, figures.funds_available, unknown_loss=unknown)
     cost = cost_out(basket.orders, req.rates, figures)
     if risk is not None and risk.needs_acceptance:
         binding = _risk_binding(req, stored, basket.orders, review, risk)
         if not _redeemed(req, binding):
             token = req.guard._issue_flagged(binding).acknowledgement  # noqa: SLF001 - the owning flow issues
-            asked = risk_out(review, figures.funds_available, acknowledgement=token, **shape)
+            asked = risk_out(review, figures.funds_available, unknown_loss=unknown, acknowledgement=token)
             return _answer(plan_number, None, req.session.api_key, cost, review, asked, basket.orders)  # nothing stored
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
@@ -638,15 +638,15 @@ def review_out(strategy: Strategy, action: str) -> ReviewOut:
         "max_profit_unlimited": profit_unlimited, "max_loss_display": loss, "max_profit_display": profit})
 
 
-def risk_out(review: ReviewOut, funds: Decimal | None, limit: Decimal | None = None, *, loss_expected: bool = True,
-             uncovered_short: bool = False, acknowledgement: str | None = None) -> RiskOut | None:
+def risk_out(review: ReviewOut, funds: Decimal | None, limit: Decimal | None = None, *,
+             unknown_loss: Reason | None = Reason.LOSS_UNKNOWN, acknowledgement: str | None = None) -> RiskOut | None:
     """ADR-140 / ADR-143: the one tier rule (``ofo.execution.risk_tier``) on the review's loss and Zerodha's funds. The
     app stores no max-loss limit (ADR-064) yet, so ``limit`` is None. No known loss on an exit -> None (no risk line);
     on an entry it is at least ELEVATED, and EXCEPTIONAL with an uncovered short. ``acknowledgement`` is the guard
     token to hand back with the withheld reply."""
     found: RiskTier | None = risk_tier(None if review.max_loss is None else Decimal(review.max_loss),
                                        unlimited=review.max_loss_unlimited, funds=funds, limit=limit,
-                                       loss_expected=loss_expected, uncovered_short=uncovered_short)
+                                       unknown_loss=unknown_loss)
     if found is None:
         return None
     return RiskOut.model_validate({

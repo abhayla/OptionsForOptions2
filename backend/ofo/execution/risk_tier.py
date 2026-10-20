@@ -14,7 +14,7 @@ Rule (``loss`` = the worst-case loss, ``funds`` = available funds, ``limit`` = t
 - Loss unknown (a multi-expiry entry: the engine returns no worst case) - ADR-143 (owner 2026-10-20): never a silent
   pass. At least ELEVATED with reason LOSS_UNKNOWN (the screen's line is exactly "Worst case: the loss for this strategy
   can't be estimated."); EXCEPTIONAL (reason UNCOVERED_SHORT) when any short leg has no protective buy of the same
-  option type in the strategy. An exit (``loss_expected`` False) is the one case with no tier (``None``): its closing
+  option type in the strategy. An exit (``unknown_loss`` None) is the one case with no tier (``None``): its closing
   orders say nothing about the risk left.
 Boundaries are inclusive on the NORMAL side: exactly 10% is NORMAL, exactly 25% with a limit set is NORMAL, exactly the
 funds is not EXCEPTIONAL.
@@ -61,18 +61,28 @@ def has_uncovered_short(legs: Iterable[Leg]) -> bool:
     return any(leg.action is Action.SELL and leg.instrument not in bought for leg in legs)
 
 
+def unknown_loss_reason(legs: Iterable[Leg], *, is_exit: bool) -> Reason | None:
+    """What to report when the engine states no worst case (ADR-143): None for an exit (no tier), UNCOVERED_SHORT when
+    any short leg has no protective buy, else LOSS_UNKNOWN."""
+    if is_exit:
+        return None
+    return Reason.UNCOVERED_SHORT if has_uncovered_short(legs) else Reason.LOSS_UNKNOWN
+
+
+def _unknown(reason: Reason | None) -> RiskTier | None:
+    if reason is None:
+        return None
+    return RiskTier(Tier.EXCEPTIONAL if reason is Reason.UNCOVERED_SHORT else Tier.ELEVATED, None, reason)
+
+
 def risk_tier(max_loss: Decimal | None, *, unlimited: bool, funds: Decimal | None, limit: Decimal | None,
-              loss_expected: bool = True, uncovered_short: bool = False) -> RiskTier | None:
-    """The tier for one plan. ``loss_expected`` False (an exit) with no known loss is the only None; any other plan
-    with no stated worst case is at least ELEVATED, and EXCEPTIONAL with an uncovered short (ADR-143)."""
+              unknown_loss: Reason | None = Reason.LOSS_UNKNOWN) -> RiskTier | None:
+    """The tier for one plan. ``unknown_loss`` is what a plan with no stated worst case is reported as
+    (``unknown_loss_reason``): None (an exit) gives no tier, LOSS_UNKNOWN is ELEVATED, UNCOVERED_SHORT is EXCEPTIONAL."""
     if unlimited:
         return RiskTier(Tier.EXCEPTIONAL, None, Reason.UNLIMITED)
     if max_loss is None:
-        if not loss_expected:
-            return None
-        if uncovered_short:
-            return RiskTier(Tier.EXCEPTIONAL, None, Reason.UNCOVERED_SHORT)
-        return RiskTier(Tier.ELEVATED, None, Reason.LOSS_UNKNOWN)
+        return _unknown(unknown_loss)
     if funds is None:
         over = limit is None or max_loss > limit
         return RiskTier(Tier.ELEVATED if over else Tier.NORMAL, None, None)

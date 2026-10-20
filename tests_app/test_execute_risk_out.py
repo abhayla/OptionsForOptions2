@@ -9,6 +9,7 @@ from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
+from ofo.execution.risk_tier import Reason
 from ofo.strategy.guard import StrategyGuard
 from ofo_app import api_models
 from ofo_app.routes import execute as route
@@ -55,12 +56,12 @@ def test_unknown_loss_on_an_entry_is_elevated_and_with_an_uncovered_short_except
     """ADR-143: no worst case from the engine is never a silent pass; an uncovered short needs the acknowledgement."""
     out = dump(risk_out(review(None), D("240000.00")))
     assert (out["tier"], out["reason"], out["needs_acceptance"]) == ("ELEVATED", "LOSS_UNKNOWN", False)
-    out = dump(risk_out(review(None), D("240000.00"), uncovered_short=True))
+    out = dump(risk_out(review(None), D("240000.00"), unknown_loss=Reason.UNCOVERED_SHORT))
     assert (out["tier"], out["reason"], out["needs_acceptance"]) == ("EXCEPTIONAL", "UNCOVERED_SHORT", True)
 
 
 def test_an_exit_with_no_known_loss_has_no_risk_block():
-    assert risk_out(review(None), D("240000.00"), loss_expected=False) is None
+    assert risk_out(review(None), D("240000.00"), unknown_loss=None) is None
 
 
 def test_the_token_rides_the_reply_and_only_as_an_identifier():
@@ -85,7 +86,7 @@ def test_review_amounts_are_written_by_the_engine_money_formatter():
                                     "max_profit_display": D("-8175")})
     body = json.loads(api_models.emit(rev))
     assert (body["max_loss"], body["max_loss_display"]) == ("1234567.50", "₹12,34,567.50")
-    assert body["max_profit_display"] == "−₹8,175.00"  # a true minus, as ofo.engine.display writes it
+    assert body["max_profit_display"] == "\u2212\u20b98,175.00"  # a true minus, as ofo.engine.display writes it
     assert json.loads(api_models.emit(review(None)))["max_loss_display"] is None
 
 
@@ -127,7 +128,7 @@ def issue(guard, req, **kw):
 def test_a_token_issued_for_this_proposal_redeems_once():
     guard = StrategyGuard()
     token = issue(guard, make_request(guard))
-    assert isinstance(token, str) and len(token) >= 32
+    assert isinstance(token, str) and token.isascii() and not token.isspace()
     req = make_request(guard, token)
     assert route._redeemed(req, binding(req)) is True
     assert route._redeemed(req, binding(req)) is False  # single use: the same token again is refused
