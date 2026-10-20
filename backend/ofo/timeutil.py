@@ -26,6 +26,11 @@ IST_ZONE_NAME: Final = "Asia/Kolkata"
 #: The regular trading session of NSE/BSE index derivatives, IST wall clock (naive times).
 SESSION_OPEN: Final = datetime.time(9, 15)
 SESSION_CLOSE: Final = datetime.time(15, 30)
+#: IST time from which a day's Zerodha instrument file counts as published (INSTR-FRESH, ADR-015). A list load stamped
+#: earlier than this on a day downloaded the PREVIOUS day's file, so it is never fresh for that day. The zerodha-expert
+#: skill states no publish time; 08:30 is the owner-delegated orchestrator's setting (an implementation setting under
+#: ADR-015), in force until a documented time replaces it.
+INSTRUMENT_LIST_PUBLISH_IST: Final = datetime.time(8, 30)
 #: Contract expiry: the session close, as an IST-aware time.
 EXPIRY_CLOSE: Final = datetime.time(15, 30, tzinfo=IST)
 #: On expiry day, broker positions from this IST time on are treated as settled (naive time).

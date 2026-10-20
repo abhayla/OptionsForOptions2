@@ -63,7 +63,7 @@ from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
-from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
+from ofo.timeutil import INSTRUMENT_LIST_PUBLISH_IST, IST, SESSION_CLOSE, SESSION_OPEN
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
@@ -546,13 +546,17 @@ def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) ->
     """Instrument-list freshness on the database clock's own India date: ``last_seen_at`` is stamped by
     ``clock_timestamp()``, so both sides of the comparison come from the same clock. Fail closed (INSTR-FRESH): no
     stamp or a stamp without a time zone is UNAVAILABLE (a naive value would be read in this machine's zone); a stamp
-    later than the clock it is judged on cannot come from that clock and is STALE."""
+    later than the clock it is judged on cannot come from that clock and is STALE. Fresh also needs the stamp at or
+    after ``INSTRUMENT_LIST_PUBLISH_IST``: a load before Zerodha publishes the day's file holds yesterday's lot sizes
+    and expiries, however recent its stamp."""
     if loaded is None or loaded.tzinfo is None or db_now.tzinfo is None:
         return DataHealth.UNAVAILABLE
     if loaded > db_now:
         return DataHealth.STALE
-    same_day = loaded.astimezone(IST).date() == db_now.astimezone(IST).date()
-    return DataHealth.HEALTHY if same_day else DataHealth.STALE
+    local = loaded.astimezone(IST)
+    published = local.time() >= INSTRUMENT_LIST_PUBLISH_IST  # an earlier load fetched the previous day's file
+    same_day = local.date() == db_now.astimezone(IST).date()
+    return DataHealth.HEALTHY if same_day and published else DataHealth.STALE
 
 
 async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,

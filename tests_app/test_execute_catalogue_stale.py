@@ -45,8 +45,8 @@ async def test_core_a_list_last_loaded_on_friday_is_stale_on_monday_and_a_load_t
 
 @pytest.mark.parametrize("loaded, want", [
     (datetime.datetime(2026, 10, 18, 23, 59, tzinfo=IST), DataHealth.STALE),  # yesterday, a minute before midnight
-    (datetime.datetime(2026, 10, 19, 0, 0, tzinfo=IST), DataHealth.HEALTHY),  # today's first instant
-    (datetime.datetime(2026, 10, 18, 20, 0, tzinfo=datetime.UTC), DataHealth.HEALTHY),  # 01:30 IST today
+    (datetime.datetime(2026, 10, 19, 0, 0, tzinfo=IST), DataHealth.STALE),  # midnight: not yet published
+    (datetime.datetime(2026, 10, 18, 20, 0, tzinfo=datetime.UTC), DataHealth.STALE),  # 01:30 IST: yesterday file
     (None, DataHealth.UNAVAILABLE),  # never loaded
     (datetime.datetime(2026, 10, 19, 9, 5), DataHealth.UNAVAILABLE),  # noqa: DTZ001  # naive: zone unknown, never guessed
     (datetime.datetime(2026, 10, 19, 10, 0, 1, tzinfo=IST), DataHealth.STALE),  # later than the clock judging it
@@ -54,6 +54,29 @@ async def test_core_a_list_last_loaded_on_friday_is_stale_on_monday_and_a_load_t
 ])
 def test_the_list_health_rule(loaded, want):
     assert route._list_health(loaded, MON_10_00) is want
+
+
+@pytest.mark.parametrize("loaded, want", [
+    (datetime.datetime(2026, 10, 19, 7, 0, tzinfo=IST), DataHealth.STALE),
+    (datetime.datetime(2026, 10, 19, 8, 29, 59, tzinfo=IST), DataHealth.STALE),
+    (datetime.datetime(2026, 10, 19, 8, 30, tzinfo=IST), DataHealth.HEALTHY),
+    (datetime.datetime(2026, 10, 19, 8, 45, tzinfo=IST), DataHealth.HEALTHY),
+    (datetime.datetime(2026, 10, 18, 16, 0, tzinfo=IST), DataHealth.STALE),
+])
+def test_a_load_before_the_publish_time_is_never_fresh_for_that_day(loaded, want):
+    """Dies without the publish-time check in ``_list_health`` (a 07:00 load downloaded yesterday's file but is stamped
+    today, so the same-day rule alone read it HEALTHY all day)."""
+    assert route._list_health(loaded, MON_10_00) is want
+
+
+def test_the_rule_does_not_depend_on_execute_being_closed_before_the_session_opens():
+    clock_08_15 = datetime.datetime(2026, 10, 19, 8, 15, tzinfo=IST)
+    assert route._list_health(datetime.datetime(2026, 10, 19, 7, 0, tzinfo=IST), clock_08_15) is DataHealth.STALE
+
+
+async def test_core_load_at_07_is_stale_at_10_and_a_load_at_08_45_is_healthy(monkeypatch):
+    assert await _list_state(monkeypatch, datetime.datetime(2026, 10, 19, 7, 0, tzinfo=IST)) is DataHealth.STALE
+    assert await _list_state(monkeypatch, datetime.datetime(2026, 10, 19, 8, 45, tzinfo=IST)) is DataHealth.HEALTHY
 
 
 def test_a_naive_database_clock_is_never_trusted():
