@@ -5,11 +5,14 @@ import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 
+// Sections whose own page is built (the section path serves it; its sub-items stay placeholders until the owner decides).
+const REAL_SECTION_PAGES = { orders: () => import('../pages/OrdersPage.vue') }
+
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
     name: s.key,
-    component: Placeholder,
+    component: REAL_SECTION_PAGES[s.key] || Placeholder,
     meta: { title: s.label, section: s.key, subItems: s.items.map(([slug, label]) => ({ to: `/${s.key}/${slug}`, label })), note: s.note || '' },
   },
   ...s.items.map(([slug, label]) => ({

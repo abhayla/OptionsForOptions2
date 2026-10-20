@@ -8,31 +8,32 @@ or "COMPLETE?" against an allow-list; any other word is a working order); findin
 
 Pure functions, no I/O. Every answer state of where a line's facts come from (B4 (d)):
 
-| Source of the line                                   | Answer                                                                       |
-| fresh read ok, one row for the tag, COMPLETE         | ``executed`` (row's filled of the plan's ordered)                            |
-| fresh read ok, one row, REJECTED / CANCELLED         | ``not_executed``                                                             |
-| fresh read ok, one row, any other status word        | ``placed``                                                                   |
-| fresh read ok, no row, plan from today's session     | ``not_sent`` (Zerodha never received the tag)                                |
-| fresh read ok, no row, plan from an earlier session  | Kite's book holds only today: fall to the audit row, else unknown            |
-| fresh read ok, several rows for one tag              | unknown (a basket posted twice: never picked between)                        |
-| read failed / no session / unreadable row            | latest audit row of the tag, else unknown                                    |
-| audit row (any plan), COMPLETE without a whole count | unknown                                                                      |
-| no audit row, plan closed, filled > 0                | ``executed`` from the stored filled quantity                                 |
-| no audit row, plan closed, 0 filled                  | ``not_sent`` (a Check ran at the close and no row for the tag existed)       |
-| no audit row, closed ``unresolved_from_positions``   | reconciliation (ADR-137 actions), not an order state                         |
-| no audit row, plan open, nothing readable            | unknown: "could not confirm" + Check with Zerodha, never a guessed state     |
+Source of the line -> answer:
+- fresh read ok, one row for the tag: COMPLETE -> ``executed`` (the row's filled of the plan's ordered);
+  REJECTED / CANCELLED -> ``not_executed``; any other status word -> ``placed``.
+- fresh read ok, no row, plan from today's session -> ``not_sent`` (Zerodha never received the tag).
+- fresh read ok, no row, plan from an earlier session -> Kite's book holds only today: the audit row, else unknown.
+- fresh read ok, several rows for one tag -> unknown (a basket posted twice: never picked between).
+- read failed / no session / unreadable row -> the tag's latest audit row, else unknown.
+- audit row COMPLETE without a whole filled count inside the ordered quantity -> unknown.
+- no audit row, plan closed: filled > 0 -> ``executed`` from the stored count; 0 filled -> ``not_sent`` (a Check ran at
+  the close and no row for the tag existed); ``unresolved_from_positions`` -> reconciliation (ADR-137), no order state.
+- no audit row, plan open, nothing readable -> unknown: "could not confirm" + Check with Zerodha, never a guessed state.
 """
 from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from typing import Literal, Optional
+from typing import Final, Literal, Optional
 
 from ofo_app import execution_return as er
 from ofo_app.execution_plan_store import UNRESOLVED, PlanOrder, StoredPlan
 
-NOT_SENT, PLACED, EXECUTED, NOT_EXECUTED = "not_sent", "placed", "executed", "not_executed"
 State = Literal["not_sent", "placed", "executed", "not_executed"]
+NOT_SENT: Final = "not_sent"
+PLACED: Final = "placed"
+EXECUTED: Final = "executed"
+NOT_EXECUTED: Final = "not_executed"
 COMPLETE = "COMPLETE"
 #: Zerodha's words after which an order ended without a fill we can rely on (allow-list; the rest are working).
 ENDED_UNFILLED = frozenset({"REJECTED", "CANCELLED"})

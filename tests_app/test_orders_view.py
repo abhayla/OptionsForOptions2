@@ -20,13 +20,15 @@ TODAY = datetime.date(2026, 10, 19)
 CREATED = datetime.datetime(2026, 10, 19, 10, 0, tzinfo=IST)
 SYMBOL = "NIFTY26OCT24000CE"
 ENTRY_TAG, EXIT_TAG = "OFS9V1L0", "OFS9V2L0"
+PARTIAL_FILLED = 30
 
 
 def _orders() -> list:
     return json.loads((REPLIES / "orders-gc3l-2026-10-19.json").read_text(encoding="utf-8"), parse_float=D)["data"]
 
 
-def _plan(status="open", tag=ENTRY_TAG, filled=None, reason=None, created=CREATED, side="BUY") -> StoredPlan:
+def _plan(status="open", *, tag=ENTRY_TAG, filled=None, reason=None, created=CREATED) -> StoredPlan:
+    side = "BUY" if tag == ENTRY_TAG else "SELL"
     order = PlanOrder(0, tag, "NSE_FO:1", SYMBOL, side, 65, D("7.00"), filled)
     return StoredPlan(9, 1, "ENTRY", status, (order,), created, None if status == "open" else created, reason)
 
@@ -39,8 +41,8 @@ def _resolve(plan, fresh=None, audit=None, today=TODAY):
 def test_core_real_gc3l_rows_read_by_the_load_decide_both_orders_executed_65_of_65():
     tags = frozenset({ENTRY_TAG, EXIT_TAG})
     fresh = route._fresh(_orders(), tags)
-    for tag, side in ((ENTRY_TAG, "BUY"), (EXIT_TAG, "SELL")):
-        got = _resolve(_plan(tag=tag, side=side), fresh=fresh)
+    for tag in (ENTRY_TAG, EXIT_TAG):
+        got = _resolve(_plan(tag=tag), fresh=fresh)
         assert (got.state, got.filled, got.unknown, got.reconciliation) == ("executed", 65, False, False)
 
 
@@ -87,9 +89,11 @@ def test_a_failed_read_falls_back_to_the_audit_row_else_could_not_confirm(audit,
 
 
 def test_closed_plans_answer_from_the_audit_row_then_the_stored_fill():
-    assert _resolve(_plan("closed", filled=30, reason="partial")).filled == 30  # stored: Executed 30 of 65
+    partial = _resolve(_plan("closed", filled=PARTIAL_FILLED, reason="partial"))  # Executed 30 of 65
+    assert (partial.state, partial.filled) == ("executed", PARTIAL_FILLED)
     assert _resolve(_plan("closed", filled=0, reason="nothing_placed")).state == "not_sent"
-    rejected = _resolve(_plan("closed", filled=0, reason="nothing_placed"), audit={ENTRY_TAG: ov.Seen("REJECTED", 0)})
+    ended = {ENTRY_TAG: ov.Seen("REJECTED", 0)}
+    rejected = _resolve(_plan("closed", filled=0, reason="nothing_placed"), audit=ended)
     assert rejected.state == "not_executed"
     unresolved = _resolve(_plan("closed", filled=0, reason=UNRESOLVED))
     assert (unresolved.state, unresolved.reconciliation, unresolved.unknown) == (None, True, False)

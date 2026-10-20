@@ -138,9 +138,10 @@ async def _read_open_orders(db: Any, user_ref: str, session: Optional[KiteSessio
         fresh = _fresh(rows, frozenset().union(*open_tags.values()))
     except (KiteReadError, KiteReplyError, ValueError):
         return "failed", None
+    mapped = [r for r in rows if isinstance(r, Mapping)]  # _fresh refused anything else
     for sid in sorted(open_tags):  # the strategy row lock: two page loads never record a row twice
         await store.lock_strategy(db, user_ref, sid)
-        await order_audit.record_broker_book(db, rows, [], open_tags[sid])  # orders only; no trades read here
+        await order_audit.record_broker_book(db, mapped, [], open_tags[sid])  # orders only; no trades read here
     return "read", fresh
 
 

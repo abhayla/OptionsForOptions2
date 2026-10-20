@@ -9,6 +9,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 
 const props = defineProps({ strategyId: { type: String, required: true } })
+const emit = defineEmits(['checked']) // the Orders screen reloads its lines after a successful Check
 
 const busy = ref(false)
 const result = ref(null)
@@ -20,6 +21,7 @@ async function check() {
   errorParts.value = null
   try {
     result.value = (await api.post(`/strategies/${props.strategyId}/execution/return`)).data
+    emit('checked')
   } catch (e) {
     result.value = null
     errorParts.value = e?.parts ?? NEUTRAL_PARTS

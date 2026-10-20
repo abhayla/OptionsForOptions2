@@ -45,6 +45,9 @@ for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
     const nav = new NavPage(page)
     await nav.openSection(label)
     await expect(nav.title).toHaveText(label)
+    // ADR-138 (1): the Orders section serves the Orders screen (one line per order); its four sub-items are no longer
+    // offered on that page (their routes stay as placeholders until the owner decides what to do with them)
+    if (label === 'Orders') return
     await expect(nav.subItems).toHaveText(items)
     // each sub-item resolves to its own page titled with the exact label
     for (const item of items) {
@@ -64,7 +67,8 @@ test('AC-5: Orders offers strategy-linked orders only, never an order-entry form
     await expect(nav.title).toBeVisible()
     const content = page.getByTestId('app-content')
     await expect(content.locator('form, input, select, textarea')).toHaveCount(0)
-    await expect(content.getByRole('button')).toHaveCount(0)
+    // the Orders screen's empty state offers one "Create Strategy" button (ADR-130); the placeholders offer none
+    if (slug !== '') await expect(content.getByRole('button')).toHaveCount(0)
     await expect(content.getByText(/place order|buy|sell/i)).toHaveCount(0)
   }
   await page.goto('/orders')
@@ -106,7 +110,8 @@ test('every nav link, sub-item link and account link resolves to a real page (fa
     for (const href of await nav.subItems.evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
   }
   // 7 sections + every sub-item + /settings + its ten items, derived from the spec strings above
-  const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + s.items.length, 0)
+  // (the Orders screen lists none: ADR-138 (1); the four Orders sub-item routes still exist, nothing links to them)
+  const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + (s.label === 'Orders' ? 0 : s.items.length), 0)
   expect(hrefs.size).toBe(SECTION_ORDER.length + subItemCount + 1 + ACCOUNT_ITEMS.length)
   for (const href of hrefs) {
     await page.goto(href)
