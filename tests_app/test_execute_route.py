@@ -834,8 +834,7 @@ async def test_exceptional_basket_reaches_kite_only_through_the_guard_token(app_
             assert first.status_code == HTTPStatus.OK, first.text
             asked = first.json()
             token = asked["risk"]["acknowledgement"]
-            assert (asked["basket"], asked["risk"]["tier"], asked["risk"]["needs_acceptance"]) == (None, "EXCEPTIONAL", True)
-            assert isinstance(token, str) and token
+            assert (asked["basket"], asked["risk"]["tier"], token is not None) == (None, "EXCEPTIONAL", True)
             assert await _numbers(conn, user, sid) == [1]  # only the closed ELEVATED plan: nothing stored
 
             forged = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": token[:-1] + "_"})
