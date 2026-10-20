@@ -819,3 +819,14 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   activity fields of the next-day positions reply, or treat an earlier-day plan whose net equals the base as
   unresolved, never `nothing_placed`, when activity cannot be ruled out. Status: **open; registry
   `net-only-read-misses-roundtrip`**.
+
+## F-56 - Zerodha's instrument list is generated once each morning; Kite's docs say fetch it at about 08:30 IST
+- Read 2026-10-20 (web): the Kite Connect v3 docs (https://kite.trade/docs/connect/v3/market-data-and-instruments/)
+  say the instruments dump is best requested "once a day (ideally at around 08:30 AM)" and stored; Kite staff on the
+  developer forum (https://kite.trade/forum/discussion/11793) say it refreshes around 8 AM each trading day and is not
+  updated intraday (new strikes added during the day appear only in the next morning's file).
+- Bears on: ADR-015 (no stale data as live) and ADR-058 (the daily list). A catalogue load before the morning file
+  exists reads yesterday's list; GC-6 row INSTR-FRESH treats a list stamped before 08:30 IST as stale for that day
+  (setting `INSTRUMENT_LIST_PUBLISH_IST`, backend/ofo/timeutil.py on branch gc6/instr-fresh). No exact generation time
+  is published; 08:30 is the documented fetch time. Not a rule change. Status: **measured from documentation; no live
+  timing captured**.
