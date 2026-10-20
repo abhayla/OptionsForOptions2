@@ -10,10 +10,16 @@ import json
 from http import HTTPStatus
 
 import pytest
+from ofo_app import execution_return as er
 from ofo_app.kite_reads import TOKEN_CODE, KiteReadError
 from ofo_app.routes.execute import read_refusal
 from test_execution_return import (
+    ENTRY_DONE,
+    ENTRY_OPEN,
+    TODAY,
     _app_for,
+    _book,
+    _data,
     _post,
     _Reads,
     _store_plan,
@@ -82,5 +88,93 @@ async def test_token_return_expired_token_changes_nothing_and_a_retry_after_reco
             retry = await _post(_app_for(conn, user, _Reads("122104")), sid)
             assert retry.status_code == HTTPStatus.OK, retry.text
             assert retry.json()["plans"][0]["state"] == "filled"
+        finally:
+            await trans.rollback()
+
+
+# ---- GC-6 DUP-TAG: one basket tag on more broker orders than the plan holds (a basket posted twice) -----------------
+
+def _twice(rows_orders: list, rows_trades: list, *, second_status: str | None = None, second_filled: int | None = None):
+    """The real 12:21:04 order and trade, plus a copy with a new order id / trade id and the SAME tag."""
+    orders = [*rows_orders, {**rows_orders[0], "order_id": "261016170576999"}]
+    trades = [*rows_trades, {**rows_trades[0], "order_id": "261016170576999", "trade_id": "4484195"}]
+    if second_status is not None:
+        orders[1]["status"] = second_status
+    if second_filled is not None:
+        orders[1]["filled_quantity"] = second_filled
+        trades = trades[:1]
+    return orders, trades
+
+
+@pytest.mark.parametrize("shape", ["both_filled", "second_cancelled_unfilled", "second_still_working"])
+def test_dup_tag_one_tag_on_two_orders_is_reconciliation_required_never_merged(shape):
+    """The real order twice under Q0001010 -> the plan stays open with reason duplicate_tag, whatever the second
+    row says (a second COMPLETE would be 130 of 65; a second CANCELLED with 0 filled would otherwise close the plan
+    as a clean fill of the first; a second still working would otherwise read as waiting). Dies if the
+    ``len(found) > 1`` guard in ``classify`` is removed."""
+    orders, trades = _data("orders-122104"), _data("trades-122104")
+    if shape == "second_cancelled_unfilled":
+        orders, trades = _twice(orders, trades, second_status="CANCELLED", second_filled=0)
+    elif shape == "second_still_working":
+        orders, trades = _twice(orders, trades, second_status="OPEN", second_filled=0)
+    else:
+        orders, trades = _twice(orders, trades)
+    book = _book(orders, trades, (ENTRY_OPEN,))
+    assert [r.order_id for r in book.ours["Q0001010"]] == ["261016170576173", "261016170576999"]
+    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.RECONCILE, {}, er.DUPLICATE_TAG)
+
+
+def test_dup_tag_a_single_row_per_tag_still_closes_the_plan():
+    """Discrimination: the real single-row book is unchanged (plan 1 filled 65 of 65, no reason)."""
+    book = _book(_data("orders-122104"), _data("trades-122104"), (ENTRY_OPEN,))
+    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"Q0001010": 65})
+
+
+def test_dup_tag_a_closed_plan_whose_tag_later_shows_two_orders_has_drifted():
+    """A plan closed filled 65 against one row, then the book shows the same tag twice with a second 0-fill row
+    (the sum still equals the stored 65): drift, which blocks the next Execute. Dies if ``len(found) > 1`` is removed
+    from ``drifted``."""
+    orders, trades = _twice(_data("orders-122104"), _data("trades-122104"), second_status="CANCELLED",
+                            second_filled=0)
+    assert er.drifted((ENTRY_DONE,), _book(orders, trades, (ENTRY_DONE,))) == (1,)
+    single = _book(_data("orders-122104"), _data("trades-122104"), (ENTRY_DONE,))
+    assert er.drifted((ENTRY_DONE,), single) == ()
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_dup_tag_route_blocks_with_the_reason_and_closes_nothing(app_engine, admin_engine, monkeypatch):
+    """Core (2) on the database: plan 1 open, the real order posted twice -> 200 with plan state
+    reconciliation_required, reason duplicate_tag, blocked true; the plan row is still open and no fill is stored;
+    both orders are in the audit log (each order id once), and a replay adds nothing."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from test_execute_route import _strategy_one, audit_head, audit_since  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    orders, trades = _twice(_data("orders-122104"), _data("trades-122104"))
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
+            app = _app_for(conn, user, _Reads("122104", orders=orders, trades=trades))
+            head = await audit_head(conn)
+            resp = await _post(app, sid)
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            body = resp.json()
+            assert body["plans"] == [{"plan_number": 1, "action": "ENTRY", "state": "reconciliation_required",
+                                      "choices": [], "reason": "duplicate_tag"}]
+            assert body["blocked"] is True
+            (stored,) = await plans.plans_for(conn, user, sid)
+            assert (stored.status, stored.close_reason, stored.orders[0].filled_quantity) == ("open", None, None)
+            events = await audit_since(conn, head)
+            recorded = sorted(c for t, c, _ in events if t == "broker_response_recorded")
+            assert recorded == ["order:261016170576173:COMPLETE:65", "order:261016170576999:COMPLETE:65"]
+            head = await audit_head(conn)
+            again = await _post(app, sid)
+            assert again.json()["plans"] == body["plans"]
+            assert await audit_since(conn, head) == []
         finally:
             await trans.rollback()

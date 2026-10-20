@@ -134,7 +134,9 @@ def test_ac3_zerodha_disagreeing_with_itself_or_the_plan_needs_reconciliation(ch
         orders[0]["transaction_type"] = "SELL"
     else:
         orders[0]["tradingsymbol"] = "NIFTY26O1923700CE"
-    assert er.classify(ENTRY_OPEN, _book(orders, trades, (ENTRY_OPEN,)), TODAY) == er.PlanAnswer(er.RECONCILE, {})
+    reason = er.DUPLICATE_TAG if change == "posted_twice" else None  # GC-6 DUP-TAG: the named reason
+    answer = er.classify(ENTRY_OPEN, _book(orders, trades, (ENTRY_OPEN,)), TODAY)
+    assert answer == er.PlanAnswer(er.RECONCILE, {}, reason)
 
 
 def test_ac3_a_closed_plan_whose_order_filled_after_the_close_has_drifted():
