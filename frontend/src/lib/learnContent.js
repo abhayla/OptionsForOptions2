@@ -52,7 +52,7 @@ export const STRATEGY_TEXT = {
     'The higher strike minus the net premium received.',
     'A fall below the lower strike produces the full loss. The profit is small next to that loss.'),
   synthetic_long: part(
-    'A bought call and a sold put at the same strike and expiry. Together they move like holding the index.',
+    'A bought call and a sold put at the same strike and expiry. Together they move like a long index future.',
     'People use it when they expect a rise and want the effect of a long position without the full price outlay.', 'rising',
     'No upper limit.', 'Large. It grows as the index falls, down to zero.',
     'About the strike, adjusted by the net premium.',
@@ -124,14 +124,14 @@ export const STRATEGY_TEXT = {
     'Two. The bought put strike minus the net premium, and the bought call strike plus the net premium.',
     'If the index ends between the middle strikes, the premium paid is lost.'),
   covered_call: part(
-    'A held position in the index (or a future) with a call sold against it.',
-    'People use it when they hold a position and expect it to stay flat or rise slowly.', 'highRight',
+    'A long index future with a call sold against it.',
+    'People use it when they hold a long future and expect the index to stay flat or rise slowly.', 'highRight',
     'The call strike minus the entry level, plus the premium received.', 'Large. It grows as the index falls, down to zero.',
     'The entry level minus the premium received.',
-    'The held position can lose value. The sold call gives up gains above its strike. This tool builds option legs, so check how the held part is shown.'),
+    'The future can lose value. The sold call gives up gains above its strike. This tool builds option legs, so check how the future is shown.'),
   cash_secured_put: part(
-    'A sold put, with enough cash kept aside to cover buying at the strike.',
-    'People use it when they would be willing to hold the index at the strike and want to collect premium meanwhile.', 'highRight',
+    'A sold put, with cash or margin kept aside to cover the loss if the index falls.',
+    'People use it when they expect the index to stay above the strike and want to collect premium.', 'highRight',
     'The premium received.', 'Large. It grows as the index falls below the strike, down to zero.',
     'The strike minus the premium received.',
     'A fall below the strike produces a loss. Cash stays tied up until expiry.'),
@@ -200,7 +200,7 @@ export const CONCEPTS = [
   lesson('expiry', 'Expiry', 'The date the contract ends.', [
     'Every option has an expiry date.',
     'On that date the option is settled and then it no longer exists.',
-    'Weekly and monthly expiries are both listed for the main indices.',
+    'NIFTY and SENSEX options are cash-settled: nobody receives the index, only the difference in money. The option chain lists the expiries on offer.',
     'An option with more time left usually costs more than the same option close to expiry.']),
   lesson('premium', 'Premium', 'The price of an option.', [
     'The premium is the price paid by the buyer and received by the seller.',
@@ -246,9 +246,9 @@ export const PLATFORM = [
     'It only reads. It never places, changes or cancels an order.',
     'If the answer is not available, the screen says so and shows no guess.']),
   lesson('order-states', 'What the order states mean', 'Each strategy order shows one of four states.', [
-    '"Not sent to Zerodha" means no order for it has reached Zerodha from the platform.',
+    '"Not sent to Zerodha" means no order with this strategy's tag has reached Zerodha.',
     '"Order placed" means Zerodha has the order. It may not have executed.',
-    '"Executed n of m" means n of m lots are executed.',
+    '"Executed n of m" means n of the m units ordered are executed.',
     '"Not executed - see Kite" means it did not execute. Kite shows the reason.']),
 ]
 
