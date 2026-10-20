@@ -43,13 +43,13 @@ function openAgain() {
       v-if="fields && !sent"
       type="button"
       data-testid="place-on-kite"
-      class="mt-2 rounded px-4 py-2 text-white bg-[#387ed1]"
+      class="mt-2 min-h-[44px] rounded px-4 py-2 text-white bg-[#387ed1]"
       @click="placeOnKite"
     >
-      Open Kite to place these orders
+      Open on Kite
     </button>
     <p v-if="sent" class="mt-2 text-sm" data-testid="basket-sent">Kite's order page opened in a new tab. Place or close the orders there, then check with Zerodha below.</p>
-    <button v-if="fields && sent" type="button" data-testid="open-kite-again" class="mt-2 rounded border border-line px-3 py-1" @click="openAgain">
+    <button v-if="fields && sent" type="button" data-testid="open-kite-again" class="mt-2 min-h-[44px] rounded border border-line px-3 py-1" @click="openAgain">
       Open Kite's page again
     </button>
   </div>

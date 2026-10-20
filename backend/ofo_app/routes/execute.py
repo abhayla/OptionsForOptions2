@@ -131,7 +131,8 @@ class CostOut(ApiModel):
 
 
 class ReviewOut(ApiModel):
-    """EXECUTE-REVIEW (REQ-056 AC-5/AC-9; ADR-008): the plan's at-expiry risk from the one engine (``strategy_metrics``),
+    """EXECUTE-REVIEW (REQ-056 AC-5/AC-9; ADR-008): the plan's at-expiry risk from the one engine
+    (``strategy_metrics``),
     shown by the screen as given. ``max_loss`` / ``max_profit`` are a 2-decimal string, or None when unlimited (the
     matching flag is true) or not known (an exit, whose closing orders say nothing about the risk left; a multi-expiry
     strategy, which has no exact at-expiry figure): unknown is never 0."""
@@ -574,7 +575,8 @@ def review_out(strategy: Strategy, action: str) -> ReviewOut:
     loss_unlimited, profit_unlimited = metrics.max_loss is UNLIMITED, metrics.max_profit is UNLIMITED
     return ReviewOut.model_validate({
         "max_loss": None if loss_unlimited else _paise(metrics.max_loss), "max_loss_unlimited": loss_unlimited,
-        "max_profit": None if profit_unlimited else _paise(metrics.max_profit), "max_profit_unlimited": profit_unlimited})
+        "max_profit": None if profit_unlimited else _paise(metrics.max_profit),
+        "max_profit_unlimited": profit_unlimited})
 
 
 def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut, review: ReviewOut) -> ExecuteOut:
@@ -733,6 +735,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut", "ReviewOut",
-           "cost_out", "review_out", "execute_market_status", "get_execute_clock", "get_kite_session", "get_quote_reader",
-           "held_products", "market_open", "market_verdict", "price_and_time"]
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
+           "ReviewOut", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
+           "get_quote_reader", "held_products", "market_open", "market_verdict", "price_and_time", "review_out"]

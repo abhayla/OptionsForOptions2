@@ -21,11 +21,14 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
+import { EVERY_TRADE_NOTE, LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, SEQUENCE_NOTE, basketFields, isLiveOutcome, orderTypeText, planSentence, readyText } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
 const route = useRoute()
+const guided = computed(() => route.query.ux === 'guided') // the level, as the Builder reads it (?ux=); glosses and hidden tags at Guided
+const narrow = ref(false) // a phone: the orders block starts collapsed
+const sentence = computed(() => (reply.value ? planSentence(reply.value) : null))
 const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? String(route.params.id) : null)) // an id string, never parsed
 const phase = ref('loading') // loading | waiting-live | live | not-live | executing | prepared | error
 const liveNow = ref(false)
@@ -77,6 +80,7 @@ function notLive() {
 }
 
 onMounted(async () => {
+  narrow.value = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches
   if (strategyId.value === null) {
     errorParts.value = NEUTRAL_PARTS
     phase.value = 'error'
@@ -134,19 +138,31 @@ async function prepare(action) {
     </div>
 
     <template v-if="reply">
-      <h2 class="mt-4 font-medium">Plan {{ reply.plan_number }}: orders for Kite's page</h2>
-      <table class="mt-1 text-sm" data-testid="execute-orders">
-        <thead><tr><th>Side</th><th>Quantity</th><th>Contract</th><th>Order type</th><th>Price</th><th>Tag</th></tr></thead>
-        <tbody>
-          <tr v-for="o in reply.orders" :key="o.tag" data-testid="execute-order">
-            <td>{{ o.transaction_type }}</td><td>{{ o.quantity }}</td><td>{{ o.tradingsymbol }}</td>
-            <td>{{ o.order_type }}</td><td>{{ o.price }}</td><td>{{ o.tag }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <ExecuteCost v-if="reply.cost" :cost="reply.cost" />
+      <!-- EXECUTE-REVIEW reading order (design note S5): one plain sentence, margin + charges, max loss / profit, the orders
+           (collapsed on a phone), then "Ready to execute" with the one sticky action. Server strings only (ADR-008). -->
+      <p v-if="sentence" class="mt-4 text-base font-medium" data-testid="execute-sentence">{{ sentence }}</p>
+      <ExecuteCost v-if="reply.cost" :cost="reply.cost" :review="reply.review" />
       <p v-else class="mt-2 text-sm" data-testid="cost-unavailable">The cost of these orders is not available.</p>
-      <BasketForm :reply="reply" :strategy-id="strategyId" @sent="sent = true" />
+      <details class="mt-3" :open="!narrow" data-testid="execute-orders-block">
+        <summary class="min-h-[44px] cursor-pointer font-medium">Plan {{ reply.plan_number }}: orders for Kite's page</summary>
+        <div class="overflow-x-auto" data-h-scroll>
+          <table class="mt-1 text-sm" data-testid="execute-orders">
+            <thead><tr><th>#</th><th>Side</th><th>Quantity</th><th>Contract</th><th>Order type</th><th>Price</th><th v-if="!guided">Tag</th></tr></thead>
+            <tbody>
+              <tr v-for="(o, i) in reply.orders" :key="o.tag" data-testid="execute-order">
+                <td data-testid="order-seq">{{ i + 1 }}</td><td>{{ o.transaction_type }}</td><td>{{ o.quantity }}</td><td>{{ o.tradingsymbol }}</td>
+                <td>{{ orderTypeText(o.order_type, guided) }}</td><td>{{ o.price }}</td><td v-if="!guided">{{ o.tag }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-1 text-xs" data-testid="sequence-note">{{ SEQUENCE_NOTE }}</p>
+      </details>
+      <p class="mt-2 text-xs" data-testid="every-trade-note">{{ EVERY_TRADE_NOTE }}</p>
+      <div class="sticky bottom-0 mt-3 bg-white py-2 sm:static" data-testid="execute-ready-bar">
+        <p class="font-medium" data-testid="execute-ready">{{ readyText(reply) }}</p>
+        <BasketForm :reply="reply" :strategy-id="strategyId" @sent="sent = true" />
+      </div>
       <ReturnCheck v-if="sent" :strategy-id="strategyId" />
     </template>
   </section>

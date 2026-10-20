@@ -47,6 +47,8 @@ const REPLY = {
     variety: 'regular', quantity: 65, price: '3.35', readonly: true, tag: 'OFS1V1L0' }],
   cost: { net_premium: '-217.75', charges: '41.27', charges_note: null, funds_available: '25000.00', margin_required: '217.75',
     figures_read_at: '2026-10-16T15:07:20+05:30' },
+  // the engine's at-expiry risk of the one long call: max loss = the premium paid (65 x 3.35), profit unlimited
+  review: { max_loss: '217.75', max_loss_unlimited: false, max_profit: null, max_profit_unlimited: true },
 }
 const DEF = { underlying: 'NIFTY', legs: [{ contract_id: 7, exchange_segment: 'NSE_FO', exchange_token: 12080386, action: 'BUY',
   instrument: 'CE', strike: '23650', expiry: '2026-10-19', quantity: 65, planned_entry: '3.35', captured_at: '2026-10-16T15:07:00+05:30' }] }
@@ -121,7 +123,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY' }]])
     const row = w.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())
-    expect(row).toEqual(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
+    expect(row).toEqual(['1', 'BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
     expect(text(w, 'cost-net-premium')).toBe('-217.75')
     expect(text(w, 'cost-charges')).toBe('41.27')
     expect(text(w, 'cost-funds')).toBe('25000.00')
@@ -475,5 +477,108 @@ describe('wording and money (ADR-003, ADR-008)', () => {
     const filled = block.replace('{data_input}', 'leg prices').replace('{state}', 'is unavailable')
     for (const part of ['what_happened', 'impact', 'next_action']) expect(filled).toContain(NOT_LIVE_PARTS[part])
     expect(t).toContain(`_EXEC = "${NOT_LIVE_PARTS.what_is_blocked}"`)
+  })
+})
+
+// ---- EXECUTE-REVIEW (S5): the reading order and the server-only figures --------------------------------------------------
+// TWO_BUYS is a stand-in for a two-order all-BUY reply (the recorded session has one order): every figure is a made-up
+// server string, and the expectations are those same strings, never a value this code computed.
+const TWO_BUYS = {
+  ...REPLY,
+  orders: [
+    { ...REPLY.orders[0], tag: 'OFS1V1L0' },
+    { ...REPLY.orders[0], tradingsymbol: 'NIFTY26O1924150PE', quantity: 75, price: '29.90', tag: 'OFS1V1L1' },
+  ],
+  review: { max_loss: '5900.00', max_loss_unlimited: false, max_profit: '4100.00', max_profit_unlimited: false },
+  cost: { ...REPLY.cost, margin_required: '110000.00', funds_available: '240000.00', charges: '310.00' },
+}
+
+async function prepared(reply, query = '') {
+  answers['POST /strategies/1/execute'] = ok(reply)
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/:id/execute', component: ExecuteStrategyPage }] })
+  await router.push(`/strategy/1/execute${query}`)
+  await router.isReady()
+  const w = mount(ExecuteStrategyPage, { props: { waitMs: 10000 }, global: { plugins: [router] } })
+  await flushPromises()
+  live.onPush(LIVE_PUSH)
+  await flushPromises()
+  await w.get('[data-testid="prepare-entry"]').trigger('click')
+  await flushPromises()
+  return w
+}
+const ids = (w) => [...w.element.querySelectorAll('[data-testid]')].map((e) => e.getAttribute('data-testid'))
+
+describe('EXECUTE-REVIEW: reads in the approved order, with the server figures only', () => {
+  it('the plain sentence is first, then margin + charges, max loss / profit, orders, ready', async () => {
+    const w = await prepared(TWO_BUYS)
+    expect(text(w, 'execute-sentence')).toBe('You will place 2 buy orders now; worst case loss ₹5900.00')
+    const order = ids(w)
+    const at = (id) => order.indexOf(id)
+    expect(at('execute-sentence')).toBeGreaterThan(-1)
+    expect(at('execute-sentence')).toBeLessThan(at('margin-label'))
+    expect(at('margin-label')).toBeLessThan(at('cost-charges'))
+    expect(at('cost-charges')).toBeLessThan(at('execute-max-loss'))
+    expect(at('execute-max-loss')).toBeLessThan(at('execute-orders'))
+    expect(at('execute-orders')).toBeLessThan(at('execute-ready'))
+    expect(at('execute-ready')).toBeLessThan(at('place-on-kite'))
+  })
+
+  it('margin required + available (labelled an estimate), charges, max loss and max profit are the server strings', async () => {
+    const w = await prepared(TWO_BUYS)
+    expect(text(w, 'margin-label')).toBe("planning estimate; Zerodha's figure is authoritative")
+    expect(text(w, 'cost-margin')).toBe('110000.00')
+    expect(text(w, 'cost-funds')).toBe('240000.00')
+    expect(text(w, 'cost-charges')).toBe('310.00')
+    expect(text(w, 'execute-max-loss')).toBe('5900.00')
+    expect(text(w, 'execute-max-profit')).toBe('4100.00')
+  })
+
+  it('orders carry sequence numbers 1..n in the server order, with the sequence note', async () => {
+    const w = await prepared(TWO_BUYS)
+    expect(w.findAll('[data-testid="order-seq"]').map((c) => c.text())).toEqual(['1', '2'])
+    expect(w.findAll('[data-testid="execute-order"]').map((r) => r.findAll('td')[3].text())).toEqual(['NIFTY26O1923650CE', 'NIFTY26O1924150PE'])
+    expect(text(w, 'sequence-note')).toBe('protective buys first; exits buy back shorts first, then sell longs')
+    expect(text(w, 'every-trade-note')).toBe('Every trade follows a strategy')
+  })
+
+  it('"Ready to execute: <n> orders" shows the server order count and Open on Kite is the only action', async () => {
+    const w = await prepared(TWO_BUYS)
+    expect(text(w, 'execute-ready')).toBe('Ready to execute: 2 orders')
+    expect(text(w, 'place-on-kite')).toBe('Open on Kite')
+    expect(w.text()).not.toMatch(/Place order|Market|Include existing/)
+    expect(submitSpy).not.toHaveBeenCalled() // on click only
+  })
+
+  it('unlimited or unknown risk shows the existing words and no sentence is invented for an unsettled shape', async () => {
+    const unlimited = await prepared({ ...TWO_BUYS, review: { max_loss: null, max_loss_unlimited: true, max_profit: null, max_profit_unlimited: true } })
+    expect(text(unlimited, 'execute-max-loss')).toBe('Unlimited')
+    expect(unlimited.find('[data-testid="execute-sentence"]').exists()).toBe(false)
+    const sell = { ...TWO_BUYS, orders: [TWO_BUYS.orders[0], { ...TWO_BUYS.orders[1], transaction_type: 'SELL' }] }
+    expect((await prepared(sell)).find('[data-testid="execute-sentence"]').exists()).toBe(false)
+    const one = await prepared(REPLY)
+    expect(one.find('[data-testid="execute-sentence"]').exists()).toBe(false)
+    const unknown = await prepared({ ...REPLY, review: { max_loss: null, max_loss_unlimited: false, max_profit: null, max_profit_unlimited: false } })
+    expect(text(unknown, 'execute-max-loss')).toBe('-')
+  })
+
+  it('Guided: LIMIT is glossed and basket tags are hidden; other levels show the server word and the tag', async () => {
+    const guided = await prepared(TWO_BUYS, '?ux=guided')
+    const cells = guided.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())
+    expect(cells).toEqual(['1', 'BUY', '65', 'NIFTY26O1923650CE', 'LIMIT (price you set)', '3.35'])
+    expect(guided.text()).not.toContain('OFS1V1L0')
+    const standard = await prepared(TWO_BUYS)
+    expect(standard.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())[4]).toBe('LIMIT')
+  })
+
+  it('a server verdict that is not open shows its one message and no review (no second market message)', async () => {
+    answers['GET /execute/market-status'] = ok(MARKET_CLOSED)
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/:id/execute', component: ExecuteStrategyPage }] })
+    await router.push('/strategy/1/execute')
+    await router.isReady()
+    const w = mount(ExecuteStrategyPage, { props: { waitMs: 10000 }, global: { plugins: [router] } })
+    await flushPromises()
+    expect(w.findAll('[data-testid="market-closed-what"]')).toHaveLength(1)
+    expect(w.find('[data-testid="execute-ready"]').exists()).toBe(false)
+    expect(w.find('[data-testid="execute-sentence"]').exists()).toBe(false)
   })
 })

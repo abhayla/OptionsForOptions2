@@ -64,7 +64,7 @@ test.describe('Execute screen on the Execute replay API', () => {
 
     const row = page.getByTestId('execute-order')
     await expect(row).toHaveCount(1)
-    await expect(row.locator('td')).toHaveText(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'Q0001010'])
+    await expect(row.locator('td')).toHaveText(['1', 'BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'Q0001010'])
     await expect(page.getByTestId('cost-net-premium')).toHaveText('-217.75')
     expect(reply.cost.net_premium).toBe('-217.75') // the API's own string, before the screen is read
     expect(reply.cost.margin_required).not.toBeNull() // the derived entry reply carries Zerodha's margin
@@ -72,6 +72,11 @@ test.describe('Execute screen on the Execute replay API', () => {
     await expect(page.getByTestId('cost-funds')).toHaveText(reply.cost.funds_available ?? 'Not available from Zerodha')
     if (reply.cost.charges === null) await expect(page.getByTestId('cost-charges-note')).toHaveText(reply.cost.charges_note)
     else await expect(page.getByTestId('cost-charges')).toHaveText(reply.cost.charges)
+    // EXECUTE-REVIEW: the real reply's engine risk block is what the screen shows (one long call: loss = the premium, profit unlimited)
+    expect(reply.review).toEqual({ max_loss: '217.75', max_loss_unlimited: false, max_profit: null, max_profit_unlimited: true })
+    await expect(page.getByTestId('execute-max-loss')).toHaveText('217.75')
+    await expect(page.getByTestId('execute-max-profit')).toHaveText('Unlimited')
+    await expect(page.getByTestId('execute-ready')).toHaveText('Ready to execute: 1 orders')
     expect(kite).toHaveLength(0) // the reply alone sends nothing to Kite
 
     const popup = page.waitForEvent('popup')

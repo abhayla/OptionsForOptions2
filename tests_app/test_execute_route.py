@@ -724,7 +724,7 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
     assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE
 
 
-# ---- EXECUTE-REVIEW (REQ-056 AC-5/AC-9): the risk block comes from the engine's metrics, strings, never a made-up 0 ----
+# ---- EXECUTE-REVIEW (REQ-056 AC-5/AC-9): the risk block is the engine's metrics as strings, never a made-up 0 ----
 
 def _review_body(legs, action="ENTRY") -> dict:
     from ofo.engine import Strategy  # noqa: PLC0415

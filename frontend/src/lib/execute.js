@@ -76,3 +76,38 @@ export function readLastExecuted(storage = globalThis.localStorage) {
   if (typeof raw !== 'string' || !/^[1-9]\d{0,17}$/.test(raw)) return null
   return raw
 }
+
+// ---- EXECUTE-REVIEW (S5; docs/design/screens-research-2026-10-19-part2.md A4 + shared rules): the review's fixed texts.
+// Each is the design note's wording, character for character. Every figure beside them is a server string.
+
+/** The margin label (REQ-055 AC-1/AC-3: Zerodha's figure is final). */
+export const MARGIN_ESTIMATE_LABEL = "planning estimate; Zerodha's figure is authoritative"
+/** The sequence note (REQ-056 AC-3; REQ-058 Q238): the engine owns the order; the screen never reorders. */
+export const SEQUENCE_NOTE = 'protective buys first; exits buy back shorts first, then sell longs'
+/** REQ-036 AC-4. */
+export const EVERY_TRADE_NOTE = 'Every trade follows a strategy'
+/** Guided level's gloss of the order type (shared rules: "LIMIT (price you set)"). */
+export const LIMIT_GLOSS = 'LIMIT (price you set)'
+
+/** "Ready to execute: <n> orders": the count is the server's own order list. */
+export function readyText(reply) {
+  return `Ready to execute: ${reply.orders.length} orders`
+}
+
+/** The one plain first sentence. Only the shape the design note settles is built: two or more orders, every one a BUY, and
+ *  a finite worst-case loss the server sent ("You will place 2 buy orders now; worst case loss ₹5,900"). Any other shape
+ *  (a sell, an exit, one order, unlimited or unknown loss) returns null: its wording is the owner's call. The count is
+ *  the length of the server's order list; the loss is the server's string, untouched. */
+export function planSentence(reply) {
+  const orders = reply?.orders
+  const review = reply?.review
+  if (!Array.isArray(orders) || orders.length < 2 || !review) return null
+  if (!orders.every((o) => o.transaction_type === 'BUY')) return null
+  if (review.max_loss_unlimited || typeof review.max_loss !== 'string' || review.max_loss === '') return null
+  return `You will place ${orders.length} buy orders now; worst case loss ₹${review.max_loss}`
+}
+
+/** The order type as shown: Guided adds the gloss; every other level shows the server's word. */
+export function orderTypeText(orderType, guided) {
+  return guided && orderType === 'LIMIT' ? LIMIT_GLOSS : orderType
+}
