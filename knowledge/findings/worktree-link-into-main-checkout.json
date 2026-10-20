@@ -10,9 +10,11 @@
  },
  "fix": "Instance repaired 2026-10-19. Class: every reviewer/builder brief says 'never create a junction or symlink; never `--force` a worktree removal; if node_modules is needed, run npm ci inside the scratch checkout or say unverified'; GC-6 row WT-LINK-GUARD adds a structural guard (a PreToolUse hook refusing junction/symlink creation that targets the main checkout, and a removal helper that deletes links as links first and counts main's packages before/after - run-discipline F3/F4).",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Discriminating check: before any worktree removal, list reparse points under it (Get-ChildItem -Recurse -Attributes ReparsePoint); after it, compare main's node_modules top-level count and package-lock top-level set. Today only run-discipline F3/F4 prose covers it."
+  "status": "guarded",
+  "checks": [
+   "scripts/hooks/link_guard.py (PreToolUse Bash|PowerShell; refuses link creation whose target is inside the main checkout and `git worktree remove --force`), tests/test_link_guard_hook.py"
+  ],
+  "note": "Guard covers mklink, New-Item Junction/SymbolicLink/HardLink, ln -s, fsutil hardlink, inline os.symlink/CreateJunction, and forced worktree removal; it does NOT cover a human outside Claude Code, nor rm -rf / Remove-Item -Recurse over an existing link (links made before the hook), nor the removal helper that counts main packages before/after (still prose: run-discipline F3/F4)."
  },
  "spec_ref": [
   "spec/decisions/ADR-106.md"
