@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (137)
+## Decisions (139)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -103,8 +103,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-095 2026-10-16: When the user gives one price tolerance (in rupee… [extends ADR-080]
 - ADR-096 2026-10-16: REQ-061 AC-2 "add it to an existing strategy" is… [extends ADR-084]
 - ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 a… [applies ADR-054, ADR-060]
-- ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is met when every route open to ordinary code is refus… [refines REQ-073]
-- ADR-099 2026-10-16: When a Kite session is active, the outcome screen shows the margin from Zerodha for the strategy's… [extends REQ-055]
+- ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is m… [refines REQ-073]
+- ADR-099 2026-10-16: When a Kite session is active, the outcome screen… [extends REQ-055]
 - ADR-100 2026-10-16: The Kite Connect app registers no static IP. [applies ADR-054]
 - ADR-101 2026-10-16: Every money figure read from a Zerodha reply that the margin gate or a screen compares (the basket… [applies ADR-016, ADR-099]
 - ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact… [applies ADR-008, ADR-101]
@@ -143,6 +143,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-136 2026-10-20: (1) A partly executed strategy shows its actual risk and max loss now (REQ-058 AC-1) and offers exa… [amends REQ-058]
 - ADR-137 2026-10-20: (1) A strategy (or several sharing a contract) blocked by a reconciliation mismatch offers exactly… [amends REQ-060; extends ADR-116]
 - ADR-138 2026-10-20: (1) Orders screen: one line per strategy order in the four ADR-135 states plus an "Open Kite order… [amends REQ-073; amends REQ-044; amends REQ-064; a…]
+- ADR-139 2026-10-20: (1) The first line of the Execute review follows one pattern: entry "You will place <n> orders now… [refines REQ-056]
+- ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: NORMAL when the worst-case loss is limited and with… [refines REQ-056]
 
 ## Requirements (75)
 
