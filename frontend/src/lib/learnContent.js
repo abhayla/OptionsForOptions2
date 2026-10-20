@@ -246,7 +246,7 @@ export const PLATFORM = [
     'It only reads. It never places, changes or cancels an order.',
     'If the answer is not available, the screen says so and shows no guess.']),
   lesson('order-states', 'What the order states mean', 'Each strategy order shows one of four states.', [
-    '"Not sent to Zerodha" means no order with this strategy's tag has reached Zerodha.',
+    '"Not sent to Zerodha" means no order carrying the tag of this strategy has reached Zerodha.',
     '"Order placed" means Zerodha has the order. It may not have executed.',
     '"Executed n of m" means n of the m units ordered are executed.',
     '"Not executed - see Kite" means it did not execute. Kite shows the reason.']),
