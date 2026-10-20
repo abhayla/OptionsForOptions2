@@ -2,16 +2,17 @@
 
 Spec basis: ADR-127 "One server setting, changed only by the platform owner ... Turning it on or off is an audited
 event." There is no sign-in yet (stage 5), so the owner check is one secret, ``OFO_OWNER_KEY`` (``config.owner_key``),
-sent in the ``X-Owner-Key`` header and compared in constant time. A missing or wrong key, or a server with no key set,
-answers exactly as an unknown path does (404): a normal user learns nothing, and the route cannot be reached by
-accident. ``current_user_ref`` is NOT the check (in v1 it names the owner for everyone).
+sent in the ``X-Owner-Key`` header and compared in constant time (``ofo.safe_compare.equal_secret``). A missing or
+wrong key, or a server with no key set, answers exactly as an unknown path does (404): a normal user learns nothing,
+and the route cannot be reached by accident. ``current_user_ref`` is NOT the check (in v1 it names the owner for
+everyone).
 """
 from __future__ import annotations
 
-import hmac
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
+from ofo.safe_compare import equal_secret
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import kill_switch
@@ -38,8 +39,7 @@ class KillSwitchOut(ApiModel):
 def require_owner(x_owner_key: Annotated[str | None, Header()] = None) -> None:
     """Refuses (404) unless the header equals the server's owner key. Constant-time compare; no key set = refuse."""
     expected = owner_key()
-    if expected is None or x_owner_key is None or not hmac.compare_digest(
-            x_owner_key.encode("utf-8"), expected.encode("utf-8")):
+    if expected is None or x_owner_key is None or not equal_secret(x_owner_key, expected):
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
 
 
@@ -57,4 +57,4 @@ async def set_kill_switch(
     return KillSwitchOut(paused=body.paused)
 
 
-__all__ = ["KillSwitchIn", "KillSwitchOut", "require_owner", "router", "set_kill_switch"]
+__all__ = ["KillSwitchIn", "KillSwitchOut", "require_owner", "set_kill_switch"]

@@ -7,6 +7,7 @@ import asyncio
 import dataclasses
 import datetime
 import json
+from http import HTTPStatus
 from types import SimpleNamespace
 
 import pytest
@@ -74,7 +75,8 @@ def test_gate_reads_every_time_never_a_cached_value(monkeypatch) -> None:
     monkeypatch.setattr(execute.kill_switch, "is_paused", read)
     for _ in range(3):
         asyncio.run(execute._gate(_req(), SimpleNamespace(strategy=None), _Ctx(OPEN_NOW, True, False), None, "NIFTY"))
-    assert [c.platform_paused for c in seen] == [False, True, False] and len(read.calls) == 3
+    expected = [False, True, False]
+    assert [c.platform_paused for c in seen] == expected and len(read.calls) == len(expected)
 
 
 def _stub_basket_path(monkeypatch) -> object:
@@ -163,7 +165,7 @@ def _refused(header) -> bool:
     try:
         owner_route.require_owner(header)
     except StrategyRefused as exc:
-        return exc.failure is not None and exc.failure.status == 404
+        return exc.failure is not None and exc.failure.status == HTTPStatus.NOT_FOUND
     return False
 
 

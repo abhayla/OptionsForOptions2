@@ -189,6 +189,7 @@ decisions:
   ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
   ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
   ADR-121: 4b           # range reading (lopsided = direction) and next-trading-day format "Wed 21 Oct" (owner 2026-10-19)
+  ADR-127: 4b           # owner kill switch: one audited server setting refuses every basket build; Execute shows the ADR-127 sentence (owner 2026-10-20)
   ADR-120: 4b          # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
