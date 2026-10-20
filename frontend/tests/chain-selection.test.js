@@ -232,7 +232,7 @@ describe('chainSelection store', () => {
     const s = useChainSelection()
     s.chooseAction(c('1'), 'BUY')
     const id = s.entries[0].id
-    for (const bad of [0, -1, 1.5, '1e2', 10001, '', null, 'abc']) {
+    for (const bad of [0, -1, 1.5, '2', '1e2', 10001, '', null, 'abc', NaN]) {
       s.setLots(id, bad)
       expect(s.entries[0].lots).toBe(1)
     }

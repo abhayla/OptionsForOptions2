@@ -6,10 +6,10 @@
 // cell without an LTP gives none, and the Builder then shows that leg as not connected (REQ-035 AC-8).
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { lotsValid } from '@/lib/legPicker'
 
 export const ACTIONS = Object.freeze(['BUY', 'SELL'])
 export const DEFAULT_LOTS = 1
+const MIN_LOTS = 1
 const MAX_LOTS = 10000
 
 const legId = (instrumentId, action) => `${instrumentId}|${action ?? ''}`
@@ -52,14 +52,14 @@ export const useChainSelection = defineStore('chainSelection', () => {
     } else add(contract, action)
   }
 
-  /** AC-7: a whole number of lots from 1 to 10000; anything else is refused and the lots stay as they were. */
+  /** AC-7: a whole number of lots from 1 to 10000 (a count, not money); anything else is refused and the lots stay. */
   function setLots(id, lots) {
     const leg = entries.value.find((e) => e.id === id)
-    if (leg && lotsValid(lots)) leg.lots = Number(lots)
+    if (leg && Number.isInteger(lots) && lots >= MIN_LOTS && lots <= MAX_LOTS) leg.lots = lots
   }
   const stepLots = (id, by) => {
     const leg = entries.value.find((e) => e.id === id)
-    if (leg) setLots(id, Math.min(MAX_LOTS, Math.max(1, leg.lots + by)))
+    if (leg) setLots(id, leg.lots + by) // past either end is refused, so the stepper stops there
   }
 
   /** AC-15: remove at once; `undo` puts the last removed one back. */
@@ -73,7 +73,7 @@ export const useChainSelection = defineStore('chainSelection', () => {
     if (!removed.value) return
     const { entry, index } = removed.value
     removed.value = null
-    if (!entries.value.some((e) => e.id === entry.id)) entries.value.splice(Math.min(index, entries.value.length), 0, entry)
+    if (!entries.value.some((e) => e.id === entry.id)) entries.value.splice(index, 0, entry)
   }
   const dismissUndo = () => (removed.value = null)
   const clear = () => {
