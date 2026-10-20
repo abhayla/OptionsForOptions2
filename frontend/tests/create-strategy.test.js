@@ -219,6 +219,22 @@ describe('Create Strategy page', () => {
       expect(w.find('[data-testid="range-reading"]').text()).toBe('Your range leans down')
     })
 
+    it('ADR-124: the pick-reading options read exactly Mildly bullish / Mildly bearish / Neutral, no suffix', async () => {
+      const cases = [
+        ['24300', '25100', ['Mildly bullish', 'Mildly bearish', 'Neutral']],
+        ['23500', '24500', ['Mildly bearish', 'Mildly bullish', 'Neutral']],
+        ['24000', '24600', ['Neutral', 'Mildly bullish', 'Mildly bearish']],
+      ]
+      for (const [lo, hi, expected] of cases) {
+        wide()
+        const { w } = await mountPage()
+        await toRange(w, lo, hi)
+        const texts = w.find('[data-testid="pick-reading"]').findAll('option').map((o) => o.text())
+        expect(texts).toEqual(expected)
+        expect([...texts].sort()).toEqual(['Mildly bearish', 'Mildly bullish', 'Neutral'])
+      }
+    })
+
     it('changing the reading changes the cards', async () => {
       wide()
       const { w } = await mountPage()
