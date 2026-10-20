@@ -11,6 +11,9 @@ import { istTime } from '@/lib/displayFormat'
 import { SECTIONS } from '@/router/nav'
 
 const RECENT_COUNT = 3
+const TAP = 'inline-flex min-h-11 items-center justify-center' // 44 px tap target, no fixed width
+const PROMINENT = `${TAP} rounded border border-line bg-surface px-4 py-2 font-medium`
+const SECONDARY = `${TAP} rounded border border-line px-4 py-2 underline`
 const learnItems = SECTIONS.find((s) => s.key === 'learn').items
 const LEARN_PATH = `/learn/${learnItems[0][0]}`
 
@@ -48,14 +51,15 @@ onMounted(async () => {
     <ErrorMessage v-if="state === 'error'" class="mt-4" :parts="errorParts" prefix="home-error" data-testid="home-error" />
 
     <div v-else-if="state === 'new'" class="mt-4" data-testid="home-new">
-      <h2 class="text-lg font-semibold">Welcome</h2>
-      <p class="mt-1 text-ink-muted">Plan your trade. Follow your strategy. Then execute.</p>
+      <!-- HOME-NEW leaves this slot empty: `Welcome, [Name]` and the Pro-trial line need the signed-in user (row #433, stage 5). -->
+      <div data-testid="home-welcome-slot" />
+      <p class="text-lg font-semibold" data-testid="home-line">Plan your trade. Follow your strategy. Then execute.</p>
       <div class="mt-4 flex flex-wrap gap-3" data-testid="home-actions">
-        <router-link to="/strategies/create-strategy" class="rounded border border-line bg-surface px-4 py-2 font-medium" data-testid="action-create">Create Strategy</router-link>
-        <router-link to="/market/option-chain" class="rounded border border-line bg-surface px-4 py-2 font-medium" data-testid="action-chain">Explore Option Chain</router-link>
-        <router-link :to="LEARN_PATH" class="rounded border border-line bg-surface px-4 py-2 font-medium" data-testid="action-learn">Learn</router-link>
+        <router-link to="/strategies/create-strategy" :class="PROMINENT" data-testid="action-create">Create Strategy</router-link>
+        <router-link to="/market/option-chain" :class="PROMINENT" data-testid="action-chain">Explore Option Chain</router-link>
+        <router-link :to="LEARN_PATH" :class="PROMINENT" data-testid="action-learn">Learn</router-link>
       </div>
-      <p class="mt-3 text-sm"><router-link to="/strategy/builder" class="underline" data-testid="action-know">I already know my strategy</router-link></p>
+      <p class="mt-3 text-sm"><router-link to="/strategy/builder" :class="SECONDARY" data-testid="action-know">I already know my strategy</router-link></p>
     </div>
 
     <div v-else-if="state === 'has-strategies'" class="mt-4" data-testid="home-has-strategies">
