@@ -55,10 +55,13 @@ class RiskTier:
 
 
 def has_uncovered_short(legs: Iterable[Leg]) -> bool:
-    """ADR-143: True when any SELL leg has no BUY leg of the same instrument type (CE / PE / FUT) in ``legs``."""
-    legs = tuple(legs)
-    bought = {leg.instrument for leg in legs if leg.action is Action.BUY}
-    return any(leg.action is Action.SELL and leg.instrument not in bought for leg in legs)
+    """ADR-143 as clarified by ADR-147: True when, for any instrument type (CE / PE / FUT), the SELL units in ``legs``
+    exceed the BUY units of that type (a 75-unit buy does not cover a 750-unit short)."""
+    net: dict[object, int] = {}
+    for leg in legs:
+        sign = -1 if leg.action is Action.SELL else 1
+        net[leg.instrument] = net.get(leg.instrument, 0) + sign * leg.quantity
+    return any(units < 0 for units in net.values())
 
 
 def unknown_loss_reason(legs: Iterable[Leg], *, is_exit: bool) -> Reason | None:

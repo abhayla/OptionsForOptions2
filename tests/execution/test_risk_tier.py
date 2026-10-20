@@ -91,11 +91,25 @@ def test_the_reason_for_an_unknown_loss_is_chosen_from_the_legs_and_the_action()
     assert unknown_loss_reason(naked, is_exit=True) is None  # an exit's closing orders say nothing about the risk left
 
 
-def _leg(action, instrument, strike="23650"):
+def _leg(action, instrument, strike="23650", quantity=65):
     from ofo.engine import Leg  # noqa: PLC0415
 
-    return Leg(action, instrument, None if instrument is Instrument.FUT else D(strike), datetime.date(2026, 10, 27), 65,
-               D("10"), D("10"))
+    return Leg(action, instrument, None if instrument is Instrument.FUT else D(strike), datetime.date(2026, 10, 27),
+               quantity, D("10"), D("10"))
+
+
+def test_uncovered_short_counts_units_per_type_adr_147():
+    """ADR-147: per type, SELL units above BUY units is uncovered (review: 750 short vs 75 long was ELEVATED)."""
+    from ofo.execution.risk_tier import has_uncovered_short  # noqa: PLC0415
+
+    assert has_uncovered_short([_leg(Action.SELL, Instrument.CE, quantity=750),
+                                _leg(Action.BUY, Instrument.CE, "24500", quantity=75)]) is True
+    assert has_uncovered_short([_leg(Action.SELL, Instrument.CE), _leg(Action.SELL, Instrument.CE, "23700"),
+                                _leg(Action.BUY, Instrument.CE, "23800")]) is True  # two shorts, one long
+    assert has_uncovered_short([_leg(Action.SELL, Instrument.CE, quantity=130),
+                                _leg(Action.BUY, Instrument.CE, "23800", quantity=130)]) is False  # equal units
+    assert has_uncovered_short([_leg(Action.SELL, Instrument.CE, quantity=65),
+                                _leg(Action.BUY, Instrument.CE, "23800", quantity=130)]) is False  # more bought
 
 
 def test_uncovered_short_needs_a_protective_buy_of_the_same_option_type():
