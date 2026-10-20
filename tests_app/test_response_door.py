@@ -222,6 +222,8 @@ def _sample(tp, required_only: bool = False):
         return Decimal("24500.50")
     if tp == api_models.InstrumentId:
         return "NSE_FO:44624"
+    if tp == api_models.DisplayRupees:
+        return Decimal("24500.50")
     origin = typing.get_origin(tp)
     if origin is Literal:
         return typing.get_args(tp)[0]
@@ -269,13 +271,13 @@ def test_the_app_models_are_all_swept() -> None:
         "PlannedEntriesOut", "LegOut", "RiskLimitsOut", "PreferencesOut", "DefinitionOut", "StrategyOut", "SummaryOut",
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
-        "BasketOrderOut", "ExecuteOut", "MarketStatusOut", "CostOut", "ReviewOut", "ReturnPlanOut", "ReturnContractOut",
+        "BasketOrderOut", "ExecuteOut", "MarketStatusOut", "CostOut", "ReviewOut", "RiskOut", "StepOut", "ReturnPlanOut", "ReturnContractOut",
         "ReturnExternalOut",
         "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
         "TemplatesOut", "KillSwitchOut"}
     # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
-    # TemplatesOut; ADR-127 adds KillSwitchOut; EXECUTE-REVIEW adds ReviewOut
-    assert len(_app_models()) == 47
+    # TemplatesOut; ADR-127 adds KillSwitchOut; EXECUTE-REVIEW adds ReviewOut, RiskOut and StepOut
+    assert len(_app_models()) == 49
 
 
 @pytest.mark.parametrize("required_only", [False, True])
@@ -325,6 +327,7 @@ def _leaf_matrix_pool() -> dict:
 LEAF_SLOTS = {
     "Identifier": (Identifier, {"ident", "literal_a"}),  # "A" is an exact str in the pattern
     "Money": (api_models.Money, {"money"}),
+    "DisplayRupees": (api_models.DisplayRupees, {"money"}),  # a finite Decimal only; the door writes the formatted text
     "int": (int, {"int", "literal_1"}),
     "bool": (bool, {"bool"}),
     "datetime": (__import__("datetime").datetime, {"aware_dt"}),

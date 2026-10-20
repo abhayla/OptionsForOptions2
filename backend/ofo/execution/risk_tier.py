@@ -11,15 +11,22 @@ Rule (``loss`` = the worst-case loss, ``funds`` = available funds, ``limit`` = t
 - else NORMAL.
 - Funds unknown (absent / failed read): decided by the limit alone; no limit -> ELEVATED; no percentage is given.
 - Funds stated as 0 or below: any loss above 0 is EXCEPTIONAL; a loss of 0 is NORMAL with no percentage (no division).
-- Loss unknown (an exit, a multi-expiry plan): no tier (``None``); the screen shows no risk line.
+- Loss unknown (a multi-expiry entry: the engine returns no worst case) - ADR-143 (owner 2026-10-20): never a silent
+  pass. At least ELEVATED with reason LOSS_UNKNOWN (the screen's line is exactly "Worst case: the loss for this strategy
+  can't be estimated."); EXCEPTIONAL (reason UNCOVERED_SHORT) when any short leg has no protective buy of the same
+  option type in the strategy. An exit (``loss_expected`` False) is the one case with no tier (``None``): its closing
+  orders say nothing about the risk left.
 Boundaries are inclusive on the NORMAL side: exactly 10% is NORMAL, exactly 25% with a limit set is NORMAL, exactly the
 funds is not EXCEPTIONAL.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
+
+from ofo.engine.legs import Action, Leg
 
 NORMAL_SHARE = Decimal("0.10")
 ELEVATED_SHARE = Decimal("0.25")
@@ -36,22 +43,36 @@ class Tier(StrEnum):
 class Reason(StrEnum):
     UNLIMITED = "UNLIMITED"
     ABOVE_FUNDS = "ABOVE_FUNDS"
+    LOSS_UNKNOWN = "LOSS_UNKNOWN"  # ADR-143: the engine returned no worst-case loss (tier ELEVATED at least)
+    UNCOVERED_SHORT = "UNCOVERED_SHORT"  # ADR-143: loss unknown AND a short leg has no protective buy (EXCEPTIONAL)
 
 
 @dataclass(frozen=True)
 class RiskTier:
     tier: Tier
     percent_of_funds: Decimal | None  # one decimal place; None when funds are unknown/zero or the loss is unlimited
-    reason: Reason | None  # set only for EXCEPTIONAL
+    reason: Reason | None  # set for EXCEPTIONAL, and for the unknown-loss ELEVATED (ADR-143)
 
 
-def risk_tier(max_loss: Decimal | None, *, unlimited: bool, funds: Decimal | None,
-              limit: Decimal | None) -> RiskTier | None:
-    """The tier for one plan, or None when the loss is neither unlimited nor known."""
+def has_uncovered_short(legs: Iterable[Leg]) -> bool:
+    """ADR-143: True when any SELL leg has no BUY leg of the same instrument type (CE / PE / FUT) in ``legs``."""
+    legs = tuple(legs)
+    bought = {leg.instrument for leg in legs if leg.action is Action.BUY}
+    return any(leg.action is Action.SELL and leg.instrument not in bought for leg in legs)
+
+
+def risk_tier(max_loss: Decimal | None, *, unlimited: bool, funds: Decimal | None, limit: Decimal | None,
+              loss_expected: bool = True, uncovered_short: bool = False) -> RiskTier | None:
+    """The tier for one plan. ``loss_expected`` False (an exit) with no known loss is the only None; any other plan
+    with no stated worst case is at least ELEVATED, and EXCEPTIONAL with an uncovered short (ADR-143)."""
     if unlimited:
         return RiskTier(Tier.EXCEPTIONAL, None, Reason.UNLIMITED)
     if max_loss is None:
-        return None
+        if not loss_expected:
+            return None
+        if uncovered_short:
+            return RiskTier(Tier.EXCEPTIONAL, None, Reason.UNCOVERED_SHORT)
+        return RiskTier(Tier.ELEVATED, None, Reason.LOSS_UNKNOWN)
     if funds is None:
         over = limit is None or max_loss > limit
         return RiskTier(Tier.ELEVATED if over else Tier.NORMAL, None, None)

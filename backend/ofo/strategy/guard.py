@@ -231,6 +231,19 @@ class StrategyGuard:
         self._open[binding] = decision
         return decision
 
+    def _issue_flagged(self, binding: GuardBinding) -> GuardDecision:
+        """Private (EXECUTE-REVIEW, ADR-140 (1)): the Execute route's acknowledgement for an EXCEPTIONAL plan. The
+        route owns the tier (``ofo.execution.risk_tier``) and builds the binding from the exact basket itself; the
+        decision is always flagged (the position opens, margin unknown) and carries a fresh single-use token.
+        It takes no metrics and no verdict from a caller's request."""
+        change = compare_risk(risk_profile(None, None), RiskProfile(_ZERO, _ZERO, (), _ZERO, None, True))
+        decision = _decision(binding, change)
+        self._open.pop(binding, None)
+        while len(self._open) >= MAX_OPEN_DECISIONS:  # OD-G4
+            del self._open[next(iter(self._open))]
+        self._open[binding] = decision
+        return decision
+
     def _find(self, binding: GuardBinding, acknowledgement: object) -> GuardDecision:
         decision = self._open.get(binding)
         if decision is None:

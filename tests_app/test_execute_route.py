@@ -324,7 +324,8 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             _assert_cost(body, entry, ("-217.75", "23.70", "1003.00", "572.00"))
             # ADR-140: 217.75 of 1003.00 funds = 21.7% -> ELEVATED (no limit stored), no acceptance needed
             assert body["risk"] == {"tier": "ELEVATED", "percent_of_funds": "21.7", "reason": None,
-                                    "needs_acceptance": False}
+                                    "needs_acceptance": False, "acknowledgement": None}
+            assert body["review"]["max_loss_display"] == "₹217.75"  # the engine's money formatter, not the browser's
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "Q0001010")
 
@@ -746,12 +747,104 @@ def _call(strike, expiry, qty, price, action=Action.BUY):
 def test_review_out_a_long_call_has_its_premium_as_max_loss_and_unlimited_profit():
     leg = _call("23650", datetime.date(2026, 10, 19), 65, "3.35")
     assert _review_body([leg]) == {"max_loss": "217.75", "max_loss_unlimited": False, "max_profit": None,
-                                   "max_profit_unlimited": True}
+                                   "max_profit_unlimited": True, "max_loss_display": "₹217.75",
+                                   "max_profit_display": None}
 
 
 def test_review_out_an_exit_and_a_multi_expiry_strategy_are_unknown_never_zero():
     near = _call("23650", datetime.date(2026, 10, 19), 65, "3.35")
     far = _call("23650", datetime.date(2026, 10, 26), 65, "5", Action.SELL)
-    unknown = {"max_loss": None, "max_loss_unlimited": False, "max_profit": None, "max_profit_unlimited": False}
+    unknown = {"max_loss": None, "max_loss_unlimited": False, "max_profit": None, "max_profit_unlimited": False,
+               "max_loss_display": None, "max_profit_display": None}
     assert _review_body([near], "EXIT") == unknown
     assert _review_body([near, far]) == unknown
+
+
+# ---- EXECUTE-REVIEW fix round 2 (ADR-140 (1), ADR-143): an EXCEPTIONAL basket needs THIS proposal's guard token ---------
+
+def _unlimited_review(monkeypatch, route) -> None:
+    """Make the engine's review say 'unlimited loss' for the real one-leg entry: the only way to reach an EXCEPTIONAL tier
+    with the single recorded fixture (a short call would need a second recorded strategy). Everything after the review
+    - the tier rule, the guard binding, the token, the stored plan - is the real code."""
+    real = route.review_out
+
+    def unlimited(strategy, action):
+        got = real(strategy, action)
+        return route.ReviewOut.model_validate({
+            "max_loss": None, "max_loss_unlimited": action != "EXIT", "max_profit": got.max_profit,
+            "max_profit_unlimited": got.max_profit_unlimited, "max_loss_display": None,
+            "max_profit_display": got.max_profit_display})
+
+    monkeypatch.setattr(route, "review_out", unlimited)
+
+
+async def _post_with(app, strategy_id: int, body: dict):
+    from test_strategy_store import _client  # noqa: PLC0415
+
+    async with _client(app) as ac:
+        return await ac.post(f"/strategies/{strategy_id}/execute", json=body)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_exceptional_basket_reaches_kite_only_through_the_guard_token(app_engine, admin_engine, monkeypatch):
+    """Proof (EXECUTE-REVIEW round 2): EXCEPTIONAL -> no basket, nothing stored, a token; the token -> the basket and the
+    stored plan; the same token again, a forged token and a bare first-call accept -> no basket, nothing stored; a
+    NORMAL/ELEVATED plan ignores any token."""
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+    from test_strategy_followups import _ConnMaker  # noqa: PLC0415
+    from test_strategy_store import _app, _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            app = _app(_ConnMaker(conn), user)
+            guard = route.StrategyGuard()
+            app.dependency_overrides[route.get_risk_guard] = lambda: guard
+            app.dependency_overrides[route.get_quote_reader] = _Quotes
+            app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
+            app.dependency_overrides[route.load_charge_rates] = lambda: RATES
+            entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
+            app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
+
+            # ELEVATED (21.7% of funds): a token changes nothing, the basket and the plan are there
+            ignored = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": "not-a-real-token"})
+            assert ignored.status_code == 200, ignored.text
+            assert ignored.json()["basket"] is not None
+            assert ignored.json()["risk"]["tier"] == "ELEVATED" and ignored.json()["risk"]["acknowledgement"] is None
+            await plans.close_plan(conn, user, sid, 1, reason="nothing_placed")
+
+            _unlimited_review(monkeypatch, route)
+            # a bare accept cannot even be sent: the field does not exist
+            assert (await _post_with(app, sid, {"action": "ENTRY", "accept_risk": True})).status_code == 422
+
+            first = await _post_with(app, sid, {"action": "ENTRY"})
+            assert first.status_code == 200, first.text
+            asked = first.json()
+            assert asked["basket"] is None and asked["risk"]["tier"] == "EXCEPTIONAL"
+            token = asked["risk"]["acknowledgement"]
+            assert asked["risk"]["needs_acceptance"] is True and isinstance(token, str) and len(token) >= 32
+            assert len(await plans.plans_for(conn, user, sid)) == 1  # only the closed ELEVATED plan: nothing stored
+
+            forged = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": token[:-1] + "_"})
+            assert forged.json()["basket"] is None
+            assert len(await plans.plans_for(conn, user, sid)) == 1
+
+            # the refused try issued a fresh token (it replaced the first one); that one is redeemed
+            fresh = forged.json()["risk"]["acknowledgement"]
+            assert fresh not in (None, token)
+            accepted = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": fresh})
+            assert accepted.status_code == 200, accepted.text
+            assert accepted.json()["basket"] is not None and accepted.json()["risk"]["acknowledgement"] is None
+            assert len(await plans.plans_for(conn, user, sid)) == 2  # the plan is stored only now
+            await plans.close_plan(conn, user, sid, 2, reason="nothing_placed")
+
+            reused = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": fresh})
+            assert reused.json()["basket"] is None and reused.json()["risk"]["acknowledgement"] != fresh
+            assert len(await plans.plans_for(conn, user, sid)) == 2
+        finally:
+            await trans.rollback()

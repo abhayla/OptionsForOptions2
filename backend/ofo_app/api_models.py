@@ -12,6 +12,7 @@ and a plain `str` (or anything not listed below) raises TypeError. Allowed leave
 - `Literal[...]` of Identifier-pattern strings, `bool` and `int` (no Enum: its values are free text), `Decimal`
   (written as a plain string, project rule), timezone-aware `datetime`, `date`, nested `ApiModel`s, `dict[Identifier, X]`
   and `list`/`tuple`/`Optional` of those;
+- `DisplayRupees` (EXECUTE-REVIEW): a Decimal the door writes with the engine's one money formatter (``₹2,40,000.00``);
 - `BasketPost` (W-095): the exact Kite basket form text, made only from the sealed basket (`basket_post.py`).
 So string building in route code is harmless: it cannot reach a response body.
 
@@ -34,6 +35,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, StringConstraints
 
+from ofo.engine.display import format_rupees
 from ofo.errors import UserFacingError
 from ofo.errors.explanations import ExplanationText
 from ofo_app.basket_post import BasketPost
@@ -66,6 +68,10 @@ Identifier = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_\-.]{1,%d}$"
 #: no space or other character, so it can never carry a sentence.
 InstrumentId = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$")]
 Money = Annotated[Decimal, PlainSerializer(lambda v: format(v, "f"), return_type=str)]
+#: EXECUTE-REVIEW (ADR-008): a rupee amount the SCREEN shows. The model holds the Decimal; the door writes it through the
+#: engine's one money formatter (``ofo.engine.display.format_rupees``: lakh grouping, true minus, paisa), so no
+#: browser or route code builds the text.
+DisplayRupees = Annotated[Decimal, PlainSerializer(format_rupees, return_type=str)]
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_\-.]{1,%d}" % IDENTIFIER_MAX)  # the same pattern, re-checked at the door
 _INSTRUMENT_ID = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")  # InstrumentId's pattern, re-checked at the door
 _FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
@@ -81,11 +87,11 @@ def _closed_literal(tp: Any) -> bool:
 
 def check_field_type(tp: Any, where: str) -> None:
     """Raise TypeError unless `tp` is one of the allowed shapes (module docstring)."""
-    if tp == CatalogueText or tp == Identifier or tp == Money or tp == InstrumentId:
+    if tp == CatalogueText or tp == Identifier or tp == Money or tp == InstrumentId or tp == DisplayRupees:
         return
     origin = typing.get_origin(tp)
     if origin is Annotated:
-        raise TypeError(f"{where}: only CatalogueText, Identifier, InstrumentId and Money may be Annotated types")
+        raise TypeError(f"{where}: only CatalogueText, Identifier, InstrumentId, Money and DisplayRupees may be Annotated types")
     if origin is Literal:
         if _closed_literal(tp):
             return
@@ -172,9 +178,9 @@ class ApiModel(BaseModel):
             annotation = info.annotation
             if info.metadata:  # Annotated[...] was unpacked: compare the original alias by identity
                 annotation = Annotated[(annotation, *info.metadata)]  # type: ignore[valid-type]
-                if annotation not in (CatalogueText, Identifier, InstrumentId, Money):
-                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier, InstrumentId and "
-                                    f"Money may be Annotated types")
+                if annotation not in (CatalogueText, Identifier, InstrumentId, Money, DisplayRupees):
+                    raise TypeError(f"{cls.__name__}.{name}: only CatalogueText, Identifier, InstrumentId, Money "
+                                    f"and DisplayRupees may be Annotated types")
                 continue
             check_field_type(annotation, f"{cls.__name__}.{name}")
 
@@ -242,6 +248,10 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
         raise _refuse(path, value, "Money")
+    if tp == DisplayRupees:
+        if type(value) is Decimal and value.is_finite():
+            return format_rupees(value)
+        raise _refuse(path, value, "DisplayRupees")
     if tp is BasketPost:  # W-095: the exact Kite form text, only from the sealed basket (basket_post.py)
         if type(value) is BasketPost:
             return value.as_form()

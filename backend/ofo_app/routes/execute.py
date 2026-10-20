@@ -59,14 +59,15 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
-from ofo.execution.risk_tier import RiskTier, Tier, risk_tier
+from ofo.execution.risk_tier import RiskTier, Tier, has_uncovered_short, risk_tier
 from ofo.execution.safety import check_pre_execution, market_failures, paused_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.market_calendar import MarketStatus, market_status, next_open
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
+from ofo.strategy.guard import GuardBinding, GuardRefused, StrategyGuard, proposal_hash
 from ofo.timeutil import IST
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -75,7 +76,7 @@ from ofo_app import entitlement_store, kill_switch, live_market, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.api_models import ApiModel, CatalogueText, DisplayRupees, Identifier, Money
 from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
@@ -104,9 +105,10 @@ class ExecuteIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     action: Literal["ENTRY", "EXIT"]
-    # ADR-140: the owner's "I accept this risk". Honoured ONLY when the server's own tier is EXCEPTIONAL (it is
-    # recomputed on every request); for any other tier it changes nothing. Never a verdict about the risk itself.
-    accept_risk: bool = False
+    # ADR-140 (1): the Strategy Guard's single-use acknowledgement token the server issued on the EXCEPTIONAL reply for
+    # THIS exact proposal. Redeemed only when the server's own tier is EXCEPTIONAL (recomputed every request); for any
+    # other tier it changes nothing. A token is never a verdict about the risk: a bare "accept" cannot be sent.
+    acknowledgement: Optional[Annotated[str, StringConstraints(max_length=128)]] = None  # noqa: UP045
 
 
 class BasketOrderOut(ApiModel):
@@ -145,17 +147,24 @@ class ReviewOut(ApiModel):
     max_loss_unlimited: bool
     max_profit: Optional[Money]  # noqa: UP045 - None = unlimited or unknown
     max_profit_unlimited: bool
+    # ADR-008: the same two figures as the screen shows them, written by the engine's one money formatter
+    # (``ofo.engine.display.format_rupees``); the browser places these strings and formats nothing.
+    max_loss_display: Optional[DisplayRupees]  # noqa: UP045 - None exactly when max_loss is None
+    max_profit_display: Optional[DisplayRupees]  # noqa: UP045 - None exactly when max_profit is None
 
 
 class RiskOut(ApiModel):
     """ADR-140 (REQ-056 AC-6): the server's risk tier for the plan's worst-case loss. ``percent_of_funds`` is a
     1-decimal string, None when Zerodha's funds are unknown/zero or the loss is unlimited. ``needs_acceptance`` is
-    true for EXCEPTIONAL: the reply then carries NO basket until the owner repeats the request with ``accept_risk``."""
+    true for EXCEPTIONAL: the reply then carries NO basket and ``acknowledgement`` (the Strategy Guard's single-use
+    token for this exact proposal) until the owner repeats the request carrying that token (ADR-140 (1)).
+    ``reason`` LOSS_UNKNOWN / UNCOVERED_SHORT: the engine returned no worst case (ADR-143)."""
 
     tier: Literal["NORMAL", "ELEVATED", "EXCEPTIONAL"]
     percent_of_funds: Optional[Money]  # noqa: UP045 - None = funds unknown/zero or unlimited loss
-    reason: Optional[Literal["UNLIMITED", "ABOVE_FUNDS"]]  # noqa: UP045 - set only for EXCEPTIONAL
+    reason: Optional[Literal["UNLIMITED", "ABOVE_FUNDS", "LOSS_UNKNOWN", "UNCOVERED_SHORT"]]  # noqa: UP045
     needs_acceptance: bool
+    acknowledgement: Optional[Identifier]  # noqa: UP045 - the guard token; set only on a withheld EXCEPTIONAL reply
 
 
 class StepOut(ApiModel):
@@ -267,6 +276,15 @@ def _feed_quote(key: str, now: datetime.datetime) -> tuple[Decimal, datetime.dat
     return None if getter is None else price_and_time(getter(key, now))
 
 
+#: ADR-140 (1): the one Strategy Guard of the Execute route. Decisions are in memory, single use, and bound to the user,
+#: the strategy, its revision and the exact basket; a restart or another worker simply issues a new token (fail closed).
+_RISK_GUARD = StrategyGuard()
+
+
+def get_risk_guard() -> StrategyGuard:
+    return _RISK_GUARD
+
+
 def server_clock() -> datetime.datetime:
     return datetime.datetime.now(IST)
 
@@ -333,7 +351,8 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
-    accept_risk: bool = False
+    guard: StrategyGuard
+    acknowledgement: str | None = None
 
 
 def market_verdict(now: datetime.datetime, paused: bool | None, *, open_position: bool = False) -> MarketStatusOut:
@@ -394,13 +413,14 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
+    guard: Annotated[StrategyGuard, Depends(get_risk_guard)],
 ) -> ExecuteOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_unconfirmed")
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
-                                  body.accept_risk),
+                                  guard, body.acknowledgement),
                              stored)
         await db.commit()
     except store.StrategyStoreError as exc:
@@ -495,10 +515,15 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
     review = review_out(priced.strategy, req.action)
-    risk = risk_out(review, figures.funds_available)
+    shape = {"loss_expected": req.action != EXIT, "uncovered_short": has_uncovered_short(priced.strategy.legs)}
+    risk = risk_out(review, figures.funds_available, **shape)
     cost = cost_out(basket.orders, req.rates, figures)
-    if basket_withheld(risk, req.accept_risk):
-        return _answer(plan_number, None, req.session.api_key, cost, review, risk, basket.orders)  # nothing stored
+    if risk is not None and risk.needs_acceptance:
+        binding = _risk_binding(req, stored, basket.orders, review, risk)
+        if not _redeemed(req, binding):
+            token = req.guard._issue_flagged(binding).acknowledgement  # noqa: SLF001 - the owning flow issues
+            asked = risk_out(review, figures.funds_available, acknowledgement=token, **shape)
+            return _answer(plan_number, None, req.session.api_key, cost, review, asked, basket.orders)  # nothing stored
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket))
@@ -600,35 +625,58 @@ def review_out(strategy: Strategy, action: str) -> ReviewOut:
     """The risk figures for the review block, from the engine's ``strategy_metrics`` only (no arithmetic here). An EXIT
     plan (closing orders) and a multi-expiry strategy carry none: both None, both flags false (unknown, never 0)."""
     unknown = ReviewOut.model_validate({"max_loss": None, "max_loss_unlimited": False, "max_profit": None,
-                                        "max_profit_unlimited": False})
+                                        "max_profit_unlimited": False, "max_loss_display": None,
+                                        "max_profit_display": None})
     if action == EXIT or not strategy.is_single_expiry:
         return unknown
     metrics = strategy_metrics(strategy)
     loss_unlimited, profit_unlimited = metrics.max_loss is UNLIMITED, metrics.max_profit is UNLIMITED
+    loss = None if loss_unlimited else _paise(metrics.max_loss)
+    profit = None if profit_unlimited else _paise(metrics.max_profit)
     return ReviewOut.model_validate({
-        "max_loss": None if loss_unlimited else _paise(metrics.max_loss), "max_loss_unlimited": loss_unlimited,
-        "max_profit": None if profit_unlimited else _paise(metrics.max_profit),
-        "max_profit_unlimited": profit_unlimited})
+        "max_loss": loss, "max_loss_unlimited": loss_unlimited, "max_profit": profit,
+        "max_profit_unlimited": profit_unlimited, "max_loss_display": loss, "max_profit_display": profit})
 
 
-def risk_out(review: ReviewOut, funds: Decimal | None, limit: Decimal | None = None) -> RiskOut | None:
-    """ADR-140: the one tier rule (``ofo.execution.risk_tier``) on the review's loss and Zerodha's funds. The app
-    stores no max-loss limit (ADR-064) yet, so ``limit`` is None. No known loss -> None (no risk line)."""
+def risk_out(review: ReviewOut, funds: Decimal | None, limit: Decimal | None = None, *, loss_expected: bool = True,
+             uncovered_short: bool = False, acknowledgement: str | None = None) -> RiskOut | None:
+    """ADR-140 / ADR-143: the one tier rule (``ofo.execution.risk_tier``) on the review's loss and Zerodha's funds. The
+    app stores no max-loss limit (ADR-064) yet, so ``limit`` is None. No known loss on an exit -> None (no risk line);
+    on an entry it is at least ELEVATED, and EXCEPTIONAL with an uncovered short. ``acknowledgement`` is the guard
+    token to hand back with the withheld reply."""
     found: RiskTier | None = risk_tier(None if review.max_loss is None else Decimal(review.max_loss),
-                                       unlimited=review.max_loss_unlimited, funds=funds, limit=limit)
+                                       unlimited=review.max_loss_unlimited, funds=funds, limit=limit,
+                                       loss_expected=loss_expected, uncovered_short=uncovered_short)
     if found is None:
         return None
     return RiskOut.model_validate({
         "tier": found.tier.value, "percent_of_funds": found.percent_of_funds,
         "reason": None if found.reason is None else found.reason.value,
-        "needs_acceptance": found.tier is Tier.EXCEPTIONAL})
+        "needs_acceptance": found.tier is Tier.EXCEPTIONAL, "acknowledgement": acknowledgement})
 
 
-def basket_withheld(risk: RiskOut | None, accept_risk: bool) -> bool:
-    """ADR-140: the Kite basket (and the stored plan) exist only for a plan the SERVER's own tier lets through:
-    an EXCEPTIONAL plan needs the owner's ``accept_risk`` on the request. The tier is recomputed per request, so a
-    browser flag for a non-EXCEPTIONAL plan changes nothing and no flag can lower a tier."""
-    return risk is not None and risk.needs_acceptance and not accept_risk
+def _risk_binding(req: _Request, stored: Any, orders: Any, review: ReviewOut, risk: RiskOut) -> GuardBinding:
+    """The guard binding of THIS proposal: the user, the strategy, its revision, and a hash of the action, every basket
+    order (tag, contract, side, quantity, LIMIT price) and the loss the owner is shown. Recomputed on every request, so
+    a re-priced order or a changed loss is a different proposal and an earlier token no longer fits."""
+    rows = sorted([o.tag, o.exchange, o.tradingsymbol, o.transaction_type, str(o.quantity),
+                   format(o.price.normalize(), "f")] for o in orders)
+    shown = [None if review.max_loss is None else format(review.max_loss, "f"), review.max_loss_unlimited,
+             risk.tier, risk.reason]
+    return GuardBinding(f"{req.user_ref}:{req.strategy_id}", f"revision-{stored.revision}",
+                        proposal_hash({"action": req.action, "orders": rows, "loss": shown}))
+
+
+def _redeemed(req: _Request, binding: GuardBinding) -> bool:
+    """True only when the request carries the token the guard issued for exactly this binding (single use). No token,
+    a forged one, another proposal's, or a reused one -> False, and the caller issues a fresh token and stores nothing."""
+    if req.acknowledgement is None:
+        return False
+    try:
+        req.guard.redeem(binding, req.acknowledgement)
+    except GuardRefused:
+        return False
+    return True
 
 
 def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut, review: ReviewOut,  # noqa: PLR0913
@@ -790,6 +838,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
 
 
 __all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
-           "ReviewOut", "basket_withheld", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
-           "get_quote_reader", "held_products", "market_open", "market_verdict", "price_and_time", "review_out",
+           "ReviewOut", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
+           "get_quote_reader", "get_risk_guard", "held_products", "market_open", "market_verdict", "price_and_time", "review_out",
            "risk_out"]
