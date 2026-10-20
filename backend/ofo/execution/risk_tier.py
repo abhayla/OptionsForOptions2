@@ -78,7 +78,8 @@ def _unknown(reason: Reason | None) -> RiskTier | None:
 def risk_tier(max_loss: Decimal | None, *, unlimited: bool, funds: Decimal | None, limit: Decimal | None,
               unknown_loss: Reason | None = Reason.LOSS_UNKNOWN) -> RiskTier | None:
     """The tier for one plan. ``unknown_loss`` is what a plan with no stated worst case is reported as
-    (``unknown_loss_reason``): None (an exit) gives no tier, LOSS_UNKNOWN is ELEVATED, UNCOVERED_SHORT is EXCEPTIONAL."""
+    (``unknown_loss_reason``): None (an exit) gives no tier, LOSS_UNKNOWN is ELEVATED, UNCOVERED_SHORT is
+    EXCEPTIONAL."""
     if unlimited:
         return RiskTier(Tier.EXCEPTIONAL, None, Reason.UNLIMITED)
     if max_loss is None:

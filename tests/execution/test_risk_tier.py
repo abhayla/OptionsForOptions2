@@ -63,8 +63,8 @@ def test_funds_zero_never_divides():
 
 
 def test_unknown_loss_is_at_least_elevated_never_a_silent_pass():
-    """ADR-143 (owner 2026-10-20): the engine returned no worst case on an entry -> ELEVATED, reason LOSS_UNKNOWN, whatever
-    the funds (known, unknown, zero) and whatever the limit."""
+    """ADR-143 (owner 2026-10-20): the engine returned no worst case on an entry -> ELEVATED, reason LOSS_UNKNOWN,
+    whatever the funds (known, unknown, zero) and whatever the limit."""
     for funds in (FUNDS, None, D(0)):
         for limit in (None, D("1000000")):
             got = tier(None, funds=funds, limit=limit)
@@ -84,7 +84,8 @@ def test_an_exit_with_no_known_loss_has_no_tier():
 def test_the_reason_for_an_unknown_loss_is_chosen_from_the_legs_and_the_action():
     from ofo.execution.risk_tier import unknown_loss_reason  # noqa: PLC0415
 
-    naked, covered = [_leg(Action.SELL, Instrument.CE)], [_leg(Action.SELL, Instrument.CE), _leg(Action.BUY, Instrument.CE)]
+    naked = [_leg(Action.SELL, Instrument.CE)]
+    covered = [_leg(Action.SELL, Instrument.CE), _leg(Action.BUY, Instrument.CE)]
     assert unknown_loss_reason(naked, is_exit=False) is Reason.UNCOVERED_SHORT
     assert unknown_loss_reason(covered, is_exit=False) is Reason.LOSS_UNKNOWN
     assert unknown_loss_reason(naked, is_exit=True) is None  # an exit's closing orders say nothing about the risk left

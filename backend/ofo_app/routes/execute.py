@@ -521,7 +521,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     if risk is not None and risk.needs_acceptance:
         binding = _risk_binding(req, stored, basket.orders, review, risk)
         if not _redeemed(req, binding):
-            token = req.guard._issue_flagged(binding).acknowledgement  # noqa: SLF001 - the owning flow issues
+            token = req.guard._issue_flagged(binding).acknowledgement  # the owning flow issues
             asked = risk_out(review, figures.funds_available, unknown_loss=unknown, acknowledgement=token)
             return _answer(plan_number, None, req.session.api_key, cost, review, asked, basket.orders)  # nothing stored
     try:
@@ -669,7 +669,7 @@ def _risk_binding(req: _Request, stored: Any, orders: Any, review: ReviewOut, ri
 
 def _redeemed(req: _Request, binding: GuardBinding) -> bool:
     """True only when the request carries the token the guard issued for exactly this binding (single use). No token,
-    a forged one, another proposal's, or a reused one -> False, and the caller issues a fresh token and stores nothing."""
+    a forged one, another proposal's, or a reused one -> False; the caller then issues a fresh token, storing nothing."""
     if req.acknowledgement is None:
         return False
     try:
@@ -839,5 +839,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
 
 __all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
            "ReviewOut", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
-           "get_quote_reader", "get_risk_guard", "held_products", "market_open", "market_verdict", "price_and_time", "review_out",
+           "get_quote_reader", "get_risk_guard", "held_products", "market_open", "market_verdict", "price_and_time",
+           "review_out",
            "risk_out"]

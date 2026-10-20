@@ -1,5 +1,6 @@
-"""ADR-140 / ADR-143: the Execute reply's ``risk`` block and the Strategy Guard acknowledgement, without a database (pure
-functions and the request model). The route's acceptance flow end to end is in ``test_execute_route.py`` (CI database)."""
+"""ADR-140 / ADR-143: the Execute reply's ``risk`` block and the Strategy Guard acknowledgement, without a database
+(pure functions and the request model). The route's acceptance flow end to end is in ``test_execute_route.py`` (CI
+database)."""
 from __future__ import annotations
 
 import dataclasses

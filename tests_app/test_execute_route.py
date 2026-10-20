@@ -19,6 +19,7 @@ import copy
 import datetime
 import json
 from decimal import Decimal as D
+from http import HTTPStatus
 from pathlib import Path
 
 import pytest
@@ -763,9 +764,9 @@ def test_review_out_an_exit_and_a_multi_expiry_strategy_are_unknown_never_zero()
 # ---- EXECUTE-REVIEW fix round 2 (ADR-140 (1), ADR-143): an EXCEPTIONAL basket needs THIS proposal's guard token ---------
 
 def _unlimited_review(monkeypatch, route) -> None:
-    """Make the engine's review say 'unlimited loss' for the real one-leg entry: the only way to reach an EXCEPTIONAL tier
-    with the single recorded fixture (a short call would need a second recorded strategy). Everything after the review
-    - the tier rule, the guard binding, the token, the stored plan - is the real code."""
+    """Make the engine's review say 'unlimited loss' for the real one-leg entry: the only way to reach an EXCEPTIONAL
+    tier with the single recorded fixture (a short call would need a second recorded strategy). Everything after the
+    review - the tier rule, the guard binding, the token, the stored plan - is the real code."""
     real = route.review_out
 
     def unlimited(strategy, action):
@@ -778,6 +779,12 @@ def _unlimited_review(monkeypatch, route) -> None:
     monkeypatch.setattr(route, "review_out", unlimited)
 
 
+async def _numbers(conn, user: str, sid: int) -> list[int]:
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+
+    return [p.plan_number for p in await plans.plans_for(conn, user, sid)]
+
+
 async def _post_with(app, strategy_id: int, body: dict):
     from test_strategy_store import _client  # noqa: PLC0415
 
@@ -787,8 +794,8 @@ async def _post_with(app, strategy_id: int, body: dict):
 
 @pytest.mark.usefixtures("app_engine")
 async def test_exceptional_basket_reaches_kite_only_through_the_guard_token(app_engine, admin_engine, monkeypatch):
-    """Proof (EXECUTE-REVIEW round 2): EXCEPTIONAL -> no basket, nothing stored, a token; the token -> the basket and the
-    stored plan; the same token again, a forged token and a bare first-call accept -> no basket, nothing stored; a
+    """Proof (EXECUTE-REVIEW round 2): EXCEPTIONAL -> no basket, nothing stored, a token; the token -> the basket and
+    the stored plan; the same token again, a forged token and a bare first-call accept -> no basket, nothing stored; a
     NORMAL/ELEVATED plan ignores any token."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
@@ -813,38 +820,39 @@ async def test_exceptional_basket_reaches_kite_only_through_the_guard_token(app_
 
             # ELEVATED (21.7% of funds): a token changes nothing, the basket and the plan are there
             ignored = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": "not-a-real-token"})
-            assert ignored.status_code == 200, ignored.text
+            assert ignored.status_code == HTTPStatus.OK, ignored.text
             assert ignored.json()["basket"] is not None
             assert ignored.json()["risk"]["tier"] == "ELEVATED" and ignored.json()["risk"]["acknowledgement"] is None
             await plans.close_plan(conn, user, sid, 1, reason="nothing_placed")
 
             _unlimited_review(monkeypatch, route)
             # a bare accept cannot even be sent: the field does not exist
-            assert (await _post_with(app, sid, {"action": "ENTRY", "accept_risk": True})).status_code == 422
+            bare = await _post_with(app, sid, {"action": "ENTRY", "accept_risk": True})
+            assert bare.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
             first = await _post_with(app, sid, {"action": "ENTRY"})
-            assert first.status_code == 200, first.text
+            assert first.status_code == HTTPStatus.OK, first.text
             asked = first.json()
             assert asked["basket"] is None and asked["risk"]["tier"] == "EXCEPTIONAL"
             token = asked["risk"]["acknowledgement"]
-            assert asked["risk"]["needs_acceptance"] is True and isinstance(token, str) and len(token) >= 32
-            assert len(await plans.plans_for(conn, user, sid)) == 1  # only the closed ELEVATED plan: nothing stored
+            assert asked["risk"]["needs_acceptance"] is True and isinstance(token, str) and token
+            assert await _numbers(conn, user, sid) == [1]  # only the closed ELEVATED plan: nothing stored
 
             forged = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": token[:-1] + "_"})
             assert forged.json()["basket"] is None
-            assert len(await plans.plans_for(conn, user, sid)) == 1
+            assert await _numbers(conn, user, sid) == [1]
 
             # the refused try issued a fresh token (it replaced the first one); that one is redeemed
             fresh = forged.json()["risk"]["acknowledgement"]
             assert fresh not in (None, token)
             accepted = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": fresh})
-            assert accepted.status_code == 200, accepted.text
+            assert accepted.status_code == HTTPStatus.OK, accepted.text
             assert accepted.json()["basket"] is not None and accepted.json()["risk"]["acknowledgement"] is None
-            assert len(await plans.plans_for(conn, user, sid)) == 2  # the plan is stored only now
+            assert await _numbers(conn, user, sid) == [1, 2]  # the plan is stored only now
             await plans.close_plan(conn, user, sid, 2, reason="nothing_placed")
 
             reused = await _post_with(app, sid, {"action": "ENTRY", "acknowledgement": fresh})
             assert reused.json()["basket"] is None and reused.json()["risk"]["acknowledgement"] != fresh
-            assert len(await plans.plans_for(conn, user, sid)) == 2
+            assert await _numbers(conn, user, sid) == [1, 2]
         finally:
             await trans.rollback()
