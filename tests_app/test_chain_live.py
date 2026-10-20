@@ -220,7 +220,7 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     atm_row = second["rows"][2]
     assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
-                             "at": T0.isoformat()}
+                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown"}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
@@ -234,7 +234,8 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     await close(channel, task)
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
     assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
-                                                        "oi_change", "volume", "health", "at"})}
+                                                        "oi_change", "volume", "health", "at", "permitted",
+                                                        "unavailable_reason"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
                                     "rows_missing", "rows", "answered_at"}
@@ -324,7 +325,8 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     await close(channel, task)
     assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
-                                                "volume": None, "health": "unavailable", "at": None}
+                                                "volume": None, "health": "unavailable", "at": None,
+                                                    "permitted": False, "unavailable_reason": "unknown"}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -494,6 +496,7 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
         assert imports, path
         allowed = {"__future__", "asyncio", "contextlib", "datetime", "logging", "time", "collections.abc",
                    "dataclasses", "decimal", "typing", "pydantic", "sqlalchemy.exc", "fastapi", "ofo.errors",
+                   "ofo.instruments", "ofo.instruments.eligibility", "ofo_app.eligibility_from_zerodha",
                    "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes"}

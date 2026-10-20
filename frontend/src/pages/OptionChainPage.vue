@@ -11,6 +11,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
+import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import api from '@/services/api'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 
@@ -34,7 +35,7 @@ const expiry = ref('')
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { status, request, follow, clear, shown, notLive } = useChainAnswer()
+const { status, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
 
 async function loadExpiries() {
   const mine = ++expirySeq
@@ -105,6 +106,10 @@ watch(() => legs.value.map((e) => e.expiry).join(), () => (askExpiries.value = f
 onBeforeUnmount(() => clearTimeout(undoTimer))
 
 const view = computed(() => shown())
+// REQ-030 AC-16: every chain answer tells the selection which of its contracts Zerodha permits right now.
+const cellsOf = (v) => (v ? v.rows.flatMap((r) => [r.ce, r.pe]).filter(Boolean) : [])
+const anyUnavailable = computed(() => cellsOf(view.value).some((c) => !isPermitted(c)))
+watch(view, (v) => selection.syncPermissions(cellsOf(v)), { immediate: true })
 const rowsMissing = computed(() => (view.value?.rows_missing ? ROWS_MISSING_LABELS[view.value.rows_missing] : ''))
 const days = computed(() => (expiry.value ? daysLeft(expiry.value) : null))
 const spotTime = computed(() => {
@@ -150,6 +155,11 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
     <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">Waiting for live data.</p>
     <p v-if="rowsMissing" class="mt-3 text-sm" data-testid="rows-missing">{{ rowsMissing }}</p>
 
+    <p v-if="anyUnavailable" class="mt-3 text-sm" data-testid="unavailable-notice">
+      Some contracts are currently unavailable on Zerodha and cannot be added.
+      <button type="button" class="ml-1 rounded border border-line px-2 text-xs" data-testid="chain-refresh" @click="refresh">Refresh</button>
+    </p>
+
     <div v-if="view && view.rows.length" class="mt-3 overflow-x-auto rounded border border-line bg-surface" data-testid="chain-card">
       <table class="min-w-full text-sm" data-testid="chain-table">
         <thead>
@@ -178,8 +188,12 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
           >
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-ce">
               <template v-if="row.ce">
-                <input type="checkbox" :checked="isTicked(row.ce)" :aria-label="'Select CE ' + row.strike" data-testid="select-ce" @change="tick(row, 'CE')" />
-                <button v-for="a in ACTIONS" :key="a" type="button" class="ml-1 rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': isChosen(row.ce, a) }" :aria-pressed="isChosen(row.ce, a)" :data-testid="a.toLowerCase() + '-ce'" @click="choose(row, 'CE', a)">{{ ACTION_LABELS[a] }}</button>
+                <input type="checkbox" :checked="isTicked(row.ce)" :disabled="!isPermitted(row.ce)" :aria-label="'Select CE ' + row.strike" data-testid="select-ce" @change="tick(row, 'CE')" />
+                <button v-for="a in ACTIONS" :key="a" type="button" class="ml-1 rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': isChosen(row.ce, a) }" :aria-pressed="isChosen(row.ce, a)" :disabled="!isPermitted(row.ce)" :data-testid="a.toLowerCase() + '-ce'" @click="choose(row, 'CE', a)">{{ ACTION_LABELS[a] }}</button>
+                <p v-if="!isPermitted(row.ce)" class="block max-w-[12rem] whitespace-normal text-xs" data-testid="unavailable-ce">
+                  <span class="font-medium" data-testid="unavailable-label-ce">{{ UNAVAILABLE_LABEL }}</span>
+                  <span data-testid="unavailable-reason-ce">{{ reasonLine(row.ce) }}</span>
+                </p>
               </template>
             </td>
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key">
@@ -191,8 +205,12 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">
-                <input type="checkbox" :checked="isTicked(row.pe)" :aria-label="'Select PE ' + row.strike" data-testid="select-pe" @change="tick(row, 'PE')" />
-                <button v-for="a in ACTIONS" :key="a" type="button" class="ml-1 rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': isChosen(row.pe, a) }" :aria-pressed="isChosen(row.pe, a)" :data-testid="a.toLowerCase() + '-pe'" @click="choose(row, 'PE', a)">{{ ACTION_LABELS[a] }}</button>
+                <input type="checkbox" :checked="isTicked(row.pe)" :disabled="!isPermitted(row.pe)" :aria-label="'Select PE ' + row.strike" data-testid="select-pe" @change="tick(row, 'PE')" />
+                <button v-for="a in ACTIONS" :key="a" type="button" class="ml-1 rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': isChosen(row.pe, a) }" :aria-pressed="isChosen(row.pe, a)" :disabled="!isPermitted(row.pe)" :data-testid="a.toLowerCase() + '-pe'" @click="choose(row, 'PE', a)">{{ ACTION_LABELS[a] }}</button>
+                <p v-if="!isPermitted(row.pe)" class="block max-w-[12rem] whitespace-normal text-xs" data-testid="unavailable-pe">
+                  <span class="font-medium" data-testid="unavailable-label-pe">{{ UNAVAILABLE_LABEL }}</span>
+                  <span data-testid="unavailable-reason-pe">{{ reasonLine(row.pe) }}</span>
+                </p>
               </template>
             </td>
           </tr>
@@ -205,8 +223,9 @@ const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.val
       <ul class="mt-1 text-sm">
         <li v-for="e in picked" :key="e.id" class="flex flex-wrap items-center gap-2" data-testid="selected-leg" :data-action="e.action ?? ''">
           <span data-testid="selected-leg-name">{{ contractName(e) }}</span>
-          <button v-for="a in ACTIONS" :key="a" type="button" class="rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': e.action === a }" :aria-pressed="e.action === a" :data-testid="'leg-' + a.toLowerCase()" @click="selection.chooseAction(e, a)">{{ ACTION_LABELS[a] }}</button>
-          <template v-if="e.action">
+          <span v-if="e.permitted !== true" class="text-xs" data-testid="selected-leg-unavailable">{{ UNAVAILABLE_LABEL }}. {{ reasonLine(e) }} It will not be added.</span>
+          <button v-for="a in ACTIONS" :key="a" type="button" class="rounded border border-line px-1 text-xs" :class="{ 'bg-accent-soft font-semibold': e.action === a }" :aria-pressed="e.action === a" :data-testid="'leg-' + a.toLowerCase()" :disabled="e.permitted !== true" @click="selection.chooseAction(e, a)">{{ ACTION_LABELS[a] }}</button>
+          <template v-if="e.action && e.permitted === true">
             <button type="button" class="rounded border border-line px-2 text-xs" aria-label="Fewer lots" data-testid="lots-minus" @click="selection.stepLots(e.id, -1)">-</button>
             <span data-testid="leg-lots">{{ e.lots }}</span>
             <button type="button" class="rounded border border-line px-2 text-xs" aria-label="More lots" data-testid="lots-plus" @click="selection.stepLots(e.id, 1)">+</button>

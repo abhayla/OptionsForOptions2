@@ -6,6 +6,7 @@
 // cell without an LTP gives none, and the Builder then shows that leg as not connected (REQ-035 AC-8).
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { isPermitted } from '@/lib/chainUnavailable'
 
 export const ACTIONS = Object.freeze(['BUY', 'SELL'])
 export const DEFAULT_LOTS = 1
@@ -16,7 +17,9 @@ const legId = (instrumentId, action) => `${instrumentId}|${action ?? ''}`
 
 /** The chain's contract as the selection needs it (all strings the chain pushed). */
 export function contractOf(underlying, expiry, strike, type, cell) {
+  // REQ-030 AC-16: Zerodha's permission as the server gave it for THIS cell; only an explicit `permitted: true` opens it
   return { underlying, expiry, strike, type, instrument_id: cell.instrument_id,
+    permitted: isPermitted(cell), unavailable_reason: isPermitted(cell) ? null : (cell.unavailable_reason ?? 'unknown'),
     planned_entry: typeof cell.ltp === 'string' ? cell.ltp : null, captured_at: typeof cell.at === 'string' ? cell.at : null }
 }
 
@@ -32,13 +35,13 @@ export const useChainSelection = defineStore('chainSelection', () => {
   function toggleContract(contract) {
     if (ofContract(contract.instrument_id).length) {
       entries.value = entries.value.filter((e) => e.instrument_id !== contract.instrument_id)
-    } else add(contract, null)
+    } else if (contract.permitted === true) add(contract, null) // AC-16: a contract Zerodha does not permit is never added
   }
 
   /** AC-2/AC-5/AC-11: choose Buy or Sell for a contract. The same action twice is the one leg (it is switched off);
    *  the opposite action is a second leg, never netted. */
   function chooseAction(contract, action) {
-    if (!ACTIONS.includes(action)) return
+    if (!ACTIONS.includes(action) || contract.permitted !== true) return // AC-16: not permitted (or unknown): refused
     const mine = ofContract(contract.instrument_id)
     const same = mine.find((e) => e.action === action)
     if (same) {
@@ -81,10 +84,23 @@ export const useChainSelection = defineStore('chainSelection', () => {
     removed.value = null
   }
 
+  /** AC-16: a newer chain answer says a ticked contract is no longer permitted (or is again): the entry follows it, so a
+   *  contract that lost permission stays visible in Selected Legs with its reason but is never counted or imported. */
+  function syncPermissions(cells) {
+    for (const cell of cells) {
+      for (const e of ofContract(cell.instrument_id)) {
+        e.permitted = isPermitted(cell)
+        e.unavailable_reason = e.permitted ? null : (cell.unavailable_reason ?? 'unknown')
+      }
+    }
+  }
+
   const forUnderlying = (underlying) => entries.value.filter((e) => e.underlying === underlying)
-  /** Legs that have an action: what "Add Selected (N)" counts and imports. */
-  const legsOf = (underlying) => forUnderlying(underlying).filter((e) => e.action !== null)
-  const pendingOf = (underlying) => forUnderlying(underlying).filter((e) => e.action === null)
+  /** Legs that have an action AND that Zerodha permits: what "Add Selected (N)" counts and imports (the one choke point
+   *  every import passes through: draftOf reads this). */
+  const legsOf = (underlying) => forUnderlying(underlying).filter((e) => e.action !== null && e.permitted === true)
+  const pendingOf = (underlying) => forUnderlying(underlying).filter((e) => e.action === null && e.permitted === true)
+  const unavailableOf = (underlying) => forUnderlying(underlying).filter((e) => e.permitted !== true)
   const expiriesOf = (underlying) => [...new Set(legsOf(underlying).map((e) => e.expiry))].sort()
 
   /** The Builder's draft link body (AC-9): exactly the legs with an action, as picked. */
@@ -97,5 +113,5 @@ export const useChainSelection = defineStore('chainSelection', () => {
   }
 
   return { entries, removed, toggleContract, chooseAction, setLots, stepLots, remove, undo, dismissUndo, clear,
-    forUnderlying, legsOf, pendingOf, expiriesOf, draftOf, count: computed(() => entries.value.length) }
+    syncPermissions, forUnderlying, legsOf, pendingOf, unavailableOf, expiriesOf, draftOf, count: computed(() => entries.value.length) }
 })

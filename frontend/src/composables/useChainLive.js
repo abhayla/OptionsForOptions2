@@ -123,6 +123,8 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
   }
 
   const stop = () => live.stop()
+  /** REQ-030 AC-16: the user asks the server to read the catalogue and Zerodha's eligibility again (one message). */
+  const refresh = () => live.resend()
   onBeforeUnmount(stop)
 
   const isLive = () => answer.value?.state === 'LIVE' && viaSocket.value
@@ -130,7 +132,7 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
   // A REST first paint that says LIVE while the socket is still connecting is a wait, not a not-connected state.
   const waitingForSocket = () => answer.value?.state === 'LIVE' && status.value === 'connecting'
   const notLive = () => !isLive() && !waitingForSocket() && (answer.value !== null || failed.value)
-  return { answer, status, request, follow, clear, stop, shown, isLive, notLive }
+  return { answer, status, request, follow, clear, stop, refresh, shown, isLive, notLive }
 }
 
 /** Whole days from `today` to the expiry date (date parts only; a label, never a price). */

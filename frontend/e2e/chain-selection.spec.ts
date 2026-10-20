@@ -32,7 +32,7 @@ async function realCells(page: Page) {
     expect(e.planned_entry).not.toBeNull() // the recorded frames price every one of the four
     cells.set(e.exchange_token, {
       instrument_id: idOf(e.exchange_token), ltp: e.planned_entry, bid: null, ask: null, change: null, oi: null, oi_change: null,
-      volume: null, health: 'available', at: e.captured_at,
+      volume: null, health: 'available', at: e.captured_at, permitted: true, unavailable_reason: null,
     })
   }
   return cells

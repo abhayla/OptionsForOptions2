@@ -1,4 +1,4 @@
-// W-120 (REQ-030 AC-1/2/4/5/6/7/8/9/10/11/15; ADR-002): the Option Chain's leg selection, on a fake chain socket, and the
+// W-120 + W-118-sel part 2 (REQ-030 AC-1/2/4/5/6/7/8/9/10/11/15/16; ADR-002, ADR-132): the Option Chain's leg selection, on a fake chain socket, and the
 // chainSelection store on its own. Each test name starts with its AC id.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -26,16 +26,16 @@ class FakeSocket {
 }
 const sock = () => FakeSocket.all.at(-1)
 
-const cell = (id, ltp) => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi: '1000', oi_change: null, volume: '5', health: 'available', at: '2026-10-19T10:00:00+05:30' })
+const cell = (id, ltp, permission = {}) => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi: '1000', oi_change: null, volume: '5', health: 'available', at: '2026-10-19T10:00:00+05:30', permitted: true, unavailable_reason: null, ...permission })
 const strikes = ['23600.00', '23800.00', '24000.00', '24200.00']
-const chain = (expiry) => ({
+const chain = (expiry, blocked = {}) => ({
   state: 'LIVE', underlying: 'NIFTY', expiry, spot: '23900.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available',
   atm_strike: '23800.00', rows_missing: null, answered_at: '2026-10-19T10:00:01+05:30',
-  rows: strikes.map((k) => ({ strike: k, ce: cell(`NFO:${expiry}:${k}CE`, '100.00'), pe: cell(`NFO:${expiry}:${k}PE`, '90.50') })),
+  rows: strikes.map((k) => ({ strike: k, ce: cell(`NFO:${expiry}:${k}CE`, '100.00', blocked[`${k}CE`]), pe: cell(`NFO:${expiry}:${k}PE`, '90.50', blocked[`${k}PE`]) })),
 })
 
 let router
-async function mountPage(expiry = '2026-10-27') {
+async function mountPage(expiry = '2026-10-27', blocked = {}) {
   router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', component: { template: '<div/>' } },
     { path: '/strategies/strategy-builder', name: 'strategies-strategy-builder', component: { template: '<div/>' } },
@@ -44,7 +44,7 @@ async function mountPage(expiry = '2026-10-27') {
   const w = mount(OptionChainPage, { global: { plugins: [router] } })
   await flushPromises()
   sock().serverOpen()
-  sock().serverPush(chain(expiry))
+  sock().serverPush(chain(expiry, blocked))
   await flushPromises()
   return w
 }
@@ -198,6 +198,111 @@ describe('Option Chain selection (screen)', () => {
     await pick(w, '24000.00', 'ce', 'buy')
     await addButton(w).trigger('click')
     expect(w.text()).not.toMatch(/\b(order|execute|place)\b/i)
+  })
+})
+
+const NOT_PERMITTED = {
+  notListed: { permitted: false, unavailable_reason: 'not_listed' },
+  restricted: { permitted: false, unavailable_reason: 'restricted' },
+  unknown: { permitted: false, unavailable_reason: 'unknown' },
+}
+const LINES = {
+  not_listed: "Not in Zerodha's list today.",
+  restricted: 'Zerodha limits trading in this strike.',
+  unknown: "We couldn't check with Zerodha. Refresh to try again.",
+}
+
+describe('Option Chain: contracts Zerodha does not permit (REQ-030 AC-13, AC-16; ADR-132 (3))', () => {
+  it.each([
+    ['not_listed', NOT_PERMITTED.notListed],
+    ['restricted', NOT_PERMITTED.restricted],
+    ['unknown', NOT_PERMITTED.unknown],
+  ])('Core, AC-16: a %s cell says "Currently unavailable on Zerodha" with its exact reason line, its checkbox/Buy/Sell are disabled, and Add Selected never includes it', async (reason, state) => {
+    const w = await mountPage('2026-10-27', { '24000.00CE': state })
+    const row = rowAt(w, '24000.00')
+    expect(row.get('[data-testid="unavailable-label-ce"]').text()).toBe('Currently unavailable on Zerodha')
+    expect(row.get('[data-testid="unavailable-reason-ce"]').text()).toBe(LINES[reason])
+    for (const id of ['select-ce', 'buy-ce', 'sell-ce']) expect(row.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    // the permitted PE of the same strike is untouched
+    expect(row.get('[data-testid="select-pe"]').attributes('disabled')).toBeUndefined()
+    expect(row.find('[data-testid="unavailable-pe"]').exists()).toBe(false)
+    // even a forced click (the DOM disabled flag removed) adds nothing: the store refuses it
+    const store = useChainSelection()
+    await row.get('[data-testid="buy-ce"]').element.removeAttribute('disabled')
+    await row.get('[data-testid="buy-ce"]').trigger('click')
+    await row.get('[data-testid="select-ce"]').setValue(true)
+    expect(store.entries).toEqual([])
+    await pick(w, '24200.00', 'ce', 'buy')
+    expect(addButton(w).text()).toBe('Add Selected (1)')
+    await addButton(w).trigger('click')
+    await flushPromises()
+    expect(JSON.parse(router.currentRoute.value.query.draft).legs.map((l) => l.instrument_id)).toEqual(['NFO:2026-10-27:24200.00CE'])
+  })
+
+  it('AC-16: a Refresh button shows with any unavailable cell and sends the current request again, once', async () => {
+    const w = await mountPage('2026-10-27', { '24000.00CE': NOT_PERMITTED.unknown })
+    const before = sock().sent.length
+    await w.get('[data-testid="chain-refresh"]').trigger('click')
+    expect(sock().sent.length).toBe(before + 1)
+    expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-27', strikes_each_side: 15 })
+  })
+
+  it('AC-16: with every contract permitted there is no notice and no Refresh button', async () => {
+    const w = await mountPage()
+    expect(w.find('[data-testid="unavailable-notice"]').exists()).toBe(false)
+    expect(w.find('[data-testid="chain-refresh"]').exists()).toBe(false)
+  })
+
+  it('AC-13/AC-16: a ticked contract that a newer answer marks not permitted stays visible with its reason and leaves the count and the import', async () => {
+    const w = await mountPage()
+    await pick(w, '24000.00', 'ce', 'buy')
+    await pick(w, '24200.00', 'ce', 'sell')
+    expect(addButton(w).text()).toBe('Add Selected (2)')
+    sock().serverPush(chain('2026-10-27', { '24000.00CE': NOT_PERMITTED.restricted }))
+    await flushPromises()
+    expect(addButton(w).text()).toBe('Add Selected (1)')
+    const legLine = w.findAll('[data-testid="selected-leg"]').find((l) => l.text().includes('24000.00 CE'))
+    expect(legLine.get('[data-testid="selected-leg-unavailable"]').text()).toContain('Currently unavailable on Zerodha. Zerodha limits trading in this strike.')
+    await addButton(w).trigger('click')
+    await flushPromises()
+    expect(JSON.parse(router.currentRoute.value.query.draft).legs.map((l) => l.instrument_id)).toEqual(['NFO:2026-10-27:24200.00CE'])
+  })
+
+  it('AC-16: a cell with no permission field at all (an old or forged answer) is treated as not permitted, "could not check"', async () => {
+    const w = await mountPage()
+    const bare = chain('2026-10-27')
+    delete bare.rows[0].ce.permitted
+    delete bare.rows[0].ce.unavailable_reason
+    sock().serverPush(bare)
+    await flushPromises()
+    const row = rowAt(w, '23600.00')
+    expect(row.get('[data-testid="unavailable-reason-ce"]').text()).toBe(LINES.unknown)
+    expect(row.get('[data-testid="buy-ce"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('chainSelection store: permission', () => {
+  const blocked = (strike, state) => contractOf('NIFTY', '2026-10-27', strike, 'CE', cell(`id-${strike}`, '10.00', state))
+
+  it('AC-16: a not-permitted or unknown contract is refused by toggle and by choose; only an explicit permitted: true opens it', () => {
+    const s = useChainSelection()
+    const states = [NOT_PERMITTED.notListed, NOT_PERMITTED.restricted, NOT_PERMITTED.unknown, { permitted: 'yes' }, { permitted: 1 }, { permitted: undefined }]
+    states.forEach((state, i) => { // a different contract each time: a second toggle of one contract would remove it
+      s.toggleContract(blocked(String(i), state))
+      s.chooseAction(blocked(String(i), state), 'BUY')
+    })
+    expect(s.entries).toEqual([])
+    expect(s.draftOf('NIFTY').legs).toEqual([])
+  })
+
+  it('AC-16: draftOf never carries an entry whose permission is gone, whatever the entry says about its action', () => {
+    const s = useChainSelection()
+    s.chooseAction(blocked('1', {}), 'BUY')
+    s.entries[0].permitted = false // a newer answer or tampering
+    expect(s.legsOf('NIFTY')).toEqual([])
+    expect(s.draftOf('NIFTY').legs).toEqual([])
+    s.syncPermissions([cell('id-1', '10.00')]) // permitted again on the next answer
+    expect(s.draftOf('NIFTY').legs.map((l) => l.instrument_id)).toEqual(['id-1'])
   })
 })
 

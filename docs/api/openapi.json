@@ -357,6 +357,26 @@
             ],
             "title": "Oi Change"
           },
+          "permitted": {
+            "title": "Permitted",
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_listed",
+                  "restricted",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
           "volume": {
             "anyOf": [
               {
@@ -379,7 +399,9 @@
           "oi_change",
           "volume",
           "health",
-          "at"
+          "at",
+          "permitted",
+          "unavailable_reason"
         ],
         "title": "ChainCellOut",
         "type": "object"
