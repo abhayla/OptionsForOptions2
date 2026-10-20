@@ -171,4 +171,4 @@ async def recover(  # noqa: PLR0913 - FastAPI dependencies
     return RecoveryOut.model_validate({"action": body.action, "refusal": None, "line": None, "execute": built})
 
 
-__all__ = ["RecoveryIn", "RecoveryOut", "router"]
+__all__ = ["RecoveryIn", "RecoveryOut"]
