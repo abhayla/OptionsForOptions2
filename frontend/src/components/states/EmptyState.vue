@@ -5,7 +5,7 @@ import { getCurrentInstance } from 'vue'
 const props = defineProps({
   message: { type: String, required: true },
   actionLabel: { type: String, default: null },
-  actionTo: { type: String, default: null }, // optional route the button goes to (ADR-130)
+  actionTo: { type: [String, Object], default: null }, // optional route (path or { name }) the button goes to (ADR-130)
 })
 const emit = defineEmits(['action'])
 const router = getCurrentInstance()?.appContext.config.globalProperties.$router

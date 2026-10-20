@@ -9,6 +9,7 @@ import TwoBasketStepper from '@/components/states/TwoBasketStepper.vue'
 import ReturnStatus from '@/components/states/ReturnStatus.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import * as T from '@/lib/sharedStateText'
+import { routes } from '@/router/routes'
 
 const t = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
@@ -105,7 +106,7 @@ describe('EmptyState', () => {
     expect(w.emitted('action')).toHaveLength(1)
   })
   it('S6 and S7: exact messages plus Create Strategy button to the Create Strategy route (ADR-130)', async () => {
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { template: '<i/>' } }] })
+    const router = createRouter({ history: createMemoryHistory(), routes })
     router.push('/orders')
     await router.isReady()
     for (const [msg, label, text] of [[T.EMPTY_S6_MESSAGE, T.EMPTY_S6_BUTTON, 'No orders yet.'], [T.EMPTY_S7_MESSAGE, T.EMPTY_S7_BUTTON, 'No open positions.']]) {
@@ -114,13 +115,18 @@ describe('EmptyState', () => {
       expect(t(w, 'empty-state-action')).toBe('Create Strategy')
       await w.get('[data-testid="empty-state-action"]').trigger('click')
       await flushPromises()
-      expect(router.currentRoute.value.fullPath).toBe('/strategy/builder')
+      expect(router.currentRoute.value.name).toBe('strategies-create-strategy')
+      expect(router.currentRoute.value.fullPath).toBe('/strategies/create-strategy')
+      expect(router.currentRoute.value.fullPath).not.toBe('/strategy/builder')
       expect(w.emitted('action')).toHaveLength(1)
       await router.push('/orders')
     }
   })
-  it('Create Strategy route is a real route in the router table', () => {
-    expect(readFileSync('src/router/routes.js', 'utf8')).toContain(`path: '${T.CREATE_STRATEGY_ROUTE}'`)
+  it('Create Strategy target is the create-strategy nav item route, by name, not the Strategy Builder', () => {
+    expect(T.CREATE_STRATEGY_ROUTE).toEqual({ name: 'strategies-create-strategy' })
+    const target = routes.find((r) => r.name === T.CREATE_STRATEGY_ROUTE.name)
+    expect(target.path).toBe('/strategies/create-strategy')
+    expect(target.path).not.toBe('/strategy/builder')
   })
 })
 
