@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (120)
+## Decisions (126)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -87,11 +87,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-079 2026-10-15: The platform sets no timer on an open order and n… [refines ADR-054]
 - ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRM… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
-- ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha… [amends ADR-071]
-- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the excha… [refines ADR-006]
-- ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one group per underlying and expiry from the open posit… [refines ADR-018]
-- ADR-085 2026-10-15: When a draft saved without planned entries (before ADR-075) is reopened in the Builder, each such l…
-- ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is named by its contract - underlying, expiry day and…
+- ADR-082 2026-10-15: (1) The engine computes charges from a rate table… [amends ADR-071]
+- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract… [refines ADR-006]
+- ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one g… [refines ADR-018]
+- ADR-085 2026-10-15: When a draft saved without planned entries (befor…
+- ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is n…
 - ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be built, reviewed, verified and merged before the St… [none — changes the master plan's gate rule (a pro…]
 - ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - e… [none — fills the time REQ-039 AC-3 left open and…]
 - ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE… [none — uses the ADR-072 loss regions for the tabl…]
@@ -126,6 +126,12 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every basket build: entry, two-basket step 2, exit, Complete… [extends REQ-056]
 - ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1;… [none — both owner answers confirm text that alrea…]
 - ADR-121 2026-10-19: (1) In the "Not sure" range flow (REQ-026 AC-1), the platform derives the market view from the expe… [extends REQ-026; extends ADR-119]
+- ADR-122 2026-10-19: The one-line range reading of ADR-121 (1) uses exactly three texts: "Your range leans up" (mildly b… [extends ADR-121]
+- ADR-123 2026-10-19: (1) When a contract held by two or more strategies is blocked by a reconciliation mismatch, and a f… [amends REQ-060; extends ADR-116]
+- ADR-124 2026-10-19: (1) The control that lets the user change the range reading (ADR-121 (1)) offers exactly three choi… [extends ADR-121]
+- ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved because the next-day positions cannot show whether… [extends ADR-109; extends ADR-120]
+- ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
+- ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
 
 ## Requirements (75)
 
@@ -205,7 +211,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (214)
+## Spec sections (216)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -320,6 +326,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-52 - The generated build order and a work item still say REQ-061 AC…
 - ## F-53 - Every workflow runs on every PR push including drafts, and a f…
 - ## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses…
+- ## F-55 - A net-only next-day read cannot see a same-day round trip: a f…
+- ## F-56 - Zerodha's instrument list is generated once each morning; Kite…
 
 ### spec/open-questions.md
 

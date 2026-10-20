@@ -12,7 +12,8 @@ Adapted from `abhayla/algochanakya@bf9faf7:.claude/rules/decimal-not-float-price
 ADR-008 / ADR-043 ("Money uses Python `Decimal` end to end"); this rule covers the layers the domain does not own.
 
 - Broker or vendor input (float or str): convert at once with `Decimal(str(value))`, never `Decimal(value)` on a float.
-- Database: money columns are `NUMERIC` with a fixed scale (prices `NUMERIC(14,2)`); never `Float`/`REAL`/`DOUBLE`;
+- Database: money columns are `NUMERIC` with a fixed scale (prices `NUMERIC(14,2)`) except a Zerodha-reported
+  average kept exact by ADR-126 (unscaled `NUMERIC`, finite and > 0); never `Float`/`REAL`/`DOUBLE`;
   defaults are `Decimal("...")` or `server_default`, never a float literal. A JSON payload keeps money as a string or the
   audit log's `{"$decimal": ...}` tag, so hashes re-verify.
 - API output: money is serialized as a string (e.g. `"1365.00"`), never as a JSON number; the browser displays it and
