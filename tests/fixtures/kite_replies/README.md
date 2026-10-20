@@ -33,3 +33,17 @@ money strings such as `"0.05"` are the recorder's shape, live Kite REST sends JS
 `holdings-documented.json`: the DOCUMENTED shape of `GET /portfolio/holdings` (Kite Connect v3 portfolio docs: the
 envelope `status` / `data` and the per-row fields, JSON numbers for quantities and prices), with illustrative values
 (GOLDBEES, INFY). It is NOT a recording of the owner's account; GC-3 records the real reply and replaces it.
+
+## #380-2 round-trip fixtures (2026-10-19)
+
+Source: `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/` (not in git), recorded by the owner's live
+session (GC-3L) after the exit filled at 10:43:35 IST. Used by `tests_app/test_route_reconciliation.py` (pure) and
+`tests_app/test_route_reconciliation_db.py` (database, CI).
+
+| File | Source file | Captured (file time, IST) |
+|---|---|---|
+| `orders-2026-10-19-roundtrip.json` | `orders-saved.json`: OFS9V1L0 BUY 65 NIFTY26OCT24000CE COMPLETE, OFS9V2L0 SELL 65 COMPLETE | 2026-10-19 10:48:02 (after exit) |
+| `positions-2026-10-19-roundtrip.json` | `positions-saved.json`: the NIFTY26OCT24000CE net row, quantity 0 | 2026-10-19 10:48:02 |
+
+Token 13156354 = exchange token 51392 (13156354 >> 8); NSE's contract file of 2026-10-16 in the same folder lists 51392
+as NIFTY 24000 CE, expiry 2026-10-27, lot 65. Redaction: the client id is replaced by `XX0000`, nothing else changed.
