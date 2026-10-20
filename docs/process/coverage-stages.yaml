@@ -194,6 +194,8 @@ decisions:
   ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
   ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
   ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-145: 4b           # landing footer: AP disclosure + risk warning + not-advice line (owner 2026-10-20)
+  ADR-144: 4b           # landing pricing: free during early access (owner 2026-10-20)
   ADR-143: 4b           # unknown worst-case loss -> at least Elevated, Exceptional if a short is uncovered (owner 2026-10-20)
   ADR-142: 4b           # recovery refusal texts (owner 2026-10-20)
   ADR-141: 4b           # Use Zerodha's numbers at any hour (owner 2026-10-20)
