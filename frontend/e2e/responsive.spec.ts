@@ -10,7 +10,7 @@ import { routes } from '../src/router/routes.js'
 // @ts-expect-error plain JS module, no type declarations
 import { SECTIONS, ACCOUNT_ITEMS } from '../src/router/nav.js'
 
-type RouteRecord = { path: string; redirect?: unknown; meta?: { responsiveSample?: string } }
+type RouteRecord = { path: string; redirect?: unknown; meta?: { responsiveSample?: string; public?: boolean } }
 
 function visitPaths(): string[] {
   const paths: string[] = []
@@ -33,6 +33,9 @@ function visitPaths(): string[] {
 }
 
 const PATHS = visitPaths()
+// Public pages (meta.public, e.g. the S12 landing page) render without the app shell: they get the title, scroll and
+// clipping checks, and must NOT show the logged-in navigation.
+const PUBLIC_PATHS = new Set((routes as RouteRecord[]).filter((r) => r.meta?.public && !r.redirect).map((r) => r.path))
 
 test('the route list covers every nav.js section, sub-item, account item, /settings, /health-status and not-found', () => {
   const expected = new Set<string>(['/settings', '/health-status', '/this-address-does-not-exist'])
@@ -59,6 +62,11 @@ for (const path of PATHS) {
     // clipped content: overflow:hidden keeps scrollWidth small, so measure the boxes (issue #110)
     const clipped = await findClippedElements(page)
     expect(clipped, describeClipped(path, width, clipped)).toEqual([])
+
+    if (PUBLIC_PATHS.has(path)) {
+      await expect(page.getByTestId('primary-nav'), `${where}: a public page shows the logged-in navigation`).toHaveCount(0)
+      return
+    }
 
     // primary navigation visible and every link reachable within the viewport (the strip may scroll inside itself)
     const nav = page.getByTestId('primary-nav')
