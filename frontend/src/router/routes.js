@@ -21,6 +21,10 @@ const REAL_PAGES = {
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
 }
 
+// Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
+const billingShell = () => import('../pages/BillingShellPage.vue')
+const SETTINGS_PAGES = { 'subscription-billing': billingShell, 'free-eligibility': billingShell, referrals: billingShell }
+
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
     path: `/${s.key}`,
@@ -50,7 +54,7 @@ const settingsRoutes = [
   ...ACCOUNT_ITEMS.map(([slug, label]) => ({
     path: `/settings/${slug}`,
     name: `settings-${slug}`,
-    component: Placeholder,
+    component: SETTINGS_PAGES[slug] ?? Placeholder,
     meta: { title: label, section: 'settings', parent: ACCOUNT_LABEL },
   })),
 ]
