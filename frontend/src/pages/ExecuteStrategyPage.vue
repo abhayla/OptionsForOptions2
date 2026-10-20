@@ -21,14 +21,18 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { EVERY_TRADE_NOTE, LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, SEQUENCE_NOTE, basketFields, isLiveOutcome, orderTypeText, planSentence, readyText } from '@/lib/execute'
+import { EVERY_TRADE_NOTE, LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, SEQUENCE_NOTE, isLiveOutcome, orderTypeText, planSentence, readableReply, readyText, riskLine } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
 const route = useRoute()
 const guided = computed(() => route.query.ux === 'guided') // the level, as the Builder reads it (?ux=); glosses and hidden tags at Guided
 const narrow = ref(false) // a phone: the orders block starts collapsed
-const sentence = computed(() => (reply.value ? planSentence(reply.value) : null))
+const lastAction = ref('ENTRY') // what the owner pressed: the reply carries the orders, not the action
+const sentence = computed(() => (reply.value ? planSentence(reply.value, lastAction.value) : null))
+const risk = computed(() => (reply.value ? riskLine(reply.value) : null)) // ADR-140: the server's tier, rendered; never computed here
+const awaitingAcceptance = computed(() => !!reply.value && reply.value.basket == null) // EXCEPTIONAL: the server holds the basket back until accepted
+const accepting = ref(false)
 const strategyId = computed(() => (/^[1-9]\d{0,17}$/.test(String(route.params.id)) ? String(route.params.id) : null)) // an id string, never parsed
 const phase = ref('loading') // loading | waiting-live | live | not-live | executing | prepared | error
 const liveNow = ref(false)
@@ -109,12 +113,30 @@ async function prepare(action) {
   errorParts.value = null
   try {
     const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action })).data
-    if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
+    if (!readableReply(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
+    lastAction.value = action
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     phase.value = liveNow.value ? 'live' : 'not-live' // the socket may have dropped while Execute was answering
+  }
+}
+
+// ADR-140: "I accept this risk" asks the SERVER again with accept_risk; only its reply carries the basket. Nothing in the
+// browser opens Kite on this click, and no browser flag is ever sent on to Kite.
+async function acceptRisk() {
+  if (accepting.value || !awaitingAcceptance.value || !liveNow.value || !marketOpen.value) return
+  accepting.value = true
+  errorParts.value = null
+  try {
+    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action: lastAction.value, accept_risk: true })).data
+    if (!readableReply(data) || data.basket == null) throw new Error('unreadable basket') // an acceptance must yield a basket
+    reply.value = data
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS
+  } finally {
+    accepting.value = false
   }
 }
 </script>
@@ -141,6 +163,24 @@ async function prepare(action) {
       <!-- EXECUTE-REVIEW reading order (design note S5): one plain sentence, margin + charges, max loss / profit, the orders
            (collapsed on a phone), then "Ready to execute" with the one sticky action. Server strings only (ADR-008). -->
       <p v-if="sentence" class="mt-4 text-base font-medium" data-testid="execute-sentence">{{ sentence }}</p>
+      <p
+        v-if="risk"
+        class="mt-1 text-sm"
+        :class="{ 'text-amber-700': risk.tier === 'ELEVATED', 'font-semibold text-red-700': risk.tier === 'EXCEPTIONAL' }"
+        :role="risk.tier === 'EXCEPTIONAL' ? 'alert' : undefined"
+        :data-tier="risk.tier"
+        data-testid="execute-risk-line"
+      >{{ risk.text }}</p>
+      <button
+        v-if="awaitingAcceptance && risk && risk.needsAcceptance"
+        type="button"
+        data-testid="accept-risk"
+        class="mt-2 min-h-[44px] rounded border border-line px-3 py-1"
+        :disabled="accepting || !liveNow || !marketOpen"
+        @click="acceptRisk"
+      >
+        I accept this risk
+      </button>
       <ExecuteCost v-if="reply.cost" :cost="reply.cost" :review="reply.review" />
       <p v-else class="mt-2 text-sm" data-testid="cost-unavailable">The cost of these orders is not available.</p>
       <details class="mt-3" :open="!narrow" data-testid="execute-orders-block">
@@ -159,7 +199,7 @@ async function prepare(action) {
         <p class="mt-1 text-xs" data-testid="sequence-note">{{ SEQUENCE_NOTE }}</p>
       </details>
       <p class="mt-2 text-xs" data-testid="every-trade-note">{{ EVERY_TRADE_NOTE }}</p>
-      <div class="sticky bottom-0 mt-3 bg-white py-2 sm:static" data-testid="execute-ready-bar">
+      <div v-if="!awaitingAcceptance" class="sticky bottom-0 mt-3 bg-white py-2 sm:static" data-testid="execute-ready-bar">
         <p class="font-medium" data-testid="execute-ready">{{ readyText(reply) }}</p>
         <BasketForm :reply="reply" :strategy-id="strategyId" @sent="sent = true" />
       </div>

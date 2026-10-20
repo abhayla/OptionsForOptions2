@@ -94,17 +94,70 @@ export function readyText(reply) {
   return `Ready to execute: ${reply.orders.length} orders`
 }
 
-/** The one plain first sentence. Only the shape the design note settles is built: two or more orders, every one a BUY, and
- *  a finite worst-case loss the server sent ("You will place 2 buy orders now; worst case loss ₹5,900"). Any other shape
- *  (a sell, an exit, one order, unlimited or unknown loss) returns null: its wording is the owner's call. The count is
- *  the length of the server's order list; the loss is the server's string, untouched. */
-export function planSentence(reply) {
+/** A server money string ("240000.00") as rupees with Indian digit grouping ("₹2,40,000.00"). String work only: the
+ *  figure is never parsed into a number (ADR-008). A string that is not a plain decimal is returned untouched after ₹. */
+export function rupees(amount) {
+  const m = /^(-?)(\d+)(\.\d+)?$/.exec(String(amount))
+  if (!m) return `₹${amount}`
+  const [, sign, whole, frac = ''] = m
+  const last3 = whole.slice(-3)
+  const rest = whole.slice(0, -3)
+  const head = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''
+  return `${sign}₹${head}${last3}${frac}`
+}
+
+const countText = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+/** The one plain first sentence (owner decisions 2026-10-20, ADR-139). The count and the buy/sell split are the length and
+ *  sides of the server's order list; the loss is the server's string, grouped for reading only.
+ *   exit:        You will place <n> orders to exit now.
+ *   step 1 of 2: Step 1 of 2: you will place <n> buy orders now; sells come after these fill.   (the server's `step`)
+ *   entry:       You will place <n> orders now (<b> buy, <s> sell); worst case loss <amount>.
+ *   unlimited:   ... worst case loss is unlimited.
+ *  Any other shape (no orders, an entry whose loss the server could not state) returns null: nothing is invented. */
+export function planSentence(reply, action = 'ENTRY') {
   const orders = reply?.orders
   const review = reply?.review
-  if (!Array.isArray(orders) || orders.length < 2 || !review) return null
-  if (!orders.every((o) => o.transaction_type === 'BUY')) return null
-  if (review.max_loss_unlimited || typeof review.max_loss !== 'string' || review.max_loss === '') return null
-  return `You will place ${orders.length} buy orders now; worst case loss ₹${review.max_loss}`
+  if (!Array.isArray(orders) || orders.length === 0) return null
+  const n = orders.length
+  if (action === 'EXIT') return `You will place ${countText(n, 'order')} to exit now.`
+  const buys = orders.filter((o) => o.transaction_type === 'BUY').length
+  const sells = orders.filter((o) => o.transaction_type === 'SELL').length
+  if (buys + sells !== n) return null
+  if (reply.step && reply.step.of === 2 && reply.step.number === 1) {
+    if (sells !== 0) return null // step 1 of two baskets is buys only; anything else is not this sentence
+    return `Step 1 of 2: you will place ${countText(n, 'buy order')} now; sells come after these fill.`
+  }
+  const head = `You will place ${countText(n, 'order')} now (${buys} buy, ${sells} sell); worst case loss`
+  if (review?.max_loss_unlimited) return `${head} is unlimited.`
+  if (typeof review?.max_loss !== 'string' || review.max_loss === '') return null
+  return `${head} ${rupees(review.max_loss)}.`
+}
+
+/** The risk line (ADR-140; REQ-056 AC-6), from the server's `risk` block only: the tier and the percentage are the
+ *  server's. Returns { tier, text, needsAcceptance } or null (no risk block, an unknown tier, or a missing figure). */
+export function riskLine(reply) {
+  const risk = reply?.risk
+  if (!risk || typeof risk !== 'object') return null
+  const { tier, percent_of_funds: pct, reason } = risk
+  if (tier === 'EXCEPTIONAL') {
+    if (reason === 'UNLIMITED') return { tier, text: 'This strategy has no limit on its loss', needsAcceptance: true }
+    if (reason === 'ABOVE_FUNDS') return { tier, text: 'This strategy can lose more than your available funds', needsAcceptance: true }
+    return null
+  }
+  const loss = reply.review?.max_loss
+  if ((tier !== 'NORMAL' && tier !== 'ELEVATED') || typeof loss !== 'string' || loss === '') return null
+  const base = `Worst case: you could lose ${rupees(loss)}`
+  if (typeof pct !== 'string' || pct === '') return { tier, text: `${base}.`, needsAcceptance: false }
+  const text = tier === 'NORMAL' ? `${base} (${pct}% of your available funds).` : `${base} - ${pct}% of your available funds.`
+  return { tier, text, needsAcceptance: false }
+}
+
+/** True when the screen may show the reply: a basket the form can post, or no basket because the server is waiting for the
+ *  owner's acceptance of an EXCEPTIONAL risk (nothing stored, nothing to post until accepted). */
+export function readableReply(reply) {
+  if (basketFields(reply)) return true
+  return reply?.basket == null && riskLine(reply)?.needsAcceptance === true && reply.risk.needs_acceptance === true
 }
 
 /** The order type as shown: Guided adds the gloss; every other level shows the server's word. */

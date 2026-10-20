@@ -322,6 +322,9 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             # docstring); funds 1003 and margin 354.25 + (217.75 - option_premium 0) = 572.00 (ADR-094 top-up) from the
             # gate's one read; read at the pinned route clock
             _assert_cost(body, entry, ("-217.75", "23.70", "1003.00", "572.00"))
+            # ADR-140: 217.75 of 1003.00 funds = 21.7% -> ELEVATED (no limit stored), no acceptance needed
+            assert body["risk"] == {"tier": "ELEVATED", "percent_of_funds": "21.7", "reason": None,
+                                    "needs_acceptance": False}
             (open_plan,) = await plans.plans_for(conn, user, sid)
             assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "Q0001010")
 

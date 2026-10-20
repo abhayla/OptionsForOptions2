@@ -59,10 +59,11 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
+from ofo.execution.risk_tier import RiskTier, Tier, risk_tier
 from ofo.execution.safety import check_pre_execution, market_failures, paused_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
-from ofo.marketdata.health import HealthThresholds
 from ofo.market_calendar import MarketStatus, market_status, next_open
+from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
@@ -103,6 +104,9 @@ class ExecuteIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     action: Literal["ENTRY", "EXIT"]
+    # ADR-140: the owner's "I accept this risk". Honoured ONLY when the server's own tier is EXCEPTIONAL (it is
+    # recomputed on every request); for any other tier it changes nothing. Never a verdict about the risk itself.
+    accept_risk: bool = False
 
 
 class BasketOrderOut(ApiModel):
@@ -143,13 +147,35 @@ class ReviewOut(ApiModel):
     max_profit_unlimited: bool
 
 
+class RiskOut(ApiModel):
+    """ADR-140 (REQ-056 AC-6): the server's risk tier for the plan's worst-case loss. ``percent_of_funds`` is a
+    1-decimal string, None when Zerodha's funds are unknown/zero or the loss is unlimited. ``needs_acceptance`` is
+    true for EXCEPTIONAL: the reply then carries NO basket until the owner repeats the request with ``accept_risk``."""
+
+    tier: Literal["NORMAL", "ELEVATED", "EXCEPTIONAL"]
+    percent_of_funds: Optional[Money]  # noqa: UP045 - None = funds unknown/zero or unlimited loss
+    reason: Optional[Literal["UNLIMITED", "ABOVE_FUNDS"]]  # noqa: UP045 - set only for EXCEPTIONAL
+    needs_acceptance: bool
+
+
+class StepOut(ApiModel):
+    """ADR-117/ADR-139: which basket of a two-basket entry this reply is (number 1 of 2 = the protective buys). The
+    route sets it only when it has built a basket for one step; until #390 builds two baskets it is always None."""
+
+    number: int
+    of: int
+
+
 class ExecuteOut(ApiModel):
     plan_number: int
     tags: list[Identifier]
-    basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
+    # {"url","api_key","data"} the browser POSTs (basket_post.py); None = EXCEPTIONAL risk not accepted, nothing stored
+    basket: Optional[BasketPost]  # noqa: UP045
     orders: list[BasketOrderOut]  # display only
     cost: CostOut
     review: ReviewOut
+    risk: Optional[RiskOut]  # noqa: UP045 - None when the loss is not known (an exit, a multi-expiry plan)
+    step: Optional[StepOut] = None  # noqa: UP045 - None = one basket (the only case until #390)
 
 
 class MarketStatusOut(ApiModel):
@@ -307,6 +333,7 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+    accept_risk: bool = False
 
 
 def market_verdict(now: datetime.datetime, paused: bool | None, *, open_position: bool = False) -> MarketStatusOut:
@@ -372,7 +399,8 @@ async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_unconfirmed")
-        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
+                                  body.accept_risk),
                              stored)
         await db.commit()
     except store.StrategyStoreError as exc:
@@ -466,14 +494,18 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         raise _refuse("strategy_contract_not_in_catalogue") from None
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
+    review = review_out(priced.strategy, req.action)
+    risk = risk_out(review, figures.funds_available)
+    cost = cost_out(basket.orders, req.rates, figures)
+    if basket_withheld(risk, req.accept_risk):
+        return _answer(plan_number, None, req.session.api_key, cost, review, risk, basket.orders)  # nothing stored
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
-    return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
-                   review_out(priced.strategy, req.action))
+    return _answer(plan_number, basket, req.session.api_key, cost, review, risk, basket.orders)
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
@@ -579,14 +611,36 @@ def review_out(strategy: Strategy, action: str) -> ReviewOut:
         "max_profit_unlimited": profit_unlimited})
 
 
-def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut, review: ReviewOut) -> ExecuteOut:
+def risk_out(review: ReviewOut, funds: Decimal | None, limit: Decimal | None = None) -> RiskOut | None:
+    """ADR-140: the one tier rule (``ofo.execution.risk_tier``) on the review's loss and Zerodha's funds. The app
+    stores no max-loss limit (ADR-064) yet, so ``limit`` is None. No known loss -> None (no risk line)."""
+    found: RiskTier | None = risk_tier(None if review.max_loss is None else Decimal(review.max_loss),
+                                       unlimited=review.max_loss_unlimited, funds=funds, limit=limit)
+    if found is None:
+        return None
+    return RiskOut.model_validate({
+        "tier": found.tier.value, "percent_of_funds": found.percent_of_funds,
+        "reason": None if found.reason is None else found.reason.value,
+        "needs_acceptance": found.tier is Tier.EXCEPTIONAL})
+
+
+def basket_withheld(risk: RiskOut | None, accept_risk: bool) -> bool:
+    """ADR-140: the Kite basket (and the stored plan) exist only for a plan the SERVER's own tier lets through:
+    an EXCEPTIONAL plan needs the owner's ``accept_risk`` on the request. The tier is recomputed per request, so a
+    browser flag for a non-EXCEPTIONAL plan changes nothing and no flag can lower a tier."""
+    return risk is not None and risk.needs_acceptance and not accept_risk
+
+
+def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut, review: ReviewOut,  # noqa: PLR0913
+            risk: RiskOut | None, orders: Any) -> ExecuteOut:
     return ExecuteOut.model_validate({
-        "plan_number": plan_number, "tags": [o.tag for o in basket.orders], "basket": BasketPost.of(basket, api_key),
+        "plan_number": plan_number, "tags": [o.tag for o in orders],
+        "basket": None if basket is None else BasketPost.of(basket, api_key),
         "orders": [{"exchange": o.exchange, "tradingsymbol": o.tradingsymbol, "transaction_type": o.transaction_type,
                     "order_type": o.order_type, "product": o.product, "variety": o.variety, "quantity": o.quantity,
                     "price": o.price.quantize(PAISE), "readonly": o.readonly, "tag": o.tag}
-                   for o in basket.orders],
-        "cost": cost, "review": review})
+                   for o in orders],
+        "cost": cost, "review": review, "risk": risk})
 
 
 # ---- the ExecutionContext, one real source per field ---------------------------------------------------------------
@@ -736,5 +790,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
 
 
 __all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
-           "ReviewOut", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
-           "get_quote_reader", "held_products", "market_open", "market_verdict", "price_and_time", "review_out"]
+           "ReviewOut", "basket_withheld", "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session",
+           "get_quote_reader", "held_products", "market_open", "market_verdict", "price_and_time", "review_out",
+           "risk_out"]

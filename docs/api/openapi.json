@@ -842,6 +842,11 @@
       "ExecuteIn": {
         "additionalProperties": false,
         "properties": {
+          "accept_risk": {
+            "default": false,
+            "title": "Accept Risk",
+            "type": "boolean"
+          },
           "action": {
             "enum": [
               "ENTRY",
@@ -861,27 +866,34 @@
         "additionalProperties": false,
         "properties": {
           "basket": {
-            "properties": {
-              "api_key": {
-                "title": "Api Key",
-                "type": "string"
+            "anyOf": [
+              {
+                "properties": {
+                  "api_key": {
+                    "title": "Api Key",
+                    "type": "string"
+                  },
+                  "data": {
+                    "title": "Data",
+                    "type": "string"
+                  },
+                  "url": {
+                    "title": "Url",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "api_key",
+                  "data"
+                ],
+                "type": "object"
               },
-              "data": {
-                "title": "Data",
-                "type": "string"
-              },
-              "url": {
-                "title": "Url",
-                "type": "string"
+              {
+                "type": "null"
               }
-            },
-            "required": [
-              "url",
-              "api_key",
-              "data"
             ],
-            "title": "Basket",
-            "type": "object"
+            "title": "Basket"
           },
           "cost": {
             "$ref": "#/components/schemas/CostOut"
@@ -900,6 +912,26 @@
           "review": {
             "$ref": "#/components/schemas/ReviewOut"
           },
+          "risk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tags": {
             "items": {
               "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
@@ -915,7 +947,8 @@
           "basket",
           "orders",
           "cost",
-          "review"
+          "review",
+          "risk"
         ],
         "title": "ExecuteOut",
         "type": "object"
@@ -2121,6 +2154,59 @@
         "title": "RiskLimitsOut",
         "type": "object"
       },
+      "RiskOut": {
+        "additionalProperties": false,
+        "description": "ADR-140 (REQ-056 AC-6): the server's risk tier for the plan's worst-case loss. ``percent_of_funds`` is a\n1-decimal string, None when Zerodha's funds are unknown/zero or the loss is unlimited. ``needs_acceptance`` is\ntrue for EXCEPTIONAL: the reply then carries NO basket until the owner repeats the request with ``accept_risk``.",
+        "properties": {
+          "needs_acceptance": {
+            "title": "Needs Acceptance",
+            "type": "boolean"
+          },
+          "percent_of_funds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Of Funds"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "UNLIMITED",
+                  "ABOVE_FUNDS"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "tier": {
+            "enum": [
+              "NORMAL",
+              "ELEVATED",
+              "EXCEPTIONAL"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "percent_of_funds",
+          "reason",
+          "needs_acceptance"
+        ],
+        "title": "RiskOut",
+        "type": "object"
+      },
       "RowOut": {
         "additionalProperties": false,
         "properties": {
@@ -2238,6 +2324,26 @@
           "end"
         ],
         "title": "ScenarioOut",
+        "type": "object"
+      },
+      "StepOut": {
+        "additionalProperties": false,
+        "description": "ADR-117/ADR-139: which basket of a two-basket entry this reply is (number 1 of 2 = the protective buys). The\nroute sets it only when it has built a basket for one step; until #390 builds two baskets it is always None.",
+        "properties": {
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "of": {
+            "title": "Of",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "of"
+        ],
+        "title": "StepOut",
         "type": "object"
       },
       "StrategyIn": {

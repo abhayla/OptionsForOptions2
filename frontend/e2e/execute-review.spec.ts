@@ -46,7 +46,7 @@ test.describe('Execute review reading order', () => {
     await page.goto(`${EXECUTE_REPLAY_URL}/strategy/1/execute`)
     await page.getByTestId('prepare-entry').click()
 
-    await expect(page.getByTestId('execute-sentence')).toHaveText('You will place 2 buy orders now; worst case loss ₹5900.00')
+    await expect(page.getByTestId('execute-sentence')).toHaveText('You will place 2 orders now (2 buy, 0 sell); worst case loss ₹5,900.00.')
     const seen = await page.locator('[data-testid="execute-screen"] [data-testid]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')))
     const at = (id: string) => seen.indexOf(id)
     expect(at('execute-sentence')).toBeGreaterThan(-1)

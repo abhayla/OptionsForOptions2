@@ -493,7 +493,7 @@ const TWO_BUYS = {
   cost: { ...REPLY.cost, margin_required: '110000.00', funds_available: '240000.00', charges: '310.00' },
 }
 
-async function prepared(reply, query = '') {
+async function prepared(reply, query = '', button = 'prepare-entry') {
   answers['POST /strategies/1/execute'] = ok(reply)
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/:id/execute', component: ExecuteStrategyPage }] })
   await router.push(`/strategy/1/execute${query}`)
@@ -502,7 +502,7 @@ async function prepared(reply, query = '') {
   await flushPromises()
   live.onPush(LIVE_PUSH)
   await flushPromises()
-  await w.get('[data-testid="prepare-entry"]').trigger('click')
+  await w.get(`[data-testid="${button}"]`).trigger('click')
   await flushPromises()
   return w
 }
@@ -511,7 +511,7 @@ const ids = (w) => [...w.element.querySelectorAll('[data-testid]')].map((e) => e
 describe('EXECUTE-REVIEW: reads in the approved order, with the server figures only', () => {
   it('the plain sentence is first, then margin + charges, max loss / profit, orders, ready', async () => {
     const w = await prepared(TWO_BUYS)
-    expect(text(w, 'execute-sentence')).toBe('You will place 2 buy orders now; worst case loss ₹5900.00')
+    expect(text(w, 'execute-sentence')).toBe('You will place 2 orders now (2 buy, 0 sell); worst case loss ₹5,900.00.')
     const order = ids(w)
     const at = (id) => order.indexOf(id)
     expect(at('execute-sentence')).toBeGreaterThan(-1)
@@ -549,17 +549,146 @@ describe('EXECUTE-REVIEW: reads in the approved order, with the server figures o
     expect(submitSpy).not.toHaveBeenCalled() // on click only
   })
 
-  it('unlimited or unknown risk shows the existing words and no sentence is invented for an unsettled shape', async () => {
-    const unlimited = await prepared({ ...TWO_BUYS, review: { max_loss: null, max_loss_unlimited: true, max_profit: null, max_profit_unlimited: true } })
-    expect(text(unlimited, 'execute-max-loss')).toBe('Unlimited')
-    expect(unlimited.find('[data-testid="execute-sentence"]').exists()).toBe(false)
-    const sell = { ...TWO_BUYS, orders: [TWO_BUYS.orders[0], { ...TWO_BUYS.orders[1], transaction_type: 'SELL' }] }
-    expect((await prepared(sell)).find('[data-testid="execute-sentence"]').exists()).toBe(false)
-    const one = await prepared(REPLY)
-    expect(one.find('[data-testid="execute-sentence"]').exists()).toBe(false)
+  it('an entry whose loss the server could not state invents no sentence; its max loss shows the existing dash', async () => {
     const unknown = await prepared({ ...REPLY, review: { max_loss: null, max_loss_unlimited: false, max_profit: null, max_profit_unlimited: false } })
     expect(text(unknown, 'execute-max-loss')).toBe('-')
+    expect(unknown.find('[data-testid="execute-sentence"]').exists()).toBe(false)
+    expect(unknown.find('[data-testid="execute-risk-line"]').exists()).toBe(false) // no risk block from the server -> no risk line
   })
+})
+
+// ---- ADR-139 first sentence (owner 2026-10-20): every shape, character for character -------------------------------------
+const UNLIMITED = { max_loss: null, max_loss_unlimited: true, max_profit: '4100.00', max_profit_unlimited: false }
+const sellOf = (o, tag) => ({ ...o, transaction_type: 'SELL', tag })
+const MIXED = { ...TWO_BUYS, orders: [TWO_BUYS.orders[0], TWO_BUYS.orders[1], sellOf(TWO_BUYS.orders[0], 'OFS1V1L2'), sellOf(TWO_BUYS.orders[1], 'OFS1V1L3')] }
+
+describe('EXECUTE-REVIEW: the first sentence (ADR-139)', () => {
+  it('two-basket step 1 (the server says step 1 of 2): buys only, sells come after', async () => {
+    const w = await prepared({ ...TWO_BUYS, step: { number: 1, of: 2 } })
+    expect(text(w, 'execute-sentence')).toBe('Step 1 of 2: you will place 2 buy orders now; sells come after these fill.')
+  })
+
+  it('a step 1 reply that carries a sell is not given the step sentence', async () => {
+    const w = await prepared({ ...MIXED, step: { number: 1, of: 2 } })
+    expect(w.find('[data-testid="execute-sentence"]').exists()).toBe(false)
+  })
+
+  it('exit: "You will place 1 order to exit now." (singular) and "2 orders" for two', async () => {
+    const one = await prepared(REPLY, '', 'prepare-exit')
+    expect(text(one, 'execute-sentence')).toBe('You will place 1 order to exit now.')
+    const two = await prepared(TWO_BUYS, '', 'prepare-exit')
+    expect(text(two, 'execute-sentence')).toBe('You will place 2 orders to exit now.')
+  })
+
+  it('entry with buys and sells names the split and the grouped loss', async () => {
+    const w = await prepared(MIXED)
+    expect(text(w, 'execute-sentence')).toBe('You will place 4 orders now (2 buy, 2 sell); worst case loss ₹5,900.00.')
+  })
+
+  it('entry of one order reads "1 order"', async () => {
+    const w = await prepared(REPLY)
+    expect(text(w, 'execute-sentence')).toBe('You will place 1 order now (1 buy, 0 sell); worst case loss ₹217.75.')
+  })
+
+  it('unlimited loss: "... worst case loss is unlimited."', async () => {
+    const w = await prepared({ ...MIXED, review: UNLIMITED })
+    expect(text(w, 'execute-sentence')).toBe('You will place 4 orders now (2 buy, 2 sell); worst case loss is unlimited.')
+  })
+
+  it('amounts use Indian digit grouping, from the string alone', async () => {
+    const lakh = await prepared({ ...TWO_BUYS, review: { ...TWO_BUYS.review, max_loss: '1234567.50' } })
+    expect(text(lakh, 'execute-sentence')).toBe('You will place 2 orders now (2 buy, 0 sell); worst case loss ₹12,34,567.50.')
+    const small = await prepared({ ...TWO_BUYS, review: { ...TWO_BUYS.review, max_loss: '999.00' } })
+    expect(text(small, 'execute-sentence')).toBe('You will place 2 orders now (2 buy, 0 sell); worst case loss ₹999.00.')
+  })
+})
+
+// ---- ADR-140 risk tiers: the page renders the server's tier and never computes one ---------------------------------------
+const risk = (tier, percent, reason = null) => ({ tier, percent_of_funds: percent, reason, needs_acceptance: tier === 'EXCEPTIONAL' })
+const EXCEPTIONAL_REPLY = { ...MIXED, review: UNLIMITED, basket: null, risk: risk('EXCEPTIONAL', null, 'UNLIMITED') }
+
+describe('EXECUTE-REVIEW: the risk line and the acceptance gate (ADR-140)', () => {
+  it('NORMAL: Rs 5,900.00 with Rs 2,40,000.00 available and no limit', async () => {
+    const w = await prepared({ ...TWO_BUYS, risk: risk('NORMAL', '2.5') })
+    expect(text(w, 'execute-risk-line')).toBe('Worst case: you could lose ₹5,900.00 (2.5% of your available funds).')
+    expect(w.get('[data-testid="execute-risk-line"]').attributes('data-tier')).toBe('NORMAL')
+    expect(w.get('[data-testid="execute-risk-line"]').classes()).not.toContain('text-amber-700')
+    expect(w.find('[data-testid="accept-risk"]').exists()).toBe(false)
+    expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(true)
+  })
+
+  it('ELEVATED: amber, with the dash wording', async () => {
+    const w = await prepared({ ...TWO_BUYS, review: { ...TWO_BUYS.review, max_loss: '70000.00' }, risk: risk('ELEVATED', '29.2') })
+    expect(text(w, 'execute-risk-line')).toBe('Worst case: you could lose ₹70,000.00 - 29.2% of your available funds.')
+    expect(w.get('[data-testid="execute-risk-line"]').classes()).toContain('text-amber-700')
+    expect(w.find('[data-testid="accept-risk"]').exists()).toBe(false)
+    expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(true) // ELEVATED warns; it needs no acceptance
+  })
+
+  it('funds unknown: no percentage part, at ELEVATED', async () => {
+    const w = await prepared({ ...TWO_BUYS, risk: risk('ELEVATED', null) })
+    expect(text(w, 'execute-risk-line')).toBe('Worst case: you could lose ₹5,900.00.')
+  })
+
+  it('EXCEPTIONAL (unlimited): the text, an "I accept this risk" button, and NO way to open Kite until it is pressed', async () => {
+    const w = await prepared(EXCEPTIONAL_REPLY)
+    expect(text(w, 'execute-risk-line')).toBe('This strategy has no limit on its loss')
+    expect(w.get('[data-testid="execute-risk-line"]').attributes('data-tier')).toBe('EXCEPTIONAL')
+    expect(text(w, 'accept-risk')).toBe('I accept this risk')
+    expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(false)
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+    expect(submitSpy).not.toHaveBeenCalled()
+  })
+
+  it('EXCEPTIONAL (above funds): its own text', async () => {
+    const w = await prepared({ ...EXCEPTIONAL_REPLY, review: TWO_BUYS.review, risk: risk('EXCEPTIONAL', '120.0', 'ABOVE_FUNDS') })
+    expect(text(w, 'execute-risk-line')).toBe('This strategy can lose more than your available funds')
+    expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(false)
+  })
+
+  it('pressing "I accept this risk" asks the SERVER again with accept_risk; Open on Kite then appears from the server basket', async () => {
+    const w = await prepared(EXCEPTIONAL_REPLY)
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY' }]]) // the first press carried no acceptance
+    answers['POST /strategies/1/execute'] = ok({ ...EXCEPTIONAL_REPLY, basket: REPLY.basket })
+    await w.get('[data-testid="accept-risk"]').trigger('click')
+    await flushPromises()
+    expect(posts()[1]).toEqual(['/strategies/1/execute', { action: 'ENTRY', accept_risk: true }])
+    expect(w.find('[data-testid="accept-risk"]').exists()).toBe(false)
+    expect(text(w, 'place-on-kite')).toBe('Open on Kite')
+    expect(submitSpy).not.toHaveBeenCalled() // accepting opens nothing; only Open on Kite does
+  })
+
+  it('if the server still sends no basket after the acceptance, Open on Kite stays unavailable (no browser-only flag)', async () => {
+    const w = await prepared(EXCEPTIONAL_REPLY)
+    await w.get('[data-testid="accept-risk"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="place-on-kite"]').exists()).toBe(false)
+    expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
+    expect(w.find('[data-testid="accept-risk"]').exists()).toBe(true)
+  })
+
+  it('an unknown tier from the server shows no risk line and no acceptance; a basket-less non-EXCEPTIONAL reply is refused', async () => {
+    const w = await prepared({ ...TWO_BUYS, risk: risk('CATASTROPHIC', '1.0') })
+    expect(w.find('[data-testid="execute-risk-line"]').exists()).toBe(false)
+    const bad = await prepared({ ...TWO_BUYS, basket: null, risk: risk('NORMAL', '2.5') })
+    expect(bad.find('[data-testid="execute-sentence"]').exists()).toBe(false) // unreadable reply: no review is shown
+    expect(bad.find('[data-testid="place-on-kite"]').exists()).toBe(false)
+  })
+
+  it('the page computes no tier: a huge loss with a NORMAL tier from the server is shown as NORMAL', async () => {
+    const w = await prepared({ ...TWO_BUYS, review: { ...TWO_BUYS.review, max_loss: '9999999.00' }, risk: risk('NORMAL', '1.0') })
+    expect(w.get('[data-testid="execute-risk-line"]').attributes('data-tier')).toBe('NORMAL')
+  })
+})
+
+describe('EXECUTE-REVIEW: the sentence and the risk line stay inside the money guard', () => {
+  it('no number parsing in the helpers', () => {
+    const src = readFileSync(resolve(__dirname, '../src/lib/execute.js'), 'utf8')
+    expect(src).not.toMatch(/parseFloat|parseInt|Number\(|toFixed|Math\./)
+  })
+})
+
+describe('EXECUTE-REVIEW: Guided level and the closed market', () => {
 
   it('Guided: LIMIT is glossed and basket tags are hidden; other levels show the server word and the tag', async () => {
     const guided = await prepared(TWO_BUYS, '?ux=guided')
