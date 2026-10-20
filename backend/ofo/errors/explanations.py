@@ -1027,11 +1027,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("recovery_read_stale", "values_seen",
                         "Zerodha's answer is out of date. Check with Zerodha again."),
     ExplanationTemplate("recovery_shared_contract", "values_seen",
-                        "Several strategies hold this contract. Use Zerodha's numbers needs a single holder; close via "
-                        "a basket or manage it on Kite."),
+                        "Several strategies hold this contract. Use Zerodha's numbers needs a single holder; "
+                        "close via a basket or manage it on Kite."),
     ExplanationTemplate("recovery_overnight", "values_seen",
-                        "The market is closed. This position stays open overnight; nothing can be placed before 09:15 "
-                        "on {next_day}.", {"next_day": NextTradingDay}),
+                        "The market is closed. This position stays open overnight; nothing can be placed "
+                        "before 09:15 on {next_day}.", {"next_day": NextTradingDay}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 

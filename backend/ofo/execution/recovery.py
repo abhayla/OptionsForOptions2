@@ -206,7 +206,8 @@ def _fills(plan: ExecutionPlan, orders: tuple[ZerodhaOrder, ...], strategy_numbe
         filled[order.contract] += order.filled_quantity
         if order.is_open:
             open_entries.append(order.contract)
-    return _Fills(filled, tuple(open_entries), frozenset(o.contract for o in orders if o.is_open), frozenset(closing))
+    open_any = frozenset(o.contract for o in orders if o.is_open)
+    return _Fills(filled, tuple(open_entries), open_any, frozenset(closing))
 
 
 def _lot(plan_leg: PlannedLeg, lot_sizes: Mapping[str, int]) -> int:
@@ -438,7 +439,8 @@ def recovery_gate(legs: Sequence[Leg], ctx: object, catalogue: object, eligibili
 
 
 #: ADR-142 (1): the refusals the owner gave a line to; every other refusal has none (``refusal_line`` -> None).
-_REFUSAL_LINES: Final = {Refusal.ORDER_OPEN: "recovery_order_open", Refusal.ENTRY_ORDER_OPEN: "recovery_entry_order_open",
+_REFUSAL_LINES: Final = {Refusal.ORDER_OPEN: "recovery_order_open",
+                         Refusal.ENTRY_ORDER_OPEN: "recovery_entry_order_open",
                          Refusal.READ_STALE: "recovery_read_stale"}
 
 
@@ -456,13 +458,16 @@ def refusal_line(out: Outcome, *, margin: MarginAnswer | None = None, holders: i
     return None if template is None else render_explanation(template)
 
 
+_SATURDAY: Final = 5  # datetime.weekday(): Monday 0 .. Friday 4 trade
+
+
 def overnight_line(now: datetime.datetime, next_day: datetime.date) -> ExplanationText | None:
     """ADR-136 (5) / ADR-142: outside 09:15-15:30 IST on a weekday (or on a weekend) the screen says the position is
     carried overnight, naming the next day the caller read from the market calendar; inside the session, None."""
     if now.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
     local = now.astimezone(IST)
-    if local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE:
+    if local.weekday() < _SATURDAY and SESSION_OPEN <= local.time() < SESSION_CLOSE:
         return None
     return render_explanation("recovery_overnight", next_day=next_day)
 

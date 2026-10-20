@@ -47,7 +47,8 @@ def test_margin_short_line_without_figures_fails_closed() -> None:
 
 
 def test_adr142_entry_order_open_line() -> None:
-    assert refusal_line(Outcome(CLOSE, refusal=Refusal.ENTRY_ORDER_OPEN)) == "Cancel your open entry order on Kite first."
+    line = refusal_line(Outcome(CLOSE, refusal=Refusal.ENTRY_ORDER_OPEN))
+    assert line == "Cancel your open entry order on Kite first."
 
 
 def test_adr142_stale_read_line() -> None:

@@ -105,7 +105,8 @@ _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 class NextTradingDay(SlotType):
-    """A calendar date as ADR-121 (2) writes the next trading day: weekday, day, short month, no year: "Wed 21 Oct"."""
+    """A calendar date as ADR-121 (2) writes the next trading day: weekday, day, short month, no year:
+    "Wed 21 Oct"."""
 
     @staticmethod
     def validate(value: object) -> None:

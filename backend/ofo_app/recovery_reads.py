@@ -1,13 +1,14 @@
-"""#380-3 item 1: Zerodha's two raw reads -> the recovery domain's ``ZerodhaRead`` (backend/ofo/execution/recovery.py).
+"""#380-3 item 1: Zerodha's two raw reads -> the recovery domain's ``ZerodhaRead`` (ofo/execution/recovery.py).
 
-The route reads the order book (``fetch_orders``) and the positions (``fetch_positions``, parsed by the ONE reconciler,
-``route_reconciliation.reconcile_account``), then stamps ``read_at`` with the route clock read AFTER both replies came
-back, never the request-start clock (finding freshness-judged-on-request-start-clock).
+The route reads the order book (``fetch_orders``) and the positions (``fetch_positions``, parsed by the ONE
+reconciler, ``route_reconciliation.reconcile_account``), then stamps ``read_at`` with the route clock read AFTER both
+replies came back, never the request-start clock (finding freshness-judged-on-request-start-clock).
 
 Answer states (standing item (d)) and what each does here:
 - stated: every order row parses -> ``orders``; position lines -> ``net`` per Zerodha tradingsymbol.
 - empty: ``[]`` orders / no position lines -> ``()`` / ``{}`` (stated "nothing"; the domain reads it as flat).
-- failed: the order reply is not a list, or any row does not parse -> ``orders`` None (every action ``READ_FAILED``);
+- failed: the order reply is not a list, or any row does not parse -> ``orders`` None (every action
+  ``READ_FAILED``);
   positions unread (``None``) -> ``net`` None (every close refused ``READ_FAILED``).
 - ambiguous: two position lines for one contract are summed (Zerodha's own net of day and overnight rows), never
   picked between; the domain refuses a tag seen twice.

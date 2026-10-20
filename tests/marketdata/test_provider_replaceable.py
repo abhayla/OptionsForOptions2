@@ -73,6 +73,8 @@ ADAPTER_FILES = {"kite_frames.py", "kite_provider.py", "kite_ws.py"}  # the mark
 #: The broker-login Kite adapter (W-058), by path relative to backend/. REQ-063 AC-1: "Broker, market-data and
 #: payment integrations each sit behind an adapter." Each entry is part of that adapter, not domain code.
 BROKER_ADAPTER_PATHS = {
+    "ofo_app/recovery_reads.py": "the Kite order and position reply adapter of the recovery actions: Zerodha's raw "
+                                 "replies to the domain's broker-neutral read (#380-3) - REQ-063 AC-1",
     "ofo/broker/kite_auth.py": "the Kite login port itself (login URL, checksum, KiteAuthPort) - REQ-063 AC-1",
     "ofo/broker/__init__.py": "re-exports the Kite login port for the adapter's callers - REQ-063 AC-1",
     "ofo_app/kite_client.py": "the HTTP implementation of the Kite login port - REQ-063 AC-1",

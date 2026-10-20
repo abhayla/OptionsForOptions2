@@ -353,7 +353,7 @@ def test_recovery_basket_goes_through_the_shared_gate_market_closed(catalogue, e
     assert CheckCode.MARKET_CLOSED not in opened.failed_codes
 
 
-# ---- 6. Route wiring (#380-3 item 1): a recovery basket is a NEW plan number -----------------------------------------
+# ---- 6. Route wiring (#380-3 item 1): a recovery basket is a NEW plan number -------------------------------------
 
 def test_second_place_press_never_re_places_what_the_first_basket_filled() -> None:
     """Threat "a second order for an open leg" across presses: Place missing legs went out as plan 2 (OFS9V2L0) and
