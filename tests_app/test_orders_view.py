@@ -54,7 +54,7 @@ def test_open_plan_with_no_prior_check_and_no_row_at_kite_is_not_sent_after_the_
 @pytest.mark.parametrize("status", ["OPEN", "TRIGGER PENDING", "AMO REQ RECEIVED", "VALIDATION PENDING", "complete",
                                     "SOMETHING NEW"])
 def test_a_working_or_unknown_status_word_is_order_placed(status):
-    row = {**_orders()[0], "status": status}
+    row = {**_orders()[0], "status": status, "filled_quantity": 0}
     got = _resolve(_plan(), fresh=route._fresh([row], frozenset({ENTRY_TAG})))
     assert (got.state, got.filled) == ("placed", None)
 
@@ -100,8 +100,9 @@ def test_closed_plans_answer_from_the_audit_row_then_the_stored_fill():
 
 
 def test_every_resolved_state_is_one_of_the_four_words_or_a_flag():
-    states = {_resolve(_plan(), fresh=route._fresh([{**_orders()[0], "status": s}], frozenset({ENTRY_TAG}))).state
-              for s in ("COMPLETE", "OPEN", "REJECTED", "CANCELLED", "X")}
+    words = ("COMPLETE", "OPEN", "REJECTED", "CANCELLED", "X")
+    rows = [{**_orders()[0], "status": s, "filled_quantity": 65 if s == "COMPLETE" else 0} for s in words]
+    states = {_resolve(_plan(), fresh=route._fresh([r], frozenset({ENTRY_TAG}))).state for r in rows}
     assert states == {"executed", "placed", "not_executed"}
     assert set(ov.State.__args__) == {"not_sent", "placed", "executed", "not_executed"}
 
@@ -121,3 +122,33 @@ def test_audit_rows_keep_the_latest_per_tag_and_skip_unreadable_ones():
     seen = route._audit_seen([Row("A", "COMPLETE", "65"), Row("A", "OPEN", "0"), Row("B", None, "0"),
                               Row("C", "OPEN", "x")])
     assert seen == {"A": ov.Seen("COMPLETE", 65)}
+
+
+@pytest.mark.parametrize("status", ["CANCELLED", "REJECTED"])
+def test_ended_order_with_a_real_fill_reads_executed_65_of_130(status):
+    """Round 2 finding 1: a fill is never hidden by the status word (ADR-135)."""
+    order = PlanOrder(0, ENTRY_TAG, "NSE_FO:1", SYMBOL, "BUY", 130, D("7.00"), None)
+    plan = StoredPlan(9, 1, "ENTRY", "open", (order,), CREATED, None, None)
+    row = {**_orders()[0], "status": status, "filled_quantity": 65, "quantity": 130, "pending_quantity": 0}
+    got = ov.resolve(plan, order, fresh=route._fresh([row], frozenset({ENTRY_TAG})), audit={}, earlier_session=False)
+    assert (got.state, got.filled, got.unknown) == ("executed", 65, False)
+    assert ov.from_seen(order, ov.Seen(status, 65)) == ov.Resolved("executed", 65)
+    assert ov.from_seen(order, ov.Seen(status, 0)).state == "not_executed"
+
+
+def test_a_stored_fill_wins_over_an_audit_row_that_says_cancelled_on_a_closed_plan():
+    order = PlanOrder(0, ENTRY_TAG, "NSE_FO:1", SYMBOL, "BUY", 130, D("7.00"), 65)
+    plan = StoredPlan(9, 1, "ENTRY", "closed", (order,), CREATED, CREATED, "partial")
+    seen = {ENTRY_TAG: ov.Seen("CANCELLED", 0)}
+    got = ov.resolve(plan, order, fresh=None, audit=seen, earlier_session=False)
+    assert (got.state, got.filled) == ("executed", 65)
+    # an unresolved close keeps its audit-row answer: reconciliation (ADR-137) owns it, not this rule
+    unresolved = StoredPlan(9, 1, "ENTRY", "closed", (order,), CREATED, CREATED, UNRESOLVED)
+    assert ov.resolve(unresolved, order, fresh=None, audit=seen, earlier_session=False).state == "not_executed"
+
+
+def test_complete_with_nothing_filled_is_could_not_confirm_never_executed_0():
+    order = PlanOrder(0, ENTRY_TAG, "NSE_FO:1", SYMBOL, "BUY", 65, D("7.00"), None)
+    assert ov.from_seen(order, ov.Seen("COMPLETE", 0)) == ov.UNKNOWN
+    assert ov.from_seen(order, ov.Seen("CANCELLED", 70)) == ov.UNKNOWN  # a fill beyond the order: never trusted
+    assert ov.from_seen(order, ov.Seen("OPEN", 0)).state == "placed"

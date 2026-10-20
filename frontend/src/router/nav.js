@@ -47,12 +47,8 @@ export const SECTIONS = [
     label: 'Orders',
     // Strategy-linked orders only; no order-entry page exists (ADR-002, REQ-009 AC-5).
     note: 'Strategy-linked orders only. There is no order-entry form.',
-    items: [
-      ['pending', 'Pending'],
-      ['executed', 'Executed'],
-      ['failed-partial', 'Failed/partial'],
-      ['execution-history', 'Execution history'],
-    ],
+    // ADR-138 (1): the Orders screen is the one page (one line per order); it has no sub-pages.
+    items: [],
   },
   {
     key: 'alerts',

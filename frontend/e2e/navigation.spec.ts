@@ -13,7 +13,7 @@ const SECTIONS: Record<string, { label: string; items: string[] }> = {
     items: ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities', 'P&L/risk'],
   },
   'AC-4': { label: 'Market', items: ['Option Chain', 'Underlying/index view', 'Market context'] },
-  'AC-5': { label: 'Orders', items: ['Pending', 'Executed', 'Failed/partial', 'Execution history'] },
+  'AC-5': { label: 'Orders', items: [] },
   'AC-6': { label: 'Alerts', items: ['Active', 'History', 'Notification settings'] },
   'AC-7': { label: 'Learn', items: ['Strategy education', 'Options concepts', 'Platform guidance'] },
 }
@@ -45,8 +45,8 @@ for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
     const nav = new NavPage(page)
     await nav.openSection(label)
     await expect(nav.title).toHaveText(label)
-    // ADR-138 (1): the Orders section serves the Orders screen (one line per order); its four sub-items are no longer
-    // offered on that page (their routes stay as placeholders until the owner decides what to do with them)
+    // ADR-138 (1): the Orders section serves the Orders screen (one line per order); it has no sub-items
+    // (ADR-138 (1): the four placeholder sub-pages were removed)
     if (label === 'Orders') return
     await expect(nav.subItems).toHaveText(items)
     // each sub-item resolves to its own page titled with the exact label
@@ -61,7 +61,7 @@ for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
 test('AC-5: Orders offers strategy-linked orders only, never an order-entry form', async ({ page }) => {
   await page.goto('/orders')
   const nav = new NavPage(page)
-  const slugs = ['', '/pending', '/executed', '/failed-partial', '/execution-history']
+  const slugs = ['']
   for (const slug of slugs) {
     await page.goto(`/orders${slug}`)
     await expect(nav.title).toBeVisible()
@@ -110,8 +110,8 @@ test('every nav link, sub-item link and account link resolves to a real page (fa
     for (const href of await nav.subItems.evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
   }
   // 7 sections + every sub-item + /settings + its ten items, derived from the spec strings above
-  // (the Orders screen lists none: ADR-138 (1); the four Orders sub-item routes still exist, nothing links to them)
-  const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + (s.label === 'Orders' ? 0 : s.items.length), 0)
+  // (the Orders screen has none: ADR-138 (1))
+  const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + s.items.length, 0)
   expect(hrefs.size).toBe(SECTION_ORDER.length + subItemCount + 1 + ACCOUNT_ITEMS.length)
   for (const href of hrefs) {
     await page.goto(href)

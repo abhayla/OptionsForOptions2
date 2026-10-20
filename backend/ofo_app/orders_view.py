@@ -9,13 +9,15 @@ or "COMPLETE?" against an allow-list; any other word is a working order); findin
 Pure functions, no I/O. Every answer state of where a line's facts come from (B4 (d)):
 
 Source of the line -> answer:
-- fresh read ok, one row for the tag: COMPLETE -> ``executed`` (the row's filled of the plan's ordered);
-  REJECTED / CANCELLED -> ``not_executed``; any other status word -> ``placed``.
+- fresh read ok, one row for the tag: filled > 0 (any status word) -> ``executed`` (the row's filled of the plan's
+  ordered); COMPLETE with filled 0, or any filled outside 0..ordered -> unknown; REJECTED / CANCELLED with 0 filled ->
+  ``not_executed``; any other status word with 0 filled -> ``placed``.
 - fresh read ok, no row, plan from today's session -> ``not_sent`` (Zerodha never received the tag).
 - fresh read ok, no row, plan from an earlier session -> Kite's book holds only today: the audit row, else unknown.
 - fresh read ok, several rows for one tag -> unknown (a basket posted twice: never picked between).
 - read failed / no session / unreadable row -> the tag's latest audit row, else unknown.
-- audit row COMPLETE without a whole filled count inside the ordered quantity -> unknown.
+- audit row COMPLETE without a whole filled count inside the ordered quantity (or with 0) -> unknown; a stored
+  fill > 0 on the plan wins over an audit row that says not executed.
 - no audit row, plan closed: filled > 0 -> ``executed`` from the stored count; 0 filled -> ``not_sent`` (a Check ran at
   the close and no row for the tag existed); ``unresolved_from_positions`` -> reconciliation (ADR-137), no order state.
 - no audit row, plan open, nothing readable -> unknown: "could not confirm" + Check with Zerodha, never a guessed state.
@@ -59,10 +61,13 @@ UNKNOWN = Resolved(None, None, unknown=True)
 
 
 def from_seen(order: PlanOrder, seen: Seen) -> Resolved:
-    if seen.status == COMPLETE:
-        if not 0 <= seen.filled <= order.quantity:
-            return UNKNOWN
+    """A fill is never hidden (ADR-135): any ``filled > 0`` inside the ordered quantity reads Executed n of m."""
+    if not 0 <= seen.filled <= order.quantity:
+        return UNKNOWN
+    if seen.filled > 0:
         return Resolved(EXECUTED, seen.filled)
+    if seen.status == COMPLETE:
+        return UNKNOWN  # COMPLETE with nothing filled contradicts itself: never "Executed 0 of N"
     if seen.status in ENDED_UNFILLED:
         return Resolved(NOT_EXECUTED, None)
     return Resolved(PLACED, None)
@@ -91,7 +96,11 @@ def resolve(plan: StoredPlan, order: PlanOrder, *, fresh: Optional[Mapping[str, 
             return Resolved(NOT_SENT, None)
     seen = audit.get(order.tag)
     if seen is not None:
-        return from_seen(order, seen)
+        got = from_seen(order, seen)
+        closed_clean = plan.status != "open" and plan.close_reason != UNRESOLVED
+        if got.state != EXECUTED and closed_clean and order.filled_quantity:
+            return Resolved(EXECUTED, order.filled_quantity)  # a stored fill wins over an audit row saying not executed
+        return got
     return _from_stored(order, plan)
 
 
