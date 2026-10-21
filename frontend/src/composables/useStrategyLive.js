@@ -112,6 +112,11 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     if (changed && socket && socket.readyState === 1) socket.send(body)
   }
 
+  /** Send the current body again, once, because the USER asked (a Refresh button); never called from a timer. */
+  function resend() {
+    if (body && socket && socket.readyState === 1) socket.send(body)
+  }
+
   /** Close for good (no draft, page left): no reconnect, no fallback. */
   function stop() {
     stopped = true
@@ -124,7 +129,7 @@ export function createLiveSocket({ url, onPush, onMessage = () => {}, onDown = (
     status('off')
   }
 
-  return { follow, stop, attempts: () => attempts }
+  return { follow, resend, stop, attempts: () => attempts }
 }
 
 /** Vue wrapper: `status` is a ref (connecting | live | down | off); closes on unmount. */

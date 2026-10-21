@@ -432,6 +432,7 @@ work_items:
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-122: S6.4         # builder scope Step 2: paper tracking + Q253 condition 1 (REQ-109, REQ-045)
   W-123: S6.4         # builder scope Step 2: Q253 condition 1 detection (REQ-045), built with W-122
+  W-120: 4b           # GC-6: Option Chain leg selection and import (REQ-030)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
