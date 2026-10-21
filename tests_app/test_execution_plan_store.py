@@ -27,6 +27,7 @@ from ofo.engine.legs import Action
 from ofo.execution.basket import make_tag
 from ofo.strategy import stored_form as sf
 from ofo_app import execution_plan_store as plans
+from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from sqlalchemy import text
@@ -452,8 +453,12 @@ async def test_a_plan_stored_with_legacy_tags_still_loads_and_closes(app_engine)
                                                             "q": 65, "price": Decimal("5.45")})
         loaded = await plans.open_plan(tx.conn, tx.user, s)
         assert [o.tag for o in loaded.orders] == legacy
-        closed = await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled", filled=dict.fromkeys(legacy, 65))
+        # #313b: a close that changes position carries the trades that make up its fills, keyed by the legacy tags
+        filled = dict.fromkeys(legacy, 65)
+        closed = await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled", filled=filled,
+                                        fills=trades_for(filled))
         assert (closed.status, [o.filled_quantity for o in closed.orders]) == ("closed", [65, 65])
+        assert await books.fills_for(tx.conn, tx.user, s) == {t: trades_for({t: 65}) for t in legacy}
         # a legacy tag that is not its row's own is still refused (the plan is closed now: use a fresh open plan)
         await tx.conn.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                                    "VALUES (:s, 2, 'EXIT')"), {"s": s})

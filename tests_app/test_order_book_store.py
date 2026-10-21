@@ -33,6 +33,7 @@ from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
 from ofo_app import order_book_store as books
 from ofo_app import return_book as rb
+from ofo_app.execute_replay import retag_recorded
 from ofo_app.kite_replies import KiteReplyError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -79,13 +80,23 @@ def _rows(name: str, tag_map: dict[str, str], symbol: str) -> list:
     return out
 
 
-def _open_plan(strategy_id: int, number: int, action: str, side: str) -> plans.StoredPlan:
-    order = plans.PlanOrder(0, make_tag(strategy_id, number, 0), "NSE_FO:47189", GC3L_SYMBOL, side, LOT, D("7.45"))
+def _recorded_tag(order_id: str) -> str:
+    """The tag Zerodha echoed for one recorded order: the tag the live plan was stored with (pre-0018 grammar)."""
+    (row,) = [r for r in _gc3l("orders") if r["order_id"] == order_id]
+    return row["tag"]
+
+
+def _open_plan(strategy_id: int, number: int, action: str, side: str, tag: str) -> plans.StoredPlan:
+    order = plans.PlanOrder(0, tag, "NSE_FO:47189", GC3L_SYMBOL, side, LOT, D("7.45"))
     return plans.StoredPlan(strategy_id, number, action, "open", (order,), AT, None, None)
 
 
-ENTRY = _open_plan(GC3L_STRATEGY, 1, "ENTRY", "BUY")
-EXIT = _open_plan(GC3L_STRATEGY, 2, "EXIT", "SELL")
+# Strategy 9's plans as stored live on 2026-10-19, BEFORE the 8-char grammar (main #438): their legacy tags keep their
+# old meaning (ADR-105; GC-3F: "old OFS<s>V<v>L<i> tags ... keep their old meaning"), so the store must close them
+# from Zerodha's rows exactly as recorded. A plan minted today carries make_tag's grammar instead: see
+# test_core_a_new_grammar_plan_closes_from_the_same_replies_retagged.
+ENTRY = _open_plan(GC3L_STRATEGY, 1, "ENTRY", "BUY", _recorded_tag(ENTRY_ORDER))
+EXIT = _open_plan(GC3L_STRATEGY, 2, "EXIT", "SELL", _recorded_tag(EXIT_ORDER))
 
 
 def _book(orders: list, trades: list, *open_plans: plans.StoredPlan) -> er.TodaysBook:
@@ -115,6 +126,30 @@ def test_core_gc3l_replies_become_one_trade_per_tag_at_the_recorded_prices():
     assert len(book.fills) == 2  # noqa: PLR2004 the entry's and the exit's trade
     assert er.classify(EXIT, book, GC3L_DAY) == er.PlanAnswer(er.FILLED, {"OFS9V2L0": LOT})
     assert er.plan_fills(EXIT, book) == (plans.PlanFill("OFS9V2L0", EXIT_ORDER, EXIT_TRADE, LOT, EXIT_PRICE),)
+
+
+def test_core_a_new_grammar_plan_closes_from_the_same_replies_retagged():
+    """Core, both grammars (REQ-073 AC-2 / ADR-105): plans minted by make_tag (Q0009010 / Q0009020) close from the
+    same GC-3L rows carrying those tags (execute_replay.retag_recorded: tag bytes only), to the same trades; the
+    legacy-tagged plans see none of those rows (no string matches both grammars), and vice versa."""
+    def minted(plan: plans.StoredPlan) -> plans.StoredPlan:
+        tag = make_tag(plan.strategy_id, plan.plan_number, 0)
+        return dataclasses.replace(plan, orders=(dataclasses.replace(plan.orders[0], tag=tag),))
+
+    new_entry, new_exit = minted(ENTRY), minted(EXIT)
+    assert (new_entry.orders[0].tag, new_exit.orders[0].tag) == ("Q0009010", "Q0009020")
+    orders, trades = (json.loads(retag_recorded((REPLIES / f"{n}-gc3l-2026-10-19.json").read_text(encoding="utf-8")))
+                      ["data"] for n in ("orders", "trades"))
+    book = _book(orders, trades, new_entry, new_exit)
+    assert er.classify(new_entry, book, GC3L_DAY) == er.PlanAnswer(er.FILLED, {"Q0009010": LOT})
+    assert er.classify(new_exit, book, GC3L_DAY) == er.PlanAnswer(er.FILLED, {"Q0009020": LOT})
+    entry = er.plan_fills(new_entry, book)
+    assert entry == (plans.PlanFill("Q0009010", ENTRY_ORDER, ENTRY_TRADE, LOT, ENTRY_PRICE),)
+    assert plans._checked_trades({"Q0009010": LOT}, entry) == entry
+    assert er.plan_fills(new_exit, book) == (plans.PlanFill("Q0009020", EXIT_ORDER, EXIT_TRADE, LOT, EXIT_PRICE),)
+    # cross-grammar: a legacy plan never takes a new-grammar row, a new plan never takes a legacy row
+    assert er.plan_fills(ENTRY, _book(orders, trades, ENTRY)) == ()
+    assert er.plan_fills(new_entry, _real_book(new_entry)) == ()
 
 
 # ---------------------------------------------------------------------------------------------------------------

@@ -366,8 +366,11 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             (stored,) = await plans.plans_for(conn, user, sid)
             assert (stored.close_reason, stored.orders[0].filled_quantity) == ("filled", 65)
             # #313b: the return stored the entry's one real trade with the close (trades-122104: 4484194, 65 @ 5.1)
-            entry_trade = plans.PlanFill("OFS1V1L0", "261016170576173", "4484194", 65, D("5.10"))
-            assert await books.fills_for(conn, user, sid) == {"OFS1V1L0": (entry_trade,)}
+            # the plan was minted by make_tag and the recording is read through retag_recorded (ADR-105, REQ-073
+            # AC-2), so the trade is stored under the plan's own tag, never the recording's pre-0018 OFS1V1L0
+            entry_tag, exit_tag = make_tag(sid, ENTRY_PLAN, 0), make_tag(sid, EXIT_PLAN, 0)
+            entry_trade = plans.PlanFill(entry_tag, "261016170576173", "4484194", 65, D("5.10"))
+            assert await books.fills_for(conn, user, sid) == {entry_tag: (entry_trade,)}
 
             assert await _store_plan(conn, user, sid, ("EXIT", "SELL", "3.10")) == EXIT_PLAN
             exit_reads = _Reads("151006")
@@ -393,8 +396,8 @@ async def test_core_real_order_return_entry_then_exit(app_engine, admin_engine, 
             assert await plans.plans_for(conn, user, sid) == before
             # #313b: the exit's real trade (trades-151006: 5966618, 65 @ 3.1) stored once; the replay added nothing
             assert await books.fills_for(conn, user, sid) == {
-                "OFS1V1L0": (entry_trade,),
-                "OFS1V2L0": (plans.PlanFill("OFS1V2L0", "261016170858845", "5966618", 65, D("3.10")),)}
+                entry_tag: (entry_trade,),
+                exit_tag: (plans.PlanFill(exit_tag, "261016170858845", "5966618", 65, D("3.10")),)}
             assert {m for m, _ in entry.calls + exit_reads.calls} == {"GET"}
         finally:
             await trans.rollback()
