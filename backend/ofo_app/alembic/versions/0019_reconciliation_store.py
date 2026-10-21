@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import NamedTuple
 
 from alembic import op
 
@@ -157,8 +158,21 @@ RESOLUTION_PIN = _M4._md5_body(_resolution_guard_sql())
 STANDALONE_PIN = _M4._md5_body(_standalone_guard_sql())
 
 
-def _table_block(table: str, label: str, insert_cols, update_cols, guard: str, trigger: str, pin: str,
-                 sequence: str = "") -> str:
+class _TableSettings(NamedTuple):
+    """The per-table inputs of one allow-list table block."""
+
+    label: str
+    insert_cols: tuple[str, ...]
+    update_cols: tuple[str, ...]
+    guard: str
+    trigger: str
+    pin: str
+    sequence: str = ""
+
+
+def _table_block(table: str, s: _TableSettings) -> str:
+    label, insert_cols, update_cols = s.label, s.insert_cols, s.update_cols
+    guard, trigger, pin, sequence = s.guard, s.trigger, s.pin, s.sequence
     sequence_checks = _M3._sequence_checks(sequence, f"{label} id", usage=True) if sequence else ""
     return f"""        IF to_regclass('{table}') IS NULL THEN
             problems := problems || 'table {table} is missing'::TEXT;
@@ -182,12 +196,13 @@ def _block() -> str:
     --    reconciliation_standalone: SELECT, column-limited INSERT / UPDATE exactly as granted, no DELETE / TRUNCATE;
     --    the guard triggers enabled with their pinned bodies, no EXECUTE on a guard
     IF phase = 'post' THEN
-{_table_block(MISMATCHES, "reconciliation_mismatches", MISMATCH_INSERT_COLUMNS, (), MISMATCH_GUARD, MISMATCH_TRIGGER,
-              MISMATCH_PIN, MISMATCH_SEQUENCE)}
-{_table_block(RESOLUTIONS, "reconciliation_resolutions", RESOLUTION_INSERT_COLUMNS, (), RESOLUTION_GUARD,
-              RESOLUTION_TRIGGER, RESOLUTION_PIN)}
-{_table_block(STANDALONE, "reconciliation_standalone", STANDALONE_INSERT_COLUMNS, STANDALONE_UPDATE_COLUMNS,
-              STANDALONE_GUARD, STANDALONE_TRIGGER, STANDALONE_PIN)}
+{_table_block(MISMATCHES, _TableSettings("reconciliation_mismatches", MISMATCH_INSERT_COLUMNS, (), MISMATCH_GUARD,
+                                         MISMATCH_TRIGGER, MISMATCH_PIN, MISMATCH_SEQUENCE))}
+{_table_block(RESOLUTIONS, _TableSettings("reconciliation_resolutions", RESOLUTION_INSERT_COLUMNS, (),
+                                          RESOLUTION_GUARD, RESOLUTION_TRIGGER, RESOLUTION_PIN))}
+{_table_block(STANDALONE, _TableSettings("reconciliation_standalone", STANDALONE_INSERT_COLUMNS,
+                                         STANDALONE_UPDATE_COLUMNS, STANDALONE_GUARD, STANDALONE_TRIGGER,
+                                         STANDALONE_PIN))}
     END IF;
 """
 
