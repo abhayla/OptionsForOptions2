@@ -2,6 +2,7 @@
 // Structure adapted from abhayla/algochanakya@bf9faf7:frontend/src/router/index.js (ADR-047): lazy routes, meta flags,
 // catch-all. The route table itself is new: the seven sections (REQ-009), /settings/* and /health-status.
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
+import { requireOrderPath } from '../lib/orderPath.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
 // Nav items that have a real page, keyed by route name (one map for every built screen: W-113, W-114, ...); every
@@ -19,6 +20,8 @@ const REAL_PAGES = {
   'learn-options-concepts': () => import('../pages/LearnPage.vue'),
   'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+  'strategies-my-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109
+  'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }
 
 // Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
@@ -42,7 +45,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
     component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
-    meta: { title: label, section: s.key, parent: s.label },
+    meta: { title: label, section: s.key, parent: s.label, ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
   })),
 ])
 
@@ -72,8 +75,8 @@ export const routes = [
   ...sectionRoutes,
   ...settingsRoutes,
   { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
-  { path: '/strategy/:id/execute', name: 'execute-strategy', component: () => import('../pages/ExecuteStrategyPage.vue'), meta: { title: 'Execute Strategy', section: 'strategies', responsiveSample: '/strategy/1/execute' } },
-  { path: '/execution/returned', name: 'execution-returned', component: () => import('../pages/ExecutionReturnedPage.vue'), meta: { title: 'Back from Kite', section: 'strategies' } },
+  { path: '/strategy/:id/execute', name: 'execute-strategy', beforeEnter: requireOrderPath, component: () => import('../pages/ExecuteStrategyPage.vue'), meta: { title: 'Execute Strategy', section: 'strategies', responsiveSample: '/strategy/1/execute' } },
+  { path: '/execution/returned', name: 'execution-returned', beforeEnter: requireOrderPath, component: () => import('../pages/ExecutionReturnedPage.vue'), meta: { title: 'Back from Kite', section: 'strategies' } },
   { path: '/broker/connected', name: 'broker-connected', component: () => import('../pages/BrokerConnectedPage.vue'), meta: { title: 'Zerodha connected', section: 'settings' } },
   { path: '/broker/refused', name: 'broker-refused', component: () => import('../pages/BrokerRefusedPage.vue'), meta: { title: 'Zerodha login not completed', section: 'settings' } },
   { path: '/health-status', name: 'health-status', component: () => import('../pages/HealthPage.vue'), meta: { title: 'System health', section: 'system' } },

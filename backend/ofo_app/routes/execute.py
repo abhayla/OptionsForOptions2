@@ -83,12 +83,13 @@ from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
+from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
-router = APIRouter(route_class=ClosedRoute)
+router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
