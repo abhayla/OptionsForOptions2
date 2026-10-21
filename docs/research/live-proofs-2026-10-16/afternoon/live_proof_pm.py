@@ -31,7 +31,7 @@ async def session():
     cfg = load_broker_config()
     try:
         async with get_engine().connect() as conn:
-            return cfg.api_key, await access_token_for(conn, "owner", TokenCipher(cfg.token_key), engine=get_engine())
+            return cfg.api_key, await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
     finally:
         await close_db()
 
