@@ -1,5 +1,5 @@
 // GC-6 shared states: each approved text, state, prop and emit is pinned. A text change turns a test red.
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -125,6 +125,8 @@ describe('EmptyState', () => {
       expect(t(w, 'empty-state-action')).toBe('Create Strategy')
       await w.get('[data-testid="empty-state-action"]').trigger('click')
       await flushPromises()
+      // The page is a lazy chunk (W-119): EmptyState does not await router.push, so wait for the navigation to settle.
+      await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('strategies-create-strategy'))
       expect(router.currentRoute.value.name).toBe('strategies-create-strategy')
       expect(router.currentRoute.value.fullPath).toBe('/strategies/create-strategy')
       expect(router.currentRoute.value.fullPath).not.toBe('/strategy/builder')

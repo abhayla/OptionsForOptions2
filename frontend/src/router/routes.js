@@ -23,6 +23,7 @@ const REAL_PAGES = {
   // W-111: the two Positions pages that read Zerodha (REQ-044 AC-3 part 1); the other Positions items stay placeholders.
   'positions-current-positions': () => import('../pages/PositionsPage.vue'),
   'positions-strategy-linked-positions': () => import('../pages/PositionsPage.vue'),
+  'strategies-create-strategy': () => import('../pages/CreateStrategyPage.vue'), // W-119
   'strategies-my-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109
   'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }
