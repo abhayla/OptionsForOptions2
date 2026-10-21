@@ -12,7 +12,7 @@ This file is a register, not a decision. It changes no ADR and no REQ.
 
 | Id | Source | Cited as |
 |---|---|---|
-| A | Sensibull study gap list (`docs/research/sensibull-study-2026-10-21/gap-list.md`, rows B1-B55, E1-E10, W1-W6, D1-D5, P1-P9, O1-O2, C1-C7, A1-A7, X1-X9, G1-G12, and the six "must be different" points DF1-DF6) plus the superseded plan next to it (`proposed-plan.md`; plan-only items cited "PL") | "A B7", "A DF2", "PL S2" |
+| A | Sensibull study gap list (`docs/research/sensibull-study-2026-10-21/gap-list.md`, rows B1-B55, E1-E10, W1-W6, D1-D5, P1-P9, O1-O2, C1-C7, A1-A7, X1-X9, G1-G12, and the six "must be different" points DF1-DF6) plus the superseded draft plan (plan-only items cited "PL"; kept privately, outside this public repo, with the study's README, because they name a competitor's internal endpoints) | "A B7", "A DF2", "PL S2" |
 | B | Multi-broker architecture review of 10 apps (private) | "MB L3" (Part A layer), "MB B1.3" (Part B app 1, extra 3, in table order), "MB T4" (trap) |
 | C1 | OFO2 architecture gaps (private) | "GAPS G2", "GAPS AH1" (row 1 of the "already ahead" table), "GAPS LH1" (loophole 1) |
 | C2 | Chat review of the owner's proposed architecture: where Claude disagreed | "C2 D1" |
