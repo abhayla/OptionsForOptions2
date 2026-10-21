@@ -1,0 +1,51 @@
+<!-- W-114 (REQ-072 AC-2; REQ-049 AC-2/AC-4; ADR-077, ADR-008, ADR-002): the Underlying/index view. Two panels, NIFTY 50
+     and SENSEX: the value exactly as the server sent it, its time, and its health word whenever it is not "available".
+     W-115 round 2: the answer state (first paint, pushes, drop counter, clear-on-drop, fallback read) lives in ONE place,
+     useIndexAnswer in useIndexLive.js, shared with the Home strip; this page only renders its rows.
+     No maths, no change figure, no order button. -->
+<script setup>
+import { onMounted } from 'vue'
+import { istTime } from '@/lib/displayFormat'
+import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
+
+const { start, rowFor, shownValue, isLive, notLive } = useIndexAnswer()
+onMounted(start)
+
+function timeText(row) {
+  if (!row?.at) return ''
+  return row.value === null || !isLive() ? `Last updated ${istTime(row.at)}` : `as of ${istTime(row.at)}`
+}
+</script>
+
+<template>
+  <section data-testid="index-view-page">
+    <p class="text-xs text-ink-muted" data-testid="page-parent">Market</p>
+    <h1 class="text-xl font-semibold" data-testid="page-title">Underlying/index view</h1>
+    <p v-if="notLive()" class="mt-2 font-medium" data-testid="index-state">
+      {{ NOT_LIVE_LABEL }}
+    </p>
+    <div class="mt-4 grid gap-4 md:grid-cols-2">
+      <div
+        v-for="u in INDEX_KEYS"
+        :key="u"
+        class="rounded border border-line bg-surface p-4"
+        :data-testid="`index-panel-${u}`"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-semibold">{{ INDEX_NAMES[u] }}</h2>
+          <span
+            v-if="rowFor(u)?.health && rowFor(u).health !== 'available'"
+            class="text-sm font-medium"
+            data-testid="index-health"
+          >{{ rowFor(u).health }}</span>
+        </div>
+        <p class="mt-2 text-2xl font-semibold tabular-nums" data-testid="index-value">{{ shownValue(rowFor(u)) }}</p>
+        <p class="mt-1 text-sm text-ink-muted" data-testid="index-at">{{ timeText(rowFor(u)) }}</p>
+        <div class="mt-3 flex flex-wrap gap-3 text-sm">
+          <router-link to="/market/option-chain" class="underline" data-testid="index-link-chain">Open Option Chain</router-link>
+          <router-link to="/strategies/live-strategies" class="underline" data-testid="index-link-live">Live Strategies</router-link>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>

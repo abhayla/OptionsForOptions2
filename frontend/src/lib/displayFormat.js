@@ -82,3 +82,9 @@ export function istTime(iso) {
   const p = Object.fromEntries(IST.formatToParts(new Date(ms)).map((x) => [x.type, x.value]))
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
+
+/** Max profit / max loss line of an outcome summary: the server string untouched, "Unlimited" when its flag is set, "-" when
+ *  absent. `side` is "profit" or "loss". One home for the Builder page and the Live Strategies card. */
+export function maxLine(summary, side) {
+  return summary?.[`max_${side}_unlimited`] ? 'Unlimited' : summary?.[`max_${side}`] ?? '-'
+}

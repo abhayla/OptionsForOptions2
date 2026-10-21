@@ -22,7 +22,7 @@ requires it), evidence, trace check, review, PR, merge, status update.
    undone dependencies or the blocking root). Start out of order only when the work item carries
    `order_override: <reason>` (the reason is the record), which --may-start prints.
 2. **Requirement + work item** — read them before anything else. They fix the acceptance
-   criteria and the tier; nothing below may silently redefine them.
+   criteria and the tier; nothing below may silently redefine them. Any plan made or changed is written as `plans/PL-###.md`; a change appends a `changes` entry (was, now, why), never rewrites silently.
 3. **Builder** — dispatch the `builder` agent in its own worktree. It writes code and one
    test per acceptance criterion in `tests_required`. It never writes `evidence/` files and
    never marks any status field verified or reviewed — doing so would make it its own
@@ -57,7 +57,7 @@ requires it), evidence, trace check, review, PR, merge, status update.
 8. **PR** — open the pull request from `.github/pull_request_template.md`; its Spec-deviation
    block is required (`tools/check_pr_spec_block.py` fails the PR without it). CI must run and
    pass (see CI below).
-9. **Merge** — merge ONLY with `python tools/merge_when_green.py <pr>`, once the tier's required
+9. **Merge** — merge ONLY with `python tools/merge_when_green.py <pr> --reviewed-sha <full sha of the reviewed commit>`, once the tier's required
    review is in. Never `gh pr checks --watch && gh pr merge`: `gh pr checks --watch` exits 0 on
    "no checks reported" before CI has even started, so that sequence merges an unproven PR. The
    tool also refuses a CONFLICTING/DIRTY PR at once, since GitHub runs zero CI on one. In a
@@ -67,12 +67,29 @@ requires it), evidence, trace check, review, PR, merge, status update.
 10. **Update statuses** — after merge, the orchestrator (never the builder, never the
     verifier) advances `verification_status`, `review_status`, and the requirement's
     lifecycle status.
-11. **Status page** — if a stage changed (a requirement's status, a work item blocked or
-    unblocked, an owner question opened or answered, a gate changing state), regenerate the page
-    with `python tools/build_status_page.py . --fetch --out views/status-page.html` and republish
-    that file to the link in `views/status-page.json` (Artifact publish with `url`, so the link
-    stays the same). Never on an ordinary merge. First publish of a project: publish once, then
-    create `views/status-page.json` as `{"url": "<the link>"}` and commit it.
+11. **Status page** - the `status-page-due` Stop hook watches for a stage change (a requirement, work item,
+    plan step or owner question status, a release, a merged pull request); if a stage changed, it builds
+    `views/status-page.html` itself and asks once, at the end of the turn, for one publish: Artifact with
+    `file_path` + the `url` in `views/status-page.json`, so the link stays the same. Do that when asked; do not
+    run the build by hand. A merged pull request IS a stage change, but only once the merge is in your local checkout: `merge_when_green.py` merges on GitHub and does not pull, so pull first. A squash merge moves nothing unless the files it changed do (a requirement, work item, plan or release file). A commit or a test run alone is not a stage change. With no link yet, the hook's
+    SessionStart note says the first publish is due. The first publish of a session may be refused as not viewed, then as identical:
+    publish again each time. With no `views/status-page.json` yet (first publish of a project) the hook stays
+    silent: build with `python tools/build_status_page.py . --fetch --out views/status-page.html`, publish once,
+    then create `views/status-page.json` as `{"url": "<the link>"}` and commit it.
+
+## Work-item size
+
+- A user-visible step is the planning and end-to-end unit; its end-to-end test runs in CI.
+- A pull request is small enough for one reviewer to read end to end; dependent pull requests are stacked.
+- A migration is its own pull request.
+- The kit sets no line count; a project may set one in its own rules.
+
+## Plans
+
+Every plan's "merged", "exists" and "done" claims are checked against GitHub before work starts. A plan that changes
+behaviour in a Tier A category gets a full design review. A plan's first run against a real outside system gets a
+one-reviewer check at the Tier B model and budget, covering what it touches and how to undo it. A project with no
+outside effect needs neither; every other plan gets the precondition check only.
 
 ## Model and effort per dispatch
 
@@ -102,6 +119,22 @@ On `NO TRANSCRIPTS: <path>` the report could not find this project's transcripts
 | **A** | Tier B, plus an adversarial review from a fresh, independent context and mutation tests on any guard the work adds or changes. Irreversible operations, production deploy, auth/secrets/data migrations, anything that deletes or moves data, any check meant to be hard to bypass. |
 
 When unsure which tier applies, use the higher tier.
+
+## Stacked items
+
+Items that depend on each other go as stacked pull requests: the second item's branch starts from the first item's
+branch and its pull request targets that branch, so each reviewer reads one item and a later item never waits for the
+earlier one to reach the main branch. Merge the bottom pull request first, then retarget the next one to the main branch.
+
+Update a branch from its base once, right before the merge gate runs, not after every change below it. The merge
+gate (`tools/merge_when_green.py`) does this itself when the branch is behind and every check is green: it adds one
+merge commit (never a rebase, so reviewed commits are not rewritten), at most three times, and it needs
+`--reviewed-sha` (always required, a full 40-character sha) to say which commit was reviewed. If the base update changed a file in the pull request's diff or
+a Tier A path, the gate refuses with `RE-REVIEW NEEDED` and the item gets a fresh review.
+
+Under a local-CI merge gate (the project runs its checks on the exact tree that will be merged, not on GitHub), a
+base update changes that tree, so the tested tree is void: the local gate runs again on the updated head before the
+merge, and the merge is pinned to the head that was tested.
 
 ## Batches: check once per batch, not once per change
 

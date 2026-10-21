@@ -7,6 +7,7 @@
 // and no other spec uses these legs.
 import { test, expect, type Page, type APIRequestContext, type WebSocketRoute } from '@playwright/test'
 import { findClippedElements, describeClipped } from './clipping-check'
+import { AC5 } from './support/ac5'
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
 const CAPTURED_AT = '2026-10-08T09:20:09+05:30'
@@ -15,7 +16,6 @@ const LEGS: Record<string, [string, string][]> = {
   'desktop-1280': [['NSE_FO:44626', 'SELL'], ['NSE_FO:44630', 'BUY']],
   'mobile-390': [['NSE_FO:44623', 'SELL'], ['NSE_FO:44599', 'BUY']],
 }
-const AC5 = /^Live market data disconnected\. Last updated: \d{2}:\d{2}:\d{2} [AP]M\. Live strategy monitoring is paused\.$/
 
 /** The draft: each leg's planned entry is its LTP in the replay snapshot, read back from the REST route. */
 async function draftFor(request: APIRequestContext, legs: [string, string][]) {
