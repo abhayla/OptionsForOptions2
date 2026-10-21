@@ -12,6 +12,7 @@ Exit code: that of the first failing step, else 0; 2 for bad usage.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -25,9 +26,16 @@ FULL_SHA = re.compile(r"[0-9a-fA-F]{40}")  # the kit gate's own rule (merge_when
 USAGE = "usage: python scripts/orchestrator/merge.py <pr-number> --reviewed-sha <full 40-character sha>"
 
 
+def child_env() -> dict[str, str]:
+    # The kit gate decodes gh output with the platform default; on cp1252 Windows a byte like 0x90 in a compare reply
+    # crashed its reader thread and the gate refused with "staleness unreadable" (PR 473, 2026-10-20). UTF-8 mode
+    # for every child fixes the class without editing the kit file.
+    return {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+
+
 def run(cmd: list[str]) -> tuple[int, str]:
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",  # noqa: S603
-                       errors="replace", check=False)
+                       errors="replace", check=False, env=child_env())
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 

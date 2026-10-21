@@ -23,6 +23,11 @@
       "date": "2026-09-29",
       "where": "W-041 verification round 2 (after round 5), build/W-041-state-machine @ 4e91a27",
       "evidence": "probe X2: adjustment FAILED with some fills -> Partially Executed -> start_close -> CLOSED -> close_partial RAISED 'cannot mark exited: the broker still holds a position'; retry RAISED 'no longer pending'; explain() offered four choices, three refuse"
+    },
+    {
+      "date": "2026-10-21",
+      "where": "PR #452 (gc6/313b-store) @ ee89aa5, backend/ofo_app/routes/execute.py:589-596 and routes/execution_return.py:219-221",
+      "evidence": "Tier A round 1 (code reading): held units include adopted lots but the EXIT price map and the return route's reconcile symbols come from plan orders only - EXIT with an adopted contract raises KeyError (500); an adopted-only strategy has no legs and no exit; latent (no record_adopted caller yet); round-2 fix dispatched"
     }
   ]
 }

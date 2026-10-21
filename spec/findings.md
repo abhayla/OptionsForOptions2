@@ -808,3 +808,25 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   `spec/technical-design/legacy-reuse.md` row M2 (`market_hours.py` ADAPT): copy the session logic only, never its
   holiday list. The project's list is `backend/ofo/market_calendar.json` (source URL and fetch date in the file), built
   on branch gc6/mkt-hours. Not a rule change. Status: **measured; the copied list is not used (GC-6 row MKT-HOURS)**.
+
+## F-55 - A net-only next-day read cannot see a same-day round trip: a filled-then-hand-sold entry reads "nothing placed"
+- Measured 2026-10-19 by the read-only Opus review of PR #421 (#352-1, head 21ba2c389ff8), confirmed by the
+  orchestrator: `backend/ofo_app/reconcile_attribution.py:35-36` on that branch documents "an ENTRY filled and sold by
+  hand on Kite the same earlier day leaves the net at the base and reads `nothing_placed`". Kite's next-day positions
+  give one net number per contract; a BUY 65 filled and a hand SELL 65 the same day net to 0, the same as no order.
+- Bears on: ADR-111 ("the app records the resulting mismatch" for a hand close on Kite) and REQ-060. The plan closes
+  with no mismatch and no P&L for a trade that happened. Fix direction (technical, GC-6 row NET-ROUNDTRIP): use the
+  activity fields of the next-day positions reply, or treat an earlier-day plan whose net equals the base as
+  unresolved, never `nothing_placed`, when activity cannot be ruled out. Status: **open; registry
+  `net-only-read-misses-roundtrip`**.
+
+## F-56 - Zerodha's instrument list is generated once each morning; Kite's docs say fetch it at about 08:30 IST
+- Read 2026-10-20 (web): the Kite Connect v3 docs (https://kite.trade/docs/connect/v3/market-data-and-instruments/)
+  say the instruments dump is best requested "once a day (ideally at around 08:30 AM)" and stored; Kite staff on the
+  developer forum (https://kite.trade/forum/discussion/11793) say it refreshes around 8 AM each trading day and is not
+  updated intraday (new strikes added during the day appear only in the next morning's file).
+- Bears on: ADR-015 (no stale data as live) and ADR-058 (the daily list). A catalogue load before the morning file
+  exists reads yesterday's list; GC-6 row INSTR-FRESH treats a list stamped before 08:30 IST as stale for that day
+  (setting `INSTRUMENT_LIST_PUBLISH_IST`, backend/ofo/timeutil.py on branch gc6/instr-fresh). No exact generation time
+  is published; 08:30 is the documented fetch time. Not a rule change. Status: **measured from documentation; no live
+  timing captured**.
