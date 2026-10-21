@@ -37,7 +37,29 @@ ADR-165). Next session: run the same /goal prompt; this file is the state. No or
 2. Then four lanes from the drafted cluster briefs (scratchpad `lane-briefs/`, 24 briefs, all `check_brief` clean;
    copy them into `docs/process/` with this batch): A1-A5, B1-B6, C1-C8, D1-D5. Merge order: A3 and B4 first.
 
+## Landing log (held PRs, `land_held2.sh` + `samelines.py`)
+Merged tonight: #450 CI split, #424 Windows pytest, #474 link guard, #417 tracker check, #448 DB pool budget, #419
+stored mismatch store, #393 My Strategies, #466 Option Chain selection. Each RE-REVIEW NEEDED was cleared only when the
+PR's own +/- lines were identical at the reviewed sha and the head (`samelines.py`: SAME).
+Fix rounds needed after landing into a moved main (all caught by CI or the merge gate, none by review):
+- #451: 0020 called 0019's old `_table_block` signature (#419's ruff fix changed it) -> fix 922927b, narrow Tier A
+  PASS (SQL byte-identical, re-hashed independently).
+- #496 W-121: #393's My Strategies offered Execute -> fix ef9f14eb (one `useOrderPath()` helper + Vitest scan),
+  narrow Tier B PASS WITH MINORS (named-route links and .js files not scanned; added to #495).
+- #465: its history scan flagged `alerts-history` (Alerts > History page) and the "not currently available" statement
+  -> fix round running (exact allow-list entries).
+- #457: the money-outside-engine scan flags guided.js arithmetic; the empty-state Create Strategy button routes to
+  `orders` -> fix round running.
+- W-122: Tier A verifier REVISE - MAJOR: the tracking view read legs from the current saved strategy, so an edit after
+  Start tracking rewrote paper P&L (65 -> 130 units: 195.00 -> 390.00); fix round running. Over-claimed ACs removed:
+  REQ-109 AC-3 (paper refusal not built), REQ-045 AC-1 (user-rule half is Step 6).
+
 ## Lessons (to register)
+- Landing a batch of PRs reviewed against an older main: a PR that ADDS a guard or scan meets content another PR adds
+  (3 times tonight: W-121 vs #393, #465 vs #393/W-089, #457 vs the money scan; plus #451 vs #419's helper change).
+  Land content PRs first and guard/scan PRs last, and re-run each guard PR's scans on the merged main before the gate.
+- Dispatching a builder while a `verifier`-type agent runs: every git write is blocked (known lesson 2026-10-19,
+  repeated tonight with the #465 fixer, ~15 min lost). Never overlap a verifier with a builder that must commit.
 - `regen.py` does not rebuild `spec/requirements/INDEX.md`; a status change then fails CI's index check (cost one CI
   round on #494). Fix: add `build_spec_index.py` to regen.py.
 - A `changes: refines ADR-X` relation fans out a pin to every requirement citing ADR-X (86 pins for ADR-165); use
