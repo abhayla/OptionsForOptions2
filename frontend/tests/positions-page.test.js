@@ -9,9 +9,10 @@ import PositionsPage from '@/pages/PositionsPage.vue'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 
 let answer
+let features = { order_path: 'on' } // GET /features; the Execute links show only on "on" (W-121)
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: () => answer() } }
+  return { ...actual, default: { get: (url) => (url === '/features' ? Promise.resolve({ data: features }) : answer()) } }
 })
 
 const SYMBOL = 'NIFTY26O1923650CE'
@@ -43,7 +44,7 @@ async function show(view) {
 }
 
 describe('Positions pages', () => {
-  beforeEach(() => { answer = null })
+  beforeEach(() => { answer = null; features = { order_path: 'on' } })
 
   for (const view of ['current', 'linked']) {
     it(`ADR-138 (2) mixed (${view} view): strategy 1 shows its own 65, the other 65 is "1 outside lot - view on Kite", no money word`, async () => {
@@ -153,5 +154,17 @@ describe('Positions pages', () => {
     const w = await show('current')
     expect(w.find('[data-testid=positions-loading]').exists()).toBe(true)
     expect(w.find('[data-testid=positions-empty]').exists()).toBe(false)
+  })
+
+  it('W-121 AC-6: with the order path off the pending row names the strategy and shows no Execute link', async () => {
+    features = { order_path: 'off' }
+    answer = () => Promise.resolve({ data: reply([group(1, [waiting(65, [1])], true)], { blocked: [1] }) })
+    const w = await show('current')
+    expect(w.get('[data-testid=position-waiting]').text()).toBe(WAITING)
+    expect(w.get('[data-testid=position-zerodha]').text()).toBe('65')
+    expect(w.get('[data-testid=position-strategy-name]').text()).toBe('Strategy 1')
+    expect(w.find('[data-testid=position-strategy-link]').exists()).toBe(false)
+    expect(w.find('[data-testid=positions-blocked-link]').exists()).toBe(false)
+    expect(w.find('a[href*="/execute"]').exists()).toBe(false)
   })
 })

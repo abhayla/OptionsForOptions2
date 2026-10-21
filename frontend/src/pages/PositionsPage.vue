@@ -14,8 +14,12 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
+import { useOrderPath } from '@/lib/orderPath'
 
 const route = useRoute()
+// W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said
+// the order path is on; off, the strategy is named in plain text.
+const orderPathOn = useOrderPath()
 const view = route.meta.view === 'linked' ? 'linked' : 'current'
 const loading = ref(true)
 const result = ref(null)
@@ -53,7 +57,7 @@ onMounted(async () => {
         <p>A strategy is {{ BLOCKED }}.</p>
         <ul>
           <li v-for="id in result.blocked_strategy_ids" :key="id" data-testid="positions-blocked-strategy" :data-strategy="id">
-            <RouterLink :to="`/strategy/${id}/execute`" class="underline" data-testid="positions-blocked-link">Strategy {{ id }}</RouterLink> ({{ BLOCKED }})
+            <RouterLink v-if="orderPathOn" :to="`/strategy/${id}/execute`" class="underline" data-testid="positions-blocked-link">Strategy {{ id }}</RouterLink><span v-else>Strategy {{ id }}</span> ({{ BLOCKED }})
           </li>
         </ul>
       </div>
@@ -65,7 +69,7 @@ onMounted(async () => {
       </p>
       <div v-for="g in result.strategies" :key="g.strategy_id" class="mt-3" data-testid="position-group" :data-strategy="g.strategy_id">
         <h2 class="font-semibold">
-          <RouterLink :to="`/strategy/${g.strategy_id}/execute`" class="underline" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink>
+          <RouterLink v-if="orderPathOn" :to="`/strategy/${g.strategy_id}/execute`" class="underline" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink><span v-else data-testid="position-strategy-name">Strategy {{ g.strategy_id }}</span>
           <span v-if="g.blocked" class="ml-1" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
         </h2>
         <p v-if="!g.contracts.length" data-testid="position-group-empty">{{ NO_ROW }}</p>

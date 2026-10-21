@@ -62,12 +62,12 @@ describe('AC-6: no screen offers Execute except through useOrderPath', () => {
     expect(files.flatMap(([rel, src]) => findings(rel, src))).toEqual([])
   })
 
-  it('exactly two screens mention an order page outside the order screens, and both are guarded', () => {
+  it('exactly three screens mention an order page outside the order screens, and both are guarded', () => {
     const users = files
       .filter(([rel, src]) => !ORDER_SCREENS.has(posix(rel)) && !posix(rel).startsWith(ORDER_COMPONENT_DIR) && ORDER_PATH_RE.test(noImports(stripComments(src))))
       .map(([rel]) => posix(rel))
       .sort()
-    expect(users).toEqual(['components/strategy/StrategyActions.vue', 'pages/MyStrategiesPage.vue'])
+    expect(users).toEqual(['components/strategy/StrategyActions.vue', 'pages/MyStrategiesPage.vue', 'pages/PositionsPage.vue'])
   })
 
   it('the order screens are reached only through routes.js, and both routes carry the guard', () => {
