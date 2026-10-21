@@ -1,6 +1,8 @@
 ---
 work_item: W-121
 ac: AC-6
+requirement: REQ-073
+ac_fp: "760fadc5a794"
 result: pass
 verified_by: "independent Tier A verifier (Opus, fresh context)"
 builder: "builder (Sonnet, agent worktree)"
