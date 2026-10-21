@@ -19,14 +19,30 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from ofo.errors.classes import ErrorClass
-from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    RiskRows, Rupees, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    Clock,
+    ContractSymbol,
+    DataHealthState,
+    DataInputName,
+    Date,
+    DisplayRupees,
+    ExecutionStatusName,
+    LegContract,
+    LegRef,
+    NextTradingDay,
+    OrderRef,
+    RiskRows,
+    Rupees,
+    Strikes,
+    Symbol,
+    UnitsByContract,
+    VersionStateName,
+    VersionStates,
+    WorstCase,
 )
+from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -298,9 +314,10 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "We could not confirm that the market is open. Execution is paused until it is confirmed.",
           "No order can be placed while the market's status is unknown.", _EXEC,
           "Try again once the market status is shown."),
-    _gate("gate_market_closed", _MD, 102, "The market is closed. Orders can be placed once it opens.",
+    _gate("gate_market_closed", _MD, 102,
+          "Market closed. You can review your plan; execution opens at 09:15 on {next_open}.",
           "No order can be placed while the market is closed.", _EXEC,
-          "Return during market hours and execute again."),
+          "Return during market hours and execute again.", {"next_open": NextTradingDay}),
     _gate("gate_data_unhealthy", _MD, 103,
           "Market data needed for execution ({data_input}) {state}. Execution is paused until it is current.",
           "Prices, margin and checks could rest on data that does not match the market.", _EXEC,

@@ -135,7 +135,8 @@ def _sample_slots() -> dict:
     return {
         "symbol": "BANKNIFTY", "leg": value, "quantity": 100, "underlying": "NIFTY", "lot": 65, "two_lots": 130,
         "state": VersionState.SUPERSEDED, "allowed": frozenset({VersionState.ACTIVE}), "other": 1,
-        "data_input": DataInput.LEG_PRICES, "contract": value, "date": datetime.date(2026, 9, 29),
+        "next_open": datetime.date(2026, 9, 30), "data_input": DataInput.LEG_PRICES, "contract": value,
+        "date": datetime.date(2026, 9, 29),
         "strikes": (Decimal("23950"), Decimal("24050")), "available": Decimal("40000.00"),
         "required": Decimal("50000.00"), "before": Decimal("-26000"), "after": UNLIMITED, "time": at,
         "_health": DataHealth.STALE,
@@ -208,7 +209,7 @@ def test_gate_template_class_matches_checkcode_map() -> None:
     from ofo.execution.safety import CheckCode, _fail
 
     for code, template_id in ((CheckCode.EXPIRY_PASSED, "gate_market_closed"),):
-        failure = _fail(code, template_id)
+        failure = _fail(code, template_id, next_open=datetime.date(2026, 9, 30))
         assert failure.message.error_class is CHECKCODE_TO_ERROR_CLASS[CheckCode.MARKET_CLOSED]
 
 
@@ -216,9 +217,9 @@ def test_check_failure_text_shows_all_four_parts() -> None:
     """The round-8 verifier's failure: a CheckFailure the user sees now carries all four parts."""
     from ofo.execution.safety import CheckCode, _fail
 
-    failure = _fail(CheckCode.MARKET_CLOSED, "gate_market_closed")
+    failure = _fail(CheckCode.MARKET_CLOSED, "gate_market_closed", next_open=datetime.date(2026, 9, 30))
     assert failure.text.splitlines() == [
-        "The market is closed. Orders can be placed once it opens.",
+        "Market closed. You can review your plan; execution opens at 09:15 on Wed 30 Sep.",
         "No order can be placed while the market is closed.",
         "Blocked: Execution of this strategy.",
         "Next step: Return during market hours and execute again.",

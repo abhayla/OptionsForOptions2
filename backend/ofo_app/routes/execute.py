@@ -59,11 +59,12 @@ from ofo.execution.context import (
 )
 from ofo.execution.cost import basket_cost
 from ofo.execution.freeze import freeze_check
-from ofo.execution.safety import check_pre_execution
+from ofo.execution.safety import check_pre_execution, market_failures
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.health import HealthThresholds
+from ofo.market_calendar import MarketStatus, market_status, next_open
 from ofo.money import PAISE
-from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
@@ -134,6 +135,16 @@ class ExecuteOut(ApiModel):
     basket: BasketPost  # {"url", "api_key", "data"}: the browser POSTs exactly these (basket_post.py)
     orders: list[BasketOrderOut]  # display only
     cost: CostOut
+
+
+class MarketStatusOut(ApiModel):
+    """ADR-119 (3): the server's market verdict for the Execute screen, shown BEFORE the click. ``message`` is the
+    catalogue refusal (None when open); the browser never decides from its own clock."""
+
+    status: Literal["open", "closed", "unconfirmed"]
+    next_open: Optional[datetime.date]  # noqa: UP045 - the next trading day when closed, else None
+    message: Optional[CatalogueText]  # noqa: UP045 - the gate's own refusal text, None when open
+    as_of: datetime.datetime  # the server clock the verdict was judged on
 
 
 # ---- dependencies (each a seam a test replaces with recorded replies) ----------------------------------------------
@@ -234,11 +245,12 @@ def _refuse_with(message: UserFacingError) -> StrategyRefused:
     return StrategyRefused("gate_dependencies_unsatisfied", Failure.CONFLICT, message=message)
 
 
-def market_open(now: datetime.datetime) -> bool:
-    """Weekday inside the session (ofo/timeutil). No holiday calendar exists yet: a holiday reads as open and Zerodha
-    refuses the order on its page (reported gap)."""
-    local = now.astimezone(IST)
-    return local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE
+def market_open(now: datetime.datetime) -> bool | None:
+    """ADR-119: True only inside 09:15-15:30 IST on an NSE trading day (``ofo.market_calendar``, holidays are dated
+    data); None when the year has no holiday data (the gate's "unconfirmed" block). The gate itself re-reads the
+    calendar at ``as_of``, so this is only the context's honest value."""
+    status = market_status(now)
+    return None if status is MarketStatus.NO_CALENDAR else status is MarketStatus.OPEN
 
 
 def _health(times: tuple[datetime.datetime, ...], checked_at: datetime.datetime) -> DataHealth:
@@ -277,6 +289,25 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+
+
+def market_verdict(now: datetime.datetime) -> MarketStatusOut:
+    """The gate's own market verdict at ``now`` (``market_failures``), as the screen shows it."""
+    failures = market_failures(now, market_open(now))
+    if not failures:
+        return MarketStatusOut(status="open", next_open=None, message=None, as_of=now)
+    opens = next_open(now) if market_status(now) is not MarketStatus.NO_CALENDAR else None
+    if opens is None:
+        return MarketStatusOut(status="unconfirmed", next_open=None, message=failures[0].message, as_of=now)
+    return MarketStatusOut(status="closed", next_open=opens.date(), message=failures[0].message, as_of=now)
+
+
+@router.get("/execute/market-status", response_model=MarketStatusOut)
+async def execute_market_status(
+    clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
+) -> MarketStatusOut:
+    """Read-only: whether Execute is open now, on the server clock (ADR-119 (3)); the POST gate re-judges on its own."""
+    return market_verdict(clock())
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut)
@@ -422,6 +453,10 @@ async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) ->
 async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext, catalogue: Any,
                 underlying: str) -> None:
     eligibility = await elig.fresh_registry(req.db, underlying=underlying)
+    # ADR-119: the market is judged on the clock read RIGHT BEFORE the gate, never on the request start (the quotes,
+    # margin and eligibility reads above took time; a request that started at 15:29:59 is refused at 15:30:01).
+    now = req.clock()
+    context = dataclasses.replace(context, as_of=now, market_open=market_open(now))
     result = check_pre_execution(priced.strategy, context, catalogue, eligibility, strategy_id=str(req.strategy_id))
     if result.blocked:
         raise _refuse_with(result.failures[0].message)
@@ -443,6 +478,10 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket
         raise TypeError("checked_basket returned something other than its sealed basket")
+    after = req.clock()  # ADR-119 again: Zerodha's margin call above may have run past 15:30
+    closed = market_failures(after, market_open(after))
+    if closed:
+        raise _refuse_with(closed[0].message)
     return basket
 
 
@@ -628,6 +667,6 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     ), figures
 
 
-__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "cost_out",
-           "get_execute_clock", "get_kite_session", "get_quote_reader", "held_products", "market_open",
-           "price_and_time"]
+__all__ = ["BASKET_PRODUCT", "CostOut", "ExecuteIn", "ExecuteOut", "Figures", "LiveDepthQuotes", "MarketStatusOut",
+           "cost_out", "execute_market_status", "get_execute_clock", "get_kite_session", "get_quote_reader",
+           "held_products", "market_open", "market_verdict", "price_and_time"]

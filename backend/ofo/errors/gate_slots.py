@@ -14,9 +14,18 @@ from decimal import Decimal
 from ofo.engine.legs import Action as _Action
 from ofo.engine.legs import Instrument as _EngineInstrument
 from ofo.engine.legs import Leg as _Leg
-
-from ofo.errors.slots import _IST, _MONTHS, MONEY_ABS_MAX, Count, Instrument, SlotType, Time, Underlying, _require_exact
-from ofo.errors.slots import _validate_money
+from ofo.errors.slots import (
+    _IST,
+    _MONTHS,
+    MONEY_ABS_MAX,
+    Count,
+    Instrument,
+    SlotType,
+    Time,
+    Underlying,
+    _require_exact,
+    _validate_money,
+)
 
 
 def _format_strike(strike: Decimal) -> str:
@@ -99,6 +108,21 @@ class Date(SlotType):
     @staticmethod
     def format(value: date) -> str:
         return _format_date(value)
+
+
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+class NextTradingDay(SlotType):
+    """A calendar date as ADR-121 (2) writes the next trading day: weekday, day, short month, no year: "Wed 21 Oct"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, date, "NextTradingDay")
+
+    @staticmethod
+    def format(value: date) -> str:
+        return f"{_WEEKDAYS[value.weekday()]} {value.day} {_MONTHS[value.month - 1]}"
 
 
 class Strikes(SlotType):

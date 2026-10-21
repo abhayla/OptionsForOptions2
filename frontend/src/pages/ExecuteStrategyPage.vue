@@ -4,7 +4,10 @@
         leg; not live within LIVE_WAIT_MS -> the catalogue's not-live message, and Execute is never called.
      2. The owner picks entry or exit (the API gives no held flag, so both are offered; the route refuses the wrong one
         with its catalogue message). The reply's orders and cost are shown as the strings given.
-     3. Kite's page opens only on the owner's click (BasketForm); then "Check with Zerodha" reads the result (ReturnCheck).
+     3. ADR-119 (3): the SERVER's market verdict (GET /execute/market-status: its own clock and holiday data) is read on
+        load and each time the legs go live; unless it says "open" the two actions are disabled and the server's sentence
+        is shown BEFORE any click. A failed read counts as unconfirmed. The browser's clock decides nothing.
+     4. Kite's page opens only on the owner's click (BasketForm); then "Check with Zerodha" reads the result (ReturnCheck).
      New file, copy from: none (legacy-reuse row 149's BasketOrderModal builds the basket in the browser; ADR-054). -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -18,7 +21,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
+import { LIVE_WAIT_MS, MARKET_UNCONFIRMED_PARTS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -41,6 +44,7 @@ const live = useStrategyLive({
       everLive.value = true
       errorParts.value = null // live again: the not-live message goes, the actions return
       phase.value = 'live'
+      readMarket() // judged again by the server as the actions come back
     } else if (!liveNow.value && phase.value === 'live') {
       notLive()
     }
@@ -51,6 +55,19 @@ const live = useStrategyLive({
   },
 })
 const everLive = ref(false)
+const market = ref(null) // the server's verdict: { status: open|closed|unconfirmed, message }; null until first read
+const marketOpen = computed(() => market.value?.status === 'open')
+
+async function readMarket() {
+  try {
+    const data = (await api.get('/execute/market-status')).data
+    market.value = data && ['open', 'closed', 'unconfirmed'].includes(data.status)
+      ? { status: data.status, message: data.message ?? MARKET_UNCONFIRMED_PARTS }
+      : { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS } // unreadable: fail closed
+  } catch {
+    market.value = { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS }
+  }
+}
 
 function notLive() {
   errorParts.value = NOT_LIVE_PARTS
@@ -63,6 +80,7 @@ onMounted(async () => {
     phase.value = 'error'
     return
   }
+  readMarket()
   try {
     draft = buildDraft(await fetchSavedLegs(api, strategyId.value))
   } catch (e) {
@@ -80,7 +98,7 @@ onMounted(async () => {
 onBeforeUnmount(() => clearTimeout(liveTimer))
 
 async function prepare(action) {
-  if (phase.value !== 'live' || !liveNow.value) return // the live socket must hold every leg first
+  if (phase.value !== 'live' || !liveNow.value || !marketOpen.value) return // live first; and the server must say open
   phase.value = 'executing'
   errorParts.value = null
   try {
@@ -101,11 +119,13 @@ async function prepare(action) {
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
 
-    <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive))" class="mt-2 flex gap-2" data-testid="execute-actions">
-      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('ENTRY')">
+    <ErrorMessage v-if="!reply && market && !marketOpen" class="mt-2" :parts="market.message" prefix="market-closed" />
+
+    <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive) || (market && !marketOpen))" class="mt-2 flex gap-2" data-testid="execute-actions">
+      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || !marketOpen" @click="prepare('ENTRY')">
         Prepare entry orders
       </button>
-      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('EXIT')">
+      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || !marketOpen" @click="prepare('EXIT')">
         Prepare exit orders
       </button>
     </div>

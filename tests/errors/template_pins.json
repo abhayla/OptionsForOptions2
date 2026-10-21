@@ -96,7 +96,7 @@
     "reviewed": "pending owner read"
   },
   "gate_market_closed": {
-    "sha256": "bb65aac3b47ef3de4a75b47f20ddb8ac8c0bb197651f0a0123c2e24461f20d87",
+    "sha256": "0c45bac8a79ccd326cac890f4e9e76217b6e18ce71029e60722d41586e006e96",
     "reviewed": "pending owner read"
   },
   "gate_data_unhealthy": {

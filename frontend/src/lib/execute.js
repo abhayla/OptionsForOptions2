@@ -21,6 +21,15 @@ export const NOT_LIVE_PARTS = Object.freeze({
   next_action: 'Wait for the data to update, then try again.',
 })
 
+/** Catalogue template `gate_market_unconfirmed`, as the server renders it. Shown when the market-status read fails or
+ *  the server cannot confirm the market (ADR-119 fail closed): the Execute actions stay disabled. */
+export const MARKET_UNCONFIRMED_PARTS = Object.freeze({
+  what_happened: 'We could not confirm that the market is open. Execution is paused until it is confirmed.',
+  impact: "No order can be placed while the market's status is unknown.",
+  what_is_blocked: 'Execution of this strategy.',
+  next_action: 'Try again once the market status is shown.',
+})
+
 /** True when a live push is a live outcome for every leg: the server computed it and labelled no leg (a labelled leg is
  *  stale or not connected). A NOT_CONNECTED or REFUSED push is never live. */
 export function isLiveOutcome(push) {
