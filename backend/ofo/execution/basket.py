@@ -32,8 +32,9 @@ Rules:
   again on every request.
 - Prices are the plan's ``Decimal`` entry prices, already tick-rounded upstream; never rounded here, and serialised as
   exact decimal text so 3.95 stays 3.95.
-- Tag: ``OFS<strategy>V<version>L<leg>`` with positive decimal integers (leg from 0): alphanumeric, at most 20
-  characters, unique per leg, decoded by the pure ``parse_tag``. An id that does not fit is refused, never truncated.
+- Tag: ``Q`` + strategy (4) + plan version (2) + leg (1), zero-padded base 36 (digits, uppercase): exactly 8
+  characters, Kite Publisher's basket limit; unique per leg, decoded by the pure ``parse_tag`` (which also decodes the
+  legacy ``OFS<strategy>V<version>L<leg>`` tags with their old meaning). An id above its ceiling is refused.
 """  # noqa: E501
 from __future__ import annotations
 
@@ -54,8 +55,25 @@ from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.sealed import SealedTuple
 
 KITE_BASKET_URL: Final = "https://kite.zerodha.com/connect/basket"
-MAX_TAG_LENGTH: Final = 20
-_TAG_RE: Final = re.compile(r"OFS([1-9][0-9]*)V([1-9][0-9]*)L(0|[1-9][0-9]*)", re.ASCII)
+# Kite Publisher's basket refuses a longer tag: "`tag` should be max 8 characters" (InputException, measured
+# 2026-10-19 10:19:48 IST on strategy 11 plan 1 tag OFS11V1L0; finding basket-tag-exceeds-publisher-limit).
+MAX_TAG_LENGTH: Final = 8
+TAG_PREFIX: Final = "Q"  # never "O": a tag of this grammar can never match the legacy OFS... grammar
+TAG_DIGITS: Final = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"  # base 36, digits then uppercase letters
+TAG_STRATEGY_WIDTH: Final = 4
+TAG_PLAN_WIDTH: Final = 2
+TAG_LEG_WIDTH: Final = 1
+_BASE: Final = len(TAG_DIGITS)
+MAX_TAG_STRATEGY_ID: Final = _BASE**TAG_STRATEGY_WIDTH - 1  # 1,679,615
+MAX_TAG_PLAN_VERSION: Final = _BASE**TAG_PLAN_WIDTH - 1  # 1,295
+MAX_TAG_LEG_INDEX: Final = _BASE**TAG_LEG_WIDTH - 1  # 35
+_TAG_RE: Final = re.compile(
+    rf"{TAG_PREFIX}([0-9A-Z]{{{TAG_STRATEGY_WIDTH}}})([0-9A-Z]{{{TAG_PLAN_WIDTH}}})([0-9A-Z]{{{TAG_LEG_WIDTH}}})",
+    re.ASCII)
+# Legacy grammar, DECODE ONLY: tags made before 2026-10-19 (OFS<s>V<v>L<i>) live in Zerodha's book and in stored plan
+# rows, and keep their old meaning. ``make_tag`` never produces it. Its decode cap is the old API-order cap.
+_LEGACY_TAG_RE: Final = re.compile(r"OFS([1-9][0-9]*)V([1-9][0-9]*)L(0|[1-9][0-9]*)", re.ASCII)
+_LEGACY_TAG_MAX_LENGTH: Final = 20
 _SEGMENT_TO_EXCHANGE: Final = {segment: exchange for exchange, segment in ZERODHA_EXCHANGE_TO_SEGMENT.items()}
 
 
@@ -86,22 +104,50 @@ def _positive(value: object, name: str, minimum: int) -> int:
     return value
 
 
+def _base36(value: int, width: int) -> str:
+    digits = []
+    for _ in range(width):
+        value, rem = divmod(value, _BASE)
+        digits.append(TAG_DIGITS[rem])
+    return "".join(reversed(digits))
+
+
+def _bounded(value: object, name: str, minimum: int, maximum: int) -> int:
+    n = _positive(value, name, minimum)
+    if n > maximum:
+        raise ValueError(f"{name} {n} is above the basket tag ceiling {maximum} "
+                         f"(Kite allows at most {MAX_TAG_LENGTH} characters); refused, never truncated")
+    return n
+
+
 def make_tag(strategy_id: int, plan_version: int, leg_index: int) -> str:
-    """The order's own tag. Raises ``ValueError`` when an id is invalid or the tag would exceed 20 characters."""
-    s = _positive(strategy_id, "strategy_id", 1)
-    v = _positive(plan_version, "plan_version", 1)
-    i = _positive(leg_index, "leg_index", 0)
-    tag = f"OFS{s}V{v}L{i}"
-    if len(tag) > MAX_TAG_LENGTH:
-        raise ValueError(f"tag {tag!r} is {len(tag)} characters; Kite allows at most {MAX_TAG_LENGTH}")
+    """The order's own tag: ``Q`` + strategy (4 base-36) + plan version (2) + leg (1), exactly 8 characters.
+
+    Raises ``ValueError`` when an id is invalid or above its ceiling (never truncated)."""
+    s = _bounded(strategy_id, "strategy_id", 1, MAX_TAG_STRATEGY_ID)
+    v = _bounded(plan_version, "plan_version", 1, MAX_TAG_PLAN_VERSION)
+    i = _bounded(leg_index, "leg_index", 0, MAX_TAG_LEG_INDEX)
+    tag = (TAG_PREFIX + _base36(s, TAG_STRATEGY_WIDTH) + _base36(v, TAG_PLAN_WIDTH)
+           + _base36(i, TAG_LEG_WIDTH))
+    if len(tag) != MAX_TAG_LENGTH:  # the widths above are the whole budget; a changed width must fail here
+        raise ValueError(f"tag {tag!r} is {len(tag)} characters; Kite's basket needs exactly {MAX_TAG_LENGTH}")
     return tag
 
 
 def parse_tag(tag: object) -> TagParts:
-    """Decode a tag made by ``make_tag``; anything else (other prefix, padding, leading zeros, non-ASCII) is refused."""
-    if not isinstance(tag, str) or len(tag) > MAX_TAG_LENGTH:
+    """Decode a tag made by ``make_tag``, or a legacy ``OFS<s>V<v>L<i>`` tag with its old meaning.
+
+    Anything else (other prefix, lowercase, padding, leading zeros in the legacy form, non-ASCII, a zero strategy or
+    plan) is refused. No string matches both grammars (``Q`` vs ``OFS``)."""
+    if not isinstance(tag, str):
         raise ValueError(f"not a basket tag: {tag!r}")
-    m = _TAG_RE.fullmatch(tag)
+    m = _TAG_RE.fullmatch(tag) if len(tag) == MAX_TAG_LENGTH else None
+    if m is not None:
+        s, v, i = (int(g, _BASE) for g in m.groups())
+        if s < 1 or v < 1:
+            raise ValueError(f"not a basket tag: {tag!r}")
+        return TagParts(s, v, i)
+    m = _LEGACY_TAG_RE.fullmatch(tag) if len(tag) <= _LEGACY_TAG_MAX_LENGTH else None
     if m is None:
         raise ValueError(f"not a basket tag: {tag!r}")
     return TagParts(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -281,5 +327,20 @@ def _decide_margin(source: MarginSource, orders: tuple[KiteOrder, ...],
         return check_margin(None, None)
 
 
-__all__ = ["KITE_BASKET_URL", "BasketRefused", "KiteBasket", "KiteOrder", "MarginSource", "TagParts", "build_basket",
-           "make_tag", "parse_tag", "zerodha_exchange"]
+__all__ = [
+    "KITE_BASKET_URL",
+    "MAX_TAG_LEG_INDEX",
+    "MAX_TAG_LENGTH",
+    "MAX_TAG_PLAN_VERSION",
+    "MAX_TAG_STRATEGY_ID",
+    "TAG_PREFIX",
+    "BasketRefused",
+    "KiteBasket",
+    "KiteOrder",
+    "MarginSource",
+    "TagParts",
+    "build_basket",
+    "make_tag",
+    "parse_tag",
+    "zerodha_exchange",
+]

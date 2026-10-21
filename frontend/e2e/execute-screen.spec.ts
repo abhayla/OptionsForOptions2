@@ -64,7 +64,7 @@ test.describe('Execute screen on the Execute replay API', () => {
 
     const row = page.getByTestId('execute-order')
     await expect(row).toHaveCount(1)
-    await expect(row.locator('td')).toHaveText(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
+    await expect(row.locator('td')).toHaveText(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'Q0001010'])
     await expect(page.getByTestId('cost-net-premium')).toHaveText('-217.75')
     expect(reply.cost.net_premium).toBe('-217.75') // the API's own string, before the screen is read
     expect(reply.cost.margin_required).not.toBeNull() // the derived entry reply carries Zerodha's margin

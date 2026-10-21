@@ -1,4 +1,4 @@
 {
-  "always_loaded_max_bytes": 22407,
-  "why": "OD-23 item 3, re-set by REQ-043 (OD-59): measured always-loaded kit rule bytes 13407 (evidence-and-proof, run-discipline, spec-first) + project headroom 9000 (2 x 4500 bytes for two project rules) = 22407; path-scoped rules are excluded. A later always-on kit rule must raise this cap on purpose."
+  "always_loaded_max_bytes": 23498,
+  "why": "OD-23 item 3, re-set by REQ-043 (OD-59), raised on purpose by W-043 (REQ-055 AC-3, OD-83: run-discipline 1.1.0 added the standing brief items and C8): measured always-loaded kit rule bytes 14498 (evidence-and-proof, run-discipline, spec-first) + project headroom 9000 (2 x 4500 bytes for two project rules) = 23498; path-scoped rules are excluded. A later always-on kit rule must raise this cap on purpose."
 }
