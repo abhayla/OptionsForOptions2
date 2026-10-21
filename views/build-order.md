@@ -21,6 +21,7 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
 | REQ-012 | Registration and identity layers | foundation | normal | next |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
+| REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | high | waiting: on REQ-034 |
 | REQ-036 | Strategy-only execution | foundation | normal | next |
 | REQ-039 | Strategy state machine and exception states | foundation | normal | next |
 | REQ-043 | Live monitoring and status colours | foundation | normal | next |
@@ -32,6 +33,13 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-064 | Audit log | foundation | normal | next |
 | REQ-065 | Error classification and messages | foundation | normal | blocked: its own work item W-070 blocked: #200 remainder (fix (1) and (2), one bounded round, ADR-074) built on branch fix/200-door-remainder: rebinding + ASGI send-path CI scans, seal recorded in the door send path; awaiting the independent verifier |
 | REQ-075 | Coding standards are checked automatically, at edit time and in CI, without slowing small changes | foundation | normal | next |
+| REQ-090 | Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files | foundation | normal | next |
+| REQ-117 | The broker adapter declares named capability flags, and features ask the flag, never the broker's name | foundation | normal | waiting: on REQ-054 |
+| REQ-133 | A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data | foundation | normal | waiting: on REQ-049, REQ-119 |
+| REQ-077 | Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing | feature | high | next |
+| REQ-081 | Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted | feature | high | waiting: on REQ-055 |
+| REQ-082 | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) | feature | high | next |
+| REQ-089 | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills | feature | high | next |
 | REQ-008 | Home dashboard | feature | normal | next |
 | REQ-009 | Primary navigation and account menu | feature | normal | next |
 | REQ-010 | Public site and live-data access | feature | normal | next |
@@ -41,6 +49,7 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-018 | Trial and Limited/Read-Only mode | feature | normal | blocked: its own work item W-008 blocked: blocked by W-007 (parked, issue #12) |
 | REQ-019 | Complimentary Pro for qualifying Zerodha customers | feature | normal | blocked: its own work item W-011 blocked: blocked by W-007 (parked, issue #12) |
 | REQ-021 | Referral rewards | feature | normal | blocked: its own work item W-009 blocked: blocked by W-007 (parked, issue #12) |
+| REQ-024 | Guided strategy creation | feature | normal | next |
 | REQ-025 | Strategy discovery and preferences | feature | normal | next |
 | REQ-026 | Expected market range input | feature | normal | next |
 | REQ-027 | Strike selection modes | feature | normal | next |
@@ -53,6 +62,12 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-044 | Strategy control center and Positions screen | feature | normal | next |
 | REQ-045 | Adjustment detection and triggers | feature | normal | next |
 | REQ-046 | Adjustment Opportunity panel and Before/After | feature | normal | next |
+| REQ-047 | Adjustment-relevant data collection | feature | normal | next |
+| REQ-050 | Shared computation and scale | feature | normal | next |
+| REQ-113 | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds | feature | high | waiting: on REQ-048, REQ-049, REQ-050, REQ-060 |
+| REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | high | waiting: on REQ-049, REQ-113 |
+| REQ-115 | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order | feature | high | waiting: on REQ-041, REQ-042, REQ-043, REQ-060, REQ-113 |
+| REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | high | waiting: on REQ-054, REQ-113 |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
 | REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
@@ -60,8 +75,29 @@ Done (9): REQ-020, REQ-032, REQ-033, REQ-035, REQ-038, REQ-040, REQ-057, REQ-059
 | REQ-069 | Suggested setups in the Guided Builder | feature | normal | next |
 | REQ-070 | Builder history and restore | feature | normal | next |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | normal | next |
+| REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | normal | waiting: on REQ-028 |
+| REQ-078 | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server | feature | normal | waiting: on REQ-076 |
+| REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | normal | waiting: on REQ-028, REQ-076 |
+| REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | normal | next |
+| REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | normal | waiting: on REQ-034 |
+| REQ-084 | What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples | feature | high | waiting: on REQ-034, REQ-083 |
+| REQ-085 | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape | feature | normal | waiting: on REQ-076 |
+| REQ-086 | Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked | feature | normal | next |
+| REQ-087 | Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns | feature | normal | waiting: on REQ-029 |
+| REQ-103 | An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read time | feature | normal | waiting: on REQ-015, REQ-054 |
+| REQ-104 | The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user | feature | high | blocked: behind REQ-061 (W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275.) |
+| REQ-105 | Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan and paper-track on them | feature | normal | waiting: on REQ-016 (recorded, not approved to build: status Specified), REQ-049, REQ-052 |
+| REQ-106 | A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed | feature | normal | waiting: on REQ-049, REQ-050 |
+| REQ-107 | IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, held until display rights are confirmed | feature | normal | waiting: on REQ-047, REQ-051 |
+| REQ-091 | Strategy price history chart in the builder (held for display rights) | feature | normal | waiting: on REQ-051, REQ-107 |
+| REQ-108 | An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared | feature | normal | waiting: on REQ-052 |
+| REQ-109 | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch | feature | normal | waiting: on REQ-049 |
+| REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | normal | waiting: on REQ-042, REQ-045, REQ-046 |
+| REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | normal | waiting: on REQ-062, REQ-115 |
+| REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | normal | waiting: on REQ-060, REQ-115, REQ-116 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
+| REQ-111 | The user can keep private notes on a strategy | polish | normal | next |
 
 ## Recorded, not approved to build
 
@@ -73,27 +109,9 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-016 (Specified): Strategies without Zerodha
 - REQ-022 (Specified): Free-eligibility loop
 - REQ-023 (Specified): Paid Pro and billing
-- REQ-024 (Specified): Guided strategy creation
-- REQ-047 (Specified): Adjustment-relevant data collection
-- REQ-050 (Specified): Shared computation and scale
 - REQ-066 (Specified): Compliance gates
 - REQ-067 (Specified): Delivery controls
 - REQ-074 (Specified): Security incident reporting and log retention
-- REQ-076 (Draft): Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name
-- REQ-077 (Draft): Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing
-- REQ-078 (Draft): Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server
-- REQ-079 (Draft): Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check)
-- REQ-080 (Draft): Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry
-- REQ-081 (Draft): Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted
-- REQ-082 (Draft): Probability of profit, labelled as a model estimate from today's prices (held for the legal check)
-- REQ-083 (Draft): Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars
-- REQ-084 (Draft): What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples
-- REQ-085 (Draft): Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape
-- REQ-086 (Draft): Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked
-- REQ-087 (Draft): Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns
-- REQ-089 (Draft): Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills
-- REQ-090 (Draft): Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files
-- REQ-091 (Draft): Strategy price history chart in the builder (held for display rights)
 - REQ-092 (Draft): Optional pre-trade check-in - today's count, a 10-second pause and "Have you checked your exit plan?" before an entry
 - REQ-093 (Draft): Instrument watchlists of index, futures and option contracts with live prices and no order buttons
 - REQ-094 (Draft): Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept
@@ -102,23 +120,6 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-100 (Draft): A strategy's stop-loss - price-level stops are held at Zerodha as a broker trigger, P&L stops are sent by the platform server, each after one user confirmation
 - REQ-101 (Draft): A broker-held stop-loss stays in step with the strategy, is shown with its read time, can be removed, and its firing is reconciled
 - REQ-102 (Draft): A strategy's entry may use intraday (MIS) or carry-forward (NRML), with Zerodha's auto square-off stated before Execute and recognised by reconciliation
-- REQ-103 (Draft): An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read time
-- REQ-104 (Draft): The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user
-- REQ-105 (Draft): Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan and paper-track on them
-- REQ-106 (Draft): A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed
-- REQ-107 (Draft): IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, held until display rights are confirmed
-- REQ-108 (Draft): An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared
-- REQ-109 (Draft): A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch
-- REQ-110 (Draft): Each trading day the user gets a "does Zerodha agree with us" report for their strategies
-- REQ-111 (Draft): The user can keep private notes on a strategy
-- REQ-112 (Draft): Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed
-- REQ-113 (Draft): The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds
-- REQ-114 (Draft): Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter
-- REQ-115 (Draft): Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order
-- REQ-116 (Draft): Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path
-- REQ-117 (Draft): The broker adapter declares named capability flags, and features ask the flag, never the broker's name
-- REQ-118 (Draft): Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently
-- REQ-119 (Draft): The builder drops late replies, so an older answer never draws over a newer edit
 - REQ-125 (Draft): Every request acts for one signed-in user, and no user can read or act on another user's data
 - REQ-126 (Draft): Production is watched, backed up and restorable, and staging never shares production's data or keys
 - REQ-127 (Draft): Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report
@@ -127,4 +128,3 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-130 (Draft): Product analytics and session replay run only for users who opted in, and stay off until the consent design clears
 - REQ-131 (Draft): The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in writing
 - REQ-132 (Draft): Native Android and iOS apps use the same backend and the one engine, and add no rule of their own
-- REQ-133 (Draft): A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data
