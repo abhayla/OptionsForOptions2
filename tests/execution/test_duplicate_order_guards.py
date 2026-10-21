@@ -44,6 +44,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action
 from ofo.execution.partial import (
@@ -76,7 +77,8 @@ def test_timeout_leaves_order_in_flight_not_rejected(catalogue, eligibility) -> 
     Rejected, a second Complete would prepare another BUY 23,600 CE x65 -- the double-order class of rounds 1-2."""
     book = book_with_three_filled()
     first_read = FakeBroker(three_positions(), statuses())
-    prep = complete_strategy(plan(), first_read, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(plan(), first_read, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
 
     result = submit_confirmed(prep, choice=COMPLETE, confirmed_by="user:U-42", submitter=_TimeoutSubmitter())
@@ -89,7 +91,8 @@ def test_timeout_leaves_order_in_flight_not_rejected(catalogue, eligibility) -> 
 
     # a second Complete on a read that still does not show the timed-out order prepares NOTHING: it is in flight
     lagging = FakeBroker(three_positions(), statuses(), read_at=READ_AT + datetime.timedelta(seconds=5))
-    second = complete_strategy(plan(), lagging, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    second = complete_strategy(plan(), lagging, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert second.orders == () and second.assessment.status is ExecutionStatus.IN_PROGRESS
 
     # later Zerodha confirms the timed-out order actually filled: attach its real id, then the ledger fill
@@ -98,7 +101,7 @@ def test_timeout_leaves_order_in_flight_not_rejected(catalogue, eligibility) -> 
     positions = three_positions() + [BrokerPositionLine(CONTRACTS[3], LOT, D("44.00"))]
     sts = statuses() + [BrokerOrderStatus("NEW-9", CONTRACTS[3], OrderState.EXECUTED, LOT, None, "OFO000000001")]
     final = complete_strategy(plan(), FakeBroker(positions, sts, read_at=READ_AT + datetime.timedelta(seconds=6)),
-                              book, FakePlanner(), entry_context(), catalogue, eligibility)
+                              book, FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert final.orders == () and final.assessment.status is ExecutionStatus.COMPLETE  # no duplicate, ever
 
 
@@ -109,14 +112,16 @@ def test_open_exit_order_blocks_completion_after_a_fresh_close_read(catalogue, e
     missing 23,600 CE leg while those exits are in flight."""
     book = book_with_three_filled()
     stale = FakeBroker(three_positions(LTPS), statuses(), read_at=READ_AT)
-    close = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    close = close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert close.ready and len(close.orders) == 3
     submit_confirmed(close, choice=PartialChoice.CLOSE_PARTIAL_STRATEGY, confirmed_by="user:U-42",
                      acknowledgement=close.guard.acknowledgement,  # W-026: a close changes the risk profile
                      submitter=FakeSubmitter())
 
     fresh = FakeBroker(three_positions(LTPS), statuses(), read_at=READ_AT + datetime.timedelta(seconds=5))
-    after = complete_strategy(plan(), fresh, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    after = complete_strategy(plan(), fresh, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert after.orders == ()
     assert "in flight" in after.reason  # not "needs a fresh read": the read IS fresher than the Close read
     assert fresh.read_at > stale.read_at  # confirms the read used here really is newer than the Close read
@@ -128,18 +133,18 @@ def test_grace_boundary_exact_60s_still_in_flight_then_one_tick_over_is_mismatch
     clock = Clock(t=READ_AT + datetime.timedelta(seconds=10))
     book = book_with_three_filled(clock=clock)
     prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses(), read_at=clock.t), book,
-                             FakePlanner(), entry_context(), catalogue, eligibility)
+                             FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     submit_confirmed(prep, choice=COMPLETE, confirmed_by="user:U-42", submitter=FakeSubmitter())
 
     clock.advance(60)  # exactly the grace window since registration
     at_60 = complete_strategy(plan(), FakeBroker(three_positions(), statuses(), read_at=clock.t), book,
-                              FakePlanner(), entry_context(), catalogue, eligibility)
+                              FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert at_60.orders == () and at_60.assessment.status is ExecutionStatus.IN_PROGRESS
     assert not any("not in Zerodha's order list" in m for m in at_60.assessment.mismatches)
 
     clock.t += datetime.timedelta(milliseconds=1)  # one tick past the grace window
     over = complete_strategy(plan(), FakeBroker(three_positions(), statuses(), read_at=clock.t), book,
-                             FakePlanner(), entry_context(), catalogue, eligibility)
+                             FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert over.orders == () and over.assessment.status is ExecutionStatus.RECONCILIATION_REQUIRED
     assert any("not in Zerodha's order list" in m for m in over.assessment.mismatches)
 
@@ -151,13 +156,15 @@ def test_skew_boundary_exact_5s_accepted_then_one_tick_over_is_refused(catalogue
     book = book_with_three_filled(clock=clock)
 
     exact = FakeBroker(three_positions(), statuses(), read_at=clock.t + datetime.timedelta(seconds=5))
-    ok = complete_strategy(plan(), exact, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    ok = complete_strategy(plan(), exact, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in ok.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
     discard_preparation(ok)
 
     over = FakeBroker(three_positions(), statuses(),
                       read_at=clock.t + datetime.timedelta(seconds=5, milliseconds=1))
-    refused = complete_strategy(plan(), over, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    refused = complete_strategy(plan(), over, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert refused.orders == () and "could not re-read" in refused.reason
 
 
@@ -167,14 +174,16 @@ def test_refused_retry_frees_the_strategy_for_a_second_retry(catalogue, eligibil
     after the refusal must show PARTIAL_EXCEPTION and prepare exactly 1 order for the same leg."""
     book = book_with_three_filled()
     broker = FakeBroker(three_positions(), statuses())
-    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     result = submit_confirmed(prep, choice=COMPLETE, confirmed_by="user:U-42", submitter=FakeSubmitter(refuse=1))
     assert result.submitted == () and result.failed is not None and "Margin Exceeds" in result.failed[1]
 
     view = book.order_for_key("OFO000000001")
     assert view.state is OrderState.REJECTED  # a definite refusal is terminal at once, not left in flight
 
-    retry = retry_failed_leg(plan(), "leg-4", broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    retry = retry_failed_leg(plan(), "leg-4", broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert retry.assessment.status is ExecutionStatus.PARTIAL_EXCEPTION
     assert [(o.contract, o.side, o.quantity) for o in retry.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
 
@@ -191,7 +200,7 @@ def test_broker_status_for_another_strategys_order_is_a_mismatch(catalogue, elig
 
     foreign_status = BrokerOrderStatus("BRK-OTHER", CONTRACTS[3], OrderState.EXECUTED, LOT)
     prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses() + [foreign_status]), book,
-                             FakePlanner(), entry_context(), catalogue, eligibility)
+                             FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.orders == ()
     assert prep.assessment.status is ExecutionStatus.RECONCILIATION_REQUIRED
     assert any("belongs to another strategy" in m for m in prep.assessment.mismatches)
@@ -204,13 +213,15 @@ def test_stale_read_boundary_exact_60s_accepted_then_one_tick_older_is_refused(c
     book = book_with_three_filled(clock=clock)
 
     exact = FakeBroker(three_positions(), statuses(), read_at=clock.t - datetime.timedelta(seconds=60))
-    ok = complete_strategy(plan(), exact, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    ok = complete_strategy(plan(), exact, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in ok.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
     discard_preparation(ok)
 
     stale = FakeBroker(three_positions(), statuses(),
                        read_at=clock.t - datetime.timedelta(seconds=60, milliseconds=1))
-    refused = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    refused = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert refused.orders == () and "could not re-read" in refused.reason
 
 
@@ -221,7 +232,7 @@ def test_blocked_strategy_refuses_submit_confirmed_and_sends_nothing(catalogue, 
     submitter must receive ZERO orders -- nothing goes out for a strategy under an unresolved mismatch."""
     book = book_with_three_filled()
     prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(),
-                             entry_context(), catalogue, eligibility)
+                             entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready and len(prep.orders) == 1
 
     # a reconciliation mismatch lands on the strategy after preparation, before confirmation: the broker now reports

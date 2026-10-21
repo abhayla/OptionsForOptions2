@@ -5,9 +5,13 @@ Expected texts are written from the meaning of the messages they replace, not co
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 import pytest
+from ofo.engine import Action, Instrument, Leg
+from ofo.execution.planned import ExecutionPlan, PlannedLeg
+from ofo.execution.sequence import SliceRefused, _batched
 
 PARTS = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -60,18 +64,21 @@ def test_spec_fixed_choice_labels_are_the_exact_words() -> None:
                                                  "Close Partial Strategy"]
 
 
-def test_slicing_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
-    from ofo.execution.sequence import SliceRefused, slice_quantity
+def test_lot_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
+    """ADR-092 removed freeze slicing; the typed refusal that remains is the whole-lots one (``_batched``)."""
+    leg = Leg(Action.BUY, Instrument.CE, Decimal("24000"), datetime.date(2026, 9, 30), 65, Decimal("50.00"))
+    plan = ExecutionPlan("S-1", (PlannedLeg("L1", "NIFTY2693024000CE", leg),))
 
     class Constraints:
-        def freeze_quantity(self, contract: str) -> int:
-            return 64
+        def max_orders_per_batch(self) -> int:
+            return 10
 
     with pytest.raises(SliceRefused) as info:
-        slice_quantity(Constraints(), "NIFTY2693024000CE", 65, 65)
+        _batched(plan, [["L1"]], Constraints(), {"L1": 100}, {"L1": 65})
     err = info.value
-    assert err.message.what_happened == "Nothing prepared: the freeze quantity for NIFTY2693024000CE is below one lot of 65."
-    assert isinstance(err, ValueError) and "below one lot of 65" in str(err)
+    assert err.message.what_happened == (
+        "Nothing prepared: 100 units of NIFTY2693024000CE is not a whole number of lots of 65.")
+    assert isinstance(err, ValueError) and "whole number of lots of 65" in str(err)
     assert err.text.count("\n") == 3
     with pytest.raises(TypeError):
         SliceRefused(detail="x", message="a plain string")  # type: ignore[arg-type]
@@ -89,10 +96,7 @@ def test_sequence_labels_and_margin_notes_come_from_the_explanation_catalogue() 
     ("guard_risk_profile_changed", {}), ("guard_not_checked", {}),
     ("partial_ready_risk_changed", {"count": 2}),
     ("partial_slice_not_whole_lots", {"units": 100, "contract": "NIFTY2693024000PE", "lot": 65}),
-    ("partial_slice_freeze_below_lot", {"contract": "NIFTY2693024000PE", "lot": 65}),
-    ("partial_slice_too_many_orders", {"units": 9000, "contract": "NIFTY2693024000PE", "freeze": 65, "limit": 50}),
     ("partial_slice_no_lot_size", {"count": 0, "contract": "NIFTY2693024000PE"}),
-    ("partial_slice_freeze_unusable", {"contract": "NIFTY2693024000PE"}),
     ("partial_read_stale", {}),
     ("partial_mismatch_unknown_order", {"order": "BRK-1"}),
     ("partial_mismatch_other_strategy", {"order": "BRK-1"}),

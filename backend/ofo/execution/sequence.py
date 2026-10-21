@@ -36,18 +36,16 @@ with a ``MarginPlanner`` (engine interface), a leg's impact = margin(all legs) -
 step, legs with the lower impact (those that reduce margin most) go first, ties keep the user's order. No planner, or
 a planner that fails: order by protection only and say "margin impact unknown - not used".
 
-BROKER CONSTRAINTS (``BrokerConstraints``; the default values are UNVERIFIED placeholders, REQ-056 AC-10 verifies the
-real ones at the Kite build): a leg above the freeze quantity is split into several orders of at most that many units;
-orders are grouped into batches of at most ``max_orders_per_batch``; a batch never spans two steps, so every
-protective slice is placed before any dependent slice.
+NEVER SPLIT (ADR-092, issue 255): "No order the platform prepares is split for the freeze limit"; every leg is ONE
+order. The freeze limit is checked by the caller with ``ofo.execution.freeze`` (the review's ``freeze_check``; the
+Complete / Retry / exit paths' ``require_within_freeze``), never here, and there is no placeholder freeze figure.
+BATCHES (``BrokerConstraints``; the default is an UNVERIFIED placeholder, REQ-056 AC-10): orders are grouped into
+batches of at most ``max_orders_per_batch``; a batch never spans two steps, so every protective order is placed
+before any dependent order.
 
 LOTS (W-028, deferred #43; REQ-056 AC-9 "lot validity"): given the instrument ``catalogue``, every plan contract must
 be a catalogue instrument, and every leg quantity and every quantity to order must be a whole number of that
-instrument's catalogue lot size, else refused. ORCHESTRATOR DEFAULT (W-028, the spec is silent): a freeze quantity
-that is not a whole number of lots is rounded DOWN to whole lots (freeze 200, lot 65 -> 195), so every slice is
-lot-aligned; a freeze below one lot is refused.
-ONE SLICING RULE (W-032, deferred #50): ``slice_quantity`` is the only place a leg is split at the freeze quantity;
-the plan (Complete / Retry) and Close Partial Strategy (``exit_orders``, REQ-056 AC-10) both go through it.
+instrument's catalogue lot size, else refused.
 REMAINING ORDERS (W-028): ``quantities`` names the units still to order per leg (Complete / Retry); steps, dependencies
 and margin order stay those of the FULL plan, only the named legs get orders.
 
@@ -77,30 +75,22 @@ from ofo.instruments.models import is_lot_aligned
 
 _BUILDER_KEY: Final = object()
 MARGIN_NOT_USED: Final = render_explanation("margin_note_not_used")
-MAX_SLICES_PER_LEG: Final = 50  # orchestrator default: refuse an absurd split rather than build it
 MAX_BATCH_SIZE: Final = 100  # orchestrator default: sanity cap on a provider's answer
 
-#: UNVERIFIED placeholders (REQ-056 AC-10 verifies the real values against Kite Connect at the Kite build).
-#: 1,755 = 27 lots of 65, the largest one-lot multiple under NSE's historical NIFTY freeze of 1,800 units.
-DEFAULT_FREEZE_UNITS: Final = 1755
+#: UNVERIFIED placeholder (REQ-056 AC-10 verifies the real value against Kite Connect at the Kite build).
 DEFAULT_MAX_ORDERS_PER_BATCH: Final = 10
 
 
 class BrokerConstraints(Protocol):
-    """Broker limits the sequence must respect. ``freeze_quantity`` is lot-aligned units per order."""
-
-    def freeze_quantity(self, contract: str) -> int: ...
+    """Broker limits the sequence must respect (the freeze limit is not one: ADR-092, ``ofo.execution.freeze``)."""
 
     def max_orders_per_batch(self) -> int: ...
 
 
 class UnverifiedDefaultConstraints:
-    """The labelled, UNVERIFIED default (see DEFAULT_FREEZE_UNITS / DEFAULT_MAX_ORDERS_PER_BATCH)."""
+    """The labelled, UNVERIFIED default (see DEFAULT_MAX_ORDERS_PER_BATCH)."""
 
     unverified = True
-
-    def freeze_quantity(self, contract: str) -> int:
-        return DEFAULT_FREEZE_UNITS
 
     def max_orders_per_batch(self) -> int:
         return DEFAULT_MAX_ORDERS_PER_BATCH
@@ -120,12 +110,11 @@ class PlanStep:
 
 @dataclass(frozen=True)
 class PlannedOrder:
-    """One order to send: a whole leg, or one slice of a leg above the freeze quantity."""
+    """One order to send: always a whole leg (or its whole remaining units), never a freeze slice (ADR-092)."""
 
     step: int
     batch: int  # 1-based, counted across the whole plan; a batch never spans two steps
     leg_ref: str
-    slice_no: int
     quantity: int
 
 
@@ -209,17 +198,6 @@ class OrderSequence:
                 blocked.add(ref)
         return Simulation(tuple(sent), tuple(refused), tuple(withheld))
 
-    def simulate_slices(self, failed: Iterable[tuple[str, int]]) -> Simulation:
-        """AC-4 per slice (W-028): a failed slice ``(leg_ref, slice_no)`` of this sequence's orders counts as a failed
-        leg, so every dependent of that leg is withheld."""
-        failing = tuple(failed)
-        known = {(o.leg_ref, o.slice_no) for o in self.orders}
-        for item in failing:
-            if not isinstance(item, tuple) or len(item) != 2 or isinstance(item[1], bool) or item not in known:
-                raise ValueError(f"{item!r} is not a (leg_ref, slice_no) order of this plan")
-        if len(set(failing)) != len(failing):
-            raise ValueError(f"duplicate slice in the failed set: {failing}")
-        return self.simulate(tuple(dict.fromkeys(ref for ref, _ in failing)))
 
 
 def protects(protector: Leg, sold: Leg) -> bool:
@@ -287,7 +265,8 @@ def _margin_order(plan: ExecutionPlan, steps: dict[StepKind, list[str]],
 
 
 class SliceRefused(UserFacing, ValueError):
-    """A lot or freeze-quantity refusal while slicing orders. ``str(error)`` is the developer detail; ``message`` is the
+    """A lot refusal while building orders (the name predates ADR-092; nothing is sliced). ``str(error)`` is the
+    developer detail; ``message`` is the
     four-part ``UserFacingError`` from ``render()`` (W-024 round 9) and ``text`` is what a user is shown."""
 
     def __init__(self, *, detail: str, message: UserFacingError) -> None:
@@ -334,7 +313,7 @@ def _lot_sizes(plan: ExecutionPlan, catalogue: Catalogue) -> dict[str, int]:
 
 def _quantities(plan: ExecutionPlan, quantities: Mapping[str, int] | None) -> dict[str, int]:
     """Units to order per leg: the full plan by default, else ``quantities`` (known legs, 1..planned units).
-    Lot alignment of each quantity is checked where it is sliced (``slice_quantity``)."""
+    Lot alignment of each quantity is checked where its order is built (``_batched``)."""
     if quantities is None:
         return {p.leg_ref: p.leg.quantity for p in plan.legs}
     if not isinstance(quantities, Mapping):
@@ -348,35 +327,11 @@ def _quantities(plan: ExecutionPlan, quantities: Mapping[str, int] | None) -> di
     return wanted
 
 
-def slice_quantity(constraints: BrokerConstraints, contract: str, units: int, lot: int | None) -> tuple[int, ...]:
-    """THE slicing rule (W-028), shared by every order-preparing path: ``units`` of ``contract`` as orders of at most
-    the freeze quantity. With a ``lot``: ``units`` must be whole lots, the freeze is rounded DOWN to whole lots
-    (orchestrator default) and a freeze below one lot is refused, so every slice is lot-aligned."""
-    try:
-        freeze = _positive_int(constraints.freeze_quantity(contract), f"freeze quantity of {contract}")
-    except ValueError as exc:
-        raise SliceRefused(detail=str(exc), message=render("partial_slice_freeze_unusable", contract=contract)) from exc
-    if lot is not None:
-        if not is_lot_aligned(units, lot):
-            raise SliceRefused(detail=f"{units} units of {contract} is not a whole number of lots of {lot}",
-                               message=render("partial_slice_not_whole_lots", units=units, contract=contract, lot=lot))
-        freeze = freeze // lot * lot
-        if freeze == 0:
-            raise SliceRefused(detail=f"{contract}: the freeze quantity is below one lot of {lot}",
-                               message=render("partial_slice_freeze_below_lot", contract=contract, lot=lot))
-    if -(-units // freeze) > MAX_SLICES_PER_LEG:
-        raise SliceRefused(detail=f"{contract}: {units} units at a freeze of {freeze} needs more than "
-                           f"{MAX_SLICES_PER_LEG} orders",
-                           message=render("partial_slice_too_many_orders", units=units, contract=contract, freeze=freeze,
-                                  limit=MAX_SLICES_PER_LEG))
-    full, rest = divmod(units, freeze)
-    return (freeze,) * full + ((rest,) if rest else ())
-
-
 def _batched(plan: ExecutionPlan, groups: Sequence[Sequence[str]], constraints: BrokerConstraints,
              quantities: Mapping[str, int], lots: Mapping[str, int] | None) -> tuple[PlannedOrder, ...]:
-    """Slice every leg of every group (a step) and number the batches: a new batch at every step boundary and every
-    ``max_orders_per_batch`` orders, so a batch never spans two steps. Legs not in ``quantities`` get no orders."""
+    """One order per leg of every group (a step), never split (ADR-092), and number the batches: a new batch at every
+    step boundary and every ``max_orders_per_batch`` orders, so a batch never spans two steps. Legs not in
+    ``quantities`` get no orders. With ``lots``, every quantity must be a whole number of the leg's lot."""
     per_batch = _positive_int(constraints.max_orders_per_batch(), "max_orders_per_batch", MAX_BATCH_SIZE)
     out: list[PlannedOrder] = []
     batch = 0
@@ -385,13 +340,15 @@ def _batched(plan: ExecutionPlan, groups: Sequence[Sequence[str]], constraints: 
         for ref in group:
             if ref not in quantities:
                 continue
-            sizes = slice_quantity(constraints, plan.by_ref(ref).contract, quantities[ref],
-                                   lots[ref] if lots is not None else None)
-            for slice_no, size in enumerate(sizes, start=1):
-                if in_step % per_batch == 0:
-                    batch += 1
-                out.append(PlannedOrder(number, batch, ref, slice_no, size))
-                in_step += 1
+            units, contract = quantities[ref], plan.by_ref(ref).contract
+            if lots is not None and not is_lot_aligned(units, lots[ref]):
+                raise SliceRefused(detail=f"{units} units of {contract} is not a whole number of lots of {lots[ref]}",
+                                   message=render("partial_slice_not_whole_lots", units=units, contract=contract,
+                                                  lot=lots[ref]))
+            if in_step % per_batch == 0:
+                batch += 1
+            out.append(PlannedOrder(number, batch, ref, units))
+            in_step += 1
     return tuple(out)
 
 
@@ -399,7 +356,8 @@ def exit_orders(plan: ExecutionPlan, groups: Sequence[Sequence[tuple[str, int]]]
                 constraints: BrokerConstraints | None, catalogue: Catalogue) -> tuple[PlannedOrder, ...]:
     """Close Partial Strategy's orders (W-032, REQ-056 AC-10): ``groups`` are the exit steps in the order the close
     sends them (OD-e: buy-backs of shorts, then sells of longs), each a sequence of (leg_ref, units to exit). Every
-    leg is sliced by ``slice_quantity`` with its catalogue lot, batches never span two steps. A leg appears at most
+    leg is ONE order of whole catalogue lots (ADR-092: never split; the caller checks the freeze limit), batches never
+    span two steps. A leg appears at most
     once and never exits more than its planned units (reduce-only upper bound; the held-units cap is the caller's)."""
     lots = _lot_sizes(plan, catalogue)
     refs = [ref for group in groups for ref, _ in group]
@@ -412,7 +370,7 @@ def exit_orders(plan: ExecutionPlan, groups: Sequence[Sequence[tuple[str, int]]]
 
 ORDERING_BASIS: Final = (
     "protective legs before the sold legs that depend on them (ADR-017 Q26); within a step, margin impact when "
-    "known, otherwise the order you confirmed; legs above the freeze quantity split, batches never span two steps."
+    "known, otherwise the order you confirmed; one order per leg, batches never span two steps."
 )
 
 
@@ -421,7 +379,7 @@ def sequence_plan(plan: ExecutionPlan, margin_planner: MarginPlanner | None = No
                   quantities: Mapping[str, int] | None = None) -> OrderSequence:
     """Build the leg dependencies, the order sequence and the orders for ``plan`` (rules in the module docstring).
 
-    ``catalogue``: lot sizes (every leg and slice a whole number of lots). ``quantities``: units still to order per
+    ``catalogue``: lot sizes (every leg and order a whole number of lots). ``quantities``: units still to order per
     leg (Complete / Retry); legs not named get no orders."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"sequence_plan needs an ExecutionPlan, got {plan!r}")

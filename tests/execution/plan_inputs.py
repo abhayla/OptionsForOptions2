@@ -41,11 +41,10 @@ class FakeMargin:
 
 
 class FakeConstraints:
-    def __init__(self, freeze: object, per_batch: object) -> None:
-        self.freeze, self.per_batch = freeze, per_batch
+    """Broker constraints: only the batch size (ADR-092: no freeze figure here)."""
 
-    def freeze_quantity(self, contract: str) -> object:
-        return self.freeze
+    def __init__(self, per_batch: object) -> None:
+        self.per_batch = per_batch
 
     def max_orders_per_batch(self) -> object:
         return self.per_batch

@@ -27,6 +27,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import UNLIMITED, Action, Instrument
 from ofo.execution.partial import (
@@ -60,7 +61,8 @@ def test_core_golden_condor_three_filled_fourth_rejected(catalogue, eligibility)
     ]
     assert a.choices == CHOICE_ORDER
 
-    prep = complete_strategy(plan(), broker, book, planner, entry_context(), catalogue, eligibility)
+    prep = complete_strategy(plan(), broker, book, planner, entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert broker.calls[:2] == ["positions", "order_statuses"]
     assert prep.gate is not None and not prep.gate.blocked
     assert len(prep.orders) == 1
@@ -124,9 +126,9 @@ def test_ac3_filled_legs_never_unwound_automatically(catalogue, eligibility) -> 
     a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     preps = [
         complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book_with_three_filled(), FakePlanner(),
-                          entry_context(), catalogue, eligibility),
+                          entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE),
         retry_failed_leg(plan(), "leg-4", FakeBroker(three_positions(), statuses()), book_with_three_filled(),
-                         FakePlanner(), entry_context(), catalogue, eligibility),
+                         FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE),
         review_manually(a),
     ]
     for prep in preps:
@@ -134,7 +136,7 @@ def test_ac3_filled_legs_never_unwound_automatically(catalogue, eligibility) -> 
 
     positions = three_positions((D("40.00"), D("80.00"), D("120.00")))
     close = close_partial_strategy(plan(), FakeBroker(positions, statuses()), book_with_three_filled(),
-                                   FakePlanner(), entry_context(), catalogue, eligibility)
+                                   FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert close.gate is not None and not close.gate.blocked
     assert close.gate.not_applicable and "EXIT_NOT_REDUCE_ONLY" in {c.value for c in close.gate.passed}
     # shorts bought back first, then the long sold; exactly the held quantities, at the broker's LTP
@@ -148,7 +150,7 @@ def test_ac3_filled_legs_never_unwound_automatically(catalogue, eligibility) -> 
 def test_ac3_close_without_ltp_prepares_nothing(catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-3 negative: a filled leg without a broker price -> nothing prepared (fail closed)."""
     close = close_partial_strategy(plan(), FakeBroker(three_positions(), statuses()), book_with_three_filled(),
-                                   FakePlanner(), entry_context(), catalogue, eligibility)
+                                   FakePlanner(), entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert close.orders == () and close.gate is None
 
 

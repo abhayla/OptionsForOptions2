@@ -419,20 +419,8 @@
     "sha256": "ce1aa86414393563afe90a6973d796ee92c4a0daed3dac8a543cb4b689f87204",
     "reviewed": "pending owner read"
   },
-  "partial_slice_freeze_below_lot": {
-    "sha256": "a8413c500a112676ac16eed0a0c63edba9d7aba570da95722a664e7eb0c6531f",
-    "reviewed": "pending owner read"
-  },
-  "partial_slice_too_many_orders": {
-    "sha256": "b01bfae74dcddf4317a5068407fcc11ba79593e23684bedabf609009d072f667",
-    "reviewed": "pending owner read"
-  },
   "partial_slice_no_lot_size": {
     "sha256": "59e490cfcde04bf707b9f263715358f2183c2fc058c568f31188e94c89adaed2",
-    "reviewed": "pending owner read"
-  },
-  "partial_slice_freeze_unusable": {
-    "sha256": "13822222a3bdc2110883247176ace0242956a6271c5f766ed19054d03eae6fb4",
     "reviewed": "pending owner read"
   },
   "partial_read_stale": {

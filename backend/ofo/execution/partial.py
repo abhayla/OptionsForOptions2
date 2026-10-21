@@ -74,6 +74,7 @@ from ofo.engine import Action, Leg, Strategy, strategy_metrics
 from ofo.engine.legs import require_decimal, require_price
 from ofo.engine.metrics import MultiExpiryError, StrategyMetrics
 from ofo.money import zerodha_paise
+from ofo.timeutil import IST
 from ofo.engine.product import Product
 from ofo.execution.context import (
     ExecutionAction, ExecutionContext, MarginPlanner, active_legs_hash, product_key,
@@ -83,7 +84,9 @@ from ofo.reconciliation.positions import BrokerPositionLine, position_line_from_
 from ofo.execution.safety import SafetyResult, check_pre_execution
 from ofo.engine.interfaces import MarginPlanner as PlanMarginPlanner
 from ofo.errors.explanations import CHOICE_LABEL_TEXT
+from ofo.execution.freeze import FreezeRefused, freeze_limits_for_plan, require_within_freeze
 from ofo.execution.sequence import BrokerConstraints, PlannedOrder, SliceRefused, exit_orders, sequence_plan
+from ofo.instruments.models import InstrumentId
 from ofo.instruments import ZERODHA, Catalogue, ZerodhaEligibility
 from ofo.orders import TERMINAL_STATES, FillConflictError, Order, OrderBook, OrderState, OrderView
 from ofo.execution.send_guard import _BrokerSink, _Transport, allowed_or_refuse, executable_version
@@ -428,9 +431,10 @@ def _orders_digest(orders: Sequence[Order]) -> str:
 
 
 def _refusal_message(exc: ValueError) -> UserFacingError:
-    """The catalogue message for a slicing refusal. The sequencer raises a typed ``SliceRefused``; any other
-    ValueError is a programmer error: logged, never shown, and the user sees the generic nothing-prepared message."""
-    if isinstance(exc, SliceRefused):
+    """The catalogue message for an order-building refusal. The sequencer raises a typed ``SliceRefused`` (lots) and
+    the freeze check a ``FreezeRefused`` (ADR-092); any other ValueError is a programmer error: logged, never shown,
+    and the user sees the generic nothing-prepared message."""
+    if isinstance(exc, (SliceRefused, FreezeRefused)):
         return exc.message
     logger.warning("preparation refused for an unexpected reason: %s", exc)
     return render("partial_nothing_prepared")
@@ -453,15 +457,15 @@ class Preparation(UserFacing):
     """
 
     __slots__ = ("choice", "assessment", "orders", "gate", "message", "book", "strategy_id", "cancels", "guard",
-                 "plan", "catalogue", "slices", "_seal", "_consumed")
+                 "plan", "catalogue", "slices", "warnings", "_seal", "_consumed")
 
     def __init__(self, choice: PartialChoice, assessment: Assessment | None, orders: tuple[Order, ...],
                  gate: SafetyResult | None, message: UserFacingError,
                  book: OrderBook | None = None,
                  strategy_id: str | None = None, cancels: tuple[str, ...] = (),
                  guard: GuardDecision | None = None, plan: ExecutionPlan | None = None,
-                 catalogue: Catalogue | None = None, slices: tuple[PlannedOrder, ...] = (), *,
-                 _mint: object = None) -> None:
+                 catalogue: Catalogue | None = None, slices: tuple[PlannedOrder, ...] = (),
+                 warnings: tuple[UserFacingError, ...] = (), *, _mint: object = None) -> None:
         if _mint is not _MINT:
             raise ValueError("a Preparation is made only by the strategy's execution flow (REQ-036 AC-3)")
         orders = tuple(orders)
@@ -470,6 +474,7 @@ class Preparation(UserFacing):
         for name, value in (("choice", choice), ("assessment", assessment), ("orders", orders), ("gate", gate),
                             ("message", message), ("book", book), ("strategy_id", strategy_id), ("cancels", cancels),
                             ("guard", guard), ("plan", plan), ("catalogue", catalogue), ("slices", tuple(slices)),
+                            ("warnings", tuple(warnings)),
                             ("_seal", (_orders_digest(orders), gate)),
                             ("_consumed", False)):
             object.__setattr__(self, name, value)
@@ -637,7 +642,8 @@ def _order_products(orders: tuple[Order, ...], plan: ExecutionPlan) -> dict[tupl
 def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContext, book: OrderBook,
           plan: ExecutionPlan, catalogue: Catalogue, eligibility: ZerodhaEligibility, choice: PartialChoice,
           a: Assessment, record: StrategyRecord, planner: MarginPlanner,
-          cancels: tuple[str, ...] = (), slices: tuple[PlannedOrder, ...] = ()) -> Preparation:
+          cancels: tuple[str, ...] = (), slices: tuple[PlannedOrder, ...] = (),
+          warnings: tuple[UserFacingError, ...] = ()) -> Preparation:
     blocked = ctx.reconciliation_blocked_strategy_ids
     if blocked is not None and book.is_submit_blocked(plan.strategy_id):
         ctx = dataclasses.replace(ctx, reconciliation_blocked_strategy_ids=blocked | {plan.strategy_id})
@@ -659,14 +665,14 @@ def _gate(orders: tuple[Order, ...], legs: tuple[Leg, ...], ctx: ExecutionContex
     message = render("partial_ready_risk_changed" if decision.changes_risk_profile else "partial_ready",
                      count=len(orders))
     return _prep(choice, a, orders, result, message, book, plan.strategy_id, cancels, decision, plan, catalogue,
-                 slices)
+                 slices, warnings)
 
 
 def _prepare_missing(
     choice: PartialChoice, remaining: Sequence[RemainingLeg], plan: ExecutionPlan, reader: BrokerReader,
     book: OrderBook, planner: MarginPlanner, context: ExecutionContext, catalogue: Catalogue,
     eligibility: ZerodhaEligibility, a: Assessment, margin_planner: PlanMarginPlanner | None,
-    constraints: BrokerConstraints | None,
+    constraints: BrokerConstraints | None, stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
 ) -> Preparation:
     if context.action is ExecutionAction.EXIT:
         raise ValueError("completing or retrying uses the entry/adjustment context, not an EXIT context")
@@ -680,11 +686,13 @@ def _prepare_missing(
     record = _grounded_plan(book, plan, context.version_id, catalogue)  # REQ-036 AC-1/AC-3
     # ADR-017 Q26 / REQ-056 AC-2/AC-3 (W-022, W-028): the missing units go through the FULL plan's sequence with the
     # plan's own margin planner and broker constraints: protectors before the sells that depend on them, never "all
-    # buys first"; freeze-limit slices, each a whole number of catalogue lots; batches never span a step.
+    # buys first"; one order per leg, a whole number of catalogue lots; batches never span a step. ADR-092: never
+    # split; an order not below its KNOWN stored limit blocks the preparation; no stored limit only warns.
     missing = {r.planned.leg_ref: r.missing_quantity for r in remaining}
     try:
         seq = sequence_plan(plan, margin_planner, constraints, catalogue=catalogue, quantities=missing)
-    except ValueError as exc:  # W-043 (#71): a slicing refusal is shown with its reason, never raised (as Close, W-036)
+        warnings = _require_freeze(plan, catalogue, stored_freeze, seq.orders, a.read_at)
+    except ValueError as exc:  # W-043 (#71): a refusal is shown with its reason, never raised (as Close, W-036)
         return _not_prepared(choice, a, _refusal_message(exc))
     legs = tuple(dataclasses.replace(plan.by_ref(ref).leg, quantity=missing[ref])
                  for ref in dict.fromkeys(o.leg_ref for o in seq.orders))
@@ -704,10 +712,26 @@ def _prepare_missing(
         return _not_prepared(choice, a, "partial_margin_reread_failed")
     ctx = dataclasses.replace(context, margin_available=available, margin_required=required)
     prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner,
-                 slices=seq.orders)
+                 slices=seq.orders, warnings=warnings)
     if prep.ready:  # W-036 (#62): the Close choice is forgotten only once a later read actually prepared orders
         book.clear_closing(plan.strategy_id, a.read_at)
     return prep
+
+
+def _require_freeze(plan: ExecutionPlan, catalogue: Catalogue,
+                    stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
+                    orders: Sequence[PlannedOrder], read_at: datetime.datetime) -> tuple[UserFacingError, ...]:
+    """ADR-092 for Complete / Retry / exit: every order checked against its contract's STORED limit (the lot from the
+    catalogue, ``freeze_limits_for_plan``): a usable known limit exceeded raises ``FreezeRefused``; no usable stored
+    limit returns the review's warning (ADR-081, ADR-037: never a block), and a stale one the age warning, dated by
+    the broker read's IST day."""
+    limits = freeze_limits_for_plan(plan, catalogue, {} if stored_freeze is None else stored_freeze)
+    today = read_at.astimezone(IST).date()
+    warnings: list[UserFacingError] = []
+    for order in orders:
+        contract = plan.by_ref(order.leg_ref).contract
+        warnings.extend(require_within_freeze(contract, order.quantity, limits.get(contract), today=today))
+    return tuple(warnings)
 
 
 def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Preparation | None:
@@ -719,14 +743,17 @@ def _live(choice: PartialChoice, book: OrderBook, plan: ExecutionPlan) -> Prepar
 
 def complete_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: ZerodhaEligibility, *, margin_planner: PlanMarginPlanner | None = None,
-    constraints: BrokerConstraints | None = None,
+    catalogue: Catalogue, eligibility: ZerodhaEligibility, *,
+    stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
+    margin_planner: PlanMarginPlanner | None = None, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """AC-4: re-fetch, sync, recompute the remaining strategy, re-check margin, verify the missing legs, prepare only
     them. A late fill that closes the gap makes the strategy COMPLETE and prepares nothing.
 
     W-028: ``margin_planner`` and ``constraints`` are the same engine margin planner and broker constraints the plan
-    (``sequence_plan``) uses; the missing units are prepared as that plan's lot-aligned freeze slices."""
+    (``sequence_plan``) uses; each missing leg is ONE order of whole lots (ADR-092: never split). ``stored_freeze``
+    (InstrumentId -> (limit, file date), from the freeze store) is REQUIRED: a leg not below its known limit prepares
+    nothing and says why; a leg with no stored limit is prepared with the warning (ADR-081, ADR-037)."""
     choice = PartialChoice.COMPLETE_STRATEGY
     waiting = _live(choice, book, plan)
     if waiting is not None:
@@ -741,16 +768,17 @@ def complete_strategy(
     if a.status is not ExecutionStatus.PARTIAL_EXCEPTION:
         return _not_prepared(choice, a)
     return _prepare_missing(choice, a.remaining, plan, reader, book, planner, context, catalogue, eligibility, a,
-                            margin_planner, constraints)
+                            margin_planner, constraints, stored_freeze)
 
 
 def retry_failed_leg(
     plan: ExecutionPlan, leg_ref: str, reader: BrokerReader, book: OrderBook, planner: MarginPlanner,
     context: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility, *,
+    stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
     margin_planner: PlanMarginPlanner | None = None, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
-    """Orchestrator default OD-a: new order(s) for the same contract as one FAILED leg, after the same re-reads.
-    W-028: the still-missing units are sent as the plan's lot-aligned freeze slices (same planner and constraints)."""
+    """Orchestrator default OD-a: ONE new order for the same contract as one FAILED leg, after the same re-reads.
+    ADR-092: the still-missing units are one order, checked against the stored freeze limit as Complete is."""
     _ident(leg_ref, "leg_ref")
     choice = PartialChoice.RETRY_FAILED_LEG
     waiting = _live(choice, book, plan)
@@ -767,7 +795,7 @@ def retry_failed_leg(
         raise ValueError(f"leg {leg_ref!r} has no failed order to retry")
     (target,) = [r for r in a.remaining if r.planned.leg_ref == leg_ref]
     return _prepare_missing(choice, (target,), plan, reader, book, planner, context, catalogue, eligibility, a,
-                            margin_planner, constraints)
+                            margin_planner, constraints, stored_freeze)
 
 
 def review_manually(assessment: Assessment) -> Preparation:
@@ -779,16 +807,19 @@ def review_manually(assessment: Assessment) -> Preparation:
 
 def close_partial_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
-    catalogue: Catalogue, eligibility: ZerodhaEligibility, *, constraints: BrokerConstraints | None = None,
+    catalogue: Catalogue, eligibility: ZerodhaEligibility, *,
+    stored_freeze: Mapping[InstrumentId, tuple[int, datetime.date]] | None,
+    constraints: BrokerConstraints | None = None,
 ) -> Preparation:
     """Close Partial Strategy: reduce-only exits for exactly the filled legs, through the gate as an EXIT.
 
     Exit quantity per leg = held (broker-confirmed) - exits already open in the reconciled book. The platform's own
     open ENTRY orders are listed as cancel requests (OD-m). Not offered under a reconciliation mismatch.
 
-    W-032 (REQ-056 AC-10, deferred #50): each exit is sent as the same lot-aligned freeze slices Complete and Retry
-    use (``sequence.exit_orders`` -> ``slice_quantity``; ``constraints`` as for them, default the labelled UNVERIFIED
-    placeholder). Step 1 = buy-backs of shorts, step 2 = sells of longs (OD-e); a batch never spans the two.
+    ADR-092: each exit is ONE order of whole lots (``sequence.exit_orders``), checked against the stored freeze
+    limit as Complete and Retry are (above a known limit: nothing prepared, with the reason; no stored limit: the
+    warning, never a block, ADR-037). Step 1 =
+    buy-backs of shorts, step 2 = sells of longs (OD-e); a batch never spans the two.
     """
     choice = PartialChoice.CLOSE_PARTIAL_STRATEGY
     waiting = _live(choice, book, plan)
@@ -825,8 +856,9 @@ def close_partial_strategy(
     pairs.sort(key=lambda pl: 0 if pl[1].action is Action.BUY else 1)  # OD-e: buy back shorts first
     groups = [[(p.leg_ref, e.quantity) for p, e in pairs if e.action is side] for side in (Action.BUY, Action.SELL)]
     try:
-        slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # W-032: freeze slices, whole lots
-    except ValueError as exc:  # W-036 (#62): a slicing refusal is shown with its reason, never raised
+        slices = exit_orders(plan, [g for g in groups if g], constraints, catalogue)  # one order per leg, whole lots
+        warnings = _require_freeze(plan, catalogue, stored_freeze, slices, a.read_at)  # ADR-092: blocked above a known limit
+    except ValueError as exc:  # W-036 (#62): a refusal is shown with its reason, never raised
         return _not_prepared(choice, a, _refusal_message(exc))
     exits = {p.leg_ref: e for p, e in pairs}
     orders = tuple(Order(plan.strategy_id, s.leg_ref, plan.by_ref(s.leg_ref).contract, exits[s.leg_ref].action,
@@ -840,7 +872,7 @@ def close_partial_strategy(
         active_products=dict(a.active_products),
     )
     prep = _gate(orders, legs, ctx, book, plan, catalogue, eligibility, choice, a, record, planner, tuple(cancels),
-                 slices)
+                 slices, warnings=warnings)
     if not prep.ready:  # the safety checks refused it: nothing prepared, so the Close choice is not recorded
         return prep
     try:

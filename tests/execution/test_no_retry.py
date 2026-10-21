@@ -18,6 +18,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 import ofo.execution.partial as partial
 from ofo.execution import CheckCode
@@ -32,7 +33,7 @@ from ofo.execution.partial import (
 
 def _prep(catalogue, eligibility, fn=complete_strategy, *extra):  # noqa: ANN001, ANN202
     return fn(plan(), *extra, FakeBroker(three_positions(), statuses()), book_with_three_filled(), FakePlanner(),
-              entry_context(), catalogue, eligibility)
+              entry_context(), catalogue, eligibility, stored_freeze=STORED_FREEZE)
 
 
 def test_ac6_failure_shown_with_reason_and_nothing_sent() -> None:
@@ -91,7 +92,8 @@ def test_ac6_blocked_preparation_cannot_be_sent(catalogue, eligibility) -> None:
     """AC-6: a retry goes through the W-014 gate; a disconnected broker blocks it, no order is prepared, and the
     preparation cannot be sent."""
     prep = retry_failed_leg(plan(), "leg-4", FakeBroker(three_positions(), statuses()), book_with_three_filled(),
-                            FakePlanner(), entry_context(broker_connected=False), catalogue, eligibility)
+                            FakePlanner(), entry_context(broker_connected=False), catalogue, eligibility,
+                                    stored_freeze=STORED_FREEZE)
     assert prep.gate is not None and CheckCode.BROKER_NOT_CONNECTED in prep.gate.failed_codes
     assert prep.orders == ()
     with pytest.raises(ValueError):

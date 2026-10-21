@@ -26,6 +26,8 @@ from ofo.audit.catalogue import EventType
 from ofo.audit.log import AuditLog
 from ofo.audit.models import canonical_json, check_payload_safe
 from ofo.engine.legs import Action
+from ofo.errors import UserFacingError
+from ofo.execution.freeze import ContractFreeze, require_within_freeze, terms_symbol
 from ofo.reconciliation.compare import (
     MismatchKind,
     ReconciliationError,
@@ -34,6 +36,7 @@ from ofo.reconciliation.compare import (
     require_id,
 )
 from ofo.strategy.definition import MAX_TEXT, Contract, StrategyDefinition, contract_sort_key, describe_contract
+from ofo.timeutil import IST
 from ofo.strategy.versions import ExecutionOutcome, Position, StrategyRecord, VersionError
 
 
@@ -69,6 +72,7 @@ class ClosingOrderProposal:
     target: ClosingTarget
     orders: tuple[ProposedOrder, ...]
     prepared_at: datetime.datetime
+    freeze_warnings: tuple[UserFacingError, ...] = ()  # ADR-081: contracts with no stored freeze limit
 
 
 @dataclass(frozen=True)
@@ -325,8 +329,15 @@ def prepare_closing_order(
     reason: str,
     audit: AuditLog,
     target: ClosingTarget = ClosingTarget.ACTIVE_VERSION,
+    freeze_limits: Mapping[Contract, ContractFreeze] | None,
 ) -> Resolution:
     """Q198 "Close/reconcile through a prepared order": an order proposal, never placed; the block stays.
+
+    ADR-092 (issue 63): each proposed order is ONE order per contract, never split; ``freeze_limits`` (contract ->
+    its trading symbol and stored limit) is a REQUIRED argument: an order not below its USABLE known limit refuses the
+    whole proposal (``FreezeRefused``, with the limit and the largest allowed order) before anything is recorded; a
+    contract with no entry, no stored limit or an unusable one only adds the warning, and a stale limit the age
+    warning (ADR-081, ADR-037).
 
     Note (not built): two proposals prepared on the same report are both allowed here; the confirm/submit step
     must dedupe them (W-023 blocks a second live preparation).
@@ -343,7 +354,17 @@ def prepare_closing_order(
             orders.append(ProposedOrder(Action.BUY if delta > 0 else Action.SELL, contract, abs(delta)))
     if not orders:
         raise ReconciliationError(f"strategy {strategy_id!r}: the broker already matches the target; no order")
-    proposal = ClosingOrderProposal(strategy_id, target, tuple(orders), at)
+    limits = {} if freeze_limits is None else freeze_limits
+    today = at.astimezone(IST).date()
+    warnings: list[UserFacingError] = []
+    for order in orders:
+        found = limits.get(order.contract)
+        if isinstance(found, ContractFreeze):
+            symbol, stored = found.symbol, found.stored
+        else:  # no entry: named from its terms, and the warning (ADR-081 "the review warns"), never a refusal
+            symbol, stored = terms_symbol(*order.contract), None
+        warnings.extend(require_within_freeze(symbol, order.units, stored, today=today))
+    proposal = ClosingOrderProposal(strategy_id, target, tuple(orders), at, tuple(warnings))
     return _resolve(strategy_id, rec, ResolutionKind.PREPARE_CLOSING_ORDER, actor=actor, at=at, reason=reason,
                     audit=audit, before_broker=broker, before_platform=platform, proposal=proposal)
 
