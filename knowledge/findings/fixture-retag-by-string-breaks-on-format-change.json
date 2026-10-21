@@ -1,0 +1,32 @@
+{
+  "id": "fixture-retag-by-string-breaks-on-format-change",
+  "scope": "generic",
+  "class": "Any test that adapts recorded real-world data to its own fixture ids by string surgery on a product-built identifier (an order tag, a key, a code) re-implements the product's builder; when the builder's format changes, every such test on every branch built before the change breaks at once, and each branch's CI finds it separately.",
+  "mechanism": "Tests re-tagged recorded Kite orders with `row['tag'].replace('OFS9V', f'OFS{sid}V')` and compared against hand-typed old-grammar tags, while the product's make_tag moved to the 8-character Q grammar (main #438); the tests then looked up `make_tag(sid, 1, 0)` among rows still tagged OFS and found none.",
+  "first_seen": {
+    "date": "2026-10-21",
+    "where": "PR #478 (gc6/380-2) @ c028d8966e61617a93a405fafa63bf5717fd0100, tests_app/test_route_reconciliation_db.py:54",
+    "evidence": "CI run 39535119675: 2 failed, 2926 passed - `ValueError: not enough values to unpack (expected 1, got 0)` at test_route_reconciliation_db.py:69"
+  },
+  "fix": "Per instance: #478 3bbf99e (`_retag` via parse_tag -> make_tag), #452 ee89aa5 (plans take the tag Zerodha echoed; Q-tagged plans proven to close from the same replies, neither grammar picks up the other's rows). Store code was proven correct for both grammars (exact stored-tag match). Mechanism planned: tracker row RETAG-HELPER - one shared test helper that re-tags recorded replies through the product's parse_tag/make_tag, and a repo_scan test refusing string replace on a tag value in tests (detector as second layer, run-discipline C8).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "CI catches each instance only after a branch merges the format change. Sweep 2026-10-21 (git grep 'replace(\"OFS|f\"OFS{' over 11 held branches): gc6/380-3 17 hits incl. the same `.replace(\"OFS9V\", ...)` at test_route_reconciliation_db.py:53 (predates #438, basket.py:94 still builds OFS); gc6/orders-screen 11 (predates #438); gc6/net-roundtrip 3 extra in test_reconcile_attribution.py:84,95,500; the other 8 branches only main's 8 deliberate legacy-tag tests."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-073.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-21",
+      "where": "PR #478 (gc6/380-2) @ c028d89",
+      "evidence": "2 DB tests red, run 39535119675; fixed 3bbf99e"
+    },
+    {
+      "date": "2026-10-21",
+      "where": "PR #452 (gc6/313b-store) @ e133d32b",
+      "evidence": "8 api tests red, run 39535305016 (`the trades of 'OFS70V1L0' sum to 0 units`; `{'Q0001010': ...} == {'OFS1V1L0': ...}`); fixed ee89aa5, test-only"
+    }
+  ]
+}

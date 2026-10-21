@@ -440,7 +440,7 @@ orders, REQ-073 AC-1). Full drafts with options and real cases: `docs/process/q4
   orders; an external order is recorded once at order level so a mismatch can be explained, and its fills belong to
   the user's own Kite record. Revisit if reconciliation ever adopts an external fill into a strategy (REQ-061).
 
-## Q272 — OPEN (owner; asked after the GC-3L live run, ADR-109) — Which control counts as "placed only on the owner's own account" on the Kite-basket path (REQ-073 AC-5)?
+## Q272 — DECIDED (owner, 2026-10-21, ADR-149: re-specify AC-5 to the three controls the product enforces) — Which control counts as "placed only on the owner's own account" on the Kite-basket path (REQ-073 AC-5)?
 - The basket form carries no account (`backend/ofo_app/basket_post.py:89-91`); the platform cannot stop or see a basket
   placed on another Kite login. Draft question Q-B4 in `docs/process/fix-380-draft-2026-10-18.md` (options: re-specify
   AC-5 to the controls the product can enforce - Execute served only to the owner, the connected Zerodha user id shown

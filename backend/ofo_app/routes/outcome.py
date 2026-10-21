@@ -28,9 +28,11 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin
+from ofo.scenario.config import ScenarioConfig, ScenarioSettings
+from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.table import UXLevel
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from ofo_app import charge_rates_store, db
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money
@@ -81,6 +83,9 @@ async def load_charge_rates() -> Optional[ChargeRates]:
 #: The longest the no-provider answer waits for the stored catalogue (#259): a hanging database host must not delay the
 #: "not connected" answer up to the driver's connect timeout. On timeout the legs stay unnamed, like any unreadable read.
 CATALOGUE_READ_TIMEOUT_SECONDS = 2.0
+
+#: A whole number of index points as the browser sends it (a string, never a float).
+POINTS_PATTERN = r"^[1-9]\d{0,5}$"
 
 AnswerClock = Callable[[], datetime.datetime]
 ContractLookup = Callable[[list[str]], Awaitable[Mapping[str, ListedContract]]]
@@ -157,10 +162,28 @@ class OutcomeRequest(BaseModel):
     legs: list[LegIn] = Field(min_length=1, max_length=20)
     ux_level: Literal["guided", "standard", "advanced"] = "standard"
     view: Literal["at_expiry", "estimated_now"] = "at_expiry"
+    range_start: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["22800"],
+                                    description="the first scenario level in index points; sent with range_end")
+    range_end: str | None = Field(default=None, pattern=POINTS_PATTERN, examples=["23600"],
+                                  description="the last scenario level in index points; sent with range_start")
     fallback: StrictBool = Field(
         default=False,
         description="true when this is the REST refresh of a screen whose own live socket dropped (ADR-077): the answer "
                     "is then the not-live state whoever else subscribes to the same contracts")
+
+    @model_validator(mode="after")
+    def _choice_is_allowed(self) -> OutcomeRequest:
+        """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
+        computation; the error boundary answers 422 with the catalogue text and logs no value."""
+        self.scenario_choice()
+        return self
+
+    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
+        """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
+        default range). The same pair is checked here and handed to build_outcome."""
+        base = ScenarioSettings().for_index(self.underlying)
+        pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
+        return base, resolve_range(base, *pick)
 
 
 async def stored_legs_for(req: OutcomeRequest, ctx: Optional[MarketContext],
@@ -244,6 +267,7 @@ class ScenarioOut(ApiModel):
     step: Money
     start: Money
     end: Money
+    customised: bool  # true when the user's range was used, false for the computed default range
 
 
 class PointOut(ApiModel):
@@ -415,7 +439,9 @@ def outcome_response(req: OutcomeRequest, ctx: Optional[MarketContext],  # noqa:
         if live_blocked:
             out = not_live(definition, snapshot, ux)
         else:
-            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates)
+            config, override = req.scenario_choice()
+            out = build_outcome(definition, snapshot, ux, valuation, view=View(req.view), rates=rates,
+                                config=config, override=override)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin)
     body = outcome_to_dict(out)

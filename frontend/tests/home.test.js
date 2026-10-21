@@ -62,14 +62,27 @@ describe('Home states from GET /strategies', () => {
     strategiesAnswer = []
     const w = await mountHome()
     expect(w.get('[data-testid="home"]').attributes('data-state')).toBe('new')
-    expect(w.text()).toContain('Welcome')
-    expect(w.text()).toContain('Plan your trade. Follow your strategy. Then execute.')
+    expect(w.get('[data-testid="home-line"]').text()).toBe('Plan your trade. Follow your strategy. Then execute.')
+    expect(w.text()).not.toMatch(/Welcome|Pro trial/) // the slot for row #433 stays empty
+    expect(w.get('[data-testid="home-welcome-slot"]').text()).toBe('')
     const actions = w.findAll('[data-testid="home-actions"] a')
     expect(actions.map((a) => a.text())).toEqual(['Create Strategy', 'Explore Option Chain', 'Learn'])
     expect(actions.map((a) => a.attributes('href'))).toEqual(['/strategies/create-strategy', '/market/option-chain', '/learn/strategy-education'])
     expect(w.get('[data-testid="action-know"]').text()).toBe('I already know my strategy')
     expect(w.get('[data-testid="action-know"]').attributes('href')).toBe('/strategy/builder')
     expect(w.find('[data-testid="recent-strategies"]').exists()).toBe(false)
+  })
+
+  it('AC-2: HOME-NEW every action is a 44 px target (min-h-11) with no fixed width, and each target is a real route', async () => {
+    strategiesAnswer = []
+    const w = await mountHome()
+    for (const id of ['action-create', 'action-chain', 'action-learn', 'action-know']) {
+      const cls = w.get(`[data-testid="${id}"]`).classes()
+      expect(cls).toContain('min-h-11')
+      expect(cls.some((c) => /^w-\d|^w-\[/.test(c))).toBe(false)
+    }
+    const real = (p) => routes.some((r) => r.path === p)
+    expect(['/strategies/create-strategy', '/market/option-chain', '/strategy/builder'].every(real)).toBe(true)
   })
 
   it('AC-2: strategies saved -> has-strategies: My Strategies first, then Create; newest first, at most 3 rows', async () => {

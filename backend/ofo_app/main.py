@@ -21,6 +21,7 @@ from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     broker,
+    broker_status,
     catalogue,
     chain,
     execute,
@@ -108,6 +109,7 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
     app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
     broker.mount(app, config)
+    app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
