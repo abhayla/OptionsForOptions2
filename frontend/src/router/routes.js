@@ -4,6 +4,26 @@
 import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL } from './nav.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
+// Nav items that have a real page, keyed by route name (one map for every built screen: W-113, W-114, ...); every
+// other nav item still shows the placeholder.
+const REAL_PAGES = {
+  'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
+  'strategies-strategy-builder': () => import('../pages/StrategyBuilderPage.vue'), // GC-6 BUILDER-WIRE (F-49)
+  'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
+  'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
+  'market-market-context': () => import('../pages/MarketContextPage.vue'), // W-117
+  'alerts-active': () => import('../pages/AlertsPage.vue'),
+  'alerts-history': () => import('../pages/AlertsPage.vue'),
+  'alerts-notification-settings': () => import('../pages/AlertsPage.vue'),
+  'learn-strategy-education': () => import('../pages/LearnPage.vue'),
+  'learn-options-concepts': () => import('../pages/LearnPage.vue'),
+  'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
+  'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+}
+
+// Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
+const billingShell = () => import('../pages/BillingShellPage.vue')
+const SETTINGS_PAGES = { 'subscription-billing': billingShell, 'free-eligibility': billingShell, referrals: billingShell }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
   {
@@ -15,7 +35,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
   ...s.items.map(([slug, label]) => ({
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
-    component: Placeholder,
+    component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
     meta: { title: label, section: s.key, parent: s.label },
   })),
 ])
@@ -34,13 +54,15 @@ const settingsRoutes = [
   ...ACCOUNT_ITEMS.map(([slug, label]) => ({
     path: `/settings/${slug}`,
     name: `settings-${slug}`,
-    component: Placeholder,
+    component: SETTINGS_PAGES[slug] ?? Placeholder,
     meta: { title: label, section: 'settings', parent: ACCOUNT_LABEL },
   })),
 ]
 
 export const routes = [
   { path: '/', redirect: '/home' },
+  // GC-6 row LANDING (REQ-010): public page, no app shell (meta.public); '/' stays on /home until sign-in (Stage 5).
+  { path: '/welcome', name: 'landing', component: () => import('../pages/LandingPage.vue'), meta: { title: 'Welcome', public: true } },
   ...sectionRoutes,
   ...settingsRoutes,
   { path: '/strategy/builder', name: 'strategy-builder-screen', component: () => import('../pages/StrategyBuilderPage.vue'), meta: { title: 'Strategy Builder', section: 'strategies' } },
