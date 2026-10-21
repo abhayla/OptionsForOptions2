@@ -288,7 +288,7 @@ class _FakeConn:
             def scalar_one(self):
                 return 0  # the post-write "contracts without a zerodha row" check
 
-        if sql.startswith(("SELECT d.id,", "SELECT DISTINCT")):  # reinstatement candidates (W-057) and the ADR-147
+        if sql.startswith(("SELECT d.id,", "SELECT DISTINCT")):  # reinstatement candidates (W-057) and the ADR-148
             rows = []                                              # held contracts: none here
         if sql.startswith(("SELECT c.id,", "SELECT d.id,", "SELECT count(*)", "SELECT DISTINCT")):
             return _Result()
@@ -1095,7 +1095,7 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
             await trans.rollback()
 
 
-# --- ADR-147: the structural trim pass through the store, on the reduced real Kite lists of 2026-10-15 / 2026-10-21 ---
+# --- ADR-148: the structural trim pass through the store, on the reduced real Kite lists of 2026-10-15 / 2026-10-21 ---
 
 def _real_list(name: str) -> list[ListedContract]:
     import gzip  # noqa: PLC0415
@@ -1105,7 +1105,7 @@ def _real_list(name: str) -> list[ListedContract]:
 
 
 class _HeldConn:
-    """Answers only the three ADR-147 held-contract reads."""
+    """Answers only the three ADR-148 held-contract reads."""
 
     def __init__(self, unreadable: int, strategy_rows: list, plan_ids: list[str]) -> None:
         self.unreadable, self.strategy_rows, self.plan_ids = unreadable, strategy_rows, plan_ids
@@ -1136,21 +1136,27 @@ async def test_held_contracts_read_from_strategy_legs_and_open_plans_or_unknown(
     assert await _held_contracts(_HeldConn(0, [], ["NSE_FO:not-a-token"])) is None  # an unreadable plan leg
 
 
+REAL_TRIM_DROPPED = 234  # NIFTY 2026-10-27 contracts the 2026-10-21 list no longer carries (2026-10-15 had them)
+_LAST_AUDIT = text("SELECT actor, payload ->> 'action' AS action, "
+                   "jsonb_array_length(payload -> 'dropped_instrument_tokens') AS n "
+                   "FROM public.audit_events ORDER BY seq DESC LIMIT 1")
+_AUDIT_COUNT = text("SELECT count(*) FROM public.audit_events")
+
+
 async def test_real_far_strike_trim_is_accepted_by_the_store_with_one_audit_row(app_engine: AsyncEngine) -> None:
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await apply_update(conn, _real_list("kite-2026-10-15-nifty-sensex.csv.gz"),
                                as_of=datetime(2026, 10, 15, 8, 40, tzinfo=IST))
-            audit_before = (await conn.execute(text("SELECT count(*) FROM public.audit_events"))).scalar_one()
+            audit_before = (await conn.execute(_AUDIT_COUNT)).scalar_one()
             result = await apply_update(conn, _real_list("kite-2026-10-21-nifty-sensex.csv.gz"),
                                         as_of=datetime(2026, 10, 21, 8, 40, tzinfo=IST))
-            assert result.domain.structural_trim_accepted is True and result.delisted == 234
-            rows = (await conn.execute(text(
-                "SELECT actor, payload ->> 'action' AS action, jsonb_array_length(payload -> 'dropped_instrument_tokens')"
-                " AS n FROM public.audit_events ORDER BY seq DESC LIMIT 1"))).one()
-            assert (await conn.execute(text("SELECT count(*) FROM public.audit_events"))).scalar_one() == audit_before + 1
-            assert (rows.actor, rows.action, rows.n) == ("system:catalogue-update", "catalogue_structural_trim_accepted",
-                                                         234)
+            assert result.domain.structural_trim_accepted is True
+            assert result.delisted == REAL_TRIM_DROPPED
+            row = (await conn.execute(_LAST_AUDIT)).one()
+            assert (await conn.execute(_AUDIT_COUNT)).scalar_one() == audit_before + 1
+            assert (row.actor, row.action, row.n) == (
+                "system:catalogue-update", "catalogue_structural_trim_accepted", REAL_TRIM_DROPPED)
         finally:
             await trans.rollback()

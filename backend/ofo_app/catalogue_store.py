@@ -98,7 +98,7 @@ CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
 
 _LOCK = text("SELECT pg_advisory_xact_lock(:k)")
-# ADR-147 condition 4: the contracts a dropped row must not be. Every order belongs to a strategy (ADR-002), so a
+# ADR-148 condition 4: the contracts a dropped row must not be. Every order belongs to a strategy (ADR-002), so a
 # saved strategy's legs cover every open position; an open execution plan's legs are read too. A stored definition
 # whose legs are not a JSON array makes the held set unknown, and the structural pass then refuses (fail closed).
 _UNREADABLE_LEGS = text("SELECT count(*) FROM public.strategies WHERE jsonb_typeof(definition -> 'legs') "
@@ -111,7 +111,7 @@ _HELD_BY_STRATEGIES = text(
 _HELD_BY_OPEN_PLANS = text(
     "SELECT DISTINCT o.instrument_id FROM public.execution_plan_orders AS o JOIN public.execution_plans AS p "
     "ON p.strategy_id = o.strategy_id AND p.plan_number = o.plan_number WHERE p.status = 'open'")
-#: The actor the ADR-147 structural pass's audit row names (a system decision, not an admin's).
+#: The actor the ADR-148 structural pass's audit row names (a system decision, not an admin's).
 STRUCTURAL_PASS_ACTOR = "system:catalogue-update"
 _SELECT = text(
     f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
@@ -430,7 +430,7 @@ class _BufferedAuditLog:
 
 
 async def _held_contracts(conn: Any) -> frozenset[InstrumentId] | None:
-    """ADR-147: the exchange identities held by a saved strategy leg or an open plan leg; None when any cannot be read
+    """ADR-148: the exchange identities held by a saved strategy leg or an open plan leg; None when any cannot be read
     (a definition whose legs are not a list, a plan leg not shaped "<segment>:<exchange token>")."""
     if (await conn.execute(_UNREADABLE_LEGS)).scalar_one():
         return None
@@ -577,7 +577,7 @@ async def apply_update(
     except ValueError:
         if force:
             raise
-        # ADR-147: only after the count guards refused (a refused domain update changed nothing) are the held
+        # ADR-148: only after the count guards refused (a refused domain update changed nothing) are the held
         # contracts read and the structural pass given its chance; its audit row is written with the catalogue change.
         audit = _BufferedAuditLog()
         structural = StructuralPass(held=await _held_contracts(conn), audit_log=audit,

@@ -1,4 +1,4 @@
-"""Cut the two reduced real Kite instrument lists the ADR-147 structural trim tests use (NIFTY + SENSEX only, gzipped).
+"""Cut the two reduced real Kite instrument lists the ADR-148 structural trim tests use (NIFTY + SENSEX only, gzipped).
 
 Sources (read-only, saved from Zerodha's live instrument list on the owner's account):
 - 2026-10-15 ``instruments.json`` (a token -> row map the 2026-10-15 run saved: symbol, type, strike, expiry, lot);

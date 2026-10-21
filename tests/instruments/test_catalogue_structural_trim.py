@@ -1,4 +1,4 @@
-"""ADR-147: the structural second pass that tells a far-strike trim from a broken download, on the real Kite lists of
+"""ADR-148: the structural second pass that tells a far-strike trim from a broken download, on the real Kite lists of
 2026-10-15 and 2026-10-21 (reduced by scripts/cut_trim_fixture.py to NIFTY + SENSEX).
 
 Real case: the 2026-10-21 list carries NIFTY 2026-10-27 strikes 20050-27200 only; the 2026-10-15 list carried
@@ -14,7 +14,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from ofo.audit import AuditLog, EventType
 from ofo.instruments.catalogue import (
     TRIM_ACCEPTED_ACTION,
@@ -29,6 +28,14 @@ from ofo.timeutil import IST
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "instruments"
 AS_OF = datetime(2026, 10, 21, 8, 40, tzinfo=IST)
 NIFTY_WEEKLY = date(2026, 10, 27)
+#: Real counts on the two lists: 234 NIFTY 2026-10-27 contracts dropped of 904 live (522 NIFTY + 380 SENSEX + 2
+#: index rows); stored ladder 17000-30000, so the anchor is 23500; the first dropped strike above it is 27250.
+REAL_DROPPED = 234
+ANCHOR = Decimal(23500)
+LAST_LOW_DROP = Decimal(20000)
+FIRST_HIGH_DROP = Decimal(27250)
+RANDOM_CUT = 0.4  # Q244's original failure: a list missing a random 40%
+SMALL_DROP = 2  # one strike, CE + PE: 2 of 522, under the 10% guard
 
 
 def _rows(name: str) -> list[ListedContract]:
@@ -75,15 +82,17 @@ def test_core_real_far_strike_trim_accepted_by_structural_pass() -> None:
     structural, log = _pass()
     result = cat.update(NEW, as_of=AS_OF, structural=structural)
     assert result.structural_trim_accepted is True
-    assert len(result.delisted) == 234
+    assert len(result.delisted) == REAL_DROPPED
     gone = {cat.get(i).contract.strike for i in result.delisted}
-    assert max(s for s in gone if s < 23500) == Decimal("20000") and min(s for s in gone if s > 23500) == 27250
+    assert max(s for s in gone if s < ANCHOR) == LAST_LOW_DROP
+    assert min(s for s in gone if s > ANCHOR) == FIRST_HIGH_DROP
     events = list(log.events)
     assert len(events) == 1 and events[0].event_type is EventType.ADMIN_CHANGE_RECORDED
     payload = events[0].payload
     assert payload["action"] == TRIM_ACCEPTED_ACTION
-    assert payload["reason"].startswith("ADR-147;dropped=234;live=904;count_guard=") and "ADR-058" in payload["reason"]
-    assert len(payload["dropped_instrument_tokens"]) == 234 and len(payload["dropped_tradingsymbols"]) == 234
+    assert payload["reason"].startswith("ADR-148;dropped=234;live=904;count_guard=") and "ADR-058" in payload["reason"]
+    assert len(payload["dropped_instrument_tokens"]) == REAL_DROPPED
+    assert len(payload["dropped_tradingsymbols"]) == REAL_DROPPED
 
 
 def test_near_band_of_one_expiry_missing_is_refused() -> None:
@@ -108,9 +117,9 @@ def test_one_whole_segment_missing_is_refused() -> None:
 
 
 def test_forty_percent_random_cut_is_refused() -> None:
-    rng = random.Random(244)  # Q244's original failure: a list missing a random 40%
-    new = [r for r in NEW if rng.random() >= 0.4]
-    assert "structural trim check (ADR-147) also refused" in _refused(new)
+    rng = random.Random(244)  # noqa: S311 a seeded, repeatable test sample, not a secret
+    new = [r for r in NEW if rng.random() >= RANDOM_CUT]
+    assert "structural trim check (ADR-148) also refused" in _refused(new)
 
 
 def test_empty_list_is_refused() -> None:
@@ -148,7 +157,7 @@ def test_token_reused_on_a_live_contract_is_refused() -> None:
 def test_without_structural_inputs_the_count_refusal_stands() -> None:
     with pytest.raises(ValueError) as exc:
         _catalogue().update(NEW, as_of=AS_OF)
-    assert "ADR-147" not in str(exc.value)
+    assert "ADR-148" not in str(exc.value)
 
 
 def test_second_pass_never_runs_when_count_guards_pass() -> None:
@@ -156,7 +165,7 @@ def test_second_pass_never_runs_when_count_guards_pass() -> None:
     structural, log = _pass(held=None)  # would refuse if it ran
     small_drop = [r for r in OLD if not (_weekly(r) and r.contract.strike == Decimal(17000))]  # 2 of 522
     result = cat.update(small_drop, as_of=AS_OF, structural=structural)
-    assert len(result.delisted) == 2
+    assert len(result.delisted) == SMALL_DROP
     assert result.structural_trim_accepted is False and len(log.events) == 0
 
 
@@ -173,7 +182,7 @@ def test_force_path_unchanged_with_structural_given() -> None:
 def test_dropped_future_is_refused_even_with_its_segment_present() -> None:
     future = next(r for r in NEW if _weekly(r) and r.contract.is_future())
     new = [r for r in NEW if r.id != future.id]
-    assert "is not an option strike" in _refused(new, old=OLD + [future])
+    assert "is not an option strike" in _refused(new, old=[*OLD, future])
 
 
 def test_type_with_no_kept_strike_is_refused() -> None:
