@@ -78,3 +78,15 @@ Report: evidence-table
 Open: technical: REQ-041 AC-3's 'alert + prepare exit orders' and AC-1 of REQ-042 order half are out of scope (ADR-165); proposal: the Exit rule action list shows only 'Alert me'; the enum value for prepare-orders stays in the model but the editor and the API refuse it while Execute is off (one switch). Recorded, no question.
 Open: business: none new (ADR-165 (5) and (6) already decide machinery now, no playbooks). The 7 unclear video values are in D3.
 Platform-view note: anything this item shows as 'the platform's view' on strikes or adjustments is behind the production-off switch until Q211 clears (ADR-055 (1)); user-rule triggers are the user's own and are not.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `services/autopilot/condition_engine.py` (1096) | REFERENCE | condition vocabulary; rebuild on Decimal | REQ-041 |
+| `services/autopilot/strategy_monitor.py` (1876) | REFERENCE | trigger loop | REQ-043 |
+| `services/autopilot/adjustment_engine.py` (1388) | REFERENCE | auto default (`:246`); Alert + Prepare only | REQ-042, REQ-045 |
+| `services/autopilot/{delta_band,delta_rebalance,dte_zone,trailing_stop,premium_tracker,adjustment_cost_tracker}*.py` | REFERENCE | trigger definitions | REQ-045, REQ-047 |
+| `src/composables/autopilot/useWebSocket.js` (505) + test (832) | ADAPT (P3b) | token off the query string (`:53`); decouple from autopilot | REQ-043, REQ-048 |
+| `src/views/PositionsView.vue` (1306), `stores/positions.js` (213), `DashboardView.vue` (505), `components/autopilot/monitoring/*` | ADAPT (P5) | strategy-scoped; reword advice (`GammaRiskAlert.vue:22`) | REQ-008, REQ-043, REQ-044 |

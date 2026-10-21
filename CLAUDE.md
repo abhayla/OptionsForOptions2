@@ -22,7 +22,9 @@ args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|r
 (regenerate findings index, spec digest and build order in a checkout), `dev_run.py <cwd>
 <command>` (run with DATABASE_URL = ofo_dev for live runs and dev e2e; refuses any other database, ADR-078). Run
 `check_brief.py <brief>` on every builder brief before dispatch: it fails when a spec quote in the brief is not verbatim
-in the ADR/REQ/Q it cites (finding brief-rule-from-memory).
+in the ADR/REQ/Q it cites (finding brief-rule-from-memory). Also run `copy_from_check.py . <brief>` (exit 0, or
+`--append` the missing rows): every legacy-reuse map row naming the brief's requirements must be in the brief (owner
+2026-10-22: "you are not reinventing the wheel"; 15 of 24 lane briefs had left rows out, ADAPT rows included).
 
 ## Read first
 1. `spec/decisions/ADR-*.md` — the owner's decisions. They win over everything else. Each carries the Q-numbers and
@@ -32,6 +34,9 @@ in the ADR/REQ/Q it cites (finding brief-rule-from-memory).
 4. `knowledge/findings/` — proven failure classes; check before designing a mechanism.
 5. Sensibull study (private, outside this public repo; `D:\Abhay\GLOBAL.md` §7): before designing or briefing any
    feature, open `D:\Abhay\Ventures\competitors\sensibull\2026-10-21\INDEX.md`, find the feature, cite screen numbers.
+   Any question, gap or confusion about what a screen or feature should do goes to the study FIRST (owner 2026-10-22):
+   build to what Sensibull does unless an ADR-152 exception applies, and put the screen number in any owner question;
+   where the study has no such screen, say so in the brief.
    Never copy its screenshots or account data into this repo. Broker layer, order path or market data: first read
    `D:\Abhay\Ventures\competitors\multi-broker-architecture\2026-10-21\INDEX.md` (10 apps, common stack, traps).
 - `docs/reference/chatgpt/` holds the two full chat transcripts (primary) and the handoff files (lossy summaries).

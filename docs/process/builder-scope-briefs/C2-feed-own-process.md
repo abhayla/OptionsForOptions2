@@ -73,3 +73,13 @@ Report: evidence-table
 Open: technical: bus choice. REQ-113 AC-3 names Redis (ADR-043) once two processes run, and redis is not in requirements-app.txt. Proposal: Redis pub/sub via redis-py with an in-memory fake for unit tests; add `redis` to requirements-app.txt in this PR (project file, not a kit file); the app-tests CI job needs a redis service container (workflow is project-owned: .github/workflows/app-tests.yml). Fall back to a PostgreSQL LISTEN/NOTIFY bus only if the CI service cannot be added.
 Open: technical: depends on C1 (health states) merging first; stacked PR.
 Open: business: none. Live window needed for AC-2 and AC-8 (owner Kite login).
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `ticker/adapter_base.py` (273), `ticker/router.py` (377) | ADAPT | row 1; router gets auth + entitlement checks | REQ-048 |
+| `market_data/market_data_base.py` (520) | ADAPT | trim to Zerodha, behind our gateway | REQ-048 |
+| `market_data/kite_adapter.py` (440) | ADAPT | user's own session token only, server-side | REQ-048, REQ-053 |
+| `src/composables/autopilot/useWebSocket.js` (505) + test (832) | ADAPT (P3b) | token off the query string (`:53`); decouple from autopilot | REQ-043, REQ-048 |

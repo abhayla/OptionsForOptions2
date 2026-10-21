@@ -72,3 +72,14 @@ Report: evidence-table
 Open: technical: REQ-106 AC-5 says compute once per snapshot and share across users, which is lane C's REQ-050 work. Proposal: until it lands, compute per request from the requesting user's feed with a cache keyed by (underlying, expiry, snapshot time); one user today, so nothing is shared yet.
 Open: technical: the market calendar for AC-3 comes from PR #455's data file (parked). Proposal: copy only the dated holiday file and its loader into a new module; if the file is not usable, the weekend rule alone fires and holidays are listed as an unmeasured gap in the report.
 Open: business: none found.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `ticker/pool.py` (414) | ADAPT | row 1; drop `can_auto_refresh`/`refresh_broker_token` (`:23-24`) and platform credentials | REQ-048, REQ-050 |
+| `market_data/rate_limiter.py` (135) | COPY | set Kite limits (legacy had 3 req/s; Kite docs say 10, verify at P3a) | REQ-050 |
+| `services/options/option_chain_live_engine.py` (222) | ADAPT | strip platform-wide assumptions | REQ-029, REQ-050 |
+| `services/options/option_chain_cache.py` (145) | ADAPT | row 5; no cross-user sharing until ADR-034 | REQ-050 |
+| `services/options/option_chain_prefetch.py` (149), `startup_chain_warmup.py` (270), `option_chain_service.py` (458) | REFERENCE | built on the platform adapter / duplicates | REQ-050 |

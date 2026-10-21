@@ -74,3 +74,10 @@ Report: evidence-table
 Open: technical: REQ-081 AC-5 says the position-aware figure is 'on by default as in Sensibull', and the current code already counts positions always. Proposal: keep default on; add only the off mode.
 Open: business: none found; the percent-of-funds base (available funds, not funds needed) is already decided by ADR-164 and the AC text.
 Open: technical: no real case yet for AC-5 (the owner's account had no open positions on 2026-10-21, per the AC). Proposal: test with a recorded replay reply that carries a position; the live check stays in the final live window.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/api/routes/orders.py` (681) | REFERENCE | margins, import-positions, quote mapping; optional strategy_id (`:147-165`) and float (`:139,518,585-590`) | REQ-055, REQ-061 |

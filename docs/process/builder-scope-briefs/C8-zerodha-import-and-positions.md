@@ -78,3 +78,12 @@ Report: evidence-table
 Open: technical: REQ-103 AC-8 says the Orders page does not store a copy of the order book, while PRs #451/#452 build an order-book store for reconciliation (ADR-138 (3) allows only the import choice to store). Proposal: the page reads live and never reads the store; the store stays reconciliation's own evidence; add a test that the page route imports no store module. If #451/#452 contradict ADR-138 (3), classify per spec-adherence and report.
 Open: technical: merge order: after #419, #451, #452 and C7 (state machine). Live window needed: every AC (real positions, real order book, real funds; owner Kite login). Do NOT click anything in a live Zerodha order panel (incident 2026-10-21).
 Open: business: none.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `services/brokers/kite_adapter.py` (584) | ADAPT | row 4; Decimal in; floats only at the SDK edge (`:163,168,218,220,326`), private to the transport | REQ-054, REQ-060 |
+| `app/models/autopilot.py` logs/journal tables | REFERENCE | timeline/audit columns | REQ-040, REQ-064 |
+| `src/views/PositionsView.vue` (1306), `stores/positions.js` (213), `DashboardView.vue` (505), `components/autopilot/monitoring/*` | ADAPT (P5) | strategy-scoped; reword advice (`GammaRiskAlert.vue:22`) | REQ-008, REQ-043, REQ-044 |

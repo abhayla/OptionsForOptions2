@@ -76,3 +76,12 @@ Report: evidence-table
 Open: technical: 'signed-in' while login is not built (ADR-165 (8)). Proposal: the shared-link gate checks that the session carries a user reference; the one fixed owner has one today; tests use two references so adding users later needs no rewrite; the redirect target is the existing sign-in route placeholder.
 Open: technical: REQ-037 AC-3 appears in lane A's list but its only screen consumer is REQ-046 in lane D. Proposal: build the API and component here (as above) and let lane D import it; if lane D starts first it builds `BeforeAfter.vue` and this PR drops item 3.
 Open: business: none found. REQ-086 AC-5 shows the sharer's display name only if ticked; default is off per the AC.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `services/autopilot/{strike_finder_service,strategy_converter,template_service,suggestion_engine,position_sizing,position_leg_service,leg_actions_service,break_trade_service,staged_entry_service}.py` | REFERENCE | leg exit/add actions break ADR-002 | REQ-027, REQ-037 |
+| `src/router/index.js` (234) | ADAPT | structure (lazy routes, meta flags, once-only auth guard); new route table; UX-only entitlement guard | REQ-009 |
+| `src/components/layout/KiteLayout.vue` (80), `KiteHeader.vue` (715) | ADAPT | rename and restyle (not Zerodha's look); strip broker switching | REQ-009 |

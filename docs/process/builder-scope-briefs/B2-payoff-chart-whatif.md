@@ -79,3 +79,14 @@ Report: evidence-table
 Open: technical: REQ-034 AC-6 (what-if inputs) is listed under lane A but is the same feature as REQ-084 AC-1..AC-4; one implementation here, lane A does not build it.
 Open: technical: SD days. REQ-083 AC-4 uses calendar days to the nearest expiry or the target date; Sensibull offers Fixed N days (default 7) and Dynamic (screen 246). Proposal: build the REQ-083 rule only; a Fixed-days mode is not in the spec and is not built.
 Open: business: none found; the model-estimate label wording is fixed in ADR-151 / REQ-084 AC-5.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/api/routes/optionchain.py` (1285) find-by-delta/premium, `options.py` (277) | ADAPT | split into service + route; Decimal; lot size/strikes from the catalogue | REQ-027, REQ-029 |
+| `services/autopilot/{delta_band,delta_rebalance,dte_zone,trailing_stop,premium_tracker,adjustment_cost_tracker}*.py` | REFERENCE | trigger definitions | REQ-045, REQ-047 |
+| `services/autopilot/{strike_finder_service,strategy_converter,template_service,suggestion_engine,position_sizing,position_leg_service,leg_actions_service,break_trade_service,staged_entry_service}.py` | REFERENCE | leg exit/add actions break ADR-002 | REQ-027, REQ-037 |
+| `src/stores/optionchain.js` (550), `views/OptionChainView.vue` (1240), `components/optionchain/StrikeFinder.vue` (342) | ADAPT (P3b/P5) | no local ATM fallback (`:155`); strike logic in the backend | REQ-027, REQ-029 |
+| `src/views/StrategyBuilderView.vue` (2094), `stores/strategy.js` (969) | ADAPT (P4) | split; delete client P&L (`stores/strategy.js:722-743`), price fallbacks (`:359-374`), basket call (`:622`) | REQ-034, REQ-035, REQ-036 |

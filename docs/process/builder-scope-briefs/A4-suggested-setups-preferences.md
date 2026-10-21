@@ -83,3 +83,14 @@ Report: evidence-table
 SETTLED BY THE SPEC (orchestrator correction, 2026-10-21): REQ-027's body (the "short-strike delta bands" decision, also spec/open-questions.md line ~294) sets **Conservative 0.10-0.15, Balanced 0.20-0.25, Aggressive 0.30-0.35** (absolute delta; admin-tunable bands) with its own NIFTY 23,047 Iron Condor example and the wing rule that follows it. Read REQ-027 from line 50 and build to it: these are the default band values in admin configuration. Production stays off until Q211 (REQ-027 AC-5).
 Open: technical: delta placement reads the engine's delta at the live spot; proposal: pick the listed strike whose delta is nearest the mode target, ties to the strike farther from the money.
 Open: technical: this brief cannot start before B4's switch and placer merge; proposal: if B4 slips, build the preferences store and Settings page (REQ-068 AC-1..AC-3) first, they have no dependency on B4.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/constants/trading.py` (158), `strategy_types.py` (421), `enums.py` (375), `websocket.py` (65), `brokers.py` (29) | REFERENCE | hardcoded lot sizes conflict with REQ-053; strategy-type names/categories useful | REQ-028 |
+| `scripts/seed_strategies.py` (1312), `app/models/strategy_templates.py` (75) | REFERENCE | row 7; our W-005/W-047 library exists: fill only missing templates; `example_spot` Float (`:62`) | REQ-028 |
+| `services/options/{expected_move,gamma_risk,iv_metrics,oi_analysis,theta_curve}_service.py` | REFERENCE | algorithms for REQ-026 / REQ-047 | REQ-026, REQ-047 |
+| `services/autopilot/{strike_finder_service,strategy_converter,template_service,suggestion_engine,position_sizing,position_leg_service,leg_actions_service,break_trade_service,staged_entry_service}.py` | REFERENCE | leg exit/add actions break ADR-002 | REQ-027, REQ-037 |
+| `docs/features/ofo/REQUIREMENTS.md` (63), `README.md` (68), `docs/plans/ofo-implementation-plan.md` (396) | COPY | `docs/reference/legacy/ofo/`; reference for REQ-069 (ranking rules would be a SPEC CHANGE) |

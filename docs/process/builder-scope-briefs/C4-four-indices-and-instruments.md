@@ -73,3 +73,16 @@ Report: evidence-table
 Open: technical: AC-3 default scenario step for BANKNIFTY and FINNIFTY. Proposal: derive it from the real strike list as 2x the strike gap (BANKNIFTY 200, FINNIFTY 100), recorded as a decision row before build, as ADR-157 requires; the decision-row write is a spec edit, done in this PR's item part per spec-first R4.
 Open: technical: merge order. Depends on #466 (selection) landing in Step 1; #459 is parked and stays parked: copy only.
 Open: business: none. Live window needed for: AC-5 spot streaming of the two new indices (owner Kite login).
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `tests/backend/instruments/test_instrument_master.py` | ADAPT | as test cases for our catalogue persistence | REQ-053 |
+| `app/utils/tradingsymbol.py` (63) | REFERENCE | catalogue is the one source of symbols | REQ-053 |
+| `services/brokers/market_data/ticker/index_token_maps.py` (42) | REFERENCE | hardcoded tokens; use the catalogue | REQ-053 |
+| `market_data/kite_adapter.py` (440) | ADAPT | user's own session token only, server-side | REQ-048, REQ-053 |
+| `market_data/{symbol_converter,token_manager,instrument_query,ticker_base,failover_fetch,factory}.py`, other-broker adapters, `app/models/broker_instrument_tokens.py` | SKIP | cross-broker mapping/failover, platform-wide token; keyed on a Zerodha symbol string with converters for 2 of 6 brokers (spec/findings.md F-09); our identity is (exchange, exchange_token) per ADR-050 | REQ-054 |
+| `tests/fixtures/record_broker_responses.py`, `record_raw_responses.py`, `record_websocket_ticks.py` | ADAPT | recorder pattern for Kite fixtures; recorded upstox files carry PII: never copy | REQ-054 |
+| `services/brokers/kite_adapter.py` (584) | ADAPT | row 4; Decimal in; floats only at the SDK edge (`:163,168,218,220,326`), private to the transport | REQ-054, REQ-060 |

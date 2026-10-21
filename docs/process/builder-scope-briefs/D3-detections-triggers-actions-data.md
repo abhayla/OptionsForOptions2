@@ -79,3 +79,12 @@ Report: evidence-table
 Open: business: the 7 unclear video values (registry rows 12, 13, 19, 20, 21, 22, 30 in backend/ofo/adjustment/metric_registry.json): the owner states what each means for his Iron Condor adjustment video. Ask once for all seven with the registry wording. Recommended default: leave all seven 'unavailable' until answered (Step 6 plan input).
 Open: technical: condition 2 when max loss is unlimited. Proposal: 'not applicable' (no default percent), asserted by a test.
 Live window needed: conditions 1 to 3 on live prices (owner Kite login, market day).
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `services/options/{expected_move,gamma_risk,iv_metrics,oi_analysis,theta_curve}_service.py` | REFERENCE | algorithms for REQ-026 / REQ-047 | REQ-026, REQ-047 |
+| `services/autopilot/adjustment_engine.py` (1388) | REFERENCE | auto default (`:246`); Alert + Prepare only | REQ-042, REQ-045 |
+| `services/autopilot/{delta_band,delta_rebalance,dte_zone,trailing_stop,premium_tracker,adjustment_cost_tracker}*.py` | REFERENCE | trigger definitions | REQ-045, REQ-047 |

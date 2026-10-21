@@ -76,3 +76,25 @@ Report: evidence-table
 Open: technical: REQ-050 AC-4 load test deferred to the launch scope (plan: out of scope list, many-user items). Proposal: record as 'deferred: launch scope' in the tracker row.
 Open: business: REQ-052 AC-2 (Zerodha's written answer on showing Kite data in our SaaS), AC-4 (vendor enquiries), AC-5/AC-6 (long-term licensed source) are owner/legal inputs; list in the owner-inputs file, do not build. Ask the owner whether he wants a decision row on the long-term vendor shortlist now or at launch.
 No live window needed (replay) except a final glance at AC-5 text with a real disconnect (C1's live window).
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/websocket/manager.py` (520), `routes.py` (181) | REFERENCE | connection manager pattern; `ticker/router.py` is the better base | REQ-048 |
+| `app/utils/market_hours.py` (138) | ADAPT | add holiday calendar and BSE hours; its hard-coded 2026 holiday list is wrong (F-54): never copy it, use the dated NSE data file (ADR-119) | REQ-049 |
+| `app/models/eod_option_snapshot.py` (51) | ADAPT (P5) | Decimal snapshot shape for the historical tier | REQ-051 |
+| `services/brokers/market_data/ticker/models.py` (84) | ADAPT | row 1; fix float serialization `:61-69` | REQ-049 |
+| `ticker/adapter_base.py` (273), `ticker/router.py` (377) | ADAPT | row 1; router gets auth + entitlement checks | REQ-048 |
+| `ticker/pool.py` (414) | ADAPT | row 1; drop `can_auto_refresh`/`refresh_broker_token` (`:23-24`) and platform credentials | REQ-048, REQ-050 |
+| `market_data/market_data_base.py` (520) | ADAPT | trim to Zerodha, behind our gateway | REQ-048 |
+| `market_data/kite_adapter.py` (440) | ADAPT | user's own session token only, server-side | REQ-048, REQ-053 |
+| `market_data/rate_limiter.py` (135) | COPY | set Kite limits (legacy had 3 req/s; Kite docs say 10, verify at P3a) | REQ-050 |
+| `services/options/option_chain_live_engine.py` (222) | ADAPT | strip platform-wide assumptions | REQ-029, REQ-050 |
+| `services/options/option_chain_cache.py` (145) | ADAPT | row 5; no cross-user sharing until ADR-034 | REQ-050 |
+| `services/options/option_chain_prefetch.py` (149), `startup_chain_warmup.py` (270), `option_chain_service.py` (458) | REFERENCE | built on the platform adapter / duplicates | REQ-050 |
+| `tests/factories/ticks.py` (220), `tests/backend/brokers/` (normalized tick, health monitor, pool, token policy, iv solver, kite ticker) | ADAPT | Decimal; with the ticker copy | REQ-049 |
+| `src/composables/autopilot/useWebSocket.js` (505) + test (832) | ADAPT (P3b) | token off the query string (`:53`); decouple from autopilot | REQ-043, REQ-048 |
+| `src/services/priceService.js` (251) | ADAPT (P3b) | polling fallback only; change math from the backend | REQ-049 |
+| `src/components/common/MarketStatusBanner.vue`, `DataSourceBadge.vue` | ADAPT (P3b) | data-health indicator | REQ-049 |

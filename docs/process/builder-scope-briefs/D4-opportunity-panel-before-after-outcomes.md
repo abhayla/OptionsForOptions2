@@ -64,3 +64,13 @@ Report: evidence-table
 ## Open
 Open: business: REQ-112 AC-2 defines 'Acted on' as 'the user built the Before/After and prepared a basket from it', but no basket exists in this scope (ADR-165). What does the user press? Recommended: a button 'I will place this on Kite myself' after Before/After; the suggestion is then 'Acted on - not sent by this app', and 'Completed' appears only when the next Zerodha read shows the matching position change. Why only the owner decides: it changes what the user sees and reads. Spec basis: REQ-112 AC-2/AC-3, ADR-165 (1) 'the Place order / Execute action may be replaced'.
 Open: technical: Before/After for the twelve kinds is mechanical leg editing; kinds that need a strike choice take it as a user input, never a platform pick. Margin read is the only Kite call. Live window needed: Before/After margin on a real strategy (owner Kite login).
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/models/autopilot.py` (1130) order/batch/leg tables | REFERENCE | NOT NULL strategy_id + Numeric are good templates; `execution_mode` auto (`:89,167,628`) breaks ADR-009/017 | REQ-057, REQ-058 |
+| `services/autopilot/adjustment_engine.py` (1388) | REFERENCE | auto default (`:246`); Alert + Prepare only | REQ-042, REQ-045 |
+| `services/autopilot/{delta_band,delta_rebalance,dte_zone,trailing_stop,premium_tracker,adjustment_cost_tracker}*.py` | REFERENCE | trigger definitions | REQ-045, REQ-047 |
+| `app/models/autopilot.py` logs/journal tables | REFERENCE | timeline/audit columns | REQ-040, REQ-064 |

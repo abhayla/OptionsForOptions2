@@ -80,3 +80,11 @@ Report: evidence-table
 Open: technical: the per-user setting store is created here and reused by B1 and A4; whichever PR merges first owns the migration number. Proposal: A3 merges first (index order); the others rebase onto it.
 Open: technical: W-120 recorded 'AC-5 combine rule' as an open owner call. REQ-030 AC-5 and AC-11 are already unambiguous in the spec (same contract and action combines; opposite actions stay two legs), so no owner question is needed; build to the text.
 Open: business: none found in these REQs.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/utils/jwt.py` (63), `dependencies.py` (171), `user_resolver.py` (105), `app/api/routes/auth.py` (515), `app/models/users.py` (60) | SKIP | legacy auth/users (Kite-as-login; token embeds broker connection) | REQ-012 |
+| `src/views/LoginView.vue` (606), `SettingsView.vue` (608), `stores/auth.js` (263) | ADAPT (P2b) | Google + WhatsApp OTP, Zerodha connect, cookie auth | REQ-012, REQ-013 |

@@ -75,3 +75,17 @@ Report: evidence-table
 ## Open
 Open: technical: the template data says how many strike steps from ATM each strike sits (REQ-079 AC-3), but the catalogue (`ofo/strategy/catalogue.yaml`, about 20 templates; count them first) carries offsets already; check each of the 21 against the Sensibull rule table before relying on them and list any template with no usable offsets. Proposal: templates without offsets are not listed (absent), recorded in the report.
 Open: business: none new. The owner-held items stay held: the Q211 written legal answer and its label wording are already the spec's conditions.
+
+## Legacy map rows (copy_from_check.py)
+Rows of spec/technical-design/legacy-reuse.md that name this brief's requirements. Act on each:
+COPY/ADAPT -> use it (provenance header) or write in the report why not; REFERENCE -> read before
+designing; SKIP -> do not re-survey.
+
+| `app/utils/market_hours.py` (138) | ADAPT | add holiday calendar and BSE hours; its hard-coded 2026 holiday list is wrong (F-54): never copy it, use the dated NSE data file (ADR-119) | REQ-049 |
+| `app/constants/trading.py` (158), `strategy_types.py` (421), `enums.py` (375), `websocket.py` (65), `brokers.py` (29) | REFERENCE | hardcoded lot sizes conflict with REQ-053; strategy-type names/categories useful | REQ-028 |
+| `ticker/health.py` (334), `ticker/token_policy.py` (154) | ADAPT | row 8; map to ADR-015 states; drop TOTP categories `:7,17,25-36` | REQ-049 |
+| `services/options/vectorized_greeks.py` (225) | REFERENCE | row 6; our engine already has Black-Scholes (W-002): numeric cross-check only | REQ-032 |
+| `tests/factories/ticks.py` (220), `tests/backend/brokers/` (normalized tick, health monitor, pool, token policy, iv solver, kite ticker) | ADAPT | Decimal; with the ticker copy | REQ-049 |
+| `services/options/{greeks_calculator,pnl_calculator,payoff_calculator}.py` | SKIP | float calculators outside the one engine (formula cross-check only) | REQ-032, REQ-033 |
+| `src/services/priceService.js` (251) | ADAPT (P3b) | polling fallback only; change math from the backend | REQ-049 |
+| `src/components/common/MarketStatusBanner.vue`, `DataSourceBadge.vue` | ADAPT (P3b) | data-health indicator | REQ-049 |
