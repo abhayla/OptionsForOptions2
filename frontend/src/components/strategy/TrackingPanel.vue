@@ -8,7 +8,7 @@
       <button
         type="button"
         data-testid="start-tracking"
-        :disabled="busy"
+        :disabled="busy || savedRevision === null"
         class="px-4 py-2 text-sm font-medium rounded-lg border border-line"
         @click="start"
       >
@@ -51,6 +51,7 @@ import { START_TRACKING_LABEL, readTracking } from '@/lib/tracking'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
+  savedRevision: { type: Number, default: null },
 })
 
 const status = ref('loading')
@@ -82,8 +83,8 @@ async function start() {
   busy.value = true
   error.value = ''
   try {
-    const { data: saved } = await api.get(`/strategies/${props.savedId}`)
-    const { data } = await api.post(`/strategies/${props.savedId}/tracking`, { revision: saved.revision })
+    // the revision the page loaded: a strategy changed since then is refused by the server (409), never re-read here
+    const { data } = await api.post(`/strategies/${props.savedId}/tracking`, { revision: props.savedRevision })
     status.value = 'tracked'
     view.value = readTracking(data)
   } catch (e) {

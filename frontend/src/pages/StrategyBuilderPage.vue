@@ -163,12 +163,20 @@ function syncLive() {
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
 const savedId = ref(null)
-const openSaved = (next, id) => {
+// W-122: the revision the page loaded or saved (Start tracking is based on it, never on a fresh read)
+const savedRevision = ref(null)
+const openSaved = (next, id, revision) => {
   setLegs(next)
   savedId.value = Number.isInteger(id) ? id : null
+  savedRevision.value = savedId.value === null ? null : revision ?? null
+}
+const onSaved = (id, revision) => {
+  savedId.value = id
+  savedRevision.value = revision ?? null
 }
 const setLegs = (next) => {
   savedId.value = null
+  savedRevision.value = null
   linkRefused.value = false
   legs.value = next
   load()
@@ -216,7 +224,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
-    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />
+    <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="onSaved" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
     <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
@@ -286,7 +294,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
       />
       <AdvancedDetails v-if="advancedRows" :rows="advancedRows" :name-of="nameOf" />
       <StrategyActions :has-legs="data.legs.length > 0" :is-loading="false" :saved-id="savedId" @recalculate="load" />
-      <TrackingPanel :saved-id="savedId" />
+      <TrackingPanel :saved-id="savedId" :saved-revision="savedRevision" />
       <StrategyFooter :last-updated="data.valuation" :current-spot="data.spot_level" :underlying="data.underlying" />
     </template>
   </section>

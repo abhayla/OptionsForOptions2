@@ -1,4 +1,4 @@
-"""PostgreSQL store for paper tracking of a saved strategy (W-122; REQ-109 AC-1). Schema: migration 0019.
+"""PostgreSQL store for paper tracking of a saved strategy (W-122; REQ-109 AC-1). Schema: migration 0021.
 
 - start: under the strategy's row lock (one writer per strategy), re-checks the revision the user started from, then
   inserts the tracking row and one row per leg. A second start of the same strategy is refused (ALREADY_TRACKED): the

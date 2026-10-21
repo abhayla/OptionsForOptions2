@@ -20,6 +20,8 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
+from ofo.engine.legs import Action, Instrument
+from ofo.instruments.models import FUTURE_TYPE
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
 from ofo.tracking import paper
@@ -29,6 +31,7 @@ from sqlalchemy import text
 from ofo_app import strategy_store as store
 from ofo_app import tracking_store
 from ofo_app.api_models import ApiModel, InstrumentId, Money
+from ofo_app.catalogue_store import load_contract
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
@@ -109,13 +112,12 @@ async def _instrument_ids(db: Any, contract_ids: tuple[int, ...]) -> list[str]:
     return [found[c] for c in contract_ids]
 
 
-def _legs(saved, ids: list[str],
-          prices: list[tuple[Decimal, datetime.datetime]] | None = None) -> list[paper.TrackedLeg]:
-    out = []
-    for i, (iid, leg) in enumerate(zip(ids, saved.definition.legs, strict=True)):
-        price, at = prices[i] if prices else (Decimal(0), datetime.datetime.min.replace(tzinfo=datetime.UTC))
-        out.append(paper.TrackedLeg(iid, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, price, at))
-    return out
+def _legs(saved, ids: list[str]) -> list[paper.TrackedLeg]:
+    """The saved definition's legs as paper legs to price at the START only (their entry price is set by
+    paper.capture_entry); the view never uses this (it reads the stored entry, _entry_legs)."""
+    unset = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+    return [paper.TrackedLeg(iid, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, Decimal(0), unset)
+            for iid, leg in zip(ids, saved.definition.legs, strict=True)]
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
@@ -170,14 +172,27 @@ def _view(tracking: tracking_store.Tracking, legs: list[paper.TrackedLeg], under
     return TrackingOut.model_validate(body)
 
 
+async def _entry_legs(db: Any, tracking: tracking_store.Tracking) -> list[paper.TrackedLeg]:
+    """REQ-109 AC-2 ("from the paper entry prices"): the tracked legs come ONLY from the stored paper entry - each row's
+    catalogue contract, side, quantity, entry price and time. The strategy as saved now is never read here, so an edit
+    after the start changes nothing in the tracked figures."""
+    legs = []
+    for row in tracking.legs:
+        contract = (await load_contract(db, row.contract_id)).listed.contract
+        future = contract.instrument_type == FUTURE_TYPE
+        legs.append(paper.TrackedLeg(f"{contract.exchange_segment}:{contract.exchange_token}", Action(row.side),
+                                     Instrument(contract.instrument_type), None if future else contract.strike,
+                                     contract.expiry, row.quantity, row.entry_price, row.price_at))
+    return legs
+
+
 async def _answer(db: Any, stored, tracking: tracking_store.Tracking, ctx: MarketContext | None,  # noqa: PLR0913
                   feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime) -> TrackingOut:
-    ids = await _instrument_ids(db, stored.saved.contract_ids)
-    legs = _legs(stored.saved, ids, [(leg.entry_price, leg.price_at) for leg in tracking.legs])
-    underlying = stored.saved.definition.underlying
+    legs = await _entry_legs(db, tracking)
+    underlying = stored.saved.definition.underlying  # fixed for the strategy's life (strategy_store UNDERLYING_FIXED)
     if not _connected(ctx):
         return _view(tracking, legs, underlying, None, answered_at)
-    snapshot = await _snapshot(ctx, feed, underlying, ids)
+    snapshot = await _snapshot(ctx, feed, underlying, [leg.instrument_id for leg in legs])
     return _view(tracking, legs, underlying, paper.tracking_view(snapshot, legs, check_threshold(threshold)),
                  answered_at)
 

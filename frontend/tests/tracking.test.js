@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 async function panel() {
-  const w = mount(TrackingPanel, { props: { savedId: 7 } })
+  const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
   await flushPromises()
   return w
 }
@@ -59,7 +59,6 @@ describe('signedRupees', () => {
 describe('TrackingPanel', () => {
   it('ADR-166 / AC-1: an untracked saved strategy offers exactly "Start tracking"; it posts only the revision', async () => {
     answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
-    answers['GET /strategies/7'] = () => Promise.resolve({ data: { id: 7, revision: 3 } })
     answers['POST /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
     const w = await panel()
     expect(START_TRACKING_LABEL).toBe('Start tracking')
@@ -124,8 +123,30 @@ describe('TrackingPanel', () => {
     expect(w.find('[data-testid="paper-pnl"]').exists()).toBe(false)
   })
 
-  it('an unknown detection kind or condition is not shown', () => {
-    const read = readTracking(body({ detections: [{ ...detection, kind: 'user_rule' }, { ...detection, condition: 'x' }] }))
-    expect(read.detections).toEqual([])
+  it('fail closed: an unknown detection kind or condition makes the whole answer unreadable (no figure)', () => {
+    for (const bad of [{ ...detection, kind: 'user_rule' }, { ...detection, condition: 'x' }, null]) {
+      const read = readTracking(body({ detections: [detection, bad] }))
+      expect([read.kind, read.figure, read.detections]).toEqual(['invalid', null, []])
+    }
+    expect(readTracking(body({ detections: undefined })).kind).toBe('invalid')
+  })
+
+  it('Start tracking posts the revision the page loaded, never a freshly fetched one', async () => {
+    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
+    answers['GET /strategies/7'] = () => Promise.resolve({ data: { id: 7, revision: 9 } })
+    answers['POST /strategies/7/tracking'] = () => Promise.resolve({ data: body() })
+    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: 3 } })
+    await flushPromises()
+    await w.get('[data-testid="start-tracking"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST')).toEqual([['POST', '/strategies/7/tracking', { revision: 3 }]])
+    expect(calls.some((c) => c[1] === '/strategies/7')).toBe(false)
+  })
+
+  it('without a loaded revision the start is disabled', async () => {
+    answers['GET /strategies/7/tracking'] = () => Promise.reject({ status: 404, parts: null })
+    const w = mount(TrackingPanel, { props: { savedId: 7, savedRevision: null } })
+    await flushPromises()
+    expect(w.get('[data-testid="start-tracking"]').attributes('disabled')).toBeDefined()
   })
 })

@@ -1,4 +1,4 @@
-"""W-122 over HTTP on the recorded replay (REQ-109 AC-1, AC-2, AC-3; REQ-045 AC-1, AC-2).
+"""W-122 over HTTP on the recorded replay (REQ-109 AC-1, AC-2; the detection numbers are REQ-045 AC-2, W-123).
 
 The saved strategy is test_strategy_store's iron condor (65 units a leg, expiry 2026-10-13): SELL 22800 CE,
 BUY 23000 CE, SELL 22400 PE, BUY 22200 PE. The market is the real 2026-10-08 recording (tests/fixtures/kite_ws)
@@ -24,7 +24,7 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 from ofo_app.routes import tracking as tracking_routes  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context  # noqa: E402
 from ofo_app.routes.planned_entry import get_live_feed  # noqa: E402
-from test_strategy_store import _app, _client, _user, _with_draft  # noqa: E402
+from test_strategy_store import WING, _app, _body, _client, _ids, _user, _with_draft  # noqa: E402
 
 D = Decimal
 IDS = ["NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"]
@@ -114,6 +114,46 @@ async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_an
             "SELECT entry_price FROM public.strategy_tracking_legs WHERE strategy_id = :i ORDER BY leg_index"),
             {"i": stored.id})]
     assert stored_prices == [D("39.15"), D("12.95"), D("82.75"), D("35.80")]
+
+
+def _quantity_130(body: dict) -> dict:
+    body["legs"][0]["quantity"] = 130
+    return body
+
+
+def _three_legs(body: dict) -> dict:
+    body["legs"] = body["legs"][:3]
+    return body
+
+
+@pytest.mark.parametrize(("edit", "wing"), [(_quantity_130, "NIFTY26O1323000CE"), (lambda b: b, WING),
+                                            (_three_legs, "NIFTY26O1323000CE")],
+                         ids=["quantity", "strike", "leg_count"])
+async def test_ac2_an_edit_after_the_start_changes_nothing_in_the_tracked_figures(db, edit, wing):
+    """AC-2 ("from the paper entry prices"): after the start, the saved strategy is edited (PUT 200): leg 1 quantity
+    65 -> 130, or the BUY 23000 CE wing moved to 23100 CE, or the last leg removed. The view still reads the stored
+    paper entry only: the same four legs (65 units each, 23000 CE wing), the same +195.00 by hand
+    ((39.15 - 45.15) x 65 + (14.95 - 12.95) x 65 + (82.75 - 70.75) x 65 + (30.80 - 35.80) x 65
+    = -390 + 130 + 780 - 325),
+    the same breakevens 22326.85 / 22873.15 and the same 22400 detection (133.25 points, 0.59%)."""
+    app, stored, provider, _clock, last = await _setup(db)
+    ids = await _ids(db)
+    async with _client(app) as c:
+        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+        assert first.status_code == HTTPStatus.CREATED
+        edited = await c.put(f"/strategies/{stored.id}",
+                             json=edit(_body(ids, wing=wing, expected_revision=stored.revision)))
+        assert edited.status_code == HTTPStatus.OK, edited.text
+        for iid, rupees in zip(IDS, ["45.15", "14.95", "70.75", "30.80"], strict=True):
+            provider.on_frame(_frame(provider, iid, rupees), last)
+        view = (await c.get(f"/strategies/{stored.id}/tracking")).json()
+    assert [(leg["instrument_id"], leg["action"], leg["quantity"], leg["entry_price"]) for leg in view["legs"]] == [
+        ("NSE_FO:44624", "SELL", 65, "39.15"), ("NSE_FO:44632", "BUY", 65, "12.95"),
+        ("NSE_FO:44604", "SELL", 65, "82.75"), ("NSE_FO:44595", "BUY", 65, "35.80")]
+    assert view["state"] == "LIVE" and view["paper_pnl"] == "195.00"
+    assert view["breakevens"] == ["22326.85", "22873.15"]
+    assert [(d["level"], d["distance_points"], d["distance_percent"]) for d in view["detections"]] == [
+        ("22400.00", "133.25", "0.59")]
 
 
 async def test_ac1_stale_prices_at_start_are_refused_and_nothing_is_written(db):
@@ -212,8 +252,9 @@ async def test_ac2_stale_prices_after_start_pause_paper_pnl_and_drop_detection(d
     assert view["detections"] == [] and view["index"]["state"] != "live"
 
 
-async def test_ac3_a_tracked_strategy_never_reaches_execute(db):
-    """AC-3: Execute on a tracked strategy writes no execution plan, and a request carrying a paper entry is refused
+async def test_ac1_a_tracked_strategy_never_reaches_execute(db):
+    """AC-1 (order path off; REQ-109 AC-3 itself is Step 5): Execute on a tracked strategy writes no execution
+    plan, and a request carrying a paper entry is refused
     by Execute's own closed body (422)."""
     app, stored, *_ = await _setup(db)
     async with _client(app) as c:
@@ -228,15 +269,6 @@ async def test_ac3_a_tracked_strategy_never_reaches_execute(db):
         plans = (await conn.execute(text("SELECT count(*) FROM public.execution_plans WHERE strategy_id = :i"),
                                     {"i": stored.id})).scalar_one()
     assert plans == 0
-
-
-def test_ac3_the_tracking_modules_import_nothing_from_the_order_path():
-    """AC-3 (structural): the tracking route, store and domain import no execute/execution/basket module."""
-    for path in (ROOT / "backend/ofo_app/routes/tracking.py", ROOT / "backend/ofo_app/tracking_store.py",
-                 ROOT / "backend/ofo/tracking/paper.py"):
-        imports = [line for line in path.read_text(encoding="utf-8").splitlines()
-                   if line.startswith(("import ", "from "))]
-        assert not [line for line in imports if "execut" in line or "basket" in line or "orders" in line], path
 
 
 @pytest.mark.parametrize("threshold", [D("0"), D("101")])

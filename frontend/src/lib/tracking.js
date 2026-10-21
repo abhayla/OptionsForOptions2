@@ -41,11 +41,11 @@ export function signedRupees(text) {
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED'])
 const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
+const INVALID = Object.freeze({ kind: 'invalid', text: UNREADABLE_TEXT, figure: null, legs: [], detections: [] })
+
 /** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | invalid. */
 export function readTracking(body) {
-  if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) {
-    return { kind: 'invalid', text: UNREADABLE_TEXT, figure: null, legs: [], detections: [] }
-  }
+  if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
     key: leg.instrument_id,
     action: leg.action,
@@ -54,8 +54,10 @@ export function readTracking(body) {
     entry: leg.entry_price,
     current: leg.price_state === 'live' ? leg.current_price : null,
   }))
-  const detections = (Array.isArray(body.detections) ? body.detections : [])
-    .filter((d) => d && d.kind === 'platform_detection' && CONDITIONS.has(d.condition))
+  // an answer carrying a detection this screen cannot name is unreadable as a whole: never silently dropped
+  if (!Array.isArray(body.detections)) return INVALID
+  if (!body.detections.every((d) => d && d.kind === 'platform_detection' && CONDITIONS.has(d.condition))) return INVALID
+  const detections = body.detections
     .map((d) => ({
       key: `${d.condition}-${d.level}`,
       label: PLATFORM_DETECTION_LABEL,
@@ -69,6 +71,6 @@ export function readTracking(body) {
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
   if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
   const signed = signedRupees(body.paper_pnl)
-  if (signed === null) return { kind: 'invalid', text: UNREADABLE_TEXT, figure: null, legs: [], detections: [] }
+  if (signed === null) return INVALID
   return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, legs, detections }
 }
