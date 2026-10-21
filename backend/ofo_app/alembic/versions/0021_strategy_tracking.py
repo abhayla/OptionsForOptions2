@@ -13,14 +13,14 @@ Changes (owner-run, one transaction):
   not live, REQ-109 AC-5); prices_at = the time of the oldest leg quote used; started_at from the database clock.
 - public.strategy_tracking_legs: PRIMARY KEY (strategy_id, leg_index); contract_id -> catalogue_contracts; side
   BUY/SELL; quantity > 0; entry_price NUMERIC(14,2) > 0; price_at.
-- Guard triggers (SQLSTATE OF019): both tables are insert-only (no UPDATE, no DELETE); a leg row only joins an existing
+- Guard triggers (SQLSTATE OF021): both tables are insert-only (no UPDATE, no DELETE); a leg row only joins an existing
   tracking row (foreign key).
 - Grants: the application role gets SELECT and column-limited INSERT on both tables; no UPDATE, DELETE or TRUNCATE.
-- public.ofo_assert_app_role_allowlist: 0017's chain text (0018 changed no grant) plus block 16 for the two tables.
+- public.ofo_assert_app_role_allowlist: the predecessor's chain text (read from down_revision) plus block 18.
 - downgrade: refuses while any tracking row is stored (a paper entry is a record); otherwise drops what upgrade made.
 
-Revision ID: 0019_strategy_tracking
-Revises: 0018_basket_tag_8
+Revision ID: 0021_strategy_tracking
+Revises: 0020_order_book_store
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0019_strategy_tracking"
-down_revision = "0018_basket_tag_8"
+revision = "0021_strategy_tracking"
+down_revision = "0020_order_book_store"
 branch_labels = None
 depends_on = None
 
@@ -46,14 +46,14 @@ def _load(filename: str, name: str):
     return module
 
 
-#: The latest revision that publishes the allowlist chain text (0018 changed no grant and publishes none).
-_CHAIN = _load("0017_audit_order_prepared.py", "ofo_migration_chain_for_0019")
-_M16 = _CHAIN._PREVIOUS  # 0016: the table block helper
-_BASE = _CHAIN._BASE  # 0001
-_M4 = _CHAIN._M4  # 0004: _md5_body
+#: The predecessor publishes the allow-list chain text and its helpers (read from down_revision, never named here).
+_PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0021")
+_M16 = _PREVIOUS._M16  # 0016: the table block helper
+_BASE = _PREVIOUS._BASE  # 0001
+_M4 = _PREVIOUS._M4  # 0004: _md5_body
 
 SEARCH_PATH = _M16.SEARCH_PATH
-SQLSTATE = "OF019"
+SQLSTATE = "OF021"
 TRACKING = "public.strategy_tracking"
 LEGS = "public.strategy_tracking_legs"
 TRACKING_GUARD = "public.strategy_tracking_guard"
@@ -62,7 +62,7 @@ TRACKING_TRIGGER = "strategy_tracking_guard"
 LEGS_TRIGGER = "strategy_tracking_legs_guard"
 TRACKING_INSERT_COLUMNS = ("strategy_id", "strategy_revision", "price_health", "prices_at")
 LEGS_INSERT_COLUMNS = ("strategy_id", "leg_index", "contract_id", "side", "quantity", "entry_price", "price_at")
-ALLOWLIST_BLOCK_MARKER = "-- 16. strategy tracking"
+ALLOWLIST_BLOCK_MARKER = "-- 18. strategy tracking"
 
 
 def _guard_sql(function: str, what: str) -> str:
@@ -98,13 +98,14 @@ def _block() -> str:
 
 
 def previous_allowlist_sql() -> str:
-    return _CHAIN.extended_allowlist_sql()
+    return _PREVIOUS.extended_allowlist_sql()
 
 
 def extended_allowlist_sql() -> str:
-    """0017's chain text plus block 16. Fails closed (RuntimeError) on a changed shape or a block 16 already in."""
+    """The predecessor's chain text plus block 18. Fails closed (RuntimeError) on a changed shape or a block 18 already
+    in."""
     previous = previous_allowlist_sql()
-    insert_before = _M16._INSERT_BEFORE
+    insert_before = _PREVIOUS._INSERT_BEFORE
     if previous.count(insert_before) != 1 or ALLOWLIST_BLOCK_MARKER in previous:
         raise RuntimeError("previous allowlist SQL changed shape: cannot add the strategy tracking checks safely")
     return previous.replace(insert_before, _block() + insert_before, 1)
