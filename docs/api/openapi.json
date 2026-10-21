@@ -163,6 +163,50 @@
         "title": "BrokerRedirectOut",
         "type": "object"
       },
+      "BrokerStatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "account_connection": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "historical_data": {
+            "const": "not_available",
+            "title": "Historical Data",
+            "type": "string"
+          },
+          "last_successful_sync": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Successful Sync"
+          },
+          "live_market_data": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "order_execution": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "position_sync": {
+            "$ref": "#/components/schemas/StatusOut"
+          }
+        },
+        "required": [
+          "account_connection",
+          "live_market_data",
+          "position_sync",
+          "order_execution",
+          "last_successful_sync",
+          "historical_data"
+        ],
+        "title": "BrokerStatusOut",
+        "type": "object"
+      },
       "CellOut": {
         "additionalProperties": false,
         "properties": {
@@ -827,6 +871,20 @@
         "title": "DefinitionOut",
         "type": "object"
       },
+      "DisconnectOut": {
+        "additionalProperties": false,
+        "properties": {
+          "disconnected": {
+            "title": "Disconnected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "disconnected"
+        ],
+        "title": "DisconnectOut",
+        "type": "object"
+      },
       "EntryOut": {
         "additionalProperties": false,
         "description": "One activity-history entry. The summary is rendered from stored data through the catalogue on every read.",
@@ -1234,6 +1292,38 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "range_end": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last scenario level in index points; sent with range_start",
+            "examples": [
+              "23600"
+            ],
+            "title": "Range End"
+          },
+          "range_start": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the first scenario level in index points; sent with range_end",
+            "examples": [
+              "22800"
+            ],
+            "title": "Range Start"
           },
           "underlying": {
             "enum": [
@@ -1963,7 +2053,8 @@
               "exited",
               "nothing_placed",
               "partial",
-              "reconciliation_required"
+              "reconciliation_required",
+              "unresolved_from_positions"
             ],
             "title": "State",
             "type": "string"
@@ -2054,6 +2145,10 @@
             "title": "Available",
             "type": "boolean"
           },
+          "customised": {
+            "title": "Customised",
+            "type": "boolean"
+          },
           "end": {
             "title": "End",
             "type": "string"
@@ -2136,9 +2231,51 @@
           "totals",
           "step",
           "start",
-          "end"
+          "end",
+          "customised"
         ],
         "title": "ScenarioOut",
+        "type": "object"
+      },
+      "StatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "fix": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connect_zerodha",
+                  "session_expired",
+                  "live_feed_off",
+                  "live_feed_not_running",
+                  "live_feed_session_ended",
+                  "no_read_yet",
+                  "live_data_not_connected",
+                  "positions_not_synced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "state": {
+            "enum": [
+              "connected",
+              "partial",
+              "disconnected"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "fix"
+        ],
+        "title": "StatusOut",
         "type": "object"
       },
       "StrategyIn": {
@@ -3023,6 +3160,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/broker/disconnect": {
+      "post": {
+        "description": "Ends the signed-in owner's active session. Strategies, history, entitlements and the account are not touched.",
+        "operationId": "broker_disconnect_api_broker_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisconnectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Disconnect"
+      }
+    },
     "/api/broker/refusals/{code}": {
       "get": {
         "description": "Read-only: the catalogue message for a refusal code, for the page the callback redirected to (#163).",
@@ -3075,6 +3231,24 @@
           }
         },
         "summary": "Refusal Message"
+      }
+    },
+    "/api/broker/status": {
+      "get": {
+        "operationId": "broker_status_api_broker_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Status"
       }
     },
     "/api/catalogue/{underlying}/contracts": {

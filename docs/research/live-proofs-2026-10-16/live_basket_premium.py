@@ -29,7 +29,7 @@ async def main():
     engine = get_engine()
     try:
         async with engine.connect() as conn:
-            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key), engine=engine)
+            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
         q = "&".join(f"i=NFO:{s}" for s, _ in LEGS)
         ltp = await asyncio.to_thread(call, cfg.api_key, token, "GET", "/quote/ltp?" + q)
         lt = {s: Decimal(str(ltp["data"][f"NFO:{s}"]["last_price"])) for s, _ in LEGS}
