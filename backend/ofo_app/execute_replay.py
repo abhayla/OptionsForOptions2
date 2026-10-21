@@ -225,9 +225,9 @@ def _replay_session(request: Request) -> ReplaySession:
     return session_for(entry_replay())
 
 
-async def database_clock_today(conn: Any) -> datetime.date:
-    """India date of the DATABASE clock (the clock that stamps a plan's ``created_at``), never the test-only pin."""
-    return (await elig.database_now(conn)).astimezone(IST).date()
+#: India date of the DATABASE clock (the clock that stamps a plan's ``created_at``), never the test-only pin; the one
+#: copy lives beside ``database_now`` (the reconciler judges a plan's session on it too, #380-2).
+database_clock_today = elig.database_clock_today
 
 
 def _today_reader(request: Request) -> Callable[[Any], Awaitable[datetime.date]]:

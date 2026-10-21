@@ -26,7 +26,6 @@ IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalo
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 AT = datetime.datetime(2026, 10, 16, 12, 21, 4, tzinfo=IST)
 ENTRY_PLAN, EXIT_PLAN = 1, 2  # the real tags OFS1V1L0 / OFS1V2L0 (ADR-105)
-KEY = ("NIFTY", "CE", D("23650"), datetime.date(2026, 10, 19))
 TODAY = AT.date()  # the session the stored plans were created in (2026-10-16, IST)
 
 
@@ -145,31 +144,6 @@ def test_ac3_a_closed_plan_whose_order_filled_after_the_close_has_drifted():
     assert er.drifted((ENTRY_DONE,), book) == ()
 
 
-@pytest.mark.parametrize(("held", "others", "net", "kind", "unexplained"), [
-    (65, 0, 65, None, 0),  # the real 12:21:04 state
-    (65, 0, 130, None, 65),  # a standalone 65 beyond the strategy: blocks no strategy (REQ-060 AC-7)
-    (65, 65, 130, None, 0),  # another stored strategy explains the other 65
-    (65, 65, 65, er.MISSING, -65),  # Zerodha's 65 belong to the other strategy: this one holds none of it
-    (65, 0, 0, er.MISSING, -65),  # Zerodha 0 while the strategy holds 65: blocks this strategy
-    (65, 0, 30, er.QUANTITY, -35),
-    (65, 0, -65, er.SIDE, -130),
-])
-def test_ac3_reconciliation_per_strategy(held, others, net, kind, unexplained):
-    """AC-3 / REQ-060 AC-7: the strategy's share = Zerodha's net minus other strategies' units; fewer or the wrong
-    side blocks it, units beyond it block nothing."""
-    (check,) = er.reconcile([KEY], {KEY: held}, {KEY: others}, {KEY: net})
-    assert (check.kind, check.unexplained) == (kind, unexplained)
-
-
-def test_ac3_an_exit_with_zerodha_still_holding_65_is_not_exited():
-    """AC-3 / REQ-058 AC-5: the strategy flat by its fills but Zerodha still +65 -> not exited; flat both -> exited."""
-    assert not er.exit_is_clean(er.reconcile([KEY], {KEY: 0}, {}, {KEY: 65}))
-    assert not er.exit_is_clean(er.reconcile([KEY], {KEY: 65}, {}, {KEY: 65}))
-    assert er.exit_is_clean(er.reconcile([KEY], {KEY: 0}, {}, {}))
-    assert er.exit_is_clean(er.reconcile([KEY], {KEY: 0}, {KEY: 65}, {KEY: 65}))  # the 65 are another strategy's
-    assert not er.exit_is_clean(er.reconcile([KEY], {KEY: 0}, {}, {}, frozenset({KEY})))  # another's plan unsettled
-
-
 def test_ac3_a_plan_from_an_earlier_session_is_never_closed_from_todays_book():
     """Review MAJOR 2: plan 1 created 2026-10-16, returned 2026-10-17 with an empty book (Kite's book holds only
     today's orders) -> stays open, reconciliation required, reason named; a stamp with no zone counts as earlier."""
@@ -184,38 +158,6 @@ def test_ac3_a_plan_from_an_earlier_session_is_never_closed_from_todays_book():
     assert er.classify(late, empty, TODAY).state == er.NOTHING_PLACED  # same IST day: unchanged
     utc_prev = dataclasses.replace(ENTRY_OPEN, created_at=datetime.datetime(2026, 10, 15, 19, 0, tzinfo=datetime.UTC))
     assert er.classify(utc_prev, empty, TODAY).state == er.NOTHING_PLACED  # 00:30 IST on the 16th: today
-
-
-def _other_plan(status: str, filled: int | None) -> StoredPlan:
-    """Strategy 2's plan 1: BUY 65 of the same contract (tag OFS2V1L0)."""
-    order = PlanOrder(0, make_tag(2, 1, 0), IID, SYMBOL, "BUY", 65, D("5.45"), filled)
-    return StoredPlan(2, 1, "ENTRY", status, (order,), AT, None if status == "open" else AT,
-                      None if status == "open" else "filled")
-
-
-def _other_book(filled: int, plans: tuple[StoredPlan, ...]) -> er.TodaysBook:
-    """Strategy 2's own rows of today's book: the real 12:21:04 order and trade, re-tagged to OFS2V1L0."""
-    orders = [{**_data("orders-122104")[0], "tag": "Q0002010", "filled_quantity": filled}]
-    trades = [{**_data("trades-122104")[0], "quantity": filled}] if filled else []
-    return rb.read_book(orders, trades, 2, frozenset(o.tag for p in plans for o in p.orders))
-
-
-@pytest.mark.parametrize(("status", "stored", "at_kite", "unsettled"), [
-    ("open", None, 65, True),  # B's open plan filled at Zerodha, not returned: its 65 are unknown here
-    ("closed", 0, 65, True),  # B's closed plan drifted (stored 0, Kite 65)
-    ("closed", 65, 65, False),  # B closed and settled: counts by its stored fills
-])
-def test_ac3_another_strategys_open_or_drifted_plan_makes_the_contract_undecidable(status, stored, at_kite, unsettled):
-    """Review MAJOR 1 (worked case): A holds 65 by its plans, B has a plan BUY 65 on the same contract, Zerodha net
-    65. Before: B counted 0 -> A "no mismatch". After: open or drifted B -> reconciliation required, reason named."""
-    other = (_other_plan(status, stored),)
-    keys = frozenset(KEY for _ in er.unsettled_orders(other, _other_book(at_kite, other)))
-    assert bool(keys) is unsettled
-    others = {KEY: 65} if status == "closed" else {}
-    (check,) = er.reconcile([KEY], {KEY: 65}, others, {KEY: 65}, keys)
-    assert (check.undecidable, check.blocks) == ((er.OTHER_UNSETTLED, True) if unsettled else (None, True))
-    if not unsettled:
-        assert check.kind == er.MISSING  # settled B explains Zerodha's 65: A's share is 0 (decided normally)
 
 
 # ---- the route on the database (core proof; CI) -----------------------------------------------------------------
@@ -466,9 +408,12 @@ async def test_ac3_core_another_strategys_open_plan_filled_at_kite_makes_the_con
             reads = _Reads("122104", orders=[real_order, b_order],
                            trades=[real_trade, {**real_trade, "order_id": b_id, "trade_id": "4484195"}])
             body = (await _post(_app_for(conn, user, reads), sid)).json()
+            # #380-2: the one reconciler counts B's OPEN plan from its final row (ADR-110: every order final -> its
+            # fills count), so A 65 + B 65 = 130 expected against Zerodha 65: a same-side shortfall on a shared
+            # contract (compare: broker part 65 != 0, same side -> quantity mismatch); Q224 blocks every holder.
             assert body["contracts"] == [{"tradingsymbol": SYMBOL, "platform_units": 65, "zerodha_units": 65,
-                                          "other_strategies_units": 0, "unexplained_units": 0, "mismatch": None,
-                                          "reconciliation_reason": "another_strategy_plan_unsettled"}]
+                                          "other_strategies_units": 65, "unexplained_units": 0,
+                                          "mismatch": "recon_quantity_mismatch", "reconciliation_reason": None}]
             assert (body["mismatches"], body["blocked"]) == (1, True)
         finally:
             await trans.rollback()

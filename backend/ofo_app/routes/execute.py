@@ -7,14 +7,18 @@ basket to Kite's page); ADR-050 item 4 "(b) persist the order intent before send
 no strategy; a mismatch blocks only the strategy whose contract quantity disagrees).
 
 One request = one transaction, in this order (any refusal rolls back: nothing stored, no plan number consumed):
-1. the strategy (404 for a missing or another user's one); 2. Zerodha's order book: the floor plan number of THIS
+1. the strategy (404 for a missing or another user's one); 1b. #380-2: the per-user reconciliation lock
+(``route_reconciliation.lock_user``, before any strategy row lock); 2. Zerodha's order book: the floor plan number of
+THIS
 strategy's tags and any still-open order (refused); ``next_plan_number`` (its lock is held to commit); 2b. W-107: that
 same order book (no second Zerodha read) as THIS strategy's ``TodaysBook`` (``return_book.read_book``):
 ``execution_return.drifted`` on the stored plans refuses with ``gate_reconciliation_mismatch`` before any other check
 (``_executable``, positions), ENTRY, EXIT and adjustment alike (REQ-060 AC-6); untagged rows are never read as
 drift (AC-7); 3. what the strategy holds = ``ep.held_units`` (ADR-105: the net of filled units over ALL its plans),
 the one source of the exit
-legs (exactly the net, opposite side), the active legs + hash, the version state and the reconciliation platform side;
+legs (exactly the net, opposite side), the active legs + hash and the version state; the reconciliation is the ONE
+reconciler the return route also calls (``route_reconciliation.reconcile_account``, #380-2: every strategy of the user,
+the standalone, outside lots, pending plans, stored mismatches; Zerodha's net parsed there from this route's read);
 an EXIT at net 0 and an ENTRY while held are refused (``_executable``); 4. each leg priced
 from its depth; 5. the ``ExecutionContext`` from real sources only; 6. the fresh eligibility registry straight into
 ``check_pre_execution``; 7. freeze limits; 8. ``checked_basket`` (Zerodha's margin again, inside the basket);
@@ -71,6 +75,7 @@ from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import entitlement_store, live_market, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
+from ofo_app import route_reconciliation as rr
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
@@ -82,7 +87,7 @@ from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
-from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
+from ofo_app.kite_replies import KiteReplyError, PositionsRead, log_ignored
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
@@ -364,15 +369,17 @@ class _Held:
     state: VersionState
     plan_number: int | None
     history: tuple[plans.StoredPlan, ...]
+    order_rows: list[object]  # Zerodha's order book read by ``_reserve_number`` (one read, reused)
 
 
 async def _execute(req: _Request, stored: Any) -> ExecuteOut:
+    await rr.lock_user(req.db, req.user_ref)  # #423 / Q224: the per-user lock FIRST, before any strategy row lock
     plan_number, order_rows = await _reserve_number(req)
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     units = ep.held_units(history)
     if _plan_drift(req, history, order_rows):  # W-107: before any other refusal, so the owner sees the true reason
         raise _refuse("gate_reconciliation_mismatch")
-    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history)
+    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history, order_rows)
     catalogue = await load_catalogue(req.db)
     underlying = stored.saved.definition.underlying
     try:
@@ -485,30 +492,24 @@ def _answer(plan_number: int, basket: Any, api_key: str, cost: CostOut) -> Execu
 
 # ---- the ExecutionContext, one real source per field ---------------------------------------------------------------
 
-async def _positions(req: _Request, catalogue: Any) -> PositionsRead | None:
-    """Zerodha's positions reply, read once per request; unreadable -> None (reconciliation unknown, products
-    unread: both block)."""
+async def _reconcile(req: _Request, held: _Held,
+                     catalogue: Any) -> tuple[PositionsRead | None, frozenset[str] | None]:
+    """#380-2 (T3): Zerodha's positions reply, read once per request, and the ONE reconciler the return route also
+    calls (``route_reconciliation.reconcile_account``: every strategy of the user, the standalone, outside lots,
+    pending plans, stored mismatches, Q224). The Execute press is not one of Q196's triggers and rolls back on a
+    refusal, so it stores nothing (``source=None``); a mismatch stored earlier still blocks. An unreadable reply or
+    unreadable stored data -> (None, None): reconciliation unknown and products unread, both block (fail closed).
+    The session date is the database clock's India date (the clock that stamped every plan's ``created_at``), the
+    same clock the return route's session date reads in production."""
+    today = await elig.database_clock_today(req.db)
     try:
         reply = await asyncio.to_thread(req.session.reads.fetch_positions)
-        read = positions_from_reply(reply, ContractIndex.from_catalogue(catalogue))
-    except (KiteReadError, KiteReplyError, ValueError):
-        return None
-    log_ignored(read, f"execute strategy {req.strategy_id}")
-    return read
-
-
-def _reconciliation(req: _Request, held: _Held, positions: PositionsRead | None, catalogue: Any,
-                    underlying: str) -> frozenset[str] | None:
-    """REQ-060 AC-7 through ``ep.strategy_blocked``: PLATFORM side = ``held.units`` (all plans' net) per reconcile
-    key; an unreadable positions reply is unknown (None blocks)."""
-    if positions is None:
-        return None
-    platform: dict[tuple, int] = {}
-    for contract, units in held.units.items():
-        key = ep.contract_key(catalogue, _iid(contract), underlying)
-        platform[key] = platform.get(key, 0) + units
-    blocked = ep.strategy_blocked(positions.net, platform)
-    return frozenset({str(req.strategy_id)}) if blocked else frozenset()
+        verdict = await rr.reconcile_account(req.db, req.user_ref, catalogue, reply, held.order_rows, at=req.now,
+                                             today=today, clock=req.clock, source=None)
+    except (KiteReadError, KiteReplyError, ValueError):  # AttributionError / ReconciliationError included
+        return None, None
+    log_ignored(verdict.positions, f"execute strategy {req.strategy_id}")  # main: no skipped row silently lost
+    return verdict.positions, frozenset(verdict.attribution.blocked)
 
 
 def _margin_orders(priced: ep.PricedPlan, catalogue: Any) -> list[BasketOrder]:
@@ -607,7 +608,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
     sid, underlying = str(req.strategy_id), stored.saved.definition.underlying
     available, required = await _zerodha_margin(req, priced, catalogue)
     figures = Figures(available, required, req.clock())  # the same one read, shown in the reply (W-102)
-    positions = await _positions(req, catalogue)
+    positions, blocked_ids = await _reconcile(req, held, catalogue)
     is_exit = req.action == EXIT
     db_now = await elig.database_now(req.db)  # the clock that stamped the grants and the list load (ADR-023)
     return ExecutionContext(
@@ -622,7 +623,7 @@ async def _context(req: _Request, stored: Any, priced: ep.PricedPlan, held: _Hel
         dependencies_satisfied=True,  # no open basket at Zerodha and no open stored plan (both refused above)
         data_health=await _data_health(req, priced, underlying, db_now),
         margin_available=available, margin_required=required,
-        reconciliation_blocked_strategy_ids=_reconciliation(req, held, positions, catalogue, underlying),
+        reconciliation_blocked_strategy_ids=blocked_ids,
         price_bands=priced.price_bands,
         **(_exit_fields(sid, held, priced, positions, catalogue) if is_exit else _NO_ACTIVE_LEGS),
     ), figures

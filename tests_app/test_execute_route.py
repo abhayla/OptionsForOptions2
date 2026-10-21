@@ -35,7 +35,6 @@ from ofo_app.execute_replay import store_strategy_one
 ROOT = Path(__file__).resolve().parents[1]
 REAL_BASKET = real_basket()
 REAL_ORDER = real_order()
-KEY = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))
 _live_quote = live_quote
 _Replay = RecordedKite
 _session_for = session_for
@@ -130,27 +129,6 @@ def test_ac1_a_depth_source_without_a_band_prices_the_leg_and_leaves_the_band_to
     no_base = ep.LegQuote(live.depth, live.at, None, None)
     with pytest.raises(ep.LegRefused):  # no planned entry and no last price: refused, never a guessed base
         ep.price_legs("1", "NIFTY", [_leg(Action.BUY)], _catalogue(), lambda i, t: no_base)
-
-
-# ---- REQ-060 AC-7: who a broker difference blocks -------------------------------------------------------------------
-
-def test_ac7_units_beyond_the_strategy_block_nothing():
-    """A position in no strategy (Zerodha 130, the strategy 65 BUY) is offered the grouping choice, blocks nothing."""
-    assert ep.strategy_blocked({KEY: 65}, {KEY: 65}) is False
-    assert ep.strategy_blocked({KEY: 130}, {KEY: 65}) is False
-    assert ep.strategy_blocked({KEY: -130}, {KEY: -65}) is False
-    assert ep.strategy_blocked({KEY: 65}, {}) is False  # nothing held by the strategy: an entry is never blocked
-
-
-def test_ac7_a_shortfall_blocks_the_strategy():
-    assert ep.strategy_blocked({}, {KEY: 65}) is True  # the real 15:10 flat book against a filled entry
-    assert ep.strategy_blocked({KEY: 64}, {KEY: 65}) is True
-    assert ep.strategy_blocked({KEY: -64}, {KEY: -65}) is True
-
-
-def test_ac7_the_opposite_side_blocks_the_strategy():
-    assert ep.strategy_blocked({KEY: -65}, {KEY: 65}) is True
-    assert ep.strategy_blocked({KEY: 130}, {KEY: -65}) is True
 
 
 # ---- the response carries the exact Kite form text, only from a real basket -----------------------------------------
@@ -446,6 +424,16 @@ async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
 _NO_CONTRACT_QUOTE = '{"status": "success", "data": {}}'  # Zerodha's reply without the contract
 
 
+def _partial_book() -> list[dict]:
+    """The real 12:21:04 row of OFS1V1L0 as the 2-lot order it is in the partial test: ordered 130 (the stored
+    order), 65 filled, the rest cancelled (CANCELLED is final). The recorded row itself says quantity 65, which the
+    one reconciler reads as a row unlike the stored 130-unit order (``book_row_differs``) and blocks: REQ-060 (ADR-109)
+    "A strategy owns exactly the fills of orders this app placed (its order ids and tags, ADR-105)" - an order of
+    another quantity under the plan's tag is not provably that order (#380-2 fix round, CI run 39427914444)."""
+    (row,) = _book("CANCELLED")
+    return [{**row, "quantity": 130, "filled_quantity": 65, "pending_quantity": 0, "cancelled_quantity": 65}]
+
+
 def _position_rows(**changes) -> list:
     data = json.loads((REPLIES / "positions-122104.json").read_text(encoding="utf-8"), parse_float=D)
     rows = data.get("data", data)["net"]
@@ -458,7 +446,8 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
     Refused, nothing stored, each by its own guard: ENTRY while held (ADR-105);
     EXIT while OFS1V1L0 is OPEN or carries an unknown status word; EXIT whose position product cannot be read
     (ADR-080 (1)); EXIT on a band-less quote (the gate asks to confirm; no confirmation step exists). Then EXIT sells
-    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it)."""
+    exactly the net 65 = Zerodha's real 12:21 position (review MAJOR 2: round 2 refused it). Zerodha's book shows plan
+    1's order as the 130-unit order it is, 65 filled (``_partial_book``; the one reconciler checks the row, #380-2)."""
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
@@ -480,6 +469,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"Q0001010": 65})
 
             def _with(**kw):
+                kw.setdefault("orders", _partial_book())  # the 130-unit order filled 65 (not the 65-unit real row)
                 replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
                                           positions="positions-122104"), **kw)
                 app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
@@ -498,7 +488,8 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             _with(positions=_position_rows(product=None))
             await _refused("EXIT", "differs from the product")
             _with()
-            replay = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
+            replay = _rows_of(_Replay(funds="671.5", basket_total="-214.5", orders="orders-122104",
+                                      positions="positions-122104"), orders=_partial_book())
             replay.quote_text = _NO_CONTRACT_QUOTE
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(replay)
             await _refused("EXIT", "Market data needed for execution")
@@ -551,39 +542,46 @@ def test_exit_legs_close_exactly_the_net_opposite_side():
     assert ep.exit_legs({}, lambda t: t) == []
 
 
-async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation(caplog):
+async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation(caplog, monkeypatch):
     """GC-3L 2026-10-19: the owner's own stock trades (CNC) sat in Zerodha's net positions; the reader refused the
     whole reply, reconciliation became unknown (None) and every Execute was refused RECONCILIATION_MISMATCH. The
-    stock row is ignored (reported), the strategy's own contract is still compared."""
+    stock row is ignored (reported), the strategy's own contract is still parsed. #380-2: the reply is parsed only
+    inside the ONE reconciler (``route_reconciliation``); its comparison is pinned in test_route_reconciliation."""
     from types import SimpleNamespace  # noqa: PLC0415
 
+    from ofo_app.kite_replies import ContractIndex, positions_from_reply  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
 
     stocks = json.loads((REPLIES / "positions-20261019-with-stocks.json").read_text(encoding="utf-8"),
                         parse_float=D)["data"]["net"][:2]  # FRANKLININD, LIQUIDBEES (CNC)
     catalogue = _catalogue()
 
+    async def db_now(db):
+        return AT
+
+    async def reconcile_account(conn, user_ref, cat, reply, order_rows, **kwargs):  # the real parse, no database
+        read = positions_from_reply(reply, ContractIndex.from_catalogue(cat))
+        return SimpleNamespace(positions=read, attribution=SimpleNamespace(blocked=frozenset()))
+
+    monkeypatch.setattr(route.elig, "database_now", db_now)
+    monkeypatch.setattr(route.rr, "reconcile_account", reconcile_account)
+
     def request(rows: list) -> SimpleNamespace:
         reads = SimpleNamespace(fetch_positions=lambda: {"net": rows, "day": []})
-        return SimpleNamespace(session=SimpleNamespace(reads=reads), strategy_id=15)
+        return SimpleNamespace(db=None, user_ref="U", now=AT, clock=lambda: AT, strategy_id=15,
+                               session=SimpleNamespace(reads=reads))
 
-    def held(units: dict) -> SimpleNamespace:
-        return SimpleNamespace(units=units)
-
-    entry_req = request(stocks)  # the strategy holds nothing; Zerodha holds only stocks
+    held = SimpleNamespace(order_rows=[])
     with caplog.at_level("INFO", logger="ofo_app.kite_replies"):
-        positions = await route._positions(entry_req, catalogue)
+        positions, blocked = await route._reconcile(request(stocks), held, catalogue)  # Zerodha holds only stocks
     assert positions is not None and positions.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+    assert positions.net == {} and blocked == frozenset()  # not None: reconciliation is known
     assert [r.getMessage() for r in caplog.records] == [
         "execute strategy 15: positions read ignored 2 non-platform rows: NSE:FRANKLININD, NSE:LIQUIDBEES"]
-    assert route._reconciliation(entry_req, held({}), positions, catalogue, "NIFTY") == frozenset()
 
-    core = route._feed_key(CORE_ID)
-    exit_req = request([*stocks, *_position_rows()])  # the strategy's 65 next to the stocks
-    positions = await route._positions(exit_req, catalogue)
-    assert positions.net == {KEY: 65}
-    assert route._reconciliation(exit_req, held({core: 65}), positions, catalogue, "NIFTY") == frozenset()
-    assert route._reconciliation(exit_req, held({core: 130}), positions, catalogue, "NIFTY") == frozenset({"15"})
+    positions, blocked = await route._reconcile(request([*stocks, *_position_rows()]), held, catalogue)
+    key = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))  # the recorded contract
+    assert positions.net == {key: 65} and blocked == frozenset()  # the strategy's 65 next to the stocks
 
 
 def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():

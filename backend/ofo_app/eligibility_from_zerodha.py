@@ -39,6 +39,7 @@ from ofo.instruments.eligibility import (
     status_from_list,
 )
 from ofo.instruments.models import ZERODHA, InstrumentId
+from ofo.timeutil import IST
 from sqlalchemy import text
 
 from ofo_app.catalogue_picker import BROKER_ROWS, CONTRACTS, database_today
@@ -64,6 +65,12 @@ def _state(row: Any) -> ListState:
 async def database_now(conn: Any) -> datetime.datetime:
     """The database's own clock (``clock_timestamp()``, ADR-023): the clock that stamps grants and list loads."""
     return (await conn.execute(_NOW)).scalar_one()
+
+
+async def database_clock_today(conn: Any) -> datetime.date:
+    """India date of the DATABASE clock (the clock that stamps a plan's ``created_at``), never the test-only pin: the
+    session an open plan belongs to is judged on the clock that stamped it (#380-2)."""
+    return (await database_now(conn)).astimezone(IST).date()
 
 
 async def _loaded_at(conn: Any) -> datetime.datetime | None:

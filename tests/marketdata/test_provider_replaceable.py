@@ -110,6 +110,9 @@ BROKER_ADAPTER_PATHS = {
     "ofo_app/return_book.py": "the return's Kite reply reader (W-096): today's Kite orders/trades rows -> the "
                               "strategy's book through kite_replies; execution_return.py stays Kite-free - "
                               "REQ-063 AC-1",
+    "ofo_app/route_reconciliation.py": "the one reconciliation both Kite routes call (#380-2): parses Kite's raw "
+                                       "positions/orders replies through kite_replies itself, so no caller passes a "
+                                       "net (#423); reconcile_attribution.py stays Kite-free - REQ-063 AC-1",
 }
 
 

@@ -373,9 +373,10 @@ def test_ac7_malformed_broker_net_is_refused(broker_net):
 
 def test_ac7_the_caller_passes_no_plans_strategies_or_held_units():
     """AC-7, finding caller-supplied-verdict-trusted: the public signature takes only the account, the standalone map,
-    Zerodha's net, the sources and ``at``; the default reader is the stores the routes use."""
+    Zerodha's net, the sources, ``at`` and the session date ``today`` (#380-2 fix round: a date, never a verdict);
+    the default reader is the stores the routes use."""
     assert list(inspect.signature(ra.attribute_and_compare).parameters) == [
-        "account", "standalone", "broker_net", "order_book", "sources", "at"]
+        "account", "standalone", "broker_net", "order_book", "sources", "at", "today"]
     assert ra.StoreReader().list_strategies is strategy_store.list_strategies
     assert ra.StoreReader().plans_for is execution_plan_store.plans_for
 

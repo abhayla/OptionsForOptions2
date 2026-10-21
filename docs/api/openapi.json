@@ -1714,8 +1714,18 @@
               {
                 "enum": [
                   "recon_missing_platform_position",
+                  "recon_unexpected_broker_position",
+                  "recon_quantity_mismatch",
+                  "recon_strike_mismatch",
                   "recon_side_mismatch",
-                  "recon_quantity_mismatch"
+                  "recon_expiry_mismatch",
+                  "recon_external_modification",
+                  "recon_partial_execution",
+                  "recon_standalone_changed",
+                  "recon_awaiting_settlement",
+                  "recon_expired_still_at_broker",
+                  "recon_expired_standalone_retired",
+                  "recon_expired_quantity_differs"
                 ],
                 "type": "string"
               },
