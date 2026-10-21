@@ -2,7 +2,7 @@
 
 # Run discipline: keep going, park what is stuck, cut friction, stay lean
 
-version: "1.0.0" (generalized for the project kit)
+version: "1.1.0" (1.1.0: standing brief items C4 a-d, C8; generalized for the project kit)
 
 Why: long runs stalled on status reports, dragged stuck items round after round, spent more on friction than code.
 
@@ -32,10 +32,19 @@ Why: long runs stalled on status reports, dragged stuck items round after round,
 - **C2 Generated files stay out of feature PRs**; indexes/boards/aggregates regenerate in one batched PR.
 - **C3 Run CI's own checks locally before every push**, one command mirroring the PR gate.
 - **C4 The reviewer's checklist goes into the builder's brief** (exact assertions, fail-closed paths, mutation tests
-  first); depth follows blast radius, at most 2 rounds, then B1.
+  first); depth follows blast radius, at most 2 rounds, then B1. Standing items every build brief carries
+  (template: `.claude/kit/builder-brief.md`): (a) a new pass inside a time-budgeted job reuses the job's existing
+  small reservation, never the whole remaining budget, and a test shows the higher-priority work still runs; (b) a CI
+  step that gains a non-builtin import runs after the dependency install step; (c) a static detector fails closed on
+  shapes it cannot resolve and names its guard by import source, not identifier text; (d) when a feature decides on
+  another system's answer, the brief lists every answer state (stated, absent, not found, failed, empty, ambiguous)
+  and what each does.
 - **C5 Batch docs PRs:** findings, decision rows, ledger lines in one PR per batch.
 - **C6 Prove right after merging**, on staging, triggering event proofs by hand instead of waiting.
 - **C7 Timebox discovery:** a defect found OUTSIDE an item's done list becomes a `deferred` issue with evidence.
+- **C8 Prefer a structural guarantee over a detector:** when a class keeps getting past a check, move the protection
+  into the one code path every case must pass through, keeping the detector as a second layer; check that the chosen
+  choke point really runs first (a layer that runs after the thing it guards guards nothing).
 
 ## D. Verification habits
 
@@ -71,7 +80,8 @@ Why: long runs stalled on status reports, dragged stuck items round after round,
 
 - MUST follow A (keep working to an empty queue or a genuine blocker; never stop just to report status).
 - MUST follow B (park after two failed rounds or a 2-working-day-missing event, with an issue; never ask while away).
-- MUST follow C-D (local checks before push, batched docs PRs, generated files out of PRs; "ran"/"0 stored"/zero
+- MUST follow C-D (local checks before push, batched docs PRs, generated files out of PRs, standing items a-d in
+  every build brief, structural guarantee over detector; "ran"/"0 stored"/zero
   hits/a missing log line/a peer report are checks, never proof; chain gates with `&&`).
 - MUST follow E (shared state's owner recorded, no recurring timer in a long session, `Budget:` + targeted tests in
   every brief, logs to files, at most 5 always-loaded rules).

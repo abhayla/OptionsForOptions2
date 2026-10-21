@@ -1,0 +1,27 @@
+{
+ "id": "daily-list-trims-far-strikes-trips-truncation-guard",
+ "scope": "generic",
+ "class": "A truncation guard on a reference-data reload that judges a shrunk list by a percentage (of the index, or of one expiry) refuses a legitimate daily trim of far-from-the-money members, because the source drops only the far end of every expiry at once; the refused reload leaves the catalogue not same-day and a downstream gate then refuses every action that needs a same-day list.",
+ "mechanism": "ADR-058 (10% of the index) and ADR-059 (half of one expiry) count dropped contracts, not where they sit; a trim of far strikes across all expiries exceeds both counts although near-the-money contracts are intact, and the Execute gate's _list_health then refuses every order because the instrument list is not same-day.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "Kite instruments dump 2026-10-19 vs 2026-10-15, ofo_dev, GC-3L",
+  "evidence": "2,179 of 4,064 live NIFTY contracts dropped; every expiry lost only far strikes (2026-10-27: 523 contracts, strikes 17000-30000 -> 289, up to 27200; 2026-11-03: 470 -> 208, range 20050-25200); dropped strike NIFTY26OCT28000CE had bid/ask 0, kept 27200 CE traded; NSE's NSE_FO_contract_16102026 file still listed all 4,064; ADR-059 refused 262 of 470 for 2026-10-19; resolved for the day by one forced update (apply_update force=True, owner-delegated, audit ADMIN_CHANGE_RECORDED): added=210 seen=4714 delisted=2287 retired=396"
+ },
+ "fix": "Resolved for the day by one forced update. Proposed class fix: judge truncation structurally (near-the-money band intact, index rows and every segment present, dropped strikes all far from spot, none held by an open position or strategy leg) instead of by percentage; cross-check NSE's contract file when it appears. The owner said data issues are technical calls; changing the ADR-058/ADR-059 text is the only part open for owner decision.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check yet distinguishes a far-strike trim from a broken download. Discrimination to prove when built: of the 2026-10-15 and 2026-10-19 dumps it must pass the 10-19 trim (far strikes only, near band intact) and still refuse a dump that loses near-the-money strikes or a whole segment. Unmeasured: how often Kite trims."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-058.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "NIFTY instrument reload, all expiries",
+   "evidence": "2,179 of 4,064 contracts dropped, far strikes only; reload refused by ADR-058 and ADR-059; every Execute refused until the forced update"
+  }
+ ]
+}

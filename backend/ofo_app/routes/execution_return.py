@@ -43,7 +43,7 @@ from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
-from ofo_app.kite_replies import ContractIndex, KiteReplyError, positions_from_reply
+from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
@@ -167,10 +167,11 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     try:
         trades = reads.fetch_trades()
         orders = reads.fetch_orders()
-        net = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue)).net
+        positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
-    return _Read(orders, trades, net)
+    log_ignored(positions, f"return strategy {req.strategy_id}")
+    return _Read(orders, trades, positions.net)
 
 
 def _book_or_refuse(zerodha: _Read, strategy_id: int, tags: frozenset[str]) -> er.TodaysBook:

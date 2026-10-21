@@ -1,0 +1,27 @@
+{
+ "id": "worktree-link-into-main-checkout",
+ "scope": "project",
+ "class": "Any scratch or review checkout that links (Windows junction or symlink) a folder of the main checkout - typically node_modules to skip an install - turns every later recursive delete of that checkout into a delete of the main checkout's folder: a forced worktree removal, rm -rf or Remove-Item -Recurse walks into the link. The damage is silent (tracked files are unchanged, so git status stays clean) and shows up later as missing packages.",
+ "mechanism": "2026-10-19 ~23:45 IST: a read-only Tier B reviewer (CREATE-GUIDED) junctioned scratchpad/rv-cg/frontend/node_modules -> the main checkout's frontend/node_modules to run Vitest; the orchestrator's brief told it to clean up with `git worktree remove --force`, which failed ('Invalid argument') after deleting part of the target. The reviewer reported the junction gone; it was still there. Main's node_modules lost @babel, .bin and .package-lock.json (201 -> 200 top-level entries, git status clean).",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-6 run 2, CREATE-GUIDED Tier B review cleanup",
+  "evidence": "orchestrator: Get-ChildItem -Attributes ReparsePoint in rv-cg -> '\\frontend\\node_modules -> Junction D:\\Abhay\\Ventures\\OptionsForOptions2\\frontend\\node_modules'; package-lock vs listing: @babel missing; no .bin; repaired by removing the junction as a link ([System.IO.Directory]::Delete(path, false)), stopping a stale vite :5173 (PIDs 3200/19864, started 2026-10-17 22:01) that locked lightningcss, then npm ci -> 201 entries, build + vitest pass, 1897 tracked files."
+ },
+ "fix": "Instance repaired 2026-10-19. Class: every reviewer/builder brief says 'never create a junction or symlink; never `--force` a worktree removal; if node_modules is needed, run npm ci inside the scratch checkout or say unverified'; GC-6 row WT-LINK-GUARD adds a structural guard (a PreToolUse hook refusing junction/symlink creation that targets the main checkout, and a removal helper that deletes links as links first and counts main's packages before/after - run-discipline F3/F4).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Discriminating check: before any worktree removal, list reparse points under it (Get-ChildItem -Recurse -Attributes ReparsePoint); after it, compare main's node_modules top-level count and package-lock top-level set. Today only run-discipline F3/F4 prose covers it."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-106.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "GC-6 run 2 review cleanup",
+   "evidence": "201 -> 200 entries, @babel/.bin gone; repaired by npm ci"
+  }
+ ]
+}

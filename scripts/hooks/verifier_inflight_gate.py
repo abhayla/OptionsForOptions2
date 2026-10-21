@@ -7,10 +7,13 @@ quarantines anything that appeared or changed by its PostToolUse, whoever wrote 
 in that window was moved away (finding verifier-guard-watches-every-worktree).
 
 In flight = a `*.json` snapshot younger than INFLIGHT_SECONDS in <tempdir>/verifier-write-guard/snap/ (the kit guard
-creates it at a verifier's PreToolUse and deletes it at PostToolUse). An older one is a left-behind snapshot of a
-killed call and is ignored. The folder is overridable with OFO_VERIFIER_SNAP_DIR (tests). Each snapshot lists the roots
-its guard watches; a write is judged only under those roots and a git step only when its directory (cwd, `-C`) is
-under one. A snapshot that cannot be parsed or lists no root counts as watching everything (fail closed).
+creates it at a verifier's PreToolUse and deletes it at its own PostToolUse / PostToolUseFailure). A call that another
+PreToolUse hook blocks gets neither, so its snapshot stays; the kit guard itself deletes those when the verifier
+stops (SubagentStop, kit 1.9.0, which replaced the project stand-in verifier_snapshot_ledger.py). An older one is a
+left-behind snapshot of a killed call and is ignored. The folder is overridable with OFO_VERIFIER_SNAP_DIR (tests).
+Each snapshot lists the roots its guard watches; a write is judged only under those roots and a git step only when its
+directory (cwd, `-C`) is under one. A snapshot that cannot be parsed or lists no root counts as watching everything
+(fail closed).
 
 Refused (exit 2) when in flight: a write whose resolved path has work/spec/evidence directly under a watched folder
 holding `.git`; any git step whose subcommand is NOT in the closed READ_ONLY allow-list (apply, rm, mv, the
