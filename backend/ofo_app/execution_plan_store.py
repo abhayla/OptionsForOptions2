@@ -16,7 +16,9 @@ Copy from: none - modelled on ``strategy_store`` (row lock, id checks, error sty
   (a frozen dataclass can be forged) and the DATABASE checks it a third time: one open plan (partial unique index),
   tag = make_tag(strategy, plan, leg) (Q-grammar since 0018; legacy OFS rows still accepted), tag unique,
   positive quantity and price.
-- close_plan: open -> closed once, with a reason; closed_at is the database clock. Nothing reopens a plan.
+- close_plan: open -> closed once, with a reason; closed_at is the database clock. Nothing reopens a plan. A close
+  that changes position also stores Zerodha's trades of each order (``PlanFill``, migration 0020, #313b) in the same
+  transaction: exactly the filled quantity per tag, each (order id, trade id) once, prices exact to the paisa.
 Transaction control (commit) stays with the caller. Another user's strategy answers exactly like a missing one.
 """
 
@@ -51,6 +53,7 @@ INTEGER_MAX = 2**31 - 1  # plan_number, leg_index, quantity (INTEGER)
 PRICE_LIMIT = Decimal(10) ** 12  # NUMERIC(14,2)
 _UNIQUE_VIOLATION = "23505"
 _CHECK_VIOLATION = "23514"
+_ORDER_BOOK_GUARD = "OF020"  # migration 0020's fill trigger (the second layer behind _checked_trades)
 _OPEN_INDEX = "execution_plans_one_open"
 _PLAN_KEY = "execution_plans_pkey"
 _TAG_KEY = "execution_plan_orders_tag_key"
@@ -111,6 +114,29 @@ class PlanOrder:
 
 
 @dataclass(frozen=True)
+class PlanFill:
+    """One Zerodha trade of a plan order (#313b): the tag of the order it fills, Zerodha's order id and trade id, units
+    and the trade price. ``close_plan`` stores them; ``order_book_store.fills_for`` reads them back."""
+
+    tag: str
+    broker_order_id: str
+    trade_id: str
+    quantity: int
+    price: Decimal
+
+    def __post_init__(self) -> None:
+        self.check()
+
+    def check(self) -> None:
+        """Raises PlanStoreError(bad_plan) unless every field is valid; close_plan calls it again."""
+        _text(self.tag, "tag")
+        _text(self.broker_order_id, "broker_order_id")
+        _text(self.trade_id, "trade_id")
+        _int(self.quantity, "quantity", 1)
+        _limit_price(self.price)  # more than 2 decimals is refused here, before NUMERIC(14,2) would round it
+
+
+@dataclass(frozen=True)
 class StoredPlan:
     strategy_id: int
     plan_number: int
@@ -146,9 +172,13 @@ _SET_FILLED = text("UPDATE public.execution_plan_orders SET filled_quantity = :f
                    "WHERE strategy_id = :s AND plan_number = :p AND tag = :tag")
 _CLOSE = text("UPDATE public.execution_plans SET status = 'closed', close_reason = :r "
               "WHERE strategy_id = :s AND plan_number = :p AND status = 'open'")
+_INSERT_FILL = text("INSERT INTO public.execution_plan_fills (tag, broker_order_id, trade_id, quantity, price) "
+                    "VALUES (:tag, :oid, :tid, :q, :price)")
+_STORED_TRADES = text("SELECT broker_order_id, trade_id FROM public.execution_plan_fills "
+                      "WHERE broker_order_id = ANY(:oids)")
 
 
-async def _zerodha_symbol(conn: Any, instrument_id: str) -> str:
+async def zerodha_symbol(conn: Any, instrument_id: str) -> str:
     """The catalogue's ZERODHA trading symbol for ``instrument_id`` ("<segment>:<exchange token>"); no row, or two
     different symbols with none of them live, is ``bad_plan`` (no symbol guessing, ADR-050 item 2)."""
     segment, _, token = instrument_id.rpartition(":")
@@ -165,13 +195,13 @@ async def _zerodha_symbol(conn: Any, instrument_id: str) -> str:
 
 async def _check_symbols(conn: Any, orders: tuple[PlanOrder, ...]) -> None:
     for o in orders:
-        symbol = await _zerodha_symbol(conn, o.instrument_id)
+        symbol = await zerodha_symbol(conn, o.instrument_id)
         if o.tradingsymbol != symbol:
             raise PlanStoreError(BAD_PLAN, f"leg {o.leg_index}: tradingsymbol {o.tradingsymbol!r} is not the "
                                            f"catalogue's {ZERODHA} symbol {symbol!r} for {o.instrument_id}")
 
 
-async def _lock(conn: Any, user_ref: str, strategy_id: Any) -> int:
+async def lock_strategy(conn: Any, user_ref: str, strategy_id: Any) -> int:
     """Row-locks the user's strategy until the transaction ends; another user's or a missing one is not_found."""
     try:
         strategy_id = strategy_store.check_strategy_id(strategy_id)
@@ -181,7 +211,7 @@ async def _lock(conn: Any, user_ref: str, strategy_id: Any) -> int:
     return strategy_id
 
 
-async def _owned(conn: Any, user_ref: str, strategy_id: Any) -> int:
+async def owned_strategy(conn: Any, user_ref: str, strategy_id: Any) -> int:
     try:
         strategy_id = strategy_store.check_strategy_id(strategy_id)
     except strategy_store.StrategyStoreError as exc:
@@ -194,7 +224,7 @@ async def _owned(conn: Any, user_ref: str, strategy_id: Any) -> int:
 async def next_plan_number(conn: Any, user_ref: str, strategy_id: int, *, floor: int = 0) -> int:
     """The plan number for the next Execute. Run it in the transaction that then calls ``record_plan``."""
     floor = _int(floor, "floor", 0)
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     if (await conn.execute(_OPEN, {"s": strategy_id})).first() is not None:
         raise PlanStoreError(PLAN_OPEN, f"strategy {strategy_id} already has an open plan")
     highest = int((await conn.execute(_HIGHEST, {"s": strategy_id})).scalar_one())
@@ -248,7 +278,7 @@ async def record_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: i
                       action: str, orders: Sequence[PlanOrder]) -> StoredPlan:
     """Stores the plan open, with its orders. The caller commits (and has called ``next_plan_number`` in the same
     transaction: the strategy lock is taken here too, so a plan can never be recorded around it)."""
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     number = _int(plan_number, "plan_number", 1)
     if action not in ACTIONS:
         raise PlanStoreError(BAD_PLAN, f"action must be ENTRY or EXIT, got {action!r}")
@@ -290,7 +320,7 @@ async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
     symbols: dict[str, str] = {}
     for r in (await conn.execute(_ORDERS, {"s": strategy_id})).all():
         if r.instrument_id not in symbols:
-            symbols[r.instrument_id] = await _zerodha_symbol(conn, r.instrument_id)
+            symbols[r.instrument_id] = await zerodha_symbol(conn, r.instrument_id)
         by_plan.setdefault(int(r.plan_number), []).append(PlanOrder(
             leg_index=int(r.leg_index), tag=r.tag, instrument_id=r.instrument_id,
             tradingsymbol=symbols[r.instrument_id],
@@ -305,7 +335,7 @@ async def _read(conn: Any, strategy_id: int) -> tuple[StoredPlan, ...]:
 
 async def plans_for(conn: Any, user_ref: str, strategy_id: int) -> tuple[StoredPlan, ...]:
     """Every plan of the strategy, ascending by plan number."""
-    return await _read(conn, await _owned(conn, user_ref, strategy_id))
+    return await _read(conn, await owned_strategy(conn, user_ref, strategy_id))
 
 
 async def open_plan(conn: Any, user_ref: str, strategy_id: int) -> Optional[StoredPlan]:
@@ -335,17 +365,74 @@ def _checked_fills(reason: str, orders: tuple[PlanOrder, ...], filled: Mapping[s
     return full
 
 
+def _checked_trades(full: Mapping[str, int], fills: Any) -> tuple[PlanFill, ...]:
+    """Zerodha's trades for the closing plan, checked against the filled quantities (an allow-list: each item a
+    PlanFill re-checked, a tag of this plan, each (order id, trade id) once, one Zerodha order under one tag, and per
+    tag the trades sum EXACTLY to the filled quantity). Returned sorted by (tag, order id, trade id): every writer
+    takes the order-row locks and the order-id advisory locks of migration 0020's trigger in one global order (no
+    deadlock)."""
+    if fills is None:
+        fills = ()
+    if not isinstance(fills, (tuple, list)):
+        raise PlanStoreError(BAD_PLAN, f"fills must be a tuple of PlanFill, got {fills!r}")
+    seen: set[tuple[str, str]] = set()
+    tag_of_order: dict[str, str] = {}
+    units = dict.fromkeys(full, 0)
+    for fill in fills:
+        if not isinstance(fill, PlanFill):
+            raise PlanStoreError(BAD_PLAN, f"expected a PlanFill, got {fill!r}")
+        fill.check()  # a frozen dataclass can still be forged with object.__setattr__
+        if fill.tag not in full:
+            raise PlanStoreError(BAD_PLAN, f"trade {fill.trade_id!r}: tag {fill.tag!r} is not in this plan")
+        key = (fill.broker_order_id, fill.trade_id)
+        if key in seen:
+            raise PlanStoreError(BAD_PLAN, f"trade {fill.trade_id!r} of order {fill.broker_order_id!r} appears twice")
+        seen.add(key)
+        if tag_of_order.setdefault(fill.broker_order_id, fill.tag) != fill.tag:
+            raise PlanStoreError(BAD_PLAN, f"order {fill.broker_order_id!r} appears under two tags")
+        units[fill.tag] += fill.quantity
+    for tag, filled in full.items():
+        if units[tag] != filled:
+            raise PlanStoreError(BAD_PLAN, f"the trades of {tag!r} sum to {units[tag]} units; Zerodha filled {filled}")
+    return tuple(sorted(fills, key=lambda f: (f.tag, f.broker_order_id, f.trade_id)))
+
+
+async def _store_trades(conn: Any, trades: tuple[PlanFill, ...]) -> None:
+    """Inserts the trades (after the filled quantities are set: migration 0020's trigger reads them). A trade already
+    stored, or an order id already stored under any tag, is refused here with a clear error before the database's
+    primary key or trigger would refuse it (they stay as the second layer, mapped to bad_plan)."""
+    if not trades:
+        return
+    stored = (await conn.execute(_STORED_TRADES, {"oids": sorted({t.broker_order_id for t in trades})})).all()
+    if stored:
+        raise PlanStoreError(BAD_PLAN, f"order {stored[0].broker_order_id!r} already has stored trades "
+                                       f"(trade {stored[0].trade_id!r})")
+    try:
+        async with conn.begin_nested():
+            for t in trades:
+                await conn.execute(_INSERT_FILL, {"tag": t.tag, "oid": t.broker_order_id, "tid": t.trade_id,
+                                                  "q": t.quantity, "price": t.price})
+    except DBAPIError as exc:
+        if _sqlstate(exc) in (_UNIQUE_VIOLATION, _CHECK_VIOLATION, _ORDER_BOOK_GUARD):
+            raise PlanStoreError(BAD_PLAN, str(exc.orig)) from exc
+        raise
+
+
 async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: int, *,  # noqa: PLR0913 fixed API
                      reason: str,
-                     filled: Optional[Mapping[str, int]] = None) -> StoredPlan:
+                     filled: Optional[Mapping[str, int]] = None,
+                     fills: Sequence[PlanFill] = ()) -> StoredPlan:
     """Open -> closed, once. Closing a closed plan is ``bad_plan``; no plan number is ever reused or reopened.
     ``filled`` (tag -> Zerodha's filled quantity at close) is stored on the orders, so a restart can rebuild the
     position from the database. A close that changes position (``filled``, ``exited``, ``partial``) must carry it:
     ``filled=None`` is ``bad_plan`` for those; ``nothing_placed`` with None stores 0 for every order;
     ``unresolved_from_positions`` takes only None, stores 0 for every order, and is refused unless the strategy
     has an unresolved reconciliation mismatch (recorded earlier in this same transaction or before): the mismatch
-    carries the block the open plan carried, so the close can never leave the strategy unblocked."""
-    strategy_id = await _lock(conn, user_ref, strategy_id)
+    carries the block the open plan carried, so the close can never leave the strategy unblocked.
+    ``fills`` (#313b) are Zerodha's trades of the plan's orders: per tag they must sum exactly to the filled quantity
+    (so a close with fills carries its trades, and a close with nothing filled carries none); they are stored in this
+    transaction, under the strategy and plan locks already held."""
+    strategy_id = await lock_strategy(conn, user_ref, strategy_id)
     if not isinstance(reason, str) or reason not in CLOSE_REASONS:
         raise PlanStoreError(BAD_PLAN, f"reason must be one of {CLOSE_REASONS}, got {reason!r}")
     if isinstance(plan_number, bool) or not isinstance(plan_number, int) or not 1 <= plan_number <= INTEGER_MAX:
@@ -365,11 +452,15 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
             raise PlanStoreError(BAD_PLAN, f"reason {reason!r} changes position and needs the filled quantities")
         filled = {}
     orders = _one(await _read(conn, strategy_id), plan_number).orders
-    for tag, quantity in _checked_fills(reason, orders, filled).items():
+    full = _checked_fills(reason, orders, filled)
+    trades = _checked_trades(full, fills)
+    for tag, quantity in full.items():
         await conn.execute(_SET_FILLED, {"s": strategy_id, "p": plan_number, "tag": tag, "f": quantity})
+    await _store_trades(conn, trades)
     await conn.execute(_CLOSE, {"s": strategy_id, "p": plan_number, "r": reason})
     return _one(await _read(conn, strategy_id), plan_number)
 
 
-__all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "UNRESOLVED", "PlanOrder", "PlanStoreError", "StoredPlan",
-           "close_plan", "next_plan_number", "open_plan", "plans_for", "record_plan"]
+__all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "UNRESOLVED", "PlanFill", "PlanOrder", "PlanStoreError",
+           "StoredPlan", "close_plan", "lock_strategy", "next_plan_number", "open_plan", "owned_strategy", "plans_for",
+           "record_plan", "zerodha_symbol"]
