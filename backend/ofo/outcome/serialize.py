@@ -75,7 +75,7 @@ def outcome_to_dict(out: Outcome) -> dict[str, Any]:
             "levels": [{"level": _s(c.level), "current": c.is_current, "zero_pnl": c.is_zero_pnl}
                        for c in ls.columns],
             "totals": None if v.totals is None else [_s(x) for x in v.totals],
-            "step": _s(ls.step), "start": _s(ls.start), "end": _s(ls.end),
+            "step": _s(ls.step), "start": _s(ls.start), "end": _s(ls.end), "customised": ls.customised,
         }
         payoff = {"view": v.view.value, "points": [{"level": _s(lvl), "pnl": _s(p)} for lvl, p in out.payoff_points]}
     if out.summary is not None:
