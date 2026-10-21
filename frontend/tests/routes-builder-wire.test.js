@@ -11,7 +11,7 @@ describe('Strategy Builder wiring', () => {
     expect(await loaded('strategies-strategy-builder')).toBe(StrategyBuilderPage)
   })
   it('a still-unbuilt nav item keeps the placeholder', async () => {
-    expect(await loaded('strategies-my-strategies')).toBe(PlaceholderPage)
+    expect(await loaded('strategies-adjustments')).toBe(PlaceholderPage) // My Strategies is built (W-109)
   })
   it('the direct /strategy/builder route still loads the Builder page', async () => {
     expect(await loaded('strategy-builder-screen')).toBe(StrategyBuilderPage)
