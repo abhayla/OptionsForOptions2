@@ -8,11 +8,15 @@
   "where": "CI frontend e2e on PR #427, and a second API on :8766 on ofo_dev",
   "evidence": "rolconnlimit 5 measured by a parallel session 2026-10-19 10:41; e2e failed 4/4 tries with asyncpg.exceptions.TooManyConnectionsError: too many connections for role \"ofo_app\" -> GET /strategies 500 -> saved-drafts list empty -> open-draft-3 click timeout (a re-run passed); the second API on :8766 hit it 11 times"
  },
- "fix": "Not fixed. Class fix options (technical call): set the pool size and overflow below the role limit divided by the number of processes, and/or raise the role limit; a startup check that compares the pool maximum with rolconnlimit and refuses to start (or logs loudly) when it is higher.",
+ "fix": "GC-6 POOL-BUDGET: pool sized from the role limit (defaults 2 + 0), start-up check against rolconnlimit, one connection per token read, single-flight charge-rates load.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No test compares pool maximum with the role limit. Unmeasured: the production role's limit and the pool settings of the deployed process."
+  "status": "guarded",
+  "checks": [
+   "backend/ofo_app/db.py::verify_pool_budget (start-up refusal)",
+   "tests_app/test_db_pool_startup.py",
+   "tests_app/test_db_pool_core_proof.py"
+  ],
+  "note": "verify_pool_budget reads rolconnlimit/rolsuper once at start-up and refuses a pool above the limit (superuser and -1 skipped, unreadable limit = warning); test_db_pool_core_proof.py runs two engines with the default settings under load against the CI role (CONNECTION LIMIT 5) and shows the old defaults (5+10) do hit TooManyConnectionsError. Does NOT cover: more than the two modelled processes, other roles, or the production role's real limit (unmeasured)."
  },
  "spec_ref": [
   "spec/decisions/ADR-048.md"

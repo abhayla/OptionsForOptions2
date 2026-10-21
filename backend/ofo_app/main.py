@@ -18,7 +18,7 @@ from ofo.broker import egress as _egress
 from ofo_app import errors, event_loop, execute_replay_switch, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
-from ofo_app.db import close_db
+from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     broker,
     broker_status,
@@ -47,6 +47,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     event_loop.require_selector_loop()  # W-080 r7: refuses to start on a loop whose connects the egress gate can't see
     if not _egress.installed():  # W-080: create_app installs it; an app built any other way does not start
         raise _egress.EgressRefused("the egress gate is not installed; the API starts only through create_app")
+    await verify_pool_budget()  # GC-6: a pool above the role's connection limit refuses to start
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
         market = live_market.LiveMarket()

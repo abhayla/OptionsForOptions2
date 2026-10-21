@@ -20,7 +20,7 @@ async def main():
     engine = get_engine()
     try:
         async with engine.connect() as conn:
-            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key), engine=engine)
+            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
         client = KiteMargin(api_key=cfg.api_key, access_token=token)
         try:
             basket = await asyncio.to_thread(client.fetch_basket_margin, [ORDER])

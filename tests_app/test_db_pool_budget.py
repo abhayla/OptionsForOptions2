@@ -35,12 +35,12 @@ def fresh(monkeypatch):
     db.get_engine.cache_clear()
 
 
-def test_pool_defaults_are_unchanged(fresh):
-    """AC-5: with nothing set the engine keeps SQLAlchemy's own 5 + 10."""
+def test_pool_defaults_fit_the_role_limit(fresh):
+    """GC-6: with nothing set the engine opens 2 + 0 (the old 5 + 10 could never fit a role limit of 5)."""
     fresh.delenv("DB_POOL_SIZE", raising=False)
     fresh.delenv("DB_MAX_OVERFLOW", raising=False)
     pool = db.get_engine().pool
-    assert (pool.size(), pool._max_overflow) == (5, 10)
+    assert (pool.size(), pool._max_overflow) == (2, 0)
 
 
 def test_pool_follows_the_settings(fresh):
