@@ -105,10 +105,13 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   by path from `.claude/rules/project/`; the edit hook lints each file as it is written. Every builder brief carries:
   "no new duplicated literal; reuse the existing helper; ruff/mypy baselines must not rise; targeted tests only; no
   regenerated files in the PR".
-- Merge only with `python tools/merge_when_green.py <pr>` (run in the foreground) — never
-  `gh pr checks --watch && gh pr merge`, which merges before CI has started.
+- Merge only with `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` (or `land.py`), which runs
+  the kit gate `tools/merge_when_green.py <pr> --reviewed-sha <full sha>` in the foreground — never
+  `gh pr checks --watch && gh pr merge`, which merges before CI has started. The sha is the full 40-character sha of
+  the commit the reviewer/verifier passed (kit 1.8.0); the gate refuses without it and answers `RE-REVIEW NEEDED`
+  when a later push or base update touches the PR's files or a Tier A path.
 - Fast delivery (owner 2026-10-16, revised by ADR-106; reasons there and in `docs/process/goal-chain.md`):
-  1. Before a push: the fast checks (spec tools below, `scripts/ruff_ratchet.py`, `pr_close_check.py`), the guard tests
+  1. Before a push: the fast checks (spec tools below, `scripts/ruff_ratchet.py`, `pr_close_check.py`, `coverage.py . --check`), the guard tests
      + `pytest -m repo_scan tests` (~75 s) and the changed files' tests. Full suites and DB tests run in CI; exceptions:
      a migration or DB store runs its own test file, a regenerated file its `--check`. Overrides kit run-discipline C3.
   2. Red CI: read the failed job log (`gh run view <id> --log-failed`), fix, push again - no local full-suite re-run.
@@ -125,10 +128,10 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   6. Batch: one docs PR per contract; a decision a build needs rides in that build's PR. Dependent items are stacked PRs
      (Tier A ~1,000 product lines, a migration its own PR); main merged in once, before the gate.
   7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
-     `python scripts/orchestrator/land.py <worktree> --title T --body-file F` (close check, push, PR, merge gate, updates
+     `python scripts/orchestrator/land.py <worktree> --title T --body-file F --reviewed-sha <full sha>` (close check, push, PR, merge gate, updates
      a BEHIND branch; `--dry-run` shows the commands); `gh_issue.py app ... --stage <stage>` also stages the new issue.
   8. Orchestrator lessons (2026-10-16): never idle while a ready item waits - after each result start the next
-     independent item, then report; run `gh pr update-branch N` before `merge_when_green.py N`; file
+     independent item, then report; merge with `merge.py N --reviewed-sha <full sha>` (update-branch, then the gate); file
      issues only with `gh_issue.py --stage` and commit the row the same turn; READ the findings a guard brief cites
      before designing it; merge main into a parked branch before any new round; reviewer briefs are narrow and say
      "hands-on attacks first"; before any live Kite action load the `zerodha-expert` skill (API orders need a static
@@ -148,7 +151,7 @@ CI installs `pyyaml jsonschema pytest` on Python 3.12.
 - `python tools/kit_selftest.py .`
 - `python tools/kit_drift.py . --ci` (add `--base <sha>` when checking a pull request against its base)
 - `python tools/check_pr_spec_block.py` (pull requests only — needs the PR body)
-- Merge a PR: `python tools/merge_when_green.py <pr>`
+- Merge a PR: `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha of the reviewed commit>`
 - Before merging a branch: merge `main` into it, run the changed files' tests, then
   `python scripts/orchestrator/merge_audit.py` (checks nothing was lost);
   CI re-runs both full suites on the merged result.

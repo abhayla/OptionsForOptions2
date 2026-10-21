@@ -90,7 +90,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   gets an entry case AND a closing/position-reducing case from a real reply.
 - **A change to any API request/response model regenerates `docs/api/openapi.json`** (`python
   scripts/generate_openapi.py`) in the same PR: `test_committed_openapi_matches_the_app` fails otherwise. This is the
-  one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it).
+  one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it). A NEW `ApiModel` class is
+  also registered in `tests_app/test_response_door.py` (the pinned set and its count) and that file is run (GC-2g:
+  W-111's four Positions models turned CI's `api` job red).
 - **A migration's `upgrade()`/`downgrade()` call `op.*` directly** (`scripts/alembic_migration_guard.py`), and a
   migration that changes a pinned function body publishes its own `PINNED_BODIES` (GC-2e W-103: two CI reds).
 - **After merging main into your branch, re-run `python scripts/ruff_ratchet.py`** (E501 rose twice on 2026-10-16 only
@@ -100,7 +102,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 ## Before you finish
 Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 11; CI runs the full
 suites): your brief's `Tests:` line (guard tests + `-m repo_scan` + your changed files' tests) ·
-`python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
+`python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .` ·
+`python scripts/orchestrator/coverage.py . --check` (~5 s; a NEW work item or issue needs its row in
+`docs/process/coverage-stages.yaml`, else CI's coverage job goes red - W-112, 2026-10-18)
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
 test files your brief names plus `python scripts/orchestrator/atool.py <worktree> <W-id> --no-tests` (every ci.yml
 lint step); CI runs the full suites. Before the targeted run, grep `tests/` and `tests_app/` for every route, status,

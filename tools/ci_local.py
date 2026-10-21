@@ -50,6 +50,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -273,6 +274,76 @@ def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()[:50] or "step"
 
 
+PYTEST_CALL = re.compile(r"(?<![\w./-])(python\d*(?:\.\d+)?\s+-m\s+pytest)\b")
+RESULTS_DIR = Path("views") / "test-results"
+
+
+def add_junit(cmd: str, stem: str) -> tuple[str, list[str]]:
+    """Append --junitxml to every pytest call of a step; one file per call (REQ-052 AC-4).
+    Returns the new command and the junit paths (relative to the repo) it will write."""
+    paths: list[str] = []
+
+    def sub(m: re.Match) -> str:
+        rel = f"{RESULTS_DIR.as_posix()}/{stem}{'' if not paths else '-' + str(len(paths) + 1)}.xml"
+        paths.append(rel)
+        return f"{m.group(1)} --junitxml {rel}"
+
+    return PYTEST_CALL.sub(sub, cmd), paths
+
+
+def _first_line(text: str | None) -> str:
+    for ln in (text or "").splitlines():
+        if ln.strip():
+            return ln.strip()[:300]
+    return ""
+
+
+def read_junit(path: Path) -> dict | None:
+    """Totals and failures of one junit file, or None when it is missing or unreadable."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    out = {"passed": 0, "failed": 0, "skipped": 0, "failures": []}
+    for tc in root.iter("testcase"):
+        bad = tc.find("failure")
+        if bad is None:
+            bad = tc.find("error")
+        if bad is not None:
+            out["failed"] += 1
+            name = "::".join(x for x in (tc.get("classname"), tc.get("name")) if x)
+            out["failures"].append({"name": name, "first_error_line": _first_line(bad.get("message") or bad.text)})
+        elif tc.find("skipped") is not None:
+            out["skipped"] += 1
+        else:
+            out["passed"] += 1
+    return out
+
+
+def git_text(repo: Path, *args: str) -> str | None:
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def write_test_summary(repo: Path, ran: list[tuple[str, str]], sha: str | None, dirty: bool | None,
+                       when: str) -> Path:
+    """views/test-results.json: one entry per junit file (suite = step label)."""
+    suites = []
+    for label, rel in ran:
+        res = read_junit(repo / rel)
+        if res is None:
+            continue
+        suites.append({"suite": label, "junit": rel, "sha": sha, "dirty": dirty, "time": when, **res})
+    out = repo / "views" / "test-results.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"suites": suites}, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return out
+
+
 def read_outputs(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if path.exists():
@@ -354,6 +425,13 @@ def main(argv: list[str] | None = None) -> int:
         run_dir.mkdir(parents=True, exist_ok=True)
         print(f"logs: {run_dir}", flush=True)
         t_all = time.time()
+        start_sha = git_text(repo, "rev-parse", "--short", "HEAD")
+        porcelain = git_text(repo, "status", "--porcelain", "-uall")
+        start_dirty = None if porcelain is None else bool(porcelain)
+        for old in (repo / RESULTS_DIR).glob("*.xml"):
+            old.unlink(missing_ok=True)   # a result from an earlier run must not pass for this one
+        (repo / RESULTS_DIR).mkdir(parents=True, exist_ok=True)
+        junit_ran: list[tuple[str, str]] = []
         counts = {"PASS": 0, "FAIL": 0, "SKIP": 0}
         outputs_file: dict[str, Path] = {}
         base_sha: str | None = None
@@ -386,10 +464,12 @@ def main(argv: list[str] | None = None) -> int:
             step_env.update(st.env)
             step_env["GITHUB_OUTPUT"] = out_path.as_posix()
             log_path = run_dir / f"{st.idx:02d}-{slug(st.name)}.log"
+            cmd, junit_paths = add_junit(cmd, f"{st.idx:02d}-{slug(st.name)}")
             t0 = time.time()
             with open(log_path, "w", encoding="utf-8", errors="replace") as log:
                 rc = run_bash(bash, cmd, repo, step_env, log)
             secs = time.time() - t0
+            junit_ran += [(st.label, rel) for rel in junit_paths]
             if rc == 0:
                 report("PASS", secs)
             else:
@@ -399,6 +479,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("\n".join(lines[-TAIL_LINES:]))
                 print("--- end ---", flush=True)
 
+        when = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        when = when[:-2] + ":" + when[-2:] if re.search(r"[+-]\d{4}$", when) else when
+        summary = write_test_summary(repo, junit_ran, start_sha, start_dirty, when)
+        print(f"test results: {summary}", flush=True)
         print(f"TOTAL: {counts['PASS']} passed, {counts['FAIL']} failed, {counts['SKIP']} skipped "
               f"({time.time() - t_all:.1f}s) - logs: {run_dir}")
         return 1 if counts["FAIL"] else 0
