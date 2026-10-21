@@ -2,6 +2,7 @@
      'buy_failed'. Sells are shown locked until Zerodha confirms the fills. Display only. -->
 <script setup>
 import { computed } from 'vue'
+import { KITE_ORDER_BOOK_URL } from '@/lib/execute'
 import { STEP_BUYS, STEP_SELLS, BUYS_FILLED_TEXT, BUY_FAILED_TEXT } from '@/lib/sharedStateText'
 
 const props = defineProps({
@@ -16,6 +17,9 @@ const message = computed(() => ({ buys_filled: BUYS_FILLED_TEXT, buy_failed: BUY
       <li data-testid="step-buys" :aria-current="state === 'buys' ? 'step' : undefined">{{ STEP_BUYS }}</li>
       <li data-testid="step-sells">{{ STEP_SELLS }}</li>
     </ol>
-    <p v-if="message" class="mt-2 font-medium" role="status" data-testid="two-basket-message">{{ message }}</p>
+    <p v-if="message" class="mt-2 font-medium" role="status" data-testid="two-basket-message">
+      <a v-if="state === 'buy_failed'" :href="KITE_ORDER_BOOK_URL" target="_blank" rel="noopener" data-testid="two-basket-kite-link" class="underline">{{ message }}</a>
+      <template v-else>{{ message }}</template>
+    </p>
   </div>
 </template>

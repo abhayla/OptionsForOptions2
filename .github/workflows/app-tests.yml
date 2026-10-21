@@ -18,6 +18,9 @@ on:
       - 'scripts/alembic_migration_guard.py'
       - 'scripts/generate_openapi.py'
       - 'frontend/**'
+      # read by the frontend proxy and the OpenAPI drift test / the recorded Kite basket the checked-basket test reads
+      - 'docs/api/**'
+      - 'docs/research/kite-proof-2026-10-07/**'
       - '.github/workflows/app-tests.yml'
       # the ruff ratchet (REQ-075 AC-3) covers tests/ and scripts/, so its inputs start this workflow too
       - 'tests/**'
@@ -25,6 +28,7 @@ on:
       - 'requirements-dev.txt'
       - 'scripts/ruff_ratchet.py'
       - 'scripts/ruff_baseline.json'
+      - 'scripts/**'  # tests_app/test_live_probe.py loads scripts/live/probe.py; the ratchet covers scripts/
   pull_request:
     paths:
       - 'backend/ofo/**'
@@ -36,6 +40,9 @@ on:
       - 'scripts/alembic_migration_guard.py'
       - 'scripts/generate_openapi.py'
       - 'frontend/**'
+      # read by the frontend proxy and the OpenAPI drift test / the recorded Kite basket the checked-basket test reads
+      - 'docs/api/**'
+      - 'docs/research/kite-proof-2026-10-07/**'
       - '.github/workflows/app-tests.yml'
       # the ruff ratchet (REQ-075 AC-3) covers tests/ and scripts/, so its inputs start this workflow too
       - 'tests/**'
@@ -43,6 +50,7 @@ on:
       - 'requirements-dev.txt'
       - 'scripts/ruff_ratchet.py'
       - 'scripts/ruff_baseline.json'
+      - 'scripts/**'  # tests_app/test_live_probe.py loads scripts/live/probe.py; the ratchet covers scripts/
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -52,7 +60,67 @@ permissions:
   contents: read
 
 jobs:
+  # GC-6 CI-SPLIT (F-53): the workflow-level paths above only decide whether the workflow starts. Which JOBS a pull
+  # request needs is decided here, per job. A push to main skips this job, which makes every job below run. If this
+  # job fails or is cancelled, every job runs (fail toward testing). Filters are positive globs only (no '!').
+  # tests/test_app_tests_job_selection.py evaluates these globs offline.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # the action lists the PR's files through the API
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - name: Select the jobs this change needs
+        id: filter
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            api:
+              - 'backend/ofo/**'
+              - 'backend/ofo_app/**'
+              - 'tests_app/**'
+              - 'tests/**'
+              - 'requirements-app.txt'
+              - 'requirements-dev.txt'
+              - 'pytest-app.ini'
+              - 'ruff.toml'
+              - 'scripts/alembic_migration_guard.py'
+              - 'scripts/generate_openapi.py'
+              - 'scripts/ruff_ratchet.py'
+              - 'scripts/ruff_baseline.json'
+              - 'scripts/**'
+              - 'docs/api/**'
+              - 'docs/research/kite-proof-2026-10-07/**'
+              - '.github/workflows/app-tests.yml'
+            # frontend job: lint, unit tests, build, Playwright journeys. Frontend-only starts no API job; backend/ofo
+            # and backend/ofo_app feed it because its Playwright journeys run against the real API.
+            frontend:
+              - 'frontend/**'
+              - 'backend/ofo/**'
+              - 'backend/ofo_app/**'
+              - 'tests/fixtures/**'
+              - 'requirements-app.txt'
+              - 'docs/api/**'
+              - '.github/workflows/app-tests.yml'
+            # execute-screen-e2e: the Execute screen against the real ofo_app replay API, so API code also feeds it.
+            e2e:
+              - 'frontend/**'
+              - 'backend/ofo/**'
+              - 'backend/ofo_app/**'
+              - 'tests/fixtures/**'
+              - 'requirements-app.txt'
+              - 'docs/api/**'
+              - '.github/workflows/app-tests.yml'
+
   api:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30  # was 15; the W-067 full-day finalize test is bounded at 10 min by its own assertion
     env:
@@ -167,6 +235,8 @@ jobs:
 
   # W-054: frontend skeleton. Core proof: browser -> Vite preview /api proxy -> FastAPI (ofo_app) -> PostgreSQL.
   frontend:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -366,6 +436,8 @@ jobs:
   # catalogue never share a database with the frontend job's seeded 2026-10-08 catalogue or its Save Draft e2e.
   # Kite is never reached: the spec intercepts and aborts every request to Kite's host. Both servers stop by PID.
   execute-screen-e2e:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.e2e == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

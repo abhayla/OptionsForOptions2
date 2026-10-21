@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { KITE_ORDER_BOOK_URL } from '@/lib/execute'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import SessionEndedCard from '@/components/states/SessionEndedCard.vue'
 import TwoBasketStepper from '@/components/states/TwoBasketStepper.vue'
@@ -64,7 +65,16 @@ describe('TwoBasketStepper', () => {
     expect(t(mount(TwoBasketStepper, { props: { state: 'buys_filled' } }), 'two-basket-message')).toBe('Buys filled. Sells not placed yet. Your position is not complete.')
   })
   it('buy_failed state text', () => {
-    expect(t(mount(TwoBasketStepper, { props: { state: 'buy_failed' } }), 'two-basket-message')).toBe('A buy failed. Sells stay locked.')
+    expect(t(mount(TwoBasketStepper, { props: { state: 'buy_failed' } }), 'two-basket-message')).toBe('Buy not executed - see Kite')
+  })
+  it('buy_failed links to Kite order book and the old text is gone from src (ADR-138 (6))', () => {
+    const a = mount(TwoBasketStepper, { props: { state: 'buy_failed' } }).get('[data-testid="two-basket-kite-link"]')
+    expect(a.attributes('href')).toBe(KITE_ORDER_BOOK_URL)
+    expect(a.attributes('target')).toBe('_blank')
+    expect(a.attributes('rel')).toBe('noopener')
+    const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]))
+    const old = ['A buy', 'failed. Sells stay locked.'].join(' ')
+    expect(walk('src').filter((f) => readFileSync(f, 'utf8').includes(old))).toEqual([])
   })
 })
 
