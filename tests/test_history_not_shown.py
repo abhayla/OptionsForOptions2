@@ -46,6 +46,8 @@ ALLOWED_FRONTEND_WORDS = frozenset({
     ("router/nav.js", "execution-history"),
     ("router/nav.js", "history"),
     ("router/nav.js", "History"),
+    ("router/routes.js", "alerts-history"),  # route name of the Alerts > History page (fired alerts, REQ-009 AC-6)
+    ("pages/BrokerSettingsPage.vue", "history-statement"),  # test id of the "not available" sentence (ADR-066)
 })
 
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
