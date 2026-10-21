@@ -398,6 +398,7 @@ issues:
   "#495": S6.1  # Order-path scan misses routes that reach order code through a helper module (W-121 MINOR-1)
   "#497": S6.1  # Shared ofo_test catalogue left by earlier runs makes local DB tests fail (420 of 424 NIFTY contracts)
   "#499": S6.1  # History scan ignores prose text in templates (follow-up to #409)
+  "#500": S6.1  # Stored contract priced by a reused exchange token: _with_tokens and execute _IDS
 
 # Work items whose status is not done.
 work_items:
