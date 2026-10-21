@@ -20,6 +20,7 @@ from ofo_app import execution_return as er
 from ofo_app import return_book as rb
 from ofo_app.execute_replay import recorded_text
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
+from ofo_app.kite_replies import PositionsRead
 
 SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
@@ -240,7 +241,7 @@ def test_381_orders_and_trades_both_present_close_filled_and_an_unrelated_listed
     manual = {**real_order, "order_id": "77", "tag": None}
     manual_trade = {**real_trade, "order_id": "77", "trade_id": "78"}
     book = _book([real_order, manual], [real_trade, manual_trade], (ENTRY_OPEN,))
-    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"OFS1V1L0": 65})
+    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {make_tag(1, ENTRY_PLAN, 0): 65})
 
 
 def test_381_order_complete_but_trades_empty_is_reconciliation_not_filled():
@@ -290,7 +291,7 @@ def _zerodha_read(monkeypatch, reads: _OrderedReads):
     from ofo_app.routes import execution_return as route  # noqa: PLC0415
 
     monkeypatch.setattr(route.ContractIndex, "from_catalogue", staticmethod(lambda catalogue: None))
-    monkeypatch.setattr(route, "positions_from_reply", lambda reply, index: type("P", (), {"net": {}})())
+    monkeypatch.setattr(route, "positions_from_reply", lambda reply, index: PositionsRead({}, ()))
     session = type("S", (), {"reads": reads})()
     req = route._Request(None, "u", 1, session, AT, TODAY)
     return route._read_zerodha(req, None)
