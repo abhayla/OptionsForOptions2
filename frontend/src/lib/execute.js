@@ -23,6 +23,8 @@ export const NOT_LIVE_PARTS = Object.freeze({
 
 /** Margin added to the server's boundary before the screen asks again, so the server has crossed it (MKT-HOURS-REREAD). */
 export const MARKET_REREAD_MARGIN_MS = 2000
+/** Wait before asking again after a failed or unconfirmed read, so the screen recovers without a reload. */
+export const MARKET_RETRY_MS = 30000
 /** Largest delay setTimeout honours (a larger one fires at once). */
 export const MAX_TIMEOUT_MS = 2147483647
 

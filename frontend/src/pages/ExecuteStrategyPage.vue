@@ -21,7 +21,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedLegs } from '@/lib/saveDraft'
-import { LIVE_WAIT_MS, MARKET_REREAD_MARGIN_MS, MARKET_UNCONFIRMED_PARTS, MAX_TIMEOUT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
+import { LIVE_WAIT_MS, MARKET_REREAD_MARGIN_MS, MARKET_RETRY_MS, MARKET_UNCONFIRMED_PARTS, MAX_TIMEOUT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -61,14 +61,17 @@ const marketOpen = computed(() => market.value?.status === 'open')
 
 // MKT-HOURS-REREAD: one timeout at the SERVER's next boundary (reply.next_change_at - reply.as_of, both server times) plus
 // a margin; the browser clock never decides open/closed. Answer states: open + next close -> wait, re-ask; closed + next
-// open -> wait, re-ask; unconfirmed / failed read / no or unreadable boundary -> no timer (fail closed: the button keeps
-// the server's last answer, and the server refuses an out-of-hours basket anyway).
+// open -> wait, re-ask; unconfirmed / failed read -> disabled and asked again after MARKET_RETRY_MS; no or unreadable
+// boundary -> no timer (the server refuses an out-of-hours basket anyway).
 let marketTimer = null
 
 function scheduleMarketReread(data) {
   clearTimeout(marketTimer)
   marketTimer = null
-  if (!data || !['open', 'closed'].includes(data.status)) return
+  if (!data || !['open', 'closed'].includes(data.status)) { // unreadable / unconfirmed: stay disabled, ask again soon
+    marketTimer = setTimeout(readMarket, MARKET_RETRY_MS)
+    return
+  }
   const wait = Date.parse(data.next_change_at) - Date.parse(data.as_of)
   if (!Number.isFinite(wait) || wait < 0) return
   marketTimer = setTimeout(readMarket, Math.min(wait + MARKET_REREAD_MARGIN_MS, MAX_TIMEOUT_MS))
@@ -86,7 +89,7 @@ async function readMarket() {
     market.value = { status: 'unconfirmed', message: MARKET_UNCONFIRMED_PARTS }
   }
   if (unmounted) return
-  scheduleMarketReread(market.value.status === 'unconfirmed' ? null : data)
+  scheduleMarketReread(data)
 }
 
 function notLive() {

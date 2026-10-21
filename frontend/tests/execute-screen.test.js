@@ -32,7 +32,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import ExecuteStrategyPage from '@/pages/ExecuteStrategyPage.vue'
 import ExecutionReturnedPage from '@/pages/ExecutionReturnedPage.vue'
 import BasketForm from '@/components/execution/BasketForm.vue'
-import { KITE_BASKET_URL, LAST_EXECUTED_KEY, NOT_LIVE_PARTS, basketFields, isLiveOutcome, readLastExecuted, rememberExecuted } from '@/lib/execute'
+import { KITE_BASKET_URL, LAST_EXECUTED_KEY, MARKET_REREAD_MARGIN_MS, MARKET_RETRY_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome, readLastExecuted, rememberExecuted } from '@/lib/execute'
 
 const DATA = '[{"variety": "regular", "tradingsymbol": "NIFTY26O1923650CE", "exchange": "NFO", "transaction_type": "BUY", ' +
   '"order_type": "LIMIT", "product": "NRML", "price": 3.35, "quantity": 65, "readonly": true, "tag": "OFS1V1L0"}]'
@@ -433,5 +433,92 @@ describe('wording and money (ADR-003, ADR-008)', () => {
     const filled = block.replace('{data_input}', 'leg prices').replace('{state}', 'is unavailable')
     for (const part of ['what_happened', 'impact', 'next_action']) expect(filled).toContain(NOT_LIVE_PARTS[part])
     expect(t).toContain(`_EXEC = "${NOT_LIVE_PARTS.what_is_blocked}"`)
+  })
+})
+
+describe('MKT-HOURS-REREAD: the screen re-reads the server market status at the boundary, without a reload', () => {
+  const IST_OFFSET_MS = 5.5 * 3600 * 1000
+  const istTime = (h, m) => Date.UTC(2026, 9, 21, h, m) - IST_OFFSET_MS // Wed 2026-10-21, a trading day
+  const iso = (ms) => new Date(ms + IST_OFFSET_MS).toISOString().replace('Z', '+05:30')
+  // The SERVER's verdict as a function of the (fake) server clock: open 09:15-15:30, with its own next boundary.
+  const serverAt = (now) => {
+    const asOf = iso(now)
+    if (now >= istTime(9, 15) && now < istTime(15, 30)) return { ...MARKET_OPEN, as_of: asOf, next_change_at: iso(istTime(15, 30)) }
+    return { ...MARKET_CLOSED, next_open: '2026-10-22', as_of: asOf, next_change_at: iso(istTime(9, 15)) }
+  }
+  let base = 0 // reads made while opening (mount and the first live push)
+  const statusCalls = () => calls.filter(([m, u]) => m === 'GET' && u === '/execute/market-status').length - base + 1
+  const disabled = (w) => w.get('[data-testid="prepare-entry"]').attributes('disabled') !== undefined
+  const openAt = async (now) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(now)
+    answers['GET /execute/market-status'] = () => Promise.resolve({ data: serverAt(Date.now()) })
+    const w = await openExecute('1', 10 * 3600 * 1000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    base = statusCalls() + base - 1
+    return w
+  }
+  const advance = async (ms) => {
+    await vi.advanceTimersByTimeAsync(ms)
+    await flushPromises()
+  }
+  afterEach(() => vi.useRealTimers())
+
+  it('opened 15:20, enabled; disabled at 15:30 with no reload', async () => {
+    const w = await openAt(istTime(15, 20))
+    expect(disabled(w)).toBe(false)
+    expect(statusCalls()).toBe(1)
+    await advance(9 * 60 * 1000) // 15:29, before the boundary: nothing asked, still enabled
+    expect(statusCalls()).toBe(1)
+    expect(disabled(w)).toBe(false)
+    await advance(60 * 1000 + MARKET_REREAD_MARGIN_MS) // past 15:30
+    expect(statusCalls()).toBe(2)
+    expect(disabled(w)).toBe(true)
+    expect(text(w, 'market-closed-what')).toBe(MARKET_CLOSED.message.what_happened)
+  })
+
+  it('opened 09:10, disabled until the server answer says open at 09:15', async () => {
+    const w = await openAt(istTime(9, 10))
+    expect(disabled(w)).toBe(true)
+    await advance(5 * 60 * 1000) // 09:15 on the clock, but the server has not been asked again yet
+    expect(statusCalls()).toBe(1)
+    expect(disabled(w)).toBe(true) // the screen's own clock never opens it
+    await advance(MARKET_REREAD_MARGIN_MS)
+    expect(statusCalls()).toBe(2)
+    expect(disabled(w)).toBe(false)
+  })
+
+  it('a market-closed refusal from the server makes the screen re-read the status', async () => {
+    const w = await openAt(istTime(15, 29))
+    answers['POST /strategies/1/execute'] = () => {
+      vi.setSystemTime(istTime(15, 31)) // the server crossed the boundary while the click was in flight
+      return Promise.reject({ status: 409, parts: REFUSAL })
+    }
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(statusCalls()).toBe(2)
+    expect(text(w, 'execute-error-what')).toBe(REFUSAL.what_happened)
+    expect(disabled(w)).toBe(true)
+  })
+
+  it('an unreadable answer at the boundary fails closed and is asked again until it reads', async () => {
+    const w = await openAt(istTime(15, 29))
+    let down = true
+    answers['GET /execute/market-status'] = () => (down ? Promise.reject({ message: 'down', parts: null }) : Promise.resolve({ data: serverAt(Date.now()) }))
+    await advance(60 * 1000 + MARKET_REREAD_MARGIN_MS)
+    expect(disabled(w)).toBe(true)
+    expect(text(w, 'market-closed-what')).toBe(MARKET_UNCONFIRMED.message.what_happened)
+    down = false
+    await advance(MARKET_RETRY_MS)
+    expect(text(w, 'market-closed-what')).toBe(MARKET_CLOSED.message.what_happened) // read again, after 15:30
+    expect(disabled(w)).toBe(true)
+  })
+
+  it('leaving the page stops the timer: no read after unmount', async () => {
+    const w = await openAt(istTime(15, 20))
+    w.unmount()
+    await advance(11 * 60 * 1000)
+    expect(statusCalls()).toBe(1)
   })
 })
