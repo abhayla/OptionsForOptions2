@@ -22,6 +22,7 @@ Any missing or unknown required field raises `KiteReplyError` (fail closed).
 from __future__ import annotations
 
 import datetime
+import logging
 import math
 import re
 from collections.abc import Iterable, Mapping
@@ -32,6 +33,7 @@ from typing import Final
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import ZERODHA
+from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.money import zerodha_paise
 from ofo.orders.model import FillEvent
 from ofo.reconciliation.positions import BrokerPositionLine, is_flat_row, position_line_from_kite_row
@@ -209,10 +211,52 @@ class ContractIndex:
 
 @dataclass(frozen=True)
 class PositionsRead:
-    """The ``net`` positions reply: broker net units per contract key (flat rows dropped) and the parsed lines."""
+    """The ``net`` positions reply: broker net units per contract key (flat rows dropped), the parsed lines, and the
+    non-flat rows the platform can never own (``"EXCHANGE:SYMBOL"``, reply order), kept for audit, never lost."""
 
     net: Mapping[ContractKey, int]
     lines: tuple[BrokerPositionLine, ...]
+    ignored: tuple[str, ...] = ()
+
+
+#: A Kite F&O tradingsymbol: underlying, 2-digit year, then a monthly ``OCT`` or weekly ``O19`` expiry, then a strike
+#: and CE/PE, or FUT (NIFTY26OCT24000CE, NIFTY26O1923650CE, NIFTY26OCTFUT). The lazy underlying makes SENSEX50... read
+#: as SENSEX50, never SENSEX.
+_FO_SYMBOL: Final = re.compile(r"(?P<underlying>[A-Z0-9&-]+?)[0-9]{2}(?:[A-Z]{3}|[1-9OND][0-9]{2})"
+                               r"(?:[0-9]+(?:\.[0-9]+)?(?:CE|PE)|FUT)")
+
+
+#: Kite exchanges whose rows the platform can never own (equity, commodity, currency); any exchange in neither this set
+#: nor ZERODHA_EXCHANGE_TO_SEGMENT is unknown and refuses the read.
+_NEVER_OURS_EXCHANGES: Final = frozenset({"NSE", "BSE", "MCX", "CDS", "BCD", "NCO"})
+
+log = logging.getLogger(__name__)
+
+
+def log_ignored(read: PositionsRead, where: str) -> None:
+    """One INFO line per positions read naming the rows skipped as never ours (EXCHANGE:SYMBOL only: no money, no
+    account id), so a skipped row is never silently lost."""
+    if read.ignored:
+        log.info("%s: positions read ignored %d non-platform rows: %s", where, len(read.ignored),
+                 ", ".join(read.ignored))
+
+
+def platform_may_own(row: Mapping[str, object]) -> bool:
+    """True when the row could be the platform's: an F&O exchange it trades (ZERODHA_EXCHANGE_TO_SEGMENT) AND an
+    underlying of SUPPORTED_UNDERLYINGS listed on that exchange's segment. An allowlist of what is ours: anything else
+    (equity CNC/MIS, MCX/CDS, BANKNIFTY or stock F&O) is never ours. A missing or malformed exchange, or an F&O
+    symbol whose underlying cannot be read, refuses (KiteReplyError): never read as "not ours"."""
+    exchange = _text(row, "exchange")
+    segment = ZERODHA_EXCHANGE_TO_SEGMENT.get(exchange)
+    if segment is None:
+        if exchange in _NEVER_OURS_EXCHANGES:
+            return False
+        raise KiteReplyError(f"unknown exchange {exchange!r}")  # nfo, NSEFO, a new code: could be ours, never skipped
+    symbol = _text(row, "tradingsymbol")
+    shape = _FO_SYMBOL.fullmatch(symbol)
+    if shape is None:
+        raise KiteReplyError(f"{exchange} row {symbol!r} is not a Kite F&O symbol; its underlying cannot be read")
+    return SUPPORTED_UNDERLYINGS.get(shape["underlying"]) == segment
 
 
 def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> PositionsRead:
@@ -221,9 +265,13 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
         raise KiteReplyError(f"positions 'net' must be a list, got {rows!r}")
     net: dict[ContractKey, int] = {}
     lines = []
+    ignored = []
     for row in rows:
         if is_flat_row(row):
             continue  # quantity 0: no position (never a 0-price holding)
+        if not platform_may_own(row):
+            ignored.append(f"{_text(row, 'exchange')}:{_text(row, 'tradingsymbol')}")
+            continue  # e.g. the owner's own stock trade (CNC): never in the catalogue, never a reconcile contract
         parsed = {**row, "average_price": kite_money(_field(row, "average_price"), "average_price", exact=True)}
         if row.get("last_price") is not None:
             parsed["last_price"] = kite_money(row["last_price"], "last_price")
@@ -234,7 +282,7 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
         key = index.resolve(row)
         net[key] = net.get(key, 0) + line.net_quantity
         lines.append(line)
-    return PositionsRead({k: q for k, q in net.items() if q != 0}, tuple(lines))
+    return PositionsRead({k: q for k, q in net.items() if q != 0}, tuple(lines), tuple(ignored))
 
 
 def fill_from_trade_row(row: Mapping[str, object]) -> FillEvent:

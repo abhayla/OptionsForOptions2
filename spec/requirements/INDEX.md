@@ -87,10 +87,10 @@ Requirements: 75; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-008 | Home dashboard | feature | Specified |
+| REQ-008 | Home dashboard | feature | Approved |
 | REQ-009 | Primary navigation and account menu | feature | Approved |
-| REQ-010 | Public site and live-data access | feature | Specified |
-| REQ-011 | Learn section | polish | Specified |
+| REQ-010 | Public site and live-data access | feature | Approved |
+| REQ-011 | Learn section | polish | Approved |
 
 ## Notifications (1)
 
@@ -102,9 +102,9 @@ Requirements: 75; sections: 18
 
 | id | title | layer | status |
 |---|---|---|---|
-| REQ-029 | Option Chain display and live data | feature | Specified |
-| REQ-030 | Option Chain leg selection and import | feature | Specified |
-| REQ-031 | Option Chain live strategy preview | feature | Specified |
+| REQ-029 | Option Chain display and live data | feature | Approved |
+| REQ-030 | Option Chain leg selection and import | feature | Approved |
+| REQ-031 | Option Chain live strategy preview | feature | Approved |
 
 ## Product scope and platform (6)
 
@@ -152,7 +152,7 @@ Requirements: 75; sections: 18
 | REQ-028 | Generic strategy engine and templates | core | Approved |
 | REQ-068 | Strategy preferences | feature | Approved |
 | REQ-069 | Suggested setups in the Guided Builder | feature | Approved |
-| REQ-070 | Builder history and restore | feature | Verified |
+| REQ-070 | Builder history and restore | feature | Approved |
 
 ## Strategy lifecycle (5)
 

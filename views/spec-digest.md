@@ -4,118 +4,153 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (110)
+## Decisions (145)
 
-- ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform for Indian index derivatives, focused on making strategy-based option trading (especially option selli…
-- ADR-002 2026-09-28: The strategy, not the order, is the central object.
-- ADR-003 2026-09-28: The platform helps the user decide and execute their own plan; it never tells them what to trade.
-- ADR-004 2026-09-28: Primary users are beginner and intermediate options traders; advanced users are supported.
-- ADR-005 2026-09-28: Create Strategy offers two paths: a Guided Strategy Builder (objective first, market view, risk, capital, or an expected price range for a chosen exp…
-- ADR-006 2026-09-28: One generic engine builds every strategy from the six leg types, any number of legs and per-leg expiries; named strategies are templates on top; anyt…
-- ADR-007 2026-09-28: The Strategy Builder is the primary workflow; the Option Chain is a supporting tool for exploring contracts and importing several legs at once, with…
-- ADR-008 2026-09-28: One strategy/risk engine produces every number (builder, order preview, live strategy, adjustment simulator, exit, payoff graph, scenario table).
-- ADR-009 2026-09-28: V1 is assisted, not autonomous: when a condition is met the platform alerts and prepares the exact orders, and the user reviews and executes.
-- ADR-010 2026-09-28: Active strategies get rule-based strategy-health monitoring with four statuses.
-- ADR-011 2026-09-28: Adjustments are suggestions, never automatic in V1.
-- ADR-012 2026-09-28: Market data comes in through one platform gateway, is normalised, cached and shared, and reaches browsers only through the platform.
-- ADR-013 2026-09-28: Simple historical strategy simulation is in scope but lower priority and deferred; historical data is disabled in V1 because the interim source has n…
-- ADR-014 2026-09-28: Until a commercial licence is in place, V1 uses Zerodha live market data through each user's own Zerodha API connection (owner decision 28 Sep), with…
-- ADR-015 2026-09-28: The platform never uses stale data as if it were live.
-- ADR-016 2026-09-28: Zerodha is the final authority on contract/order eligibility, margin, order acceptance and actual positions; the platform does not rebuild Zerodha's…
-- ADR-017 2026-09-28: The user presses one Execute Strategy; the engine builds a dependency-aware plan (protective legs before the sells that depend on them), checks margi…
+- ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
+- ADR-002 2026-09-28: The strategy, not the order, is the central objec…
+- ADR-003 2026-09-28: The platform helps the user decide and execute th…
+- ADR-004 2026-09-28: Primary users are beginner and intermediate optio…
+- ADR-005 2026-09-28: Create Strategy offers two paths: a Guided Strate…
+- ADR-006 2026-09-28: One generic engine builds every strategy from the…
+- ADR-007 2026-09-28: The Strategy Builder is the primary workflow; the…
+- ADR-008 2026-09-28: One strategy/risk engine produces every number (b…
+- ADR-009 2026-09-28: V1 is assisted, not autonomous: when a condition…
+- ADR-010 2026-09-28: Active strategies get rule-based strategy-health…
+- ADR-011 2026-09-28: Adjustments are suggestions, never automatic in V…
+- ADR-012 2026-09-28: Market data comes in through one platform gateway…
+- ADR-013 2026-09-28: Simple historical strategy simulation is in scope…
+- ADR-014 2026-09-28: Until a commercial licence is in place, V1 uses Z…
+- ADR-015 2026-09-28: The platform never uses stale data as if it were…
+- ADR-016 2026-09-28: Zerodha is the final authority on contract/order…
+- ADR-017 2026-09-28: The user presses one Execute Strategy; the engine…
 - ADR-018 2026-09-28: Zerodha's actual state wins.
-- ADR-019 2026-09-28: The strategy definition (the user's decisions) never changes because the market moves; live market state is separate and drives calculations.
-- ADR-020 2026-09-28: Zerodha connection is never forced: it is asked for only when a broker-dependent function is used.
-- ADR-021 2026-09-28: Users sign in with Google and complete a short registration: first and last name, Google-verified email, WhatsApp-verified mobile, market experience…
-- ADR-022 2026-09-28: One Zerodha Client ID belongs to one platform account at a time, and trial and entitlement history follow the Client ID, not the email.
-- ADR-023 2026-09-28: Everyone gets a 7-day full Pro trial from registration.
-- ADR-024 2026-09-28: Users who opened their Zerodha account directly through the owner (a Zerodha Authorised Partner) get full Pro free forever.
-- ADR-025 2026-09-28: An existing Zerodha user earns 30 days of Pro (admin-configurable, ADR-038) for each successful referral (a Zerodha account actually opened through t…
-- ADR-026 2026-09-28: Pro costs Rs 600 per month (from the owner's Rs 20/day idea), with a discounted annual plan whose price admins set.
-- ADR-027 2026-09-28: Home is action-first, not a trading terminal, and adapts to the user: new users see how to start, users with active strategies see what needs attenti…
-- ADR-028 2026-09-28: V1 alerts go to in-app, push, email and WhatsApp by priority, avoiding alert fatigue.
-- ADR-029 2026-09-28: Broker, market-data and payment integrations sit behind adapters; business rules live on the server; audit and timeline records are append-only; erro…
-- ADR-030 2026-09-28: Build order: prove live data works on real input first (the owner's earlier attempt failed on data), then the core domain and one end-to-end vertical…
+- ADR-019 2026-09-28: The strategy definition (the user's decisions) ne…
+- ADR-020 2026-09-28: Zerodha connection is never forced: it is asked f…
+- ADR-021 2026-09-28: Users sign in with Google and complete a short re…
+- ADR-022 2026-09-28: One Zerodha Client ID belongs to one platform acc…
+- ADR-023 2026-09-28: Everyone gets a 7-day full Pro trial from registr…
+- ADR-024 2026-09-28: Users who opened their Zerodha account directly t…
+- ADR-025 2026-09-28: An existing Zerodha user earns 30 days of Pro (ad…
+- ADR-026 2026-09-28: Pro costs Rs 600 per month (from the owner's Rs 2…
+- ADR-027 2026-09-28: Home is action-first, not a trading terminal, and…
+- ADR-028 2026-09-28: V1 alerts go to in-app, push, email and WhatsApp…
+- ADR-029 2026-09-28: Broker, market-data and payment integrations sit…
+- ADR-030 2026-09-28: Build order: prove live data works on real input…
 - ADR-031 2026-09-28: spec/ is the single source of truth.
-- ADR-032 2026-09-28: Users can mark preferred strategy types (several, all equal).
-- ADR-033 2026-09-28: The 60 answers ChatGPT gave under the owner's delegation (T2 messages 83 and 99) are binding decisions, equal to the owner's own, except where one co…
-- ADR-034 2026-09-29: Before any feature is built on Zerodha live market data, the owner emails Zerodha's startup API team to ask for mass-retail (free) Kite Connect acces…
-- ADR-035 2026-09-29: Expiry scenario columns compute each leg's P&L from the price the user paid or received (Entry Price).
-- ADR-036 2026-09-29: The product launches as a public multi-tenant SaaS (Q13 = B).
-- ADR-037 2026-09-29: A Limited (expired or never-paid) user can prepare and execute exit and closing orders for a strategy that is already active.
-- ADR-038 2026-09-29: Each successful referral adds 30 days of Pro (the day count set in Admin) to the user's current Pro end date.
-- ADR-039 2026-09-29: If an account on its registration trial connects a Zerodha Client ID that already used a trial on another account, the running trial ends immediately.
-- ADR-040 2026-09-29: The registration WhatsApp OTP (Q72) is sent through the owner's shared Notifier gateway using an approved Wati AUTHENTICATION-category template.
-- ADR-041 2026-09-29: A BUY futures leg's P&L is (Market - Entry Price) x Quantity and a SELL futures leg's is (Entry Price - Market) x Quantity.
-- ADR-042 2026-09-29: The scenario table's column step is an Admin setting per index.
-- ADR-043 2026-09-29: The platform is built with Python 3.12+ and FastAPI, PostgreSQL, Redis, and a Vue 3 + Vite frontend.
-- ADR-044 2026-09-29: An admin uploads a CSV of confirmed account openings exported from the owner's Zerodha AP report.
-- ADR-045 2026-09-29: While the owner is away (night of 2026-09-29), implementation starts on requirements that need no pending answer.
-- ADR-046 2026-09-29: The API (FastAPI) and web (Vue) layers get their own project workflow, app-tests.yml, which runs only when files under those layers (or the workflow…
-- ADR-047 2026-10-02: Before any module is written, the algochanakya map in spec/technical-design/legacy-reuse.md is checked; a mapped COPY or ADAPT row is copied with pro… [extends ADR-043]
-- ADR-048 2026-10-02: Local database tests run against a separate ofo_test database on the Windows VPS PostgreSQL (103.118.16.189, reached through the existing SSH tunnel… [none — development environment decision, no requi…]
-- ADR-049 2026-10-02: The Vue frontend uses Tailwind CSS 4, set up by copying algochanakya's frontend configuration (ADR-047), with this project's own design tokens. [extends ADR-043; applies ADR-010]
-- ADR-050 2026-10-02: A contract is identified by its exchange segment and the exchange's own contract number (exchange token), which every Indian broker carries for the s… [refines REQ-053; extends ADR-016; extends ADR-029]
-- ADR-051 2026-10-07: As an exception to ADR-034, the owner's own Kite Connect app and account may be used now for a private technical proof of the core's data half - live… [amends ADR-034]
-- ADR-052 2026-10-07: A contract is identified by (exchange segment, exchange token, expiry date); underlying, strike as exact decimal and CE/PE/FUT stay the cross-check. [amends ADR-050]
-- ADR-053 2026-10-07: For V1 live market data comes through each user's own Kite Connect connection (no shared platform feed until a licensed vendor exists); calculations… [refines ADR-012; refines ADR-014]
-- ADR-054 2026-10-07: The planned order path is Zerodha's offsite order execution - the platform builds the strategy's orders as a read-only Kite basket, each order carryi… [refines ADR-017; refines ADR-050]
-- ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q211) answer in writing, (1) suggestions stay educational and generic - setups are shown as templates… [refines ADR-003; refines ADR-005; refines ADR-024…]
-- ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is unparked and built in Stage 4a with the allowlist design - no attribute assignment on any imported mod… [refines ADR-030; refines ADR-007]
+- ADR-032 2026-09-28: Users can mark preferred strategy types (several,…
+- ADR-033 2026-09-28: The 60 answers ChatGPT gave under the owner's del…
+- ADR-034 2026-09-29: Before any feature is built on Zerodha live marke…
+- ADR-035 2026-09-29: Expiry scenario columns compute each leg's P&L fr…
+- ADR-036 2026-09-29: The product launches as a public multi-tenant Saa…
+- ADR-037 2026-09-29: A Limited (expired or never-paid) user can prepar…
+- ADR-038 2026-09-29: Each successful referral adds 30 days of Pro (the…
+- ADR-039 2026-09-29: If an account on its registration trial connects…
+- ADR-040 2026-09-29: The registration WhatsApp OTP (Q72) is sent throu…
+- ADR-041 2026-09-29: A BUY futures leg's P&L is (Market - Entry Price)…
+- ADR-042 2026-09-29: The scenario table's column step is an Admin sett…
+- ADR-043 2026-09-29: The platform is built with Python 3.12+ and FastA…
+- ADR-044 2026-09-29: An admin uploads a CSV of confirmed account openi…
+- ADR-045 2026-09-29: While the owner is away (night of 2026-09-29), im…
+- ADR-046 2026-09-29: The API (FastAPI) and web (Vue) layers get their…
+- ADR-047 2026-10-02: Before any module is written, the algochanakya ma… [extends ADR-043]
+- ADR-048 2026-10-02: Local database tests run against a separate ofo_t… [none — development environment decision, no requi…]
+- ADR-049 2026-10-02: The Vue frontend uses Tailwind CSS 4, set up by c… [extends ADR-043; applies ADR-010]
+- ADR-050 2026-10-02: A contract is identified by its exchange segment… [refines REQ-053; extends ADR-016; extends ADR-029]
+- ADR-051 2026-10-07: As an exception to ADR-034, the owner's own Kite… [amends ADR-034]
+- ADR-052 2026-10-07: A contract is identified by (exchange segment, ex… [amends ADR-050]
+- ADR-053 2026-10-07: For V1 live market data comes through each user's… [refines ADR-012; refines ADR-014]
+- ADR-054 2026-10-07: The planned order path is Zerodha's offsite order… [refines ADR-017; refines ADR-050]
+- ADR-055 2026-10-07: Until Zerodha compliance and the legal review (Q2… [refines ADR-003; refines ADR-005; refines ADR-024…]
+- ADR-056 2026-10-07: (1) W-024 (error messages, GitHub issue 30) is un… [refines ADR-030; refines ADR-007]
 - ADR-057 2026-10-07: Correction of ADR-052. [amends ADR-052; amends ADR-050]
-- ADR-058 2026-10-07: A stored contract stops being live in either of two ways - its expiry has passed (ADR-057), or the daily list no longer carries it while its expiry i… [amends ADR-057]
-- ADR-059 2026-10-07: For a list row whose token is held by a live stored contract, the change is a revision of that contract only if the underlying, option type and excha… [amends ADR-058; amends ADR-057]
-- ADR-060 2026-10-08: Zerodha grants multi-user Kite Connect access only to production-ready platforms and asks for a demo first (F-31). [amends ADR-034; amends ADR-051; amends ADR-054]
-- ADR-061 2026-10-08: For each expiry, the underlying level fed to the Black-Scholes model is the forward implied by that expiry's own option prices, expressed as an impli… [amends ADR-056]
-- ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition and its activity history in the database; they survive a restart and load back exactly as saved; li… [none — adds one acceptance criterion to REQ-038 o…]
-- ADR-063 2026-10-08: The calculation engine takes the implied continuous dividend yield q of ADR-061 as an input and computes the option price, implied volatility and eve… [refines ADR-061]
-- ADR-064 2026-10-08: A strategy definition's `risk_limits` may only use the names max_loss, max_capital and max_margin, and its `preferences` only objective, market_view,… [refines ADR-062]
-- ADR-065 2026-10-08: The guards that keep a stale or missing index value from being used silently (REQ-072 AC-2) have the same trust boundary ADR-003 Q235 set for the wor… [extends ADR-003]
+- ADR-058 2026-10-07: A stored contract stops being live in either of t… [amends ADR-057]
+- ADR-059 2026-10-07: For a list row whose token is held by a live stor… [amends ADR-058; amends ADR-057]
+- ADR-060 2026-10-08: Zerodha grants multi-user Kite Connect access onl… [amends ADR-034; amends ADR-051; amends ADR-054]
+- ADR-061 2026-10-08: For each expiry, the underlying level fed to the… [amends ADR-056]
+- ADR-062 2026-10-08: Pressing Save Draft saves a strategy's definition… [none — adds one acceptance criterion to REQ-038 o…]
+- ADR-063 2026-10-08: The calculation engine takes the implied continuo… [refines ADR-061]
+- ADR-064 2026-10-08: A strategy definition's `risk_limits` may only us… [refines ADR-062]
+- ADR-065 2026-10-08: The guards that keep a stale or missing index val… [extends ADR-003]
 - ADR-066 2026-10-08: Kite Connect includes historical candles (F-33). [refines ADR-014]
-- ADR-067 2026-10-08: The platform records a one-minute bar (open, high, low, close, volume, OI) for every instrument its feed already carries, built from the live ticks a… [refines ADR-066]
-- ADR-068 2026-10-08: (1) A draft leg's entry price is its planned entry: the leg's LTP captured when the leg is added (or the mid of bid and ask when no LTP exists), show… [refines ADR-035]
-- ADR-069 2026-10-09: The values of a strategy definition's rules reference, risk limits and preferences are short identifiers or numbers only - letters, digits, underscor… [refines ADR-064]
+- ADR-067 2026-10-08: The platform records a one-minute bar (open, high… [refines ADR-066]
+- ADR-068 2026-10-08: (1) A draft leg's entry price is its planned entr… [refines ADR-035]
+- ADR-069 2026-10-09: The values of a strategy definition's rules refer… [refines ADR-064]
 - ADR-070 2026-10-09: The GitHub repository is public. [refines ADR-046]
-- ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-profit sentence of the outcome view states that the amount is at expiry, before charges and taxes (for… [refines ADR-003]
-- ADR-072 2026-10-09: The plain-language answer to "Where do I start losing?" (REQ-034 AC-7) names every region of the underlying at expiry where the strategy's expiry P&L… [applies REQ-034]
-- ADR-073 2026-10-10: The framework-generated API docs page (/docs) and API description (/openapi.json) are served only when APP_ENV is development or test; there they are… [applies ADR-003]
-- ADR-074 2026-10-15: If the one bounded #200 round fails, the master-plan core gate (core-invariants section 4) may pass with REQ-065 (the closed response door) named as… [none — it amends only the master-plan Stage 4 cor…]
-- ADR-075 2026-10-15: Save Draft stores each leg's planned entry price and its capture time with the strategy definition, and a reopened draft shows exactly those; they ch… [refines ADR-062]
-- ADR-076 2026-10-15: TOTAL Current Value is shown only for options-only strategies, as the NET current premium: sells minus buys at each leg's LTP, times quantity, labell… [none — adds the TOTAL Current Value rule next to…]
-- ADR-077 2026-10-15: When a strategy's live connection to the platform drops (the browser's own socket closes) and the screen falls back, it shows REQ-049 AC-5's message,… [refines ADR-068]
-- ADR-078 2026-10-15: A second database, ofo_dev, is created on the same Windows VPS PostgreSQL as ofo_test, reached by the same limited ofo_app role (whose privileges mig… [refines ADR-048]
-- ADR-079 2026-10-15: The platform sets no timer on an open order and never cancels or modifies one (ADR-054). [refines ADR-054]
-- ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRML (carry forward), with no product choice on screen; every exit carries the product of the Zerodha p… [refines ADR-017]
+- ADR-071 2026-10-09: Every plain-language maximum-loss and maximum-pro… [refines ADR-003]
+- ADR-072 2026-10-09: The plain-language answer to "Where do I start lo… [applies REQ-034]
+- ADR-073 2026-10-10: The framework-generated API docs page (/docs) and… [applies ADR-003]
+- ADR-074 2026-10-15: If the one bounded #200 round fails, the master-p… [none — it amends only the master-plan Stage 4 cor…]
+- ADR-075 2026-10-15: Save Draft stores each leg's planned entry price… [refines ADR-062]
+- ADR-076 2026-10-15: TOTAL Current Value is shown only for options-onl… [none — adds the TOTAL Current Value rule next to…]
+- ADR-077 2026-10-15: When a strategy's live connection to the platform… [refines ADR-068]
+- ADR-078 2026-10-15: A second database, ofo_dev, is created on the sam… [refines ADR-048]
+- ADR-079 2026-10-15: The platform sets no timer on an open order and n… [refines ADR-054]
+- ADR-080 2026-10-15: (1) Q264: every entry and adjustment order is NRM… [refines ADR-017]
 - ADR-081 2026-10-15: Each leg is one basket order. [refines REQ-054]
-- ADR-082 2026-10-15: (1) The engine computes charges from a rate table of Zerodha's published F&O options rates (zerodha.com/charges, cross-checked against the brokerage… [amends ADR-071]
-- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract has expired is closed in the platform at the exchange settlement price, with a timeline entry; recon… [refines ADR-006]
-- ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one group per underlying and expiry from the open positions not already in a strategy. [refines ADR-018]
-- ADR-085 2026-10-15: When a draft saved without planned entries (before ADR-075) is reopened in the Builder, each such leg shows the catalogue message "This leg was saved…
-- ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is named by its contract - underlying, expiry day and short month, strike, then CE / PE / FUT, e.g.
-- ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be built, reviewed, verified and merged before the Stage 4a gate has passed, using fakes and the real K… [none — changes the master plan's gate rule (a pro…]
-- ADR-088 2026-10-16: The four non-normal Builder states with no time today - unpriced, not connected, error, refused - each show "Checked at <time>", where <time> is the… [none — fills the time REQ-039 AC-3 left open and…]
-- ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE when the loss region lies below it and the Upper BE when the loss region lies above it, taken from the… [none — uses the ADR-072 loss regions for the tabl…]
-- ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that Stage 4b can build the basket (ADR-087). [approves REQ-073]
-- ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refreshed by running the freeze-file loader once a week (Monday, next to the Kite login) and whenever NS… [extends ADR-081]
-- ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze limit "is blocked on the order review with the reason and the limit, never split") covers every ord… [extends ADR-081]
-- ADR-093 2026-10-16: Every coding standard of this project is either enforced by an automatic check (a linter rule, a type-check baseline, a repo test, an edit-time hook)… [none — a new subject: engineering standards for a…]
-- ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket figure (`final.total` of `POST /margins/basket`) plus, for every option BUY leg, max(0, quantity x li… [applies ADR-016]
-- ADR-095 2026-10-16: When the user gives one price tolerance (in rupees) for the whole strategy, each leg gets the share of it that its planned value (planned premium x q… [extends ADR-080]
-- ADR-096 2026-10-16: REQ-061 AC-2 "add it to an existing strategy" is built now. [extends ADR-084]
-- ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 afternoon: 1 lot of a NIFTY option BUY, from a basket built by the W-080 branch running on ofo_dev (u… [applies ADR-054, ADR-060]
-- ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is met when every route open to ordinary code is refused at runtime by the egress gate or flagged by the… [refines REQ-073]
-- ADR-099 2026-10-16: When a Kite session is active, the outcome screen shows the margin from Zerodha for the strategy's planned orders: the amount needed (Zerodha's baske… [extends REQ-055]
+- ADR-082 2026-10-15: (1) The engine computes charges from a rate table… [amends ADR-071]
+- ADR-083 2026-10-15: (1) After the expiry close, a leg whose contract… [refines ADR-006]
+- ADR-084 2026-10-15: On connect (REQ-061), the platform suggests one g… [refines ADR-018]
+- ADR-085 2026-10-15: When a draft saved without planned entries (befor…
+- ADR-086 2026-10-15: On the Strategy Builder screen (1) every leg is n…
+- ADR-087 2026-10-16: Stage 4b items (ADR-079..085, issue #240) may be… [none — changes the master plan's gate rule (a pro…]
+- ADR-088 2026-10-16: The four non-normal Builder states with no time t… [none — fills the time REQ-039 AC-3 left open and…]
+- ADR-089 2026-10-16: With exactly one breakeven, it is the Lower BE wh… [none — uses the ADR-072 loss regions for the tabl…]
+- ADR-090 2026-10-16: REQ-073 moves from Specified to Approved so that… [approves REQ-073]
+- ADR-091 2026-10-16: The stored freeze limits (ADR-081, F-36) are refr… [extends ADR-081]
+- ADR-092 2026-10-16: ADR-081's rule (a leg above the contract's freeze… [extends ADR-081]
+- ADR-093 2026-10-16: Every coding standard of this project is either e… [none — a new subject: engineering standards for a…]
+- ADR-094 2026-10-16: The margin the basket needs is Zerodha's basket f… [applies ADR-016]
+- ADR-095 2026-10-16: When the user gives one price tolerance (in rupee… [extends ADR-080]
+- ADR-096 2026-10-16: REQ-061 AC-2 "add it to an existing strategy" is… [extends ADR-084]
+- ADR-097 2026-10-16: The first real 4b test order runs on 2026-10-16 a… [applies ADR-054, ADR-060]
+- ADR-098 2026-10-16: The order-placement guarantee (REQ-073 AC-4) is m… [refines REQ-073]
+- ADR-099 2026-10-16: When a Kite session is active, the outcome screen… [extends REQ-055]
 - ADR-100 2026-10-16: The Kite Connect app registers no static IP. [applies ADR-054]
-- ADR-101 2026-10-16: Every money figure read from a Zerodha reply that the margin gate or a screen compares (the basket reply's final.total and each BUY leg's option_prem… [applies ADR-016, ADR-099]
-- ADR-102 2026-10-17: Realised and position P&L computed from broker fills (sells minus buys, price x quantity) is exact Decimal and is quantized half-up to the paisa only… [applies ADR-008, ADR-101]
-- ADR-103 2026-10-17: A fill that would move a strategy's ledger position on a contract to the side opposite the side it opened that contract on (its adopted holding's sid… [applies ADR-016, ADR-018, ADR-019]
-- ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradable) only when (a) it is in Zerodha's CURRENT instrument list as the product's own download loaded it… [applies ADR-016, ADR-057, ADR-058, REQ-053]
-- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 AC-2, OFS{strategy}V{plan}L{leg}) is a PLAN NUMBER minted for each Execute of a strategy (entry, exit… [applies ADR-050, ADR-054, REQ-073]
-- ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real defects: (1) Tier A (fresh Opus, adversarial) by DAT… [none — changes process documents (CLAUDE.md Fast…]
-- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-money step, every open deferred issue that touches… [refines ADR-106]
-- ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner places): (1) L1 may start while the money/order cr… [refines ADR-106, ADR-107]
-- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixed by option C of docs/process/fix-380-draft-2026-1… [refines REQ-060, REQ-058; approves REQ-044]
-- ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Positions screen shows each contract of that plan as… [refines REQ-044]
+- ADR-101 2026-10-16: Every money figure read from a Zerodha reply that… [applies ADR-016, ADR-099]
+- ADR-102 2026-10-17: Realised and position P&L computed from broker fi… [applies ADR-008, ADR-101]
+- ADR-103 2026-10-17: A fill that would move a strategy's ledger positi… [applies ADR-016, ADR-018, ADR-019]
+- ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradabl… [applies ADR-016, ADR-057, ADR-058, REQ-053]
+- ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 A… [applies ADR-050, ADR-054, REQ-073]
+- ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real de… [none — changes process documents (CLAUDE.md Fast…]
+- ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-… [refines ADR-106]
+- ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner… [refines ADR-106, ADR-107]
+- ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixe… [refines REQ-060, REQ-058; approves REQ-044]
+- ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Pos… [refines REQ-044]
+- ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
+- ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
+- ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
+- ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none — a kit upgrade and its merge-command migrat…]
+- ADR-116 2026-10-19: (1) When a contract held by two or more strategies disagrees with Zerodha and Zerodha shows that co… [amends REQ-060]
+- ADR-117 2026-10-19: (1) When any sell leg depends on a protective buy, entry is TWO baskets: basket 1 holds the protect… [amends REQ-056; extends REQ-073]
+- ADR-118 2026-10-19: (1) Only a strategy that never sent a basket (a draft) can be deleted. [extends REQ-070]
+- ADR-119 2026-10-19: (1) Execute Strategy builds a basket (every basket build: entry, two-basket step 2, exit, Complete… [extends REQ-056]
+- ADR-120 2026-10-19: (1) No what-if sliders (spot, implied volatility or days to expiry) in the Strategy Builder in V1;… [none — both owner answers confirm text that alrea…]
+- ADR-121 2026-10-19: (1) In the "Not sure" range flow (REQ-026 AC-1), the platform derives the market view from the expe… [extends REQ-026; extends ADR-119]
+- ADR-122 2026-10-19: The one-line range reading of ADR-121 (1) uses exactly three texts: "Your range leans up" (mildly b… [extends ADR-121]
+- ADR-123 2026-10-19: (1) When a contract held by two or more strategies is blocked by a reconciliation mismatch, and a f… [amends REQ-060; extends ADR-116]
+- ADR-124 2026-10-19: (1) The control that lets the user change the range reading (ADR-121 (1)) offers exactly three choi… [extends ADR-121]
+- ADR-125 2026-10-20: (1) When an earlier-day open plan is unresolved because the next-day positions cannot show whether… [extends ADR-109; extends ADR-120]
+- ADR-126 2026-10-20: (1) An adopted leg's entry price (ADR-084, ADR-096) is stored exactly as Zerodha reports the averag… [refines ADR-084]
+- ADR-127 2026-10-20: (1) One server setting, changed only by the platform owner, refuses to build any basket (every bask… [extends REQ-056]
+- ADR-128 2026-10-20: (1) Exits stay blocked in the app while the kill switch is on (ADR-127 (1) unchanged). [extends ADR-127]
+- ADR-129 2026-10-20: (1) The success outcome of the return-from-Kite check (after "Checking with Zerodha…") reads exactl… [extends REQ-073]
+- ADR-130 2026-10-20: (1) Orders, when empty, shows "No orders yet." with a [Create Strategy] button. [extends ADR-002]
+- ADR-131 2026-10-20: (1) Tapping Buy (or Sell) on a contract already selected with that same action unselects it (a togg… [refines REQ-030]
+- ADR-132 2026-10-20: (1) REQ-030 AC-12: when a selected contract is already a leg of the strategy, the prompt reads "<co… [refines REQ-030]
+- ADR-133 2026-10-20: (1) When "Check with Zerodha" finds no order carrying a plan's tag (the user opened Kite and never… [refines REQ-057]
+- ADR-134 2026-10-20: (1) Anything the broker (Zerodha today, any broker later) already provides - its order book, order… [amends REQ-057; amends REQ-058; amends REQ-073]
+- ADR-135 2026-10-20: (1) Under ADR-134 the app shows each strategy order in exactly one of four states: "Not sent to Zer… [amends REQ-057; supersedes ADR-133]
+- ADR-136 2026-10-20: (1) A partly executed strategy shows its actual risk and max loss now (REQ-058 AC-1) and offers exa… [amends REQ-058]
+- ADR-137 2026-10-20: (1) A strategy (or several sharing a contract) blocked by a reconciliation mismatch offers exactly… [amends REQ-060; extends ADR-116]
+- ADR-138 2026-10-20: (1) Orders screen: one line per strategy order in the four ADR-135 states plus an "Open Kite order… [amends REQ-073; amends REQ-044; amends REQ-064; a…]
+- ADR-139 2026-10-20: (1) The first line of the Execute review follows one pattern: entry "You will place <n> orders now… [refines REQ-056]
+- ADR-140 2026-10-20: (1) REQ-056 AC-6's tiers on the Execute review: NORMAL when the worst-case loss is limited and with… [refines REQ-056]
+- ADR-141 2026-10-20: (1) The recorded action "Use Zerodha's numbers for this contract" (ADR-137) places no order, so it… [refines ADR-137]
+- ADR-142 2026-10-20: (1) The recovery actions of ADR-136/137 refuse with exactly these lines: open order on the contract… [refines ADR-136]
+- ADR-143 2026-10-20: (1) When the engine returns no worst-case loss for a basket (for example legs on different expiries… [extends ADR-140]
+- ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
+- ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
+- ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
 
 ## Requirements (75)
 
@@ -126,10 +161,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-005 [Specified]: Product language and positioning
 - REQ-006 [Specified]: Three UX levels
 - REQ-007 [Specified]: Strategy information density
-- REQ-008 [Specified]: Home dashboard
+- REQ-008 [Approved]: Home dashboard
 - REQ-009 [Approved]: Primary navigation and account menu
-- REQ-010 [Specified]: Public site and live-data access
-- REQ-011 [Specified]: Learn section
+- REQ-010 [Approved]: Public site and live-data access
+- REQ-011 [Approved]: Learn section
 - REQ-012 [Approved]: Registration and identity layers
 - REQ-013 [Approved]: Email change and account deletion
 - REQ-014 [Approved]: Zerodha Client ID binding and anti-abuse
@@ -147,9 +182,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-026 [Approved]: Expected market range input
 - REQ-027 [Approved]: Strike selection modes
 - REQ-028 [Approved]: Generic strategy engine and templates
-- REQ-029 [Specified]: Option Chain display and live data
-- REQ-030 [Specified]: Option Chain leg selection and import
-- REQ-031 [Specified]: Option Chain live strategy preview
+- REQ-029 [Approved]: Option Chain display and live data
+- REQ-030 [Approved]: Option Chain leg selection and import
+- REQ-031 [Approved]: Option Chain live strategy preview
 - REQ-032 [Verified]: Calculation engine
 - REQ-033 [Verified]: Expiry scenario and live P&L formulas
 - REQ-034 [Approved]: Outcome view and scenario levels
@@ -188,14 +223,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-067 [Specified]: Delivery controls
 - REQ-068 [Approved]: Strategy preferences
 - REQ-069 [Approved]: Suggested setups in the Guided Builder
-- REQ-070 [Verified]: Builder history and restore
+- REQ-070 [Approved]: Builder history and restore
 - REQ-071 [Approved]: Adjustment data requirements from the owner's reference video
 - REQ-072 [Verified]: Index spot prices for NIFTY 50 and SENSEX
 - REQ-073 [Approved]: Orders reach Zerodha as a read-only basket the user places on Kite's own page
 - REQ-074 [Specified]: Security incident reporting and log retention
 - REQ-075 [Approved]: Coding standards are checked automatically, at edit time and in CI, without slowing small changes
 
-## Spec sections (204)
+## Spec sections (216)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -300,6 +335,18 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-42 - REQ-058 and REQ-060 were Verified on domain modules the Kite-b…
 - ## F-43 - On Mon 2026-10-19 the nearest NIFTY weekly contract expires th…
 - ## F-44 - On Sun 2026-10-18 Kite reported zero funds on the owner's acco…
+- ## F-45 - The app's database role allows 5 connections in total, while O…
+- ## F-46 - A live screen keeps showing its last answer's numbers after it…
+- ## F-47 - The live feed carries no previous close, so the Option Chain's…
+- ## F-48 - A live socket's once-a-second limit guarded only its normal pu…
+- ## F-49 - The Strategy Builder page is built but missing from the route…
+- ## F-50 - Kite's basket page shows Required margin and Final margin; ord…
+- ## F-51 - No studied app shows a guided objective, market-view and range…
+- ## F-52 - The generated build order and a work item still say REQ-061 AC…
+- ## F-53 - Every workflow runs on every PR push including drafts, and a f…
+- ## F-54 - The legacy algochanakya 2026 holiday list is wrong: it misses…
+- ## F-55 - A net-only next-day read cannot see a same-day round trip: a f…
+- ## F-56 - Zerodha's instrument list is generated once each morning; Kite…
 
 ### spec/open-questions.md
 
