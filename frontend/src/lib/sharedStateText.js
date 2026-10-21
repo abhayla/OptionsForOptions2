@@ -11,7 +11,7 @@ export const RETURN_ROUTE_KEY = 'ofo.returnRoute'
 export const STEP_BUYS = 'Step 1 of 2 Buys'
 export const STEP_SELLS = 'Step 2 of 2 Sells (locked until Zerodha confirms the fills)'
 export const BUYS_FILLED_TEXT = 'Buys filled. Sells not placed yet. Your position is not complete.'
-export const BUY_FAILED_TEXT = 'A buy failed. Sells stay locked.'
+export const BUY_FAILED_TEXT = 'Buy not executed - see Kite'
 
 export const CHECK_WITH_ZERODHA = 'Check with Zerodha' // wording fixed by REQ-073, F-41
 export const RETURN_CHECKING = 'Checking with Zerodha…'
