@@ -74,6 +74,7 @@ from ofo.instruments.catalogue import (
     IST,
     Catalogue,
     CatalogueUpdateResult,
+    StructuralPass,
     check_max_delist_percent,
     is_revision,
 )
@@ -97,6 +98,21 @@ CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
 
 _LOCK = text("SELECT pg_advisory_xact_lock(:k)")
+# ADR-147 condition 4: the contracts a dropped row must not be. Every order belongs to a strategy (ADR-002), so a
+# saved strategy's legs cover every open position; an open execution plan's legs are read too. A stored definition
+# whose legs are not a JSON array makes the held set unknown, and the structural pass then refuses (fail closed).
+_UNREADABLE_LEGS = text("SELECT count(*) FROM public.strategies WHERE jsonb_typeof(definition -> 'legs') "
+                        "IS DISTINCT FROM 'array'")
+_HELD_BY_STRATEGIES = text(
+    "SELECT DISTINCT c.exchange_segment, c.exchange_token FROM public.catalogue_contracts AS c WHERE c.id IN ("
+    "SELECT (leg ->> 'contract_id')::bigint FROM public.strategies AS s, jsonb_array_elements(CASE WHEN "
+    "jsonb_typeof(s.definition -> 'legs') = 'array' THEN s.definition -> 'legs' ELSE '[]'::jsonb END) AS leg "
+    "WHERE jsonb_typeof(leg -> 'contract_id') = 'number')")
+_HELD_BY_OPEN_PLANS = text(
+    "SELECT DISTINCT o.instrument_id FROM public.execution_plan_orders AS o JOIN public.execution_plans AS p "
+    "ON p.strategy_id = o.strategy_id AND p.plan_number = o.plan_number WHERE p.status = 'open'")
+#: The actor the ADR-147 structural pass's audit row names (a system decision, not an admin's).
+STRUCTURAL_PASS_ACTOR = "system:catalogue-update"
 _SELECT = text(
     f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
     f"c.currently_listed, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, b.tick_size, "
@@ -413,6 +429,22 @@ class _BufferedAuditLog:
                             "payload": payload})
 
 
+async def _held_contracts(conn: Any) -> frozenset[InstrumentId] | None:
+    """ADR-147: the exchange identities held by a saved strategy leg or an open plan leg; None when any cannot be read
+    (a definition whose legs are not a list, a plan leg not shaped "<segment>:<exchange token>")."""
+    if (await conn.execute(_UNREADABLE_LEGS)).scalar_one():
+        return None
+    held = {InstrumentId(r.exchange_segment, r.exchange_token)
+            for r in (await conn.execute(_HELD_BY_STRATEGIES)).all()}
+    for r in (await conn.execute(_HELD_BY_OPEN_PLANS)).all():
+        segment, _, token = str(r.instrument_id).rpartition(":")
+        try:
+            held.add(InstrumentId(segment, int(token)))
+        except ValueError:
+            return None
+    return frozenset(held)
+
+
 def _keys(ids: Iterable[InstrumentId]) -> dict[str, list]:
     pairs = sorted(ids)
     return {"segments": [i.exchange_segment for i in pairs], "tokens": [i.exchange_token for i in pairs]}
@@ -539,8 +571,18 @@ async def apply_update(
 
     audit = _BufferedAuditLog() if force else None
     # The domain holds the rules (ADR-058 index guard, ADR-059 half-expiry guard, revision test, stale rows).
-    domain = catalogue.update(rows, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit,
-                              max_delist_percent=limit)
+    try:
+        domain = catalogue.update(rows, as_of=as_of, force=force, reason=reason, actor=actor, audit_log=audit,
+                                  max_delist_percent=limit)
+    except ValueError:
+        if force:
+            raise
+        # ADR-147: only after the count guards refused (a refused domain update changed nothing) are the held
+        # contracts read and the structural pass given its chance; its audit row is written with the catalogue change.
+        audit = _BufferedAuditLog()
+        structural = StructuralPass(held=await _held_contracts(conn), audit_log=audit,
+                                    actor=STRUCTURAL_PASS_ACTOR)
+        domain = catalogue.update(rows, as_of=as_of, max_delist_percent=limit, structural=structural)
     replaced = set(domain.replaced)
     vanishing = set(domain.delisted)
     if (replaced != {i for i in scoped if i in before and not is_revision(before[i].contract, scoped[i].contract)}
