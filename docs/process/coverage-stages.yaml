@@ -417,6 +417,7 @@ work_items:
   W-099: 4b           # GC-2c: circuit bands from GET /quote for the pre-execution gate (ADR-080)
   W-100: 4b           # GC-2c: circuit bands wired into the Execute route (ADR-080)
   W-104: 4b           # GC-2e: the Execute screen - orders, cost, the owner's Kite click, Check with Zerodha
+  W-121: 4b           # builder scope Step 1: order path switched off - one server switch, every order route refuses (REQ-073 AC-6)
   W-101: 4b           # GC-2e: test-only Execute/return replay behind both order routes (REQ-073)
   W-102: 4b           # GC-2e: the full cost (premium, charges, funds, margin) in the Execute reply (ADR-097)
   W-103: 4b           # GC-2e: audit events on both order routes (order_prepared, broker replies, fills; REQ-063 AC-5)
@@ -429,6 +430,7 @@ work_items:
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-112: 4a           # GC-2g: no historical market data shown to users, repo_scan guard (REQ-052 AC-1)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
+  W-119: 4b           # GC-6 S3: Create Strategy, guided (REQ-024, REQ-026)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-122: S6.4         # builder scope Step 2: paper tracking + Q253 condition 1 (REQ-109, REQ-045)
   W-123: S6.4         # builder scope Step 2: Q253 condition 1 detection (REQ-045), built with W-122

@@ -27,7 +27,7 @@ from typing import Annotated, Any, Literal, Optional
 from fastapi import APIRouter, Depends
 from ofo.audit.catalogue import EventType
 from ofo.errors import render
-from ofo.instruments.models import InstrumentId
+from ofo.instruments.models import ZERODHA, InstrumentId
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
@@ -35,6 +35,7 @@ from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
 from ofo_app import order_audit
+from ofo_app import order_book_store as books
 from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
@@ -43,11 +44,12 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
+from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
 
-router = APIRouter(route_class=ClosedRoute)
+router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 
 _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
@@ -175,10 +177,20 @@ def _iid(text_id: str) -> InstrumentId:
     return InstrumentId(segment, int(token))
 
 
+def _listed(catalogue: Any, instrument_id: str) -> Any:
+    """The catalogue entry of a stored contract; one the catalogue no longer resolves is the catalogue refusal, never
+    a 500 (an adopted contract has no plan order to fall back on)."""
+    entry = catalogue.get(_iid(instrument_id))
+    if entry is None:
+        raise _refuse("strategy_contract_not_in_catalogue")
+    return entry
+
+
 def _keyed(units: Mapping[str, int], catalogue: Any, underlying: str) -> dict[tuple, int]:
     """``execute_plan.held_units`` (per stored instrument id) -> per reconcile contract key."""
     out: dict[tuple, int] = {}
     for instrument_id, n in units.items():
+        _listed(catalogue, instrument_id)
         key = ep.contract_key(catalogue, _iid(instrument_id), underlying)
         out[key] = out.get(key, 0) + n
     return out
@@ -201,7 +213,8 @@ async def _others(req: _Request, catalogue: Any, zerodha: _Read) -> tuple[dict[t
             raise _refuse("gate_broker_unconfirmed") from None
         unknown.update(ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
                        for o in er.unsettled_orders(history, book))
-        for key, n in _keyed(ep.held_units(history), catalogue, underlying).items():
+        adopted = await books.adopted_for(req.db, req.user_ref, other)
+        for key, n in _keyed(ep.held_units(history, adopted), catalogue, underlying).items():
             total[key] = total.get(key, 0) + n
     return total, frozenset(unknown)
 
@@ -213,17 +226,25 @@ class _World:
     zerodha: _Read
     others: Mapping[tuple, int]
     undecidable: frozenset  # contracts another strategy's open or drifted plan touches
+    adopted: tuple  # this strategy's adopted holdings (ADR-096: counted as fills)
 
 
 def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, str]:
-    return {ep.contract_key(world.catalogue, _iid(o.instrument_id), world.underlying): o.tradingsymbol
-            for p in history for o in p.orders}
+    """The contracts reconciled for this strategy: every plan-order contract UNION every adopted contract (ADR-096:
+    an adopted lot is held like a fill, so Zerodha is compared on it too), one entry per contract key."""
+    out: dict[tuple, str] = {}
+    for h in world.adopted:
+        symbol = _listed(world.catalogue, h.instrument_id).ref(ZERODHA).broker_symbol  # refused before any key read
+        out[ep.contract_key(world.catalogue, _iid(h.instrument_id), world.underlying)] = symbol
+    out.update({ep.contract_key(world.catalogue, _iid(o.instrument_id), world.underlying): o.tradingsymbol
+                for p in history for o in p.orders})
+    return out
 
 
 def _checks(history: Sequence[plans.StoredPlan], world: _World) -> tuple[er.ContractCheck, ...]:
-    held = _keyed(ep.held_units(history), world.catalogue, world.underlying)
-    return er.reconcile(sorted(_symbols(history, world), key=repr), held, world.others, world.zerodha.net,
-                        world.undecidable)
+    symbols = _symbols(history, world)
+    held = _keyed(ep.held_units(history, world.adopted), world.catalogue, world.underlying)
+    return er.reconcile(sorted(symbols, key=repr), held, world.others, world.zerodha.net, world.undecidable)
 
 
 def _as_closed(plan: plans.StoredPlan, filled: Mapping[str, int]) -> plans.StoredPlan:
@@ -251,8 +272,11 @@ async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...]
     if answer.state in (er.WAITING, er.RECONCILE):
         return {plan.plan_number: answer}  # stays open: nothing changes (REQ-057 AC-2)
     reason = _final_reason(history, plan, answer, world)
-    await plans.close_plan(req.db, req.user_ref, req.strategy_id, plan.plan_number, reason=reason,
-                           filled=dict(answer.filled))
+    try:  # #313b: the plan's trades are stored with the close, in this transaction
+        await plans.close_plan(req.db, req.user_ref, req.strategy_id, plan.plan_number, reason=reason,
+                               filled=dict(answer.filled), fills=er.plan_fills(plan, book))
+    except plans.PlanStoreError:  # trades that cannot be stored exactly: nothing closes (fail closed, rolled back)
+        raise _refuse("gate_broker_unconfirmed") from None
     return {}
 
 
@@ -319,7 +343,8 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
         book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
     except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
         raise _refuse("gate_broker_unconfirmed") from None
-    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))
+    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha),
+                   await books.adopted_for(req.db, req.user_ref, req.strategy_id))
     live = await _settle_open_plan(req, history, book, world)
     await _record_externals(req, book)
     await order_audit.record_broker_book(req.db, zerodha.orders, zerodha.trades, tags)  # W-103: our orders + trades

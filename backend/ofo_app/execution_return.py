@@ -37,7 +37,7 @@ from ofo.orders.model import FillEvent, realised_pnl
 from ofo.timeutil import IST
 
 from ofo_app import execute_plan as ep
-from ofo_app.execution_plan_store import PlanOrder, StoredPlan
+from ofo_app.execution_plan_store import PlanFill, PlanOrder, StoredPlan
 
 WAITING = "waiting"
 FILLED = "filled"
@@ -103,6 +103,15 @@ def _close_reason(plan: StoredPlan, filled: Mapping[str, int]) -> str:
     if all(filled[o.tag] == 0 for o in plan.orders):
         return NOTHING_PLACED  # every order ended unfilled, or the user closed the basket (no tag in the book)
     return PARTIAL
+
+
+def plan_fills(plan: StoredPlan, book: TodaysBook) -> tuple[PlanFill, ...]:
+    """#313b: Zerodha's trades of the plan's orders (matched by tag through the order rows read back by tag,
+    ADR-109 (2)), each (order id, trade id) once as the book de-duplicated them, for ``close_plan`` to store. A trade
+    whose price is not exact to the paisa raises (``PlanStoreError``): it is never rounded."""
+    tag_of = {row.order_id: order.tag for order in plan.orders for row in book.ours.get(order.tag, ())}
+    return tuple(PlanFill(tag_of[f.broker_order_id], f.broker_order_id, f.trade_id, f.quantity, f.price)
+                 for f in book.fills if f.broker_order_id in tag_of)
 
 
 def from_earlier_session(plan: StoredPlan, today: datetime.date) -> bool:

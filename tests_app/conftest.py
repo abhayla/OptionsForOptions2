@@ -118,3 +118,11 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def order_path_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W-121 (REQ-073 AC-6): the order path is OFF everywhere but APP_ENV=test + OFO_ORDER_PATH=1; the tests of the
+    Execute and return routes opt in with ``pytestmark = pytest.mark.usefixtures("order_path_on")``."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("OFO_ORDER_PATH", "1")
