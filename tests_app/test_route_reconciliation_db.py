@@ -22,7 +22,7 @@ import datetime
 
 import pytest
 from ofo.engine import Action
-from ofo.execution.basket import make_tag
+from ofo.execution.basket import make_tag, parse_tag
 from ofo.instruments.models import ZERODHA
 from ofo.reconciliation.compare import MismatchKind
 from ofo.strategy import stored_form as sf
@@ -51,7 +51,16 @@ def _clock() -> datetime.datetime:
 def _orders_for(sid: int) -> list:
     """The real order rows re-tagged to strategy ``sid`` (the stored strategy cannot have id 9)."""
     rows = recorded("orders-2026-10-19-roundtrip")
-    return [{**row, "tag": row["tag"].replace("OFS9V", f"OFS{sid}V", 1)} for row in rows]
+    return [_retag(row, sid) for row in rows]
+
+
+def _retag(row: dict, sid: int) -> dict:
+    """The row with its tag rebuilt by the product's own grammar for ``sid``; an unparsable tag stays."""
+    try:
+        parts = parse_tag(row["tag"])
+    except ValueError:
+        return row
+    return {**row, "tag": make_tag(sid, parts.plan_version, parts.leg_index)}
 
 
 async def _hand_exit_account(conn, user: str) -> tuple[int, object]:

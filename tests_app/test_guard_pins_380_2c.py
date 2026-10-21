@@ -420,6 +420,32 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
 
 # ---- #380-2d: the two guards the 380-2c mutation pass still found alive -----------------------------
 
+def test_execute_asks_the_reconciler_to_store_nothing(monkeypatch):
+    """Execute's reconcile call passes ``source=None`` (it stores no mismatch); ``"after_execution"`` there would make
+    a press store rows (#485 item 1, finding guard-without-killing-test)."""
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    class Reads:
+        def fetch_positions(self):
+            return {}
+
+    async def db_now(db):
+        return STAMP_CLOCK
+
+    seen = []
+
+    async def verdict(*args, **kwargs):
+        seen.append(kwargs["source"])
+        return SimpleNamespace(positions=_P, attribution=SimpleNamespace(blocked=frozenset()))
+
+    monkeypatch.setattr(route.elig, "database_now", db_now)
+    monkeypatch.setattr(route.rr, "reconcile_account", verdict)
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, clock=lambda: AT, strategy_id=9,
+                          session=SimpleNamespace(reads=Reads()))
+    _run(route._reconcile(req, SimpleNamespace(order_rows=[]), _catalogue()))
+    assert seen == [None]
+
+
 def test_the_execute_context_carries_the_verdicts_blocked_strategies_into_the_gate(monkeypatch):
     """Dropping ``reconciliation_blocked_strategy_ids`` from the context makes a blocked strategy read as unblocked."""
     from ofo_app.routes import execute as route  # noqa: PLC0415
