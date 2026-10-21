@@ -96,6 +96,9 @@ NOT_MONEY_ON_MAIN_WHY: dict[str, str] = {
     "backend/ofo/strategy/guard.py": 'sign of a number (-1/0/1)',
     "backend/ofo/strategy/linear.py": 'exact linear algebra over generic coefficients/values',
     "backend/ofo_app/errors.py": 'encodes an HTTP header value, not money',
+    "backend/ofo_app/reconcile_attribution.py": (
+        'net units minus units held by open plans (contract quantity), not money'
+    ),
 }
 NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     "backend/ofo/errors/explanations.py": (
@@ -122,6 +125,9 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     ),
     "backend/ofo_app/errors.py": (
         'headers += [(name.lower().encode("ascii"), value.encode("ascii")) for name, value in NO_LEAK_HEADERS.items()]',
+    ),
+    "backend/ofo_app/reconcile_attribution.py": (
+        'left = (raw_net.get(contract, 0) - sum(units.get(contract, 0) for units in held.values())',
     ),
 }
 
