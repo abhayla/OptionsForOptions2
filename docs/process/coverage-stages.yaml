@@ -397,6 +397,7 @@ issues:
   "#488": 4b  # TRIM-STRUCT parked: structural list guard built (e7cee4b) but the daily reload never gets NSE's file
   "#495": S6.1  # Order-path scan misses routes that reach order code through a helper module (W-121 MINOR-1)
   "#497": S6.1  # Shared ofo_test catalogue left by earlier runs makes local DB tests fail (420 of 424 NIFTY contracts)
+  "#499": S6.1  # History scan ignores prose text in templates (follow-up to #409)
 
 # Work items whose status is not done.
 work_items:
