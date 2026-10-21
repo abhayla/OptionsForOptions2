@@ -226,7 +226,7 @@ async def test_the_owner_client_bounds_each_call_below_the_read_timeout(monkeypa
     assert timeout * 2 <= outcome_margin.READ_TIMEOUT_SECONDS  # funds + basket together never outlive the read
     seen = {}
 
-    def door(_url, *, method="GET", data=None, headers=None, timeout=None):  # W-080: every send goes via the door
+    def door(_url, *, method="GET", data=None, headers=None, timeout=None, caller=None):  # W-080: sends go via the door
         seen["timeout"] = timeout
         raise OSError("no network in tests")
 

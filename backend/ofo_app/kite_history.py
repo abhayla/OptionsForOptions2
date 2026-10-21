@@ -13,7 +13,7 @@ import logging
 from typing import Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
 
-from ofo.broker.kite_endpoints import KITE_API_HOST
+from ofo.broker.kite_endpoints import CALLER_KITE_HISTORY, KITE_API_HOST
 from ofo.broker.kite_http import open_url as kite_open_url
 from ofo.history.bars import MinuteBar
 from ofo.history.candles import parse_candles
@@ -30,7 +30,8 @@ class CandleFetchError(RuntimeError):
 
 def urllib_transport(url: str, headers: dict[str, str]) -> tuple[int, str]:
     try:
-        with kite_open_url(url, headers=headers, timeout=20) as response:  # checked against ALLOWED_CALLS first
+        # checked against this module's ALLOWED_CALLS entry first
+        with kite_open_url(url, caller=CALLER_KITE_HISTORY, headers=headers, timeout=20) as response:
             return response.status, response.read().decode("utf-8")
     except HTTPError as exc:
         return exc.code, ""

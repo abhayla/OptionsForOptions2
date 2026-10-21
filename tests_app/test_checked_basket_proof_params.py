@@ -15,6 +15,7 @@ from ofo.execution.basket import KiteBasket
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo_app.checked_basket import checked_basket
+from ofo_app.execution_plan_store import StoredPlan
 from ofo_app.kite_margin import KiteMargin
 
 #: Inputs checked_basket passes on to build_basket, which re-checks them itself (one reason each).
@@ -22,6 +23,7 @@ ALLOWED = {
     ExecutionPlan: "the plan: build_basket isinstance-checks it and resolves every leg itself",
     Catalogue: "the instrument catalogue: contract facts are read from it, it holds no verdict",
     KiteMargin: "the real Zerodha client: checked_basket requires exactly this class (no subclass, no duck)",
+    StoredPlan: "the store's own plan rows; held units are re-derived with execute_plan.held_units, never accepted",
 }
 PLAIN = (str, int, bool, Decimal)
 
@@ -42,7 +44,7 @@ def _open_types(fn: typing.Callable[..., object]) -> list[str]:
 
 
 def test_checked_basket_takes_no_proof_object() -> None:
-    """AC-1: its parameters are plan, catalogue, version, the real client and a freeze callable: no proof type."""
+    """AC-1: plan, catalogue, version, the real client, a freeze callable and the stored plans: no proof type."""
     assert _open_types(checked_basket) == []
     assert typing.get_type_hints(checked_basket)["return"] is KiteBasket  # what it hands back is the sealed proof
 

@@ -8,13 +8,23 @@
   "where": "exit of the real 1-lot test order (ADR-097), issue #321",
   "evidence": "D:/Abhay/Ventures/ofo-kite-ticks/2026-10-16/real-order/fetch.json margin_raw at 15:06; the owner placed the exit (order 261016170858845, SELL 65 @ 3.10 COMPLETE 15:09:52) from a basket built outside the gate."
  },
- "fix": "Not built yet (#321): treat a final.total below 0 as 0 required, never as a credit to available funds (ADR-094's 'never a credit' rule), with today's reply as the failing test's fixture; sweep every check that validates broker money ranges for the exit case.",
+ "fix": "Built (#321, #338, PR #418, ADR-113): a final.total below 0 counts as 0, never a credit; a basket whose every order closes or reduces a held position (reduces_held_only) is decided on Zerodha's final.total alone, without the ADR-094 BUY top-up, and is built whatever the funds when that figure is 0 or less; a positive figure is compared with funds; entry and mixed baskets keep the top-up. The second sample of the class: a buy-back of a short at a limit above Zerodha's premium (review of PR #418 round 1) was blocked by the top-up at negative funds.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No test feeds a closing basket's reply today. The REST recorder (rec_rest.py) recorded entry shapes only; add closing shapes when a position is held."
+  "status": "guarded",
+  "checks": [
+   "tests/execution/test_margin_gate.py::test_adr113_core_real_exit_reply_needs_zero_and_passes_at_negative_funds",
+   "tests/execution/test_margin_gate.py::test_adr113_buyback_of_a_short_needing_zero_passes_at_any_funds",
+   "tests/execution/test_margin_gate.py::test_adr113_buyback_with_a_positive_final_total_is_compared_with_funds",
+   "tests/execution/test_margin_gate.py::test_adr113_the_same_buy_as_an_entry_keeps_the_adr094_top_up",
+   "tests/execution/test_margin_gate.py::test_338_every_other_shape_is_not_reduce_only",
+   "tests_app/test_checked_basket.py::test_core_real_exit_reply_with_negative_funds_builds_the_closing_basket",
+   "tests_app/test_checked_basket.py::test_adr113_buyback_of_a_short_builds_at_any_funds",
+   "tests_app/test_checked_basket.py::test_adr113_a_mixed_basket_keeps_the_top_up_and_is_blocked_at_negative_funds"
+  ],
+  "note": "The real exit reply (tests/fixtures/kite_replies/margins-basket-exit-150717.json) is the fixture; the buy-back cases derive from it (final.total -500/0/+200, option_premium 650). Not covered: a live closing-basket reply for a buy-back (no short held when recorded); Kite's own placement check stays the backstop."
  },
  "spec_ref": [
+  "spec/decisions/ADR-113.md",
   "spec/decisions/ADR-094.md",
   "spec/decisions/ADR-016.md",
   "spec/requirements/REQ-055.md"

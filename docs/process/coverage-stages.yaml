@@ -182,6 +182,7 @@ decisions:
   ADR-110: 4b           # open plan on Positions: waiting for Check, strategy blocked until the plan's orders are final at Zerodha (owner 2026-10-18)
   ADR-111: 4b           # carried-over live-run position: #352 fix in GC-3F, owner sells on Kite by Mon 10-26 12:00 as backstop (owner 2026-10-18)
   ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
+  ADR-113: 4b           # #338: a basket that only closes held positions is checked on Zerodha's final.total alone, no ADR-094 top-up (PR #418 review, 2026-10-19)
   ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
   ADR-115: 4b           # kit 1.10.1 taken after GC-3L: merges pin the reviewed sha; kit snapshot cleanup replaces the stand-in (owner 2026-10-19)
   ADR-116: 4b           # shared contract flat on Zerodha: one recorded action exits that contract's legs in every holder (owner 2026-10-19, OQ-GC2h-2)

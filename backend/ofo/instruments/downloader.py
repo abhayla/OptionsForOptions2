@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+from ofo.broker.kite_endpoints import CALLER_DOWNLOADER
 from ofo.broker.kite_http import open_url
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_stream
@@ -19,7 +20,8 @@ _TIMEOUT_SECONDS = 30
 def download_instruments_csv() -> str:
     """Fetch the raw instrument-list CSV text from Zerodha's public endpoint."""
     url = get_source("instrument_list_url").url
-    with open_url(url, timeout=_TIMEOUT_SECONDS) as response:  # checked against ALLOWED_CALLS first
+    # checked against this module's ALLOWED_CALLS entry first
+    with open_url(url, caller=CALLER_DOWNLOADER, timeout=_TIMEOUT_SECONDS) as response:
         return response.read().decode("utf-8")
 
 

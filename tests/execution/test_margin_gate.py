@@ -14,7 +14,6 @@ import re
 from decimal import Decimal
 
 import pytest
-
 from ofo.execution import margin_gate
 from ofo.execution.margin_gate import MarginReplyError, MarginVerdict, check_margin, required_from_basket_reply
 
@@ -196,7 +195,8 @@ def test_ac1_replace_cannot_copy_a_verdict() -> None:
 
 def test_ac3_zerodhas_figure_alone_decides(reply_data: dict) -> None:
     """AC-3: the gate takes only Zerodha's two figures (no platform estimate parameter) and says Zerodha's figure."""
-    assert list(inspect.signature(check_margin).parameters) == ["available", "required"]
+    # #338: closes_held is a bool the basket builder computes; still no platform estimate parameter
+    assert list(inspect.signature(check_margin).parameters) == ["available", "required", "closes_held"]
     verdict = check_margin(Decimal("10"), required_from_basket_reply(reply_data, CONDOR))
     assert verdict.message is not None and verdict.message.what_happened.startswith("Zerodha says")
 
@@ -412,3 +412,152 @@ def test_099_a_float_tail_on_a_buy_legs_premium_uses_the_paisa() -> None:
 
 def test_099_a_negative_total_is_still_zero_after_rounding() -> None:
     assert required_from_basket_reply(_reply(total=Decimal("-214.5")), []) == Decimal("0")
+
+
+# --- #338: a basket that only closes held positions and needs 0 passes whatever the balance -------------------------
+from ofo.execution.margin_gate import reduces_held_only  # noqa: E402
+
+
+@pytest.mark.parametrize("available", [Decimal("-120.50"), Decimal("-0.01"), Decimal("0"), Decimal("671.50")])
+def test_338_closing_basket_needing_zero_passes_on_any_balance(available: Decimal) -> None:
+    """REQ-055 AC-1 (#338, B4 d funds negative / zero / positive): closes_held and required 0 -> allowed, no message."""
+    verdict = check_margin(available, Decimal("0"), closes_held=True)
+    assert (verdict.allowed, verdict.message) == (True, None)
+
+
+def test_338_closing_basket_with_a_positive_required_is_checked_as_today() -> None:
+    """REQ-055 AC-1 (#338 attack 2): Zerodha states a positive figure for a closing basket -> -120.50 < 0.01 blocks."""
+    assert check_margin(Decimal("-120.50"), Decimal("0.01"), closes_held=True).allowed is False
+    assert check_margin(Decimal("354.25"), Decimal("354.25"), closes_held=True).allowed is True
+
+
+def test_338_unknown_figures_block_even_for_a_closing_basket() -> None:
+    """REQ-055 AC-1 (#338, B4 d missing): an unknown balance or required figure is never a pass."""
+    assert check_margin(None, Decimal("0"), closes_held=True).allowed is False
+    assert check_margin(Decimal("-1"), None, closes_held=True).allowed is False
+
+
+@pytest.mark.parametrize("flag", [1, "yes", None, object()])
+def test_338_closes_held_must_be_exactly_a_bool(flag: object) -> None:
+    """REQ-055 AC-1 (#338): a truthy non-bool is refused, never read as 'closes held'."""
+    with pytest.raises(TypeError):
+        check_margin(Decimal("-1"), Decimal("0"), closes_held=flag)  # type: ignore[arg-type]
+
+
+HC, HP = "NFO:12080386", "NFO:12080387"  # held contracts (instrument ids)
+REDUCING = [
+    ([(HC, "SELL", 65)], {HC: 65}),             # close a long
+    ([(HC, "SELL", 30)], {HC: 65}),             # partial exit
+    ([(HC, "BUY", 65)], {HC: -65}),             # buy-back of a short
+    ([(HC, "SELL", 30), (HC, "SELL", 35)], {HC: 65}),  # two orders summing to the held units
+    ([(HC, "SELL", 65), (HP, "BUY", 75)], {HC: 65, HP: -75}),
+]
+NOT_REDUCING = [
+    ([], {HC: 65}),                             # empty basket
+    ([(HC, "SELL", 65)], {}),                   # nothing held
+    ([(HC, "SELL", 65)], {HC: -65}),            # adds to a short
+    ([(HC, "BUY", 65)], {HC: 65}),              # adds to a long
+    ([(HC, "SELL", 66)], {HC: 65}),             # more than held
+    ([(HC, "SELL", 40), (HC, "SELL", 40)], {HC: 65}),  # together more than held
+    ([(HC, "SELL", 30), (HC, "BUY", 30)], {HC: 65}),   # both sides of one contract
+    ([(HC, "SELL", 65), (HP, "SELL", 75)], {HC: 65}),  # mixed: the second leg opens
+    ([(HC, "sell", 65)], {HC: 65}),             # side not exactly SELL
+    ([(HC, "SELL", 0)], {HC: 65}),              # zero units
+    ([(HC, "SELL", True)], {HC: 65}),           # a bool is not units
+    ([(HC, "SELL", 65)], {HC: 0}),              # held 0
+    ([(HC, "SELL", 65)], {HC: 65.0}),           # held not an int
+    ([(HC, "SELL", 65)], {HC: True}),           # held a bool
+]
+
+
+@pytest.mark.parametrize(("orders", "held"), REDUCING)
+def test_338_reduce_only_allowed_shapes(orders, held) -> None:
+    """REQ-055 AC-1 (#338): exit, partial exit, buy-back and split closes are reduce-only."""
+    assert reduces_held_only(orders, held) is True
+
+
+@pytest.mark.parametrize(("orders", "held"), NOT_REDUCING)
+def test_338_every_other_shape_is_not_reduce_only(orders, held) -> None:
+    """REQ-055 AC-1 (#338 attack 1, allow-list): any shape outside the allowed one is False."""
+    assert reduces_held_only(orders, held) is False
+
+
+# --- ADR-113 (#338 round 2): a reduce-only basket is decided on Zerodha's final.total alone ----------------------
+REAL_EXIT_FILE = ROOT / "tests/fixtures/kite_replies/margins-basket-exit-150717.json"
+
+
+def _real_exit_data() -> dict:
+    with REAL_EXIT_FILE.open(encoding="utf-8") as handle:
+        return json.load(handle, parse_float=Decimal)["data"]
+
+
+EXIT_CE = _real_exit_data()["orders"][0]["tradingsymbol"]  # the real exit's contract, read from the recorded reply
+
+
+def test_adr113_core_real_exit_reply_needs_zero_and_passes_at_negative_funds() -> None:
+    """ADR-113 core: the real 2026-10-16 exit reply (final.total -214.5) for SELL 65 @ 3.30 closing +65 -> 0 needed;
+    funds -0.01 pass when it closes held, and are blocked when it does not."""
+    data = _real_exit_data()
+    assert data["final"]["total"] == Decimal("-214.5")
+    required = required_from_basket_reply(data, [Leg("NFO", EXIT_CE, "SELL", 65, Decimal("3.30"))], closes_held=True)
+    assert required == Decimal("0")
+    assert check_margin(Decimal("-0.01"), required, closes_held=True).allowed is True
+    assert check_margin(Decimal("-0.01"), required).allowed is False
+
+
+def _buyback_reply(total: str) -> dict:
+    """The real exit reply's shape with the reviewer's buy-back figures: option_premium 650 (65 x 10 live)."""
+    data = _real_exit_data()
+    data["final"]["total"] = Decimal(total)
+    data["orders"][0]["option_premium"] = Decimal("650")
+    return data
+
+
+BUYBACK = [Leg("NFO", EXIT_CE, "BUY", 65, Decimal("10.50"))]  # 65 x 10.50 = 682.50 -> ADR-094 top-up 32.50
+
+
+@pytest.mark.parametrize("funds", [Decimal("-0.01"), Decimal("0"), Decimal("30")])
+@pytest.mark.parametrize("total", ["-500", "0"])
+def test_adr113_buyback_of_a_short_needing_zero_passes_at_any_funds(total: str, funds: Decimal) -> None:
+    """ADR-113 (#338 review finding 1): BUY 65 @ 10.50 buying back a short, final.total -500 / 0 -> required 0 (no
+    32.50 top-up) -> allowed at funds -0.01 / 0 / 30, no message."""
+    required = required_from_basket_reply(_buyback_reply(total), BUYBACK, closes_held=True)
+    assert required == Decimal("0")
+    verdict = check_margin(funds, required, closes_held=True)
+    assert (verdict.allowed, verdict.message) == (True, None)
+
+
+@pytest.mark.parametrize("funds", [Decimal("-0.01"), Decimal("0"), Decimal("30")])
+def test_adr113_buyback_with_a_positive_final_total_is_compared_with_funds(funds: Decimal) -> None:
+    """ADR-113: final.total +200 for the buy-back -> required exactly 200 (no top-up), compared with funds: blocked
+    at -0.01 / 0 / 30; covered at 200."""
+    required = required_from_basket_reply(_buyback_reply("200"), BUYBACK, closes_held=True)
+    assert required == Decimal("200")
+    assert check_margin(funds, required, closes_held=True).allowed is False
+    assert check_margin(Decimal("200"), required, closes_held=True).allowed is True
+
+
+@pytest.mark.parametrize("funds", [Decimal("-0.01"), Decimal("0"), Decimal("30")])
+def test_adr113_the_same_buy_as_an_entry_keeps_the_adr094_top_up(funds: Decimal) -> None:
+    """ADR-094 kept for every other basket: the same BUY that does not close (closes_held False) needs 0 + 32.50, so
+    funds -0.01 / 0 / 30 are blocked; 32.50 is enough."""
+    required = required_from_basket_reply(_buyback_reply("-500"), BUYBACK)
+    assert required == Decimal("32.50")
+    assert check_margin(funds, required).allowed is False
+    assert check_margin(Decimal("32.50"), required).allowed is True
+
+
+def test_adr113_a_closing_basket_still_checks_the_reply_matches_the_orders() -> None:
+    """ADR-113 keeps the fail-closed checks: a mismatched symbol or a bad BUY price still raises for a close."""
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(_buyback_reply("-500"), [Leg("NFO", CE, "BUY", 65, Decimal("10.50"))],
+                                   closes_held=True)
+    with pytest.raises(MarginReplyError):
+        required_from_basket_reply(_buyback_reply("-500"), [Leg("NFO", EXIT_CE, "BUY", 65, Decimal("0"))],
+                                   closes_held=True)
+
+
+@pytest.mark.parametrize("flag", [1, "yes", None])
+def test_adr113_closes_held_on_the_reply_must_be_exactly_a_bool(flag: object) -> None:
+    with pytest.raises(TypeError):
+        required_from_basket_reply(_buyback_reply("-500"), BUYBACK, closes_held=flag)  # type: ignore[arg-type]

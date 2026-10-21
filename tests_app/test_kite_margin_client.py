@@ -11,8 +11,9 @@ from decimal import Decimal
 
 import pytest
 from ofo.broker import kite_http as kite_door  # round 7: the urllib door sends through its own opener
+from ofo.broker.kite_endpoints import CALLER_KITE_MARGIN
 from ofo.execution.margin_gate import MarginVerdict
-from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin_verdict, urllib_transport
+from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError, margin_transport, margin_verdict
 
 REPLY_FILE = (pathlib.Path(__file__).resolve().parent.parent
               / "docs/research/kite-proof-2026-10-07/rest-2026-10-15/margins_basket.json")
@@ -297,7 +298,7 @@ def test_ac1_urllib_transport_itself_raises_only_the_typed_error(monkeypatch, re
     """AC-1 (round 2 item 4): the shipped transport converts a bad UTF-8 body or a short read itself."""
     monkeypatch.setattr(kite_door._OPENER, "open", lambda request, timeout: response)
     with pytest.raises(KiteMarginError):
-        urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)
+        margin_transport("GET", "https://api.kite.trade/user/margins", {}, None)
 
 
 @pytest.mark.parametrize("opener", ["[", '{"a":'], ids=["arrays", "objects"])
@@ -366,20 +367,21 @@ def test_transport_goes_through_the_kite_door_and_a_refusal_fails_closed(monkeyp
         def __exit__(self, *a):
             return False
 
-    def fake_open(url, *, method="GET", data=None, headers=None, timeout=20):
-        seen.append((method, url, data, timeout))
+    def fake_open(url, *, caller, method="GET", data=None, headers=None, timeout=20):  # noqa: PLR0913 - open_url's
+        seen.append((caller, method, url, data, timeout))
         return _Ok()
 
     monkeypatch.setattr(kite_margin, "kite_open_url", fake_open)
-    assert urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None) == (200, "{}")
-    urllib_transport("POST", "https://api.kite.trade/margins/basket?consider_positions=true", {}, "[]")
-    assert seen == [("GET", "https://api.kite.trade/user/margins", None, 20),
-                    ("POST", "https://api.kite.trade/margins/basket?consider_positions=true", b"[]", 20)]
+    assert margin_transport("GET", "https://api.kite.trade/user/margins", {}, None) == (200, "{}")
+    margin_transport("POST", "https://api.kite.trade/margins/basket?consider_positions=true", {}, "[]")
+    assert seen == [(CALLER_KITE_MARGIN, "GET", "https://api.kite.trade/user/margins", None, 20),
+                    (CALLER_KITE_MARGIN, "POST", "https://api.kite.trade/margins/basket?consider_positions=true", b"[]",
+                     20)]
 
     def refuse(*a, **k):
         raise KiteCallRefused(f"secret {SECRET}")
 
     monkeypatch.setattr(kite_margin, "kite_open_url", refuse)
     with pytest.raises(KiteMarginError) as raised:
-        urllib_transport("GET", "https://api.kite.trade/user/margins", {}, None)
+        margin_transport("GET", "https://api.kite.trade/user/margins", {}, None)
     assert raised.value.code == "kite_margin_refused" and SECRET not in repr(raised.value.args)

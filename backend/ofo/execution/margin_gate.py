@@ -14,9 +14,9 @@ raises.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
-from typing import Protocol
+from typing import Final, Protocol
 
 from ofo.errors import UserFacingError, render
 from ofo.instruments.models import OPTION_TYPES
@@ -39,8 +39,8 @@ def _amount(value: object, name: str, *, signed: bool = False) -> Decimal:
 
 class MarginVerdict(SealedTuple, made_by="check_margin"):
     """The gate's answer. Only the two amounts (None when unknown) are inputs: `allowed` and the four-part `message`
-    are derived from them by `check_margin`. `available` is Zerodha's signed ``equity.net`` (a negative balance always
-    blocks).
+    are derived from them by `check_margin`. `available` is Zerodha's signed ``equity.net`` (a negative balance blocks,
+    except a basket that only closes held positions and needs 0, #338).
 
     Sealed (finding sealed-object-mutable-after-seal): an immutable tuple with no attribute storage, so even
     ``object.__setattr__`` has nothing to write; calling the class raises and there is no mint token to borrow;
@@ -69,10 +69,16 @@ class MarginVerdict(SealedTuple, made_by="check_margin"):
         return f"MarginVerdict(available={self.available!r}, required={self.required!r}, allowed={self.allowed!r})"
 
 
-def _derive(available: Decimal | None, required: Decimal | None) -> tuple[bool, UserFacingError | None]:
+def _derive(available: Decimal | None, required: Decimal | None,
+            closes_held: bool) -> tuple[bool, UserFacingError | None]:
     if available is None or required is None:
         return False, render("gate_margin_unconfirmed")
     if available >= required:
+        return True, None
+    if closes_held is True and required == 0:
+        # #338 / ADR-113: a basket that only closes or reduces held positions, and whose Zerodha final.total is 0 or
+        # less (no ADR-094 top-up for such a basket), is built whatever the balance: a negative balance (losses
+        # beyond funds) is exactly when the user must get out.
         return True, None
     # Shown to the paisa, never in the user's favour: the shortfall must not display as two equal amounts.
     try:
@@ -83,8 +89,11 @@ def _derive(available: Decimal | None, required: Decimal | None) -> tuple[bool, 
         return False, render("gate_margin_unconfirmed")
 
 
-def check_margin(available: Decimal | None, required: Decimal | None) -> MarginVerdict:
-    """Allowed when `available` >= `required` (equal is allowed); otherwise blocked with both amounts shown.
+def check_margin(available: Decimal | None, required: Decimal | None, *, closes_held: bool = False) -> MarginVerdict:
+    """Allowed when `available` >= `required` (equal is allowed), or (#338) when `closes_held` is exactly True and
+    Zerodha's `required` is 0 (a closing basket's negative ``final.total`` counts as 0) whatever `available` is;
+    otherwise blocked with both amounts shown. `closes_held` is what `reduces_held_only` answered for the orders: the
+    basket builder computes it itself; a positive `required` or an unknown amount is checked as before.
 
     Both are Zerodha's figures. None (not confirmed with Zerodha) blocks with the "could not confirm" message. Public
     because it is pure: its result cannot be turned into a basket (the basket builder takes a margin source, reads
@@ -93,8 +102,37 @@ def check_margin(available: Decimal | None, required: Decimal | None) -> MarginV
         _amount(available, "available", signed=True)
     if required is not None:
         _amount(required, "required")
-    allowed, message = _derive(available, required)
+    if type(closes_held) is not bool:
+        raise TypeError("closes_held must be exactly a bool")
+    allowed, message = _derive(available, required, closes_held)
     return tuple.__new__(MarginVerdict, (available, required, allowed, message))
+
+
+_SIDE_SIGN: Final = {"BUY": 1, "SELL": -1}
+
+
+def reduces_held_only(orders: Iterable[tuple[Hashable, str, int]], held: Mapping[Hashable, int]) -> bool:
+    """True only when EVERY order closes or reduces a held position (#338): ``orders`` are (contract, side, units) and
+    ``held`` the signed net units per contract (BUY +, SELL -). Allowed shape, per contract: one side only, opposite
+    to a non-zero held net, and the orders' units together no more than the held units. Anything else - an empty
+    basket, a contract not held, the same side as held, more units than held, both sides of one contract, a side that
+    is not exactly BUY/SELL, units that are not a positive int, a held value that is not an int - is False."""
+    wanted: dict[Hashable, list[int]] = {}
+    for contract, side, units in orders:
+        sign = _SIDE_SIGN.get(side) if type(side) is str else None
+        if sign is None or type(units) is not int or units <= 0:
+            return False
+        signs, total = wanted.setdefault(contract, [sign, 0])
+        if signs != sign:
+            return False
+        wanted[contract][1] = total + units
+    if not wanted:
+        return False
+    for contract, (sign, units) in wanted.items():
+        net = held.get(contract)
+        if type(net) is not int or net == 0 or (net > 0) == (sign > 0) or units > abs(net):
+            return False
+    return True
 
 
 class PlannedOrder(Protocol):
@@ -121,9 +159,15 @@ def _premium(value: object) -> Decimal:
     return zerodha_paise(amount)  # ADR-099/ADR-101: rounded half-up to the paisa where it is parsed
 
 
-def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder]) -> Decimal:
+def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[PlannedOrder], *,
+                               closes_held: bool = False) -> Decimal:
     """The margin the basket needs (ADR-094): ``final.total`` of Zerodha's ``POST /margins/basket`` reply ``data``
     plus, for each option BUY leg, ``max(0, quantity x limit price - that leg's option_premium)``.
+
+    ADR-113 (#338): when ``closes_held`` is exactly True (every order closes or reduces a held position, as
+    ``reduces_held_only`` answered), the figure is Zerodha's ``final.total`` alone, with no BUY top-up: a buy-back of
+    a short at a limit above the live price is not blocked by our top-up; Kite's own check at placement stays the
+    backstop. The request/reply match and each BUY leg's quantity and price are still checked.
 
     Kite prices an option BUY at the lower of the limit and the live price (F-39); the user may pay up to the limit.
     SELL legs and futures add nothing; a negative difference is 0, never a credit, and so is a negative ``final.total``
@@ -131,6 +175,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
     to Kite, in the same order as ``data["orders"]``. The reply must have been parsed with ``parse_float=Decimal``.
     Anything unusable (no final.total, a BUY leg's option_premium missing/not a number/negative, a count or identity
     mismatch between request and reply, a bad quantity or price) raises `MarginReplyError`."""
+    if type(closes_held) is not bool:
+        raise TypeError("closes_held must be exactly a bool")
     required = _final_total(data)
     rows = data.get("orders")
     if not isinstance(rows, list) or len(rows) != len(orders):
@@ -145,6 +191,8 @@ def required_from_basket_reply(data: Mapping[str, object], orders: Sequence[Plan
         if (type(quantity) is not int or quantity <= 0 or type(price) is not Decimal or not price.is_finite()
                 or price <= 0):
             raise MarginReplyError("a BUY leg has no usable quantity and limit price")
+        if closes_held is True:
+            continue  # ADR-113: a basket that only closes held positions is decided on Zerodha's figure alone
         required += max(Decimal(0), quantity * price - _premium(row.get("option_premium")))
     return required
 

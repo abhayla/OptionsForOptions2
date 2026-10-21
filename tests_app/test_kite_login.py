@@ -19,6 +19,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.broker.kite_auth import KiteSession
+from ofo.broker.kite_endpoints import CALLER_KITE_CLIENT
 from ofo.errors import CATALOGUE, render
 from ofo_app import errors as errors_module
 from ofo_app.broker_config import BrokerConfig, BrokerConfigError, BrokerSettings, load_broker_config
@@ -414,7 +415,7 @@ def _kite_client(handler) -> tuple[HttpKiteAuth, list[httpx.Request]]:
         seen.append(request)
         return handler(request)
 
-    client = KiteAsyncClient(_test_transport=httpx.MockTransport(record))
+    client = KiteAsyncClient(caller=CALLER_KITE_CLIENT, _test_transport=httpx.MockTransport(record))
     return HttpKiteAuth(API_KEY, API_SECRET, client), seen
 
 

@@ -58,7 +58,8 @@ class OkMargin:
         self.funds_calls += 1
         return self.available
 
-    def zerodha_required(self, orders):
+    def zerodha_required(self, orders, *, closes_held=False):
+        self.closes_held = closes_held
         self.calls.append(orders)
         return self.required
 

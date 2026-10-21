@@ -4,7 +4,7 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (145)
+## Decisions (146)
 
 - ADR-001 2026-09-28: V1 is a public, multi-tenant SaaS web platform fo…
 - ADR-002 2026-09-28: The strategy, not the order, is the central objec…
@@ -111,13 +111,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-103 2026-10-17: A fill that would move a strategy's ledger positi… [applies ADR-016, ADR-018, ADR-019]
 - ADR-104 2026-10-17: A contract is eligible (EligibilityStatus tradabl… [applies ADR-016, ADR-057, ADR-058, REQ-053]
 - ADR-105 2026-10-17: The "plan version" in every basket tag (REQ-073 A… [applies ADR-050, ADR-054, REQ-073]
-- ADR-106 2026-10-17: Review, verification and paperwork are sized by risk and run once per unit where they catch real de… [none — changes process documents (CLAUDE.md Fast…]
+- ADR-106 2026-10-17: Review, verification and paperwork are sized by r… [none — changes process documents (CLAUDE.md Fast…]
 - ADR-107 2026-10-17: ADR-106 item 2's "open deferred Tier A findings block the next live run" means: before a live real-… [refines ADR-106]
 - ADR-108 2026-10-17: For the GC-3 live test only (one 1-lot NIFTY CE BUY then SELL, NRML LIMIT, a Kite basket the owner… [refines ADR-106, ADR-107]
 - ADR-109 2026-10-18: (1) #380 (the live Kite-basket routes skip the reconciliation and partial-fill rules, F-42) is fixe… [refines REQ-060, REQ-058; approves REQ-044]
 - ADR-110 2026-10-18: While a strategy has an OPEN plan (placed on Kite's page, Check with Zerodha not yet done), the Pos… [refines REQ-044]
 - ADR-111 2026-10-18: If the GC-3L live run's EXIT is placed but not filled by the close (or the screen refuses it) and t… [refines ADR-108]
 - ADR-112 2026-10-18: (1) Stage 4c (REQ-041 open points, REQ-043 monitoring, REQ-042 alert + prepared basket, REQ-062 in-… [none — restates the master plan's existing stage…]
+- ADR-113 2026-10-19: When every order of a basket closes or reduces a position the strategy holds (one side per contract… [refines ADR-094]
 - ADR-114 2026-10-19: (1) Every screen requirement still Specified when this was decided - REQ-008 Home, REQ-010 public s… [approves REQ-008, REQ-010, REQ-011, REQ-029, REQ-…]
 - ADR-115 2026-10-19: (1) The project takes Startup-Factory kit 1.10.1 (from 1.7.0) through PR #426, after GC-3L closed (… [none — a kit upgrade and its merge-command migrat…]
 - ADR-116 2026-10-19: (1) When a contract held by two or more strategies disagrees with Zerodha and Zerodha shows that co… [amends REQ-060]
