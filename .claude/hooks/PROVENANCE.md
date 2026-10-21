@@ -38,10 +38,11 @@ check must never block a session start).
 | `evidence_claim_guard.py` | `capabilities/hooks/evidence-claim-guard/evidence_claim_guard.py` | `dfb055113b7e99277aaeb59b7257713aafc5966edc4d9ff23359010df27c2795` |
 | `spec_basis_gate.py` | `capabilities/hooks/spec-basis-gate/spec_basis_gate.py` | `41c03f672708adf9ddc574d92b730cb215d8475e844fdcd5c4a5ceb72ef0012b` |
 | `answer_writeback_guard.py` | `capabilities/hooks/answer-writeback-guard/answer_writeback_guard.py` | `853080d94788d213ddca12d4238aded45704ade2a5db4cde5c84331eefb88409` |
+| `status_page_due.py` | `capabilities/hooks/status-page-due/status_page_due.py` | `f7e3b83593bb720f25364f4682ce5dbcab7b5768a79ed366dcd5d073acbbda34` |
 | `git_discard_uncommitted_guard.py` | `capabilities/hooks/git-discard-uncommitted-guard/git_discard_uncommitted_guard.py` | `1384cf7de44e245f4b5c0e420a277915eaa024b1701ca06ebdbd38da2ece9c42` |
 | `git_hook_bypass_guard.py` | `capabilities/hooks/git-hook-bypass-guard/git_hook_bypass_guard.py` | `ad7dea5f5c96e1c904bd87db00bbc0e4f8c36c1ea3c9d83f5ddc48926ec4e6d1` |
 | `git_stash_worktree_guard.py` | `capabilities/hooks/git-stash-worktree-guard/git_stash_worktree_guard.py` | `2e8f49ca6d34c8d960bc3f9112f3bc7dab677cb8de1d75ee4afdf7102e687a8a` |
-| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `eff84633c800b58ae072b351674b350dc3d514ca4c68bb22badf4ce13aa4f20e` |
+| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `18b067b21f05eaa8239c0d63634fa483a1584245ac7c21fcc22e245d31733da6` |
 | `gate.py` | `the production seatbelt's gate script (Capability Library)` | `89eca78b5f905d6e9557852f2766ce65d955304f9e5d9adf23b9c997b773ddbc` |
 | `recorder.py` | `the production seatbelt's recorder script (Capability Library)` | `8e63830068828db0582d40580d0b198f907cfd52181f8968540e9ab5a5cb2cbf` |
 | `_common.py` | `the production seatbelt's shared helper module (Capability Library)` | `c2a0b081880de0949642894a3b26047f9b5e0536d070a5c315be5e17243f25cc` |

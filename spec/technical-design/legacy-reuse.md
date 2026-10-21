@@ -63,7 +63,7 @@ Rows 1-10 above stay valid (re-confirmed at `bf9faf7`; row 9 lives in `app/api/r
 | `tests/backend/instruments/test_instrument_master.py` | ADAPT | as test cases for our catalogue persistence | REQ-053 |
 | `app/services/instrument_master.py` (414) | REFERENCE | row 10; our W-006 parser already exists: take BFO/SENSEX handling only | REQ-053 |
 | `app/services/instruments.py` (278) | SKIP | superseded | - |
-| `app/utils/market_hours.py` (138) | ADAPT | add holiday calendar and BSE hours | REQ-049 |
+| `app/utils/market_hours.py` (138) | ADAPT | add holiday calendar and BSE hours; its hard-coded 2026 holiday list is wrong (F-54): never copy it, use the dated NSE data file (ADR-119) | REQ-049 |
 | `app/utils/tradingsymbol.py` (63) | REFERENCE | catalogue is the one source of symbols | REQ-053 |
 | `app/constants/trading.py` (158), `strategy_types.py` (421), `enums.py` (375), `websocket.py` (65), `brokers.py` (29) | REFERENCE | hardcoded lot sizes conflict with REQ-053; strategy-type names/categories useful | REQ-028 |
 | `services/brokers/market_data/ticker/index_token_maps.py` (42) | REFERENCE | hardcoded tokens; use the catalogue | REQ-053 |

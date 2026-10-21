@@ -1,5 +1,27 @@
 # Handover
 
+**2026-10-19 evening — kit 1.10.1 MERGED (PR #426, merge 9b08940, ADR-115), after GC-3L closed.** CI 6/6 green (api,
+lint-and-test, coverage, close-keywords, frontend, execute-screen-e2e); merged with the new form itself. Live guard
+check after the merge: `sed -n 1,5p <kit rule>` runs (1.7.0 refused it); writes still refused. Tier A Opus review of
+the migration: PASS WITH MINORS; its MAJOR fixed in the PR (`land.py` read the gate's `RE-REVIEW NEEDED` / `updates
+exhausted` as BEHIND and updated the branch itself up to 3 times; now it stops and names the refusal; test proven by
+mutation). Kept on purpose: `merge.py`'s own update-branch before the gate (one base update right before each held
+PR's gate). Open: #444 builder brief lacks the kit standing items (a)-(d) -> GC-3F item 8; kit gaps filed as
+Startup-Factory #151 (plans README not shipped; snapshot cleanup needs a matching session_id). Branches
+`kit-upgrade/1.10.1` and `build/verifier-snapshot-cleanup` deleted (note on #412). Merge form is now
+`python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha of the reviewed commit>` (same flag on `land.py`);
+the gate answers `RE-REVIEW NEEDED` when an update touched the PR's files or a Tier A path. Changed callers:
+`merge.py`, `land.py` (+ tests), CLAUDE.md, this file, the GC-3F contract item 2. Stand-in
+`scripts/hooks/verifier_snapshot_ledger.py` deleted with its tests and wiring (kit 1.9.0 SubagentStop cleanup replaces
+it). The stricter kit guard refuses `git diff --output=`, Bash `2>$null` on a kit path, PowerShell `$(...)` around one;
+it now allows `sed -n N,Mp <kit file>` and `cd <dir> && <read>`. `plans/` created. The held PRs (#393-#424) were
+branched on 1.7.0: update each from main right before its own gate.
+
+**2026-10-19 — GC-3L DONE: the 4b live gate passed on a real 1-lot round trip (strategy 9, NIFTY26OCT24000CE, entry
+filled 65 @ 7.00, exit 65 @ 6.65, 0 mismatches, holdings unchanged, P&L -22.75 = Kite's, audit chain verified). START
+HERE `docs/process/session-handover-2026-10-19-gc3l.md`. GC-3F is NEXT (`goal-contract-GC-3F-2026-10-21.md`, Wed
+2026-10-21): item 1 the 8-character basket tag fix, then the held PRs and #380. GC-5S (screens) runs in parallel.**
+
 **2026-10-18 night — GC-2g is NEXT (`goal-contract-GC-2g-2026-10-18.md`: W-108 redesign, W-111 review, REQ-052 AC-1;
 nothing product merged), then GC-3L.** Earlier: START HERE `docs/process/session-handover-2026-10-18-gc2f.md`, then
 `docs/process/goal-chain.md`. GC-3L follows GC-2g (the live 1-lot gate on Mon 2026-10-19; owner runbook `docs/process/gc-3l-runbook-2026-10-19.md`), then
@@ -195,7 +217,8 @@ Owner to fill `GLOBAL.env` WINDOWS_VPS_PG_ADMIN_USER / _PASSWORD (used once to c
 ## How the sessions work (reuse it)
 - Flow per item: builder (own worktree, `isolation: worktree`) → independent verifier (fresh context, read-only) →
   orchestrator records evidence (`scripts/orchestrator/record_evidence.py <worktree> <W-id> <builder> <verifier>
-  <json>`) → CI mirror → PR → `tools/merge_when_green.py` run as its OWN command (the kit guard blocks it after `&&`).
+  <json>`) → CI mirror → PR → `scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` run as its OWN command
+  (kit 1.10.1: the gate refuses without the reviewed sha).
 - Brief templates: `docs/process/builder-brief.md`, `docs/process/verifier-brief.md`. Every brief carries Budget
   (builder ≤ 80 tool calls, verifier ≤ 32 — hook-enforced), Core/Proof, Spec basis quoted from the spec, and
   Class/Proof lines on fixes (hook-enforced).

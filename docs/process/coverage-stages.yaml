@@ -180,6 +180,41 @@ decisions:
   ADR-107: 4b           # live-run gate: each open Tier A deferred issue triaged bears-on-run yes/no; only yes blocks (owner 2026-10-17)
   ADR-108: 4b           # GC-3 live test: eight operating rules while F-42's criteria fail; trades the 2026-10-27 expiry (owner 2026-10-17)
   ADR-110: 4b           # open plan on Positions: waiting for Check, strategy blocked until the plan's orders are final at Zerodha (owner 2026-10-18)
+  ADR-111: 4b           # carried-over live-run position: #352 fix in GC-3F, owner sells on Kite by Mon 10-26 12:00 as backstop (owner 2026-10-18)
+  ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
+  ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
+  ADR-115: 4b           # kit 1.10.1 taken after GC-3L: merges pin the reviewed sha; kit snapshot cleanup replaces the stand-in (owner 2026-10-19)
+  ADR-116: 4b           # shared contract flat on Zerodha: one recorded action exits that contract's legs in every holder (owner 2026-10-19, OQ-GC2h-2)
+  ADR-117: 4b           # entry is two baskets when a sell depends on a protective buy (owner 2026-10-19, #390)
+  ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
+  ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
+  ADR-121: 4b           # range reading (lopsided = direction) and next-trading-day format "Wed 21 Oct" (owner 2026-10-19)
+  ADR-122: 4b           # range-reading line texts: leans up / leans down / balanced (owner 2026-10-19)
+  ADR-123: 4b           # shared contract: one recorded "Kite now matches, unblock every holder" action (owner 2026-10-19)
+  ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
+  ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
+  ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-146: 4b           # in-app billing pages: early-access line, no trial (owner 2026-10-20)
+  ADR-145: 4b           # landing footer: AP disclosure + risk warning + not-advice line (owner 2026-10-20)
+  ADR-144: 4b           # landing pricing: free during early access (owner 2026-10-20)
+  ADR-143: 4b           # unknown worst-case loss -> at least Elevated, Exceptional if a short is uncovered (owner 2026-10-20)
+  ADR-142: 4b           # recovery refusal texts (owner 2026-10-20)
+  ADR-141: 4b           # Use Zerodha's numbers at any hour (owner 2026-10-20)
+  ADR-140: 4b           # Execute risk tiers by worst-case loss vs limit and funds (owner 2026-10-20)
+  ADR-139: 4b           # Execute screen first sentence, one pattern for every shape (owner 2026-10-20)
+  ADR-138: 4b           # eight scope cuts so the app does not copy Kite (owner 2026-10-20)
+  ADR-137: 4b           # two actions clear a blocked strategy: Use Zerodha's numbers, Close via a basket (owner 2026-10-20)
+  ADR-136: 4b           # partial entry actions: Check, Place missing legs, Close filled legs, manage on Kite (owner 2026-10-20)
+  ADR-135: 4b           # four order states: Not sent to Zerodha / Order placed / Executed n of m / Not executed - see Kite (owner 2026-10-20)
+  ADR-134: 4b           # complement the broker, never duplicate it; orders show "Order placed" / "Executed" (owner 2026-10-20)
+  ADR-133: 4b           # never-placed basket "Cancelled" + "Not placed on Kite" (owner 2026-10-20; superseded in effect by ADR-134)
+  ADR-132: 4b          # chain selection texts: already-in-strategy prompt (owner 2026-10-20)
+  ADR-131: 4b          # chain: second tap on the same action unselects; lots via stepper (owner 2026-10-20)
+  ADR-130: 4b          # empty Orders and Positions offer [Create Strategy] (owner 2026-10-20)
+  ADR-129: 4b          # return page success line "Zerodha confirmed your orders." (owner 2026-10-20)
+  ADR-128: 4b          # kill switch: "You can still close positions directly on Kite." on screens with an open position (owner 2026-10-20)
+  ADR-127: 4b           # kill switch message "Execution is paused by the platform right now..." (owner 2026-10-20)
+  ADR-120: 4b          # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
@@ -237,7 +272,6 @@ vendor_enquiries:
 # Open GitHub issues (checked against `gh issue list --state open` when gh is available).
 issues:
   "#191": 4a            # gate_before_commit follow-up: 3 MAJOR bypasses + 2 minors (#155 merged partial, owner Q6)
-  "#159": 4a            # after a successful Zerodha login the user lands on a 404 (/broker/connected not served; first screen)
   "#43": 4b
   "#45": 4b
   "#63": 4b
@@ -250,9 +284,7 @@ issues:
   "#220": 4a            # deferred: responsive clipping check on the data-filled table; nested clipping in a scroller (#217 re-check)
   "#240": 4b            # implement ADR-082 (charges in the engine; money sentences include charges) - code behind the decision
   "#255": 4b           # deferred: review still slices a leg ADR-081 blocks; REQ-058 slicing vs never split (OQ-2)
-  "#257": 4b           # deferred: freeze limit in force has no maximum age (W-076 review MINOR 6)
   "#263": 4b           # deferred: NRML+MIS same contract blocks exits; sink allows non-NRML entry; freeze load race
-  "#271": 4b           # PARKED: W-080 AC-4 placement guard (urllib door Unicode-dot host)
   "#273": 4b           # partial re-check fixed (PR #337); open until the Execute route fills ExecutionContext from Zerodha (GC-2c)
   "#297": 4a           # deferred: gate 4a minors (raw symbols, duplicate notice, margin login message, Loss line at 0)
   "#279": 4b           # deferred: W-085 follow-ups (settle before reconcile, expired standalone note, labels, persistence)
@@ -267,10 +299,8 @@ issues:
   "#338": 4b  # Negative Zerodha balance blocks a closing (reduce-only) basket that needs 0 margin
   "#352": 4b  # An execution plan open at the end of the trading day cannot be read back the next day
   "#353": 4b  # Kite allow-list is checked per call, not per calling module (any door may make any listed read)
-  "#370": 4a  # Intermittent e2e: strategy-save-draft cannot find the saved draft after reload
   "#380": 4b  # Live Kite-basket routes re-implement reconciliation and partial handling: REQ-060 AC-1..7, REQ-058 AC-1/2/4/6 fail on the path users reach (F-42)
   "#381": 4b  # Return route reads orders before trades: an order appearing between the reads loses its trade and closes nothing_placed
-  "#385": 4b  # GC-3 live steps L1-L4 parked: need the owner on a trading day (carried as GC-3L)
   "#386": 4b  # GC-3 P0 review MINORs: probe script private attributes and fail-open recorder compare; W-107 test pins
   "#389": 4b  # Exit basket mixes buy-backs and sells in one basket (REQ-058 Q238)
   "#390": 4b  # Entry basket cannot hold a sell until its protective leg fills (REQ-056 AC-3/AC-4)
@@ -280,6 +310,17 @@ issues:
   "#403": 4b  # Local pytest dies at random on Windows: EgressRefused from platform.platform() in pytest-metadata
   "#404": 4a  # Evidence passes REQ-048 AC-1/AC-5, REQ-049 AC-4, REQ-052 AC-1 parked by GC-2f
   "#405": 4b  # W-108 attribution parked after review round 2: open plans count 0 held (and W-111 stacked on it)
+  "#409": 4a  # History-not-shown scan misses aliased import_module, __import__ fromlist and 'intraday' (W-112 verifier MINORs)
+  "#411": 4b  # Positions pending row: 'listed above' line shows with no other holder; pending-row e2e is a mock (W-111 review MINORs)
+  "#422": 4b  # Freeze check accepts any type for the stored limit; Evaluation.as_of has no timezone check (PR #420 review MINORs)
+  "#423": 4b  # Reconciliation store: route must derive zerodha_net_now and basket-reconciled from Kite; Q224 check needs a per-user lock (PR #419 review MINORs)
+  "#433": 4c  # Home: REQ-008 AC-2 state 3 (active strategies, alerts), AC-3 name + trial, AC-1 landing - no data yet (parked by GC-5S)
+  "#434": 4b  # Strategy screen Live Position tab (REQ-044 AC-2) - needs execution state (parked by GC-5S)
+  "#435": 4b  # W-117 review MINORs: TemplateText slot not per field; shell UI wording needs owner read; REQ-011 AC-1 content (deferred by GC-5S)
+  "#439": 4b  # Chain socket: invalid messages can starve a client's own pushes; IV not on the chain (W-116 review, deferred by GC-5S)
+  "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
+  "#444": 4b  # Builder brief template lacks the kit 1.8.0 standing items (a)-(d)
+  "#475": 4b  # WT-LINK-GUARD round-2 MINORs: quoted remove, flag in a variable, ln -t, cd-relative target, cp -rs, phrase in commit text
 
 # Work items whose status is not done.
 work_items:
@@ -314,6 +355,10 @@ work_items:
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-112: 4a           # GC-2g: no historical market data shown to users, repo_scan guard (REQ-052 AC-1)
+  W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
+  W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
+  W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
+  W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
 # Findings F-ids in spec/findings.md (decided/recorded = done; open = the stage that decides).
 findings:
@@ -361,6 +406,18 @@ findings:
   F-42: 4b        # REQ-058/060 verified on domain modules the Kite-basket routes never call (#380)
   F-43: 4b        # Mon 2026-10-19 is the nearest NIFTY expiry (GC-3 expiry choice, OQ-15)
   F-44: 4b        # Kite reported Rs 0 funds on Sun 2026-10-18; 09:00 funds gate on the GC-3L day (owner 2026-10-18)
+  F-45: 4b        # ofo_app role allows 5 connections; one API pool can open ~19 (GC-5S live run, #370)
+  F-46: 4b        # a live screen kept its last answer's numbers after its own connection dropped (GC-5S W-113/114/115)
+  F-47: 4b        # the live feed carries no previous close; Option Chain Change column null (GC-5S W-116)
+  F-48: 4b        # a socket's rate limit guarded only its normal push; the error path flooded (GC-5S W-116)
+  F-49: 4b        # Strategy Builder built but missing from REAL_PAGES; nav shows a placeholder (GC-6 S1)
+  F-50: 4b        # Kite basket: required vs final margin; sequence changes required margin only (GC-6 S5)
+  F-51: 4b        # no studied app has a guided objective/view/range wizard; REQ-024/026 alone (GC-6 S3)
+  F-52: 4b        # build-order and W-083 still showed OQ-7 as open after ADR-096 answered it (GC-6 S0)
+  F-53: 4b        # every workflow runs on every PR push incl. drafts; app-tests runs the API suite on frontend-only PRs (GC-6 O0)
+  F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
+  F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
+  F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
 
 hypotheses:
   H1: done
