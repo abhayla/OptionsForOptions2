@@ -18,7 +18,8 @@ Orchestration: briefs in `docs/process/`, helpers in `scripts/orchestrator/`. Bu
 `.claude` folder, a path the kit guard blocks in Bash, so reach them through the helpers: `agit.py <agent-id> <git
 args>` (git), `atool.py <agent-id>` (CI mirror), `agentwt.py <agent-id> status|release`, `ev_agent.py` /
 `record_evidence.py` (verifier JSON → evidence files), `gh_issue.py kit|app` (issues, incl. `harvest`),
-`aregen.py <agent-id>` (regenerate the findings index in a worktree and continue a paused rebase), `dev_run.py <cwd>
+`aregen.py <agent-id>` (regenerate the findings index in a worktree and continue a paused rebase), `regen.py [dir]`
+(regenerate findings index, spec digest and build order in a checkout), `dev_run.py <cwd>
 <command>` (run with DATABASE_URL = ofo_dev for live runs and dev e2e; refuses any other database, ADR-078). Run
 `check_brief.py <brief>` on every builder brief before dispatch: it fails when a spec quote in the brief is not verbatim
 in the ADR/REQ/Q it cites (finding brief-rule-from-memory).
@@ -111,7 +112,8 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   regenerated files in the PR".
 - Merge only with `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full sha>` (or `land.py`), which runs
   the kit gate `tools/merge_when_green.py <pr> --reviewed-sha <full sha>` in the foreground — never
-  `gh pr checks --watch && gh pr merge`, which merges before CI has started. The sha is the full 40-character sha of
+  `gh pr checks --watch && gh pr merge`, which merges before CI has started. On Windows prefix `merge.py`/`land.py`
+  with `PYTHONUTF8=1`: without it the gate cannot decode a large diff and times out ("staleness unreadable", kit #154). The sha is the full 40-character sha of
   the commit the reviewer/verifier passed (kit 1.8.0); the gate refuses without it and answers `RE-REVIEW NEEDED`
   when a later push or base update touches the PR's files or a Tier A path.
 - Fast delivery (owner 2026-10-16, revised by ADR-106; reasons there and in `docs/process/goal-chain.md`):
@@ -134,13 +136,10 @@ The repo is a traceability chain, checked by `tools/` and CI, not a code layout:
   7. Run independent work in parallel (builders, reviews, docs) and never wait idle on CI. Land a committed branch with
      `python scripts/orchestrator/land.py <worktree> --title T --body-file F --reviewed-sha <full sha>` (close check, push, PR, merge gate, updates
      a BEHIND branch; `--dry-run` shows the commands); `gh_issue.py app ... --stage <stage>` also stages the new issue.
-  8. Orchestrator lessons (2026-10-16): never idle while a ready item waits - after each result start the next
-     independent item, then report; merge with `merge.py N --reviewed-sha <full sha>` (update-branch, then the gate); file
-     issues only with `gh_issue.py --stage` and commit the row the same turn; READ the findings a guard brief cites
-     before designing it; merge main into a parked branch before any new round; reviewer briefs are narrow and say
-     "hands-on attacks first"; before any live Kite action load the `zerodha-expert` skill (API orders need a static
-     IP, ADR-100) and plan entry AND exit through the product path; validate a probe on a known-good state first (the
-     REST outcome is "not live" without a subscribed screen; the first live push precedes the quotes).
+  8. Merge main into a parked branch before any new round; reviewer briefs are narrow and say "hands-on attacks
+     first"; commit an issue's tracker row the same turn it is filed. Before any live Kite action (API orders need a
+     static IP, ADR-100) plan entry AND exit through the product path, and validate a probe on a known-good state first
+     (the REST outcome is "not live" without a subscribed screen; the first live push precedes the quotes).
 
 ## Commands (fast checks before a push; full suites run in CI)
 CI installs `pyyaml jsonschema pytest` on Python 3.12.
@@ -170,9 +169,10 @@ App layer (only when `backend/ofo_app`, `tests_app`, `frontend` or the domain ch
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
   The full app suite takes ~15 min over the tunnel: never run it locally; run a DB test file only for a migration or a
   store you changed (CI runs every DB test on its own PostgreSQL). Tests marked `network` hit Zerodha's public
-  instrument list.
+  instrument list. To find which `tests_app` files a backend change can break:
+  `python scripts/orchestrator/select_app_tests.py <worktree>` (exit 3 = diff not parsed; fails closed).
 - `python scripts/alembic_migration_guard.py` (no empty migrations); `python scripts/generate_openapi.py --out <file>`.
-- Frontend, in `frontend/`: `npm run lint`, `npm run test:run`, `npm run build`, `npx playwright test` (needs the
+- Frontend, in `frontend/`: `npm run lint`, `npm run format:check`, `npm run test:run`, `npm run build`, `npx playwright test` (needs the
   API and preview servers that `app-tests.yml` starts). Stop every server you start.
 
 - Before pushing or touching process files, read `.claude/kit/GUIDE.md` (kit commands and kit-owned files).
