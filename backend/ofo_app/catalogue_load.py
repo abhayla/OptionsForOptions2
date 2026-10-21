@@ -23,7 +23,7 @@ import sys
 from datetime import datetime
 from typing import Any, TextIO
 
-from ofo.instruments.freeze_file import FreezeFile
+from ofo.instruments.freeze_file import FreezeFile, parse_freeze_file
 from sqlalchemy import text
 
 from ofo_app.catalogue_store import StoreUpdateResult, apply_update, parse_rows_naming_the_row
@@ -59,7 +59,6 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
 
 async def main(argv: list[str] | None = None) -> int:
     from ofo.instruments.downloader import download_instruments_csv
-    from ofo.instruments.freeze_file import parse_freeze_file
 
     from ofo_app.config import get_settings
     from ofo_app.db import close_db, get_engine

@@ -138,8 +138,11 @@ class IndexAnchorUnavailable(ValueError):
 MAX_FILE_AGE_WEEKDAYS = 3
 
 
+_SATURDAY = 5  # date.weekday(): Monday 0 ... Friday 4
+
+
 def _weekdays_between(older: date, newer: date) -> int:
-    return sum(1 for n in range(1, (newer - older).days + 1) if (older + timedelta(days=n)).weekday() < 5)  # noqa: PLR2004 Mon-Fri
+    return sum(1 for n in range(1, (newer - older).days + 1) if (older + timedelta(days=n)).weekday() < _SATURDAY)
 
 
 def index_anchor(parsed: FreezeFile | None, underlying: str, update_date: date) -> Decimal:

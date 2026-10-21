@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ofo.instruments.freeze_file import (
-    MAX_FILE_AGE_WEEKDAYS,
+
     IndexAnchorUnavailable,
     index_anchor,
     parse_freeze_file,
@@ -29,7 +29,12 @@ FIRST_STALE_DAY = date(2026, 10, 22)
 def test_present_and_fresh_file_gives_the_near_month_base_price() -> None:
     assert index_anchor(FILE, "NIFTY", MONDAY_AFTER) == REAL_OCT_BASE
     assert index_anchor(FILE, "NIFTY", LAST_FRESH_DAY) == REAL_OCT_BASE
-    assert MAX_FILE_AGE_WEEKDAYS == 3  # noqa: PLR2004 the ADR-148 value
+
+
+def test_an_expired_future_is_never_the_near_month() -> None:
+    after_expiry = date(2026, 10, 28)  # the October future expired on the 27th; November's (23227.10) is next
+    moved = dataclasses.replace(FILE, file_date=after_expiry)  # the same rows, as if read in a file of that day
+    assert index_anchor(moved, "NIFTY", after_expiry) == Decimal("23227.10")
 
 
 def test_absent_file_is_refused() -> None:

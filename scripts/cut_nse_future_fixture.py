@@ -15,7 +15,7 @@ import io
 import sys
 
 sys.path.insert(0, "backend")
-from ofo.instruments.freeze_file import REQUIRED_COLUMNS  # noqa: E402
+from ofo.instruments.freeze_file import REQUIRED_COLUMNS
 
 COLUMNS = [*REQUIRED_COLUMNS, "BasePric"]
 

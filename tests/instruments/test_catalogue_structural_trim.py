@@ -160,7 +160,7 @@ def test_no_anchor_for_the_index_is_refused() -> None:
 
 
 def test_real_anchor_is_the_near_month_future_base_price() -> None:
-    assert REAL_ANCHORS == {"NIFTY": Decimal("23119.20")}
+    assert REAL_ANCHORS["NIFTY"] == Decimal("23119.20") and set(REAL_ANCHORS) == {"NIFTY"}
 
 
 def test_strike_on_the_band_edge_is_refused() -> None:

@@ -151,7 +151,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-144 2026-10-20: (1) The Pricing block on the public landing page (REQ-010 AC-2) shows exactly: "Free during early a… [refines ADR-055]
 - ADR-145 2026-10-20: (1) The footer of every public page shows, verbatim: "Zerodha Broking Ltd.: SEBI Registration no.:… [refines ADR-003; refines ADR-055]
 - ADR-146 2026-10-20: (1) Subscription & Billing shows "Plan: Free during early access" and the ADR-144 sentence "Free du… [refines ADR-055]
-- ADR-148 2026-10-21: (1) The ADR-058 index guard and the ADR-059 expiry guard stay in force as the first check, with the… [refines ADR-058 and ADR-059 (they stay as the fir…]
+- ADR-148 2026-10-21: (1) The ADR-058 index guard and the ADR-059 expiry guard stay in force as the first check, with the… [refines ADR-058; refines ADR-059]
 
 ## Requirements (75)
 
