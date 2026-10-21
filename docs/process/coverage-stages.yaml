@@ -194,6 +194,7 @@ decisions:
   ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
   ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
   ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-149: 4b           # owner-account-only on the basket path = three enforceable controls (owner 2026-10-21, Q272)
   ADR-146: 4b           # in-app billing pages: early-access line, no trial (owner 2026-10-20)
   ADR-145: 4b           # landing footer: AP disclosure + risk warning + not-advice line (owner 2026-10-20)
   ADR-144: 4b           # landing pricing: free during early access (owner 2026-10-20)
@@ -238,7 +239,6 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
-  Q272: 4b              # open (owner, after GC-3L): which control counts as owner-account-only on the basket path (REQ-073 AC-5)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
