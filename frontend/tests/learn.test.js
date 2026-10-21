@@ -16,6 +16,9 @@ vi.mock('@/services/api', async (importActual) => {
   } } }
 })
 import { routes } from '@/router/routes'
+import SOURCE from '@/lib/learnContent.js?raw'
+import { CONCEPTS, PLATFORM, SHAPES, STRATEGY_PARTS, STRATEGY_TEXT, allLearnText } from '@/lib/learnContent'
+import REAL from './fixtures/strategy-templates-real.json'
 
 class FakeSocket {
   static all = []
@@ -70,14 +73,6 @@ describe('Learn', () => {
     expect(w.findAll('[data-testid="template-views"]')[0].text()).toBe('Market view: bullish, range-bound')
   })
 
-  it('AC-1: Options concepts and Platform guidance each show the one line and no lesson', async () => {
-    for (const path of ['/learn/options-concepts', '/learn/platform-guidance']) {
-      const w = await open(path)
-      expect(w.get('[data-testid="learn-empty"]').text()).toBe('Nothing published here yet.')
-      expect(w.findAll('[data-testid="template-card"]')).toHaveLength(0)
-    }
-  })
-
   it('AC-1: an empty catalogue shows the same line', async () => {
     templatesAnswer = { templates: [] }
     const w = await open('/learn/strategy-education')
@@ -102,7 +97,130 @@ describe('Learn', () => {
   it('AC-1: no order or execute link on the page (ADR-002)', async () => {
     const w = await open('/learn/strategy-education')
     expect(w.findAll('a').filter((a) => /execute|order/i.test(a.attributes('href') ?? ''))).toHaveLength(0)
-    expect(w.findAll('button')).toHaveLength(0)
+  })
+})
+
+describe('Learn tabs, content home, strategy page (GC-6 LEARN)', () => {
+  const contentText = allLearnText()
+
+  it('AC-1: the three tabs are links in order and the active one is marked', async () => {
+    const w = await open('/learn/options-concepts')
+    expect(w.findAll('[data-testid="learn-tabs"] a').map((a) => a.text()))
+      .toEqual(['Strategy education', 'Options concepts', 'Platform guidance'])
+    expect(w.get('[data-testid="tab-options-concepts"]').attributes('aria-current')).toBe('page')
+    expect(w.get('[data-testid="tab-strategy-education"]').attributes('aria-current')).toBeUndefined()
+  })
+
+  it('AC-1: Options concepts lists the 8 lessons from the content module, titles and summaries as written there', async () => {
+    const w = await open('/learn/options-concepts')
+    expect(w.findAll('[data-testid="lesson-title"]').map((e) => e.text())).toEqual(CONCEPTS.map((l) => l.title))
+    expect(w.findAll('[data-testid="lesson-summary"]').map((e) => e.text())).toEqual(CONCEPTS.map((l) => l.summary))
+    expect(CONCEPTS.map((l) => l.id)).toEqual(['call', 'put', 'strike', 'expiry', 'premium', 'lot-size', 'iv', 'greeks'])
+  })
+
+  it('AC-1: Platform guidance lists the 5 lessons from the content module', async () => {
+    const w = await open('/learn/platform-guidance')
+    expect(w.findAll('[data-testid="lesson-title"]').map((e) => e.text())).toEqual(PLATFORM.map((l) => l.title))
+    expect(PLATFORM).toHaveLength(5)
+  })
+
+  it('AC-1: a lesson opens in a detail view with its lines, and Back returns to the list', async () => {
+    const w = await open('/learn/platform-guidance')
+    await w.findAll('[data-testid="card-open"]')[2].trigger('click')
+    expect(w.get('[data-testid="detail-title"]').text()).toBe('How orders reach Zerodha')
+    expect(w.findAll('[data-testid="lesson-line"]').map((e) => e.text())).toEqual(PLATFORM[2].body)
+    await w.get('[data-testid="detail-back"]').trigger('click')
+    expect(w.findAll('[data-testid="lesson-card"]')).toHaveLength(5)
+  })
+
+  it('AC-1: the search box filters by title only and says so when nothing matches', async () => {
+    const w = await open('/learn/options-concepts')
+    await w.get('[data-testid="learn-search"]').setValue('PUT')
+    expect(w.findAll('[data-testid="lesson-title"]').map((e) => e.text())).toEqual(['Put option'])
+    await w.get('[data-testid="learn-search"]').setValue('zzzz')
+    expect(w.get('[data-testid="learn-no-match"]').text()).toBe('No lesson matches that search.')
+    expect(w.findAll('[data-testid="lesson-card"]')).toHaveLength(0)
+  })
+
+  it('AC-1: a strategy page for the real Bull Call Spread row shows the server texts and every template part', async () => {
+    templatesAnswer = REAL
+    const w = await open('/learn/strategy-education')
+    const bcs = REAL.templates.find((t) => t.id === 'bull_call_spread')
+    const idx = w.findAll('[data-testid="template-name"]').map((e) => e.text()).indexOf(bcs.name)
+    await w.findAll('[data-testid="card-open"]')[idx].trigger('click')
+    expect(w.get('[data-testid="detail-title"]').text()).toBe(bcs.name)
+    expect(w.get('[data-testid="detail-description"]').text()).toBe(bcs.description)
+    for (const [key] of STRATEGY_PARTS) expect(w.find(`[data-testid="part-${key}"]`).exists(), key).toBe(true)
+    for (const key of ['what', 'when', 'maxProfit', 'maxLoss', 'breakevens', 'risks']) {
+      expect(w.get(`[data-testid="part-text-${key}"]`).text()).toBe(STRATEGY_TEXT.bull_call_spread[key])
+    }
+  })
+
+  it('AC-1: every real server template has text, a known shape, and the page shows Sample on its payoff', async () => {
+    templatesAnswer = REAL
+    const w = await open('/learn/strategy-education')
+    expect(Object.keys(STRATEGY_TEXT).sort()).toEqual(REAL.templates.map((t) => t.id).sort())
+    const count = w.findAll('[data-testid="card-open"]').length
+    expect(count).toBe(REAL.templates.length)
+    for (let i = 0; i < count; i += 1) {
+      const name = w.findAll('[data-testid="template-name"]')[i].text()
+      const t = REAL.templates.find((x) => x.name === name)
+      expect(SHAPES[STRATEGY_TEXT[t.id].shape], t.id).toBeTruthy()
+      await w.findAll('[data-testid="card-open"]')[i].trigger('click')
+      expect(w.get('[data-testid="sample-label"]').text(), t.id).toBe('Sample')
+      expect(w.get('[data-testid="shape-svg"]').attributes('aria-label'), t.id).toContain('Sample')
+      await w.get('[data-testid="detail-back"]').trigger('click')
+    }
+  })
+
+  it('AC-1: a template with no text shows only the server description, no placeholder part', async () => {
+    templatesAnswer = { templates: [tpl('t_new', 'New One', 'Server words only.', 'Beginner', ['bullish'])] }
+    const w = await open('/learn/strategy-education')
+    await w.get('[data-testid="card-open"]').trigger('click')
+    expect(w.get('[data-testid="detail-description"]').text()).toBe('Server words only.')
+    expect(w.findAll('[data-testid^="part-"]')).toHaveLength(0)
+    expect(w.find('[data-testid="sample-label"]').exists()).toBe(false)
+  })
+
+  it('ADR-008: no strategy part carries a figure; formulas are words and the numbers come from the outcome table', () => {
+    for (const t of Object.values(STRATEGY_TEXT)) {
+      for (const [key] of STRATEGY_PARTS.filter(([k]) => k !== 'shape')) expect(t[key]).not.toMatch(/\d|₹|Rs\.?\s/)
+    }
+  })
+
+  it('ADR-003: no content line reads as advice (normalised, stem-aware, every Learn text)', () => {
+    const banned = [/\byou\s+(should|must|ought)\b/, /\bshould\b/, /\bbest\b/, /guarant/, /\bwinning\b/, /\bwinner/,
+      /recommend/, /risk[\s-]*free/, /sure[\s-]*shot/, /\bassured\b/, /use it when you/, /\bwill (make|earn|profit)\b/]
+    expect(contentText.length).toBeGreaterThan(100)
+    for (const raw of contentText) {
+      const line = raw.normalize('NFKC').toLowerCase().replace(/[‐-―]/g, '-').replace(/\s+/g, ' ')
+      for (const re of banned) expect(line, `${re}: ${raw}`).not.toMatch(re)
+    }
+  })
+
+  it('ADR-003: the wording check catches each banned shape (it can fail)', () => {
+    const probe = (s) => /\byou\s+(should|must|ought)\b|\bbest\b|guarant|\bwinning\b|recommend/.test(s.toLowerCase().replace(/\s+/g, ' '))
+    for (const bad of ['You  should buy', 'The best strike', 'Guaranteed profit', 'A winning setup', 'Recommended trade']) {
+      expect(probe(bad), bad).toBe(true)
+    }
+  })
+
+  it('REQ-011: the module is marked draft-for-owner-review', () => {
+    const head = SOURCE.split('\n')[0]
+    expect(head).toBe('// status: draft-for-owner-review')
+  })
+
+  it('390 px: segmented control of three equal columns, one-column list, no fixed or nowrap widths', async () => {
+    templatesAnswer = REAL
+    for (const path of ['/learn/strategy-education', '/learn/options-concepts']) {
+      const w = await open(path)
+      const html = w.html()
+      expect(w.get('[data-testid="learn-tabs"]').classes()).toContain('grid-cols-3')
+      expect(html).toContain('grid-cols-1')
+      expect(html).not.toMatch(/(?:^|[\s"])(?:min-w-|w-\[|whitespace-nowrap|overflow-x-)/)
+      await w.get('[data-testid="card-open"]').trigger('click')
+      expect(w.html()).not.toMatch(/whitespace-nowrap|min-w-|w-\[/)
+    }
   })
 })
 

@@ -3,7 +3,8 @@
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
-tier, and the literal `Budget:` / `Report:` / `Tests:` lines, which the dispatch hooks read from the prompt text) and
+tier, the `Standing items:` line (section below), and the literal `Budget:` / `Report:` / `Tests:` lines, which the
+dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
 attack list, not a rewrite (ADR-106 item 9).
 
@@ -49,6 +50,19 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 - A brief that adds or changes a guard carries `Threat model: in scope <...>; out of scope <...>` BEFORE round 1
   (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
   what is in scope; a finding outside it is recorded, not a new round.
+
+## Standing items (kit run-discipline C4 (a)-(d), #444): every build brief carries these four
+Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Standing items: (a) ... (b) ... (c) ...
+(d) ...`, each item either applied to this work or `n/a: <reason>` (e.g. "(a) n/a: no time-budgeted job"); a bare
+"n/a" is a brief defect, and the reviewer confirms every n/a reason against the diff.
+- **(a) Time budget:** a new pass inside a time-budgeted job reuses the job's existing small reservation, never the
+  whole remaining budget, and a test shows the higher-priority work still runs.
+- **(b) CI install order:** a CI step that gains a non-builtin import runs after the dependency install step.
+- **(c) Static detectors fail closed:** a detector fails closed on shapes it cannot resolve (re-exports, renamed
+  imports, same-named local functions) and names its guard by import source, not by identifier text.
+- **(d) Every answer state of another system:** when a feature decides on another system's answer (Kite, NSE, the
+  database), the brief lists every answer state - stated, absent, not found, failed, empty, ambiguous - and what each
+  does. Example: GC-3L met Kite's `InputException` "tag should be max 8 characters", a state no brief had listed.
 
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.

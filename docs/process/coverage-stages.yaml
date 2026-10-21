@@ -68,7 +68,7 @@ requirements:
   REQ-060: [done, 4b]
   REQ-061: 4b
   REQ-062: {AC-1: [4c, S6], AC-2: S6, AC-3: 4c, AC-4: 4c}   # owner 2026-10-15: Stage 4 = in-app + WhatsApp via the Notifier; push, email, full matrix later
-  REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b]}
+  REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b], AC-6: [4b, S8]}
   REQ-064: 4a
   REQ-065: 4a
   REQ-066: S8
@@ -81,6 +81,56 @@ requirements:
   REQ-073: 4b           # Kite basket order path (new, ADR-054)
   REQ-074: [S7, S8]     # CERT-In logs and incident runbook (new, F-27)
   REQ-075: all          # coding standards as automatic checks (ADR-093, owner 2026-10-16)
+  # Master register requirements REQ-076..REQ-133 (docs batch 2026-10-21); stages are provisional, the owner re-stages at prioritisation (ADR-150 (3)).
+  REQ-076: S6.1
+  REQ-077: S6.1
+  REQ-078: S6.1
+  REQ-079: S6.1
+  REQ-080: S6.1
+  REQ-081: S6.2
+  REQ-082: S6.2
+  REQ-083: S6.2
+  REQ-084: S6.2
+  REQ-085: S6.2
+  REQ-086: S6.6
+  REQ-087: S6.1
+  REQ-089: S6.2
+  REQ-090: S6.1
+  REQ-091: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-092: S6.6
+  REQ-093: S6.6
+  REQ-094: S6.6
+  REQ-095: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-096: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-100: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-101: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-102: S6.1
+  REQ-103: S6.3
+  REQ-104: S6.3
+  REQ-105: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-106: S6.2
+  REQ-107: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-108: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-109: S6.4
+  REQ-110: S6.4
+  REQ-111: S6.6
+  REQ-112: S6.4
+  REQ-113: S6.7
+  REQ-114: S6.7
+  REQ-115: S6.7
+  REQ-116: S6.7
+  REQ-117: S6.7
+  REQ-118: S6.7
+  REQ-119: S6.1
+  REQ-125: S6.7
+  REQ-126: S7
+  REQ-127: S7
+  REQ-128: S7
+  REQ-129: S7
+  REQ-130: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-131: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-132: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-133: S6.1
 
 decisions:
   ADR-001: all
@@ -184,6 +234,38 @@ decisions:
   ADR-112: 4c           # 4c built after the 4b fixes; decided build-ahead items tracked in goal contracts until closed (owner 2026-10-18)
   ADR-114: 4b           # screen content/layout by a design role; ACs stay the business rules; six screen REQs Approved (owner 2026-10-19)
   ADR-115: 4b           # kit 1.10.1 taken after GC-3L: merges pin the reviewed sha; kit snapshot cleanup replaces the stand-in (owner 2026-10-19)
+  ADR-116: 4b           # shared contract flat on Zerodha: one recorded action exits that contract's legs in every holder (owner 2026-10-19, OQ-GC2h-2)
+  ADR-117: 4b           # entry is two baskets when a sell depends on a protective buy (owner 2026-10-19, #390)
+  ADR-118: 4b           # only never-executed drafts can be deleted, kept hidden for audit (owner 2026-10-19)
+  ADR-119: 4b           # Execute only 09:15-15:30 IST on NSE trading days (owner 2026-10-19)
+  ADR-121: 4b           # range reading (lopsided = direction) and next-trading-day format "Wed 21 Oct" (owner 2026-10-19)
+  ADR-122: 4b           # range-reading line texts: leans up / leans down / balanced (owner 2026-10-19)
+  ADR-123: 4b           # shared contract: one recorded "Kite now matches, unblock every holder" action (owner 2026-10-19)
+  ADR-124: 4b           # range-flow view picker labels Mildly bullish / Mildly bearish / Neutral (owner 2026-10-19)
+  ADR-125: 4b           # earlier-day plan the next-day read cannot resolve: "Use Zerodha's number" action (owner 2026-10-20)
+  ADR-126: 4b           # adopted leg keeps Zerodha's exact average price (owner 2026-10-20)
+  ADR-149: 4b           # owner-account-only on the basket path = three enforceable controls (owner 2026-10-21, Q272)
+  ADR-146: 4b           # in-app billing pages: early-access line, no trial (owner 2026-10-20)
+  ADR-145: 4b           # landing footer: AP disclosure + risk warning + not-advice line (owner 2026-10-20)
+  ADR-144: 4b           # landing pricing: free during early access (owner 2026-10-20)
+  ADR-143: 4b           # unknown worst-case loss -> at least Elevated, Exceptional if a short is uncovered (owner 2026-10-20)
+  ADR-142: 4b           # recovery refusal texts (owner 2026-10-20)
+  ADR-141: 4b           # Use Zerodha's numbers at any hour (owner 2026-10-20)
+  ADR-140: 4b           # Execute risk tiers by worst-case loss vs limit and funds (owner 2026-10-20)
+  ADR-139: 4b           # Execute screen first sentence, one pattern for every shape (owner 2026-10-20)
+  ADR-138: 4b           # eight scope cuts so the app does not copy Kite (owner 2026-10-20)
+  ADR-137: 4b           # two actions clear a blocked strategy: Use Zerodha's numbers, Close via a basket (owner 2026-10-20)
+  ADR-136: 4b           # partial entry actions: Check, Place missing legs, Close filled legs, manage on Kite (owner 2026-10-20)
+  ADR-135: 4b           # four order states: Not sent to Zerodha / Order placed / Executed n of m / Not executed - see Kite (owner 2026-10-20)
+  ADR-134: 4b           # complement the broker, never duplicate it; orders show "Order placed" / "Executed" (owner 2026-10-20)
+  ADR-133: 4b           # never-placed basket "Cancelled" + "Not placed on Kite" (owner 2026-10-20; superseded in effect by ADR-134)
+  ADR-132: 4b          # chain selection texts: already-in-strategy prompt (owner 2026-10-20)
+  ADR-131: 4b          # chain: second tap on the same action unselects; lots via stepper (owner 2026-10-20)
+  ADR-130: 4b          # empty Orders and Positions offer [Create Strategy] (owner 2026-10-20)
+  ADR-129: 4b          # return page success line "Zerodha confirmed your orders." (owner 2026-10-20)
+  ADR-128: 4b          # kill switch: "You can still close positions directly on Kite." on screens with an open position (owner 2026-10-20)
+  ADR-127: 4b           # kill switch message "Execution is paused by the platform right now..." (owner 2026-10-20)
+  ADR-120: 4b          # answers that change nothing: no what-if sliders in V1; no guessed next-day fills (owner 2026-10-19)
   ADR-109: 4b          # #380 option C; app-owned lots (outside surplus never blocks); 2 partial-exit choices; 3-action reconcile screen; REQ-044 approved (owner 2026-10-18)
   ADR-093: all          # coding standards: automatic checks or review-only; ratchets; one home per value
   ADR-085: 4a           # reprice prompt wording for an old draft leg (owner 2026-10-15, W-071)
@@ -200,6 +282,23 @@ decisions:
 
 # Open questions with status OPEN / EXTERNAL / LEGAL in spec/open-questions.md, plus items marked open for the owner.
 # Stage 2 (2026-10-07): Q204, Q205, Q224, Q262 decided (ADR-052, 053, 056); the rest wait on third parties.
+  ADR-150: S6.1        # Shift / Width / Hedge allowed now; rule-placed strikes held for Q211 (owner 2026-10-21)
+  ADR-151: S6.2        # what-if at target level, date and IV change (owner 2026-10-21)
+  ADR-152: S6.1        # Sensibull as default reference with safety, legal and money exceptions (owner 2026-10-21)
+  ADR-153: S8          # stop-loss held at Zerodha as a broker trigger; held for static-IP proof and Q211 (owner 2026-10-21)
+  ADR-154: S8          # static-IP plan B as intent: one platform IP (owner 2026-10-21)
+  ADR-155: S8          # delayed prices before a broker login; off in production until permission (owner 2026-10-21)
+  ADR-156: S8          # six Sensibull features each held behind its check (owner 2026-10-21)
+  ADR-157: S6.1        # four index underlyings (owner 2026-10-21)
+  ADR-158: S8          # history, IV and OI charts held for display rights (owner 2026-10-21)
+  ADR-159: S6.1        # MIS as a product choice (owner 2026-10-21)
+  ADR-160: S6.3        # Orders page, funds view and order import (owner 2026-10-21)
+  ADR-161: S8          # manual P&L, FII/DII data and native apps (owner 2026-10-21)
+  ADR-162: S8          # automatic P&L stop-loss by the platform; held for static IP, algo standing and Q211 (owner 2026-10-21)
+  ADR-163: S6.1        # whole-strategy Execute only (owner 2026-10-21)
+  ADR-164: S6.2        # max profit and loss as a percentage of funds (owner 2026-10-21)
+  ADR-165: all         # builder-first scope, no order placing in this scope (owner 2026-10-21)
+
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
   Q258: 4b              # external: Zerodha; design decided by ADR-054
@@ -207,7 +306,6 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
-  Q272: 4b              # open (owner, after GC-3L): which control counts as owner-account-only on the basket path (REQ-073 AC-5)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
@@ -289,6 +387,13 @@ issues:
   "#439": 4b  # Chain socket: invalid messages can starve a client's own pushes; IV not on the chain (W-116 review, deferred by GC-5S)
   "#442": 4b  # Ignored-positions audit line logged at INFO, which the app never prints (PR #440 review MINOR)
   "#444": 4b  # Builder brief template lacks the kit 1.8.0 standing items (a)-(d)
+  "#475": 4b  # WT-LINK-GUARD round-2 MINORs: quoted remove, flag in a variable, ln -t, cd-relative target, cp -rs, phrase in commit text
+  "#481": 4b  # #380-3 round-1 MINORs: opposite-side exit, adjustment contracts, order-book age, mixed close test
+  "#482": S5  # IDENTITY-SCREENS: sign-up/login/profile/security/deletion screens deferred to stage 5 (owner D6)
+  "#483": 4b  # MKT-HOURS-REREAD MINORs: no re-read on a missing next_change_at; out-of-order status answers
+  "#485": 4b  # #380-2 re-review MINORs: Execute stores-nothing unpinned, weaker equity test, clock read outside handler
+  "#486": 4b  # #313 round-1 MINORs: unkilled adopt guards, DB-only killers, cross-user adoption reference, no concurrent-adoption test
+  "#488": 4b  # TRIM-STRUCT parked: structural list guard built (e7cee4b) but the daily reload never gets NSE's file
 
 # Work items whose status is not done.
 work_items:
@@ -322,6 +427,7 @@ work_items:
   W-109: 4a           # GC-2f: My Strategies list + Completed filter (REQ-009 AC-2)
   W-110: 4a           # GC-2f: repo-wide money guard (REQ-063 AC-3)
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
+  W-112: 4a           # GC-2g: no historical market data shown to users, repo_scan guard (REQ-052 AC-1)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
@@ -377,6 +483,14 @@ findings:
   F-46: 4b        # a live screen kept its last answer's numbers after its own connection dropped (GC-5S W-113/114/115)
   F-47: 4b        # the live feed carries no previous close; Option Chain Change column null (GC-5S W-116)
   F-48: 4b        # a socket's rate limit guarded only its normal push; the error path flooded (GC-5S W-116)
+  F-49: 4b        # Strategy Builder built but missing from REAL_PAGES; nav shows a placeholder (GC-6 S1)
+  F-50: 4b        # Kite basket: required vs final margin; sequence changes required margin only (GC-6 S5)
+  F-51: 4b        # no studied app has a guided objective/view/range wizard; REQ-024/026 alone (GC-6 S3)
+  F-52: 4b        # build-order and W-083 still showed OQ-7 as open after ADR-096 answered it (GC-6 S0)
+  F-53: 4b        # every workflow runs on every PR push incl. drafts; app-tests runs the API suite on frontend-only PRs (GC-6 O0)
+  F-54: 4b        # the legacy algochanakya 2026 holiday list misses 20 Oct and lists 21 Oct; never copy it (GC-6 MKT-HOURS)
+  F-55: 4b        # a net-only next-day read cannot see a same-day round trip (GC-6 NET-ROUNDTRIP)
+  F-56: 4b        # Zerodha's instrument list: fetch at about 08:30 IST per Kite docs (GC-6 INSTR-FRESH)
 
 hypotheses:
   H1: done

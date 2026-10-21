@@ -14,9 +14,10 @@
     "checks": [
       "tests/rules/test_model.py::test_no_money_arithmetic_on_leg_prices_in_rules",
       "tests/engine/test_net_premium.py::test_ratio_spread_net_premium_weights_each_leg_by_its_quantity",
-      "tests/rules/test_entry.py::test_premium_target_on_ratio_spread_uses_engine_net_premium"
+      "tests/rules/test_entry.py::test_premium_target_on_ratio_spread_uses_engine_net_premium",
+      "tests/test_money_outside_engine.py::test_money_arithmetic_only_in_allowed_homes"
     ],
-    "note": "The AST guard fails on any use of ltp/entry_price in backend/ofo/rules/ other than an 'is None' check; its self-test proves it flags the original re-implementation (a UnaryOp inside sum(), which a BinOp-only scan would miss). It covers only backend/ofo/rules/; other consumer packages (screens, monitoring) are not scanned yet. Sweep 2026-09-29 (case-insensitive ltp|last_price|entry|premium): backend/ofo/instruments/ does no money arithmetic; its only price hit is 'last_price' as a CSV column name in parser.py."
+    "note": "The AST guard fails on any use of ltp/entry_price in backend/ofo/rules/ other than an 'is None' check; its self-test proves it flags the original re-implementation (a UnaryOp inside sum(), which a BinOp-only scan would miss). W-110 widens it: tests/test_money_outside_engine.py scans every backend/ module and frontend/src file outside the engine homes (engine, scenario, charges, money.py); main's existing hits are a baseline list in that test (KNOWN_ON_MAIN), not an allowance. Sweep 2026-09-29 (case-insensitive ltp|last_price|entry|premium): backend/ofo/instruments/ does no money arithmetic; its only price hit is 'last_price' as a CSV column name in parser.py."
   },
   "spec_ref": [
     "spec/business-rules/scenario-calculations.md",
