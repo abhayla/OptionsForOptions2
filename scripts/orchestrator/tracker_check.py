@@ -7,7 +7,8 @@ Checks docs/process/build-ahead-tracker.md (ADR-112 (2), goal-chain chain rules 
   - an issue-id row (#N): closed -> issue closed, any open status -> issue open;
   - every OPEN issue has a row; every open row has a contract;
   - GC-6 rows (nothing silent, contract section 0): todo/building needs `verify:` in its notes, blocked-* needs
-    `owner-accepted YYYY-MM-DD`, and every row id section 4 of the GC-6 contract names has a tracker row.
+    `owner-accepted YYYY-MM-DD`, and every row id section 4 of the GC-6 contract names has a tracker row;
+  - a todo/building row whose Item or Evidence names a PR that GitHub reports MERGED is stale (one PR list).
 Output: one line per failure, or OK. Exit 0 OK, 1 failures, 2 the check could not run (gh/git missing or failing).
 --offline replaces both gh calls and the git base with a JSON file: {"base": "<tracker text>",
 "issues": [{"number": N, "state": "OPEN|CLOSED"}], "prs": [{"number": N, "state": "OPEN|MERGED|CLOSED"}]}.
@@ -36,7 +37,9 @@ VERIFY_RE = re.compile(r"verify:\s*\S")
 ACCEPTED_RE = re.compile(r"owner-accepted \d{4}-\d{2}-\d{2}")
 VERIFY_STATUSES = {"todo", "building"}
 SECTION_START = re.compile(r"^## 4\.", re.M)
-SECTION_END = re.compile(r"^## ", re.M)
+SECTION_END = re.compile(r"^## \d+\.", re.M)  # numbered: a heading wrapped onto a second '## ' line is not an end
+AC_SUFFIX_RE = re.compile(r"\s+AC-(\d+)\b")
+PR_REF_RE =re.compile(r"#(\d+)\b(?!-)")
 OUT_OF_SCOPE_LINE = re.compile(r"^Out of this contract.*$", re.M)
 # A plan id is an issue number (#352, #352-2) or an UPPER-CASE hyphenated name (CI-SPLIT, W-118-sel, REQ-041).
 PLAN_ID_RE = re.compile(r"#\d+(?:-\d+)?|\b[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+\b")
@@ -154,6 +157,19 @@ def check_gc6_rows(rows, failures):
             failures.append(f"{where}: {row['Status']} row has no 'owner-accepted YYYY-MM-DD' in its notes")
 
 
+def check_merged_pr_in_open_row(rows, prs, failures):
+    """A todo/building row whose own cells name a PR that GitHub says is MERGED is stale (measured 2026-10-21:
+    HOME-NEW said building after PR #464 merged). One PR list serves every row (the call gh_states already made)."""
+    for row in rows:
+        word = row["Status"].split(" ")[0]
+        if word not in VERIFY_STATUSES:
+            continue
+        named = {int(n) for n in PR_REF_RE.findall(f"{row['Item']} {row['Evidence']}")}
+        for num in sorted(n for n in named if prs.get(n) == "MERGED"):
+            failures.append(f"line {row['line']}: {row['Id']}: status {word} but its notes name PR #{num}, "
+                            f"which is MERGED on GitHub (update the row: merged/verified/closed, or say what is left)")
+
+
 def contract_plan_ids(contract_text, pr_numbers):
     """Row ids named in section 4 of the contract; None when the section is missing."""
     start = SECTION_START.search(contract_text)
@@ -163,12 +179,14 @@ def contract_plan_ids(contract_text, pr_numbers):
     end = SECTION_END.search(body)
     body = OUT_OF_SCOPE_LINE.sub("", body[:end.start()] if end else body)
     ids = set()
-    for tok in PLAN_ID_RE.findall(body):
+    for m in PLAN_ID_RE.finditer(body):
+        tok = m.group(0)
         if tok.startswith(NOT_ROW_PREFIXES):
             continue
         if tok.startswith("#") and tok[1:].isdigit() and int(tok[1:]) in pr_numbers:
             continue  # a held PR, not an issue row
-        ids.add(tok)
+        ac = AC_SUFFIX_RE.match(body, m.end())
+        ids.add(f"{tok}-AC{ac.group(1)}" if ac else tok)  # "W-083 AC-2" names the row W-083-AC2
     return ids
 
 
@@ -242,6 +260,7 @@ def check(root, offline=None):
     check_open_issues_have_rows(rows, issues, failures)
     check_no_row_deleted(rows, base, failures)
     check_gc6_rows(rows, failures)
+    check_merged_pr_in_open_row(rows, prs, failures)
     check_contract_ids(rows, contract, issues, prs, failures)
     return failures
 
