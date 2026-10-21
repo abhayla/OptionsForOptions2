@@ -5,7 +5,9 @@ Checks docs/process/build-ahead-tracker.md (ADR-112 (2), goal-chain chain rules 
   - no Id present in the tracker at origin/main is missing now (a row leaves only as closed/parked/deferred);
   - held #N -> PR N open; merged #N -> PR N merged; parked/deferred #N -> issue N exists;
   - an issue-id row (#N): closed -> issue closed, any open status -> issue open;
-  - every OPEN issue has a row; every open row has a contract.
+  - every OPEN issue has a row; every open row has a contract;
+  - GC-6 rows (nothing silent, contract section 0): todo/building needs `verify:` in its notes, blocked-* needs
+    `owner-accepted YYYY-MM-DD`, and every row id section 4 of the GC-6 contract names has a tracker row.
 Output: one line per failure, or OK. Exit 0 OK, 1 failures, 2 the check could not run (gh/git missing or failing).
 --offline replaces both gh calls and the git base with a JSON file: {"base": "<tracker text>",
 "issues": [{"number": N, "state": "OPEN|CLOSED"}], "prs": [{"number": N, "state": "OPEN|MERGED|CLOSED"}]}.
@@ -27,7 +29,18 @@ STATUS_WITH_NUMBER = {"held", "merged", "parked", "deferred"}
 CLOSED_WORDS = {"closed", "parked", "deferred"}
 MIN_TABLE_LINES = 3  # header, separator, at least one row
 WITH_NUMBER_PARTS = 2  # "held" and "#N"
-CONTRACT_RE =re.compile(r"GC-\w+|owner|stage-5")
+CONTRACT_RE = re.compile(r"GC-\w+|owner|stage-5")
+GC6 = "GC-6"
+GC6_CONTRACT = "docs/process/goal-contract-GC-6-2026-10-19.md"
+VERIFY_RE = re.compile(r"verify:\s*\S")
+ACCEPTED_RE = re.compile(r"owner-accepted \d{4}-\d{2}-\d{2}")
+VERIFY_STATUSES = {"todo", "building"}
+SECTION_START = re.compile(r"^## 4\.", re.M)
+SECTION_END = re.compile(r"^## ", re.M)
+OUT_OF_SCOPE_LINE = re.compile(r"^Out of this contract.*$", re.M)
+# A plan id is an issue number (#352, #352-2) or an UPPER-CASE hyphenated name (CI-SPLIT, W-118-sel, REQ-041).
+PLAN_ID_RE = re.compile(r"#\d+(?:-\d+)?|\b[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+\b")
+NOT_ROW_PREFIXES = ("ADR-", "GC-", "AC-")  # decision, contract and criterion references, not rows
 
 
 class CheckError(Exception):
@@ -40,18 +53,18 @@ def split_row(line):
 
 def parse_tracker(text, failures):
     rows = []
-    lines = [ln for ln in text.splitlines() if ln.lstrip().startswith("|")]
-    if len(lines) < MIN_TABLE_LINES or split_row(lines[0]) != COLUMNS:
+    numbered = [(n, ln) for n, ln in enumerate(text.splitlines(), 1) if ln.lstrip().startswith("|")]
+    if len(numbered) < MIN_TABLE_LINES or split_row(numbered[0][1]) != COLUMNS:
         failures.append(f"table: header is not exactly {' | '.join(COLUMNS)} (or the table is missing)")
         return rows
-    for ln in lines[2:]:
+    for number, ln in numbered[2:]:
         cells = split_row(ln)
         if len(cells) != len(COLUMNS):
             failures.append(
                 f"table: row has {len(cells)} columns, expected {len(COLUMNS)} "
-                f"(a literal | inside a cell must be escaped as \\|): {ln[:60]}")
+                f"(a literal | inside a cell must be escaped as \\|) at line {number}: {ln[:60]}")
             continue
-        rows.append(dict(zip(COLUMNS, cells, strict=True)))
+        rows.append({**dict(zip(COLUMNS, cells, strict=True)), "line": number})
     return rows
 
 
@@ -128,6 +141,48 @@ def check_no_row_deleted(rows, base_text, failures):
         failures.append(f"{rid}: row deleted (present at {BASE_REF}); a row leaves only as closed, parked or deferred")
 
 
+def check_gc6_rows(rows, failures):
+    """Rules 1 and 2: a GC-6 row cannot stall or close silently (contract section 0)."""
+    for row in rows:
+        if row["Contract"] != GC6:
+            continue
+        word = row["Status"].split(" ")[0]
+        where = f"line {row['line']}: {row['Id']}"
+        if word in VERIFY_STATUSES and not VERIFY_RE.search(row["Evidence"]):
+            failures.append(f"{where}: {word} row has no 'verify:' command in its notes")
+        if word.startswith("blocked") and not ACCEPTED_RE.search(row["Evidence"]):
+            failures.append(f"{where}: {row['Status']} row has no 'owner-accepted YYYY-MM-DD' in its notes")
+
+
+def contract_plan_ids(contract_text, pr_numbers):
+    """Row ids named in section 4 of the contract; None when the section is missing."""
+    start = SECTION_START.search(contract_text)
+    if not start:
+        return None
+    body = contract_text[start.end():]
+    end = SECTION_END.search(body)
+    body = OUT_OF_SCOPE_LINE.sub("", body[:end.start()] if end else body)
+    ids = set()
+    for tok in PLAN_ID_RE.findall(body):
+        if tok.startswith(NOT_ROW_PREFIXES):
+            continue
+        if tok.startswith("#") and tok[1:].isdigit() and int(tok[1:]) in pr_numbers:
+            continue  # a held PR, not an issue row
+        ids.add(tok)
+    return ids
+
+
+def check_contract_ids(rows, contract_text, issues, prs, failures):
+    """Rule 3: every id the contract's order of work names is a tracker row."""
+    ids = contract_plan_ids(contract_text, {n for n in prs if n not in issues})
+    if not ids:
+        failures.append(f"{GC6_CONTRACT}: section 4 is missing or names no row ids (cannot compare)")
+        return
+    have = {r["Id"] for r in rows}
+    for rid in sorted(ids - have):
+        failures.append(f"{GC6_CONTRACT}: {rid}: named in section 4 but has no tracker row")
+
+
 def run(cmd, root):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=root, encoding="utf-8",  # noqa: S603
@@ -175,6 +230,10 @@ def check(root, offline=None):
     else:
         base = run(["git", "show", f"{BASE_REF}:{TRACKER}"], root)
         issues, prs = gh_states(root, "issue"), gh_states(root, "pr")
+    try:
+        contract = (Path(root) / GC6_CONTRACT).read_text(encoding="utf-8")
+    except OSError as e:
+        raise CheckError(f"cannot read {GC6_CONTRACT}: {e}") from e
     failures = []
     rows = parse_tracker(text, failures)
     if not rows and not failures:
@@ -182,6 +241,8 @@ def check(root, offline=None):
     check_rows(rows, issues, prs, failures)
     check_open_issues_have_rows(rows, issues, failures)
     check_no_row_deleted(rows, base, failures)
+    check_gc6_rows(rows, failures)
+    check_contract_ids(rows, contract, issues, prs, failures)
     return failures
 
 
@@ -205,7 +266,9 @@ def main(argv):
         return 2
     for f in failures:
         print(f)
-    if not failures:
+    if failures:
+        print(f"{len(failures)} violation(s)")
+    else:
         print("OK")
     return 1 if failures else 0
 
