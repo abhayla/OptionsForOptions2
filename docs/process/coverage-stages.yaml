@@ -323,6 +323,7 @@ issues:
   "#475": 4b  # WT-LINK-GUARD round-2 MINORs: quoted remove, flag in a variable, ln -t, cd-relative target, cp -rs, phrase in commit text
   "#481": 4b  # #380-3 round-1 MINORs: opposite-side exit, adjustment contracts, order-book age, mixed close test
   "#482": 5  # IDENTITY-SCREENS: sign-up/login/profile/security/deletion screens deferred to stage 5 (owner D6)
+  "#483": 4b  # MKT-HOURS-REREAD MINORs: no re-read on a missing next_change_at; out-of-order status answers
 
 # Work items whose status is not done.
 work_items:
