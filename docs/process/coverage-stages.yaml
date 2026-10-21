@@ -68,7 +68,7 @@ requirements:
   REQ-060: [done, 4b]
   REQ-061: 4b
   REQ-062: {AC-1: [4c, S6], AC-2: S6, AC-3: 4c, AC-4: 4c}   # owner 2026-10-15: Stage 4 = in-app + WhatsApp via the Notifier; push, email, full matrix later
-  REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b]}
+  REQ-063: {AC-1: [4a, S8], AC-2: 4a, AC-3: 4a, AC-4: 4b, AC-5: [4a, 4b], AC-6: [4b, S8]}
   REQ-064: 4a
   REQ-065: 4a
   REQ-066: S8
@@ -81,6 +81,56 @@ requirements:
   REQ-073: 4b           # Kite basket order path (new, ADR-054)
   REQ-074: [S7, S8]     # CERT-In logs and incident runbook (new, F-27)
   REQ-075: all          # coding standards as automatic checks (ADR-093, owner 2026-10-16)
+  # Master register requirements REQ-076..REQ-133 (docs batch 2026-10-21); stages are provisional, the owner re-stages at prioritisation (ADR-150 (3)).
+  REQ-076: S6.1
+  REQ-077: S6.1
+  REQ-078: S6.1
+  REQ-079: S6.1
+  REQ-080: S6.1
+  REQ-081: S6.2
+  REQ-082: S6.2
+  REQ-083: S6.2
+  REQ-084: S6.2
+  REQ-085: S6.2
+  REQ-086: S6.6
+  REQ-087: S6.1
+  REQ-089: S6.2
+  REQ-090: S6.1
+  REQ-091: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-092: S6.6
+  REQ-093: S6.6
+  REQ-094: S6.6
+  REQ-095: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-096: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-100: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-101: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-102: S6.1
+  REQ-103: S6.3
+  REQ-104: S6.3
+  REQ-105: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-106: S6.2
+  REQ-107: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-108: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-109: S6.4
+  REQ-110: S6.4
+  REQ-111: S6.6
+  REQ-112: S6.4
+  REQ-113: S6.7
+  REQ-114: S6.7
+  REQ-115: S6.7
+  REQ-116: S6.7
+  REQ-117: S6.7
+  REQ-118: S6.7
+  REQ-119: S6.1
+  REQ-125: S6.7
+  REQ-126: S7
+  REQ-127: S7
+  REQ-128: S7
+  REQ-129: S7
+  REQ-130: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-131: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-132: S8   # held (legal, licence, consent or static-IP check) - later stage
+  REQ-133: S6.1
 
 decisions:
   ADR-001: all
@@ -232,6 +282,22 @@ decisions:
 
 # Open questions with status OPEN / EXTERNAL / LEGAL in spec/open-questions.md, plus items marked open for the owner.
 # Stage 2 (2026-10-07): Q204, Q205, Q224, Q262 decided (ADR-052, 053, 056); the rest wait on third parties.
+  ADR-150: S6.1        # Shift / Width / Hedge allowed now; rule-placed strikes held for Q211 (owner 2026-10-21)
+  ADR-151: S6.2        # what-if at target level, date and IV change (owner 2026-10-21)
+  ADR-152: S6.1        # Sensibull as default reference with safety, legal and money exceptions (owner 2026-10-21)
+  ADR-153: S8          # stop-loss held at Zerodha as a broker trigger; held for static-IP proof and Q211 (owner 2026-10-21)
+  ADR-154: S8          # static-IP plan B as intent: one platform IP (owner 2026-10-21)
+  ADR-155: S8          # delayed prices before a broker login; off in production until permission (owner 2026-10-21)
+  ADR-156: S8          # six Sensibull features each held behind its check (owner 2026-10-21)
+  ADR-157: S6.1        # four index underlyings (owner 2026-10-21)
+  ADR-158: S8          # history, IV and OI charts held for display rights (owner 2026-10-21)
+  ADR-159: S6.1        # MIS as a product choice (owner 2026-10-21)
+  ADR-160: S6.3        # Orders page, funds view and order import (owner 2026-10-21)
+  ADR-161: S8          # manual P&L, FII/DII data and native apps (owner 2026-10-21)
+  ADR-162: S8          # automatic P&L stop-loss by the platform; held for static IP, algo standing and Q211 (owner 2026-10-21)
+  ADR-163: S6.1        # whole-strategy Execute only (owner 2026-10-21)
+  ADR-164: S6.2        # max profit and loss as a percentage of funds (owner 2026-10-21)
+
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
   Q258: 4b              # external: Zerodha; design decided by ADR-054
