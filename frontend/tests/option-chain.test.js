@@ -10,6 +10,7 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: (url, cfg) => { reads.push({ url, params: cfg?.params }); return restAnswer(url, cfg?.params) }, post: () => Promise.reject(new Error('no post')) } }
 })
+import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
 
@@ -29,7 +30,7 @@ class FakeSocket {
 }
 
 const EXPIRY = '2026-10-27'
-const cell = (id, ltp, oi = '1000', volume = '50') => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi, oi_change: null, volume, health: 'available', at: '2026-10-19T10:00:00+05:30' })
+const cell = (id, ltp, oi = '1000', volume = '50') => ({ instrument_id: id, ltp, bid: null, ask: null, change: null, oi, oi_change: null, volume, health: 'available', at: '2026-10-19T10:00:00+05:30', permitted: true, unavailable_reason: null })
 const row = (strike, ltpCe, ltpPe) => ({ strike, ce: cell(`NFO:${strike}CE`, ltpCe), pe: cell(`NFO:${strike}PE`, ltpPe) })
 const answer = (ltpCe = '120.50', over = {}) => ({
   state: 'LIVE', underlying: 'NIFTY', expiry: EXPIRY, spot: '24510.00', spot_at: '2026-10-19T10:00:00+05:30', spot_health: 'available',
@@ -56,6 +57,7 @@ const sock = () => FakeSocket.all.at(-1)
 const cellsOf = (w, testid) => w.findAll(`[data-testid="${testid}"]`).map((c) => c.text())
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   FakeSocket.all = []
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
@@ -70,10 +72,10 @@ describe('Option Chain screen', () => {
     expect(JSON.parse(sock().sent[0])).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
-    const heads = w.findAll('thead tr').at(0).findAll('th').map((t) => t.text())
+    const heads = w.findAll('thead tr').at(0).findAll('th').map((t) => t.text()).filter(Boolean)
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
-    const tds = bodyRow.findAll('td').map((t) => t.text())
+    const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
     expect(tds).toEqual(['120.50', '-', '1000', '50', '24500.00', '95.25', '-', '1000', '50'])
     expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
@@ -85,7 +87,7 @@ describe('Option Chain screen', () => {
     sock().serverOpen()
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
-    const cols = w.find('[data-testid="chain-columns"]').findAll('th').map((t) => t.text())
+    const cols = w.find('[data-testid="chain-columns"]').findAll('th').map((t) => t.text()).filter(Boolean)
     expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'Strike', 'LTP', 'Change', 'OI', 'Volume'])
     expect(cols.join(' ')).not.toMatch(/IV|Delta|Bid|Ask/)
     expect(cellsOf(w, 'ce-change')).toEqual(['-', '-', '-'])
@@ -123,11 +125,12 @@ describe('Option Chain screen', () => {
     sock().serverOpen()
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
-    expect(w.findAll('button')).toHaveLength(0)
+    // REQ-030 AC-2: the only buttons are the per-cell Buy / Sell choices of a leg for import (ADR-002: never an order)
+    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Refresh', 'Sell'])
     expect(w.findAll('a')).toHaveLength(0)
-    expect(w.text()).not.toMatch(/\b(buy|sell|order|execute|place)\b/i)
+    expect(w.text()).not.toMatch(/\b(order|execute|place)\b/i)
     const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')
-    expect(src).not.toMatch(/\/orders|\/execute|router-link|<button/)
+    expect(src).not.toMatch(/\/orders|\/execute|router-link|api\.post/)
   })
 
   it('Proof: two pushes change an LTP cell', async () => {
