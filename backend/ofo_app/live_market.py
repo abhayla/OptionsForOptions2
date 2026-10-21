@@ -143,7 +143,7 @@ class LiveMarket:
 
         engine = get_engine()
         async with engine.connect() as conn:
-            return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key), engine=engine)
+            return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key))
 
     async def _launch(self, broker_config, token: str) -> None:
         from ofo_app import catalogue_store

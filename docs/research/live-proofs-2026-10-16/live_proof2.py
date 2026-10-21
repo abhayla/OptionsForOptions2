@@ -30,7 +30,7 @@ async def main():
     cfg = load_broker_config(); engine = get_engine()
     try:
         async with engine.connect() as conn:
-            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key), engine=engine)
+            token = await access_token_for(conn, "owner", TokenCipher(cfg.token_key))
             rows = (await conn.execute(text("select broker_symbol, tick_size, freeze_limit, lot_size from public.broker_instruments where broker_symbol like 'NIFTY26O19%' and broker_segment is not null"))).all()
         meta = {r[0]: (Decimal(str(r[1])), r[2], r[3]) for r in rows}
         spot = call(cfg.api_key, token, "/quote/ltp?i=NSE:NIFTY%2050")["data"]["NSE:NIFTY 50"]["last_price"]

@@ -119,6 +119,8 @@ def _run(cmd: list[str], cwd: Path) -> tuple[int | None, str] | None:
 
     Output goes to a temp file, not a pipe, so a grandchild that outlives the killed process cannot hold the call open.
     """
+    if cmd and cmd[0] == "node":  # full path: the test-time egress gate lists programs by resolved path (#403)
+        cmd = [shutil.which("node") or "node", *cmd[1:]]
     with tempfile.TemporaryFile() as out:
         try:
             proc = subprocess.Popen(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT,  # noqa: S603 - fixed argv, no shell
