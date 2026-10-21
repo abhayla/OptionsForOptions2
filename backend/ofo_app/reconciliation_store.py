@@ -4,7 +4,7 @@ Spec basis: REQ-060 AC-6 "While a mismatch is unresolved, new execution and adju
 Q222 (REQ-060, owner-confirmed 2026-09-29) "an agreeing reconciliation run does not unblock a strategy by itself; the
 block lifts only through a recorded manual resolution"; REQ-060 AC-5 "Manual reconciliation is allowed, explicit and
 audited (Q198)."; REQ-060 AC-7 (standalone positions "are recorded with their quantity"); ADR-109 (4) (the first
-reconcile screen's three actions). Schema: migration 0018_reconciliation_store.
+reconcile screen's three actions). Schema: migration 0019_reconciliation_store.
 
 Copy from: none - modelled on ``execution_plan_store`` (strategy row lock via ``strategy_store``, error style).
 
@@ -61,7 +61,7 @@ MAX_REPORT_BYTES = 65_536
 MAX_TEXT = 500
 _CONTRACT_KEY = re.compile(r"[A-Z][A-Z0-9_-]{0,15}:[1-9][0-9]{0,18}")
 _UNIQUE_VIOLATION = "23505"
-#: migration 0018: one row per (mismatch, action), and one settling row per mismatch.
+#: migration 0019: one row per (mismatch, action), and one settling row per mismatch.
 _RESOLUTION_KEYS = ("reconciliation_resolutions_pkey", "reconciliation_resolutions_one_settling")
 
 

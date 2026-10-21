@@ -1,5 +1,5 @@
 """#380 step 2.1: the stored reconciliation mismatch, its recorded resolution, the standalone quantity, and the
-``unresolved_from_positions`` close reason (migration 0018).
+``unresolved_from_positions`` close reason (migration 0019).
 
 Spec basis (quoted): REQ-060 AC-6 "While a mismatch is unresolved, new execution and adjustment execution are blocked
 (Q199)."; REQ-060 (Q222, owner-confirmed 2026-09-29) "an agreeing reconciliation run does not unblock a strategy by
@@ -432,12 +432,12 @@ _LEFTOVERS = text(
 
 
 async def test_ac6_downgrade_leaves_nothing_and_upgrade_restores_the_store(admin_engine):
-    """AC-6: 0018 down -> no table, function, trigger or grant of the store is left and the old close-reason CHECK
+    """AC-6: 0019 down -> no table, function, trigger or grant of the store is left and the old close-reason CHECK
     refuses the new reason; up -> the allow-list post check passes (inside upgrade) and the store works. Rolled
     back."""
     from _migration_replay import round_trip_sql  # noqa: PLC0415
 
-    own_down, own_up, down, up = round_trip_sql("0018_reconciliation_store.py")
+    own_down, own_up, down, up = round_trip_sql("0019_reconciliation_store.py")
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
@@ -460,7 +460,7 @@ async def test_ac6_downgrade_is_refused_while_a_mismatch_is_stored(admin_engine)
     """AC-5: mismatches are the audit of a block: the downgrade refuses once one is stored."""
     from _migration_replay import recorded  # noqa: PLC0415
 
-    own_down = recorded("0018_reconciliation_store.py", "downgrade")
+    own_down = recorded("0019_reconciliation_store.py", "downgrade")
     async with _Tx(admin_engine) as tx:
         await _mismatch(tx)
         with pytest.raises(DBAPIError, match="reconciliation records are stored"):

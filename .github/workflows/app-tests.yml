@@ -272,6 +272,8 @@ jobs:
       - name: Start the API (uvicorn factory) as ofo_app
         env:
           DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
+          DB_POOL_SIZE: '1'  # #370: the three e2e API processes share the role's CONNECTION LIMIT 5 (ADR-048)
+          DB_MAX_OVERFLOW: '0'
         run: |
           nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8000 > "${RUNNER_TEMP}/uvicorn.log" 2>&1 &
           for i in $(seq 1 30); do
@@ -287,6 +289,8 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           APP_ENV: test
           OUTCOME_REPLAY: '1'
+          DB_POOL_SIZE: '1'
+          DB_MAX_OVERFLOW: '0'
         run: |
           nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8001 > "${RUNNER_TEMP}/uvicorn-replay.log" 2>&1 &
           for i in $(seq 1 30); do
@@ -305,6 +309,8 @@ jobs:
           APP_ENV: test
           TEST_CATALOGUE_DATE: '2026-10-08'
           PYTHONPATH: backend  # python -m ofo_app... runs from the repo root (uvicorn below uses --app-dir instead)
+          DB_POOL_SIZE: '1'
+          DB_MAX_OVERFLOW: '0'
         run: |
           python -m ofo_app.seed_test_catalogue
           nohup python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8002 > "${RUNNER_TEMP}/uvicorn-pinned.log" 2>&1 &
