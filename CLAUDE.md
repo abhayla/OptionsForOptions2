@@ -31,7 +31,8 @@ in the ADR/REQ/Q it cites (finding brief-rule-from-memory).
 4. `knowledge/findings/` — proven failure classes; check before designing a mechanism.
 5. Sensibull study (private, outside this public repo; `D:\Abhay\GLOBAL.md` §7): before designing or briefing any
    feature, open `D:\Abhay\Ventures\competitors\sensibull\2026-10-21\INDEX.md`, find the feature, cite screen numbers.
-   Never copy its screenshots or account data into this repo.
+   Never copy its screenshots or account data into this repo. Broker layer, order path or market data: first read
+   `D:\Abhay\Ventures\competitors\multi-broker-architecture\2026-10-21\INDEX.md` (10 apps, common stack, traps).
 - `docs/reference/chatgpt/` holds the two full chat transcripts (primary) and the handoff files (lossy summaries).
   Reference only: never edit or delete them; `spec/` wins on any conflict (ADR-031). Map: `spec/traceability/source-map.md`.
 
