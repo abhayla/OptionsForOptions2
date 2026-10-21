@@ -163,6 +163,50 @@
         "title": "BrokerRedirectOut",
         "type": "object"
       },
+      "BrokerStatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "account_connection": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "historical_data": {
+            "const": "not_available",
+            "title": "Historical Data",
+            "type": "string"
+          },
+          "last_successful_sync": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Successful Sync"
+          },
+          "live_market_data": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "order_execution": {
+            "$ref": "#/components/schemas/StatusOut"
+          },
+          "position_sync": {
+            "$ref": "#/components/schemas/StatusOut"
+          }
+        },
+        "required": [
+          "account_connection",
+          "live_market_data",
+          "position_sync",
+          "order_execution",
+          "last_successful_sync",
+          "historical_data"
+        ],
+        "title": "BrokerStatusOut",
+        "type": "object"
+      },
       "CellOut": {
         "additionalProperties": false,
         "properties": {
@@ -251,6 +295,294 @@
           "vendor"
         ],
         "title": "CellOut",
+        "type": "object"
+      },
+      "ChainCellOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
+          },
+          "oi": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi"
+          },
+          "oi_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oi Change"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "ltp",
+          "bid",
+          "ask",
+          "change",
+          "oi",
+          "oi_change",
+          "volume",
+          "health",
+          "at"
+        ],
+        "title": "ChainCellOut",
+        "type": "object"
+      },
+      "ChainOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "atm_strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atm Strike"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ChainRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "rows_missing": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SPOT_MISSING",
+                  "EXPIRY_UNKNOWN",
+                  "CATALOGUE_EMPTY",
+                  "CATALOGUE_UNREADABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Missing"
+          },
+          "spot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot"
+          },
+          "spot_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot At"
+          },
+          "spot_health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spot Health"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_CONNECTED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "underlying",
+          "expiry",
+          "spot",
+          "spot_at",
+          "spot_health",
+          "atm_strike",
+          "rows_missing",
+          "rows",
+          "answered_at"
+        ],
+        "title": "ChainOut",
+        "type": "object"
+      },
+      "ChainRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ce": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChainCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChainCellOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strike": {
+            "title": "Strike",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strike",
+          "ce",
+          "pe"
+        ],
+        "title": "ChainRowOut",
         "type": "object"
       },
       "ColumnOut": {
@@ -517,6 +849,20 @@
         "title": "DefinitionOut",
         "type": "object"
       },
+      "DisconnectOut": {
+        "additionalProperties": false,
+        "properties": {
+          "disconnected": {
+            "title": "Disconnected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "disconnected"
+        ],
+        "title": "DisconnectOut",
+        "type": "object"
+      },
       "EntryOut": {
         "additionalProperties": false,
         "description": "One activity-history entry. The summary is rendered from stored data through the catalogue on every read.",
@@ -712,6 +1058,113 @@
         "title": "HistoryOut",
         "type": "object"
       },
+      "IndexOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "health": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available",
+                  "stale",
+                  "delayed",
+                  "unhealthy",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health"
+          },
+          "instrument_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z][A-Z_]{0,15}:[0-9]{1,12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument Id"
+          },
+          "underlying": {
+            "enum": [
+              "NIFTY",
+              "SENSEX"
+            ],
+            "title": "Underlying",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "underlying",
+          "instrument_id",
+          "value",
+          "at",
+          "health"
+        ],
+        "title": "IndexOut",
+        "type": "object"
+      },
+      "IndicesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "indices": {
+            "items": {
+              "$ref": "#/components/schemas/IndexOut"
+            },
+            "title": "Indices",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "LIVE",
+              "NOT_CONNECTED"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "indices",
+          "answered_at"
+        ],
+        "title": "IndicesOut",
+        "type": "object"
+      },
       "LevelOut": {
         "additionalProperties": false,
         "properties": {
@@ -817,6 +1270,38 @@
             "minItems": 1,
             "title": "Legs",
             "type": "array"
+          },
+          "range_end": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last scenario level in index points; sent with range_start",
+            "examples": [
+              "23600"
+            ],
+            "title": "Range End"
+          },
+          "range_start": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the first scenario level in index points; sent with range_end",
+            "examples": [
+              "22800"
+            ],
+            "title": "Range Start"
           },
           "underlying": {
             "enum": [
@@ -1546,7 +2031,8 @@
               "exited",
               "nothing_placed",
               "partial",
-              "reconciliation_required"
+              "reconciliation_required",
+              "unresolved_from_positions"
             ],
             "title": "State",
             "type": "string"
@@ -1637,6 +2123,10 @@
             "title": "Available",
             "type": "boolean"
           },
+          "customised": {
+            "title": "Customised",
+            "type": "boolean"
+          },
           "end": {
             "title": "End",
             "type": "string"
@@ -1719,9 +2209,51 @@
           "totals",
           "step",
           "start",
-          "end"
+          "end",
+          "customised"
         ],
         "title": "ScenarioOut",
+        "type": "object"
+      },
+      "StatusOut": {
+        "additionalProperties": false,
+        "properties": {
+          "fix": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connect_zerodha",
+                  "session_expired",
+                  "live_feed_off",
+                  "live_feed_not_running",
+                  "live_feed_session_ended",
+                  "no_read_yet",
+                  "live_data_not_connected",
+                  "positions_not_synced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "state": {
+            "enum": [
+              "connected",
+              "partial",
+              "disconnected"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "fix"
+        ],
+        "title": "StatusOut",
         "type": "object"
       },
       "StrategyIn": {
@@ -1962,6 +2494,84 @@
           "rows"
         ],
         "title": "TableOut",
+        "type": "object"
+      },
+      "TemplateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "Beginner",
+              "Intermediate",
+              "Advanced"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "objectives": {
+            "items": {
+              "enum": [
+                "income",
+                "directional",
+                "hedge",
+                "volatility"
+              ],
+              "type": "string"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "views": {
+            "items": {
+              "enum": [
+                "bullish",
+                "bearish",
+                "range-bound",
+                "volatile"
+              ],
+              "type": "string"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "level",
+          "views",
+          "objectives"
+        ],
+        "title": "TemplateOut",
+        "type": "object"
+      },
+      "TemplatesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "title": "TemplatesOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2528,6 +3138,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/broker/disconnect": {
+      "post": {
+        "description": "Ends the signed-in owner's active session. Strategies, history, entitlements and the account are not touched.",
+        "operationId": "broker_disconnect_api_broker_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisconnectOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Disconnect"
+      }
+    },
     "/api/broker/refusals/{code}": {
       "get": {
         "description": "Read-only: the catalogue message for a refusal code, for the page the callback redirected to (#163).",
@@ -2580,6 +3209,24 @@
           }
         },
         "summary": "Refusal Message"
+      }
+    },
+    "/api/broker/status": {
+      "get": {
+        "operationId": "broker_status_api_broker_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Broker Status"
       }
     },
     "/api/catalogue/{underlying}/contracts": {
@@ -2670,6 +3317,125 @@
         "summary": "Expiries"
       }
     },
+    "/api/market/chain": {
+      "get": {
+        "operationId": "market_chain_api_market_chain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": true,
+            "schema": {
+              "enum": [
+                "NIFTY",
+                "SENSEX"
+              ],
+              "title": "Underlying",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expiry",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Expiry",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "strikes_each_side",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 15,
+              "minimum": 1,
+              "title": "Strikes Each Side",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "true when the screen's own chain socket is down (ADR-077): the answer is then not live whoever else subscribes",
+            "in": "query",
+            "name": "fallback",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "true when the screen's own chain socket is down (ADR-077): the answer is then not live whoever else subscribes",
+              "title": "Fallback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Chain"
+      }
+    },
+    "/api/market/indices": {
+      "get": {
+        "operationId": "market_indices_api_market_indices_get",
+        "parameters": [
+          {
+            "description": "true when the page's own index socket is down (ADR-077): the answer is then not live whoever else subscribes",
+            "in": "query",
+            "name": "fallback",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "true when the page's own index socket is down (ADR-077): the answer is then not live whoever else subscribes",
+              "title": "Fallback",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Indices"
+      }
+    },
     "/api/strategies/outcome": {
       "post": {
         "operationId": "strategy_outcome_api_strategies_outcome_post",
@@ -2744,6 +3510,24 @@
           }
         },
         "summary": "Planned Entry"
+      }
+    },
+    "/api/strategy-templates": {
+      "get": {
+        "operationId": "strategy_templates_api_strategy_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplatesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Strategy Templates"
       }
     },
     "/broker/zerodha/login": {

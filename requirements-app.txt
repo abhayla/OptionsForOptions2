@@ -19,3 +19,6 @@ pglast==8.4
 cryptography==46.0.3
 # Workflow-path test (tests_app/test_app_ci_paths.py) parses the workflow file.
 PyYAML==6.0.3
+# The strategy catalogue loader (backend/ofo/strategy/loader.py) validates catalogue.yaml with it; the app imports the
+# loader since W-117's read-only GET /api/strategy-templates (it was a domain-test-only dependency before).
+jsonschema==4.26.0

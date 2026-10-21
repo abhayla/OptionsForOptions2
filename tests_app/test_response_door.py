@@ -270,8 +270,11 @@ def test_the_app_models_are_all_swept() -> None:
         "StrategyListOut", "EntryOut", "HistoryOut", "CellOut", "ColumnOut", "RowOut", "TableOut", "LevelOut",
         "ScenarioOut", "PointOut", "PayoffOut", "MarginOut", "AdvancedLegOut", "OutcomeResponse",
         "BasketOrderOut", "ExecuteOut", "CostOut", "ReturnPlanOut", "ReturnContractOut", "ReturnExternalOut",
-        "ReturnOut"}
-    assert len(_app_models()) == 37  # W-102 adds CostOut (the Execute reply's cost)
+        "ReturnOut", "IndexOut", "IndicesOut", "ChainCellOut", "ChainRowOut", "ChainOut", "TemplateOut",
+        "TemplatesOut", "StatusOut", "BrokerStatusOut", "DisconnectOut"}
+    # W-114 adds IndexOut and IndicesOut; W-116 adds ChainCellOut, ChainRowOut and ChainOut; W-117 adds TemplateOut and
+    # TemplatesOut; W-089 adds the three broker-status models
+    assert len(_app_models()) == 47
 
 
 @pytest.mark.parametrize("required_only", [False, True])

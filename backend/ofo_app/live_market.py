@@ -143,7 +143,7 @@ class LiveMarket:
 
         engine = get_engine()
         async with engine.connect() as conn:
-            return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key), engine=engine)
+            return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key))
 
     async def _launch(self, broker_config, token: str) -> None:
         from ofo_app import catalogue_store
@@ -242,6 +242,22 @@ def latest_depth(instrument_id: str) -> Depth | None:
         return None
     reader = getattr(ctx.provider, "latest_depth", None)  # a provider without depth (the test replay) has none
     return None if reader is None else reader(instrument_id, ctx.clock())
+
+
+def current_state() -> str:
+    """W-089: the live market's state word for the Settings page (``off`` when LIVE_MARKET is not on)."""
+    return NOT_STARTED if _current is None else _current.state
+
+
+async def stop_current() -> None:
+    """W-089 Disconnect (ADR-020 Q94): stop the running socket and mark the market not connected. Nothing when no
+    market was registered (LIVE_MARKET off). A later login restarts it through ``pick_up_login``."""
+    market = _current
+    if market is None:
+        return
+    await market.stop()
+    market.feed, market._socket, market._fingerprint = None, None, None
+    market.state = NOT_CONNECTED
 
 
 def current_feed() -> Optional[LiveFeed]:  # noqa: UP045

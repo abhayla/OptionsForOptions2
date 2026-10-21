@@ -1,0 +1,27 @@
+{
+ "id": "outcome-multi-expiry-unhandled-500",
+ "scope": "generic",
+ "class": "A domain function that raises a typed exception for an input shape the user can legitimately build (legs on two expiries) with no route-level mapping to a catalogue user-facing error returns a bare HTTP 500 instead of a message the user can act on.",
+ "mechanism": "POST /api/strategies/outcome calls the at-expiry metrics, which raise ofo.engine.metrics.MultiExpiryError when legs are on more than one expiry; the route does not catch it.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "ofo_dev API log, a draft holding 19 Oct and 27 Oct legs",
+  "evidence": "3 occurrences in the API log: ofo.engine.metrics.MultiExpiryError: exact at-expiry metrics need every leg on one expiry, returned as a bare 500 from POST /api/strategies/outcome"
+ },
+ "fix": "Not fixed (minor). Class fix: map MultiExpiryError (and any typed domain error the route can raise) to a catalogue error with a user-facing message at the route layer, with a test that posts a two-expiry draft and asserts the exact status and message.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Minor severity. Unmeasured: other routes that call engine functions raising typed errors without a mapping."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-034.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "POST /api/strategies/outcome, draft with 19 Oct and 27 Oct legs",
+   "evidence": "MultiExpiryError logged 3 times, response 500"
+  }
+ ]
+}

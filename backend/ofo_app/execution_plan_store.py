@@ -14,7 +14,8 @@ Copy from: none - modelled on ``strategy_store`` (row lock, id checks, error sty
   the highest plan number Zerodha's own order book showed today, so a number Kite already holds is never minted again.
 - record_plan: inserts the plan open with its orders, in the same transaction. Every order is checked here again
   (a frozen dataclass can be forged) and the DATABASE checks it a third time: one open plan (partial unique index),
-  tag = OFS<strategy>V<plan>L<leg>, tag unique, positive quantity and price.
+  tag = make_tag(strategy, plan, leg) (Q-grammar since 0018; legacy OFS rows still accepted), tag unique,
+  positive quantity and price.
 - close_plan: open -> closed once, with a reason; closed_at is the database clock. Nothing reopens a plan.
 Transaction control (commit) stays with the caller. Another user's strategy answers exactly like a missing one.
 """
@@ -32,7 +33,7 @@ from ofo.money import PAISE
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from ofo_app import strategy_store
+from ofo_app import reconciliation_store, strategy_store
 
 PLAN_OPEN = "plan_open"
 NOT_FOUND = "not_found"
@@ -41,7 +42,11 @@ TAG_TAKEN = "tag_taken"
 
 ACTIONS = ("ENTRY", "EXIT")
 SIDES = ("BUY", "SELL")
-CLOSE_REASONS = ("filled", "exited", "nothing_placed", "partial")
+#: ``unresolved_from_positions`` (migration 0019, #380 step 2.1): an earlier-day plan the next-day positions cannot
+#: settle closes with 0 stored per order; the stored reconciliation mismatch carries the block.
+UNRESOLVED = "unresolved_from_positions"
+CLOSE_REASONS = ("filled", "exited", "nothing_placed", "partial", UNRESOLVED)
+_NO_FILLS_REASONS = ("nothing_placed", UNRESOLVED)  # closes that store 0 for every order and take no fills
 INTEGER_MAX = 2**31 - 1  # plan_number, leg_index, quantity (INTEGER)
 PRICE_LIMIT = Decimal(10) ** 12  # NUMERIC(14,2)
 _UNIQUE_VIOLATION = "23505"
@@ -336,7 +341,10 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
     """Open -> closed, once. Closing a closed plan is ``bad_plan``; no plan number is ever reused or reopened.
     ``filled`` (tag -> Zerodha's filled quantity at close) is stored on the orders, so a restart can rebuild the
     position from the database. A close that changes position (``filled``, ``exited``, ``partial``) must carry it:
-    ``filled=None`` is ``bad_plan`` for those; ``nothing_placed`` with None stores 0 for every order."""
+    ``filled=None`` is ``bad_plan`` for those; ``nothing_placed`` with None stores 0 for every order;
+    ``unresolved_from_positions`` takes only None, stores 0 for every order, and is refused unless the strategy
+    has an unresolved reconciliation mismatch (recorded earlier in this same transaction or before): the mismatch
+    carries the block the open plan carried, so the close can never leave the strategy unblocked."""
     strategy_id = await _lock(conn, user_ref, strategy_id)
     if not isinstance(reason, str) or reason not in CLOSE_REASONS:
         raise PlanStoreError(BAD_PLAN, f"reason must be one of {CLOSE_REASONS}, got {reason!r}")
@@ -347,8 +355,13 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
         raise PlanStoreError(NOT_FOUND, f"plan {plan_number}")
     if status != "open":
         raise PlanStoreError(BAD_PLAN, f"plan {plan_number} is already closed")
+    if reason == UNRESOLVED and filled is not None:
+        raise PlanStoreError(BAD_PLAN, f"reason {UNRESOLVED!r} takes no filled quantities (they are unknown)")
+    if reason == UNRESOLVED and not await reconciliation_store.unresolved_locked(conn, strategy_id):
+        raise PlanStoreError(BAD_PLAN, f"reason {UNRESOLVED!r} needs an unresolved reconciliation mismatch of the "
+                                       "strategy recorded first (it carries the block)")
     if filled is None:
-        if reason != "nothing_placed":
+        if reason not in _NO_FILLS_REASONS:
             raise PlanStoreError(BAD_PLAN, f"reason {reason!r} changes position and needs the filled quantities")
         filled = {}
     orders = _one(await _read(conn, strategy_id), plan_number).orders
@@ -358,5 +371,5 @@ async def close_plan(conn: Any, user_ref: str, strategy_id: int, plan_number: in
     return _one(await _read(conn, strategy_id), plan_number)
 
 
-__all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "PlanOrder", "PlanStoreError", "StoredPlan", "close_plan",
-           "next_plan_number", "open_plan", "plans_for", "record_plan"]
+__all__ = ["BAD_PLAN", "NOT_FOUND", "PLAN_OPEN", "TAG_TAKEN", "UNRESOLVED", "PlanOrder", "PlanStoreError", "StoredPlan",
+           "close_plan", "next_plan_number", "open_plan", "plans_for", "record_plan"]

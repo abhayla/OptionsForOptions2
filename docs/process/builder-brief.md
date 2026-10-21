@@ -3,7 +3,8 @@
 Template for every builder dispatch (first used overnight 2026-09-29). Each quality-bar line cites the failure that
 added it; keep adding lines when a verifier finds a new class (knowledge/findings/).
 A specific brief carries only the item part (Core/Proof, quoted Spec basis, Copy from, ACs, attack cases, threat model,
-tier, and the literal `Budget:` / `Report:` / `Tests:` lines, which the dispatch hooks read from the prompt text) and
+tier, the `Standing items:` line (section below), and the literal `Budget:` / `Report:` / `Tests:` lines, which the
+dispatch hooks read from the prompt text) and
 says "Common brief: docs/process/builder-brief.md". A fix-round brief is the review's findings plus the original
 attack list, not a rewrite (ADR-106 item 9).
 
@@ -50,6 +51,19 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   (ADR-106 item 2; W-080 ran 10 rounds until ADR-098 put forged code objects out of scope). The reviewer attacks only
   what is in scope; a finding outside it is recorded, not a new round.
 
+## Standing items (kit run-discipline C4 (a)-(d), #444): every build brief carries these four
+Each came from a real "revise" verdict. The SPECIFIC brief carries one line `Standing items: (a) ... (b) ... (c) ...
+(d) ...`, each item either applied to this work or `n/a: <reason>` (e.g. "(a) n/a: no time-budgeted job"); a bare
+"n/a" is a brief defect, and the reviewer confirms every n/a reason against the diff.
+- **(a) Time budget:** a new pass inside a time-budgeted job reuses the job's existing small reservation, never the
+  whole remaining budget, and a test shows the higher-priority work still runs.
+- **(b) CI install order:** a CI step that gains a non-builtin import runs after the dependency install step.
+- **(c) Static detectors fail closed:** a detector fails closed on shapes it cannot resolve (re-exports, renamed
+  imports, same-named local functions) and names its guard by import source, not by identifier text.
+- **(d) Every answer state of another system:** when a feature decides on another system's answer (Kite, NSE, the
+  database), the brief lists every answer state - stated, absent, not found, failed, empty, ambiguous - and what each
+  does. Example: GC-3L met Kite's `InputException` "tag should be max 8 characters", a state no brief had listed.
+
 ## Quality bar (the reviewer will check exactly this)
 - Step 1 is the work item's **Core/Proof**: make that one test pass on the real input first, then build the rest.
 - One test per AC in `tests_required`; each test's docstring starts with the AC id (e.g. `"""AC-3: ..."""`).
@@ -90,7 +104,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
   gets an entry case AND a closing/position-reducing case from a real reply.
 - **A change to any API request/response model regenerates `docs/api/openapi.json`** (`python
   scripts/generate_openapi.py`) in the same PR: `test_committed_openapi_matches_the_app` fails otherwise. This is the
-  one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it).
+  one exception to "no regenerated files" (GC-2e: W-105 and W-102 both went red on it). A NEW `ApiModel` class is
+  also registered in `tests_app/test_response_door.py` (the pinned set and its count) and that file is run (GC-2g:
+  W-111's four Positions models turned CI's `api` job red).
 - **A migration's `upgrade()`/`downgrade()` call `op.*` directly** (`scripts/alembic_migration_guard.py`), and a
   migration that changes a pinned function body publishes its own `PINNED_BODIES` (GC-2e W-103: two CI reds).
 - **After merging main into your branch, re-run `python scripts/ruff_ratchet.py`** (E501 rose twice on 2026-10-16 only
@@ -100,7 +116,9 @@ that is not verbatim in the spec text it cites fails the brief (work item W-040)
 ## Before you finish
 Run from your worktree root, each as its own command (the fast pre-push set, ADR-106 item 11; CI runs the full
 suites): your brief's `Tests:` line (guard tests + `-m repo_scan` + your changed files' tests) ·
-`python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .`
+`python scripts/ruff_ratchet.py` · `python tools/factory_lint.py .` · `python tools/trace_check.py .` ·
+`python scripts/orchestrator/coverage.py . --check` (~5 s; a NEW work item or issue needs its row in
+`docs/process/coverage-stages.yaml`, else CI's coverage job goes red - W-112, 2026-10-18)
 On the Windows VPS (its PostgreSQL also serves IPODhan production; owner decision 2026-10-09) run only the targeted
 test files your brief names plus `python scripts/orchestrator/atool.py <worktree> <W-id> --no-tests` (every ci.yml
 lint step); CI runs the full suites. Before the targeted run, grep `tests/` and `tests_app/` for every route, status,

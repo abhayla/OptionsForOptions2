@@ -1,0 +1,36 @@
+{
+ "id": "db-role-limit-below-pool-size",
+ "scope": "project",
+ "class": "A database role whose connection limit is smaller than what the processes using it may open (any one process's pool size plus overflow, summed over every process on the role): whenever load grows a pool past the limit - a page that fans out one request per row, a second app process, a test run - the database refuses new connections to every process on that role, including ones doing unrelated, critical work. Wider shape: a shared hard cap that no process sizes itself against is exhausted by whichever process bursts first.",
+ "mechanism": "2026-10-19: role ofo_app has rolconnlimit 5 (server max_connections 100); backend/ofo_app/db.py create_async_engine uses SQLAlchemy's default QueuePool (pool_size 5, max_overflow 10) and history_store.py adds pool_size 2 + max_overflow 2, so one API process may open ~19 connections against a role cap of 5. The limit is per role across databases, so ofo_dev, ofo_test, every API and every local DB test share it.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-5S core proof, Live Strategies page (W-113, ad727bb) on a second API :8766 beside GC-3L's API :8765",
+  "evidence": "API log: 'asyncpg.exceptions.TooManyConnectionsError: too many connections for role \"ofo_app\"' x11 between ~10:33 and 10:40 IST and 'unhandled error ERR-7456055C on GET /strategies/11'; after the browser closed a one-connection read still failed with the same error until the :8766 API was stopped; then 'role ofo_app connlimit: 5 | server max_connections: 100', 'held by ofo_app on ofo_dev : 3' (GC-3L's API)."
+ },
+ "fix": "GC-6 POOL-BUDGET: defaults DB_POOL_SIZE 2 + DB_MAX_OVERFLOW 0 (two processes fit a limit of 5); start-up check refuses a pool above the role limit; one connection per token read (a connection already in a transaction is refused); single-flight charge-rates load.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "backend/ofo_app/db.py::verify_pool_budget (start-up refusal)",
+   "tests_app/test_db_pool_startup.py",
+   "tests_app/test_db_pool_core_proof.py"
+  ],
+  "note": "verify_pool_budget reads rolconnlimit/rolsuper once at start-up and refuses a pool above the limit (superuser and -1 skipped, unreadable limit = warning); test_db_pool_core_proof.py runs two engines with the default settings under load against the CI role (CONNECTION LIMIT 5) and shows the old defaults (5+10) do hit TooManyConnectionsError. Does NOT cover: more than the two modelled processes, other roles, or the production role's real limit (unmeasured)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-048.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-18",
+   "where": "#370 e2e flake (CI)",
+   "evidence": "three e2e API processes x default DB pool exhausted CONNECTION LIMIT 5 (session-handover-2026-10-18-gc2f.md); fix held as #395"
+  },
+  {
+   "date": "2026-10-19",
+   "where": "GC-5S item 1 live run",
+   "evidence": "11 TooManyConnectionsError lines in the :8766 API log; role limit 5 read back"
+  }
+ ]
+}

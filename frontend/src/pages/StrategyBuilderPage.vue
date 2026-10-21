@@ -26,7 +26,9 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
-import { istTime, nameFromPool } from '@/lib/displayFormat'
+import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
+import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
+import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -69,6 +71,8 @@ function legsFromQuery() {
   }))
 }
 const legs = ref(legsFromQuery())
+// W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
+const choice = ref({ ...DEFAULT_CHOICE })
 if (linkRefused.value) {
   state.value = 'error'
   errorParts.value = INVALID_LINK_PARTS
@@ -95,7 +99,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, fallback })
+    const res = await api.post('/strategies/outcome', { ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value), fallback })
     if (mine !== loadSeq) return
     applyOutcome(res.data)
   } catch (e) {
@@ -137,7 +141,7 @@ function applyOutcome(body) {
 const live = useStrategyLive({
   onPush: (body) => {
     // A late push of the previous strategy (the socket was told the new one a moment ago) is dropped, never shown.
-    if (!matchesLegs(body, buildDraft(legs.value))) return
+    if (!matchesLegs(body, buildDraft(legs.value)) || !matchesChoice(body, choice.value)) return
     socketDropped = false
     loadSeq++
     clearTimeout(slowTimer)
@@ -152,7 +156,7 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ux_level: uxLevel.value })
+  if (draft) live.follow({ ...draft, ux_level: uxLevel.value, ...choiceFields(choice.value) })
   else live.stop()
 }
 
@@ -178,13 +182,18 @@ watch(() => route.query.ux, () => {
   load()
   syncLive()
 })
+const setChoice = (next) => {
+  choice.value = next
+  load()
+  syncLive()
+}
 const setUx = (ux) => router.replace({ query: { ...route.query, ux } })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 
 const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
-const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
-const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
+const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
+const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
@@ -209,6 +218,7 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />
 
     <StrategyHeader v-if="state !== 'no-draft'" class="mt-3" :underlying="headerUnderlying" :ux-level="uxLevel" :is-loading="state === 'loading'" @update:ux-level="setUx" />
+    <ScenarioControls v-if="state !== 'no-draft'" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" @update:choice="setChoice" />
 
     <p v-if="state === 'loading'" class="mt-4" data-testid="state-loading">
       Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>

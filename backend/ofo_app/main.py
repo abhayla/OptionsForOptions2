@@ -18,17 +18,21 @@ from ofo.broker import egress as _egress
 from ofo_app import errors, event_loop, execute_replay_switch, live_market, pinned_clock, replay_mode
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
-from ofo_app.db import close_db
+from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     broker,
+    broker_status,
     catalogue,
+    chain,
     execute,
     execution_return,
     health,
+    indices,
     live,
     outcome,
     planned_entry,
     strategies,
+    strategy_templates,
 )
 
 log = logging.getLogger(__name__)
@@ -42,6 +46,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     event_loop.require_selector_loop()  # W-080 r7: refuses to start on a loop whose connects the egress gate can't see
     if not _egress.installed():  # W-080: create_app installs it; an app built any other way does not start
         raise _egress.EgressRefused("the egress gate is not installed; the API starts only through create_app")
+    await verify_pool_budget()  # GC-6: a pool above the role's connection limit refuses to start
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
         market = live_market.LiveMarket()
@@ -98,7 +103,13 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
+    errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
+    app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
+    app.include_router(strategy_templates.router)  # W-117: the Learn page's reviewed templates (read-only, no DB)
+    app.include_router(indices.router)  # W-114: the index view's first paint and socket-down fallback
     broker.mount(app, config)
+    app.include_router(broker_status.router)  # W-089: Settings -> Broker & Market Data
     app.include_router(strategies.router)  # W-061: Save Draft and activity history
     app.include_router(execute.router)  # W-095: Execute -> gate -> read-only Kite basket, plan stored first
     app.include_router(execution_return.router)  # W-096: return from Kite - read back by tag, close, reconcile
