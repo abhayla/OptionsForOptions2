@@ -1,0 +1,29 @@
+{
+ "id": "freshness-judged-on-request-start-clock",
+ "scope": "generic",
+ "class": "Any live-data freshness rule that compares a feed timestamp against a 'now' read at the START of a request, before slow reads (broker margin, positions) that run while the feed keeps ticking, refuses every tick newer than that 'now' (a rule of 0 <= now - t fails for t after now), so a healthy, fast feed reads as out of date exactly when the data is freshest. Replay tests cannot see it when their clock is pinned after the recorded frame.",
+ "mechanism": "The Execute gate judged live-quote freshness against req.now, read at request start, then fetched Zerodha margin and positions; NIFTY 50 ticks every second, so the newest tick was always later than req.now and the 0 <= now - t rule refused it with MARKET_DATA_103 ('underlying price is out of date').",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-3L live entry attempts on ofo_dev with the owner's Kite account, strategy 11",
+  "evidence": "5 prepares on strategy 11 logged `pre-execution blocked ... codes=DATA_UNHEALTHY` while the outcome socket showed spot_at <= 1 s old each second (spot 23131.85-23135.9); every live ENTRY refused with MARKET_DATA_103; replay tests passed because their clock is pinned after the recorded frame"
+ },
+ "fix": "Freshness is judged on checked_at = req.clock() read AFTER the quotes arrive, with a window of -2 s skew to 60 s. PR #427.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_execute_health_clock.py"
+  ],
+  "note": "PR #427 tests the gate with a clock that advances while the slow reads run. Not covered: other routes that read a request clock before slow calls; a pinned-clock replay test still cannot see this class by itself."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-049.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-10-19",
+   "where": "GC-3L live Execute prepare, strategy 11",
+   "evidence": "5 prepares blocked with DATA_UNHEALTHY / MARKET_DATA_103 while spot_at <= 1 s old"
+  }
+ ]
+}

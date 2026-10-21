@@ -1,10 +1,12 @@
-"""land.py <worktree> --title T --body-file F [--dry-run]
+"""land.py <worktree> --title T --body-file F --reviewed-sha S [--dry-run]
 
+S is the full 40-character sha of the commit the reviewer or verifier passed (kit 1.8.0: the merge gate refuses
+without it and merges only a head that review covers). It is checked before anything runs.
 Take a committed branch from push to merged in one command:
   1. close-keyword check (pr_close_check.py) on the body and the branch's commit messages - before any push
   2. git push -u origin <branch>
   3. gh pr create, or reuse the open PR for the branch
-  4. the kit's merge gate (merge_when_green.py), foreground, never reimplemented here
+  4. the kit's merge gate (merge_when_green.py --reviewed-sha S), foreground, never reimplemented here
      - if the PR is BEHIND main (or the merge is refused for that reason): gh pr update-branch, or merge
        origin/main in the worktree and push, then call the gate again (max 3 retries)
      - red CI: stop, name the failed job, print `gh run view <id> --log-failed`
@@ -29,7 +31,13 @@ from datetime import datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 MAX_RETRIES = 3
+FULL_SHA = re.compile(r"[0-9a-fA-F]{40}")  # the kit gate's own rule (merge_when_green._HEX40)
 BEHIND_WORDS = ("behind", "not up to date", "required status checks are expected", "base branch policy")
+# Kit 1.8.0 gate refusals that are final: the gate already updated the branch itself (or refused to, because the
+# update was not covered by the review), so another update here would only hide the cause. Checked before BEHIND,
+# because "updates exhausted" contains "behind" and RE-REVIEW NEEDED arrives while the PR is BEHIND.
+FINAL_REFUSALS = ("RE-REVIEW NEEDED", "updates exhausted", "REFUSED: reviewed sha", "REFUSED: --reviewed-sha",
+                  "coverage could not be checked")
 
 
 def real_runner(cmd, cwd=None):
@@ -64,9 +72,10 @@ def failed_jobs(text):
 
 
 class Lander:
-    def __init__(self, worktree, title, body_file, env, branch=None):
+    def __init__(self, worktree, title, body_file, env, branch=None, reviewed_sha=""):  # noqa: PLR0913
         self.worktree = worktree
         self.given_branch = branch
+        self.reviewed_sha = reviewed_sha
         self.title = title
         self.body_file = body_file
         self.env = env
@@ -175,7 +184,8 @@ class Lander:
         return looks_behind(gate_output) or state.strip() == "BEHIND"
 
     def merge_loop(self):
-        gate = [sys.executable, os.path.join(ROOT, "tools", "merge_when_green.py"), str(self.pr)]
+        gate = [sys.executable, os.path.join(ROOT, "tools", "merge_when_green.py"), str(self.pr),
+                "--reviewed-sha", self.reviewed_sha]
         for attempt in range(MAX_RETRIES + 1):
             rc, text = self.run(gate, self.worktree)
             if text.strip():
@@ -184,6 +194,9 @@ class Lander:
                 return
             if "failing check:" in text:
                 self.red_ci(text)
+            final = next((w for w in FINAL_REFUSALS if w in text), None)
+            if final:
+                raise Stop(f"merge gate refused ({final}); not updating the branch again (output above)")
             if not self.is_behind(text):
                 raise Stop("merge gate refused for a reason other than BEHIND (output above)")
             if attempt == MAX_RETRIES:
@@ -193,6 +206,9 @@ class Lander:
             self.env.sleep(5)
 
     def land(self):
+        if not FULL_SHA.fullmatch(self.reviewed_sha or ""):
+            raise Stop(f"--reviewed-sha must be the full 40-character sha of the reviewed commit, not "
+                       f"{self.reviewed_sha!r}; nothing was pushed")
         self.read_branch()
         self.close_check()
         self.push()
@@ -205,10 +221,10 @@ class Lander:
         print(f"MERGED PR #{self.pr} at {stamp}")
 
 
-def land(worktree, title, body_file, env=None, branch=None):
+def land(worktree, title, body_file, env=None, branch=None, reviewed_sha=""):  # noqa: PLR0913
     """Return 0 when merged, 1 when stopped."""
     try:
-        Lander(worktree, title, body_file, env or Env(), branch).land()
+        Lander(worktree, title, body_file, env or Env(), branch, reviewed_sha).land()
     except Stop as stop:
         print("STOPPED: " + str(stop))
         return 1
@@ -241,6 +257,7 @@ def main(argv=None):
     ap.add_argument("worktree")
     ap.add_argument("--title", required=True)
     ap.add_argument("--body-file", required=True)
+    ap.add_argument("--reviewed-sha", required=True, help="full 40-character sha of the reviewed commit")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--branch", help="branch name to push; required on a detached HEAD (CI checkouts)")
     a = ap.parse_args(argv)
@@ -249,7 +266,7 @@ def main(argv=None):
         print("worktree or body file not found")
         return 2
     env = Env(runner=DryRunner(a.worktree), dry_run=True) if a.dry_run else Env()
-    return land(a.worktree, a.title, a.body_file, env, a.branch)
+    return land(a.worktree, a.title, a.body_file, env, a.branch, a.reviewed_sha)
 
 
 if __name__ == "__main__":

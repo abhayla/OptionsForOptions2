@@ -20,8 +20,11 @@ class Base(DeclarativeBase):
 
 @lru_cache
 def get_engine() -> AsyncEngine:
+    settings = get_settings()
     return create_async_engine(
-        get_settings().DATABASE_URL,
+        settings.DATABASE_URL,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
         connect_args={"server_settings": {"jit": "off"}},
     )
 
