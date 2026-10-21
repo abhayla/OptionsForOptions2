@@ -1,4 +1,4 @@
-"""#380 step 2.1 / ADR-048: migration 0018 extends the app-role allow-list for the reconciliation store, and its closed
+"""#380 step 2.1 / ADR-048: migration 0019 extends the app-role allow-list for the reconciliation store, and its closed
 lists are the store's. No database needed.
 
 Spec basis: REQ-060 AC-6 "While a mismatch is unresolved, new execution and adjustment execution are blocked (Q199).";
@@ -20,7 +20,7 @@ from ofo_app import reconciliation_store as rs
 pytestmark = pytest.mark.repo_scan
 
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
-THIS = "0018_reconciliation_store"
+THIS = "0019_reconciliation_store"
 EARLIER_BLOCKS = 10  # 0002 .. 0016 publish an allow-list block
 TABLES = 3
 EMPTY_UPDATE_ARRAYS = 4  # UPDATE on mismatches and on resolutions: no column (each array is used twice)
@@ -112,9 +112,11 @@ def test_ac6_closed_lists_match_the_store_and_the_domain() -> None:
 
 
 def test_ac6_predecessor_from_down_revision_and_downgrade_restores_it() -> None:
-    """AC-6: the predecessor is read from down_revision alone; downgrade re-installs 0017's text and reason CHECK."""
+    """AC-6: the predecessors are read from down_revision alone; downgrade re-installs 0017's text (0018 leaves the
+    allow-list untouched) and the reason CHECK."""
     mine = _mine()
-    assert mine._PREVIOUS.revision == mine.down_revision == "0017_audit_order_prepared"
+    assert mine._PREVIOUS.revision == mine.down_revision == "0018_basket_tag_8"
+    assert mine._ALLOWLIST_BASE.revision == mine._PREVIOUS.down_revision == "0017_audit_order_prepared"
     source = (VERSIONS / f"{THIS}.py").read_text(encoding="utf-8")
     assert re.findall(r"""_load\(\s*["']\d{4}_""", source) == []
     assert "op.execute(extended_allowlist_sql())" in source and "op.execute(previous_allowlist_sql())" in source

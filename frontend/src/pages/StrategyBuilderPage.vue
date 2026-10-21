@@ -26,7 +26,7 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
-import { istTime, nameFromPool } from '@/lib/displayFormat'
+import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -183,8 +183,8 @@ onBeforeUnmount(() => clearTimeout(slowTimer))
 
 const showNumbers = computed(() => (state.value === 'computed' || state.value === 'stale') && data.value?.table)
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
-const maxProfit = computed(() => (data.value?.summary?.max_profit_unlimited ? 'Unlimited' : data.value?.summary?.max_profit ?? '-'))
-const maxLoss = computed(() => (data.value?.summary?.max_loss_unlimited ? 'Unlimited' : data.value?.summary?.max_loss ?? '-'))
+const maxProfit = computed(() => maxLine(data.value?.summary, 'profit'))
+const maxLoss = computed(() => maxLine(data.value?.summary, 'loss'))
 const advancedRows = computed(() => advancedDetails(data.value, uxLevel.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)

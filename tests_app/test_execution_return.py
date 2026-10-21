@@ -18,7 +18,7 @@ import pytest
 from ofo.execution.basket import make_tag
 from ofo_app import execution_return as er
 from ofo_app import return_book as rb
-from ofo_app.execute_replay import REPLIES
+from ofo_app.execute_replay import recorded_text
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
 
 SYMBOL = "NIFTY26O1923650CE"
@@ -31,7 +31,7 @@ TODAY = AT.date()  # the session the stored plans were created in (2026-10-16, I
 
 
 def _data(name: str) -> list:
-    return json.loads((REPLIES / f"{name}.json").read_text(encoding="utf-8"), parse_float=D)["data"]
+    return json.loads(recorded_text(f"{name}.json"), parse_float=D)["data"]
 
 
 def _plan(number: int, action: str, sides: tuple[str, ...], closed: tuple[tuple[int, ...], str] | None = None,
@@ -57,12 +57,12 @@ def test_ac3_core_real_replies_close_entry_filled_then_exit_with_pnl_once():
     """AC-3 core (pure part): 12:21:04 -> plan 1 filled 65 of 65; 15:10:06 -> plan 2 filled in full, plan 1 unchanged
     (no drift), the fills' P&L -130.00; the same replies twice -> the same answer, each trade id once."""
     book = _book(_data("orders-122104"), _data("trades-122104"), (ENTRY_OPEN,))
-    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"OFS1V1L0": 65})
+    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"Q0001010": 65})
     assert er.pnl_or_none(book.fills) is None  # an open position has no realised P&L
     trades = _data("trades-151006")
     for replay in (trades, trades + copy.deepcopy(trades)):
         book = _book(_data("orders-151006"), replay, (ENTRY_DONE, EXIT_OPEN))
-        assert er.classify(EXIT_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"OFS1V2L0": 65})
+        assert er.classify(EXIT_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {"Q0001020": 65})
         assert er.drifted((ENTRY_DONE, EXIT_OPEN), book) == ()
         assert sorted(f.trade_id for f in book.fills) == ["4484194", "5966618"]
         assert er.pnl_or_none(book.fills) == D("-130.00")
@@ -93,7 +93,7 @@ def test_ac3_basket_closed_on_kites_page_or_ended_unfilled_is_nothing_placed(sta
     """AC-3: no tag in today's book (the user closed the basket) or a terminal order with 0 filled -> nothing_placed,
     never filled."""
     empty = _book([], [], (ENTRY_OPEN,))
-    assert er.classify(ENTRY_OPEN, empty, TODAY) == er.PlanAnswer(er.NOTHING_PLACED, {"OFS1V1L0": 0})
+    assert er.classify(ENTRY_OPEN, empty, TODAY) == er.PlanAnswer(er.NOTHING_PLACED, {"Q0001010": 0})
     orders = _data("orders-122104")
     orders[0].update(status=status, filled_quantity=0)
     assert er.classify(ENTRY_OPEN, _book(orders, [], (ENTRY_OPEN,)), TODAY).state == er.NOTHING_PLACED
@@ -102,20 +102,20 @@ def test_ac3_basket_closed_on_kites_page_or_ended_unfilled_is_nothing_placed(sta
 def test_ac3_one_of_two_orders_filled_is_partial_with_the_four_choices_in_order():
     """AC-3 / REQ-058 AC-2: leg 0 filled, leg 1 cancelled unfilled -> partial; the choices are REQ-058 AC-2's order."""
     plan = _plan(1, "ENTRY", ("BUY", "BUY"))
-    second = {**_data("orders-122104")[0], "order_id": "261016170576174", "tag": "OFS1V1L1", "status": "CANCELLED",
+    second = {**_data("orders-122104")[0], "order_id": "261016170576174", "tag": "Q0001011", "status": "CANCELLED",
               "filled_quantity": 0}
     book = _book([*_data("orders-122104"), second], _data("trades-122104"), (plan,))
-    assert er.classify(plan, book, TODAY) == er.PlanAnswer(er.PARTIAL, {"OFS1V1L0": 65, "OFS1V1L1": 0})
+    assert er.classify(plan, book, TODAY) == er.PlanAnswer(er.PARTIAL, {"Q0001010": 65, "Q0001011": 0})
     assert er.PARTIAL_CHOICES == ("complete_strategy", "retry_failed_leg", "review_manually", "close_partial_strategy")
 
 
 def test_ac3_an_order_tagged_for_a_plan_never_stored_is_external_and_another_strategys_tag_is_ignored():
     """AC-3 / ADR-050 item 4(d): OFS1V9L0 with no stored plan 9 is kept as external; OFS12V1L0 is strategy 12's."""
     real = _data("orders-122104")[0]
-    orders = [{**real, "tag": "OFS1V9L0", "order_id": "9"}, {**real, "tag": "OFS12V1L0", "order_id": "12"}, real]
+    orders = [{**real, "tag": "Q0001090", "order_id": "9"}, {**real, "tag": "Q000C010", "order_id": "12"}, real]
     book = _book(orders, _data("trades-122104"), (ENTRY_OPEN,))
-    assert [r["tag"] for r in book.external] == ["OFS1V9L0"]
-    assert list(book.ours) == ["OFS1V1L0"]
+    assert [r["tag"] for r in book.external] == ["Q0001090"]
+    assert list(book.ours) == ["Q0001010"]
 
 
 @pytest.mark.parametrize("change", ["short_trades", "conflicting_trade", "posted_twice", "wrong_side", "wrong_symbol"])
@@ -195,7 +195,7 @@ def _other_plan(status: str, filled: int | None) -> StoredPlan:
 
 def _other_book(filled: int, plans: tuple[StoredPlan, ...]) -> er.TodaysBook:
     """Strategy 2's own rows of today's book: the real 12:21:04 order and trade, re-tagged to OFS2V1L0."""
-    orders = [{**_data("orders-122104")[0], "tag": "OFS2V1L0", "filled_quantity": filled}]
+    orders = [{**_data("orders-122104")[0], "tag": "Q0002010", "filled_quantity": filled}]
     trades = [{**_data("trades-122104")[0], "quantity": filled}] if filled else []
     return rb.read_book(orders, trades, 2, frozenset(o.tag for p in plans for o in p.orders))
 
@@ -416,13 +416,13 @@ async def test_ac3_external_order_recorded_once_and_closed_basket_is_nothing_pla
             user = _user()
             sid = await _strategy_one(conn, user, app_engine.url.username)
             await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
-            orders = [{**_data("orders-122104")[0], "tag": "OFS1V9L0"}]
+            orders = [{**_data("orders-122104")[0], "tag": "Q0001090"}]
             app = _app_for(conn, user, _Reads("122104", orders=orders))
             before = await _audit_count(conn)
             head = await audit_head(conn)
             body = (await _post(app, sid)).json()
             assert body["plans"][0]["state"] == "nothing_placed"
-            assert [(o["tag"], o["filled_quantity"]) for o in body["external_orders"]] == [("OFS1V9L0", 65)]
+            assert [(o["tag"], o["filled_quantity"]) for o in body["external_orders"]] == [("Q0001090", 65)]
             await _post(app, sid)
             assert await _audit_count(conn) == before + 1
             # W-103: the external order is not one of the plan's orders, so neither it nor its trade is recorded as ours

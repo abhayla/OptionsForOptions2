@@ -1,0 +1,26 @@
+{
+ "id": "last-live-answer-kept-after-drop",
+ "scope": "project",
+ "class": "A browser view that renders numbers from the last answer it holds keeps showing that answer's numbers after ITS OWN live connection drops, until a later answer replaces it: when the fallback read is slow, hangs, fails, or an older read resolves after the drop, an old number stays on screen looking live. Wider shape: liveness must be a property of the moment the number is shown (the view's own connection now), never of the answer object that happened to arrive last.",
+ "mechanism": "2026-10-19, GC-5S: (1) W-113 LiveStrategyCard.vue: paused was false while the socket status was 'connecting' after a drop, so the last COMPUTED push showed as live until the REST fallback answered; (2) W-114 IndexViewPage.vue: onDown set failed=true but kept answer = the last LIVE push and shownValue checked only answer.state, so after a drop with a failing fallback both panels kept the old value with its 'as of' time; a first-paint read sent before a drop could resolve later and restore LIVE; (3) W-115 IndexStrip.vue copied the page's logic before the W-114 fix and repeated it.",
+ "first_seen": {
+  "date": "2026-10-19",
+  "where": "GC-5S W-113 Tier B verifier (4f82043), W-114 Tier A verifier (dbc4d84), W-115 Tier B verifier (a219c3b)",
+  "evidence": "Proven by red tests: W-113 aaf1af8 mutation (wasLive clause reverted) -> 1 failed (the reconnect test); W-114 7740aa8 mutations: clear-on-drop removed -> the Proof test red, drop counter removed -> the first-paint race test red. W-115 found by code reading (IndexStrip.vue onDown has no clear-on-drop and no drop counter); fixed structurally in round 2."
+ },
+ "fix": "Structural (run-discipline B8): one state machine in frontend/src/composables/useIndexLive.js (first-paint read, drop counter, clear-on-drop, fallback read, shown values only from a LIVE answer received after the latest drop), rendered by both the index page and the Home strip (W-115 round 2). The Live Strategies card keeps its own wasLive gate (W-113 aaf1af8).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Per-component tests exist (frontend/tests/live-strategies.test.js reconnect test; index-view.test.js drop tests; W-115 round 2 table test over page and strip). No repo-wide check forces every new live view through a shared liveness state; a new live screen (Option Chain, item 4b) can repeat the class. Next mechanism: the chain screen uses the same composable pattern, and a frontend test enumerates every component that opens a live socket and runs the drop table against it."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-049.md",
+  "spec/requirements/REQ-072.md"
+ ],
+ "occurrences": [
+  {"date": "2026-10-19", "where": "W-113 round 1 (Live Strategies card)", "evidence": "verifier MINOR: paused false while connecting after a drop"},
+  {"date": "2026-10-19", "where": "W-114 round 1 (index page)", "evidence": "Tier A verifier MAJOR: old value kept after a drop with a failing fallback"},
+  {"date": "2026-10-19", "where": "W-115 round 1 (Home strip)", "evidence": "verifier MAJOR: same class, logic copied before the W-114 fix"}
+ ]
+}

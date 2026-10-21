@@ -43,7 +43,7 @@ from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
-from ofo_app.kite_replies import ContractIndex, KiteReplyError, positions_from_reply
+from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
@@ -54,7 +54,7 @@ _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
     "WHERE s.user_ref = :u AND p.strategy_id <> :s ORDER BY p.strategy_id")
 PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required",
-                    "unresolved_from_positions"]  # the last: a stored close reason (migration 0018, #380 step 2.1)
+                    "unresolved_from_positions"]  # the last: a stored close reason (migration 0019, #380 step 2.1)
 
 
 class ReturnPlanOut(ApiModel):
@@ -164,10 +164,11 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     reads = req.session.reads
     try:
         orders, trades = reads.fetch_orders(), reads.fetch_trades()
-        net = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue)).net
+        positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
-    return _Read(orders, trades, net)
+    log_ignored(positions, f"return strategy {req.strategy_id}")
+    return _Read(orders, trades, positions.net)
 
 
 def _iid(text_id: str) -> InstrumentId:

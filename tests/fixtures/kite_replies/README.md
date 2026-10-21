@@ -43,3 +43,12 @@ envelope `status` / `data` and the per-row fields, JSON numbers for quantities a
 
 The owner's client id in `placed_by` / `account_id` is replaced by `XX0000` and the JSON is re-indented; every value
 is otherwise as recorded (JSON numbers, as live Kite REST sends them). `tests_app/test_order_book_store.py` reads them.
+
+## GC-3L positions with stock rows (2026-10-19)
+
+`positions-20261019-with-stocks.json`: PART real, PART shaped (its `_provenance` key says which). REAL-SAVED: the
+NIFTY26OCT24000CE `net` and `day` rows, from `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/positions-saved.json`.
+SHAPED from the live 13:15 IST read, which was not saved: the FRANKLININD (token 138288644) and LIQUIDBEES `net` rows
+(exchange NSE, product CNC, quantities -201900 and -2 as read live), every key copied from the saved NIFTY row;
+LIQUIDBEES' token, segment `EQ` and the money figures are illustrative. That live reply made `positions_from_reply`
+refuse the whole read (`FRANKLININD (token 138288644) matches 0 instrument rows`), blocking every Execute.
