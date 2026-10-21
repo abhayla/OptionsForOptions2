@@ -44,7 +44,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
+from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session, read_refusal
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute)
@@ -163,7 +163,9 @@ def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
     try:
         orders, trades = reads.fetch_orders(), reads.fetch_trades()
         positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
-    except (KiteReadError, KiteReplyError, ValueError):
+    except KiteReadError as exc:
+        raise read_refusal(exc) from None  # an expired token reads "session expired"; nothing was written yet
+    except (KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
     log_ignored(positions, f"return strategy {req.strategy_id}")
     return _Read(orders, trades, positions.net)
