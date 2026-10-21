@@ -127,6 +127,41 @@ async def test_ac1_a_second_start_a_changed_revision_and_client_prices_are_refus
     assert await _rows(app_engine, stored.id) == (1, 4)
 
 
+async def test_ac1_a_second_start_is_refused_as_already_tracked_before_any_price_read(app_engine):
+    """AC-1: the route checks "already tracked" before it reads prices, so a second start while prices are stale still
+    says the strategy is already being tracked (not "prices not live") and writes nothing."""
+    app, stored, _provider, clock, last = await _setup(app_engine)
+    async with _client(app) as c:
+        first = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+        assert first.status_code == HTTPStatus.CREATED
+        clock.now = last + datetime.timedelta(minutes=10)
+        again = await c.post(f"/strategies/{stored.id}/tracking", json={"revision": stored.revision})
+    assert again.status_code == HTTPStatus.CONFLICT and "already being tracked" in again.text
+    assert await _rows(app_engine, stored.id) == (1, 4)
+
+
+async def test_ac1_the_store_refuses_a_second_entry_even_without_the_route_check(app_engine):
+    """AC-1: the store itself refuses a second start (ALREADY_TRACKED; the route's pre-check is a second layer), so a
+    race past the route check still leaves exactly 1 + 4 rows."""
+    _app, stored, provider, _clock, last = await _setup(app_engine)
+    from ofo.outcome import read_snapshot  # noqa: PLC0415
+    from ofo.tracking import paper  # noqa: PLC0415
+    from ofo_app import strategy_store as store  # noqa: PLC0415
+    from ofo_app import tracking_store  # noqa: PLC0415
+
+    legs = [paper.TrackedLeg(i, leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, D(0), last)
+            for i, leg in zip(IDS, stored.saved.definition.legs, strict=True)]
+    entry = paper.capture_entry(read_snapshot(provider, "NIFTY", IDS, last, D("0.065")), legs)
+    user = stored.user_ref
+    async with app_engine.connect() as conn:
+        await tracking_store.start(conn, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
+        with pytest.raises(store.StrategyStoreError) as refused:
+            await tracking_store.start(conn, user, stored.id, stored.revision, stored.saved.contract_ids, entry)
+        assert refused.value.code == tracking_store.ALREADY_TRACKED
+        await conn.commit()
+    assert await _rows(app_engine, stored.id) == (1, 4)
+
+
 async def test_ac1_another_users_strategy_and_an_untracked_view_answer_not_found(app_engine):
     """AC-1: another user's strategy id answers 404 exactly like a missing one; viewing an untracked strategy is 404."""
     app, stored, *_ = await _setup(app_engine)
