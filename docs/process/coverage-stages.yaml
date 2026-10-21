@@ -430,6 +430,7 @@ work_items:
   W-111: 4b           # GC-2f: Positions part 1, own vs outside lots, no P&L (REQ-044 AC-3)
   W-112: 4a           # GC-2g: no historical market data shown to users, repo_scan guard (REQ-052 AC-1)
   W-116: 4b           # GC-5S: Option Chain route + socket (REQ-029)
+  W-119: 4b           # GC-6 S3: Create Strategy, guided (REQ-024, REQ-026)
   W-118: 4b           # GC-5S: Option Chain screen, display only (REQ-029)
   W-120: 4b           # GC-6: Option Chain leg selection and import (REQ-030)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
