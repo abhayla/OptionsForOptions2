@@ -46,25 +46,38 @@ log = logging.getLogger("ofo_app.outcome")
 # live push asks every second); a FAILED load (no database, no table, no complete set) is remembered as "no rates" for
 # 30 s and then retried, so a database outage costs one attempt per 30 s, not one per push.
 _RATES_TTL, _RATES_RETRY = 300.0, 30.0
-_rates_cache: dict = {"until": 0.0, "value": None}
+_rates_cache: dict = {"until": 0.0, "value": None, "flight": None}
+
+
+async def _load_rates_once() -> ChargeRates | None:
+    """The one database read behind the cache: success is remembered for the TTL, a failure as "no rates" for 30 s."""
+    try:
+        async with db.get_sessionmaker()() as session:
+            value = await charge_rates_store.rates_in_force(session)
+        _rates_cache.update(until=time.monotonic() + _RATES_TTL, value=value)
+    except Exception:  # noqa: BLE001 - no database, table or set gives None (logged, never shown)
+        log.warning("charge rates unavailable: outcome sentences stay before charges", exc_info=True)
+        _rates_cache.update(until=time.monotonic() + _RATES_RETRY, value=None)
+        value = None
+    return value
 
 
 async def load_charge_rates() -> Optional[ChargeRates]:
     """The charge rates in force (ADR-082: the database clock picks the set), or None when none can be read. None is
     never an error here: the outcome then keeps ADR-071's "before charges and taxes" sentence (W-075 decision (b)).
-    Works with or without a Zerodha session: the rates do not depend on one."""
-    now = time.monotonic()
-    if now < _rates_cache["until"]:
+    Works with or without a Zerodha session: the rates do not depend on one.
+
+    Single-flight (GC-6 POOL-BUDGET): callers arriving after the TTL while a load is running wait for that one load
+    instead of each opening a session (the role allows 5 connections, ADR-048). The load runs as its own task, so a
+    caller that is cancelled does not cancel it for the others."""
+    if time.monotonic() < _rates_cache["until"]:
         return _rates_cache["value"]
-    try:
-        async with db.get_sessionmaker()() as session:
-            value = await charge_rates_store.rates_in_force(session)
-        _rates_cache.update(until=now + _RATES_TTL, value=value)
-    except Exception:  # noqa: BLE001 - no database, table or set gives None (logged, never shown)
-        log.warning("charge rates unavailable: outcome sentences stay before charges", exc_info=True)
-        _rates_cache.update(until=now + _RATES_RETRY, value=None)
-        value = None
-    return value
+    loop = asyncio.get_running_loop()
+    flight = _rates_cache.get("flight")
+    if flight is None or flight.done() or flight.get_loop() is not loop:
+        flight = loop.create_task(_load_rates_once())
+        _rates_cache["flight"] = flight
+    return await asyncio.shield(flight)
 
 
 #: The longest the no-provider answer waits for the stored catalogue (#259): a hanging database host must not delay the

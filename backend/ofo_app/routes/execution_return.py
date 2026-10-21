@@ -53,7 +53,8 @@ router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_
 _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
     "WHERE s.user_ref = :u AND p.strategy_id <> :s ORDER BY p.strategy_id")
-PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required"]
+PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required",
+                    "unresolved_from_positions"]  # the last: a stored close reason (migration 0019, #380 step 2.1)
 
 
 class ReturnPlanOut(ApiModel):
@@ -279,7 +280,7 @@ def _strategy_state(history: Sequence[plans.StoredPlan], checks: Sequence[er.Con
     """Derived (no status column): ``exited`` when the latest plan that changed position is an EXIT closed exited."""
     if any(p.status == "open" for p in history):
         return "plan_open"
-    moved = [p for p in history if p.close_reason not in (None, er.NOTHING_PLACED)]
+    moved = [p for p in history if p.close_reason not in (None, er.NOTHING_PLACED, plans.UNRESOLVED)]
     if moved and moved[-1].close_reason == er.EXITED:
         return "exited"
     return "holding" if any(c.platform_units for c in checks) else "flat"
