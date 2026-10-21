@@ -185,17 +185,29 @@ class _StoredPlan(Protocol):
     orders: Sequence[_StoredOrder]
 
 
-def held_units(history: Iterable[_StoredPlan]) -> dict[str, int]:
+class _Adopted(Protocol):
+    instrument_id: str
+    transaction_type: str
+    quantity: int
+
+
+def held_units(history: Iterable[_StoredPlan], adopted: Iterable[_Adopted] = ()) -> dict[str, int]:
     """ADR-105: what the strategy holds = the net of Zerodha's filled quantities over ALL its stored plans, per
-    contract (the plan order's ``instrument_id``), BUY + / SELL -; an order not yet closed (None) counts 0. Contracts
-    that net to zero are dropped. The ONE source the route reads for exit legs, the active legs and their hash, the
-    version state and the reconciliation platform side (round 2 review CRITICAL: one plan was read, never the net)."""
+    contract (the plan order's ``instrument_id``), BUY + / SELL -; an order not yet closed (None) counts 0. ADR-096:
+    each stored adopted holding counts exactly as a fill would. Contracts that net to zero are dropped. The ONE source
+    the route reads for exit legs, the active legs and their hash, the version state and the reconciliation platform
+    side (round 2 review CRITICAL: one plan was read, never the net)."""
     units: dict[str, int] = {}
+
+    def add(instrument_id: str, side: str, quantity: int) -> None:
+        signed = quantity if side == Action.BUY.value else -quantity
+        units[instrument_id] = units.get(instrument_id, 0) + signed
+
     for stored in history:
         for order in stored.orders:
-            filled = order.filled_quantity or 0
-            signed = filled if order.transaction_type == Action.BUY.value else -filled
-            units[order.instrument_id] = units.get(order.instrument_id, 0) + signed
+            add(order.instrument_id, order.transaction_type, order.filled_quantity or 0)
+    for holding in adopted:
+        add(holding.instrument_id, holding.transaction_type, holding.quantity)
     return {contract: net for contract, net in units.items() if net != 0}
 
 

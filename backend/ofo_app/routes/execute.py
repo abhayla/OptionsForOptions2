@@ -71,6 +71,7 @@ from ofo_app import eligibility_from_zerodha as elig
 from ofo_app import entitlement_store, live_market, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
+from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.basket_post import BasketPost
@@ -83,12 +84,13 @@ from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
+from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
-router = APIRouter(route_class=ClosedRoute)
+router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 
 ENTRY, EXIT = "ENTRY", "EXIT"
 #: the product every basket order carries (``KiteOrder.product``): what an exit's orders are sent with (ADR-080)
@@ -364,15 +366,17 @@ class _Held:
     state: VersionState
     plan_number: int | None
     history: tuple[plans.StoredPlan, ...]
+    adopted: tuple[books.AdoptedHolding, ...] = ()  # ADR-096: held legs too, priced at their stored average
 
 
 async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     plan_number, order_rows = await _reserve_number(req)
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
-    units = ep.held_units(history)
+    adopted = await books.adopted_for(req.db, req.user_ref, req.strategy_id)
+    units = ep.held_units(history, adopted)  # ADR-096
     if _plan_drift(req, history, order_rows):  # W-107: before any other refusal, so the owner sees the true reason
         raise _refuse("gate_reconciliation_mismatch")
-    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history)
+    held = _Held(units, _executable(req.action, units), ep.latest_filled_plan(history), history, adopted)
     catalogue = await load_catalogue(req.db)
     underlying = stored.saved.definition.underlying
     try:
@@ -579,23 +583,52 @@ def held_products(legs: tuple[Leg, ...], symbols: Mapping[tuple, str],
     return out
 
 
+def _held_version(held: _Held) -> str | None:
+    """The held position's version: the latest plan with a fill, else (adopted lots only, ADR-096) the strategy
+    revision the newest adoption was recorded under; None when neither exists."""
+    if held.plan_number is not None:
+        return f"plan-{held.plan_number}"
+    if held.adopted:
+        return f"adopted-{max(h.version_number or 0 for h in held.adopted)}"
+    return None
+
+
+def _held_prices(held: _Held) -> dict[str, Decimal]:
+    """Each held contract's entry: an adopted lot's stored average (ADR-096 "average price as the entry", ADR-126
+    exact), overridden by the latest filled plan order on the same contract (the earlier rule, unchanged). A contract
+    appears once, however many plans or adoptions touch it."""
+    prices = {h.instrument_id: h.average_price for h in held.adopted}
+    prices.update({o.instrument_id: o.price for p in sorted(held.history, key=lambda p: p.plan_number)
+                   for o in p.orders if o.filled_quantity})
+    return prices
+
+
+def _leg_price(price: Decimal) -> Decimal:
+    """The engine's ``Leg`` holds whole paise only. An adopted average finer than a paisa (ADR-126: 7.025) is shown
+    on the gate's active leg to the paisa, half up (ADR-126 (3), the display rule). The gate reads no active-leg price
+    on an EXIT (reduce-only, products and the hash use contract, side and units only; the exit's own LIMIT comes from
+    live depth), so no money figure is computed from this value; the stored average stays exact."""
+    return price if price == price.quantize(PAISE) else price.quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
 def _exit_fields(sid: str, held: _Held, priced: ep.PricedPlan, positions: PositionsRead | None,
                  catalogue: Any) -> dict[str, Any]:
-    """The held position as the gate's active legs: the NET of all plans (``held.units``), its version = the latest
-    plan with a fill, hashed by the domain function; products from Zerodha (held) and the basket (exit)."""
-    if not held.units or held.plan_number is None:
-        return dict(_NO_ACTIVE_LEGS)
-    prices = {o.instrument_id: o.price for p in sorted(held.history, key=lambda p: p.plan_number) for o in p.orders
-              if o.filled_quantity}
+    """The held position as the gate's active legs: the NET of all plans plus adopted lots (``held.units``), its
+    version = ``_held_version``, hashed by the domain function; products from Zerodha (held) and the basket (exit)."""
+    version = _held_version(held)
+    prices = _held_prices(held)
+    if not held.units or version is None or any(contract not in prices for contract in held.units):
+        return dict(_NO_ACTIVE_LEGS)  # nothing held, or a held contract with no price: the gate refuses the exit
     legs, symbols = [], {}
     for contract, units in sorted(held.units.items()):
         entry = catalogue.get(_iid(contract))
+        if entry is None:
+            raise KeyError(contract)  # the caller's catalogue refusal, never a 500
         c = entry.contract
         leg = Leg(Action.BUY if units > 0 else Action.SELL, Instrument(c.instrument_type), c.strike, c.expiry,
-                  abs(units), prices[contract])
+                  abs(units), _leg_price(prices[contract]))
         legs.append(leg)
         symbols[product_key(leg)] = entry.ref(ZERODHA).broker_symbol
-    version = f"plan-{held.plan_number}"
     return {"active_legs": tuple(legs), "active_version_id": version,
             "active_legs_hash": active_legs_hash(sid, version, tuple(legs)),
             "active_products": held_products(tuple(legs), symbols, positions),

@@ -417,6 +417,7 @@ work_items:
   W-099: 4b           # GC-2c: circuit bands from GET /quote for the pre-execution gate (ADR-080)
   W-100: 4b           # GC-2c: circuit bands wired into the Execute route (ADR-080)
   W-104: 4b           # GC-2e: the Execute screen - orders, cost, the owner's Kite click, Check with Zerodha
+  W-121: 4b           # builder scope Step 1: order path switched off - one server switch, every order route refuses (REQ-073 AC-6)
   W-101: 4b           # GC-2e: test-only Execute/return replay behind both order routes (REQ-073)
   W-102: 4b           # GC-2e: the full cost (premium, charges, funds, margin) in the Execute reply (ADR-097)
   W-103: 4b           # GC-2e: audit events on both order routes (order_prepared, broker replies, fills; REQ-063 AC-5)

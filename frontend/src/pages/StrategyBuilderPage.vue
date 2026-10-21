@@ -29,6 +29,7 @@ import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import { DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 const route = useRoute()
@@ -174,6 +175,8 @@ const setLegs = (next) => {
   syncLive()
 }
 
+// W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
+const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
 onMounted(() => {
   load()
   syncLive()
@@ -213,6 +216,8 @@ const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label)
   <section data-testid="strategy-builder" :data-state="state" :data-ux="uxLevel" :data-live="live.status.value">
     <h1 class="text-xl font-semibold" data-testid="page-title">Strategy Builder</h1>
     <p class="mt-1 text-sm text-ink-muted">A draft strategy and what it could do at different index levels. This is for planning, not a recommendation.</p>
+
+    <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <LegPicker :legs="legs" @update:legs="setLegs" />
     <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" @open="openSaved" @saved="(id) => (savedId = id)" />

@@ -27,6 +27,7 @@ from ofo.engine.legs import Action
 from ofo.execution.basket import make_tag
 from ofo.strategy import stored_form as sf
 from ofo_app import execution_plan_store as plans
+from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from sqlalchemy import text
@@ -113,11 +114,20 @@ async def _refused_sql(conn, sql: str, sqlstate: str, params: dict | None = None
     assert getattr(err.value.orig, "sqlstate", None) == sqlstate, err.value
 
 
+def trades_for(filled: dict[str, int] | None, price: str = "7.00") -> tuple[plans.PlanFill, ...]:
+    """#313b: one Zerodha trade per filled tag (illustrative ids "ord-<tag>" / "1", not a recording), so a close
+    carries trades that sum exactly to its filled quantities, as ``close_plan`` requires."""
+    return tuple(plans.PlanFill(tag, f"ord-{tag}", "1", units, Decimal(price))
+                 for tag, units in sorted((filled or {}).items()) if units)
+
+
 async def _close(conn, user: str, strategy_id: int, number: int, reason: str) -> plans.StoredPlan:
-    """Closes a ONE-leg plan the way the caller must: a close that changes position carries the filled quantities."""
+    """Closes a ONE-leg plan the way the caller must: a close that changes position carries the filled quantities
+    and the trades that make them up."""
     tag = make_tag(strategy_id, number, 0)
     fills = {"filled": {tag: LOT}, "exited": {tag: LOT}, "partial": {tag: LOT // 2}, "nothing_placed": None}[reason]
-    return await plans.close_plan(conn, user, strategy_id, number, reason=reason, filled=fills)
+    return await plans.close_plan(conn, user, strategy_id, number, reason=reason, filled=fills,
+                                  fills=trades_for(fills))
 
 
 async def _refused(code: str, awaitable) -> None:
@@ -443,8 +453,12 @@ async def test_a_plan_stored_with_legacy_tags_still_loads_and_closes(app_engine)
                                                             "q": 65, "price": Decimal("5.45")})
         loaded = await plans.open_plan(tx.conn, tx.user, s)
         assert [o.tag for o in loaded.orders] == legacy
-        closed = await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled", filled=dict.fromkeys(legacy, 65))
+        # #313b: a close that changes position carries the trades that make up its fills, keyed by the legacy tags
+        filled = dict.fromkeys(legacy, 65)
+        closed = await plans.close_plan(tx.conn, tx.user, s, 1, reason="filled", filled=filled,
+                                        fills=trades_for(filled))
         assert (closed.status, [o.filled_quantity for o in closed.orders]) == ("closed", [65, 65])
+        assert await books.fills_for(tx.conn, tx.user, s) == {t: trades_for({t: 65}) for t in legacy}
         # a legacy tag that is not its row's own is still refused (the plan is closed now: use a fresh open plan)
         await tx.conn.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                                    "VALUES (:s, 2, 'EXIT')"), {"s": s})
@@ -573,7 +587,8 @@ async def _two_leg_plan(tx) -> tuple[str, str]:
 async def test_closing_with_every_order_filled_stores_the_quantities(app_engine):
     async with _Tx(app_engine) as tx:
         a, b = await _two_leg_plan(tx)
-        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled", filled={a: 65, b: 65})
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="filled", filled={a: 65, b: 65},
+                                        fills=trades_for({a: 65, b: 65}))
         assert [o.filled_quantity for o in closed.orders] == [65, 65]
         again = (await plans.plans_for(tx.conn, tx.user, tx.strategy_id))[0]
         assert [o.filled_quantity for o in again.orders] == [65, 65]
@@ -613,7 +628,8 @@ async def test_partial_needs_some_filled_and_some_short(app_engine):
         for fills in ({a: 65, b: 65}, {}, {a: 0, b: 0}):
             await _refused(plans.BAD_PLAN, plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial",
                                                             filled=fills))
-        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial", filled={a: 65})
+        closed = await plans.close_plan(tx.conn, tx.user, tx.strategy_id, 1, reason="partial", filled={a: 65},
+                                        fills=trades_for({a: 65}))
         assert [o.filled_quantity for o in closed.orders] == [65, 0]  # the missing tag counts as 0
 
 

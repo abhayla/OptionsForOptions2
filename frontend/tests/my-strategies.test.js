@@ -7,9 +7,10 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 const saved = vi.hoisted(() => ({ legs: [] }))
 vi.mock('@/lib/saveDraft', async (importActual) => ({ ...(await importActual()), fetchSavedLegs: async () => saved.legs }))
 let answer = () => Promise.reject(new Error('no answer set'))
+let features = () => Promise.resolve({ data: { order_path: 'on' } }) // W-121: GET /features, the order-path switch
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: (url) => answer(url) } }
+  return { ...actual, default: { get: (url) => (url === '/features' ? features() : answer(url)) } }
 })
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
@@ -48,6 +49,23 @@ describe('My Strategies page', () => {
     expect(rows[1].get('[data-testid="row-status"]').text()).toBe('some_future_status')
     expect(w.get('[data-testid="open-execute-7"]').attributes('href')).toBe('/strategy/7/execute')
     expect(w.find('[data-testid="open-builder-8"]').exists()).toBe(true)
+  })
+
+  it('W-121 AC-6: the Execute link is absent (not disabled) unless the order path is stated on', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft')] } })
+    for (const reply of [
+      () => Promise.resolve({ data: { order_path: 'off' } }),
+      () => Promise.resolve({ data: {} }),
+      () => Promise.resolve({ data: { order_path: 'ON' } }),
+      () => Promise.reject(new Error('down')),
+    ]) {
+      features = reply
+      const w = await open()
+      expect(w.find('[data-testid="open-execute-7"]').exists()).toBe(false)
+      expect(w.text()).not.toMatch(/Execute/)
+      expect(w.find('[data-testid="open-builder-7"]').exists()).toBe(true)
+    }
+    features = () => Promise.resolve({ data: { order_path: 'on' } })
   })
 
   it('shows the neutral message when the list fails', async () => {
