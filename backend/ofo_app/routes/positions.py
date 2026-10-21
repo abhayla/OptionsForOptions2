@@ -16,6 +16,11 @@ ADR-110: a contract an open (or contradicted) plan touches is PENDING: the row c
 marks them "not yet confirmed"), ``pending_plans`` (strategy id, plan number), an empty ``own`` and null
 ``own_units`` / ``outside_units`` ("makes no own/outside split for it"; 0 would read as a split). Every blocked flag is
 W-108's ``blocked`` set: a strategy blocked anywhere (a mismatch or a pending plan) is shown blocked on every row.
+
+ADR-138 (2): "Positions screen: strategy groups, strategy P&L, the mismatch badge and "N outside lots - view on
+Kite"; no copy of Kite's full position list." So the answer is grouped by strategy and lists only contracts linked to a
+strategy; units no strategy owns are one count (``outside_lots``) the page links to Kite with, never their own rows.
+Strategy P&L is W-111 part 2.
 """
 from __future__ import annotations
 
@@ -26,6 +31,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.errors import render
+from ofo.instruments.models import is_lot_aligned
 
 from ofo_app import reconcile_attribution as ra
 from ofo_app import strategy_store as store
@@ -34,7 +40,7 @@ from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
-from ofo_app.kite_replies import ContractIndex, KiteReplyError, orders_from_reply, positions_from_reply
+from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, orders_from_reply, positions_from_reply
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
@@ -42,33 +48,27 @@ from ofo_app.routes.strategies import StrategyRefused
 router = APIRouter(route_class=ClosedRoute)
 
 
-class OwnLotsOut(ApiModel):
-    strategy_id: int  # the page links to /strategy/{strategy_id}/execute: every action routes back to the strategy
-    units: int  # this strategy's own units (signed: BUY +, SELL -)
-    blocked: bool  # this strategy is in W-108's blocked set (a mismatch or a pending plan; REQ-060 AC-7, ADR-110)
-
-
-class PendingPlanOut(ApiModel):
-    strategy_id: int  # the page links to /strategy/{strategy_id}/execute, where Check with Zerodha is (ADR-110)
-    plan_number: int
-
-
-class PositionContractOut(ApiModel):
+class StrategyContractOut(ApiModel):
     tradingsymbol: Identifier
-    zerodha_units: int  # Zerodha's net units, as read
-    own: list[OwnLotsOut]  # each strategy's own units, in strategy-id order (empty while pending)
-    own_units: int | None  # the sum of ``own`` (summed here: the browser does no arithmetic); null while pending
-    outside_units: int | None  # signed units in no strategy, shown apart (ADR-109 (2)); null while pending
-    pending: bool  # an open plan's orders are not final at Zerodha yet (ADR-110): no own/outside split
-    pending_plans: list[PendingPlanOut]  # the plans that keep this contract pending (empty when not pending)
-    blocked: bool
+    zerodha_units: int  # Zerodha's net units on this contract, as read (a pending row marks them "not yet confirmed")
+    units: int | None  # this strategy's own units (signed: BUY +, SELL -); null while pending (no own/outside split)
+    pending: bool  # an open plan of this strategy is not final at Zerodha yet (ADR-110)
+    pending_plans: list[int]  # this strategy's plan numbers that keep the contract pending (empty when not pending)
+
+
+class StrategyPositionsOut(ApiModel):
+    strategy_id: int  # the page links to /strategy/{strategy_id}/execute: every action routes back to the strategy
+    blocked: bool  # in W-108's blocked set (a mismatch or a pending plan): the page's mismatch badge
+    contracts: list[StrategyContractOut]  # tradingsymbol order; empty for a blocked strategy with no own row
 
 
 class PositionsOut(ApiModel):
     read_at: datetime.datetime
-    contracts: list[PositionContractOut]
+    strategies: list[StrategyPositionsOut]  # strategy-id order; only contracts linked to a strategy (ADR-138 (2))
+    has_outside: bool  # Zerodha holds units on a NIFTY/SENSEX contract that no strategy owns (ADR-109 (2))
+    outside_lots: int | None  # those units in lots, summed; null when a lot size cannot be read exactly (never guessed)
     blocked: bool
-    blocked_strategy_ids: list[int]  # W-108's blocked set, ascending (a pending row has no own lots to carry the flag)
+    blocked_strategy_ids: list[int]  # W-108's blocked set, ascending
 
 
 def _refuse(template: str) -> StrategyRefused:
@@ -87,11 +87,12 @@ def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
     reply, never replaced by an empty book. An empty list read successfully is a real answer (no orders today)."""
     index = ContractIndex.from_catalogue(catalogue)
     try:
-        net = positions_from_reply(session.reads.fetch_positions(), index).net
+        read = positions_from_reply(session.reads.fetch_positions(), index)
         orders = orders_from_reply(session.reads.fetch_orders())
     except (KiteReadError, KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
-    return _Zerodha(net, orders, index)
+    log_ignored(read, "positions read")  # rows never ours, named in one line (as the Execute and return routes do)
+    return _Zerodha(read.net, orders, index)
 
 
 async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,
@@ -102,33 +103,60 @@ async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sour
     return await ra.attribute_and_compare(ra.Account(db, user_ref), {}, zerodha.net, zerodha.orders, sources, at=now)
 
 
-def _row(key: Any, symbol: str, result: ra.Attribution) -> dict[str, Any]:
-    zerodha_units = result.raw_net.get(key, 0)
-    entries = result.pending.get(key, ())
-    if entries:  # ADR-110: "makes no own/outside split for it"
-        plans = sorted({(int(e.strategy_id), e.plan_number) for e in entries})
-        return {"tradingsymbol": symbol, "zerodha_units": zerodha_units, "own": [], "own_units": None,
-                "outside_units": None, "pending": True,
-                "pending_plans": [{"strategy_id": sid, "plan_number": n} for sid, n in plans], "blocked": True}
-    own = [{"strategy_id": int(sid), "units": units[key], "blocked": sid in result.blocked}
-           for sid, units in sorted(result.held.items(), key=lambda item: int(item[0])) if key in units]
-    return {"tradingsymbol": symbol, "zerodha_units": zerodha_units, "own": own,
-            "own_units": sum(o["units"] for o in own), "outside_units": result.outside.get(key, 0),
-            "pending": False, "pending_plans": [], "blocked": any(o["blocked"] for o in own)}
+def _symbol(key: Any, index: ContractIndex) -> str:
+    symbol = index.symbol_of(key)
+    if symbol is None:
+        raise _refuse("strategy_stored_unreadable")  # a strategy's contract the catalogue cannot name: never guessed
+    return symbol
+
+
+def _outside_lots(result: ra.Attribution, index: ContractIndex) -> int | None:
+    """Every outside unit (any sign) in lots, summed: None when a contract's lot size is not exactly one value or its
+    units are not a whole number of lots (the page then says "outside positions" without a number)."""
+    lots = 0
+    for key, units in result.outside.items():
+        if not units:
+            continue
+        lot = index.lot_of(key)
+        if lot is None or not is_lot_aligned(units, lot):
+            return None
+        lots += abs(units) // lot
+    return lots
+
+
+def _groups(result: ra.Attribution, index: ContractIndex) -> list[dict[str, Any]]:
+    """ADR-138 (2): one group per strategy, holding only the contracts linked to it: its own units (W-108's ``held``)
+    or its plans that keep a contract pending (ADR-110: no own/outside split there). A blocked strategy with no such
+    contract still gets its group, so its badge is shown. Outside-only contracts are never a row."""
+    rows: dict[str, dict[Any, dict[str, Any]]] = {}
+    for sid, units in result.held.items():
+        for key, own in units.items():
+            rows.setdefault(str(sid), {})[key] = {"units": own, "pending": False, "pending_plans": []}
+    for key, entries in result.pending.items():
+        for entry in entries:
+            row = rows.setdefault(str(entry.strategy_id), {}).setdefault(
+                key, {"units": None, "pending": True, "pending_plans": []})
+            row.update(units=None, pending=True)
+            if entry.plan_number not in row["pending_plans"]:
+                row["pending_plans"].append(entry.plan_number)
+    for sid in result.blocked:
+        rows.setdefault(str(sid), {})
+    groups = []
+    for sid in sorted(rows, key=int):
+        contracts = [{"tradingsymbol": _symbol(key, index), "zerodha_units": result.raw_net.get(key, 0),
+                      **row, "pending_plans": sorted(row["pending_plans"])} for key, row in rows[sid].items()]
+        groups.append({"strategy_id": int(sid), "blocked": sid in result.blocked,
+                       "contracts": sorted(contracts, key=lambda c: c["tradingsymbol"])})
+    return groups
 
 
 def _answer(result: ra.Attribution, index: ContractIndex, now: datetime.datetime) -> PositionsOut:
-    keys = (set(result.raw_net) | set(result.outside) | set(result.pending)
-            | {k for units in result.held.values() for k in units})
-    rows = []
-    for key in sorted(keys, key=repr):
-        symbol = index.symbol_of(key)
-        if symbol is None:
-            raise _refuse("strategy_stored_unreadable")  # a held contract the catalogue cannot name: never guessed
-        rows.append(_row(key, symbol, result))
-    blocked = bool(result.blocked) or any(r["blocked"] for r in rows)
-    return PositionsOut.model_validate({"read_at": now, "contracts": rows, "blocked": blocked,
-                                        "blocked_strategy_ids": sorted(int(sid) for sid in result.blocked)})
+    groups = _groups(result, index)
+    blocked_ids = sorted(int(sid) for sid in result.blocked)
+    return PositionsOut.model_validate({
+        "read_at": now, "strategies": groups, "has_outside": any(result.outside.values()),
+        "outside_lots": _outside_lots(result, index), "blocked": bool(blocked_ids),
+        "blocked_strategy_ids": blocked_ids})
 
 
 @router.get("/positions", response_model=PositionsOut)
@@ -149,4 +177,4 @@ async def read_positions(
     return _answer(result, zerodha.index, now)
 
 
-__all__ = ["OwnLotsOut", "PendingPlanOut", "PositionContractOut", "PositionsOut", "read_positions"]
+__all__ = ["PositionsOut", "StrategyContractOut", "StrategyPositionsOut", "read_positions"]

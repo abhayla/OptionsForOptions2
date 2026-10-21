@@ -1430,30 +1430,6 @@
         "title": "OutcomeResponse",
         "type": "object"
       },
-      "OwnLotsOut": {
-        "additionalProperties": false,
-        "properties": {
-          "blocked": {
-            "title": "Blocked",
-            "type": "boolean"
-          },
-          "strategy_id": {
-            "title": "Strategy Id",
-            "type": "integer"
-          },
-          "units": {
-            "title": "Units",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "strategy_id",
-          "units",
-          "blocked"
-        ],
-        "title": "OwnLotsOut",
-        "type": "object"
-      },
       "PayoffOut": {
         "additionalProperties": false,
         "properties": {
@@ -1478,25 +1454,6 @@
           "points"
         ],
         "title": "PayoffOut",
-        "type": "object"
-      },
-      "PendingPlanOut": {
-        "additionalProperties": false,
-        "properties": {
-          "plan_number": {
-            "title": "Plan Number",
-            "type": "integer"
-          },
-          "strategy_id": {
-            "title": "Strategy Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "strategy_id",
-          "plan_number"
-        ],
-        "title": "PendingPlanOut",
         "type": "object"
       },
       "PlannedEntriesOut": {
@@ -1650,76 +1607,6 @@
         "title": "PointOut",
         "type": "object"
       },
-      "PositionContractOut": {
-        "additionalProperties": false,
-        "properties": {
-          "blocked": {
-            "title": "Blocked",
-            "type": "boolean"
-          },
-          "outside_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Outside Units"
-          },
-          "own": {
-            "items": {
-              "$ref": "#/components/schemas/OwnLotsOut"
-            },
-            "title": "Own",
-            "type": "array"
-          },
-          "own_units": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Own Units"
-          },
-          "pending": {
-            "title": "Pending",
-            "type": "boolean"
-          },
-          "pending_plans": {
-            "items": {
-              "$ref": "#/components/schemas/PendingPlanOut"
-            },
-            "title": "Pending Plans",
-            "type": "array"
-          },
-          "tradingsymbol": {
-            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Tradingsymbol",
-            "type": "string"
-          },
-          "zerodha_units": {
-            "title": "Zerodha Units",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "tradingsymbol",
-          "zerodha_units",
-          "own",
-          "own_units",
-          "outside_units",
-          "pending",
-          "pending_plans",
-          "blocked"
-        ],
-        "title": "PositionContractOut",
-        "type": "object"
-      },
       "PositionsOut": {
         "additionalProperties": false,
         "properties": {
@@ -1734,22 +1621,39 @@
             "title": "Blocked Strategy Ids",
             "type": "array"
           },
-          "contracts": {
-            "items": {
-              "$ref": "#/components/schemas/PositionContractOut"
-            },
-            "title": "Contracts",
-            "type": "array"
+          "has_outside": {
+            "title": "Has Outside",
+            "type": "boolean"
+          },
+          "outside_lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outside Lots"
           },
           "read_at": {
             "format": "date-time",
             "title": "Read At",
             "type": "string"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyPositionsOut"
+            },
+            "title": "Strategies",
+            "type": "array"
           }
         },
         "required": [
           "read_at",
-          "contracts",
+          "strategies",
+          "has_outside",
+          "outside_lots",
           "blocked",
           "blocked_strategy_ids"
         ],
@@ -2268,6 +2172,51 @@
         "title": "ScenarioOut",
         "type": "object"
       },
+      "StrategyContractOut": {
+        "additionalProperties": false,
+        "properties": {
+          "pending": {
+            "title": "Pending",
+            "type": "boolean"
+          },
+          "pending_plans": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pending Plans",
+            "type": "array"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          },
+          "zerodha_units": {
+            "title": "Zerodha Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tradingsymbol",
+          "zerodha_units",
+          "units",
+          "pending",
+          "pending_plans"
+        ],
+        "title": "StrategyContractOut",
+        "type": "object"
+      },
       "StrategyIn": {
         "additionalProperties": false,
         "properties": {
@@ -2377,6 +2326,33 @@
           "definition"
         ],
         "title": "StrategyOut",
+        "type": "object"
+      },
+      "StrategyPositionsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyContractOut"
+            },
+            "title": "Contracts",
+            "type": "array"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "blocked",
+          "contracts"
+        ],
+        "title": "StrategyPositionsOut",
         "type": "object"
       },
       "StrategyUpdateIn": {

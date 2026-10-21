@@ -4,14 +4,22 @@ Expected values come from the recorded files and the ADRs' examples: kite_positi
 and kite_replies/positions-122104.json are NIFTY26O1923650CE net +65 at 12:21; kite_replies/positions-151006.json is the
 flat row (quantity 0) at 15:10:06. kite_replies/orders-122104.json is the entry's order row (tag OFS1V1L0, BUY 65,
 COMPLETE, filled 65); orders-151006.json adds the exit row (OFS1V2L0). Strategy 1 holds its own 65 (plan 1 filled 65 of
-65, tag OFS1V1L0). Hand-made, labelled derivations: the 130 case doubles the recorded row's quantities (ADR-109:
+65). Hand-made, labelled derivations: the order books are RE-TAGGED through the real ``make_tag`` (each recorded
+OFS<s>V<v>L<i> tag becomes make_tag(s, v, i), Q0001010 for OFS1V1L0), because plans are now stored with make_tag's
+tags; the legacy case keeps the recorded OFS tags AND stores the plan with the legacy tag (both grammars attribute);
+the 130 case doubles the recorded row's quantities (ADR-109:
 "strategy BUY 65 CE, Zerodha 130 -> not blocked, 65 outside"); the OPEN case rewrites the recorded order row's status to
 OPEN with nothing filled (ADR-110's example: "strategy 1 BUY 65 placed, Zerodha 65, Check not pressed -> ... 65 not yet
 confirmed, strategy blocked; after Zerodha shows the order COMPLETE the normal comparison applies"); the second contract
 NIFTY26O1923700CE is the recorded listing with its strike moved 50 points (only a catalogue entry, never a Zerodha row).
 
-Answer states (B4 (d)): positions present / absent (no 'net' list) / flat / failed; orders present final (COMPLETE) /
-present not final (OPEN) / absent (the plan's tag not in the book) / unreadable or failed / empty list: each has a test.
+ADR-138 (2): the answer is strategy groups holding only contracts linked to a strategy, plus one "N outside lots" count;
+an outside-only contract is never a row.
+
+Answer states (B4 (d)): positions present / absent (no 'net' list) / flat / failed / empty / only outside rows / mixed
+(one contract held partly by a strategy, partly outside) / unknown exchange (refused) / a never-ours row (logged);
+orders present final (COMPLETE) / present not final (OPEN) / absent (the plan's tag not in the book) /
+unreadable or failed / empty list: each has a test.
 """
 from __future__ import annotations
 
@@ -23,7 +31,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-from ofo_app.routes.positions import OwnLotsOut, PendingPlanOut, PositionContractOut, PositionsOut
+from ofo_app.routes.positions import PositionsOut, StrategyContractOut, StrategyPositionsOut
 
 ROOT = Path(__file__).resolve().parent.parent
 REPLIES = ROOT / "tests" / "fixtures" / "kite_replies"
@@ -43,8 +51,17 @@ def _reply(path: Path) -> dict:
     return {"day": [], **data}  # Zerodha always sends both lists; the one-row fixture keeps only 'net'
 
 
-def _orders(path: Path = ORDERS_ENTRY) -> list:
-    return json.loads(path.read_text(encoding="utf-8"), parse_float=D)["data"]
+def _orders(path: Path = ORDERS_ENTRY, *, legacy: bool = False) -> list:
+    """The recorded order book; unless ``legacy``, each row's recorded OFS<s>V<v>L<i> tag is re-tagged through the real
+    ``make_tag(s, v, i)`` (a derived fixture: plans are stored with make_tag's tags since 2026-10-19)."""
+    from ofo.execution.basket import make_tag, parse_tag  # noqa: PLC0415
+
+    rows = json.loads(path.read_text(encoding="utf-8"), parse_float=D)["data"]
+    if not legacy:
+        for row in rows:
+            parts = parse_tag(row["tag"])
+            row["tag"] = make_tag(parts.strategy_id, parts.plan_version, parts.leg_index)
+    return rows
 
 
 def _orders_open() -> list:
@@ -126,8 +143,8 @@ def _iid(token: int) -> str:
 
 async def _plan(conn, user, sid: int, number: int, **opts) -> None:
     """Plan ``number`` of strategy ``sid``: BUY 65 of ``opts['symbol']`` (default the real contract; tag
-    OFS<sid>V<number>L0), closed filled 65 of 65, or with ``closed=False`` left OPEN (placed on Kite's page, Check not
-    pressed: ADR-110)."""
+    make_tag(sid, number, 0), or with ``legacy=True`` the pre-2026-10-19 OFS<sid>V<number>L0), closed filled 65 of 65,
+    or with ``closed=False`` left OPEN (placed on Kite's page, Check not pressed: ADR-110)."""
     symbol, closed = opts.get("symbol", SYMBOL), opts.get("closed", True)
     from ofo.execution.basket import make_tag  # noqa: PLC0415
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
@@ -135,6 +152,14 @@ async def _plan(conn, user, sid: int, number: int, **opts) -> None:
     from test_execute_route import CORE_ID  # noqa: PLC0415
 
     token = CORE_ID.exchange_token if symbol == SYMBOL else CORE_ID.exchange_token + 1
+    if opts.get("legacy"):  # a row written before 0018: record_plan mints only make_tag's grammar, so the store's
+        tag = f"OFS{sid}V{number}L0"  # own INSERT statements write it, as the old code did (the DB still accepts it)
+        await conn.execute(plans._INSERT_PLAN, {"s": sid, "p": number, "a": "ENTRY"})
+        await conn.execute(plans._INSERT_ORDER, {"s": sid, "p": number, "l": 0, "tag": tag, "iid": _iid(token),
+                                                 "side": "BUY", "q": 65, "price": D("5.45")})
+        if closed:
+            await plans.close_plan(conn, user, sid, number, reason="filled", filled={tag: 65})
+        return
     tag = make_tag(sid, number, 0)
     await plans.record_plan(conn, user, sid, number, "ENTRY", (PlanOrder(0, tag, _iid(token), symbol, "BUY", 65,
                                                                          D("5.45")),))
@@ -176,7 +201,7 @@ async def _second_strategy(conn, user: str) -> int:
 async def _world(conn, app_engine, monkeypatch, plans: str) -> tuple[str, dict]:
     """plans: 'closed' (plan 1 filled 65), 'none', 'open' (plan 1 OPEN), 'two_contracts' (plan 1 closed 65 + plan 2
     OPEN on the second contract), 'two_strategies' (strategy 1 plan 1 closed 65 + a second strategy's plan 1 OPEN on
-    the same contract)."""
+    the same contract), 'open_legacy' (plan 1 OPEN, stored with the legacy OFS1V1L0 tag)."""
     from test_execute_route import _strategy_one  # noqa: PLC0415
     from test_strategy_store import _user  # noqa: PLC0415
 
@@ -187,8 +212,8 @@ async def _world(conn, app_engine, monkeypatch, plans: str) -> tuple[str, dict]:
     ids = {"first": sid}
     if plans in ("closed", "two_contracts", "two_strategies"):
         await _plan(conn, user, sid, 1)
-    if plans == "open":
-        await _plan(conn, user, sid, 1, closed=False)
+    if plans in ("open", "open_legacy"):
+        await _plan(conn, user, sid, 1, closed=False, legacy=plans == "open_legacy")
     if plans == "two_contracts":
         await _second_contract(conn)
         await _plan(conn, user, sid, 2, symbol=SECOND_SYMBOL, closed=False)
@@ -200,15 +225,11 @@ async def _world(conn, app_engine, monkeypatch, plans: str) -> tuple[str, dict]:
 
 def _closed_keys(node) -> None:
     """Every object in an answer is one of the declared shapes (exact key sets), and no key names a money figure."""
-    shapes = {"top": set(PositionsOut.model_fields), "contract": set(PositionContractOut.model_fields),
-              "own": set(OwnLotsOut.model_fields), "plan": set(PendingPlanOut.model_fields)}
-    assert set(node) == shapes["top"]
-    for row in node["contracts"]:
-        assert set(row) == shapes["contract"]
-        for own in row["own"]:
-            assert set(own) == shapes["own"]
-        for plan in row["pending_plans"]:
-            assert set(plan) == shapes["plan"]
+    assert set(node) == set(PositionsOut.model_fields)
+    for group in node["strategies"]:
+        assert set(group) == set(StrategyPositionsOut.model_fields)
+        for row in group["contracts"]:
+            assert set(row) == set(StrategyContractOut.model_fields)
 
 
 async def _run(engines, monkeypatch, data, *, url="/positions", **opts):
@@ -228,53 +249,79 @@ async def _run(engines, monkeypatch, data, *, url="/positions", **opts):
             await trans.rollback()
 
 
-def _normal(zerodha: int, own: list, outside: int, blocked: bool, symbol: str = SYMBOL) -> dict:
-    return {"tradingsymbol": symbol, "zerodha_units": zerodha, "own": own,
-            "own_units": sum(o["units"] for o in own), "outside_units": outside, "pending": False,
-            "pending_plans": [], "blocked": blocked}
+def _own(units: int, zerodha: int, symbol: str = SYMBOL) -> dict:
+    """A strategy's own row on a contract (not pending)."""
+    return {"tradingsymbol": symbol, "zerodha_units": zerodha, "units": units, "pending": False, "pending_plans": []}
+
+
+def _waiting(zerodha: int, plans: list, symbol: str = SYMBOL) -> dict:
+    """A pending row (ADR-110): Zerodha's units as read, no own split, the strategy's waiting plan numbers."""
+    return {"tradingsymbol": symbol, "zerodha_units": zerodha, "units": None, "pending": True, "pending_plans": plans}
+
+
+def _group(sid: int, contracts: list, blocked: bool) -> dict:
+    return {"strategy_id": sid, "blocked": blocked, "contracts": contracts}
+
+
+def _with_row(data: dict, **changes) -> dict:
+    """The reply plus one more net row: a copy of its first row with ``changes`` (a hand-made, labelled derivation)."""
+    data = copy.deepcopy(data)
+    data["net"].append({**copy.deepcopy(data["net"][0]), **changes})
+    return data
+
+
+def _requantified(units: int) -> dict:
+    """The recorded +65 row with its quantity set to ``units`` (a hand-made, labelled derivation)."""
+    data = copy.deepcopy(_reply(RECORDED))
+    for row in data["net"]:
+        row.update(quantity=units, buy_quantity=units, day_buy_quantity=units)
+    return data
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_ac3_core_recorded_reply_shows_the_strategys_own_65_and_nothing_outside(app_engine, admin_engine,
                                                                                       monkeypatch):
     """AC-3 core: the recorded +65 reply and the recorded order book (COMPLETE 65), strategy 1 holding its own 65 ->
-    one contract, own 65 for strategy 1, 0 outside, not blocked; only the two GETs were made."""
+    one strategy group with its own 65, nothing outside, not blocked; only the two GETs were made."""
     resp, transport, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(RECORDED))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["contracts"] == [{"tradingsymbol": SYMBOL, "zerodha_units": 65, "outside_units": 0, "blocked": False,
-                                  "own_units": 65, "own": [{"strategy_id": 1, "units": 65, "blocked": False}],
-                                  "pending": False, "pending_plans": []}]
+    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert (body["has_outside"], body["outside_lots"]) == (False, 0)
     assert body["blocked"] is False and body["blocked_strategy_ids"] == []
     assert [(m, u.rsplit("/", 1)[-1]) for m, u in transport.calls] == [("GET", "positions"), ("GET", "orders")]
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_adr110_core_open_plan_with_the_order_open_at_zerodha_is_pending(app_engine, admin_engine, monkeypatch):
-    """AC-3 / ADR-110 core: plan 1 OPEN, the recorded 12:21 positions (+65) and the recorded order row rewritten to
-    OPEN -> the contract is pending: Zerodha's 65 as read, plan (1, 1) waiting, no own lots, own/outside null (never
-    0), strategy 1 blocked."""
+    """AC-3 / ADR-110 core: plan 1 OPEN, the recorded 12:21 positions (+65) and the (re-tagged) recorded order row
+    rewritten to OPEN -> strategy 1's row is pending: Zerodha's 65 as read, plan 1 waiting, units null (never 0),
+    strategy 1 blocked, nothing counted outside."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
                             orders=_orders_open())
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["contracts"] == [{"tradingsymbol": SYMBOL, "zerodha_units": 65, "own": [], "own_units": None,
-                                  "outside_units": None, "pending": True,
-                                  "pending_plans": [{"strategy_id": 1, "plan_number": 1}], "blocked": True}]
+    assert body["strategies"] == [_group(1, [_waiting(65, [1])], True)]
+    assert (body["has_outside"], body["outside_lots"]) == (False, 0)
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
 
 @pytest.mark.usefixtures("app_engine")
+@pytest.mark.parametrize("grammar", ["make_tag", "legacy"])
 async def test_adr110_open_plan_with_the_real_complete_row_takes_the_normal_comparison(app_engine, admin_engine,
-                                                                                       monkeypatch):
+                                                                                       monkeypatch, grammar):
     """ADR-110: "after Zerodha shows the order COMPLETE the normal comparison applies even if Check is never pressed":
-    plan 1 still OPEN, the REAL COMPLETE row (filled 65) -> own 65, outside 0, not pending, not blocked."""
-    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open")
+    plan 1 still OPEN, the COMPLETE row (filled 65) -> own 65, not pending, not blocked. Both tag grammars attribute:
+    a plan stored with make_tag's Q0001010 against the re-tagged book, and a plan stored with the legacy OFS1V1L0
+    against the recorded book exactly as Zerodha sent it (review finding 1)."""
+    legacy = grammar == "legacy"
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY),
+                            plans="open_legacy" if legacy else "open", orders=_orders(legacy=legacy))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["contracts"] == [_normal(65, [{"strategy_id": 1, "units": 65, "blocked": False}], 0, False)]
+    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
     assert body["blocked"] is False and body["blocked_strategy_ids"] == []
 
 
@@ -284,7 +331,7 @@ async def test_adr110_empty_order_book_keeps_a_closed_plans_stored_fill(app_engi
     plan 1 closed filled 65 keeps its stored fill -> own 65, not pending, not blocked."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
-    assert resp.json()["contracts"] == [_normal(65, [{"strategy_id": 1, "units": 65, "blocked": False}], 0, False)]
+    assert resp.json()["strategies"] == [_group(1, [_own(65, 65)], False)]
 
 
 @pytest.mark.usefixtures("app_engine")
@@ -293,9 +340,9 @@ async def test_adr110_empty_order_book_with_an_open_plan_is_pending(app_engine, 
     counted as filled, never as outside)."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open", orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
-    (row,) = resp.json()["contracts"]
-    assert (row["pending"], row["own"], row["own_units"], row["outside_units"]) == (True, [], None, None)
-    assert resp.json()["blocked_strategy_ids"] == [1]
+    body = resp.json()
+    assert body["strategies"] == [_group(1, [_waiting(65, [1])], True)]
+    assert body["has_outside"] is False and body["blocked_strategy_ids"] == [1]
 
 
 @pytest.mark.usefixtures("app_engine")
@@ -313,7 +360,7 @@ async def test_adr110_a_failed_or_unreadable_orders_read_is_refused_never_an_emp
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
                             orders=orders, orders_status=status)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert "contracts" not in resp.json()
+    assert "strategies" not in resp.json()
     assert render("gate_broker_unconfirmed").what_happened in resp.text
 
 
@@ -321,90 +368,131 @@ async def test_adr110_a_failed_or_unreadable_orders_read_is_refused_never_an_emp
 async def test_adr110_two_strategies_on_one_contract_one_pending_blocks_both(app_engine, admin_engine, monkeypatch):
     """ADR-110 + Q224: strategy 1 holds its own 65 (closed, COMPLETE in the book); a second strategy's plan 1 is OPEN on
     the same contract and its tag is not in the book (orders answer state ABSENT) -> the contract is pending for the
-    second strategy's plan, no split, and BOTH strategies are blocked."""
+    second strategy's plan, no split, and BOTH strategies are blocked (strategy 1 keeps its group for the badge)."""
     resp, _, ids = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="two_strategies")
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["contracts"] == [{"tradingsymbol": SYMBOL, "zerodha_units": 65, "own": [], "own_units": None,
-                                  "outside_units": None, "pending": True,
-                                  "pending_plans": [{"strategy_id": ids["second"], "plan_number": 1}],
-                                  "blocked": True}]
+    assert body["strategies"] == [_group(1, [], True), _group(ids["second"], [_waiting(65, [1])], True)]
     assert body["blocked_strategy_ids"] == sorted([1, ids["second"]])
-    # What the page reads (review round 1 MINOR 4): the EXACT key sets of the answer and of a pending row, as literals.
-    # frontend/e2e/positions.spec.ts and frontend/tests/positions-page.test.js mock exactly these keys.
-    assert set(body) == {"read_at", "contracts", "blocked", "blocked_strategy_ids"}
-    assert set(body["contracts"][0]) == {"tradingsymbol", "zerodha_units", "own", "own_units", "outside_units",
-                                         "pending", "pending_plans", "blocked"}
-    assert set(body["contracts"][0]["pending_plans"][0]) == {"strategy_id", "plan_number"}
+    # What the page reads: the EXACT key sets as literals. frontend/e2e/positions.spec.ts and
+    # frontend/tests/positions-page.test.js mock exactly these keys.
+    assert set(body) == {"read_at", "strategies", "has_outside", "outside_lots", "blocked", "blocked_strategy_ids"}
+    assert set(body["strategies"][1]) == {"strategy_id", "blocked", "contracts"}
+    assert set(body["strategies"][1]["contracts"][0]) == {"tradingsymbol", "zerodha_units", "units", "pending",
+                                                          "pending_plans"}
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_adr110_a_pending_strategys_other_contract_shows_its_normal_row_but_blocked(app_engine, admin_engine,
                                                                                           monkeypatch):
     """ADR-110 "The strategy is blocked until the plan closes": strategy 1 holds 65 of the real contract (agreeing
-    with Zerodha) and has plan 2 OPEN on a second contract (tag OFS1V2L0 absent from the 12:21 book) -> the real
-    contract's row is normal (own 65, outside 0) but blocked; the second contract is pending with Zerodha 0."""
+    with Zerodha) and has plan 2 OPEN on a second contract (its tag absent from the 12:21 book) -> one blocked group:
+    the real contract's row is normal (own 65), the second contract is pending with Zerodha 0."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="two_contracts")
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    rows = {row["tradingsymbol"]: row for row in body["contracts"]}
-    assert rows[SYMBOL] == _normal(65, [{"strategy_id": 1, "units": 65, "blocked": True}], 0, True)
-    assert rows[SECOND_SYMBOL] == {"tradingsymbol": SECOND_SYMBOL, "zerodha_units": 0, "own": [], "own_units": None,
-                                   "outside_units": None, "pending": True,
-                                   "pending_plans": [{"strategy_id": 1, "plan_number": 2}], "blocked": True}
+    assert body["strategies"] == [_group(1, [_own(65, 65), _waiting(0, [2], SECOND_SYMBOL)], True)]
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_ac3_zerodha_130_against_own_65_shows_65_outside_no_block(app_engine, admin_engine, monkeypatch):
-    """AC-3 / ADR-109 (2): Zerodha 130, strategy 65 -> own 65, outside 65, strategy not blocked."""
+async def test_ac3_mixed_zerodha_130_against_own_65_is_own_65_and_one_outside_lot(app_engine, admin_engine,
+                                                                                    monkeypatch):
+    """Answer state MIXED (attack 2) / ADR-109 (2): Zerodha 130 on one contract, strategy 65 -> the strategy's row
+    shows its own 65 (Zerodha 130 as read), the other 65 units are 1 outside lot (lot 65), nothing blocked."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _doubled())
     assert resp.status_code == HTTPStatus.OK, resp.text
-    (row,) = resp.json()["contracts"]
-    assert (row["zerodha_units"], row["outside_units"], row["blocked"], row["pending"]) == (130, 65, False, False)
-    assert row["own"] == [{"strategy_id": 1, "units": 65, "blocked": False}]
-    assert resp.json()["blocked"] is False
+    body = resp.json()
+    assert body["strategies"] == [_group(1, [_own(65, 130)], False)]
+    assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, 1, False)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_ac3_outside_units_not_a_whole_lot_are_shown_without_a_number(app_engine, admin_engine, monkeypatch):
+    """Zerodha 95 against own 65: 30 outside units are not a whole lot of 65 -> has_outside, outside_lots null (never a
+    rounded guess); the strategy's row is unchanged and nothing is blocked by it."""
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _requantified(95))
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert body["strategies"] == [_group(1, [_own(65, 95)], False)]
+    assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, None, False)
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_ac3_zerodha_flat_against_own_65_is_blocked_and_shown(app_engine, admin_engine, monkeypatch):
-    """AC-3 / ADR-109 (5): the real flat 15:10:06 book (and its real order book) while the strategy holds 65 -> the
-    contract is listed with Zerodha 0, own 65 and blocked (not an empty list)."""
+    """AC-3 / ADR-109 (5): the real flat 15:10:06 book (and its re-tagged order book) while the strategy holds 65 ->
+    the strategy's row shows own 65 with Zerodha 0, and the group is blocked (the mismatch badge), not an empty list."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(FLAT), orders=_orders(ORDERS_EXIT))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["contracts"] == [_normal(0, [{"strategy_id": 1, "units": 65, "blocked": True}], 0, True)]
+    assert body["strategies"] == [_group(1, [_own(65, 0)], True)]
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_ac3_a_position_in_no_strategy_is_all_outside(app_engine, admin_engine, monkeypatch):
-    """AC-3 / ADR-109 (2): the strategy stored no plan; Zerodha +65 -> 65 outside, no own lots, nothing blocked."""
+async def test_ac3_only_outside_positions_are_zero_rows_and_a_count(app_engine, admin_engine, monkeypatch):
+    """Answer state ONLY OUTSIDE (attack 1) / ADR-138 (2): the strategy stored no plan; Zerodha +65 -> no strategy
+    group, no contract row, "1 outside lot" (65 units, lot 65), nothing blocked."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(RECORDED), plans="none")
     assert resp.status_code == HTTPStatus.OK, resp.text
-    assert resp.json()["contracts"] == [_normal(65, [], 65, False)]
+    body = resp.json()
+    _closed_keys(body)
+    assert body["strategies"] == []
+    assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, 1, False)
+    assert SYMBOL not in resp.text  # the outside contract is never named: no copy of Kite's list
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_ac3_empty_book_and_no_lots_is_an_empty_list_with_a_read_time(app_engine, admin_engine, monkeypatch):
-    """AC-3 (answer state EMPTY): a read that succeeded with no net row and no held lots -> 200 with no contracts."""
+    """AC-3 (answer state EMPTY): a read that succeeded with no net row and no held lots -> 200, no groups, nothing
+    outside."""
     data = {"net": [], "day": []}
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, data, plans="none", orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["contracts"] == [] and body["blocked"] is False and body["read_at"]
+    assert body["strategies"] == [] and body["blocked"] is False and body["read_at"]
+    assert (body["has_outside"], body["outside_lots"]) == (False, 0)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_ac3_unknown_exchange_is_refused_never_skipped(app_engine, admin_engine, monkeypatch):
+    """Answer state UNKNOWN EXCHANGE (attack 3): a non-flat row on an exchange code Kite's adapter does not know ->
+    409 gate_broker_unconfirmed, never read as "not ours"."""
+    from ofo.errors import render  # noqa: PLC0415
+
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _with_row(_reply(RECORDED), exchange="NSEFO"))
+    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert "strategies" not in resp.json()
+    assert render("gate_broker_unconfirmed").what_happened in resp.text
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_ac3_a_never_ours_row_is_logged_and_not_counted(app_engine, admin_engine, monkeypatch, caplog):
+    """Review MINOR 3: a stock row (NSE INFY) is never ours -> one INFO line names it (as the Execute and return routes
+    log), it is neither a row nor an outside lot."""
+    import logging  # noqa: PLC0415
+
+    caplog.set_level(logging.INFO)
+    data = _with_row(_reply(RECORDED), exchange="NSE", tradingsymbol="INFY", product="CNC", instrument_token=408065)
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, data)
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert (body["has_outside"], body["outside_lots"]) == (False, 0)
+    lines = [r.getMessage() for r in caplog.records if "ignored" in r.getMessage()]
+    assert lines == ["positions read: positions read ignored 1 non-platform rows: NSE:INFY"]
 
 
 @pytest.mark.usefixtures("app_engine")
 async def test_ac3_no_session_is_the_catalogue_message_not_an_empty_list(app_engine, admin_engine, monkeypatch):
-    """AC-3 (answer state NO SESSION): 409 with the catalogue's gate_broker_not_connected text; no contracts key."""
+    """AC-3 (answer state NO SESSION): 409 with the catalogue's gate_broker_not_connected text; no strategies key."""
     from ofo.errors import render  # noqa: PLC0415
 
     resp, transport, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(RECORDED), session=False)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert "contracts" not in resp.json()
+    assert "strategies" not in resp.json()
     assert render("gate_broker_not_connected").what_happened in resp.text
     assert transport.calls == []
 
@@ -420,7 +508,7 @@ async def test_ac3_a_failed_or_unreadable_read_is_the_catalogue_message(app_engi
     data = None if failure == "http_error" else {"day": []}
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, data, **kwargs)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert "contracts" not in resp.json()
+    assert "strategies" not in resp.json()
     assert render("gate_broker_unconfirmed").what_happened in resp.text
 
 
@@ -432,22 +520,22 @@ async def test_ac3_client_supplied_units_are_ignored(app_engine, admin_engine, m
                             orders=_orders_open())
     forged, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open",
                               orders=_orders_open(),
-                              url="/positions?held_units=999&outside_units=65&strategy_id=1&blocked=false&pending=false")
+                              url="/positions?held_units=999&outside_lots=65&strategy_id=1&blocked=false&pending=false")
     assert forged.status_code == HTTPStatus.OK
     assert {k: v for k, v in forged.json().items() if k != "read_at"} == {
         k: v for k, v in base.json().items() if k != "read_at"}
-    assert forged.json()["contracts"][0]["pending"] is True
+    assert forged.json()["strategies"][0]["contracts"][0]["pending"] is True
 
 
 def test_ac3_answer_key_set_is_closed_and_names_no_money_figure():
     """AC-3 attack 4: the declared answer keys are exactly these, and none names a price, P&L, margin or Greek; a
     key added to a model fails here."""
-    assert set(PositionsOut.model_fields) == {"read_at", "contracts", "blocked", "blocked_strategy_ids"}
-    assert set(PositionContractOut.model_fields) == {"tradingsymbol", "zerodha_units", "own", "own_units",
-                                                     "outside_units", "pending", "pending_plans", "blocked"}
-    assert set(OwnLotsOut.model_fields) == {"strategy_id", "units", "blocked"}
-    assert set(PendingPlanOut.model_fields) == {"strategy_id", "plan_number"}
-    for model in (PositionsOut, PositionContractOut, OwnLotsOut, PendingPlanOut):
+    assert set(PositionsOut.model_fields) == {"read_at", "strategies", "has_outside", "outside_lots", "blocked",
+                                              "blocked_strategy_ids"}
+    assert set(StrategyPositionsOut.model_fields) == {"strategy_id", "blocked", "contracts"}
+    assert set(StrategyContractOut.model_fields) == {"tradingsymbol", "zerodha_units", "units", "pending",
+                                                     "pending_plans"}
+    for model in (PositionsOut, StrategyPositionsOut, StrategyContractOut):
         for name, field in model.model_fields.items():
             assert not any(word in name for word in FORBIDDEN), name
             assert field.annotation is not D, name
@@ -455,6 +543,7 @@ def test_ac3_answer_key_set_is_closed_and_names_no_money_figure():
 
 def test_ac3_extra_key_in_an_answer_is_refused():
     """AC-3 attack 4 (mutation): an answer carrying a pnl key does not validate (ApiModel is closed)."""
-    row = {"strategy_id": 1, "units": 65, "blocked": False, "pnl": "1.00"}
+    row = {"tradingsymbol": SYMBOL, "zerodha_units": 65, "units": 65, "pending": False, "pending_plans": [],
+           "pnl": "1.00"}
     with pytest.raises(ValueError):
-        OwnLotsOut.model_validate(row)
+        StrategyContractOut.model_validate(row)

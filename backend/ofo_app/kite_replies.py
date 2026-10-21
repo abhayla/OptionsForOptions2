@@ -149,6 +149,7 @@ class _IndexRow:
     token: str
     symbol: str
     key: ContractKey
+    lot: int | None = None  # Zerodha's lot size (catalogue rows only; the recorder's slice carries none)
 
 
 class ContractIndex:
@@ -171,7 +172,7 @@ class ContractIndex:
                 key = (contract.name, Instrument(contract.instrument_type), contract.strike, contract.expiry)
             else:
                 continue
-            rows.append(_IndexRow(ref.broker_token, ref.broker_symbol, key))
+            rows.append(_IndexRow(ref.broker_token, ref.broker_symbol, key, ref.lot_size))
         return cls(rows)
 
     @classmethod
@@ -199,6 +200,15 @@ class ContractIndex:
         """The Zerodha trading symbol of a reconcile key, or None when the catalogue has none (W-111)."""
         found = sorted({r.symbol for r in self._rows if r.key == key})
         return found[0] if found else None
+
+    def lot_of(self, key: ContractKey) -> int | None:
+        """Zerodha's lot size of a reconcile key: exactly one positive value among its rows, else None (never guessed;
+        W-111's outside-lots count)."""
+        found = {r.lot for r in self._rows if r.key == key}
+        if len(found) != 1:
+            return None
+        (lot,) = found
+        return lot if isinstance(lot, int) and lot > 0 else None
 
     def resolve(self, row: Mapping[str, object]) -> ContractKey:
         symbol = _text(row, "tradingsymbol")
