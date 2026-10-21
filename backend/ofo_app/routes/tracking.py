@@ -34,7 +34,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context
-from ofo_app.routes.planned_entry import hold_until_priced, get_live_feed
+from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 
 router = APIRouter(route_class=ClosedRoute)
