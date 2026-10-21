@@ -39,7 +39,8 @@ def test_ac1_all_templates_equal_the_catalogue_loader(client: TestClient) -> Non
     for row, template in zip(got, expected, strict=True):
         assert row == {"id": template.id, "name": template.name, "description": template.description,
                        "level": template.level, "views": list(template.views),
-                       "objectives": list(template.objectives)}
+                       "objectives": list(template.objectives),
+                       "legs": [leg.model_dump() for leg in strategy_templates.default_legs(template)]}
 
 
 def test_ac1_unknown_query_parameters_do_not_change_the_answer(client: TestClient) -> None:
@@ -67,3 +68,13 @@ def test_ac1_a_text_the_catalogue_does_not_hold_cannot_pass_the_door() -> None:
         render_explanation("catalogue_template_description", text=render("user_input_request_invalid"))
     first = load_templates()[0]
     assert render_explanation("catalogue_template_name", text=first.name) == first.name
+
+
+def test_w119_template_legs_are_the_catalogue_defaults() -> None:
+    """REQ-024 AC-2 (W-119): each template carries its legs at the catalogue defaults, strikes in steps from ATM.
+    Expected values from catalogue.yaml text: bull_call_spread k=0, w=2 -> BUY CE k, SELL CE k + w."""
+    by_id = {t.id: t for t in strategy_templates.strategy_templates().templates}
+    assert [leg.model_dump() for leg in by_id["bull_call_spread"].legs] == [
+        {"action": "BUY", "instrument": "CE", "strike_steps": 0, "expiry_slot": "near", "quantity_multiplier": 1},
+        {"action": "SELL", "instrument": "CE", "strike_steps": 2, "expiry_slot": "near", "quantity_multiplier": 1}]
+    assert all(t.legs for t in by_id.values())

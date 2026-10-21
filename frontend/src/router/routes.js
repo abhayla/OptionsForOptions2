@@ -20,6 +20,7 @@ const REAL_PAGES = {
   'learn-options-concepts': () => import('../pages/LearnPage.vue'),
   'learn-platform-guidance': () => import('../pages/LearnPage.vue'),
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
+  'strategies-create-strategy': () => import('../pages/CreateStrategyPage.vue'), // W-119
   'strategies-my-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109
   'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }

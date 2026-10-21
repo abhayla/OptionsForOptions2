@@ -34,6 +34,16 @@ money strings such as `"0.05"` are the recorder's shape, live Kite REST sends JS
 envelope `status` / `data` and the per-row fields, JSON numbers for quantities and prices), with illustrative values
 (GOLDBEES, INFY). It is NOT a recording of the owner's account; GC-3 records the real reply and replaces it.
 
+## #313b GC-3L fixtures (strategy 9, 2026-10-19)
+
+| File | Source file | Content |
+|---|---|---|
+| `orders-gc3l-2026-10-19.json` | `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/orders-saved.json` | OFS9V1L0 BUY 65 NIFTY26OCT24000CE COMPLETE 65 (average 7), OFS9V2L0 SELL 65 COMPLETE 65 (average 6.65) |
+| `trades-gc3l-2026-10-19.json` | `D:/Abhay/Ventures/ofo-kite-ticks/2026-10-19/replies-after-exit/trades-saved.json` | trade 3428923 (order 261019170382597) 65 @ 7, trade 3720169 (order 261019170402780) 65 @ 6.65 |
+
+The owner's client id in `placed_by` / `account_id` is replaced by `XX0000` and the JSON is re-indented; every value
+is otherwise as recorded (JSON numbers, as live Kite REST sends them). `tests_app/test_order_book_store.py` reads them.
+
 ## GC-3L positions with stock rows (2026-10-19)
 
 `positions-20261019-with-stocks.json`: PART real, PART shaped (its `_provenance` key says which). REAL-SAVED: the

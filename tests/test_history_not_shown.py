@@ -40,9 +40,27 @@ ALLOWED_IMPORTERS = frozenset({
 })
 # frontend/src may request or import no history at all.
 ALLOWED_FRONTEND: frozenset[str] = frozenset()
+# String literals that hold the word "history" for the USER'S OWN records, not market data (exact file + literal; the
+# nav lists the user's executed-order history and fired-alert history pages). Anything else fails the word scan.
+ALLOWED_FRONTEND_WORDS = frozenset({
+    ("router/nav.js", "execution-history"),
+    ("router/nav.js", "history"),
+    ("router/nav.js", "History"),
+    ("router/routes.js", "alerts-history"),  # route name of the Alerts > History page (fired alerts, REQ-009 AC-6)
+    ("pages/BrokerSettingsPage.vue", "history-statement"),  # test id of the "not available" sentence (ADR-066)
+})
 
-DYNAMIC_IMPORTS = {"__import__", "import_module"}
 WIDE_PACKAGES = {"ofo", "ofo_app"}  # `from ofo_app import *` could pull a history module in: unresolvable, so flagged
+# Dynamic-import sources, named by what the call RESOLVES to through the module's imports (not by identifier text):
+DYNAMIC_ROOTS = ("importlib", "runpy")  # any attribute of these modules
+DYNAMIC_BUILTINS = {"__import__", "builtins.__import__"}
+LITERAL_CHECKED = {"importlib.import_module", "importlib.__import__", "runpy.run_module", "__import__",
+                   "builtins.__import__"}  # calls whose target module name is read; every other dynamic call is flagged
+STAR_SOURCES = {"importlib", "runpy", "builtins"}
+# Loaders that take a FILE PATH, not a module name: the scan cannot see which module they load, so they are flagged
+# ("path-loader ...") and only the folders listed here may use them (Alembic loads its sibling migration by path).
+PATH_LOADERS = {"importlib.util.spec_from_file_location", "importlib.util.module_from_spec"}
+PATH_LOADER_FOLDERS = ("ofo_app.alembic.versions.",)
 
 
 def _is_history(dotted: str) -> bool:
@@ -69,28 +87,153 @@ def _from_hits(node: ast.ImportFrom, module: str, is_package: bool) -> list[str]
     return hits + [f"from {base} import {a.name}" for a in node.names if _is_history(f"{base}.{a.name}")]
 
 
-def _call_hits(node: ast.Call) -> list[str]:
-    fn = node.func
-    name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
-    if name not in DYNAMIC_IMPORTS:
+def _aliases(tree: ast.AST) -> dict[str, str]:
+    """Local name -> dotted import source, for absolute imports (``import importlib.util`` binds ``importlib``)."""
+    out: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                out[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for a in node.names:
+                out[a.asname or a.name] = f"{node.module}.{a.name}"
+    return out
+
+
+def _resolve(expr: ast.AST, aliases: dict[str, str]) -> str:
+    """The dotted import source an expression names ('' when it is not a plain name/attribute chain)."""
+    if isinstance(expr, ast.Name):
+        return aliases.get(expr.id, expr.id)
+    if isinstance(expr, ast.Attribute):
+        base = _resolve(expr.value, aliases)
+        return f"{base}.{expr.attr}" if base else ""
+    return ""
+
+
+def _is_dynamic(dotted: str) -> bool:
+    return dotted in DYNAMIC_BUILTINS or any(dotted == r or dotted.startswith(r + ".") for r in DYNAMIC_ROOTS)
+
+
+def _str_value(expr: ast.AST | None) -> str | None:
+    return expr.value if isinstance(expr, ast.Constant) and isinstance(expr.value, str) else None
+
+
+def _absolute(name: str, package: str | None) -> str | None:
+    """importlib.util.resolve_name for a literal: None when a relative name has no literal package."""
+    if not name.startswith("."):
+        return name
+    if not package:
+        return None
+    dots = len(name) - len(name.lstrip("."))
+    parts = package.split(".")
+    if dots - 1 >= len(parts):
+        return None
+    return ".".join(parts[: len(parts) - (dots - 1)] + [name[dots:]] * bool(name[dots:]))
+
+
+def _arg(node: ast.Call, pos: int, *kws: str) -> ast.AST | None:
+    if len(node.args) > pos:
+        return node.args[pos]
+    return next((k.value for k in node.keywords if k.arg in kws), None)
+
+
+def _is_none_constant(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
+
+
+def _unreadable_args(node: ast.Call, dotted: str) -> bool:
+    """True when a call's arguments cannot be read statically (not a checked importer, starred, or ``**kw``)."""
+    return (dotted not in LITERAL_CHECKED or any(isinstance(a, ast.Starred) for a in node.args)
+            or any(k.arg is None for k in node.keywords))
+
+
+def _package_problem(node: ast.Call, dotted: str) -> tuple[str | None, str | None]:
+    """(package, problem) for ``import_module`` / ``__import__``: a non-literal package or level is a problem."""
+    if dotted.endswith("import_module"):
+        pkg_node = _arg(node, 1, "package")
+        package = _str_value(pkg_node)
+        bad = pkg_node is not None and package is None and not _is_none_constant(pkg_node)
+        return package, ("non-literal package in" if bad else None)
+    if dotted.endswith("__import__"):
+        level = _arg(node, 4, "level")
+        bad = level is not None and not (isinstance(level, ast.Constant) and level.value == 0)
+        return None, ("relative or non-literal level in" if bad else None)
+    return None, None
+
+
+def _fromlist_names(node: ast.Call, dotted: str, base: str) -> list[str] | None:
+    """The module names a ``__import__`` fromlist adds to ``base``; None when it is not a literal list of strings."""
+    fromlist = _arg(node, 3, "fromlist") if dotted.endswith("__import__") else None
+    if fromlist is None:
         return []
-    arg = node.args[0] if node.args else None
-    if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
-        return [f"non-literal {name}() at line {node.lineno}"]
-    return [f"{name}({arg.value!r})"] if _is_history(arg.value) else []
+    items = fromlist.elts if isinstance(fromlist, (ast.List, ast.Tuple)) else None
+    if items is None or not all(_str_value(i) is not None for i in items):
+        return None
+    return [f"{base}.{_str_value(i)}" for i in items]
+
+
+def _module_base(node: ast.Call, dotted: str) -> tuple[str | None, str]:
+    """(absolute module name, "") when the call names its module by literals; else (None, why not)."""
+    if _unreadable_args(node, dotted):
+        return None, "unresolvable"
+    name = _str_value(_arg(node, 0, "name", "mod_name", "module_name"))
+    if name is None:
+        return None, "non-literal"
+    package, problem = _package_problem(node, dotted)
+    if problem:
+        return None, problem
+    base = _absolute(name, package)
+    return (base, "") if base is not None else (None, "unresolvable relative name in")
+
+
+def _dynamic_call_hits(node: ast.Call, dotted: str) -> list[str]:
+    """A dynamic import is read only when its module name (and fromlist/package/level) are literals; else flagged."""
+    line = f"{dotted}() at line {node.lineno}"
+    if dotted in PATH_LOADERS:
+        return [f"path-loader {line}"]
+    base, problem = _module_base(node, dotted)
+    if base is None:
+        return [f"{problem} {line}"]
+    more = _fromlist_names(node, dotted, base)
+    if more is None:
+        return [f"non-literal fromlist in {line}"]
+    hit = next((n for n in [base, *more] if _is_history(n)), None)
+    return [f"{dotted}({hit!r})"] if hit else []
+
+
+def _dynamic_hits(tree: ast.AST, aliases: dict[str, str]) -> list[str]:
+    """Calls AND bare references (``f = importlib.import_module``, ``getattr(importlib, ...)``) that resolve to a
+    dynamic-import source by import. Fail closed: a reference we cannot follow is flagged."""
+    hits: list[str] = []
+    inner: set[int] = set()  # nodes that are only the base of a longer chain, or the callee of a call (handled once)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            inner.add(id(node.value))
+        elif isinstance(node, ast.Call):
+            inner.add(id(node.func))
+            dotted = _resolve(node.func, aliases)
+            if _is_dynamic(dotted):
+                hits += _dynamic_call_hits(node, dotted)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Name, ast.Attribute)) and id(node) not in inner:
+            if _is_dynamic(_resolve(node, aliases)):
+                hits.append(f"reference to {_resolve(node, aliases)} (not a direct call) at line {node.lineno}")
+        elif (isinstance(node, ast.ImportFrom) and not node.level and node.module in STAR_SOURCES
+              and any(a.name == "*" for a in node.names)):
+            hits.append(f"star import from {node.module} at line {node.lineno}")
+    return hits
 
 
 def import_hits(source: str, module: str, is_package: bool = False) -> list[str]:
     """Every history import, or unresolvable import shape, in one backend module's source (empty = clean)."""
     hits: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             hits += [f"import {a.name}" for a in node.names if _is_history(a.name)]
         elif isinstance(node, ast.ImportFrom):
             hits += _from_hits(node, module, is_package)
-        elif isinstance(node, ast.Call):
-            hits += _call_hits(node)
-    return hits
+    return hits + _dynamic_hits(tree, _aliases(tree))
 
 
 def scan_backend(backend: Path) -> dict[str, list[str]]:
@@ -107,12 +250,24 @@ def scan_backend(backend: Path) -> dict[str, list[str]]:
 
 
 def disallowed(found: dict[str, list[str]], allowed: frozenset[str]) -> dict[str, list[str]]:
-    return {m: h for m, h in found.items() if m not in allowed}
+    out: dict[str, list[str]] = {}
+    for m, h in found.items():
+        if m in allowed:
+            continue
+        kept = [x for x in h if not x.startswith("path-loader ")] if m.startswith(PATH_LOADER_FOLDERS) else h
+        if kept:
+            out[m] = kept
+    return out
 
 
 # frontend: a path-like string literal with a history/candle segment, or an import of such a module
-_HISTORY_WORD = r"(?:history|historical|candles?|ohlc\w*|kite_history|history_store|history_finalize)"
+_HISTORY_WORD = r"(?:history|historical|intraday|candles?|ohlc\w*|kite_history|history_store|history_finalize)"
 _PATH_LITERAL = re.compile(r"""['"`][^'"`\n]*/[^'"`\n]*\b""" + _HISTORY_WORD + r"""\b[^'"`\n]*['"`]""", re.IGNORECASE)
+# any string literal WITHOUT whitespace (a key, path, kind or id; prose labels have spaces) holding a history word,
+# the word delimited by non-letters so ``kite_history`` and ``/historical`` match but ``createWebHistory`` does not
+_LITERAL = re.compile(r"""'([^'\n\s]*)'|"([^"\n\s]*)"|`([^`\n\s]*)`""")
+_WORD = re.compile(r"(?<![A-Za-z])" + _HISTORY_WORD + r"(?![A-Za-z])", re.IGNORECASE)
+_CONCAT = re.compile(r"""(['"`])\s*\+\s*\1""")  # 'his' + 'tory' -> 'history'
 _IMPORT_FROM = re.compile(r"""\bfrom\s+['"]([^'"]+)['"]|\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]""")
 _DYNAMIC_IMPORT = re.compile(r"""\b(?:import|require)\s*\(\s*[^'"\s)]""")
 
@@ -120,6 +275,11 @@ _DYNAMIC_IMPORT = re.compile(r"""\b(?:import|require)\s*\(\s*[^'"\s)]""")
 def frontend_hits(text: str) -> list[str]:
     """Every history request path, history import, or unresolvable dynamic import in one frontend file."""
     hits = [f"path {m.group(0)}" for m in _PATH_LITERAL.finditer(text)]
+    for source in (text, _CONCAT.sub("", text)):  # also the text with adjacent literals joined
+        for m in _LITERAL.finditer(source):
+            lit = next(g for g in m.groups() if g is not None)
+            if _WORD.search(lit) and f"word {lit}" not in hits:
+                hits.append(f"word {lit}")
     for m in _IMPORT_FROM.finditer(text):
         target = m.group(1) or m.group(2)
         if re.search(_HISTORY_WORD, target, re.IGNORECASE):
@@ -131,9 +291,11 @@ def frontend_hits(text: str) -> list[str]:
 def scan_frontend(src: Path) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for path in sorted(p for p in src.rglob("*") if p.suffix in {".js", ".ts", ".vue", ".mjs", ".jsx", ".tsx"}):
-        hits = frontend_hits(path.read_text(encoding="utf-8"))
+        rel = path.relative_to(src).as_posix()
+        hits = [h for h in frontend_hits(path.read_text(encoding="utf-8"))
+                if not (h.startswith("word ") and (rel, h[5:]) in ALLOWED_FRONTEND_WORDS)]
         if hits:
-            found[path.relative_to(src).as_posix()] = hits
+            found[rel] = hits
     return found
 
 
@@ -212,3 +374,83 @@ def test_the_frontend_scan_flags_planted_pages_and_passes_normal_code(tmp_path):
         "const r = createRouter({ history: createWebHistory() })\n"
         "api.get('/api/strategies/live')\nconst label = 'Execution history'\n", encoding="utf-8")
     assert sorted(scan_frontend(tmp_path)) == sorted(f"pages/{n}" for n in planted)
+
+
+# ---- issue #409: every dynamic-import shape and history word the first scan missed (planted source, not repo files)
+# Each case below fails if the rule it names is removed: resolve-by-import-source (_aliases/_resolve), literal
+# package/fromlist reading (_dynamic_call_hits), reference flagging (_dynamic_hits), the word scan (_LITERAL/_WORD).
+@pytest.mark.parametrize("source", [
+    "from importlib import import_module as im\nim('ofo_app.kite_history')\n",              # aliased by import source
+    "from importlib import import_module\nimport_module('.kite_history', package='ofo_app')\n",  # relative literal
+    "import importlib\nimportlib.import_module('.kite_history', 'ofo_app')\n",               # positional package
+    "__import__('ofo_app', fromlist=['kite_history'])\n",                                    # fromlist
+    "__import__('ofo_app', None, None, ['history_store'])\n",                                # positional fromlist
+    "import builtins\nbuiltins.__import__('ofo_app.kite_history')\n",
+    "import importlib as il\nil.import_module('ofo.history.store')\n",                        # module alias
+    "import importlib\ngetattr(importlib, 'import_module')('ofo_app.kite_history')\n",       # getattr on the module
+    "import importlib\nf = importlib.import_module\nf('ofo_app.kite_history')\n",            # bare reference
+    "import runpy\nrunpy.run_module('ofo_app.kite_history')\n",
+    "from runpy import run_module as r\nr('ofo_app.history_store')\n",
+    "import runpy\nrunpy.run_path('x.py')\n",                                                # path: cannot resolve
+    "import importlib\nimportlib.import_module(name)\n",                                      # computed (fail closed)
+    "import importlib\nimportlib.import_module(*args)\n",
+    "import importlib\nimportlib.import_module('.x')\n",                                      # relative, no package
+    "__import__('ofo_app', fromlist=names)\n",                                               # computed fromlist
+    "__import__('ofo_app', level=1)\n",
+    "from importlib import *\n",
+    "import importlib.util\nimportlib.util.spec_from_file_location('m', p)\n",  # path loader outside Alembic
+])
+def test_the_backend_scan_flags_every_dynamic_import_shape(source):
+    assert import_hits(source, "ofo_app.routes.planted"), source
+    assert disallowed({"ofo_app.routes.planted": import_hits(source, "ofo_app.routes.planted")}, ALLOWED_IMPORTERS)
+
+
+@pytest.mark.parametrize("source", [
+    "def im(x):\n    return x\nim('ofo_app.kite_history')\n",  # same name, not from importlib: not dynamic
+    "import importlib\nimportlib.import_module('ofo_app.kite_reads')\n",  # resolvable, not a history module
+    "__import__('os')\n",
+    "import runpy\nrunpy.run_module('ofo_app.other')\n",
+    "import_module = len\nimport_module('ofo_app.kite_history')\n",
+    "from ofo_app.kite_reads import KiteReads\n",
+])
+def test_the_backend_scan_passes_resolvable_non_history_and_unrelated_calls(source):
+    assert import_hits(source, "ofo_app.routes.planted") == [], source
+
+
+def test_path_loaders_are_allowed_only_in_the_alembic_versions_folder():
+    source = ("import importlib.util\ns = importlib.util.spec_from_file_location('m', p)\n"
+              "m = importlib.util.module_from_spec(s)\n")
+    found = {"ofo_app.alembic.versions.0099_x": import_hits(source, "ofo_app.alembic.versions.0099_x"),
+             "ofo_app.routes.x": import_hits(source, "ofo_app.routes.x")}
+    assert sorted(disallowed(found, ALLOWED_IMPORTERS)) == ["ofo_app.routes.x"]
+
+
+@pytest.mark.parametrize("text", [
+    "api.get('candles')",
+    "const u = '/api/' + 'history'",
+    "const u = '/api/hi' + 'story'",
+    "params: { kind: 'historical' }",
+    "params: { kind: 'intraday' }",
+    "fetch(`/api/instruments/${t}/intraday`)",
+    "const k = \"kite_history\"",
+])
+def test_the_frontend_scan_flags_every_history_word_shape(text):
+    assert frontend_hits(text), text
+
+
+@pytest.mark.parametrize("text", [
+    "const r = createRouter({ history: createWebHistory() })",
+    "const label = 'Execution history'",
+    "const n = 'createWebHistory'",
+    "api.get('/api/strategies/live')",
+    "const k = 'candlestick-free'.length",
+])
+def test_the_frontend_scan_passes_routing_prose_and_unrelated_words(text):
+    assert frontend_hits(text) == [], text
+
+
+def test_an_unlisted_user_history_literal_is_still_flagged_by_file_and_literal(tmp_path):
+    (tmp_path / "router").mkdir()
+    (tmp_path / "router" / "nav.js").write_text("['history', 'History']\n['intraday', 'x']\n", encoding="utf-8")
+    (tmp_path / "other.js").write_text("['history', 'History']\n", encoding="utf-8")
+    assert scan_frontend(tmp_path) == {"router/nav.js": ["word intraday"], "other.js": ["word history", "word History"]}

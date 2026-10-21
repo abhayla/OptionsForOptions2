@@ -131,6 +131,30 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Browser lines the scan flags that are not money (W-119 guided flow): index/strike levels read as numbers for
+# selection and comparison (points, not rupees), and the wizard step counter. Exact stripped line text per file, so a
+# new or changed line in these files fails; a file listed here is still scanned.
+NOT_MONEY_FRONTEND_WHY: dict[str, str] = {
+    "frontend/src/lib/guided.js": 'index levels and listed strikes (points) parsed for selection; no rupee value',
+    "frontend/src/pages/CreateStrategyPage.vue": 'the wizard step counter (`step.value`), a page number',
+}
+NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
+    "frontend/src/lib/guided.js": (
+        "return [...new Set(contracts.filter((c) => c.strike !== null && c.instrument_type !== 'FUT')"
+        ".map((c) => Number(c.strike)))]",
+        'const current = Number(currentText)',
+        'const c = Number(currentText)',
+        'const down = c - Number(lowerText)',
+        'const up = Number(upperText) - c',
+        'const current = Number(currentText)',
+        "const c = contracts.find((x) => x.instrument_type === leg.instrument && x.strike !== null "
+        "&& Number(x.strike) === strike)",
+    ),
+    "frontend/src/pages/CreateStrategyPage.vue": (
+        'step.value = step.value === 3 && isKnow.value ? 1 : step.value - 1',
+    ),
+}
+
 MIN_PY_FILES = 100  # sanity floors: the scan really reads the trees
 MIN_FRONTEND_FILES = 30
 ARITH_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
@@ -310,6 +334,11 @@ def frontend_files() -> list[pathlib.Path]:
     return sorted(p for p in files if _rel(p) not in JS_ALLOWED_FILES)
 
 
+def _frontend_scanned_text(path: pathlib.Path) -> str:
+    source = path.read_text(encoding="utf-8")
+    return _vue_code(source) if path.suffix == ".vue" else source
+
+
 def scan_frontend(path: pathlib.Path) -> list[int]:
     source = path.read_text(encoding="utf-8")
     return js_money_arithmetic(_vue_code(source) if path.suffix == ".vue" else source)
@@ -388,7 +417,14 @@ def test_money_arithmetic_only_in_allowed_homes():
             source = text.splitlines()
             found[_rel(p)] = tuple(source[n - 1].strip() for n in lines)
     assert found == {**KNOWN_ON_MAIN, **NOT_MONEY_ON_MAIN}  # exact: new or vanished lines fail
-    assert {_rel(p): scan_frontend(p) for p in fe if scan_frontend(p)} == {}
+    flagged: dict[str, tuple[str, ...]] = {}
+    for p in fe:
+        hits = scan_frontend(p)
+        if hits:
+            source = _frontend_scanned_text(p).splitlines()
+            flagged[_rel(p)] = tuple(source[n - 1].strip() for n in hits)
+    assert flagged == NOT_MONEY_FRONTEND  # exact: a new, changed or vanished line fails
+    assert set(NOT_MONEY_FRONTEND) == set(NOT_MONEY_FRONTEND_WHY)
 
 
 def test_allow_list_entries_exist():
