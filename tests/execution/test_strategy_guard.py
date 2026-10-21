@@ -33,6 +33,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy
 from ofo.engine.interfaces import ChargesBreakdown, MarginRequirement
@@ -212,7 +213,7 @@ def test_ac5_completing_the_planned_strategy_is_not_flagged_and_sends_without_ac
     planned version, so the guard does not flag it and the one missing order is sent without any token."""
     book = book_with_three_filled()
     prep = complete_strategy(plan(), FakeBroker(three_positions(), statuses()), book, FakePlanner(), entry_context(),
-                             catalogue, eligibility)
+                             catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready and prep.guard is not None and prep.guard.changes_risk_profile is False
     submitter = FakeSubmitter()
     result = submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-1",
@@ -225,7 +226,7 @@ def _close_prep(catalogue, eligibility):  # noqa: ANN001, ANN202
     book = book_with_three_filled()
     positions = three_positions((D("40.00"), D("80.00"), D("120.00")))
     prep = close_partial_strategy(plan(), FakeBroker(positions, statuses()), book, FakePlanner(), entry_context(),
-                                  catalogue, eligibility)
+                                  catalogue, eligibility, stored_freeze=STORED_FREEZE)
     assert prep.ready
     return book, prep
 

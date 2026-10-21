@@ -20,6 +20,7 @@ from partial_inputs import (
     statuses,
     three_positions,
 )
+from partial_inputs import STORED_FREEZE
 
 from ofo.engine import Action
 from ofo.execution import CheckCode
@@ -38,7 +39,7 @@ from partial_inputs import FILL_AT
 
 def _complete(broker: FakeBroker, planner: FakePlanner | None = None, book=None, ctx=None, cat=None, elig=None):  # noqa: ANN001, ANN202
     return complete_strategy(plan(), broker, book or book_with_three_filled(), planner or FakePlanner(),
-                             ctx or entry_context(), cat, elig)
+                             ctx or entry_context(), cat, elig, stored_freeze=STORED_FREEZE)
 
 
 def test_ac4_both_reads_happen_before_anything_is_prepared(catalogue, eligibility) -> None:  # noqa: ANN001
@@ -178,7 +179,7 @@ def test_ac4_only_the_missing_part_of_a_partly_filled_leg(catalogue, eligibility
                                      None if i < 3 else "Cancelled by exchange: IOC unfilled"))
     book.transition("BRK-4", OrderState.CANCELLED)
     prep = complete_strategy(two_lot, FakeBroker(positions, sts), book, FakePlanner(), entry_context(), catalogue,
-                             eligibility)
+                             eligibility, stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [(CONTRACTS[3], Action.BUY, LOT)]
 
 
@@ -187,7 +188,8 @@ def test_ac5_all_orders_submitted_is_not_complete(catalogue, eligibility) -> Non
     positions still show three legs -> not complete. Sending never changes the status; only positions do."""
     book = book_with_three_filled()
     broker = FakeBroker(three_positions(), statuses())
-    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(plan(), broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     result = submit_confirmed(prep, choice=PartialChoice.COMPLETE_STRATEGY, confirmed_by="user:U-42",
                               submitter=FakeSubmitter())
     assert result.submitted == (("leg-4", "NEW-1"),)

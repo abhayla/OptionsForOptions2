@@ -14,6 +14,7 @@ from decimal import Decimal as D
 
 import pytest
 from partial_inputs import CONTRACTS, LOT, REFS, plan
+from partial_inputs import STORED_FREEZE
 from plan_inputs import BUY, CE, EXP, FUT, NEXT, PE, PREV, SELL, FakeConstraints, FakeMargin, leg, mk
 
 from ofo.execution import sequence as sequence_module
@@ -201,35 +202,36 @@ def test_ac2_failing_planner_falls_back_to_protection_order_and_says_so() -> Non
     assert seq.margin_note.startswith("margin impact unknown — not used")
 
 
-def test_ac2_freeze_limit_splits_legs_and_every_protective_slice_precedes_any_dependent_slice() -> None:
-    """AC-2: golden condor at 3 lots (195 units), fake freeze 130 units, 3 orders per batch. Each leg -> 130 + 65.
-    Step 1: 4 slices (batches 1, 1, 1, 2); step 2 starts a new batch: 4 slices (batches 3, 3, 3, 4)."""
+def test_ac2_one_order_per_leg_and_every_protective_order_precedes_any_dependent_order() -> None:
+    """AC-2 / ADR-092 (never split): golden condor at 3 lots (195 units), 3 orders per batch. Each leg is ONE order
+    of 195 (W-028 split it as 130 + 65). Step 1: 2 orders (batch 1); step 2 starts a new batch (2); with 1 per batch
+    the batches are 1, 2, 3, 4 (hand computation)."""
     p = ExecutionPlan("S-1", tuple(PlannedLeg(x.leg_ref, x.contract, dataclasses.replace(x.leg, quantity=3 * LOT))
                                    for x in plan().legs))
-    seq = sequence_plan(p, constraints=FakeConstraints(freeze=130, per_batch=3))
-    assert [(o.step, o.batch, o.leg_ref, o.slice_no, o.quantity) for o in seq.orders] == [
-        (1, 1, BUY_PE, 1, 130), (1, 1, BUY_PE, 2, 65), (1, 1, BUY_CE, 1, 130), (1, 2, BUY_CE, 2, 65),
-        (2, 3, SELL_PE, 1, 130), (2, 3, SELL_PE, 2, 65), (2, 3, SELL_CE, 1, 130), (2, 4, SELL_CE, 2, 65),
-    ]
-    assert sum(o.quantity for o in seq.orders if o.leg_ref == SELL_CE) == 195
-    unsplit = sequence_plan(p, constraints=FakeConstraints(freeze=1755, per_batch=10))
-    assert [o.quantity for o in unsplit.orders] == [195, 195, 195, 195]
+    seq = sequence_plan(p, constraints=FakeConstraints(per_batch=3))
+    assert [(o.step, o.batch, o.leg_ref, o.quantity) for o in seq.orders] == [
+        (1, 1, BUY_PE, 195), (1, 1, BUY_CE, 195), (2, 2, SELL_PE, 195), (2, 2, SELL_CE, 195)]
+    single = sequence_plan(p, constraints=FakeConstraints(per_batch=1))
+    assert [o.batch for o in single.orders] == [1, 2, 3, 4]
 
 
-@pytest.mark.parametrize("freeze,per_batch", [(0, 3), (130, 0), (130, 101), (1, 3), (True, 3)])
-def test_ac2_invalid_broker_constraints_are_refused(freeze: object, per_batch: object) -> None:
-    """AC-2 (input domain): zero/boolean freeze, zero or absurd batch size, or a split into more than 50 orders
-    (65 units at a freeze of 1) is refused, never silently built."""
+@pytest.mark.parametrize("per_batch", [0, 101, True, "3"])
+def test_ac2_invalid_broker_constraints_are_refused(per_batch: object) -> None:
+    """AC-2 (input domain): a zero, absurd, boolean or non-integer batch size is refused, never silently built."""
     with pytest.raises(ValueError):
-        sequence_plan(plan(), constraints=FakeConstraints(freeze=freeze, per_batch=per_batch))
+        sequence_plan(plan(), constraints=FakeConstraints(per_batch=per_batch))
 
 
-def test_ac2_default_constraints_are_labelled_unverified() -> None:
-    """AC-2: the default broker constraints are a labelled placeholder (AC-10 verifies the real values)."""
-    from ofo.execution.sequence import DEFAULT_FREEZE_UNITS, UnverifiedDefaultConstraints
+def test_ac2_default_constraints_are_labelled_unverified_and_carry_no_freeze_figure() -> None:
+    """AC-2: the default broker constraints are a labelled placeholder (AC-10 verifies the real value); ADR-092
+    removed the 1,755-unit freeze placeholder, so the sequence module has no freeze figure at all."""
+    from ofo.execution import sequence
 
-    assert UnverifiedDefaultConstraints.unverified is True
-    assert UnverifiedDefaultConstraints().freeze_quantity("NIFTY26O0623000PE") == DEFAULT_FREEZE_UNITS == 27 * 65
+    assert sequence.UnverifiedDefaultConstraints.unverified is True
+    assert sequence.UnverifiedDefaultConstraints().max_orders_per_batch() == sequence.DEFAULT_MAX_ORDERS_PER_BATCH
+    for gone in ("DEFAULT_FREEZE_UNITS", "slice_quantity", "MAX_SLICES_PER_LEG"):
+        assert not hasattr(sequence, gone), gone
+    assert not hasattr(sequence.UnverifiedDefaultConstraints(), "freeze_quantity")
 
 
 def test_ac2_twenty_legs_plan_fast_and_twenty_one_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -289,6 +291,7 @@ def test_ac3_complete_strategy_orders_missing_legs_by_the_plan_not_buys_first(ca
         [BrokerOrderStatus(ids[0], full[0].contract, OrderState.EXECUTED, LOT),
          BrokerOrderStatus(ids[1], full[1].contract, OrderState.REJECTED, 0, REJECT_TEXT),
          BrokerOrderStatus(ids[2], full[3].contract, OrderState.REJECTED, 0, REJECT_TEXT)])
-    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
+    prep = complete_strategy(three, broker, book, FakePlanner(), entry_context(), catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert [(o.contract, o.side, o.quantity) for o in prep.orders] == [
         ("NIFTY26O0623000PE", SELL, LOT), ("NIFTY26O0623600CE", BUY, LOT)]

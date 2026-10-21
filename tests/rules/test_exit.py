@@ -4,6 +4,9 @@ from decimal import Decimal as D
 
 import pytest
 
+from ofo.errors import display_text
+from ofo.execution.freeze import ContractFreeze, StoredFreeze
+
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.rules import (
     DataHealth,
@@ -34,6 +37,9 @@ LEGS = (
     Leg(Action.BUY, Instrument.CE, D("23600"), EXPIRY, 75, D("44.00"), D("39.50")),
 )
 CONDOR = Strategy(LEGS)
+#: Each leg's stored freeze limit (ADR-092): a generous limit so the 75-unit legs are one order each.
+LIMITS = {(lg.instrument, lg.strike, lg.expiry): ContractFreeze("NIFTY26O0623400CE", StoredFreeze(1800, 75, EXPIRY))
+          for lg in LEGS}
 
 
 def snap(at: datetime.time = datetime.time(10, 0), **values: str) -> Snapshot:
@@ -88,7 +94,7 @@ def test_alert_only_prepares_nothing():
     """AC-3: 'Alert me' gives the decision-support alert with the triggering value and no proposal."""
     rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_ONLY)
     result = evaluate(rule, snap(live_pnl="-5002.50"))
-    response = respond(rule, result, strategy_id="S-1", strategy=CONDOR)
+    response = respond(rule, result, strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
     assert response.proposal is None
     # the user's own rule name is quoted word for word (ADR-003 Q226; W-024 fix round UserText slot)
     assert response.alert == 'Your rule was triggered: "Max loss 5000" (live_pnl -5002.50 <= -5000).'
@@ -98,7 +104,7 @@ def test_alert_and_prepare_builds_closing_orders_never_submitted():
     """AC-3: 'alert + prepare exit orders' builds one opposite order per leg, Prepared, needing user confirmation."""
     rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
     result = evaluate(rule, snap(live_pnl="-5002.50"))
-    response = respond(rule, result, strategy_id="S-1", strategy=CONDOR)
+    response = respond(rule, result, strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
     proposal = response.proposal
     assert (proposal.strategy_id, proposal.rule_id, proposal.status, proposal.requires_user_confirmation) == (
         "S-1", "x-ml", "Prepared", True)
@@ -116,14 +122,71 @@ def test_respond_refuses_untriggered_or_unowned():
     rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
     for values in ({"live_pnl": "-4999.99"}, {}):
         with pytest.raises(ValueError, match="was not triggered"):
-            respond(rule, evaluate(rule, snap(**values)), strategy_id="S-1", strategy=CONDOR)
+            respond(rule, evaluate(rule, snap(**values)), strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
     hit = evaluate(rule, snap(live_pnl="-6000"))
     with pytest.raises(ValueError, match="strategy_id"):
-        respond(rule, hit, strategy_id="", strategy=CONDOR)
+        respond(rule, hit, strategy_id="", strategy=CONDOR, freeze_limits=LIMITS)
     other = exit_max_loss("x-other", D("5000"), action=RuleAction.ALERT_ONLY)
     with pytest.raises(ValueError, match="not 'x-other'"):
-        respond(other, hit, strategy_id="S-1", strategy=CONDOR)
+        respond(other, hit, strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
     adj = Rule("a", RuleKind.ADJUSTMENT, Compare(InputName.LIVE_PNL, Op.LTE, D("0")),
                RuleAction.ALERT_AND_PREPARE_ORDERS)
     with pytest.raises(ValueError, match="adjustment orders"):
-        respond(adj, evaluate(adj, snap(live_pnl="-1")), strategy_id="S-1", strategy=CONDOR)
+        respond(adj, evaluate(adj, snap(live_pnl="-1")), strategy_id="S-1", strategy=CONDOR, freeze_limits=LIMITS)
+
+
+def _exit_response(lots: int, limits):
+    leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, lots * 65, D("50.00"))
+    rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
+    key = (Instrument.CE, D("23400"), EXPIRY)
+    return respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
+                   freeze_limits={key: ContractFreeze("NIFTY26O0623400CE", limits)})
+
+
+def test_adr092_rule_proposal_blocks_55_lots_and_prepares_54_lots_as_one_order():
+    """ADR-092 (issue 63): NIFTY lot 65, stored limit 3,511 (F-36): 55 lots -> no proposal, the alert still given, the
+    block names the largest allowed order; 54 lots -> one proposed order of 3,510 units; no stored limit -> the 55
+    lots are proposed as one order with the review's warning (ADR-081, ADR-037)."""
+    nifty = StoredFreeze(3511, 65, datetime.date(2026, 10, 15))
+    blocked = _exit_response(55, nifty)
+    assert blocked.proposal is None and blocked.alert.startswith("Your rule was triggered")
+    assert "the largest single order allowed is 3510 units (54 lots)" in display_text(blocked.blocked[0])
+    allowed = _exit_response(54, nifty)
+    assert [o.quantity for o in allowed.proposal.orders] == [3510] and allowed.blocked == ()
+    missing = _exit_response(55, None)
+    assert [o.quantity for o in missing.proposal.orders] == [3575] and missing.blocked == ()
+    assert display_text(missing.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O0623400CE")
+
+
+@pytest.mark.parametrize("freeze_limits", [{}, None])
+def test_round2_rule_proposal_without_an_entry_warns_naming_the_leg_from_its_terms(freeze_limits):
+    """Round 2 finding 1 (ADR-081 "the review warns"; ADR-037): a leg with no ContractFreeze entry (or
+    ``freeze_limits=None``) still gets its alert and ONE proposed order with the unknown warning, never an exception."""
+    leg = Leg(Action.SELL, Instrument.CE, D("23400"), EXPIRY, 65, D("50.00"))
+    rule = exit_max_loss("x-ml", D("5000"), action=RuleAction.ALERT_AND_PREPARE_ORDERS)
+    response = respond(rule, evaluate(rule, snap(live_pnl="-5002.50")), strategy_id="S-1", strategy=Strategy((leg,)),
+                       freeze_limits=freeze_limits)
+    assert response.alert.startswith("Your rule was triggered") and response.blocked == ()
+    assert [o.quantity for o in response.proposal.orders] == [65]
+    assert [display_text(w).split(",")[0] for w in response.warnings] == [
+        "No exchange freeze limit is stored for CE-23400-20261027"]
+
+
+@pytest.mark.parametrize("limit", [64, 65])
+def test_round2_rule_proposal_with_a_limit_below_one_lot_warns_and_proposes(limit):
+    """Round 2 finding 2: a stored limit that allows no whole lot of 65 is bad stored data: one order + the warning."""
+    response = _exit_response(1, StoredFreeze(limit, 65, datetime.date(2026, 10, 15)))
+    assert [o.quantity for o in response.proposal.orders] == [65] and response.blocked == ()
+    assert display_text(response.warnings[0]).startswith("No exchange freeze limit is stored for NIFTY26O0623400CE,")
+
+
+def test_round2_rule_proposal_warns_on_a_stale_stored_limit():
+    """Round 2 finding 3: a limit read more than 8 days before the evaluation's IST day (2026-10-20) warns its age;
+    the limit still applies (55 lots blocked)."""
+    stale = StoredFreeze(3511, 65, datetime.date(2026, 10, 11))  # 9 days
+    response = _exit_response(54, stale)
+    assert [o.quantity for o in response.proposal.orders] == [3510]
+    assert [display_text(w).startswith("The freeze limit for NIFTY26O0623400CE was last read from the exchange file "
+                                       "of 11 Oct 2026, 9 days ago") for w in response.warnings] == [True]
+    assert _exit_response(55, stale).proposal is None
+    assert _exit_response(54, StoredFreeze(3511, 65, datetime.date(2026, 10, 12))).warnings == ()  # 8 days: fresh

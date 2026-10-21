@@ -11,8 +11,8 @@ planner interface, Zerodha's own figure stays final. Unknown means unknown: a va
 - margin: ``plan_margin(strategy, planner)`` (engine interface); a planner that fails or breaks its contract leaves it
   unknown.
 - sequence: built here by ``sequence_plan`` with the same planner and broker constraints (never accepted from the
-  caller): one line per order (the slicing of a leg above the freeze limit still shows here; the review now BLOCKS such a
-  leg, ADR-081, and the slicing remainder is issue #255), the margin-impact basis, and
+  caller): one line per leg, never freeze slices (ADR-092: a leg above the freeze limit is BLOCKED, ADR-081, and
+  the block names the largest allowed order), the margin-impact basis, and
   the undetermined / naked notes from the same protection relation the sequence uses.
 - broker: Zerodha, the only V1 broker (ADR-012, ADR-029: brokers sit behind adapters).
 """
@@ -44,7 +44,6 @@ class ReviewLine:
     contract: str
     quantity: int
     batch: int = 1
-    slice_no: int = 1
 
 
 @dataclass(frozen=True)
@@ -74,7 +73,7 @@ def _lines(plan: ExecutionPlan, seq: OrderSequence) -> tuple[ReviewLine, ...]:
     for order in seq.orders:
         p = plan.by_ref(order.leg_ref)
         out.append(ReviewLine(order.step, labels[order.step], order.leg_ref, p.leg.action, p.contract, order.quantity,
-                              order.batch, order.slice_no))
+                              order.batch))
     return tuple(out)
 
 

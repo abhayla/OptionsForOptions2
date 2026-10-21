@@ -10,11 +10,11 @@ and cleared by Complete/Retry only when their preparation is ready on a strictly
 
 Real input: the golden Iron Condor on the REAL instrument-list fixture (tests/fixtures/instruments/instruments_slice.csv:
 NIFTY 2026-10-06, lot 65; SENSEX 2026-10-01, lot 20). Hand-computed expectations:
-- NIFTY freeze 64 < one lot of 65 -> no whole lot fits -> refused (W-028 "a freeze below one lot is refused");
-- SENSEX freeze 19 < one lot of 20 -> refused;
+- a stored NIFTY limit of 64 < one lot of 65 -> no whole lot fits -> blocked (largest allowed 0 lots, ADR-092);
+- a stored SENSEX limit of 19 < one lot of 20 -> blocked (largest allowed 0 lots, ADR-092);
 - 650 held - 100 already exiting = 550 units = 8.46 lots of 65 -> not whole lots -> refused;
-- Complete after a refused Close on the SAME read: the rejected 24,000 CE's 650 units, one order at the default
-  1,755 freeze (650 < 1,755).
+- Complete after a refused Close on the SAME read: the rejected 24,000 CE's 650 units, one order below the
+  stored 3,511-unit limit (ADR-092: never split).
 """
 from __future__ import annotations
 
@@ -39,9 +39,11 @@ from partial_inputs import (
     new_book,
     record_for_legs,
 )
+from partial_inputs import STORED_FREEZE, stored_limit
 from plan_inputs import FakeConstraints
 import pytest
 
+from ofo.errors import display_text
 from ofo.engine import Action, Instrument, Leg, Strategy
 from ofo.execution.partial import (
     IN_FLIGHT,
@@ -109,11 +111,20 @@ def _state(market: str = "NIFTY", clock: Clock | None = None):  # noqa: ANN202
 
 
 def _close(plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
+    kw.setdefault("stored_freeze", STORED_FREEZE)
     return close_partial_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
 
 
 def _complete(plan, book, broker, ctx, catalogue, eligibility, **kw):  # noqa: ANN001, ANN003, ANN202
+    kw.setdefault("stored_freeze", STORED_FREEZE)
     return complete_strategy(plan, broker, book, FakePlanner(), ctx, catalogue, eligibility, **kw)
+
+
+def _assert_blocked(prep, *reason_parts: str) -> None:
+    """ADR-092: the freeze block (above a known stored limit): no order, the limit and largest allowed order named."""
+    assert not prep.ready and prep.orders == () and prep.gate is None
+    for part in reason_parts:
+        assert part in prep.reason, prep.reason
 
 
 def _assert_refused(prep, *reason_parts: str) -> None:  # noqa: ANN001
@@ -130,12 +141,12 @@ def _assert_refused(prep, *reason_parts: str) -> None:  # noqa: ANN001
 
 def test_core_close_with_freeze_below_one_lot_returns_a_refusal_and_does_not_mark_closing(catalogue,  # noqa: ANN001
                                                                                           eligibility) -> None:
-    """AC-6 (core, #62): NIFTY freeze 64 < lot 65. Close returns "Nothing prepared: <reason>" (no exception), the
-    strategy is NOT marked closing, nothing is held, and Complete on the SAME read is not told to wait for a newer
-    read: it prepares the rejected 24,000 CE's 650 units as one order (650 < default freeze 1,755)."""
+    """AC-6 (core, #62, ADR-092): a stored NIFTY limit of 66 (the smallest usable one: 1 lot of 65) blocks the 10-lot
+    exits. Close returns the block (no exception), the strategy is NOT marked closing, nothing is held, and Complete on the SAME read with the real stored limit (3,511)
+    is not told to wait for a newer read: it prepares the rejected 24,000 CE's 650 units as one order."""
     plan, book, broker, ctx = _state()
-    prep = _close(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=64, per_batch=10))
-    _assert_refused(prep, "below one lot of 65")
+    prep = _close(plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(66))
+    _assert_blocked(prep, "freeze limit of 66 units", "65 units (1 lots)")
     assert book.closing_read_at(STRATEGY_ID) is None
     assert not book.has_live_preparation(STRATEGY_ID)
     after = _complete(plan, book, broker, ctx, catalogue, eligibility)
@@ -149,13 +160,14 @@ def test_core_close_with_freeze_below_one_lot_returns_a_refusal_and_does_not_mar
 
 
 def test_ac6_sensex_freeze_below_one_lot_is_a_refusal_without_marking_closing(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: SENSEX freeze 19 < catalogue lot 20: refusal result, not marked closing; Retry of the rejected leg on
-    the same read is not held back by the Close choice."""
+    """AC-6: a stored SENSEX limit of 21 (1 lot of 20 allowed): the block, not marked closing; Retry of the rejected leg
+    on the same read is not held back by the Close choice."""
     plan, book, broker, ctx = _state("SENSEX")
-    prep = _close(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=19, per_batch=10))
-    _assert_refused(prep, "below one lot of 20")
+    prep = _close(plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(21))
+    _assert_blocked(prep, "freeze limit of 21 units", "20 units (1 lots)")
     assert book.closing_read_at(STRATEGY_ID) is None
-    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility)
+    retry = retry_failed_leg(plan, BUY_CE, broker, book, FakePlanner(), ctx, catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert retry.reason != NEEDS_FRESH_READ
     assert retry.ready, retry.reason
     assert [(o.leg_ref, o.quantity) for o in retry.orders] == [(BUY_CE, 240)]
@@ -170,19 +182,24 @@ def test_ac6_held_quantity_not_in_whole_lots_is_a_refusal_without_marking_closin
                    version_id="v1"))
     book.transition("BRK-X", OrderState.SUBMITTED)
     broker.order_statuses.append(BrokerOrderStatus("BRK-X", CONTRACTS[1], OrderState.SUBMITTED, 0))
-    prep = _close(plan, book, broker, ctx, catalogue, eligibility,
-                  constraints=FakeConstraints(freeze=260, per_batch=10))
+    prep = _close(plan, book, broker, ctx, catalogue, eligibility)
     _assert_refused(prep, "550 units", "whole number of lots of 65")
     assert book.closing_read_at(STRATEGY_ID) is None
     assert _complete(plan, book, broker, ctx, catalogue, eligibility).reason == IN_FLIGHT
 
 
-def test_ac6_unusable_freeze_value_is_a_refusal_without_marking_closing(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: a broker constraint that is not a positive integer (0) is refused as a result, not an exception."""
+@pytest.mark.parametrize("limit", [0, 19, 64, 65])
+def test_round2_unusable_stored_limit_warns_and_close_prepares_one_order_per_leg(limit, catalogue,  # noqa: ANN001
+                                                                                 eligibility) -> None:
+    """Round 2 finding 2 (ADR-081 "the review warns"; ADR-037): a stored limit of 0 or one that allows no whole lot of
+    65 is bad stored data, never a block on the exit: Close prepares each held leg as ONE order with the unknown
+    warning for its contract."""
     plan, book, broker, ctx = _state()
-    prep = _close(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=0, per_batch=10))
-    _assert_refused(prep, "positive integer")
-    assert book.closing_read_at(STRATEGY_ID) is None
+    prep = _close(plan, book, broker, ctx, catalogue, eligibility, stored_freeze=stored_limit(limit))
+    assert prep.ready, prep.reason
+    assert [o.quantity for o in prep.orders] == [650] * len(prep.orders)
+    assert [display_text(w).startswith(f"No exchange freeze limit is stored for {o.contract},")
+            for w, o in zip(prep.warnings, prep.orders, strict=True)] == [True] * len(prep.orders)
 
 
 def test_ac6_missing_ltp_refusal_does_not_mark_closing(catalogue, eligibility) -> None:  # noqa: ANN001
@@ -237,15 +254,15 @@ def test_ac6_a_ready_close_still_marks_closing_and_holds_complete_on_the_same_re
 
 
 def test_ac6_complete_refusal_on_a_later_read_keeps_the_close_marker(catalogue, eligibility) -> None:  # noqa: ANN001
-    """AC-6: after a ready Close (marker = READ_AT), Complete on a later read with freeze 64 is refused (below one lot
-    of 65) and returns a refusal result; the Close marker is NOT cleared by the refused attempt; a later Complete that does prepare clears it."""
+    """AC-6: after a ready Close (marker = READ_AT), Complete on a later read with a stored limit of 66 is blocked
+    (largest allowed 1 lot of 65) and returns a refusal result; the Close marker is NOT cleared by the refused attempt; a later Complete that does prepare clears it."""
     plan, book, broker, ctx = _state()
     discard_preparation(_close(plan, book, broker, ctx, catalogue, eligibility))
     broker.read_at = LATER
     refused = _complete(plan, book, broker, ctx, catalogue, eligibility,
-                        constraints=FakeConstraints(freeze=64, per_batch=10))  # W-043 (#71): a result, not a raise
+                        stored_freeze=stored_limit(66))  # W-043 (#71): a result, not a raise
     assert not refused.ready and refused.orders == ()
-    assert refused.reason.startswith("Nothing prepared: ") and "below one lot of 65" in refused.reason
+    assert "65 units (1 lots)" in refused.reason
     assert book.closing_read_at(STRATEGY_ID) == READ_AT
     ok = _complete(plan, book, broker, ctx, catalogue, eligibility)
     assert ok.ready, ok.reason
@@ -272,7 +289,8 @@ def test_ac6_a_read_gone_stale_while_preparing_leaves_no_marker_and_no_held_prep
     back instead of an exception."""
     clock = Clock()
     plan, book, broker, ctx = _state(clock=clock)
-    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility)
+    prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility,
+            stored_freeze=STORED_FREEZE)
     assert clock() == READ_AT + datetime.timedelta(seconds=70)
     _assert_refused(prep, "stale broker read")
     assert book.closing_read_at(STRATEGY_ID) is None
