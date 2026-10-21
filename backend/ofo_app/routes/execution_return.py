@@ -27,7 +27,7 @@ from typing import Annotated, Any, Literal, Optional
 from fastapi import APIRouter, Depends
 from ofo.audit.catalogue import EventType
 from ofo.errors import render
-from ofo.instruments.models import InstrumentId
+from ofo.instruments.models import ZERODHA, InstrumentId
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
@@ -176,10 +176,20 @@ def _iid(text_id: str) -> InstrumentId:
     return InstrumentId(segment, int(token))
 
 
+def _listed(catalogue: Any, instrument_id: str) -> Any:
+    """The catalogue entry of a stored contract; one the catalogue no longer resolves is the catalogue refusal, never
+    a 500 (an adopted contract has no plan order to fall back on)."""
+    entry = catalogue.get(_iid(instrument_id))
+    if entry is None:
+        raise _refuse("strategy_contract_not_in_catalogue")
+    return entry
+
+
 def _keyed(units: Mapping[str, int], catalogue: Any, underlying: str) -> dict[tuple, int]:
     """``execute_plan.held_units`` (per stored instrument id) -> per reconcile contract key."""
     out: dict[tuple, int] = {}
     for instrument_id, n in units.items():
+        _listed(catalogue, instrument_id)
         key = ep.contract_key(catalogue, _iid(instrument_id), underlying)
         out[key] = out.get(key, 0) + n
     return out
@@ -219,14 +229,21 @@ class _World:
 
 
 def _symbols(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, str]:
-    return {ep.contract_key(world.catalogue, _iid(o.instrument_id), world.underlying): o.tradingsymbol
-            for p in history for o in p.orders}
+    """The contracts reconciled for this strategy: every plan-order contract UNION every adopted contract (ADR-096:
+    an adopted lot is held like a fill, so Zerodha is compared on it too), one entry per contract key."""
+    out: dict[tuple, str] = {}
+    for h in world.adopted:
+        symbol = _listed(world.catalogue, h.instrument_id).ref(ZERODHA).broker_symbol  # refused before any key read
+        out[ep.contract_key(world.catalogue, _iid(h.instrument_id), world.underlying)] = symbol
+    out.update({ep.contract_key(world.catalogue, _iid(o.instrument_id), world.underlying): o.tradingsymbol
+                for p in history for o in p.orders})
+    return out
 
 
 def _checks(history: Sequence[plans.StoredPlan], world: _World) -> tuple[er.ContractCheck, ...]:
+    symbols = _symbols(history, world)
     held = _keyed(ep.held_units(history, world.adopted), world.catalogue, world.underlying)
-    return er.reconcile(sorted(_symbols(history, world), key=repr), held, world.others, world.zerodha.net,
-                        world.undecidable)
+    return er.reconcile(sorted(symbols, key=repr), held, world.others, world.zerodha.net, world.undecidable)
 
 
 def _as_closed(plan: plans.StoredPlan, filled: Mapping[str, int]) -> plans.StoredPlan:
