@@ -12,6 +12,7 @@ reported) is printed exactly as stored, quoted, and never scanned as our wording
 from __future__ import annotations
 
 import datetime
+import functools
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -681,6 +682,28 @@ ColumnLabel = _enum_slot("ColumnLabel", _column_id, COLUMN_LABEL_TEXT)
 HealthLabel = _enum_slot("HealthLabel", _strategy_health, HEALTH_LABEL_TEXT)
 ScenarioViewLabel = _enum_slot("ScenarioViewLabel", _scenario_view, SCENARIO_VIEW_LABEL_TEXT)
 
+
+@functools.lru_cache(maxsize=1)
+def _reviewed_template_texts() -> frozenset[str]:
+    from ofo.strategy.loader import load_templates
+
+    return frozenset(text for t in load_templates() for text in (t.name, t.description))
+
+
+class TemplateText(SlotType):
+    """A name or description of a strategy template that the reviewed catalogue (ofo.strategy.loader, wording-checked at
+    load) holds, word for word (W-117). Any other string is refused, so a route cannot pass its own sentence."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or value not in _reviewed_template_texts():
+            raise TypeError("TemplateText slot takes a template name or description held by the strategy catalogue")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
 # --- the catalogue ------------------------------------------------------------------------------------------------
 
 class Values(SlotType):
@@ -1007,6 +1030,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
+    ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
+    ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
 )
 

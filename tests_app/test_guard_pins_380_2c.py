@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -24,6 +25,8 @@ from ofo_app import route_reconciliation as rr
 from sqlalchemy.exc import DBAPIError
 
 from tests_app.test_route_reconciliation import AT, KEY, USER, _catalogue
+
+_P = SimpleNamespace(ignored=())  # a positions read with no non-platform rows: log_ignored stays silent
 
 KEY_TEXT_OK = "NSE_FO:51392"
 #: The database clock (it stamps a plan's ``created_at``) 3 days after the request clock AT, as in the route tests.
@@ -392,7 +395,8 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
         return STAMP_CLOCK
 
     monkeypatch.setattr(route.elig, "database_now", db_now)
-    req = SimpleNamespace(db=None, user_ref=USER, now=AT, clock=lambda: AT, session=SimpleNamespace(reads=Reads()))
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, clock=lambda: AT, strategy_id=9,
+                          session=SimpleNamespace(reads=Reads()))
     held = SimpleNamespace(order_rows=[])
     for error in (route.KiteReadError("x"), route.KiteReplyError("x"), ValueError("x")):
         async def fails(*args, _e=error, **kwargs):
@@ -405,10 +409,10 @@ def test_the_execute_press_blocks_on_an_unreadable_reconciliation_and_passes_the
 
     async def blocked(*args, **kwargs):
         seen.append((kwargs["at"], kwargs["today"]))
-        return SimpleNamespace(positions="P", attribution=SimpleNamespace(blocked=frozenset({"9"})))
+        return SimpleNamespace(positions=_P, attribution=SimpleNamespace(blocked=frozenset({"9"})))
 
     monkeypatch.setattr(route.rr, "reconcile_account", blocked)
-    assert _run(route._reconcile(req, held, _catalogue())) == ("P", frozenset({"9"}))
+    assert _run(route._reconcile(req, held, _catalogue())) == (_P, frozenset({"9"}))
     # #380-2 fix round: the session date is the database clock's India date (it stamped every plan), never the
     # request clock's: the request clock here is 3 days earlier, as the route tests' and the replay's pin.
     assert seen == [(AT, STAMP_CLOCK.astimezone(IST).date())]
@@ -437,7 +441,7 @@ def test_the_execute_context_carries_the_verdicts_blocked_strategies_into_the_ga
         return AT
 
     async def blocked(*args, **kwargs):
-        return SimpleNamespace(positions="P", attribution=SimpleNamespace(blocked=frozenset({"9"})))
+        return SimpleNamespace(positions=_P, attribution=SimpleNamespace(blocked=frozenset({"9"})))
 
     monkeypatch.setattr(route, "_zerodha_margin", margin)
     monkeypatch.setattr(route, "_pro_entitled", entitled)
@@ -472,7 +476,7 @@ def test_the_return_route_reads_each_unreadable_reconciler_reply_as_broker_uncon
     assert repr(err.value.message) == repr(route._refuse("gate_broker_unconfirmed").message)
 
 
-def test_the_return_route_gives_the_reconciler_its_own_session_date(monkeypatch):
+def test_the_return_route_gives_the_reconciler_its_own_session_date(monkeypatch, caplog):
     """#380-2 fix round: the return route's ``classify`` and the reconciler judge a plan's session on ONE date,
     ``req.today`` (the database's India date), never the request clock's date (CI run 39427914444: a request clock
     3 days before the stamp made every plan read "from the future" and refused the return)."""
@@ -482,9 +486,15 @@ def test_the_return_route_gives_the_reconciler_its_own_session_date(monkeypatch)
 
     async def verdict(*args, **kwargs):
         seen.append((kwargs["at"], kwargs["today"], kwargs["source"]))
-        return "V"
+        return answer
 
+    answer = SimpleNamespace(positions=SimpleNamespace(ignored=("NSE:LIQUIDBEES",)))
     monkeypatch.setattr(route.rr, "reconcile_account", verdict)
-    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT, today=STAMP_CLOCK.date())
-    assert _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[]))) == "V"
+    req = SimpleNamespace(db=None, user_ref=USER, now=AT, now_clock=lambda: AT, today=STAMP_CLOCK.date(),
+                          strategy_id=9)
+    with caplog.at_level(logging.INFO):
+        assert _run(route._reconcile(req, _catalogue(), SimpleNamespace(positions={}, orders=[]))) is answer
     assert seen == [(AT, STAMP_CLOCK.date(), "after_execution")]
+    # main's log_ignored, wired after the ONE reconciler's parse: a skipped non-platform row is never silently lost
+    assert [r.getMessage() for r in caplog.records if "non-platform" in r.getMessage()] == [
+        "return strategy 9: positions read ignored 1 non-platform rows: NSE:LIQUIDBEES"]

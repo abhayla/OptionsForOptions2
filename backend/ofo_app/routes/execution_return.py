@@ -45,7 +45,7 @@ from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError
-from ofo_app.kite_replies import KiteReplyError
+from ofo_app.kite_replies import KiteReplyError, log_ignored
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
@@ -54,7 +54,7 @@ router = APIRouter(route_class=ClosedRoute)
 
 MismatchCode = Literal[tuple(rr.MISMATCH_CODES.values())]  # type: ignore[valid-type]  # closed: one per compare kind
 PlanState = Literal["waiting", "filled", "exited", "nothing_placed", "partial", "reconciliation_required",
-                    "unresolved_from_positions"]  # the last: a stored close reason (migration 0018, #380 step 2.1)
+                    "unresolved_from_positions"]  # the last: a stored close reason (migration 0019, #380 step 2.1)
 
 
 class ReturnPlanOut(ApiModel):
@@ -189,12 +189,15 @@ async def _reconcile(req: _Request, catalogue: Any, zerodha: _Read) -> rr.Verdic
     ``req.today``, the one this route's ``classify`` uses (the database's India date), so the reconciler and the
     route judge a plan's session on the same date; ``req.now`` stays the comparison time."""
     try:
-        return await rr.reconcile_account(req.db, req.user_ref, catalogue, zerodha.positions, zerodha.orders,
-                                          at=req.now, today=req.today, clock=req.now_clock, source="after_execution")
+        verdict = await rr.reconcile_account(req.db, req.user_ref, catalogue, zerodha.positions, zerodha.orders,
+                                             at=req.now, today=req.today, clock=req.now_clock,
+                                             source="after_execution")
     except ra.AttributionError:
         raise _refuse("gate_reconciliation_mismatch") from None
     except (KiteReplyError, ReconciliationError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
+    log_ignored(verdict.positions, f"return strategy {req.strategy_id}")  # main: no skipped row silently lost
+    return verdict
 
 
 def _keys(history: Sequence[plans.StoredPlan], world: _World) -> dict[tuple, str]:

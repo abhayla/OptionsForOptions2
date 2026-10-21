@@ -295,3 +295,107 @@ def test_an_unfilled_order_row_with_integer_zero_average_parses():
     first["average_price"] = 0
     first["status"] = "OPEN"
     assert order_from_row(first).average_price == Decimal("0.00")
+
+
+# ---- rows the platform can never own (GC-3L 2026-10-19: equity CNC rows refused the whole reply) --------------------
+
+OCT_CE = ("NIFTY", Instrument.CE, Decimal("24000"), datetime.date(2026, 10, 27))
+
+
+def _oct_index() -> ContractIndex:
+    return ContractIndex([_IndexRow("13156354", "NIFTY26OCT24000CE", OCT_CE)])
+
+
+def _with_stocks() -> dict:
+    """The 2026-10-19 reply: two equity CNC rows (shaped from the live read) + the real saved NIFTY row (flat)."""
+    return _recorded("positions-20261019-with-stocks")
+
+
+def test_equity_rows_are_ignored_not_refused():
+    data = _with_stocks()
+    assert [(r["tradingsymbol"], r["product"], r["quantity"]) for r in data["net"]] == [
+        ("FRANKLININD", "CNC", -201900), ("LIQUIDBEES", "CNC", -2), ("NIFTY26OCT24000CE", "NRML", 0)]
+    read = positions_from_reply(data, _oct_index())
+    assert read.net == {} and read.lines == ()
+    assert read.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+    for exchange in ("BSE", "MCX", "CDS", "BCD", "NCO"):  # any exchange outside the F&O allowlist
+        stock = {**data["net"][0], "exchange": exchange}
+        assert positions_from_reply({"net": [stock]}, _oct_index()).ignored == (f"{exchange}:FRANKLININD",)
+
+
+def test_the_platforms_own_row_is_still_seen_next_to_stocks():
+    data = _with_stocks()
+    data["net"][2] = {**data["net"][2], "quantity": 65, "average_price": 7}
+    read = positions_from_reply(data, _oct_index())
+    assert read.net == {OCT_CE: 65}
+    assert [line.net_quantity for line in read.lines] == [65]
+    assert read.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+
+
+def test_a_supported_underlying_row_missing_from_the_catalogue_still_refuses():
+    nifty = {**_with_stocks()["net"][2], "quantity": 65, "average_price": 7}
+    with pytest.raises(KiteReplyError, match="matches 0"):  # could be ours (a catalogue gap): never skipped
+        positions_from_reply({"net": [nifty]}, _index())
+    with pytest.raises(KiteReplyError, match="matches 0"):
+        positions_from_reply({"net": [{**nifty, "tradingsymbol": "NIFTY26O2724000CE", "instrument_token": 1}]},
+                             _oct_index())
+    sensex = {**nifty, "exchange": "BFO", "tradingsymbol": "SENSEX26OCT80000PE", "instrument_token": 2}
+    with pytest.raises(KiteReplyError, match="matches 0"):
+        positions_from_reply({"net": [sensex]}, _oct_index())
+
+
+def test_a_row_with_no_or_an_unshaped_exchange_or_fo_symbol_refuses():
+    stock = _with_stocks()["net"][0]
+    for bad in ({k: v for k, v in stock.items() if k != "exchange"}, {**stock, "exchange": ""},
+                {**stock, "exchange": None}, {**stock, "exchange": " NSE"}):
+        with pytest.raises(KiteReplyError, match="exchange"):  # never read as "not ours"
+            positions_from_reply({"net": [bad]}, _oct_index())
+    nifty = {**_with_stocks()["net"][2], "quantity": 65, "average_price": 7}
+    with pytest.raises(KiteReplyError, match="F&O symbol"):  # an NFO row whose underlying cannot be read
+        positions_from_reply({"net": [{**nifty, "tradingsymbol": "NIFTY-OCT-CE"}]}, _oct_index())
+
+
+def test_other_underlying_fo_rows_are_ignored():
+    nifty = {**_with_stocks()["net"][2], "quantity": 30, "average_price": 7}
+    others = [("NFO", "BANKNIFTY26OCT56000CE"), ("NFO", "BANKNIFTY26O2856000PE"), ("NFO", "RELIANCE26OCTFUT"),
+              ("NFO", "NIFTYNXT5026OCT70000CE"), ("NFO", "FINNIFTY26OCT27000PE"), ("BFO", "SENSEX5026OCT28000CE"),
+              ("BFO", "BANKEX26OCT60000CE"), ("BFO", "NIFTY26OCT24000CE")]  # NIFTY is an NFO contract, never BFO
+    rows = [{**nifty, "exchange": ex, "tradingsymbol": sym, "instrument_token": 7} for ex, sym in others]
+    read = positions_from_reply({"net": [*rows, {**nifty, "quantity": 65}]}, _oct_index())
+    assert read.ignored == tuple(f"{ex}:{sym}" for ex, sym in others)
+    assert read.net == {OCT_CE: 65}
+    weekly_nifty = {**nifty, "tradingsymbol": "NIFTY26O1923650CE", "instrument_token": 12080386}
+    assert positions_from_reply({"net": [weekly_nifty]}, _index()).ignored == ()  # weekly symbol: ours, resolved
+    fut = {**nifty, "tradingsymbol": "NIFTY26OCTFUT", "instrument_token": 3}
+    with pytest.raises(KiteReplyError, match="matches 0"):  # a NIFTY future is ours: resolved, not skipped
+        positions_from_reply({"net": [fut]}, _oct_index())
+
+
+def test_an_unknown_exchange_refuses_never_ignored():
+    """Tier A review MAJOR: only the listed never-ours exchanges are skipped; a code that is neither those nor an F&O
+    exchange (a case slip, a new code) could be ours and refuses the read."""
+    nifty = {**_with_stocks()["net"][2], "quantity": 65, "average_price": 7}
+    for exchange in ("nfo", "NSEFO", "XYZ", "bfo"):
+        with pytest.raises(KiteReplyError, match="unknown exchange"):
+            positions_from_reply({"net": [{**nifty, "exchange": exchange}]}, _oct_index())
+    stock = _with_stocks()["net"][0]
+    for exchange in ("NSE", "BSE"):
+        assert positions_from_reply({"net": [{**stock, "exchange": exchange}]}, _oct_index()).ignored == (
+            f"{exchange}:FRANKLININD",)
+
+
+def test_an_ignored_row_without_a_symbol_refuses():
+    stock = {k: v for k, v in _with_stocks()["net"][0].items() if k != "tradingsymbol"}
+    with pytest.raises(KiteReplyError, match="tradingsymbol"):  # never a KeyError, never an unnamed skip
+        positions_from_reply({"net": [stock]}, _oct_index())
+
+
+def test_ignored_rows_are_logged_once_per_read_without_money(caplog):
+    from ofo_app.kite_replies import log_ignored  # noqa: PLC0415
+
+    read = positions_from_reply(_with_stocks(), _oct_index())
+    with caplog.at_level("INFO", logger="ofo_app.kite_replies"):
+        log_ignored(read, "execute strategy 15")
+        log_ignored(positions_from_reply({"net": []}, _oct_index()), "execute strategy 15")  # nothing ignored: silent
+    assert [r.getMessage() for r in caplog.records] == [
+        "execute strategy 15: positions read ignored 2 non-platform rows: NSE:FRANKLININD, NSE:LIQUIDBEES"]

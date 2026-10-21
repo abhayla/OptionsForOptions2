@@ -26,7 +26,7 @@ from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument
 from ofo.instruments import Catalogue
 from ofo_app import execute_plan as ep
-from ofo_app.execute_replay import AT, CORE_ID, REPLIES, TOKEN, real_basket, real_order
+from ofo_app.execute_replay import AT, CORE_ID, REPLIES, TOKEN, real_basket, real_order, recorded_text
 from ofo_app.execute_replay import DepthQuotes, RecordedKite, live_quote, session_for
 from ofo_app.execute_replay import listed_contract as _listed
 from ofo_app.execute_replay import pro_grant as _pro_grant  # noqa: F401 - imported by other route tests
@@ -62,8 +62,8 @@ def _leg(action: Action, quantity: int = 65) -> ep.LegToPrice:
 
 # ---- the book floor: today's orders decide the next plan number and whether an earlier basket is still open --------
 
-def _book(status: str, tag: str = "OFS1V1L0") -> list[dict]:
-    rows = json.loads((REPLIES / "orders-122104.json").read_text(encoding="utf-8"), parse_float=D)
+def _book(status: str, tag: str = "Q0001010") -> list[dict]:
+    rows = json.loads(recorded_text("orders-122104.json"), parse_float=D)
     rows = rows["data"] if isinstance(rows, dict) else rows
     return [{**rows[0], "status": status, "tag": tag}]
 
@@ -82,8 +82,8 @@ def test_ac1_a_terminal_order_gives_the_floor_and_nothing_open(status):
 def test_ac1_the_real_book_gives_floor_1_and_another_strategys_tag_never_counts():
     """The real 12:21 book (OFS1V1L0 COMPLETE) -> floor 1; OFS12V3L0 OPEN is strategy 12, never strategy 1."""
     assert ep.book_floor(_book("COMPLETE"), 1) == (1, False)
-    assert ep.book_floor(_book("OPEN", "OFS12V3L0"), 1) == (0, False)
-    assert ep.book_floor(_book("OPEN", "OFS12V3L0"), 12) == (3, True)
+    assert ep.book_floor(_book("OPEN", "Q000C030"), 1) == (0, False)
+    assert ep.book_floor(_book("OPEN", "Q000C030"), 12) == (3, True)
     assert ep.book_floor(_book("OPEN", "XOFS1V1L0"), 1) == (0, False)
     with pytest.raises(ValueError):
         ep.book_floor(["not a row"], 1)
@@ -161,12 +161,12 @@ def test_ac1_basket_post_is_the_real_basket_text_and_nothing_else():
     assert {k: v for k, v in sent.items() if k != "price"} == {k: v for k, v in REAL_ORDER.items() if k != "price"}
     assert sent["price"] == D("3.35")
     with pytest.raises(TypeError):
-        BasketPost("kitekey", form["data"], ("OFS1V1L0",))
+        BasketPost("kitekey", form["data"], ("Q0001010",))
     with pytest.raises(TypeError):
         BasketPost.of(tuple(basket), "kitekey")
     for tampered in (form["data"].replace('"readonly": true', '"readonly": false'),
-                     form["data"].replace("OFS1V1L0", "OFS1V9L0"), form["data"].replace("3.35", "3.4"),
-                     form["data"].replace(', "tag": "OFS1V1L0"', "")):
+                     form["data"].replace("Q0001010", "Q0001090"), form["data"].replace("3.35", "3.4"),
+                     form["data"].replace(', "tag": "Q0001010"', "")):
         with pytest.raises(BasketPostRefused):
             _check(tampered, basket)
 
@@ -284,7 +284,7 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             assert resp.status_code == 200, resp.text
             # W-103: ONE order_prepared, built from the stored plan, in the plan's transaction
             assert await audit_since(conn, head) == [("order_prepared", "plan:1:1", {
-                "strategy_id": 1, "plan_number": 1, "action": "ENTRY", "tags": "OFS1V1L0"})]
+                "strategy_id": 1, "plan_number": 1, "action": "ENTRY", "tags": "Q0001010"})]
             body = resp.json()
             (order,) = body["orders"]
             assert body["plan_number"] == 1 and body["tags"] == [REAL_ORDER["tag"]]
@@ -301,14 +301,14 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             # gate's one read; read at the pinned route clock
             _assert_cost(body, entry, ("-217.75", "23.70", "1003.00", "572.00"))
             (open_plan,) = await plans.plans_for(conn, user, sid)
-            assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "OFS1V1L0")
+            assert (open_plan.plan_number, open_plan.status, open_plan.orders[0].tag) == (1, "open", "Q0001010")
 
             # one open plan per strategy: the open-plan refusal, and a refused press writes no audit event
             head = await audit_head(conn)
             await _refused_with(app, sid, "ENTRY", "An order this execution depends on is not in place yet")
             assert await audit_since(conn, head) == []
 
-            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"Q0001010": 65})
             flat = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(flat)
             # Zerodha holds 0 of the strategy's 65: blocked (AC-7), by the reconciliation-mismatch refusal
@@ -321,13 +321,13 @@ async def test_core_real_order_entry_then_exit(app_engine, admin_engine, monkeyp
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
             assert await audit_since(conn, head) == [("order_prepared", "plan:1:2", {
-                "strategy_id": 1, "plan_number": 2, "action": "EXIT", "tags": "OFS1V2L0"})]
+                "strategy_id": 1, "plan_number": 2, "action": "EXIT", "tags": "Q0001020"})]
             from ofo_app.audit_store import load_log  # noqa: PLC0415
             _, anchor = await load_log(conn)  # the hash chain verifies with the new events in it
             assert anchor.count == head + 1
             (sell,) = resp.json()["orders"]
             assert (sell["transaction_type"], sell["quantity"], sell["price"], sell["tag"]) == ("SELL", 65, "3.30",
-                                                                                              "OFS1V2L0")
+                                                                                              "Q0001020")
             # W-102: 65 x 3.30 = 214.50 received; charges 24.011933093 -> 24.01 (= Zerodha's own figure in the real
             # exit reply); the real exit reply's final.total -214.5 is a closing basket, so the gate's margin is 0.00
             # (ADR-094 / #321: a release is never a credit); funds 671.5 from the same read
@@ -411,9 +411,9 @@ async def _third_exit_refused(app, conn, user: str, sid: int) -> None:
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     from ofo_app.routes import execute as route  # noqa: PLC0415
 
-    await plans.close_plan(conn, user, sid, 2, reason="exited", filled={"OFS1V2L0": 65})
+    await plans.close_plan(conn, user, sid, 2, reason="exited", filled={"Q0001020": 65})
     done = _rows_of(_Replay(funds="1003", basket_total="-214.5", orders=None, positions="positions-151006"),
-                    orders=_book("COMPLETE") + _book("COMPLETE", "OFS1V2L0"))
+                    orders=_book("COMPLETE") + _book("COMPLETE", "Q0001020"))
     app.dependency_overrides[route.get_kite_session] = lambda: _session_for(done)
     third = await _post(app, sid, "EXIT")
     assert third.status_code == 409, third.text
@@ -466,7 +466,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="partial", filled={"Q0001010": 65})
 
             def _with(**kw):
                 kw.setdefault("orders", _partial_book())  # the 130-unit order filled 65 (not the 65-unit real row)
@@ -497,7 +497,7 @@ async def test_refusals_on_the_net_of_all_plans_after_a_partial_entry(app_engine
             resp = await _post(app, sid, "EXIT")
             assert resp.status_code == 200, resp.text
             (sell,) = resp.json()["orders"]
-            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 65, "OFS1V2L0")
+            assert (sell["transaction_type"], sell["quantity"], sell["tag"]) == ("SELL", 65, "Q0001020")
         finally:
             await trans.rollback()
 
@@ -540,6 +540,48 @@ def test_exit_legs_close_exactly_the_net_opposite_side():
     assert [(leg.instrument_id, leg.action, leg.quantity) for leg in legs] == [("NFO-OPT:1", Action.BUY, 65),
                                                                                 ("NFO-OPT:47189", Action.SELL, 30)]
     assert ep.exit_legs({}, lambda t: t) == []
+
+
+async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliation(caplog, monkeypatch):
+    """GC-3L 2026-10-19: the owner's own stock trades (CNC) sat in Zerodha's net positions; the reader refused the
+    whole reply, reconciliation became unknown (None) and every Execute was refused RECONCILIATION_MISMATCH. The
+    stock row is ignored (reported), the strategy's own contract is still parsed. #380-2: the reply is parsed only
+    inside the ONE reconciler (``route_reconciliation``); its comparison is pinned in test_route_reconciliation."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.kite_replies import ContractIndex, positions_from_reply  # noqa: PLC0415
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    stocks = json.loads((REPLIES / "positions-20261019-with-stocks.json").read_text(encoding="utf-8"),
+                        parse_float=D)["data"]["net"][:2]  # FRANKLININD, LIQUIDBEES (CNC)
+    catalogue = _catalogue()
+
+    async def db_now(db):
+        return AT
+
+    async def reconcile_account(conn, user_ref, cat, reply, order_rows, **kwargs):  # the real parse, no database
+        read = positions_from_reply(reply, ContractIndex.from_catalogue(cat))
+        return SimpleNamespace(positions=read, attribution=SimpleNamespace(blocked=frozenset()))
+
+    monkeypatch.setattr(route.elig, "database_now", db_now)
+    monkeypatch.setattr(route.rr, "reconcile_account", reconcile_account)
+
+    def request(rows: list) -> SimpleNamespace:
+        reads = SimpleNamespace(fetch_positions=lambda: {"net": rows, "day": []})
+        return SimpleNamespace(db=None, user_ref="U", now=AT, clock=lambda: AT, strategy_id=15,
+                               session=SimpleNamespace(reads=reads))
+
+    held = SimpleNamespace(order_rows=[])
+    with caplog.at_level("INFO", logger="ofo_app.kite_replies"):
+        positions, blocked = await route._reconcile(request(stocks), held, catalogue)  # Zerodha holds only stocks
+    assert positions is not None and positions.ignored == ("NSE:FRANKLININD", "NSE:LIQUIDBEES")
+    assert positions.net == {} and blocked == frozenset()  # not None: reconciliation is known
+    assert [r.getMessage() for r in caplog.records] == [
+        "execute strategy 15: positions read ignored 2 non-platform rows: NSE:FRANKLININD, NSE:LIQUIDBEES"]
+
+    positions, blocked = await route._reconcile(request([*stocks, *_position_rows()]), held, catalogue)
+    key = ("NIFTY", Instrument.CE, D("23650"), datetime.date(2026, 10, 19))  # the recorded contract
+    assert positions.net == {key: 65} and blocked == frozenset()  # the strategy's 65 next to the stocks
 
 
 def test_held_products_come_from_zerodha_and_an_unread_or_mixed_product_is_left_out():
@@ -609,7 +651,7 @@ async def test_two_interleaved_exits_give_one_basket_and_refuse_the_other(app_en
             entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
             assert (await _post(app, sid, "ENTRY")).status_code == 200
-            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"OFS1V1L0": 65})
+            await plans.close_plan(conn, user, sid, 1, reason="filled", filled={"Q0001010": 65})
             held = _Replay(funds="671.5", basket_total="-214.5", orders="orders-122104", positions="positions-122104")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(held)
 
@@ -673,7 +715,7 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
         return loaded
 
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
-    req = SimpleNamespace(db=None, now=AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
+    req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
     health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
     assert route._list_health(loaded, DB_NOW - datetime.timedelta(days=1)) is DataHealth.STALE

@@ -87,7 +87,7 @@ from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads
-from ofo_app.kite_replies import KiteReplyError, PositionsRead
+from ofo_app.kite_replies import KiteReplyError, PositionsRead, log_ignored
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import load_charge_rates
@@ -246,11 +246,14 @@ def market_open(now: datetime.datetime) -> bool:
     return local.weekday() < 5 and SESSION_OPEN <= local.time() < SESSION_CLOSE
 
 
-def _health(times: tuple[datetime.datetime, ...], now: datetime.datetime) -> DataHealth:
+def _health(times: tuple[datetime.datetime, ...], checked_at: datetime.datetime) -> DataHealth:
+    """Each frame time judged on ``checked_at``, a clock read AFTER the quotes were read (never the request-start
+    ``req.now``: a tick that arrived while the route read Zerodha is newer than it). A frame up to the clock-skew
+    tolerance ahead is fresh; further ahead (a bad clock or packet) or older than ``stale_after`` is STALE."""
     if not times:
         return DataHealth.UNAVAILABLE
-    stale_after = HealthThresholds().stale_after
-    fresh = all(datetime.timedelta(0) <= now - t <= stale_after for t in times)
+    limits = HealthThresholds()
+    fresh = all(-limits.clock_skew_tolerance <= checked_at - t <= limits.stale_after for t in times)
     return DataHealth.HEALTHY if fresh else DataHealth.STALE
 
 
@@ -505,6 +508,7 @@ async def _reconcile(req: _Request, held: _Held,
                                              today=today, clock=req.clock, source=None)
     except (KiteReadError, KiteReplyError, ValueError):  # AttributionError / ReconciliationError included
         return None, None
+    log_ignored(verdict.positions, f"execute strategy {req.strategy_id}")  # main: no skipped row silently lost
     return verdict.positions, frozenset(verdict.attribution.blocked)
 
 
@@ -552,8 +556,9 @@ async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,
                        db_now: datetime.datetime) -> dict[DataInput, DataHealth]:
     spot = req.quotes.underlying_price(underlying)
     listing = _list_health(await elig.list_loaded_at(req.db), db_now)
-    return {DataInput.LEG_PRICES: _health(priced.quote_times, req.now),
-            DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), req.now),
+    checked_at = req.clock()  # read after every quote (legs priced earlier, the index just now): the judging clock
+    return {DataInput.LEG_PRICES: _health(priced.quote_times, checked_at),
+            DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), checked_at),
             DataInput.INSTRUMENT_LIST: listing}
 
 

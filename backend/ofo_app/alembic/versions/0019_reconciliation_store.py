@@ -29,8 +29,8 @@ Changes (owner-run, one transaction):
 - downgrade: refuses while any row is stored in the three tables or any plan is closed ``unresolved_from_positions``;
   otherwise restores 0017's state exactly.
 
-Revision ID: 0018_reconciliation_store
-Revises: 0017_audit_order_prepared
+Revision ID: 0019_reconciliation_store
+Revises: 0018_basket_tag_8
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0018_reconciliation_store"
-down_revision = "0017_audit_order_prepared"
+revision = "0019_reconciliation_store"
+down_revision = "0018_basket_tag_8"
 branch_labels = None
 depends_on = None
 
@@ -56,13 +56,16 @@ def _load(filename: str, name: str):
     return module
 
 
-_PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0018")
-_M16 = _PREVIOUS._PREVIOUS  # 0016
+_PREVIOUS = _load(f"{down_revision}.py", "ofo_migration_predecessor_for_0019")  # 0018_basket_tag_8
+#: 0018 only swaps a row CHECK and leaves the allow-list function as 0017 wrote it, so the allow-list text, helpers and
+#: pins are the revision 0018 itself revises (read from its down_revision, never named here).
+_ALLOWLIST_BASE = _load(f"{_PREVIOUS.down_revision}.py", "ofo_migration_allowlist_base_for_0019")  # 0017
+_M16 = _ALLOWLIST_BASE._PREVIOUS  # 0016
 _M8 = _M16._M8
 _M4 = _M16._M4
 _M3 = _M16._M3
 _PREV = _M16._PREV  # 0002
-_BASE = _PREVIOUS._BASE  # 0001
+_BASE = _ALLOWLIST_BASE._BASE  # 0001
 
 SEARCH_PATH = _M16.SEARCH_PATH
 SQLSTATE = "OF018"
@@ -193,7 +196,7 @@ _INSERT_BEFORE = _PREV._INSERT_BEFORE
 
 
 def previous_allowlist_sql() -> str:
-    return _PREVIOUS.extended_allowlist_sql()
+    return _ALLOWLIST_BASE.extended_allowlist_sql()
 
 
 def extended_allowlist_sql() -> str:

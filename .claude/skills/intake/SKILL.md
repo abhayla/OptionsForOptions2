@@ -46,6 +46,7 @@ anything before the decision that shapes it exists.
    `NEXT` step naming the core proof from step 4.
 6. **Then write requirements** (`spec/requirements/REQ-###.md`) from the recorded decisions —
    never before they exist, and never inventing a decision the owner has not actually made.
+7. **Write the plan as a record.** Any plan made or changed is written as `plans/PL-###.md`; a change appends a `changes` entry (was, now, why), never rewrites silently.
 
 ## What this skill never does
 
