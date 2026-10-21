@@ -160,6 +160,26 @@ def _check_override(override: RangeOverride, config: ScenarioConfig) -> tuple[De
     return override.start, override.end
 
 
+def resolve_range(
+    config: ScenarioConfig, start: Decimal | None, end: Decimal | None
+) -> RangeOverride | None:
+    """The range override for a user's pick (REQ-034 AC-4), refusing anything off the allow-list.
+
+    ``start`` and ``end`` come together; both sit on the Admin anchor grid (AC-5: rounded 100-point levels for NIFTY),
+    a whole number of the Admin step apart, with at most ``max_columns`` columns. The step is never the user's.
+    """
+    if (start is None) != (end is None):
+        raise ValueError("a range needs both its start and its end")
+    if start is None or end is None:
+        return None
+    override = RangeOverride(start, end)
+    _check_override(override, config)
+    columns = (end - start) / config.step_points + 1
+    if columns > config.max_columns:
+        raise ValueError(f"range {start}..{end} needs {columns} columns; the maximum is {config.max_columns}")
+    return override
+
+
 def build_level_set(
     inputs: ModelInputs,
     config: ScenarioConfig,
