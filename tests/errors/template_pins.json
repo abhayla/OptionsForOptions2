@@ -591,6 +591,10 @@
     "sha256": "33de302b33d3d49d5c5b3789a4a585e739b71c245c8043513cfc4251d81c5008",
     "reviewed": "pending owner read"
   },
+  "return_trade_without_order": {
+    "sha256": "afc8ab3471761e50001b0a06f8634922a0d010741045828416128c816ac42c50",
+    "reviewed": "pending owner read"
+  },
   "explanation:why_triggered": {
     "sha256": "1828d55f612d34fa10f74a459633dd938c26ab63f65c15b210c70f7104846d02",
     "reviewed": "pending owner read"

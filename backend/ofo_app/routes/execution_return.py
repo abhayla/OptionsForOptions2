@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated, Any, Literal, Optional
 
@@ -48,6 +49,7 @@ from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_sess
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute)
+_log = logging.getLogger(__name__)
 
 _OTHER_STRATEGIES = text(
     "SELECT DISTINCT p.strategy_id FROM public.execution_plans p JOIN public.strategies s ON s.id = p.strategy_id "
@@ -158,15 +160,30 @@ class _Read:
 
 
 def _read_zerodha(req: _Request, catalogue: Any) -> _Read:
-    """ONE fresh read of each; any failure refuses the whole return (nothing changes on a half read)."""
+    """ONE fresh read of each; any failure refuses the whole return (nothing changes on a half read). Trades are read
+    BEFORE orders (issue 381): a trade exists only for an order that already existed, so every trade read here names an
+    order the later orders read also holds; the reverse order let a new order's trade be dropped."""
     reads = req.session.reads
     try:
-        orders, trades = reads.fetch_orders(), reads.fetch_trades()
+        trades = reads.fetch_trades()
+        orders = reads.fetch_orders()
         positions = positions_from_reply(reads.fetch_positions(), ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         raise _refuse("gate_broker_unconfirmed") from None
     log_ignored(positions, f"return strategy {req.strategy_id}")
     return _Read(orders, trades, positions.net)
+
+
+def _book_or_refuse(zerodha: _Read, strategy_id: int, tags: frozenset[str]) -> er.TodaysBook:
+    """The strategy's book from the two reads. A trade whose order the orders read lacks (issue 381) gets its own
+    message and a log line; any other unreadable row (KiteReplyError included) is never guessed."""
+    try:
+        return rb.read_book(zerodha.orders, zerodha.trades, strategy_id, tags)
+    except rb.TradeWithoutOrder:
+        _log.warning("return refused: a trade names an order missing from the orders read (strategy %s)", strategy_id)
+        raise _refuse("return_trade_without_order") from None
+    except ValueError:
+        raise _refuse("gate_broker_unconfirmed") from None
 
 
 def _iid(text_id: str) -> InstrumentId:
@@ -194,10 +211,7 @@ async def _others(req: _Request, catalogue: Any, zerodha: _Read) -> tuple[dict[t
         underlying = (await store.load(req.db, req.user_ref, other)).saved.definition.underlying
         history = await plans.plans_for(req.db, req.user_ref, other)
         tags = frozenset(o.tag for p in history for o in p.orders)
-        try:
-            book = rb.read_book(zerodha.orders, zerodha.trades, other, tags)
-        except ValueError:  # that strategy's rows unreadable: never guessed
-            raise _refuse("gate_broker_unconfirmed") from None
+        book = _book_or_refuse(zerodha, other, tags)  # that strategy's rows unreadable: never guessed
         unknown.update(ep.contract_key(catalogue, _iid(o.instrument_id), underlying)
                        for o in er.unsettled_orders(history, book))
         for key, n in _keyed(ep.held_units(history), catalogue, underlying).items():
@@ -314,10 +328,7 @@ async def _return(req: _Request, underlying: str) -> ReturnOut:
     catalogue = await load_catalogue(req.db)
     zerodha = _read_zerodha(req, catalogue)
     tags = frozenset(o.tag for p in history for o in p.orders)
-    try:
-        book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
-    except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
-        raise _refuse("gate_broker_unconfirmed") from None
+    book = _book_or_refuse(zerodha, req.strategy_id, tags)
     world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha))
     live = await _settle_open_plan(req, history, book, world)
     await _record_externals(req, book)

@@ -8,6 +8,8 @@ Spec basis: REQ-073 AC-3; ADR-050 item 4(d) (external orders recorded, never dro
   in no stored plan is EXTERNAL (kept as read, never dropped), read as strictly as ours (fail closed).
 - Trades are taken for our orders only and de-duplicated by (order id, trade id): the same key twice with other
   content is a conflict (that order cannot be trusted), never a second fill.
+- A trade whose order id is in no order row refuses the read (issue 381); the route reads trades first so a real
+  Zerodha reply never shows this.
 """
 from __future__ import annotations
 
@@ -18,6 +20,10 @@ from ofo.orders.model import FillEvent
 
 from ofo_app.execution_return import TodaysBook
 from ofo_app.kite_replies import BrokerOrderRow, fill_from_trade_row, order_from_row
+
+
+class TradeWithoutOrder(ValueError):
+    """A trade names an order that no order row holds (issue 381): the route says so in its own message."""
 
 
 def _ours(row: Mapping[str, object], strategy_id: int) -> bool:
@@ -64,12 +70,23 @@ def _fills(trade_rows: Sequence[Mapping[str, object]],
     return tuple(seen.values()), traded, frozenset(conflicting)
 
 
+def _require_trade_orders(order_rows: Sequence[Mapping[str, object]],
+                          trade_rows: Sequence[Mapping[str, object]]) -> None:
+    """Issue 381: a trade whose order is in no order row (any strategy, any tag) means the two reads disagree. Dropping
+    it would let a plan close ``nothing_placed`` while Zerodha shows its fill, so the whole read is refused."""
+    known = {row.get("order_id") for row in order_rows if isinstance(row, Mapping)} - {None}
+    for row in trade_rows:
+        if isinstance(row, Mapping) and row.get("order_id") not in known:
+            raise TradeWithoutOrder("a trade names an order the orders read does not hold")
+
+
 def read_book(order_rows: Sequence[Mapping[str, object]], trade_rows: Sequence[Mapping[str, object]],
               strategy_id: int, stored_tags: frozenset[str]) -> TodaysBook:
+    _require_trade_orders(order_rows, trade_rows)
     ours, external = _split_orders(order_rows, strategy_id, stored_tags)
     order_ids = frozenset(r.order_id for rows in ours.values() for r in rows)
     fills, traded, conflicting = _fills(trade_rows, order_ids)
     return TodaysBook(ours, tuple(external), traded, fills, conflicting)
 
 
-__all__ = ["read_book"]
+__all__ = ["TradeWithoutOrder", "read_book"]

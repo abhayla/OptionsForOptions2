@@ -20,6 +20,7 @@ from ofo_app import execution_return as er
 from ofo_app import return_book as rb
 from ofo_app.execute_replay import recorded_text
 from ofo_app.execution_plan_store import PlanOrder, StoredPlan
+from ofo_app.kite_replies import PositionsRead
 
 SYMBOL = "NIFTY26O1923650CE"
 IID = "NSE_FO:47189"  # never read by the pure part; the DB test uses the catalogue's own id
@@ -216,6 +217,101 @@ def test_ac3_another_strategys_open_or_drifted_plan_makes_the_contract_undecidab
     assert (check.undecidable, check.blocks) == ((er.OTHER_UNSETTLED, True) if unsettled else (None, True))
     if not unsettled:
         assert check.kind == er.MISSING  # settled B explains Zerodha's 65: A's share is 0 (decided normally)
+
+
+# ---- issue 381: the orders and trades reads can disagree (no database) -------------------------------------------
+
+def test_381_core_a_trade_whose_order_the_orders_read_missed_refuses_never_nothing_placed():
+    """REQ-060 AC-6 / REQ-058 AC-5 / issue 381 core, real orders-122104 + trades-122104: the order row is missing from
+    the orders read but its 65-unit trade is in the trades read -> the read is refused (before this fix the book was
+    empty and classify closed the plan nothing_placed with 65 units held)."""
+    trades = _data("trades-122104")
+    assert sum(t["quantity"] for t in trades) == ENTRY_OPEN.orders[0].quantity
+    assert trades[0]["order_id"] == "261016170576173"
+    with pytest.raises(ValueError, match="trade names an order"):
+        _book([], trades, (ENTRY_OPEN,))
+    other = {**_data("orders-122104")[0], "order_id": "1", "tag": None}  # an unrelated order present is no excuse
+    with pytest.raises(ValueError, match="trade names an order"):
+        _book([other], trades, (ENTRY_OPEN,))
+
+
+def test_381_orders_and_trades_both_present_close_filled_and_an_unrelated_listed_order_is_fine():
+    """Same replies, order present: filled 65. A manual order (no tag) and its trade, both listed, change nothing."""
+    real_order, real_trade = _data("orders-122104")[0], _data("trades-122104")[0]
+    manual = {**real_order, "order_id": "77", "tag": None}
+    manual_trade = {**real_trade, "order_id": "77", "trade_id": "78"}
+    book = _book([real_order, manual], [real_trade, manual_trade], (ENTRY_OPEN,))
+    assert er.classify(ENTRY_OPEN, book, TODAY) == er.PlanAnswer(er.FILLED, {make_tag(1, ENTRY_PLAN, 0): 65})
+
+
+def test_381_order_complete_but_trades_empty_is_reconciliation_not_filled():
+    """The trades-first arrival order: the order appeared after the trades read, so the order shows COMPLETE 65 and
+    the trades read is empty -> reconciliation required (Zerodha is the authority; no fill without its trade)."""
+    book = _book(_data("orders-122104"), [], (ENTRY_OPEN,))
+    assert er.classify(ENTRY_OPEN, book, TODAY).state == er.RECONCILE
+
+
+def test_381_both_reads_empty_is_nothing_placed_and_a_trade_without_an_order_id_refuses():
+    """Absent order and absent trade (the user closed the basket) is nothing_placed; a trade row with no order id is
+    unreadable and refuses."""
+    assert er.classify(ENTRY_OPEN, _book([], [], (ENTRY_OPEN,)), TODAY).state == er.NOTHING_PLACED
+    nameless = {k: v for k, v in _data("trades-122104")[0].items() if k != "order_id"}
+    with pytest.raises(rb.TradeWithoutOrder, match="trade names an order"):
+        _book(_data("orders-122104"), [nameless], (ENTRY_OPEN,))
+    # an order row with no order id must not make a nameless trade "known" (None is never a known id)
+    nameless_order = {k: v for k, v in _data("orders-122104")[0].items() if k != "order_id"}
+    with pytest.raises(rb.TradeWithoutOrder, match="trade names an order"):
+        rb.read_book([nameless_order], [nameless], 1, frozenset())
+
+
+class _OrderedReads:
+    def __init__(self, fail: str | None = None) -> None:
+        self.calls: list[str] = []
+        self.fail = fail
+
+    def _answer(self, name: str, data: list) -> list:
+        from ofo_app.kite_reads import KiteReadError  # noqa: PLC0415
+
+        self.calls.append(name)
+        if self.fail == name:
+            raise KiteReadError("down")
+        return data
+
+    def fetch_orders(self) -> list:
+        return self._answer("orders", _data("orders-122104"))
+
+    def fetch_trades(self) -> list:
+        return self._answer("trades", _data("trades-122104"))
+
+    def fetch_positions(self) -> dict:
+        return self._answer("positions", {})  # type: ignore[return-value]
+
+
+def _zerodha_read(monkeypatch, reads: _OrderedReads):
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+
+    monkeypatch.setattr(route.ContractIndex, "from_catalogue", staticmethod(lambda catalogue: None))
+    monkeypatch.setattr(route, "positions_from_reply", lambda reply, index: PositionsRead({}, ()))
+    session = type("S", (), {"reads": reads})()
+    req = route._Request(None, "u", 1, session, AT, TODAY)
+    return route._read_zerodha(req, None)
+
+
+def test_381_the_route_reads_trades_before_orders(monkeypatch):
+    """Issue 381: trades first, so an order that appears between the reads is in the later orders read."""
+    reads = _OrderedReads()
+    got = _zerodha_read(monkeypatch, reads)
+    assert reads.calls == ["trades", "orders", "positions"]
+    assert (len(got.orders), len(got.trades)) == (1, 1)
+
+
+@pytest.mark.parametrize("failing", ["orders", "trades", "positions"])
+def test_381_a_failed_read_refuses_the_whole_return(monkeypatch, failing):
+    """Every read failing refuses (gate_broker_unconfirmed), none is skipped."""
+    from ofo_app.routes.strategies import StrategyRefused  # noqa: PLC0415
+
+    with pytest.raises(StrategyRefused):
+        _zerodha_read(monkeypatch, _OrderedReads(fail=failing))
 
 
 # ---- the route on the database (core proof; CI) -----------------------------------------------------------------
@@ -475,6 +571,34 @@ async def test_ac3_core_another_strategys_open_plan_filled_at_kite_makes_the_con
 
 
 @pytest.mark.usefixtures("app_engine")
+async def test_381_route_trade_without_its_order_is_409_with_its_own_message_and_the_plan_stays_open(
+        app_engine, admin_engine, monkeypatch, caplog):
+    """Issue 381 through the route: orders read empty, default (real) trades read has the 65-unit fill -> 409 with the
+    return_trade_without_order wording (not the Kite-outage text), a log line, and the plan stays open."""
+    from ofo.errors import CATALOGUE  # noqa: PLC0415
+    from ofo_app import execution_plan_store as plans  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
+            response = await _post(_app_for(conn, user, _Reads("122104", orders=[])), sid)
+            assert response.status_code == HTTPStatus.CONFLICT
+            assert CATALOGUE["return_trade_without_order"].what_happened in response.text
+            assert "a trade names an order missing from the orders read" in caplog.text
+            (stored,) = await plans.plans_for(conn, user, sid)
+            assert (stored.status, stored.close_reason) == ("open", None)
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.usefixtures("app_engine")
 async def test_ac3_core_a_plan_from_yesterday_is_never_closed_from_an_empty_book(app_engine, admin_engine,
                                                                                  monkeypatch):
     """Review MAJOR 2 core: plan 1 created in one session, returned the next day with an empty book (no tag in today's
@@ -492,7 +616,7 @@ async def test_ac3_core_a_plan_from_yesterday_is_never_closed_from_an_empty_book
             sid = await _strategy_one(conn, user, app_engine.url.username)
             await _store_plan(conn, user, sid, ("ENTRY", "BUY", "5.45"))
             next_day = await _created_date(conn) + datetime.timedelta(days=1)
-            body = (await _post(_app_for(conn, user, _Reads("122104", orders=[]), next_day), sid)).json()
+            body = (await _post(_app_for(conn, user, _Reads("122104", orders=[], trades=[]), next_day), sid)).json()
             assert body["plans"] == [{"plan_number": 1, "action": "ENTRY", "state": "reconciliation_required",
                                       "choices": [], "reason": "plan_from_earlier_session"}]
             assert body["blocked"] is True

@@ -868,9 +868,19 @@ _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"available": DisplayRupees, "required": DisplayRupees}),
 )
 
+# --- issue 381 (REQ-073 AC-3): the return from Kite found a trade whose order is not in the order list. New: awaiting
+# the owner's read.
+_RETURN_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("return_trade_without_order", _RM, 401,
+          "A trade at Zerodha names an order that is missing from Zerodha's order list.",
+          "The two lists disagree, so this return cannot tell what was placed.",
+          "Reading the result of your orders; nothing was changed.",
+          "Check with Zerodha again in a minute."),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _RETURN_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
